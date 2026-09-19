@@ -923,6 +923,6 @@ async function tick() {{
 </body></html>
 "#,
         tally = tally(n_intake, open, cold, shut),
-        live_dot = if live {{ r#"<span class="live" id="live"></span>"# }} else {{ "" }},
-        poll = if live {{ "tick(); setInterval(tick, 2000);" }} else {{ "applyFilter(); applyPicks();" }})
+        live_dot = if live { r#"<span class="live" id="live"></span>"# } else { "" },
+        poll = if live { "tick(); setInterval(tick, 2000);" } else { "applyFilter(); applyPicks();" })
 }

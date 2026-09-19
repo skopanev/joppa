@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>joppa — обязательства продукта</title>
+<style>
+:root{font:16px/1.5 system-ui;color:#192820;background:#f5f4ee}body{margin:0}header{padding:20px 4%;background:#173f31;color:white;display:flex;gap:16px;align-items:center;flex-wrap:wrap}header strong{font-size:28px}main{max-width:1200px;margin:24px auto;padding:0 20px}.layout{display:grid;grid-template-columns:290px 1fr;gap:24px}section,article,details{background:white;border:1px solid #d5dcd4;border-radius:9px;padding:18px;margin-bottom:14px}h1,h2,h3{line-height:1.2}h2{font-size:23px}h3{font-size:18px}button,input,select,textarea{font:inherit;border:1px solid #aab9ad;border-radius:5px;padding:8px;box-sizing:border-box}button{cursor:pointer;background:#e6f0e7;color:#173f31}button:hover{background:#d4e9d8}input,select,textarea{width:100%;background:white}textarea{min-height:80px}label{display:block;font-size:14px;margin:9px 0}label input[type=checkbox]{width:auto}form{margin:12px 0}small,.muted{color:#5b6a62}.badge{padding:3px 8px;border-radius:5px;background:#eef0ea;font-size:13px}.pass{background:#d7efda}.fail{background:#ffe1d8}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.nav{display:block;text-align:left;width:100%;margin:6px 0}.notice{position:sticky;top:0;padding:12px;background:#fff0bf;white-space:pre-wrap;z-index:2}.notice:empty{display:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}summary{cursor:pointer;font-weight:600}p{white-space:pre-wrap}#login{display:flex;gap:8px}#login input{width:260px}fieldset{border:1px solid #d5dcd4;margin:10px 0;border-radius:5px}body.snapshot form,body.snapshot .write{display:none}@media(max-width:750px){.layout{grid-template-columns:1fr}header{padding:14px}#login input{width:180px}}
+</style>
+<header>
+<strong>joppa</strong>
+<span>Что должно быть правдой о продукте</span>
+<form id="login">
+<input name="token" type="password" placeholder="Токен доступа" aria-label="Токен доступа" required>
+<button>Войти</button>
+</form>
+<span id="identity">
+</span>
+</header>
+<div id="notice" class="notice" role="status">
+</div>
+<main>
+<div class="row">
+<select id="workspaces" aria-label="Продукт">
+</select>
+<button id="refresh">Обновить</button>
+</div>
+<div id="setup">
+</div>
+<div class="layout">
+<aside id="tree">
+</aside>
+<div id="card">
+<p>Войдите, чтобы открыть свой продукт.</p>
+</div>
+</div>
+</main>
+<script>
+/* BOARD_SCRIPT */
+</script>
+</html>

@@ -1,0 +1,51 @@
+use deadpool_postgres::Pool;
+use joppa::{commands::Command, store};
+use serde_json::{Value, json};
+
+pub async fn handle(pool: &Pool, actor: &str, msg: &Value) -> Option<Value> {
+    let id = msg.get("id")?;
+    let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
+    let result: anyhow::Result<Value> = match method {
+        "initialize" => Ok(
+            json!({"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"joppa","version":env!("CARGO_PKG_VERSION")},"instructions":include_str!("../docs/agent-instructions.txt")}),
+        ),
+        "ping" => Ok(json!({})),
+        "tools/list" => Ok(json!({"tools": [
+            tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
+            tool("joppa_read", "Read workspace, REQ cards, revision history, checks and launch blockers", json!({"workspace":{"type":"string"}}), json!(["workspace"])),
+            tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the trusted launcher, never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
+            tool("joppa_help", "Get all operation shapes and workflow rules before authoring commands", json!({}), json!([]))
+        ]})),
+        "tools/call" => call(pool, actor, msg)
+            .await
+            .map(|v| json!({"content":[{"type":"text","text":v.to_string()}]})),
+        _ => {
+            return Some(
+                json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"unknown method"}}),
+            );
+        }
+    };
+    Some(match result {
+        Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+        Err(e) => {
+            json!({"jsonrpc":"2.0","id":id,"result":{"isError":true,"content":[{"type":"text","text":format!("{e:#}")} ]}})
+        }
+    })
+}
+fn tool(name: &str, description: &str, properties: Value, required: Value) -> Value {
+    json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
+}
+async fn call(pool: &Pool, actor: &str, msg: &Value) -> anyhow::Result<Value> {
+    let a = &msg["params"]["arguments"];
+    let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
+    match msg["params"]["name"].as_str().unwrap_or("") {
+        "joppa_list" => store::list(pool, actor).await,
+        "joppa_read" => store::read(pool, field("workspace")?, actor).await,
+        "joppa_command" => {
+            let c: Command = serde_json::from_value(a["command"].clone())?;
+            store::execute(pool, field("workspace")?, actor, field("request_id")?, &c).await
+        }
+        "joppa_help" => Ok(json!({"operations":include_str!("../docs/api.md")})),
+        _ => anyhow::bail!("unknown tool"),
+    }
+}

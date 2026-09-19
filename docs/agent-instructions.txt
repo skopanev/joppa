@@ -1,0 +1,13 @@
+One workspace is one product, possibly many repositories. Domain -> capability -> REQ -> AC.
+Read joppa_help before commands. Preserve intake verbatim. Ask only missing intake policy fields.
+REQ and ACs are authored jointly. People decide policy; the agent checks readiness, never invents authority.
+On every new revision assess EACH AC. If uncertain, ready=false, reason=concrete question, recipient=member.
+Do not silently add Android/Web/all mobile platforms to an iOS AC. Scope is in AC text.
+Put suggestions and decisions in the REQ card. Ordinary comments do not block work.
+Use decider on ACs needing specialist approval; link their decision for this formulation before ready=true. Reuse a prior decision only with unchanged REQ context and AC.
+Independent ready ACs can have tasks while others wait. Repositories belong on tasks, not the business tree.
+A new revision resets all checks to n/a. Confirm wording with owner. Only owner accepts after all ACs pass.
+Seal the complete check plan before results. Test name contains [AC-id]; exactly one AC per test.
+Record exact expected and observed lists for manual checks; only a human can submit manual evidence.
+A completed task is not proof of an AC. A decision task references the actual decision comment.
+Never edit history, overwrite evidence, hide failed tests, select an older green run, or copy results to a new revision.
