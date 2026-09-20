@@ -14,19 +14,19 @@
 <p>A product can span several repositories. They share one requirement tree. Tasks link to repositories: one acceptance criterion may need work in the app, backend and infrastructure.</p>
 <p>Switching workspace changes the entire tree, requirements and discussions.</p></section>
 <section id="tree-levels"><h2>Four levels of the tree</h2>
-<table><thead><tr><th>Level</th><th>How to recognize it</th><th>Example</th></tr></thead><tbody>
-<tr><td><strong>Domain</strong></td><td>A business area with a clear decision owner.</td><td>Access and subscriptions. Who decides what a subscription includes?</td></tr>
-<tr><td><strong>Capability</strong></td><td>A product ability. Start with “We can…”</td><td>We can restore paid access.</td></tr>
-<tr><td><strong>REQ</strong><br><small>Requirement</small></td><td>A commitment you can ask “Is this true now?” about.</td><td>Paid access persists after signing in again.</td></tr>
-<tr><td><strong>AC</strong><br><small>Acceptance criterion</small></td><td>A concrete condition for accepting the requirement.</td><td>On iOS, an active subscription unlocks paid features after signing in again.</td></tr>
+<table><thead><tr><th>Level</th><th>Question it answers</th><th>Example</th></tr></thead><tbody>
+<tr><td><strong>Domain</strong></td><td>Which part of the business is this?</td><td>Subscriptions and access.</td></tr>
+<tr><td><strong>Capability</strong></td><td>What can the product do?</td><td>Restore paid access.</td></tr>
+<tr><td><strong>REQ</strong><br><small>Requirement</small></td><td>What must the product guarantee?</td><td>A customer with an active subscription keeps paid access after signing in again.</td></tr>
+<tr><td><strong>AC</strong><br><small>Acceptance criterion</small></td><td>What exact result do we check?</td><td>On iOS, sign out and sign in again with an active subscription. Paid features are still available.</td></tr>
 </tbody></table>
 <p>“Build a screen” is a task. “iOS” defines the scope of an AC. “Backend” describes where work happens. These are not business domains.</p>
 <p>Domains and capabilities organize commitments. Verification and acceptance apply to requirements and their ACs.</p></section>
 <section><h2>Read here. Work with your agent.</h2>
-<p>Open a domain, capability, requirement or AC and choose the <strong>copy + robot</strong> button. Paste the unique system ID and title into your agent chat to discuss it. Content changes, discussions, decisions and acceptance are recorded through Joppa MCP. The workspace owner can drag items within their parent, or use the handle’s Move up/down menu. The order is saved for everyone. Each item’s History records completed changes with author and time; reordering does not reset checks.</p>
+<p>Open a domain, capability, requirement or AC and choose the <strong>copy + robot</strong> button. Paste the unique system ID and title into your agent chat to discuss it. Content changes, discussions, decisions and acceptance are recorded through Joppa MCP. On desktop, the workspace owner can drag items within their parent, or use the handle’s Move up/down menu. The order is saved for everyone. The history icon opens a compact list of when, who and what changed; reordering does not reset checks.</p>
 <p>The button copies the system ID and title on one line. Your agent can read its details through Joppa MCP.</p></section>
 <section><h2>Who shapes the tree?</h2>
-<p>An agent proposes domains and capabilities from the product and its documentation. The product owner reviews boundaries and decision owners, then confirms the structure. Until then, it stays marked Draft.</p>
+<p>An agent proposes domains and capabilities from the product and its documentation. The product owner reviews boundaries and decision owners, then confirms the structure.</p>
 <p>People and agents write requirements and ACs together. Each REQ has one owner who responds to suggestions and accepts the result. Legal, compliance and leadership record decisions on the same requirement through MCP.</p>
 <p>The agent assesses each AC. Missing information becomes a specific question addressed to someone. Independent, ready ACs can proceed while others await a decision.</p></section>
 <section><h2>Work, verification, acceptance.</h2>

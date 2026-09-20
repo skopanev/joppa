@@ -31,7 +31,7 @@ const assert=require('node:assert/strict');
   await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
   await domain.waitFor();
   assert.equal(await page.title(),'joppa');
-  assert.equal(await page.locator('.brand-mark').count(),0);
+  assert.equal(await page.locator('.brand-mark').count(),1);
   assert.equal(await page.locator('link[rel=icon]').getAttribute('href'),'/favicon.svg');
   const favicon=await page.request.get(process.env.JOPPA_TEST_URL+'/favicon.svg');
   assert.equal(favicon.status(),200);assert(favicon.headers()['content-type'].includes('image/svg+xml'));
