@@ -56,3 +56,17 @@ A specialist decision may be reused from an older revision only when the REQ tit
 and that AC's text, decider, dependencies and launch condition are exactly unchanged.
 The new revision still needs fresh checks and owner confirmation. The assessment cites
 the prior decision explicitly. Withdrawal blocks every AC assessment that cites it.
+
+## Browser authentication
+
+`POST /auth/login` starts the configured NTK Google device flow and returns a
+verification URL. The device secret stays on the server; the browser receives
+an HttpOnly attempt cookie. `POST /auth/poll` returns `pending` until Google
+sign-in completes, then sets a separate, 12-hour HttpOnly session cookie.
+Only explicitly mapped NTK user IDs receive access. `POST /auth/logout`
+invalidates that session server-side. These endpoints and cookie-authenticated
+commands require an exact same-origin `Origin` header. Cookies are `Secure`
+when accessed through HTTPS. Sessions do not survive a server restart.
+
+`GET /api/me` returns the authenticated actor. Bearer tokens remain available
+for CLI/agent integrations; the browser never stores or displays them.

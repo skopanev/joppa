@@ -47,7 +47,7 @@ printf '%s\n' '{"op":"workspace","title":"Мой продукт"}' | \
   ./target/debug/joppa command product create-product
 ```
 
-Для веб-карточки создайте личный файл соответствия токенов участникам:
+Для API и автоматизации создайте личный файл соответствия токенов участникам:
 
 ```sh
 python3 - <<'PY'
@@ -55,14 +55,28 @@ import json, os, secrets
 path = '/tmp/joppa-tokens.json'
 with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
     json.dump({secrets.token_urlsafe(32): 'owner'}, f)
-print('Токен для входа находится в', path)
+print('API credentials saved to', path)
 PY
 export JOPPA_TOKENS_FILE=/tmp/joppa-tokens.json
 ./target/debug/joppa serve 6212
 ```
 
-Откройте **http://127.0.0.1:6212** и введите токен из файла. Выпадающий список «Воркспейс» переключает продукты. Страница
-[«Как это устроено»](http://127.0.0.1:6212/guide) объясняет уровни дерева на примерах.
+Browser sign-in uses Google's existing NTK flow. Before starting `serve`, configure
+`JOPPA_NTK_URL` with your HTTPS NTK service URL and `JOPPA_LOGIN_USERS_FILE`
+with a private JSON file mapping verified NTK user IDs to Joppa actor IDs,
+for example `{"ntk-user-id": "owner"}`. Each actor must also exist in the API
+identity file. NTK enrollment does not automatically grant Joppa access.
+
+Open **http://127.0.0.1:6212** and choose **Continue with Google**. Complete
+sign-in in the Google window; the board opens automatically. Before sign-in,
+only the authorization screen is visible. Browser sessions use separate,
+HttpOnly cookies, expire after 12 hours, and are invalidated on sign-out or
+server restart. API tokens and NTK credentials never appear in the browser.
+The NTK device flow issues an NTK key as usual; Joppa verifies it against
+`/v1/me` and discards it. Revocation of those NTK keys remains an NTK operation.
+
+The **Workspace** menu switches products. [How it works](http://127.0.0.1:6212/guide)
+explains domains, capabilities, requirements and acceptance criteria.
 Названия доменов и capabilities открывают их карточки. В карточке можно
 собрать дерево, редактировать REQ и AC, обсуждать, создать задачи, провести
 ручную проверку и принять результат. Если старый сервер уже занимает 6212,

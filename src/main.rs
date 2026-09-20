@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 mod legacy;
 mod protocol;
 mod web;
+mod web_auth;
 
 #[tokio::main]
 async fn main() -> Result<()> {

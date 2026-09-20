@@ -1,35 +1,35 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Как устроена joppa</title>
+<title>How joppa works</title>
 <style>
-:root{font:17px/1.6 system-ui;color:#192820;background:#f5f4ee}body{max-width:920px;margin:32px auto;padding:0 22px}a{color:#245b43}h1,h2{line-height:1.25}section{background:white;border:1px solid #d5dcd4;border-radius:12px;padding:24px;margin:20px 0}small{color:#5b6a62}.tree{padding:18px;background:#e5efe6;font-size:20px;font-weight:650;border-radius:10px}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #d5dcd4;padding:12px;vertical-align:top}.example{border-left:3px solid #44735b;padding-left:16px}@media(max-width:600px){td,th{padding:8px;font-size:14px}section{padding:16px}.tree{font-size:16px}}
+:root{font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#252b29;background:#f8f9f7}body{max-width:820px;margin:60px auto;padding:0 24px 60px}a{color:#32644c;font-size:13px;text-decoration:none}h1{font-size:40px;letter-spacing:-.05em;line-height:1.15;margin:36px 0 20px}h2{font-size:21px;letter-spacing:-.025em;line-height:1.3}section{border-top:1px solid #e0e5dd;padding:24px 0 12px;margin-top:26px}small{color:#777f7a}.tree{padding:20px 0;color:#32644c;font-weight:600}table{border-collapse:collapse;width:100%;font-size:13px}td,th{text-align:left;border-bottom:1px solid #e0e5dd;padding:14px 10px;vertical-align:top}th{font-weight:500;color:#777f7a}.example{border-left:2px solid #77916c;padding-left:20px}p{color:#536053}@media(max-width:600px){body{margin-top:28px}h1{font-size:32px}td,th{padding:10px 6px;font-size:12px}.tree{font-size:12px}}
 </style>
-<a href="/">← К продуктам</a>
-<h1>Что должно быть правдой о продукте</h1>
-<p>joppa связывает договорённости, работу и доказательства результата. Начните с продукта в выпадающем списке «Воркспейс».</p>
-<div class="tree">Воркспейс → Домен → Capability → REQ → AC</div>
-<section><h2>Один воркспейс — один продукт</h2>
-<p>Продукт может жить в нескольких репозиториях. Все они работают на одно дерево обязательств. Репозиторий указывают у задачи: одно условие иногда требует работы в приложении, бэкенде и инфраструктуре.</p>
-<p>Переключатель воркспейса меняет всё дерево, требования и обсуждения. Состояния другого продукта сюда не переносятся.</p></section>
-<section><h2>Четыре уровня дерева</h2>
-<table><thead><tr><th>Уровень</th><th>Как его узнать</th><th>Пример</th></tr></thead><tbody>
-<tr><td><strong>Домен</strong></td><td>Область бизнеса. Понятно, кто принимает решения.</td><td>Доступ и подписки. Кто решает, что даёт подписка?</td></tr>
-<tr><td><strong>Capability</strong><br><small>Способность</small></td><td>Можно сказать «мы умеем …».</td><td>Мы умеем восстанавливать оплаченный доступ.</td></tr>
-<tr><td><strong>REQ</strong><br><small>Требование</small></td><td>Обязательство, про которое можно спросить: «сейчас это правда?»</td><td>После повторного входа оплаченный доступ сохраняется.</td></tr>
-<tr><td><strong>AC</strong><br><small>Условие приёмки</small></td><td>Конкретное условие, по которому принимают требование.</td><td>На iOS после повторного входа действующая подписка открывает оплаченные функции.</td></tr>
+<a href="/">← Back to your workspace</a>
+<h1>What must be true<br>about your product.</h1>
+<p>joppa connects commitments, work and evidence. Start by choosing a product from the workspace menu.</p>
+<div class="tree">Workspace → Domain → Capability → REQ → AC</div>
+<section><h2>One workspace. One product.</h2>
+<p>A product can span several repositories. They share one requirement tree. Tasks link to repositories: one acceptance criterion may need work in the app, backend and infrastructure.</p>
+<p>Switching workspace changes the entire tree, requirements and discussions.</p></section>
+<section><h2>Four levels of the tree</h2>
+<table><thead><tr><th>Level</th><th>How to recognize it</th><th>Example</th></tr></thead><tbody>
+<tr><td><strong>Domain</strong></td><td>A business area with a clear decision owner.</td><td>Access and subscriptions. Who decides what a subscription includes?</td></tr>
+<tr><td><strong>Capability</strong></td><td>A product ability. Start with “We can…”</td><td>We can restore paid access.</td></tr>
+<tr><td><strong>REQ</strong><br><small>Requirement</small></td><td>A commitment you can ask “Is this true now?” about.</td><td>Paid access persists after signing in again.</td></tr>
+<tr><td><strong>AC</strong><br><small>Acceptance criterion</small></td><td>A concrete condition for accepting the requirement.</td><td>On iOS, an active subscription unlocks paid features after signing in again.</td></tr>
 </tbody></table>
-<p>«Сделать экран» — задача. «iOS» — граница конкретного AC. «Backend» — место работы. Ни одно из них само по себе не является бизнес-доменом.</p>
-<p><strong>У домена и capability нет своего «готово».</strong> Это навигация по обязательствам. Проверки и приёмка относятся к требованиям и их AC.</p></section>
-<section><h2>Кто собирает дерево</h2>
-<p>Агент предлагает домены и capabilities по продукту и его документам. Владелец продукта уточняет границы, ответственных и подтверждает дерево. До подтверждения видна пометка «Черновик».</p>
-<p>REQ и AC формулируют вместе люди и агент. У каждого REQ один владелец: он отвечает на замечания и принимает результат. Юрист, комплаенс или руководитель фиксирует своё решение в той же карточке.</p>
-<p>Агент оценивает каждый AC. Если чего-то не хватает, записывает конкретный вопрос и адресата. Независимые готовые AC можно выполнять, пока спорные ждут решения.</p></section>
-<section><h2>Работа, проверка и приёмка — разные события</h2>
-<p>Закрытая задача говорит, что исполнитель завершил работу. Пройденная проверка подтверждает конкретный AC на конкретной версии продукта. После всех проверок владелец принимает результат.</p>
-<div class="example"><strong>Пример: ограничить права ключа до запуска.</strong><p>Задача — изменить права. Проверка — сравнить ожидаемый список <code>read, verify</code> с фактическим. Дополнительное <code>delete</code> означает, что условие не выполнено. Фразы «проверено вручную» без списка недостаточно.</p></div>
-<p>Если AC относится к iOS, агент не добавляет Android и web. Новая платформа — новая договорённость об объёме.</p></section>
-<section><h2>Почему после правки снова n/a</h2>
-<p>Каждое сохранение REQ или его AC создаёт новую редакцию. Все AC этой редакции начинают без результатов, а прежние проверки и приёмка остаются в истории прежней редакции.</p>
-<p>Комментарий не создаёт редакцию и сам по себе не останавливает работу. Замечания, ответы, правки, проверки и решения сохраняются с автором и временем. Прошлое не переписывается.</p></section>
+<p>“Build a screen” is a task. “iOS” defines the scope of an AC. “Backend” describes where work happens. These are not business domains.</p>
+<p>Domains and capabilities organize commitments. Verification and acceptance apply to requirements and their ACs.</p></section>
+<section><h2>Who shapes the tree?</h2>
+<p>An agent proposes domains and capabilities from the product and its documentation. The product owner reviews boundaries and decision owners, then confirms the structure. Until then, it stays marked Draft.</p>
+<p>People and agents write requirements and ACs together. Each REQ has one owner who responds to suggestions and accepts the result. Legal, compliance and leadership record decisions in the same card.</p>
+<p>The agent assesses each AC. Missing information becomes a specific question addressed to someone. Independent, ready ACs can proceed while others await a decision.</p></section>
+<section><h2>Work, verification, acceptance.</h2>
+<p>A completed task records work done. A passed check verifies one AC against a specific product version. After all checks pass, the owner accepts the result.</p>
+<div class="example"><strong>Example: restrict a key before launch.</strong><p>The task changes its permissions. The check compares the expected list <code>read, verify</code> with the observed list. An extra <code>delete</code> permission means failure. “Checked manually” without the list is not enough.</p></div>
+<p>If an AC specifies iOS, an agent does not add Android or web. Another platform needs an explicit scope decision.</p></section>
+<section><h2>A new revision starts at n/a.</h2>
+<p>Saving a requirement or its ACs creates a new revision. Its ACs start without results. Earlier checks and acceptance stay with their original revision.</p>
+<p>Comments do not create revisions or automatically block work. Suggestions, replies, changes, checks and decisions keep their author and timestamp. History is never overwritten.</p></section>
 </html>

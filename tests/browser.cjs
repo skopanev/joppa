@@ -18,16 +18,19 @@ const assert = require('node:assert/strict');
     });
     async function save(locator) {
       await Promise.all([page.waitForResponse(r => r.request().method() === 'POST'), locator.click()]);
-      await page.getByText('Сохранено. История дополнена.', {
+      await page.getByText('Saved to history.', {
         exact: true
       }).waitFor();
     }
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(process.env.JOPPA_TEST_URL);
-    await page.getByLabel('Токен доступа').fill(process.env.JOPPA_TEST_TOKEN);
+    await page.getByRole('heading',{name:'Authorization.'}).waitFor();
+    assert.equal(await page.locator('.app-header').isVisible(),false);
+    assert.equal(await page.locator('.layout').isVisible(),false);
+    assert.equal(await page.locator('input[type=password]').count(),0);
     await page.getByRole('button', {
-      name: 'Войти',
+      name: 'Continue with Google',
       exact: true
     }).click();
     await page.locator('#workspaces option').first().waitFor({
@@ -36,9 +39,11 @@ const assert = require('node:assert/strict');
     await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
     // Domain and capability navigation explain the model in the actual UI.
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
-    await page.getByText('Домен — область бизнеса с понятным ответом на вопрос «кто здесь принимает решения?».',{exact:true}).waitFor();
+    await page.getByText('What is a domain?',{exact:true}).click();
+    await page.getByText('A domain is a business area with a clear decision owner.',{exact:true}).waitFor();
     await page.locator('#tree').getByRole('button',{name:'Ограничивать доступ',exact:true}).click();
-    await page.getByText('Capability — способность продукта. Проверка формулировки: «мы умеем …».',{exact:true}).waitFor();
+    await page.getByText('What is a capability?',{exact:true}).click();
+    await page.getByText('A capability describes what the product can do. Start with “We can…”',{exact:true}).waitFor();
     await page.locator('#tree').getByRole('button', {name: /Ключ до запуска/}).click();
     await page.getByRole('heading', {
       name: 'Ключ до запуска',
@@ -46,87 +51,84 @@ const assert = require('node:assert/strict');
     }).waitFor();
     assert.equal(await page.evaluate(() => window.attacked), undefined);
     await page.getByRole('button', {
-      name: 'Подтвердить формулировку',
+      name: 'Confirm wording',
       exact: true
     }).click();
-    await page.getByText('В работе', {
+    await page.getByText('In progress', {
       exact: true
     }).waitFor();
-    await page.getByText('Оценить готовность', {
+    await page.getByText('Assess readiness', {
       exact: true
     }).click();
     const assess = page.locator('form').filter({
       has: page.getByRole('button', {
-        name: 'Записать оценку',
+        name: 'Save assessment',
         exact: true
       })
     });
-    await assess.getByLabel('Готовность', {
+    await assess.getByLabel('Readiness', {
       exact: true
     }).selectOption('yes');
-    await assess.getByLabel('Обоснование или конкретный вопрос').fill('Список подтверждён владельцем');
+    await assess.getByLabel('Reason or specific question').fill('Список подтверждён владельцем');
     await assess.getByRole('button', {
-      name: 'Записать оценку'
+      name: 'Save assessment'
     }).click();
     await page.locator('p').filter({
-      hasText: /^Готов к работе$/
+      hasText: /^Ready to work$/
     }).waitFor();
-    await page.getByText('Проверки · 0', {
+    await page.getByText('Checks · 0', {
       exact: true
     }).click();
     const plan = page.locator('form').filter({
       has: page.getByRole('button', {
-        name: 'Запечатать план ручной проверки',
+        name: 'Seal manual check plan',
         exact: true
       })
     });
-    await plan.getByLabel('ID прогона').fill('manual1');
-    await plan.getByLabel('Что проверяем: среда и версия настроек').fill('config-v1');
-    await plan.getByLabel('Область проверки').fill('Права ключа перед запуском');
-    await plan.getByLabel('Все проверки в этой области собраны').check();
-    await plan.getByLabel('key-rights · ожидаемый список').fill('read\nverify');
+    await plan.getByLabel('Run ID').fill('manual1');
+    await plan.getByLabel('Environment and configuration version').fill('config-v1');
+    await plan.getByLabel('Check scope').fill('Права ключа перед запуском');
+    await plan.getByLabel('All checks in this scope are included').check();
+    await plan.getByLabel('key-rights · expected list').fill('read\nverify');
     await plan.getByRole('button', {
-      name: 'Запечатать план ручной проверки'
+      name: 'Seal manual check plan'
     }).click();
-    await page.getByText('Проверки · 1', {
+    await page.getByText('Checks · 1', {
       exact: true
     }).waitFor();
-    await page.getByText('Проверки · 1', {
+    await page.getByText('Checks · 1', {
       exact: true
     }).click();
-    await page.getByText('manual1 · Идёт', {
+    await page.getByText('manual1 · Running', {
       exact: true
     }).click();
     const report = page.locator('form').filter({
       has: page.getByRole('button', {
-        name: 'Записать проверку',
+        name: 'Record check',
         exact: true
       })
     });
-    await report.getByLabel('Фактический список — одна позиция на строку').fill('read\nverify');
-    await report.getByLabel('Что и как проверено').fill('Открыл права ключа в панели провайдера');
+    await report.getByLabel('Observed list — one item per line').fill('read\nverify');
+    await report.getByLabel('What was checked and how').fill('Открыл права ключа в панели провайдера');
     await save(report.getByRole('button', {
-      name: 'Записать проверку',
+      name: 'Record check',
       exact: true
     }));
-    await page.getByText('Проверки · 1', {
+    await page.getByText('Checks · 1', {
       exact: true
     }).click();
-    await page.getByText('manual1 · Идёт', {
+    await page.getByText('manual1 · Running', {
       exact: true
     }).click();
     await save(page.getByRole('button', {
-      name: 'Завершить прогон',
+      name: 'Finish run',
       exact: true
     }));
     await page.getByRole('button', {
-      name: 'Принять результат',
+      name: 'Accept result',
       exact: true
     }).click();
-    await page.getByText('Принято', {
-      exact: true
-    }).waitFor();
-    await page.getByText('Обязательные условия запуска приняты', {
+    await page.getByText('Accepted', {
       exact: true
     }).waitFor();
     await page.screenshot({
@@ -135,13 +137,13 @@ const assert = require('node:assert/strict');
     });
     // Editing a typo creates a new revision with no inherited green. Leave it unsaved here.
     await page.getByRole('button', {
-      name: 'Редактировать REQ + AC',
+      name: 'Edit requirement',
       exact: true
     }).click();
     await page.getByRole('heading', {
-      name: 'Новая редакция — все проверки начнутся с n/a'
+      name: 'New revision · all checks reset to n/a'
     }).waitFor();
-    assert.equal(await page.getByLabel('Постоянный ID условия').inputValue(), 'key-rights');
+    assert.equal(await page.getByLabel('Stable AC ID').inputValue(), 'key-rights');
     await page.goto('file://' + process.env.JOPPA_TEST_SNAPSHOT);
     await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
     await page.getByRole('heading', {
@@ -150,8 +152,8 @@ const assert = require('node:assert/strict');
     }).waitFor();
     assert.equal(await page.evaluate(() => window.attacked), undefined);
     await page.goto(process.env.JOPPA_TEST_URL+'/guide');
-    await page.getByRole('heading',{name:'Четыре уровня дерева'}).waitFor();
-    // The launch link works without manually finding/pasting a token, and erases it.
+    await page.getByRole('heading',{name:'Four levels of the tree'}).waitFor();
+    // Cookie login survives refresh; obsolete token fragments are erased.
     await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
     await page.locator('#identity').filter({hasText:'owner'}).waitFor();
     assert.equal(await page.evaluate(()=>location.hash),'');
@@ -159,6 +161,23 @@ const assert = require('node:assert/strict');
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).waitFor();
     await page.reload();
     await page.locator('#identity').filter({hasText:'owner'}).waitFor();
+    await page.setViewportSize({width:390,height:844});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.getByRole('button',{name:'☰ Product tree'}).click();
+    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
+    assert.equal(await page.locator('#sidebar').isVisible(),false);
+    await page.locator('#logout').click();
+    await page.getByRole('heading',{name:'Authorization.'}).waitFor();
+    assert.equal(await page.locator('.layout').isVisible(),false);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.screenshot({path:'/tmp/joppa-login-mobile.png'});
+    // A closed Google window leaves a clear retry action, without exposing the app.
+    const popupPromise=page.waitForEvent('popup');
+    await page.locator('#login-button').click();
+    const popup=await popupPromise;
+    await popup.close();
+    await page.locator('#login-cancel').click();
+    assert.equal(await page.locator('#login-button').isEnabled(),true);
     assert.deepEqual(errors, []);
     console.log('Browser: wording → readiness → exact manual evidence → acceptance → launch gate; XSS-safe snapshot passed');
   } finally {

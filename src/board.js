@@ -1,6 +1,5 @@
 /* SNAPSHOT */
-let token = '',
-  actor = '',
+let actor = '',
   ws = '',
   data = null,
   selected = '',
@@ -13,12 +12,17 @@ const $ = id => document.getElementById(id),
     if (cls) e.className = cls;
     return e;
   };
-const notify = e => $('notice').textContent = e?.message || String(e || '');
+let noticeTimer;
+function notify(e) {
+  clearTimeout(noticeTimer);
+  $('notice').textContent=e?.message||String(e||'');
+  $('notice').dataset.kind=e instanceof Error?'error':'success';
+  if(e && !(e instanceof Error))noticeTimer=setTimeout(()=>{$('notice').textContent='';},4500);
+}
 async function api(path, body) {
   const r = await fetch('/api/' + path, {
     method: body ? 'POST' : 'GET',
     headers: {
-      Authorization: 'Bearer ' + token,
       ...(body ? {
         'Content-Type': 'application/json'
       } : {})
@@ -26,6 +30,7 @@ async function api(path, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const j = await r.json();
+  if(r.status===401){document.body.classList.remove('authenticated');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }
@@ -44,7 +49,7 @@ async function send(command) {
     command
   });
   await load();
-  notify('Сохранено. История дополнена.');
+  notify('Saved to history.');
 }
 function button(text, fn, cls = '') {
   const b = E('button', text, cls);
@@ -105,17 +110,17 @@ async function list() {
   const list = await api('workspaces');
   $('workspaces').replaceChildren();
   $('workspaces').disabled = list.length === 0;
-  if (!list.length) {const o=E('option','Пока нет воркспейсов');o.value='';$('workspaces').append(o);}
+  if (!list.length) {const o=E('option','No workspaces yet');o.value='';$('workspaces').append(o);}
   for (const w of list) {
     const o = E('option', w.title);
     o.value = w.id;
     $('workspaces').append(o);
   }
-  if (!list.some(w => w.id === ws)) ws = list[0]?.id || '';
+  if (!list.some(w => w.id === ws)) ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = ws;
   bootstrap();
   if (ws) await load();
-  else {$('tree').replaceChildren();$('card').replaceChildren(E('h1','Первый продукт'),E('p','Создайте воркспейс — общее дерево продукта для всех его репозиториев.'));}
+  else {$('tree').replaceChildren();$('card').replaceChildren(E('h1','Your first product'),E('p','Create a workspace for your product. All its repositories share one requirement tree.'));}
 }
 let loadNumber = 0;
 async function load() {
@@ -125,42 +130,60 @@ async function load() {
   data = next;
   render();
 }
-async function signIn(value) {
-  token = value;
-  actor = (await api('me')).actor;
-  $('identity').textContent = actor;
-  sessionStorage.setItem('joppa-token',token);
+async function showApp(identity) {
+  actor=identity.actor;
+  $('identity').textContent=identity.email||actor;
+  document.body.classList.add('authenticated');
   $('logout').hidden=false;
   await list();
-  $('login').hidden = true;
-  $('login').style.display = 'none';
-  $('login').reset();
 }
-$('login').onsubmit = async e => {
-  e.preventDefault();
-  try { await signIn(new FormData(e.target).get('token')); }
-  catch (e) { notify(e); }
+let signInAttempt = 0;
+let signInWindow = null;
+$('login-cancel').onclick=()=>{
+  signInAttempt++;signInWindow?.close();$('login-button').disabled=false;
+  $('login-cancel').hidden=true;$('login-status').textContent='';
 };
-$('logout').onclick=()=>{sessionStorage.removeItem('joppa-token');location.reload();};
-$('workspaces').onchange = async e => {
-  ws = e.target.value;
-  selectedNode = null;
-  selected = '';
-  $('card').replaceChildren(E('p','Открываю воркспейс…'));
-  $('tree').replaceChildren();
-  revisionNumber = null;
+$('login-button').onclick=async()=>{
+  const attempt=++signInAttempt;
+  const b=$('login-button'), status=$('login-status');b.disabled=true;status.dataset.error='false';
+  status.textContent='Opening Google…';
+  // Open synchronously from the click so browsers do not block the sign-in window.
+  signInWindow=window.open('about:blank','joppa-google','popup,width=520,height=700');
+  if(signInWindow)signInWindow.opener=null;
   try {
-    await load();
-  } catch (e) {
-    notify(e);
-  }
+    const r=await fetch('/auth/login',{method:'POST'});const start=await r.json();
+    if(!r.ok)throw Error(start.error||'Could not start sign-in.');
+    if(attempt!==signInAttempt)return;
+    if(!signInWindow)throw Error('Allow the Google sign-in window, then try again.');
+    signInWindow.location=start.verification_url;
+    status.textContent='Complete sign-in in the Google window.';$('login-cancel').hidden=false;
+    const deadline=Date.now()+start.expires_in*1000;
+    while(attempt===signInAttempt && Date.now()<deadline){
+      await new Promise(resolve=>setTimeout(resolve,1800));
+      if(attempt!==signInAttempt)return;
+      const response=await fetch('/auth/poll',{method:'POST'}), result=await response.json();
+      if(attempt!==signInAttempt)return;
+      if(!response.ok)throw Error(result.error||'Sign-in failed. Please try again.');
+      if(result.status==='ready'){signInWindow?.close();await showApp(result);return;}
+      // Google may sever the popup reference via COOP; the server decides completion.
+    }
+    if(attempt===signInAttempt)throw Error('Sign-in expired. Please try again.');
+  }catch(e){if(attempt===signInAttempt){status.textContent=e.message;status.dataset.error='true';signInWindow?.close();}}
+  finally{if(attempt===signInAttempt){b.disabled=false;$('login-cancel').hidden=true;}}
 };
+$('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
+$('workspaces').onchange=async e=>{
+  ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);selectedNode=null;selected='';revisionNumber=null;
+  $('card').replaceChildren(E('p','Opening workspace…'));$('tree').replaceChildren();
+  try{await load();}catch(e){notify(e);}
+};
+$('mobile-tree').onclick=()=>{const open=document.body.classList.toggle('sidebar-open');$('mobile-tree').setAttribute('aria-expanded',String(open));};
 $('refresh').onclick = () => load().catch(notify);
 function bootstrap() {
   const s = $('setup');
   s.replaceChildren();
-  const d = details(s, 'Создать продукт');
-  const f = form(d, 'Создать', async v => {
+  const d = details(s, 'New workspace');
+  const f = form(d, 'Create', async v => {
     ws = v.get('id');
     await send({
       op: 'workspace',
@@ -168,115 +191,112 @@ function bootstrap() {
     });
     await list();
   });
-  field(f, 'id', 'Короткий ID продукта');
-  field(f, 'title', 'Название');
+  field(f, 'id', 'Workspace ID');
+  field(f, 'title', 'Name');
 }
 function render() {
   const t = $('tree');
   t.replaceChildren();
-  t.append(E('h2', data.state.title));
-  t.append(E('p', !data.launch.configured ? 'Условия запуска ещё не заданы' : data.launch.ready ? 'Обязательные условия запуска приняты' : 'До запуска осталось условий: ' + data.launch.blockers.length));
+  t.append(E('p','Product tree','sidebar-caption'));
   for (const [did, d] of Object.entries(data.state.domains)) {
-    const group = E('section');
-    const domainHeading=E('div',undefined,'title-row');domainHeading.append(button(d.title,()=>openNode('domain',did),'node-link'),E('small','DOMAIN','type-label'));group.append(domainHeading,E('small',(d.confirmed?'Решает: ':'Черновик · предложен ответственный: ')+d.authority));
+    const group = E('section',undefined,'tree-domain');
+    const domainHeading=E('div',undefined,'title-row');domainHeading.append(button(d.title,()=>openNode('domain',did),'node-link'),E('small','DOMAIN','type-label'));domainHeading.dataset.node='domain:'+did;group.append(domainHeading);
     for (const [cid, c] of Object.entries(data.state.capabilities).filter(([, c]) => c.domain === did)) {
-      const capabilityHeading=E('div',undefined,'title-row');capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));group.append(capabilityHeading);
+      const capabilityHeading=E('div',undefined,'title-row tree-capability');capabilityHeading.dataset.node='capability:'+cid;capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));group.append(capabilityHeading);
       for (const [id, q] of Object.entries(data.state.requirements).filter(([, q]) => q.capability === cid)) {
         const r = q.revisions.at(-1),
           s = data.summary[id];
-        group.append(button((s.accepted ? '✓ ' : s.ready_for_acceptance ? '◉ ' : '○ ') + r.title, () => {
+        const reqButton=button((s.accepted ? '✓ ' : s.ready_for_acceptance ? '◉ ' : '○ ') + r.title, () => {
           selectedNode = null;
           selected = id;
           revisionNumber = null;
-          card();
-        }, 'nav'));
+          closeMobileTree();card();
+        }, 'nav tree-req');reqButton.dataset.node='req:'+id;group.append(reqButton);
       }
     }
     t.append(group);
   }
   if (!window.SNAPSHOT) {
-    t.append(button('Новое требование', () => edit(null), 'write'));
-    settings(t);
-    intake(t);
+    const actions=E('div',undefined,'tree-actions');actions.append(button('+ New requirement',()=>edit(null),'write'));settings(actions);intake(actions);t.append(actions);
   }
   if (selected && !data.state.requirements[selected]) selected = '';
   card();
 }
 function settings(t) {
-  const d = details(t, 'Настроить продукт');
-  let f = form(d, 'Добавить участника', v => send({
+  const d = details(t, 'Workspace settings');
+  let f = form(d, 'Add member', v => send({
     op: 'member',
     id: v.get('id'),
     role: v.get('role')
   }));
-  field(f, 'id', 'ID участника');
-  field(f, 'role', 'Роль', 'text', 'human', [['human', 'Человек'], ['agent', 'Агент'], ['runner', 'CI']]);
-  f = form(d, 'Добавить домен', v => send({
+  field(f, 'id', 'Member ID');
+  field(f, 'role', 'Role', 'text', 'human', [['human', 'Human'], ['agent', 'Agent'], ['runner', 'CI']]);
+  f = form(d, 'Add domain', v => send({
     op: 'domain',
     id: v.get('id'),
     title: v.get('title'),
     authority: v.get('authority')
   }));
-  field(f, 'id', 'ID домена');
-  field(f, 'title', 'Название');
-  field(f, 'authority', 'Кто решает', 'text', '', humans());
-  f = form(d, 'Добавить способность', v => send({
+  field(f, 'id', 'Domain ID');
+  field(f, 'title', 'Name');
+  field(f, 'authority', 'Decision owner', 'text', '', humans());
+  f = form(d, 'Add capability', v => send({
     op: 'capability',
     id: v.get('id'),
     title: v.get('title'),
     domain: v.get('domain')
   }));
-  field(f, 'id', 'ID способности');
-  field(f, 'title', 'Мы умеем…');
-  field(f, 'domain', 'Домен', 'text', '', options(data.state.domains));
-  d.append(button('Подтвердить дерево', () => send({
+  field(f, 'id', 'Capability ID');
+  field(f, 'title', 'We can…');
+  field(f, 'domain', 'Domain', 'text', '', options(data.state.domains));
+  d.append(button('Confirm structure', () => send({
     op: 'confirm_tree'
   })));
-  f = form(d, 'Добавить репозиторий', v => send({
+  f = form(d, 'Add repository', v => send({
     op: 'project',
     id: v.get('id'),
     repository: v.get('repository')
   }));
-  field(f, 'id', 'ID проекта');
-  field(f, 'repository', 'Адрес репозитория');
+  field(f, 'id', 'Project ID');
+  field(f, 'repository', 'Repository URL');
 }
 function intake(t) {
-  const d = details(t, 'Обращения · ' + Object.keys(data.state.intake).length);
-  const f = form(d, 'Сохранить дословно', v => send({
+  const d = details(t, 'Intake · ' + Object.keys(data.state.intake).length);
+  const f = form(d, 'Save original wording', v => send({
     op: 'intake',
     id: 'i-' + newId(),
     said: v.get('said'),
     author: v.get('author')
   }));
-  field(f, 'author', 'Кто сказал', 'text', actor);
-  field(f, 'said', 'Обращение', 'textarea');
+  field(f, 'author', 'Author', 'text', actor);
+  field(f, 'said', 'Request', 'textarea');
   for (const [id, i] of Object.entries(data.state.intake)) {
     const item = details(d, id + ' · ' + i.author);
     item.append(E('p', i.said));
     if (!Object.keys(i.points).length) {
-      const split = form(item, 'Разобрать на пункты', v => send({
+      const split = form(item, 'Split into items', v => send({
         op: 'split',
         id,
         points: v.get('points').split('\n').filter(Boolean)
       }));
-      field(split, 'points', 'Один пункт на строку', 'textarea', i.said);
+      field(split, 'points', 'One item per line', 'textarea', i.said);
     }
     for (const [pid, p] of Object.entries(i.points)) {
-      const point = details(item, pid + ' · ' + (p.outcome || 'не разобрано'));
+      const point = details(item, pid + ' · ' + (p.outcome || 'Unreviewed'));
       point.append(E('p', p.said));
       if (p.outcome) {
         point.append(E('p', p.reason));
         continue;
       }
-      let f = form(point, 'Назначить род', v => send({
+      let f = form(point, 'Assign category', v => send({
         op: 'sort',
         id,
         point: pid,
         kind: v.get('kind')
       }));
-      field(f, 'kind', 'Род', 'text', p.kind, Object.keys(data.state.questions).map(k => [k, k]));
+      field(f, 'kind', 'Category', 'text', p.kind, Object.keys(data.state.questions).map(k => [k, k]));
       for (const key of data.state.questions[p.kind] || []) {
-        f = form(point, 'Сохранить ответ', v => send({
+        f = form(point, 'Save answer', v => send({
           op: 'answer',
           id,
           point: pid,
@@ -285,7 +305,7 @@ function intake(t) {
         }));
         field(f, 'value', key, 'textarea', p.answers[key] || '');
       }
-      f = form(point, 'Записать решение', v => send({
+      f = form(point, 'Record decision', v => send({
         op: 'route',
         id,
         point: pid,
@@ -293,14 +313,15 @@ function intake(t) {
         reason: v.get('reason'),
         req: v.get('outcome') === 'work' ? v.get('req') : null
       }));
-      field(f, 'outcome', 'Решение', 'text', 'work', [['work', 'В работу'], ['refused', 'Не делаем'], ['elsewhere', 'Решается иначе']]);
-      field(f, 'req', 'Требование', 'text', '', Object.keys(data.state.requirements).map(k => [k, k]));
-      field(f, 'reason', 'Причина', 'textarea');
+      field(f, 'outcome', 'Decision', 'text', 'work', [['work', 'Proceed'], ['refused', 'Decline'], ['elsewhere', 'Handle elsewhere']]);
+      field(f, 'req', 'Requirement', 'text', '', Object.keys(data.state.requirements).map(k => [k, k]));
+      field(f, 'reason', 'Reason', 'textarea');
     }
   }
 }
 function card() {
   const root = $('card');
+  refreshSelection();
   root.replaceChildren();
   if (selectedNode) {nodeCard(root);return;}
   if (!selected) {workspaceCard(root);return;}
@@ -308,10 +329,10 @@ function card() {
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));root.append(heading,E('p',selected+' · редакция '+r.number+' · владелец '+r.owner),E('p',r.body));
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
-    const o = E('option', 'Редакция ' + old.number + ' · ' + old.reason);
+    const o = E('option', 'Revision ' + old.number + ' · ' + old.reason);
     o.value = old.number;
     revisions.append(o);
   }
@@ -321,17 +342,17 @@ function card() {
     card();
   };
   root.append(revisions);
-  root.append(E('p', s ? s.accepted ? 'Принято' : s.ready_for_acceptance ? 'Готово к приёмке' : r.confirmed ? 'В работе' : 'Формулировка ждёт подтверждения' : 'Историческая редакция. Факты — в проверках и истории.'));
+  root.append(E('p', s ? s.accepted ? 'Accepted' : s.ready_for_acceptance ? 'Ready for acceptance' : r.confirmed ? 'In progress' : 'Wording awaiting confirmation' : 'Previous revision. See its checks and history for evidence.'));
   const base = {
     req: selected,
     revision: r.number
   };
   if (current && !window.SNAPSHOT) {
-    root.append(button('Редактировать REQ + AC', () => edit(r), 'write'), button('Подтвердить формулировку', () => send({
+    root.append(button('Edit requirement', () => edit(r), 'write'), button('Confirm wording', () => send({
       ...base,
       op: 'confirm'
     }), 'write'));
-    if (s.ready_for_acceptance && !s.accepted) root.append(button('Принять результат', () => send({
+    if (s.ready_for_acceptance && !s.accepted) root.append(button('Accept result', () => send({
       ...base,
       op: 'accept',
       run: s.run
@@ -340,12 +361,12 @@ function card() {
   for (const a of r.acs) {
     const item = E('article');
     const status = s?.acs[a.id];
-    item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'см. историю', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Готов к работе' : a.assessment?.reason || 'Ждёт разбора'));
-    if (a.before_launch) item.append(E('small', 'Обязательно перед запуском'));
-    if (a.decider) item.append(E('p', 'Решение: ' + a.decider));
+    item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
+    if (a.before_launch) item.append(E('small', 'Required before launch'));
+    if (a.decider) item.append(E('p', 'Decision: ' + a.decider));
     if (current && !window.SNAPSHOT) {
-      const d = details(item, 'Оценить готовность');
-      const f = form(d, 'Записать оценку', v => send({
+      const d = details(item, 'Assess readiness');
+      const f = form(d, 'Save assessment', v => send({
         ...base,
         op: 'assess',
         ac: a.id,
@@ -356,59 +377,59 @@ function card() {
           decision: v.get('decision') || null
         }
       }));
-      field(f, 'ready', 'Готовность', 'text', 'no', [['no', 'Ждёт решения'], ['yes', 'Готов к работе']]);
-      field(f, 'reason', 'Обоснование или конкретный вопрос', 'textarea', a.assessment?.reason || '');
-      field(f, 'recipient', 'Кому вопрос', 'text', '', [['', '—'], ...members()]);
-      field(f, 'decision', 'Решение в обсуждении', 'text', '', [['', '—'], ...Object.entries(q.comments).filter(([, c]) => c.kind === 'decision' && !c.withdrawn).map(([id, c]) => [id, c.actor + ': ' + c.text.slice(0, 70)])]);
+      field(f, 'ready', 'Readiness', 'text', 'no', [['no', 'Awaiting decision'], ['yes', 'Ready to work']]);
+      field(f, 'reason', 'Reason or specific question', 'textarea', a.assessment?.reason || '');
+      field(f, 'recipient', 'Question for', 'text', '', [['', '—'], ...members()]);
+      field(f, 'decision', 'Decision in discussion', 'text', '', [['', '—'], ...Object.entries(q.comments).filter(([, c]) => c.kind === 'decision' && !c.withdrawn).map(([id, c]) => [id, c.actor + ': ' + c.text.slice(0, 70)])]);
     }
     root.append(item);
   }
   tasks(root, r, base, current);
   runs(root, r, base, current);
   comments(root, q, r, base);
-  const h = details(root, 'История правок и действий');
+  const h = details(root, 'Revision history');
   for (const ev of data.history.filter(e => e.command.req === selected)) {
     historyEvent(h, ev, q);
   }
 }
 function historyEvent(parent, event, q) {
   const names = {
-    revise: 'Сохранена редакция',
-    comment: 'Ответ в обсуждении',
-    assess: 'Оценка готовности',
-    confirm: 'Подтверждена формулировка',
-    task: 'Создана задача',
-    complete_task: 'Выполнена задача',
-    plan: 'Запечатан план проверок',
-    result: 'Результат проверки',
-    finish: 'Прогон завершён',
-    accept: 'Результат принят',
-    revoke: 'Приёмка отозвана',
-    issue: 'Дефект подтверждён',
-    resolve: 'Исправление подтверждено',
-    withdraw_decision: 'Решение отозвано'
+    revise: 'Revision saved',
+    comment: 'Discussion reply',
+    assess: 'Readiness assessed',
+    confirm: 'Wording confirmed',
+    task: 'Task created',
+    complete_task: 'Task completed',
+    plan: 'Check plan sealed',
+    result: 'Check result',
+    finish: 'Run completed',
+    accept: 'Result accepted',
+    revoke: 'Acceptance revoked',
+    issue: 'Issue confirmed',
+    resolve: 'Fix confirmed',
+    withdraw_decision: 'Decision withdrawn'
   };
   const c = event.command,
     d = details(parent, event.recorded_at + ' · ' + event.actor + ' · ' + (names[c.op] || c.op));
   if (c.op === 'revise') {
     const old = q.revisions[c.expected_revision - 1];
-    d.append(E('p', 'Причина: ' + c.reason), E('p', 'Формулировка: ' + (old?.title || '—') + ' → ' + c.title));
-    if (old?.body !== c.body) d.append(E('p', 'Контекст: ' + (old?.body || '—') + ' → ' + c.body));
+    d.append(E('p', 'Reason: ' + c.reason), E('p', 'Wording: ' + (old?.title || '—') + ' → ' + c.title));
+    if (old?.body !== c.body) d.append(E('p', 'Context: ' + (old?.body || '—') + ' → ' + c.body));
     const ids = new Set([...(old?.acs || []).map(a => a.id), ...c.acs.map(a => a.id)]);
     for (const id of ids) {
       const a = old?.acs.find(a => a.id === id),
         b = c.acs.find(a => a.id === id);
       if (JSON.stringify(a) !== JSON.stringify(b)) d.append(E('p', id + ': ' + (a?.text || '—') + ' → ' + (b?.text || '—')));
     }
-  } else d.append(E('p', c.text || c.reason || c.title || c.assessment?.reason || c.evidence?.note || 'Редакция ' + c.revision + (c.run ? ' · прогон ' + c.run : '')));
-  const raw = details(d, 'Данные записи');
+  } else d.append(E('p', c.text || c.reason || c.title || c.assessment?.reason || c.evidence?.note || 'Revision ' + c.revision + (c.run ? ' · run ' + c.run : '')));
+  const raw = details(d, 'Event data');
   raw.append(E('pre', JSON.stringify(c, null, 2)));
 }
 function edit(r, capability = '') {
   selectedNode = null;
   const root = $('card');
-  root.replaceChildren(E('h2', r ? 'Новая редакция — все проверки начнутся с n/a' : 'Новое требование'));
-  const f = form(root, 'Сохранить редакцию', v => {
+  root.replaceChildren(E('h2', r ? 'New revision · all checks reset to n/a' : 'New requirement'));
+  const f = form(root, 'Save revision', v => {
     const acs = [...f.querySelectorAll('fieldset')].map(row => ({
       id: row.querySelector('[name=ac_id]').value,
       text: row.querySelector('[name=ac_text]').value,
@@ -430,42 +451,42 @@ function edit(r, capability = '') {
       acs
     });
   });
-  field(f, 'req', 'ID требования', 'text', r ? selected : '').readOnly = !!r;
-  field(f, 'capability', 'Способность', 'text', r ? data.state.requirements[selected].capability : capability, options(data.state.capabilities));
-  field(f, 'title', 'Что должно быть правдой', 'text', r?.title);
-  field(f, 'body', 'Контекст', 'textarea', r?.body);
-  field(f, 'owner', 'Владелец', 'text', r?.owner || actor, humans());
-  field(f, 'reason', 'Причина правки', 'textarea');
+  field(f, 'req', 'Requirement ID', 'text', r ? selected : '').readOnly = !!r;
+  field(f, 'capability', 'Capability', 'text', r ? data.state.requirements[selected].capability : capability, options(data.state.capabilities));
+  field(f, 'title', 'What must be true', 'text', r?.title);
+  field(f, 'body', 'Context', 'textarea', r?.body);
+  field(f, 'owner', 'Owner', 'text', r?.owner || actor, humans());
+  field(f, 'reason', 'Reason for change', 'textarea');
   function acrow(a = {}) {
     const row = E('fieldset');
-    field(row, 'ac_id', 'Постоянный ID условия', 'text', a.id || '');
-    field(row, 'ac_text', 'Условие приёмки, включая нужный клиент', 'textarea', a.text || '');
-    field(row, 'decider', 'Нужно решение специалиста', 'text', a.decider || '', [['', 'Не требуется'], ...humans()]);
-    field(row, 'depends', 'Зависит от AC (ID через запятую)', 'text', (a.depends_on || []).join(', '));
-    field(row, 'before_launch', 'Обязательно до запуска', 'checkbox', a.before_launch);
-    row.append(button('Убрать из новой редакции', () => row.remove()));
+    field(row, 'ac_id', 'Stable AC ID', 'text', a.id || '');
+    field(row, 'ac_text', 'Acceptance criterion, including the relevant platform', 'textarea', a.text || '');
+    field(row, 'decider', 'Decision needed from', 'text', a.decider || '', [['', 'Not required'], ...humans()]);
+    field(row, 'depends', 'Depends on ACs (comma-separated IDs)', 'text', (a.depends_on || []).join(', '));
+    field(row, 'before_launch', 'Required before launch', 'checkbox', a.before_launch);
+    row.append(button('Remove from this revision', () => row.remove()));
     f.insertBefore(row, f.querySelector('button[type=submit]'));
   }
   for (const a of r?.acs || [{}]) acrow(a);
-  f.append(button('Добавить AC', () => acrow()));
-  root.append(button('Отмена', card));
+  f.append(button('Add AC', () => acrow()));
+  root.append(button('Cancel', card));
 }
 function tasks(root, r, base, current) {
-  const d = details(root, 'Работа · ' + Object.keys(r.tasks).length);
+  const d = details(root, 'Tasks · ' + Object.keys(r.tasks).length);
   for (const [id, t] of Object.entries(r.tasks)) {
-    d.append(E('p', id + ' · ' + t.title + ' · ' + t.acs.join(', ') + ' · ' + t.projects.join(', ') + ' · ' + (t.done ? 'Завершено: ' + t.done : 'Исполнитель: ' + t.assignee)));
+    d.append(E('p', id + ' · ' + t.title + ' · ' + t.acs.join(', ') + ' · ' + t.projects.join(', ') + ' · ' + (t.done ? 'Completed: ' + t.done : 'Assignee: ' + t.assignee)));
     if (current && !t.done && !window.SNAPSHOT) {
-      const f = form(d, 'Завершить задачу', v => send({
+      const f = form(d, 'Complete task', v => send({
         ...base,
         op: 'complete_task',
         id,
         evidence: v.get('evidence')
       }));
-      field(f, 'evidence', t.purpose === 'decision' ? 'ID решения из обсуждения' : 'Что сделано и где результат', 'textarea');
+      field(f, 'evidence', t.purpose === 'decision' ? 'Decision ID from discussion' : 'What changed and where to find the result', 'textarea');
     }
   }
   if (!current || window.SNAPSHOT) return;
-  const f = form(d, 'Создать задачу', v => send({
+  const f = form(d, 'Create task', v => send({
     ...base,
     op: 'task',
     id: v.get('id'),
@@ -475,27 +496,27 @@ function tasks(root, r, base, current) {
     purpose: v.get('purpose'),
     assignee: v.get('assignee')
   }));
-  field(f, 'id', 'ID задачи');
-  field(f, 'title', 'Что сделать');
-  field(f, 'assignee', 'Исполнитель', 'text', actor, members());
-  field(f, 'purpose', 'Вид работы', 'text', 'implementation', [['implementation', 'Реализация'], ['manual', 'Настройка / ручная работа'], ['decision', 'Получить решение']]);
-  const a = field(f, 'acs', 'Условия', 'text', '', r.acs.map(a => [a.id, a.id]));
+  field(f, 'id', 'Task ID');
+  field(f, 'title', 'What to do');
+  field(f, 'assignee', 'Assignee', 'text', actor, members());
+  field(f, 'purpose', 'Work type', 'text', 'implementation', [['implementation', 'Implementation'], ['manual', 'Configuration / manual work'], ['decision', 'Get a decision']]);
+  const a = field(f, 'acs', 'Acceptance criteria', 'text', '', r.acs.map(a => [a.id, a.id]));
   a.multiple = true;
-  const p = field(f, 'projects', 'Репозитории (можно не выбирать)', 'text', '', options(data.state.projects));
+  const p = field(f, 'projects', 'Repositories (optional)', 'text', '', options(data.state.projects));
   p.multiple = true;
 }
 function runs(root, r, base, current) {
-  const d = details(root, 'Проверки · ' + Object.keys(r.runs).length);
+  const d = details(root, 'Checks · ' + Object.keys(r.runs).length);
   for (const [id, run] of Object.entries(r.runs)) {
-    const block = details(d, id + ' · ' + (run.finished ? 'Завершён' : 'Идёт'));
-    block.append(E('p', 'Предмет: ' + JSON.stringify(run.subject)), E('p', 'Область: ' + run.scope + ' · сбор ' + (run.discovery_complete ? 'полный' : 'неполный')));
+    const block = details(d, id + ' · ' + (run.finished ? 'Finished' : 'Running'));
+    block.append(E('p', 'Subject: ' + JSON.stringify(run.subject)), E('p', 'Scope: ' + run.scope + ' · discovery ' + (run.discovery_complete ? 'complete' : 'incomplete')));
     for (const c of run.plan) {
       const result = run.results[c.id];
       const recorded = data.history.find(e => e.command.op === 'result' && e.command.req === base.req && e.command.revision === base.revision && e.command.run === id && e.command.evidence.check === c.id);
       if (recorded) block.append(E('small', recorded.actor + ' · ' + recorded.recorded_at));
-      block.append(E('h3', c.id), E('p', 'Ожидали: ' + c.expected.join(', ')), E('p', result ? 'Получили: ' + result.observed.join(', ') + ' · ' + result.outcome + ' · ' + result.note : 'Результата нет'));
+      block.append(E('h3', c.id), E('p', 'Expected: ' + c.expected.join(', ')), E('p', result ? 'Observed: ' + result.observed.join(', ') + ' · ' + result.outcome + ' · ' + result.note : 'No result yet'));
       if (!run.finished && !result && c.method === 'manual' && !window.SNAPSHOT) {
-        const f = form(block, 'Записать проверку', v => send({
+        const f = form(block, 'Record check', v => send({
           ...base,
           op: 'result',
           run: id,
@@ -507,20 +528,20 @@ function runs(root, r, base, current) {
             link: v.get('link') || null
           }
         }));
-        field(f, 'outcome', 'Результат', 'text', 'pass', [['pass', 'Пройдено'], ['fail', 'Не пройдено'], ['skip', 'Пропущено']]);
-        field(f, 'observed', 'Фактический список — одна позиция на строку', 'textarea');
-        field(f, 'note', 'Что и как проверено', 'textarea');
-        field(f, 'link', 'Ссылка на свидетельство');
+        field(f, 'outcome', 'Result', 'text', 'pass', [['pass', 'Passed'], ['fail', 'Failed'], ['skip', 'Skipped']]);
+        field(f, 'observed', 'Observed list — one item per line', 'textarea');
+        field(f, 'note', 'What was checked and how', 'textarea');
+        field(f, 'link', 'Evidence URL');
       }
     }
-    if (!run.finished && !window.SNAPSHOT) block.append(button('Завершить прогон', () => send({
+    if (!run.finished && !window.SNAPSHOT) block.append(button('Finish run', () => send({
       ...base,
       op: 'finish',
       run: id
     })));
   }
   if (current && !window.SNAPSHOT) {
-    const f = form(d, 'Запечатать план ручной проверки', v => send({
+    const f = form(d, 'Seal manual check plan', v => send({
       ...base,
       op: 'plan',
       run: v.get('id'),
@@ -536,21 +557,21 @@ function runs(root, r, base, current) {
         expected: v.get('expected-' + a.id).split('\n').filter(Boolean)
       }))
     }));
-    field(f, 'id', 'ID прогона');
-    field(f, 'subject', 'Что проверяем: среда и версия настроек');
-    field(f, 'scope', 'Область проверки');
-    field(f, 'complete', 'Все проверки в этой области собраны', 'checkbox');
-    for (const a of r.acs) field(f, 'expected-' + a.id, a.id + ' · ожидаемый список', 'textarea');
+    field(f, 'id', 'Run ID');
+    field(f, 'subject', 'Environment and configuration version');
+    field(f, 'scope', 'Check scope');
+    field(f, 'complete', 'All checks in this scope are included', 'checkbox');
+    for (const a of r.acs) field(f, 'expected-' + a.id, a.id + ' · expected list', 'textarea');
   }
 }
 function comments(root, q, r, base) {
-  const d = details(root, 'Обсуждение');
+  const d = details(root, 'Discussion');
   d.open = true;
   for (const [id, c] of Object.entries(q.comments).filter(([, c]) => c.revision === r.number)) {
-    d.append(E('small', id + ' · ' + c.actor + ' · ' + c.kind + (c.withdrawn ? ' · отозвано' : '') + (c.reply_to ? ' · ответ на ' + c.reply_to : '')), E('p', c.text));
+    d.append(E('small', id + ' · ' + c.actor + ' · ' + c.kind + (c.withdrawn ? ' · withdrawn' : '') + (c.reply_to ? ' · reply to ' + c.reply_to : '')), E('p', c.text));
   }
   if (window.SNAPSHOT) return;
-  const f = form(d, 'Ответить в карточке', v => send({
+  const f = form(d, 'Post reply', v => send({
     ...base,
     op: 'comment',
     id: 'c-' + newId(),
@@ -559,64 +580,81 @@ function comments(root, q, r, base) {
     reply_to: v.get('reply_to') || null,
     ac: v.get('ac') || null
   }));
-  field(f, 'kind', 'Тип ответа', 'text', 'comment', [['comment', 'Комментарий / замечание'], ['decision', 'Решение специалиста'], ['accept', 'Согласен с предложением'], ['change', 'Уточняю предложение'], ['reject', 'Отклоняю с причиной'], ['correction', 'Исправляю прежний ответ']]);
-  field(f, 'text', 'Ответ', 'textarea');
-  field(f, 'reply_to', 'На какой комментарий (ID)');
-  field(f, 'ac', 'Условие', 'text', '', [['', 'Всё требование'], ...r.acs.map(a => [a.id, a.id])]);
+  field(f, 'kind', 'Reply type', 'text', 'comment', [['comment', 'Comment / suggestion'], ['decision', 'Specialist decision'], ['accept', 'Accept suggestion'], ['change', 'Amend suggestion'], ['reject', 'Reject with reason'], ['correction', 'Correct earlier reply']]);
+  field(f, 'text', 'Reply', 'textarea');
+  field(f, 'reply_to', 'Reply to comment ID');
+  field(f, 'ac', 'Acceptance criterion', 'text', '', [['', 'Entire requirement'], ...r.acs.map(a => [a.id, a.id])]);
 }
 if (window.SNAPSHOT) {
   document.body.classList.add('snapshot');
-  $('login').remove();
+  $('login-screen').remove();
   $('refresh').remove();
+  document.body.classList.add('authenticated');
   data = window.SNAPSHOT;
   ws = data.workspace;
   const option=E('option',data.state.title);option.value=ws;$('workspaces').replaceChildren(option);
   render();
 }
 
-// A private launch link passes the bearer token in the fragment, never to the
-// HTTP server or its logs. Remove it from browser history before authentication.
-if (!window.SNAPSHOT && location.hash.startsWith('#token=')) {
-  const launchToken = new URLSearchParams(location.hash.slice(1)).get('token');
-  history.replaceState(null, '', location.pathname + location.search);
-  signIn(launchToken).catch(notify);
-} else if(!window.SNAPSHOT && sessionStorage.getItem('joppa-token')) {
-  signIn(sessionStorage.getItem('joppa-token')).catch(e=>{sessionStorage.removeItem('joppa-token');notify(e);});
+// Browser sessions use an HttpOnly cookie; no token field or token URL.
+if(!window.SNAPSHOT){
+  sessionStorage.removeItem('joppa-token');
+  if(location.hash.startsWith('#token='))history.replaceState(null,'',location.pathname+location.search);
+  fetch('/api/me').then(async r=>{if(r.ok)await showApp(await r.json());}).catch(notify);
 }
-function openNode(kind,id) {selected='';revisionNumber=null;selectedNode={kind,id};card();}
-function openRequirement(id) {selectedNode=null;selected=id;revisionNumber=null;card();}
-function workspaceCard(root) {
-  root.append(E('h1',data.state.title),E('p','Воркспейс — один продукт. Его репозитории объединены общими требованиями.','hint'));
-  root.append(E('p',`${Object.keys(data.state.domains).length} доменов · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} требований`,'node-stats'));
-  root.append(E('h2','Домены — где принимают решения'),E('p','Выберите область бизнеса. Внутри — capabilities: что продукт умеет делать.'));
-  for (const [id,d] of Object.entries(data.state.domains)) {
-    const block=E('article');block.append(button(d.title,()=>openNode('domain',id),'node-link'),E('small',d.confirmed?'Подтверждён':'Черновик · ещё не подтверждён'));
-    for(const [cid,c]of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id))block.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'));
-    root.append(block);
+function closeMobileTree() {
+  document.body.classList.remove('sidebar-open');$('mobile-tree').setAttribute('aria-expanded','false');
+}
+function refreshSelection() {
+  const key=selectedNode?selectedNode.kind+':'+selectedNode.id:'req:'+selected;
+  for(const row of document.querySelectorAll('[data-node]')) {
+    const active=row.dataset.node===key;row.classList.toggle('active',active);
+    const b=row.matches('button')?row:row.querySelector('button');if(b){if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}
   }
-  if(!Object.keys(data.state.domains).length)root.append(E('p','Начните с домена: кто принимает решения в этой части продукта? Добавить его можно в «Настроить продукт».'));
+}
+function openNode(kind,id) {selected='';revisionNumber=null;selectedNode={kind,id};closeMobileTree();card();}
+function openRequirement(id) {selectedNode=null;selected=id;revisionNumber=null;closeMobileTree();card();}
+function sectionHead(root,title,count) {const head=E('div',undefined,'node-section-head');head.append(E('h2',title),E('small',String(count)));root.append(head);}
+function catalogRow(root,title,kind,action,count) {
+  const row=E('div',undefined,'catalog-row');row.append(button(title,action,'node-link'),E('small',kind,'type-label'));
+  if(count!==undefined){const counts=E('div',undefined,'counts');counts.append(E('span',count+' REQ'));row.append(counts);}
+  root.append(row);return row;
+}
+function workspaceCard(root) {
+  root.append(E('h1',data.state.title),E('p',`${Object.keys(data.state.domains).length} domains · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} requirements`,'node-stats'));
+  if(data.launch.configured)root.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
+  sectionHead(root,'Domains',Object.keys(data.state.domains).length);
+  for (const [id,d] of Object.entries(data.state.domains)) {
+    const caps=Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id);
+    const reqs=Object.values(data.state.requirements).filter(q=>caps.some(([cid])=>cid===q.capability));
+    const row=catalogRow(root,d.title,'DOMAIN',()=>openNode('domain',id));
+    const counts=E('div',undefined,'counts');counts.append(E('span',caps.length+' CAP'),E('span',reqs.length+' REQ'));row.append(counts,E('span',d.confirmed?'Confirmed':'Draft','badge'));
+  }
+  if(!Object.keys(data.state.domains).length)root.append(E('p','Add your first business domain in workspace settings.','empty-state'));
 }
 function nodeCard(root) {
   const {kind,id}=selectedNode;
   const domain=kind==='domain'?data.state.domains[id]:data.state.domains[data.state.capabilities[id].domain];
   const node=kind==='domain'?domain:data.state.capabilities[id];
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));root.append(button('← '+data.state.title,()=>{selectedNode=null;card();}),heading,E('p',kind==='domain'?data.state.title:domain.title,'breadcrumbs'));
-  root.append(E('p',kind==='domain'?'Домен — область бизнеса с понятным ответом на вопрос «кто здесь принимает решения?».':'Capability — способность продукта. Проверка формулировки: «мы умеем …».','hint'));
-  root.append(E('p',(node.confirmed?'Подтверждено. ':'Черновик. ')+(kind==='domain'?'Ответственный за решения: '+domain.authority:'Принадлежит домену «'+domain.title+'».')));
-  root.append(E('p','У домена и capability нет собственной «зелени»: проверяют AC конкретных требований.'));
+  root.append(button('← '+data.state.title,()=>{selectedNode=null;card();},'back-link'));
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));root.append(heading);
+  const meta=E('div',undefined,'node-meta');meta.append(E('span',node.confirmed?'Confirmed':'Draft','badge'),E('span',kind==='domain'?'Decision owner: '+domain.authority:domain.title));root.append(meta);
   if(kind==='domain') {
-    root.append(E('h2','Capabilities · что мы умеем'));
-    for(const [cid,c]of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id))root.append(button(c.title,()=>openNode('capability',cid),'nav'));
+    const caps=Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id);
+    sectionHead(root,'Capabilities',caps.length);
+    for(const [cid,c]of caps){const count=Object.values(data.state.requirements).filter(q=>q.capability===cid).length;catalogRow(root,c.title,'CAPABILITY',()=>openNode('capability',cid),count);}
   } else {
-    root.append(E('h2','Требования · что должно быть правдой'));
     const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===id);
-    for(const [rid,q]of reqs)root.append(button(q.revisions.at(-1).title,()=>openRequirement(rid),'nav'));
-    if(!reqs.length)root.append(E('p','Требования ещё не сформулированы. Сама capability не означает, что её поведение уже определено или проверено.'));
-    if(!window.SNAPSHOT)root.append(button('Добавить требование сюда',()=>edit(null,id),'write'));
+    sectionHead(root,'Requirements',reqs.length);
+    for(const [rid,q]of reqs)catalogRow(root,q.revisions.at(-1).title,'REQ',()=>openRequirement(rid));
+    if(!reqs.length){const empty=E('div',undefined,'empty-state');empty.append(E('p','No requirements here yet.'));root.append(empty);}
+    if(!window.SNAPSHOT)root.append(button('+ Add requirement',()=>edit(null,id),'write'));
   }
+  const help=details(root,kind==='domain'?'What is a domain?':'What is a capability?');help.classList.add('node-help');
+  help.append(E('p',kind==='domain'?'A domain is a business area with a clear decision owner.':'A capability describes what the product can do. Start with “We can…”','hint'),E('p','Domains and capabilities organize the work. Checks verify the acceptance criteria of individual requirements.','hint'));
   if(!window.SNAPSHOT&&actor===data.state.admin){
-    const edit=details(root,kind==='domain'?'Уточнить домен':'Уточнить capability');
-    const f=form(edit,'Сохранить уточнение',v=>send({op:kind==='domain'?'edit_domain':'edit_capability',id,title:v.get('title'),reason:v.get('reason'),...(kind==='domain'?{authority:v.get('authority')}:{})}));
-    field(f,'title','Название','text',node.title);if(kind==='domain')field(f,'authority','Кто принимает решения','text',domain.authority,humans());field(f,'reason','Почему меняем','textarea');
+    const edit=details(root,kind==='domain'?'Edit domain':'Edit capability');
+    const f=form(edit,'Save changes',v=>send({op:kind==='domain'?'edit_domain':'edit_capability',id,title:v.get('title'),reason:v.get('reason'),...(kind==='domain'?{authority:v.get('authority')}:{})}));
+    field(f,'title','Name','text',node.title);if(kind==='domain')field(f,'authority','Decision owner','text',domain.authority,humans());field(f,'reason','Reason for change','textarea');
   }
 }
