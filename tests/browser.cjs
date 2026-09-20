@@ -1,177 +1,120 @@
-const {
-  chromium
-} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const assert = require('node:assert/strict');
-(async () => {
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.env.PLAYWRIGHT_CHROMIUM ? {
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM
-    } : {})
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true,ignoreDefaultArgs:['--hide-scrollbars'],...(process.env.PLAYWRIGHT_CHROMIUM?{executablePath:process.env.PLAYWRIGHT_CHROMIUM}:{})});
+ try{
+  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  let signedIn=false;
+  await page.route('**/api/**',async route=>{
+   assert.equal(route.request().method(),'GET','portal is read-only');
+   if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
+   await route.continue({headers:{...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
   });
-  try {
-    const page = await browser.newPage({
-      viewport: {
-        width: 1280,
-        height: 900
-      }
-    });
-    // UI fixture only: Google protocol and real server sessions are tested in Rust.
-    // The fixture supplies the existing test API identity after the mocked popup.
-    let signedIn=false;
-    await page.route('**/api/**',async route=>{
-      const request=route.request();
-      assert.equal(request.method(),'GET','portal API calls must be read-only');
-      if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
-      await route.continue({headers:{...request.headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
-    });
-    await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
-    await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
-    await page.route('**/auth/logout',route=>{signedIn=false;return route.fulfill({json:{ok:true}});});
-    const errors = [];
-    page.on('pageerror', e => errors.push(e.message));
-    await page.goto(process.env.JOPPA_TEST_URL);
-    await page.getByRole('heading',{name:'Authorization.'}).waitFor();
-    assert.equal(await page.locator('.app-header').isVisible(),false);
-    assert.equal(await page.locator('.layout').isVisible(),false);
-    assert.equal(await page.locator('input[type=password]').count(),0);
-    await page.getByRole('button', {
-      name: 'Continue with Google',
-      exact: true
-    }).click();
-    await page.locator('#workspaces option').first().waitFor({
-      state: 'attached'
-    });
-    await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
-    await page.locator('#tree .tree-domain:visible').first().waitFor();
-    assert.equal(await page.locator('#card').isVisible(),false);
-    assert((await page.locator('#sidebar').boundingBox()).width>900);
-    assert.equal(await page.getByRole('button',{name:/New requirement|Add requirement/}).count(),0);
-    // Search/status/domain filters compose, preserve parent context and never mutate data.
-    assert.equal(await page.getByRole('button',{name:/Expand all|Collapse all/}).count(),0);
-    assert.equal(await page.locator('#tree .tree-domain[open]').count(),0);
-    for(const label of await page.locator('#tree .tree-domain > summary > .type-label').all())await label.click();
-    assert.equal(await page.locator('#tree .tree-domain[open]').count(),2);
-    assert.equal(await page.locator('#tree .tree-requirement:visible').count(),2);
-    const search=page.getByRole('searchbox',{name:'Search product tree'});
-    await search.fill('auto-ac');
-    assert.equal(await page.locator('#tree .tree-requirement:visible').count(),1);
-    assert.equal(await page.locator('#tree .tree-requirement:visible').getAttribute('data-requirement'),'auto');
-    await page.getByRole('button',{name:/Waiting for decision/}).click();
-    await page.getByText('No matching items. Try another search or clear the filters.',{exact:true}).waitFor();
-    await page.getByRole('button',{name:'Clear filters',exact:true}).click();
-    await page.getByRole('button',{name:/Checks failed/}).click();
-    assert.equal(await page.locator('#tree .tree-requirement:visible').count(),1);
-    await page.reload();
-    await page.locator('#tree .tree-domain:visible').first().waitFor();
-    assert.equal(await page.getByRole('button',{name:/Checks failed/}).getAttribute('aria-pressed'),'true');
-    assert.equal(await page.locator('#tree .tree-domain[open]').count(),0);
-    await page.locator('#tree .tree-domain:not([hidden]) > summary > .type-label').first().click();
-    assert.equal(await page.locator('#tree .tree-requirement:visible').count(),1);
-    await page.getByRole('button',{name:'Clear filters',exact:true}).click();
-    await page.getByRole('combobox',{name:'Filter by domain'}).selectOption('operations');
-    assert.equal(await page.locator('#tree .tree-domain:visible').count(),1);
-    await page.locator('#tree').getByRole('button',{name:'Observe service health',exact:true}).waitFor();
-    assert.equal(await page.locator('#tree .tree-requirement:visible').count(),0);
-    await page.getByRole('button',{name:'Clear filters',exact:true}).click();
-    await search.fill('does-not-exist');
-    assert.equal(await page.locator('#tree .tree-domain:visible').count(),0);
-    await page.getByRole('button',{name:'Clear filters',exact:true}).click();
-    const colors=await page.evaluate(()=>[...document.querySelectorAll('.tree-domain>summary,.tree-capability>.title-row')].map(e=>getComputedStyle(e).backgroundColor));
-    assert(new Set(colors).size>=2,'domain and capability backgrounds must be distinct');
-    await page.screenshot({path:'/tmp/joppa-tree-desktop.png',fullPage:true});
-    await page.setViewportSize({width:390,height:844});
-    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.screenshot({path:'/tmp/joppa-tree-mobile.png',fullPage:true});
-    await page.setViewportSize({width:1280,height:900});
-    await page.context().grantPermissions(['clipboard-read','clipboard-write']);
-    async function copied(){
-      await page.getByRole('button',{name:'Copy ID',exact:true}).click();
-      await page.getByText('ID copied.',{exact:true}).waitFor();
-      const text=await page.evaluate(()=>navigator.clipboard.readText());
-      return text;
-    }
-    function noForms(){return page.locator('form').count().then(n=>assert.equal(n,0));}
-    await noForms();
-    assert(await page.locator('.brand-mark').isVisible());
-    assert.equal(await page.locator('link[rel=icon]').count(),1);
-    assert.equal(await page.locator('#workspaces').evaluate(e=>getComputedStyle(e).fontSize),'16px');
-    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
-    assert.equal(await page.getByText('What is a domain?',{exact:true}).count(),0);
-    assert.equal(await copied(),'security');
-    await noForms();
-    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
-    await page.locator('#tree').getByRole('button',{name:'Ограничивать доступ',exact:true}).click();
-    assert.equal(await page.getByText('What is a capability?',{exact:true}).count(),0);
-    assert.equal(await copied(),'restrict');
-    await noForms();
-    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
-    await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
-    await page.getByRole('heading',{name:'Ключ до запуска',exact:true}).waitFor();
-    assert.equal(await page.evaluate(()=>window.attacked),undefined);
-    assert.equal(await copied(),'key');
-    await page.locator('#card > select').selectOption('1');
-    assert.equal(await copied(),'key');
-    await page.getByText('Checks · 1',{exact:true}).click();
-    await page.getByText('manual1 · Finished',{exact:true}).click();
-    await page.getByText('Expected: read, verify',{exact:true}).waitFor();
-    await page.getByText(/Observed: read, verify/).waitFor();
-    await noForms();
-    assert.equal(await page.getByRole('button',{name:/Edit |Confirm |Accept |Save |Create |Post reply|Finish run|Record check/}).count(),0);
-    await page.screenshot({path:'/tmp/joppa-browser-check.png',fullPage:true});
-    // Denied clipboard access exposes a selectable read-only fallback, not a false success.
-    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
-    await page.getByRole('button',{name:'Copy ID',exact:true}).click();
-    const fallback=page.getByRole('dialog',{name:'Copy item ID'});
-    await fallback.waitFor();
-    assert(await fallback.getByRole('textbox').evaluate(e=>e.readOnly));
-    assert.equal(await fallback.getByRole('textbox').inputValue(),'key');
-    await fallback.getByRole('button',{name:'Close',exact:true}).click();
-    await page.goto('file://' + process.env.JOPPA_TEST_SNAPSHOT);
-    for(const label of await page.locator('#tree .tree-domain > summary > .type-label').all())await label.click();
-    await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
-    await page.getByRole('heading', {
-      name: 'Ключ до запуска',
-      exact: true
-    }).waitFor();
-    assert.equal(await page.evaluate(() => window.attacked), undefined);
-    await page.goto(process.env.JOPPA_TEST_URL+'/guide');
-    await page.getByRole('heading',{name:'Four levels of the tree'}).waitFor();
-    // Cookie login survives refresh; obsolete token fragments are erased.
-    await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
-    await page.locator('#identity').filter({hasText:'Account'}).waitFor();
-    assert.equal(await page.evaluate(()=>location.hash),'');
-    await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
-    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).waitFor();
-    await page.reload();
-    await page.locator('#identity').filter({hasText:'Account'}).waitFor();
-    await page.locator('#tree .tree-domain:visible').first().waitFor();
-    await page.setViewportSize({width:390,height:844});
-    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    assert.equal(await page.locator('#sidebar').isVisible(),true);
-    assert.equal(await page.getByRole('button',{name:/New requirement|Add requirement/}).count(),0);
-    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
-    assert.equal(await page.locator('#sidebar').isVisible(),false);
-    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
-    assert.equal(await page.locator('#sidebar').isVisible(),true);
-    await page.locator('#logout').click();
-    await page.getByRole('heading',{name:'Authorization.'}).waitFor();
-    assert.equal(await page.locator('.layout').isVisible(),false);
-    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.screenshot({path:'/tmp/joppa-login-mobile.png'});
-    // A closed Google window leaves a clear retry action, without exposing the app.
-    const popupPromise=page.waitForEvent('popup');
-    await page.locator('#login-button').click();
-    const popup=await popupPromise;
-    await popup.close();
-    await page.locator('#login-cancel').click();
-    assert.equal(await page.locator('#login-button').isEnabled(),true);
-    assert.deepEqual(errors, []);
-    console.log('Browser: read-only tree, ID-only clipboard, historical revision, fallback, mobile and XSS-safe snapshot passed');
-  } finally {
-    await browser.close();
+  await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
+  await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
+  await page.route('**/auth/logout',route=>{signedIn=false;return route.fulfill({json:{ok:true}});});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const domain=page.locator('[data-domain="security"]');
+  const cap=page.locator('[data-capability="restrict"]');
+  const req=page.locator('[data-requirement="key"]');
+  const title=node=>node.locator(':scope > summary > .node-title');
+  const isOpen=node=>node.evaluate(e=>e.open);
+  const geometry=()=>page.evaluate(()=>['.layout','.app-header'].map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,width:r.width};}));
+  await page.goto(process.env.JOPPA_TEST_URL);
+  await page.getByRole('heading',{name:'Authorization.'}).waitFor();
+  assert.equal(await page.locator('.app-header').isVisible(),false);
+  assert.equal(await page.locator('.layout').isVisible(),false);
+  await page.getByRole('button',{name:'Continue with Google',exact:true}).click();
+  await page.locator('#workspaces option').first().waitFor({state:'attached'});
+  await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
+  await domain.waitFor();
+  assert.equal(await page.title(),'joppa');
+  assert.equal(await page.locator('.brand-mark').count(),0);
+  assert.equal(await page.locator('link[rel=icon]').getAttribute('href'),'/favicon.svg');
+  const favicon=await page.request.get(process.env.JOPPA_TEST_URL+'/favicon.svg');
+  assert.equal(favicon.status(),200);assert(favicon.headers()['content-type'].includes('image/svg+xml'));
+  assert.equal(await page.locator('#tree details[open]').count(),0);
+  assert.equal(await page.locator('#card,#mobile-tree').count(),0);
+  assert.equal(await page.getByRole('button',{name:/Expand all|Collapse all|Product tree/}).count(),0);
+  await page.addStyleTag({content:'html::-webkit-scrollbar{width:16px}'});
+  const collapsedGeometry=await geometry();
+  await title(domain).click();assert(await isOpen(domain));
+  assert.equal(await isOpen(cap),false);
+  await cap.locator(':scope > summary').focus();await page.keyboard.press('Enter');
+  assert(await isOpen(cap));assert.equal(await isOpen(req),false);
+  await title(req).click();assert(await isOpen(req));
+  await req.getByText('Before launch the key has exactly read and verify',{exact:true}).waitFor();
+  assert.equal(await page.locator('#sidebar').isVisible(),true);
+  assert.deepEqual(await geometry(),collapsedGeometry,'expansion must not shift the layout');
+  await page.context().grantPermissions(['clipboard-read','clipboard-write']);
+  async function copied(node,kind,id){
+   const before=await isOpen(node);
+   await node.locator(':scope > summary').getByRole('button',{name:'Copy '+kind+' ID: '+id,exact:true}).click();
+   await page.getByText('ID copied.',{exact:true}).waitFor();
+   assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),id);
+   assert.equal(await isOpen(node),before,'copy must not toggle the branch');
   }
-})().catch(e => {
-  console.error(e);
-  process.exitCode = 1;
-});
+  await copied(domain,'domain','security');await copied(cap,'capability','restrict');await copied(req,'requirement','key');
+  await req.getByRole('combobox',{name:'Requirement revision'}).selectOption('1');
+  await req.getByText('Checks · 1',{exact:true}).click();
+  await req.getByText('manual1 · Finished',{exact:true}).click();
+  await req.getByText('Expected: read, verify',{exact:true}).waitFor();
+  await req.getByText(/Observed: read, verify/).waitFor();
+  assert.equal(await page.evaluate(()=>window.attacked),undefined);
+  await copied(req,'requirement','key');
+  assert.equal(await page.locator('form').count(),0);
+  assert.equal(await page.getByRole('button',{name:/Edit |Confirm |Accept |Save |Create |Post reply|Finish run|Record check/}).count(),0);
+  await page.screenshot({path:'/tmp/joppa-browser-check.png',fullPage:true});
+  const search=page.getByRole('searchbox',{name:'Search product tree'});
+  await search.fill('auto-ac');
+  assert.equal(await page.locator('.tree-requirement:visible').count(),1);
+  await page.getByRole('button',{name:/Waiting for decision/}).click();
+  await page.getByText('No matching items. Try another search or clear the filters.',{exact:true}).waitFor();
+  assert.deepEqual(await geometry(),collapsedGeometry,'filters must not shift the layout');
+  await page.getByRole('button',{name:'Clear filters',exact:true}).click();
+  await page.getByRole('button',{name:/Checks failed/}).click();
+  await page.reload();await domain.waitFor();
+  assert.equal(await page.getByRole('button',{name:/Checks failed/}).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('#tree details[open]').count(),0,'reload collapses all levels even with a saved filter');
+  await page.getByRole('button',{name:'Clear filters',exact:true}).click();
+  await page.getByRole('combobox',{name:'Filter by domain'}).selectOption('operations');
+  assert.equal(await page.locator('.tree-domain:visible').count(),1);
+  await page.getByText('No requirements yet.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Clear filters',exact:true}).click();
+  await search.fill('key-rights');
+  await req.getByRole('combobox',{name:'Requirement revision'}).waitFor();
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
+  await req.getByRole('button',{name:'Copy requirement ID: key',exact:true}).click();
+  const fallback=page.getByRole('dialog',{name:'Copy item ID'});await fallback.waitFor();
+  assert(await fallback.getByRole('textbox').evaluate(e=>e.readOnly));
+  assert.equal(await fallback.getByRole('textbox').inputValue(),'key');
+  await fallback.getByRole('button',{name:'Close',exact:true}).click();
+  await page.getByRole('button',{name:'Clear filters',exact:true}).click();
+  await page.screenshot({path:'/tmp/joppa-tree-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:'/tmp/joppa-tree-mobile.png',fullPage:true});
+  await page.goto('file://'+process.env.JOPPA_TEST_SNAPSHOT);
+  await title(domain).click();await title(cap).click();await title(req).click();
+  await req.getByText('</script><script>window.attacked=true</script>',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.attacked),undefined);
+  await page.goto(process.env.JOPPA_TEST_URL+'/guide');
+  await page.getByRole('heading',{name:'Four levels of the tree'}).waitFor();
+  await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
+  await page.locator('#identity').filter({hasText:'Account'}).waitFor({state:'attached'});
+  assert.equal(await page.evaluate(()=>location.hash),'');
+  await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);await domain.waitFor();
+  assert.equal(await page.locator('#tree details[open]').count(),0);
+  await title(domain).click();await title(cap).click();await title(req).click();
+  await req.getByRole('combobox',{name:'Requirement revision'}).waitFor();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.locator('#logout').click();
+  await page.getByRole('heading',{name:'Authorization.'}).waitFor();
+  assert.equal(await page.locator('.layout').isVisible(),false);
+  const popupPromise=page.waitForEvent('popup');await page.locator('#login-button').click();
+  await (await popupPromise).close();await page.locator('#login-cancel').click();
+  assert(await page.locator('#login-button').isEnabled());
+  assert.deepEqual(errors,[]);
+  console.log('Browser: inline expansion, reload collapse, no scrollbar shift, ID-only copy, historical evidence, filters, mobile, read-only and auth passed');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

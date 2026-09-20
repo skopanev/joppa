@@ -103,7 +103,7 @@ The **Workspace** menu lists only accessible products. The full-width product tr
 shows domains, capabilities, requirements and acceptance criteria with distinct
 visual levels and check statuses. Search titles, IDs and ACs; combine domain and
 status filters with live counts. Filter choices stay within each workspace.
-Every page reload collapses the tree; open domains individually.
+Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
 The portal is read-only: use **Copy ID**
 on a domain, capability or requirement to pass its identifier to your agent.
 All changes and decisions go through MCP. Browser sessions cannot submit commands.

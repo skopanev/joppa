@@ -1,9 +1,5 @@
 /* SNAPSHOT */
-let ws = '',
-  data = null,
-  selected = '',
-  revisionNumber = null,
-  selectedNode = null;
+let ws = '', data = null;
 const $ = id => document.getElementById(id),
   E = (tag, text, cls) => {
     const e = document.createElement(tag);
@@ -21,8 +17,8 @@ function notify(e) {
 async function api(path) {
   const r = await fetch('/api/' + path);
   const j = await r.json();
-  if(r.status===401){loadNumber++;data=null;selected='';selectedNode=null;document.body.classList.remove('authenticated','detail-open');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
-  if(r.status===404 && path.startsWith('workspaces/')){data=null;selected='';selectedNode=null;document.body.classList.remove('detail-open');$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));$('card').replaceChildren();}
+  if(r.status===401){loadNumber++;data=null;document.body.classList.remove('authenticated');$('tree').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
+  if(r.status===404 && path.startsWith('workspaces/')){data=null;$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));}
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }
@@ -51,7 +47,7 @@ async function list() {
   if (!list.some(w => w.id === ws)) ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = ws;
   if (ws) await load();
-  else {document.body.classList.remove('detail-open');data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));$('card').replaceChildren();}
+  else {data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));}
 }
 let loadNumber = 0;
 async function load() {
@@ -104,11 +100,10 @@ $('login-button').onclick=async()=>{
 };
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
 $('workspaces').onchange=async e=>{
-  ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);selectedNode=null;selected='';revisionNumber=null;
-  $('card').replaceChildren(E('p','Opening workspace…'));$('tree').replaceChildren();
+  ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);
+$('tree').replaceChildren();
   try{await load();}catch(e){notify(e);}
 };
-$('mobile-tree').onclick=()=>{selectedNode=null;selected='';revisionNumber=null;card();};
 $('refresh').onclick = () => load().catch(notify);
 const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
 let filters={query:'',domain:'',status:''};
@@ -171,10 +166,11 @@ function applyFilters(reveal=true) {
         const status=requirementStatus(id);
         if(match)counts[status]++;
         row.hidden=!match||!!(filters.status&&filters.status!==status);
-        if(!row.hidden){shown++;capVisible=true;}
+        if(!row.hidden){shown++;capVisible=true;if(reveal&&(query||filters.status||filters.domain))row.open=true;}
       }
       if(!filters.status&&domainAllowed&&matches(did,d.title,cid,c.title))capVisible=true;
       cap.hidden=!capVisible;domainVisible ||= capVisible;
+      if(capVisible&&reveal&&(query||filters.status||filters.domain))cap.open=true;
     }
     if(!filters.status&&domainAllowed&&matches(did,d.title))domainVisible=true;
     group.hidden=!domainVisible;
@@ -191,7 +187,7 @@ function applyFilters(reveal=true) {
 }
 function render() {
   const t = $('tree');
-  const opened=new Set([...t.querySelectorAll('.tree-domain[open]')].map(d=>d.dataset.domain));
+  const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
   t.replaceChildren();
   const intro=E('div',undefined,'tree-intro');
   intro.append(E('p','Product tree','tree-eyebrow'),E('h1',data.state.title));
@@ -199,36 +195,26 @@ function render() {
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
   t.append(intro);
   filterControls(t);
-  for (const [did, d] of Object.entries(data.state.domains)) {
-    const group = E('details',undefined,'tree-domain');
-    group.dataset.domain=did;group.open=opened.has(did);
-    const domainHeading=E('summary',undefined,'title-row');
-    const domainButton=button(d.title,()=>openNode('domain',did),'node-link');
-    domainButton.addEventListener('click',e=>e.preventDefault());
-    domainHeading.append(domainButton,E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')));
-    domainHeading.dataset.node='domain:'+did;group.append(domainHeading);
-    const domainBody=E('div',undefined,'domain-body');group.append(domainBody);
-    for (const [cid, c] of Object.entries(data.state.capabilities).filter(([, c]) => c.domain === did)) {
-      const capability=E('section',undefined,'tree-capability');capability.dataset.capability=cid;
-      const capabilityHeading=E('div',undefined,'title-row');capabilityHeading.dataset.node='capability:'+cid;capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));capability.append(capabilityHeading);
-      for (const [id, q] of Object.entries(data.state.requirements).filter(([, q]) => q.capability === cid)) {
-        const r = q.revisions.at(-1),
-          s = data.summary[id];
-        const tone=requirementStatus(id),label=statusLabels[tone];
-        const req=E('div',undefined,'tree-requirement '+tone);req.dataset.requirement=id;
-        const reqHeading=E('div',undefined,'title-row');
-        const reqButton=button(r.title,()=>openRequirement(id),'node-link tree-req');reqButton.dataset.node='req:'+id;
-        reqHeading.append(reqButton,E('small','REQ','type-label'));req.append(reqHeading,E('span',label,'badge '+tone));
-        const acs=E('ul',undefined,'tree-acs');
-        for(const ac of r.acs){
-          const status=s.acs[ac.id], row=E('li');
-          const verdict=status?.verification||'n/a';
-          row.append(E('span',ac.text,'ac-text'),E('small','AC','type-label'),E('span',verdict,'badge '+(verdict==='pass'?'pass':verdict==='fail'?'fail':'unverified')));
-          acs.append(row);
-        }
-        req.append(acs);capability.append(req);
+  for (const [did,d] of Object.entries(data.state.domains)) {
+    const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
+    const heading=E('summary',undefined,'title-row');
+    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did));group.append(heading);
+    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));group.append(body);
+    for(const [cid,c] of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===did)){
+      const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
+      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid));cap.append(head);
+      const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===cid);
+      if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
+      for(const [id,q] of reqs){
+        const r=q.revisions.at(-1),tone=requirementStatus(id);
+        const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
+        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),copyButton('requirement',id));
+        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
+        req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
+        if(req.open)requirementDetails(content,id);
+        cap.append(req);
       }
-      domainBody.append(capability);
+      body.append(cap);
     }
     t.append(group);
   }
@@ -236,34 +222,26 @@ function render() {
   const empty=E('p','No matching items. Try another search or clear the filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   intake(t);
-  if (selected && !data.state.requirements[selected]) selected = '';
-  card();
 }
-function card() {
-  const root = $('card');
-  document.body.classList.toggle('detail-open',!!(selectedNode||selected));
-  refreshSelection();
+function requirementDetails(root, selected, revisionNumber=null) {
   root.replaceChildren();
-  root.dataset.kind=selectedNode?.kind||(selected?'requirement':'');
-  delete root.dataset.status;
-  if (selectedNode) {nodeCard(root);return;}
-  if (!selected) return;
   const q = data.state.requirements[selected],
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
   if(current)root.dataset.status=requirementStatus(selected);
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));heading.append(copyButton('requirement',selected));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
+  if(!current)root.append(E('h3',r.title));
+  root.append(E('p',selected+' · revision '+r.number+' · owner '+r.owner,'hint'),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
     const o = E('option', 'Revision ' + old.number + ' · ' + old.reason);
     o.value = old.number;
     revisions.append(o);
   }
+  revisions.setAttribute('aria-label','Requirement revision');
   revisions.value = r.number;
   revisions.onchange = e => {
-    revisionNumber = +e.target.value;
-    card();
+    requirementDetails(root,selected,+e.target.value);
   };
   root.append(revisions);
   root.append(E('p',current?statusLabels[requirementStatus(selected)]:'Previous revision. See its checks and history for evidence.',current?'badge '+requirementStatus(selected):'hint'));
@@ -371,44 +349,13 @@ if(!window.SNAPSHOT){
   }).catch(e=>{$('login-status').textContent=e.message;$('login-status').dataset.error='true';})
     .finally(()=>document.body.classList.remove('checking-session'));
 }
-function closeMobileTree() {
-  document.body.classList.add('detail-open');
-  window.scrollTo(0,0);
+function openRequirement(id) {
+  filters={query:'',domain:'',status:''};render();
+  const req=[...$('tree').querySelectorAll('.tree-requirement')].find(e=>e.dataset.requirement===id);
+  if(!req)return;
+  for(let node=req;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
+  req.scrollIntoView({block:'start'});
 }
-function refreshSelection() {
-  const key=selectedNode?selectedNode.kind+':'+selectedNode.id:'req:'+selected;
-  for(const row of document.querySelectorAll('[data-node]')) {
-    const active=row.dataset.node===key;row.classList.toggle('active',active);
-    const b=row.matches('button')?row:row.querySelector('button');if(b){if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}
-  }
-}
-function openNode(kind,id) {selected='';revisionNumber=null;selectedNode={kind,id};closeMobileTree();card();}
-function openRequirement(id) {selectedNode=null;selected=id;revisionNumber=null;closeMobileTree();card();}
-function sectionHead(root,title,count) {const head=E('div',undefined,'node-section-head');head.append(E('h2',title),E('small',String(count)));root.append(head);}
-function catalogRow(root,title,kind,action,count) {
-  const row=E('div',undefined,'catalog-row');row.dataset.kind=kind;row.append(button(title,action,'node-link'),E('small',kind,'type-label'));
-  if(count!==undefined){const counts=E('div',undefined,'counts');counts.append(E('span',count+' REQ'));row.append(counts);}
-  root.append(row);return row;
-}
-function nodeCard(root) {
-  const {kind,id}=selectedNode;
-  const domain=kind==='domain'?data.state.domains[id]:data.state.domains[data.state.capabilities[id].domain];
-  const node=kind==='domain'?domain:data.state.capabilities[id];
-  root.append(button('← '+data.state.title,()=>{selectedNode=null;card();},'back-link'));
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));heading.append(copyButton(kind,id));root.append(heading);
-  const meta=E('div',undefined,'node-meta');meta.append(E('span',node.confirmed?'Confirmed':'Draft','badge'),E('span',kind==='domain'?'Decision owner: '+domain.authority:domain.title));root.append(meta);
-  if(kind==='domain') {
-    const caps=Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id);
-    sectionHead(root,'Capabilities',caps.length);
-    for(const [cid,c]of caps){const count=Object.values(data.state.requirements).filter(q=>q.capability===cid).length;catalogRow(root,c.title,'CAPABILITY',()=>openNode('capability',cid),count);}
-  } else {
-    const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===id);
-    sectionHead(root,'Requirements',reqs.length);
-    for(const [rid,q]of reqs)catalogRow(root,q.revisions.at(-1).title,'REQ',()=>openRequirement(rid));
-    if(!reqs.length){const empty=E('div',undefined,'empty-state');empty.append(E('p','No requirements here yet.'));root.append(empty);}
-  }
-}
-
 function intake(root) {
   const entries=Object.entries(data.state.intake);
   if(!entries.length)return;
@@ -440,5 +387,7 @@ function copyButton(kind,id) {
     }
   },'copy-context');
   b.title='Copy '+kind+' ID';
+  b.setAttribute('aria-label','Copy '+kind+' ID: '+id);
+  b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
 }

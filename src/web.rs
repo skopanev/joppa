@@ -207,7 +207,7 @@ async fn google_callback(
     (
         h,
         Html(format!(
-            "<!doctype html><html lang=\"en\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Joppa · Sign-in</title><style>body{{font:16px/1.6 system-ui;background:#f5f5f0;color:#263729;display:grid;place-items:center;min-height:90vh;margin:0}}main{{max-width:360px;padding:32px}}h1{{letter-spacing:-.05em;font-size:40px}}</style><main><h1>joppa.</h1><p>{message}</p></main></html>"
+            "<!doctype html><html lang=\"en\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>joppa</title><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><style>body{{font:16px/1.6 system-ui;background:#f5f5f0;color:#263729;display:grid;place-items:center;min-height:90vh;margin:0}}main{{max-width:360px;padding:32px}}h1{{letter-spacing:-.05em;font-size:40px}}</style><main><h1>joppa.</h1><p>{message}</p></main></html>"
         )),
     )
 }
@@ -284,6 +284,15 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     }
     let app = Router::new()
         .route("/", get(|| async { Html(page()) }))
+        .route(
+            "/favicon.svg",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "image/svg+xml")],
+                    include_str!("favicon.svg"),
+                )
+            }),
+        )
         .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
         .route("/health", get(health))
         .route("/auth/login", post(login_user))
@@ -311,7 +320,18 @@ pub fn snapshot(data: &Value) -> String {
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
-    page().replace("/* SNAPSHOT */", &format!("window.SNAPSHOT={escaped};"))
+    page()
+        .replace("/* SNAPSHOT */", &format!("window.SNAPSHOT={escaped};"))
+        .replace(
+            "/favicon.svg",
+            &format!(
+                "data:image/svg+xml;base64,{}",
+                base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    include_str!("favicon.svg")
+                )
+            ),
+        )
 }
 
 fn page() -> String {
