@@ -23,5 +23,9 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - run: cargo test --test postgres -- --ignored
+      - run: cargo test --test access -- --ignored
+        env:
+          JOPPA_ACCESS_RULES_FILE: ${{ runner.temp }}/joppa-test-access.json
+          JOPPA_LOGIN_USERS_FILE: ${{ runner.temp }}/joppa-test-aliases.json
       - run: cargo build --locked
       - run: python3 tests/http_smoke.py

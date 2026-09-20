@@ -24,6 +24,15 @@ try:
         client = json.loads(google.read_text())
         assert client['client_id'] and client['client_secret']
         assert client['redirect_uri'] == f'https://{sys.argv[2]}/auth/google/callback'
+    policy = p / 'access-rules.json'
+    if policy.exists():
+        rules = json.loads(policy.read_text())
+        assert isinstance(rules, dict) and not (set(rules) - {'domains', 'emails'})
+        for kind in ('domains', 'emails'):
+            assert isinstance(rules.get(kind, {}), dict)
+            for name, workspaces in rules.get(kind, {}).items():
+                assert name == name.strip().lower() and isinstance(workspaces, list)
+                assert all(isinstance(w, str) and w and len(w) <= 120 and all(c.isascii() and (c.isalnum() or c in '-_.') for c in w) for w in workspaces)
 except Exception:
     sys.exit('Invalid private login configuration or Google callback URL')
 PY
@@ -72,7 +81,7 @@ GRANT USAGE ON SCHEMA joppa TO joppa_app;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
 SQL
-for name in tokens.json login-users.json google-client.json; do
+for name in tokens.json login-users.json google-client.json access-rules.json; do
     [[ ! -f "$stage/private/$name" ]] || install -m 640 -o root -g joppa "$stage/private/$name" "/etc/joppa/$name"
 done
 for name in backup.env storage.env; do
@@ -80,6 +89,9 @@ for name in backup.env storage.env; do
 done
 if [[ -f /etc/joppa/google-client.json ]] && ! grep -q '^JOPPA_GOOGLE_CLIENT_FILE=' /etc/joppa/runtime.env; then
     printf 'JOPPA_GOOGLE_CLIENT_FILE=/etc/joppa/google-client.json\n' >> /etc/joppa/runtime.env
+fi
+if [[ -f /etc/joppa/access-rules.json ]] && ! grep -q '^JOPPA_ACCESS_RULES_FILE=' /etc/joppa/runtime.env; then
+    printf 'JOPPA_ACCESS_RULES_FILE=/etc/joppa/access-rules.json\n' >> /etc/joppa/runtime.env
 fi
 chown root:joppa /etc/joppa/runtime.env
 chmod 640 /etc/joppa/runtime.env

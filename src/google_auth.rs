@@ -24,6 +24,8 @@ pub struct Identity {
     pub sub: String,
     pub email: String,
     pub email_verified: bool,
+    #[serde(default)]
+    pub hd: Option<String>,
     nonce: String,
 }
 #[derive(Deserialize)]

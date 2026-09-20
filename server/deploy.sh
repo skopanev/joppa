@@ -44,7 +44,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 git -C "$repo" archive HEAD > "$local_stage/source.tar"
 mkdir "$local_stage/private"
-for name in tokens.json login-users.json google-client.json backup.env storage.env; do
+for name in tokens.json login-users.json google-client.json access-rules.json backup.env storage.env; do
     if [[ -f "$config_dir/$name" ]]; then
         cp "$config_dir/$name" "$local_stage/private/$name"
         chmod 600 "$local_stage/private/$name"

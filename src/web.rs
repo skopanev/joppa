@@ -20,6 +20,16 @@ struct App {
     login: web_auth::Login,
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
+async fn no_store(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    response
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -50,7 +60,11 @@ fn authenticate(
 fn result(value: Result<Value>) -> ApiResult {
     value.map(Json).map_err(|e| {
         (
-            StatusCode::CONFLICT,
+            if e.is::<store::AccessDenied>() {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::CONFLICT
+            },
             Json(json!({"error":format!("{e:#}")})),
         )
     })
@@ -161,7 +175,7 @@ async fn google_callback(
     ) {
         (Some(id), Some(state)) => {
             app.login
-                .callback(id, state, q.code.as_deref(), q.error.is_some())
+                .callback(&app.pool, id, state, q.code.as_deref(), q.error.is_some())
                 .await
         }
         _ => Err(anyhow::anyhow!("Missing sign-in state")),
@@ -257,7 +271,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             pool,
             identities: Arc::new(identities),
             login,
-        });
+        })
+        .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     eprintln!("joppa: http://{host}:{port}");
     axum::serve(listener, app).await?;

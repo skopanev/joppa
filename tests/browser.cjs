@@ -48,13 +48,24 @@ const assert = require('node:assert/strict');
       state: 'attached'
     });
     await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
+    await page.locator('#tree .tree-domain').first().waitFor();
+    assert.equal(await page.locator('#card').isVisible(),false);
+    assert((await page.locator('#sidebar').boundingBox()).width>900);
+    assert.equal(await page.getByRole('button',{name:/New requirement|Add requirement/}).count(),0);
+    await page.screenshot({path:'/tmp/joppa-tree-desktop.png',fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.screenshot({path:'/tmp/joppa-tree-mobile.png',fullPage:true});
+    await page.setViewportSize({width:1280,height:900});
     // Domain and capability navigation explain the model in the actual UI.
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
     await page.getByText('What is a domain?',{exact:true}).click();
     await page.getByText('A domain is a business area with a clear decision owner.',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
     await page.locator('#tree').getByRole('button',{name:'Ограничивать доступ',exact:true}).click();
     await page.getByText('What is a capability?',{exact:true}).click();
     await page.getByText('A capability describes what the product can do. Start with “We can…”',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
     await page.locator('#tree').getByRole('button', {name: /Ключ до запуска/}).click();
     await page.getByRole('heading', {
       name: 'Ключ до запуска',
@@ -65,7 +76,7 @@ const assert = require('node:assert/strict');
       name: 'Confirm wording',
       exact: true
     }).click();
-    await page.getByText('In progress', {
+    await page.locator('#card').getByText('In progress', {
       exact: true
     }).waitFor();
     await page.getByText('Assess readiness', {
@@ -139,7 +150,7 @@ const assert = require('node:assert/strict');
       name: 'Accept result',
       exact: true
     }).click();
-    await page.getByText('Accepted', {
+    await page.locator('#card').getByText('Accepted', {
       exact: true
     }).waitFor();
     await page.screenshot({
@@ -172,11 +183,15 @@ const assert = require('node:assert/strict');
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).waitFor();
     await page.reload();
     await page.locator('#identity').filter({hasText:'owner'}).waitFor();
+    await page.locator('#tree .tree-domain').first().waitFor();
     await page.setViewportSize({width:390,height:844});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.getByRole('button',{name:'☰ Product tree'}).click();
+    assert.equal(await page.locator('#sidebar').isVisible(),true);
+    assert.equal(await page.getByRole('button',{name:/New requirement|Add requirement/}).count(),0);
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
     assert.equal(await page.locator('#sidebar').isVisible(),false);
+    await page.getByRole('button',{name:'← Product tree',exact:true}).click();
+    assert.equal(await page.locator('#sidebar').isVisible(),true);
     await page.locator('#logout').click();
     await page.getByRole('heading',{name:'Authorization.'}).waitFor();
     assert.equal(await page.locator('.layout').isVisible(),false);

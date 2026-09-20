@@ -30,7 +30,8 @@ async function api(path, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const j = await r.json();
-  if(r.status===401){document.body.classList.remove('authenticated');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
+  if(r.status===401){loadNumber++;data=null;actor='';selected='';selectedNode=null;document.body.classList.remove('authenticated','detail-open');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
+  if(r.status===404 && path.startsWith('workspaces/')){data=null;selected='';selectedNode=null;document.body.classList.remove('detail-open');$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));$('card').replaceChildren();}
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }
@@ -120,7 +121,7 @@ async function list() {
   $('workspaces').value = ws;
   bootstrap();
   if (ws) await load();
-  else {$('tree').replaceChildren();$('card').replaceChildren(E('h1','Your first product'),E('p','Create a workspace for your product. All its repositories share one requirement tree.'));}
+  else {document.body.classList.remove('detail-open');data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));$('card').replaceChildren();}
 }
 let loadNumber = 0;
 async function load() {
@@ -177,7 +178,7 @@ $('workspaces').onchange=async e=>{
   $('card').replaceChildren(E('p','Opening workspace…'));$('tree').replaceChildren();
   try{await load();}catch(e){notify(e);}
 };
-$('mobile-tree').onclick=()=>{const open=document.body.classList.toggle('sidebar-open');$('mobile-tree').setAttribute('aria-expanded',String(open));};
+$('mobile-tree').onclick=()=>{selectedNode=null;selected='';revisionNumber=null;card();};
 $('refresh').onclick = () => load().catch(notify);
 function bootstrap() {
   const s = $('setup');
@@ -196,28 +197,51 @@ function bootstrap() {
 }
 function render() {
   const t = $('tree');
+  const collapsed=new Set([...t.querySelectorAll('.tree-domain:not([open])')].map(d=>d.dataset.domain));
   t.replaceChildren();
-  t.append(E('p','Product tree','sidebar-caption'));
+  const intro=E('div',undefined,'tree-intro');
+  intro.append(E('p','Product tree','tree-eyebrow'),E('h1',data.state.title));
+  intro.append(E('p',`${Object.keys(data.state.domains).length} domains · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} requirements`,'node-stats'));
+  if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
+  t.append(intro);
   for (const [did, d] of Object.entries(data.state.domains)) {
-    const group = E('section',undefined,'tree-domain');
-    const domainHeading=E('div',undefined,'title-row');domainHeading.append(button(d.title,()=>openNode('domain',did),'node-link'),E('small','DOMAIN','type-label'));domainHeading.dataset.node='domain:'+did;group.append(domainHeading);
+    const group = E('details',undefined,'tree-domain');
+    group.dataset.domain=did;group.open=!collapsed.has(did);
+    const domainHeading=E('summary',undefined,'title-row');
+    const domainButton=button(d.title,()=>openNode('domain',did),'node-link');
+    domainButton.addEventListener('click',e=>e.preventDefault());
+    domainHeading.append(domainButton,E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')));
+    domainHeading.dataset.node='domain:'+did;group.append(domainHeading);
+    const domainBody=E('div',undefined,'domain-body');group.append(domainBody);
     for (const [cid, c] of Object.entries(data.state.capabilities).filter(([, c]) => c.domain === did)) {
-      const capabilityHeading=E('div',undefined,'title-row tree-capability');capabilityHeading.dataset.node='capability:'+cid;capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));group.append(capabilityHeading);
+      const capability=E('section',undefined,'tree-capability');
+      const capabilityHeading=E('div',undefined,'title-row');capabilityHeading.dataset.node='capability:'+cid;capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));capability.append(capabilityHeading);
       for (const [id, q] of Object.entries(data.state.requirements).filter(([, q]) => q.capability === cid)) {
         const r = q.revisions.at(-1),
           s = data.summary[id];
-        const reqButton=button((s.accepted ? '✓ ' : s.ready_for_acceptance ? '◉ ' : '○ ') + r.title, () => {
-          selectedNode = null;
-          selected = id;
-          revisionNumber = null;
-          closeMobileTree();card();
-        }, 'nav tree-req');reqButton.dataset.node='req:'+id;group.append(reqButton);
+        const failed=Object.values(s.acs).some(a=>a.verification==='fail');
+        const tone=failed?'fail':s.accepted?'pass':s.ready_for_acceptance?'ready':'waiting';
+        const label=failed?'Checks failed':s.accepted?'Accepted':s.ready_for_acceptance?'Awaiting acceptance':r.confirmed?'In progress':'Awaiting confirmation';
+        const req=E('div',undefined,'tree-requirement '+tone);
+        const reqHeading=E('div',undefined,'title-row');
+        const reqButton=button(r.title,()=>openRequirement(id),'node-link tree-req');reqButton.dataset.node='req:'+id;
+        reqHeading.append(reqButton,E('small','REQ','type-label'));req.append(reqHeading,E('span',label,'badge '+tone));
+        const acs=E('ul',undefined,'tree-acs');
+        for(const ac of r.acs){
+          const status=s.acs[ac.id], row=E('li');
+          const verdict=status?.verification||'n/a';
+          row.append(E('span',ac.text,'ac-text'),E('small','AC','type-label'),E('span',verdict,'badge '+(verdict==='pass'?'pass':verdict==='fail'?'fail':'unverified')));
+          acs.append(row);
+        }
+        req.append(acs);capability.append(req);
       }
+      domainBody.append(capability);
     }
     t.append(group);
   }
+  if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP or workspace settings.','empty-state'));
   if (!window.SNAPSHOT) {
-    const actions=E('div',undefined,'tree-actions');actions.append(button('+ New requirement',()=>edit(null),'write'));settings(actions);intake(actions);t.append(actions);
+    const actions=E('div',undefined,'tree-actions');settings(actions);intake(actions);t.append(actions);
   }
   if (selected && !data.state.requirements[selected]) selected = '';
   card();
@@ -321,10 +345,11 @@ function intake(t) {
 }
 function card() {
   const root = $('card');
+  document.body.classList.toggle('detail-open',!!(selectedNode||selected));
   refreshSelection();
   root.replaceChildren();
   if (selectedNode) {nodeCard(root);return;}
-  if (!selected) {workspaceCard(root);return;}
+  if (!selected) return;
   const q = data.state.requirements[selected],
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
@@ -359,8 +384,8 @@ function card() {
     }), 'write'));
   }
   for (const a of r.acs) {
-    const item = E('article');
     const status = s?.acs[a.id];
+    const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
     if (a.before_launch) item.append(E('small', 'Required before launch'));
     if (a.decider) item.append(E('p', 'Decision: ' + a.decider));
@@ -425,10 +450,12 @@ function historyEvent(parent, event, q) {
   const raw = details(d, 'Event data');
   raw.append(E('pre', JSON.stringify(c, null, 2)));
 }
-function edit(r, capability = '') {
+function edit(r) {
+  if(!r)return;
   selectedNode = null;
+  document.body.classList.add('detail-open');
   const root = $('card');
-  root.replaceChildren(E('h2', r ? 'New revision · all checks reset to n/a' : 'New requirement'));
+  root.replaceChildren(E('h2','New revision · all checks reset to n/a'));
   const f = form(root, 'Save revision', v => {
     const acs = [...f.querySelectorAll('fieldset')].map(row => ({
       id: row.querySelector('[name=ac_id]').value,
@@ -442,7 +469,7 @@ function edit(r, capability = '') {
     return send({
       op: 'revise',
       req: selected,
-      expected_revision: r?.number || 0,
+      expected_revision: r.number,
       capability: v.get('capability'),
       title: v.get('title'),
       body: v.get('body'),
@@ -451,8 +478,8 @@ function edit(r, capability = '') {
       acs
     });
   });
-  field(f, 'req', 'Requirement ID', 'text', r ? selected : '').readOnly = !!r;
-  field(f, 'capability', 'Capability', 'text', r ? data.state.requirements[selected].capability : capability, options(data.state.capabilities));
+  field(f, 'req', 'Requirement ID', 'text', selected).readOnly = true;
+  field(f, 'capability', 'Capability', 'text', data.state.requirements[selected].capability, options(data.state.capabilities));
   field(f, 'title', 'What must be true', 'text', r?.title);
   field(f, 'body', 'Context', 'textarea', r?.body);
   field(f, 'owner', 'Owner', 'text', r?.owner || actor, humans());
@@ -603,7 +630,8 @@ if(!window.SNAPSHOT){
   fetch('/api/me').then(async r=>{if(r.ok)await showApp(await r.json());}).catch(notify);
 }
 function closeMobileTree() {
-  document.body.classList.remove('sidebar-open');$('mobile-tree').setAttribute('aria-expanded','false');
+  document.body.classList.add('detail-open');
+  window.scrollTo(0,0);
 }
 function refreshSelection() {
   const key=selectedNode?selectedNode.kind+':'+selectedNode.id:'req:'+selected;
@@ -619,18 +647,6 @@ function catalogRow(root,title,kind,action,count) {
   const row=E('div',undefined,'catalog-row');row.append(button(title,action,'node-link'),E('small',kind,'type-label'));
   if(count!==undefined){const counts=E('div',undefined,'counts');counts.append(E('span',count+' REQ'));row.append(counts);}
   root.append(row);return row;
-}
-function workspaceCard(root) {
-  root.append(E('h1',data.state.title),E('p',`${Object.keys(data.state.domains).length} domains · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} requirements`,'node-stats'));
-  if(data.launch.configured)root.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
-  sectionHead(root,'Domains',Object.keys(data.state.domains).length);
-  for (const [id,d] of Object.entries(data.state.domains)) {
-    const caps=Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id);
-    const reqs=Object.values(data.state.requirements).filter(q=>caps.some(([cid])=>cid===q.capability));
-    const row=catalogRow(root,d.title,'DOMAIN',()=>openNode('domain',id));
-    const counts=E('div',undefined,'counts');counts.append(E('span',caps.length+' CAP'),E('span',reqs.length+' REQ'));row.append(counts,E('span',d.confirmed?'Confirmed':'Draft','badge'));
-  }
-  if(!Object.keys(data.state.domains).length)root.append(E('p','Add your first business domain in workspace settings.','empty-state'));
 }
 function nodeCard(root) {
   const {kind,id}=selectedNode;
@@ -648,7 +664,6 @@ function nodeCard(root) {
     sectionHead(root,'Requirements',reqs.length);
     for(const [rid,q]of reqs)catalogRow(root,q.revisions.at(-1).title,'REQ',()=>openRequirement(rid));
     if(!reqs.length){const empty=E('div',undefined,'empty-state');empty.append(E('p','No requirements here yet.'));root.append(empty);}
-    if(!window.SNAPSHOT)root.append(button('+ Add requirement',()=>edit(null,id),'write'));
   }
   const help=details(root,kind==='domain'?'What is a domain?':'What is a capability?');help.classList.add('node-help');
   help.append(E('p',kind==='domain'?'A domain is a business area with a clear decision owner.':'A capability describes what the product can do. Start with “We can…”','hint'),E('p','Domains and capabilities organize the work. Checks verify the acceptance criteria of individual requirements.','hint'));

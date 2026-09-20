@@ -35,9 +35,25 @@ addresses, SSH keys, product data or live credentials belong in Git.
 
 The private config directory must contain `tokens.json` and `login-users.json`
 (formats in the root README). It may also contain `google-client.json`,
-`backup.env` and `storage.env`. Only those five files are transferred. Optional
+`access-rules.json`, `backup.env` and `storage.env`. Only those six files are transferred. Optional
 files omitted on an update keep their existing server configuration. Without a
 Google client on the server, the authorization page loads but sign-in stays disabled.
+
+`access-rules.json` assigns workspaces by verified Google Workspace domain, with
+exact email overrides (see the anonymized example). An email rule replaces the
+domain rule; an empty list denies access. Domains match exactly and require
+Google's verified `hd` claim. Personal Google accounts need an explicit email rule.
+Rules are reread for each protected request: removing access takes effect for
+existing sessions, without rewriting journal history. Adding a new workspace
+grant enrolls the user on their next sign-in. Unknown workspaces fail enrollment.
+Each account has its own identity; API keys and browser sessions use the same
+store authorization checks. Keep database credentials and the trusted MCP
+launcher private: database administrators are outside this access boundary.
+
+`login-users.json` can retain explicit actor aliases for existing people. Accounts
+admitted through access rules receive a stable identity derived from their Google
+subject when no alias exists. Two Google accounts cannot share an actor or claim
+each other's identity. Automatic enrollment records a `joppa-access` system event.
 
 The deploy script archives tracked files from HEAD, provisions missing dependencies,
 builds with one job, creates the database and a restricted runtime role, applies

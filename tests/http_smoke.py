@@ -23,7 +23,7 @@ url = os.environ['JOPPA_TEST_DATABASE_URL']
 assert urllib.parse.urlparse(url).path.rsplit('/', 1)[-1].startswith('joppa_test'), 'test DB only'
 env = {**os.environ, 'JOPPA_DATABASE_URL': url, 'JOPPA_ACTOR': 'owner'}
 subprocess.run([BIN, 'migrate'], env=env, check=True, stdout=subprocess.DEVNULL)
-owner_token, agent_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+owner_token, agent_token, other_token = (secrets.token_urlsafe(32) for _ in range(3))
 ws = 'http-' + str(uuid.uuid4())
 with socket.socket() as s:
     s.bind(('127.0.0.1', 0))
@@ -49,7 +49,7 @@ def ok(value):
 
 with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     token_file = Path(temp) / 'tokens.json'
-    token_file.write_text(json.dumps({owner_token: 'owner', agent_token: 'agent'}))
+    token_file.write_text(json.dumps({owner_token: 'owner', agent_token: 'agent', other_token: 'other-owner'}))
     token_file.chmod(0o600)
     env['JOPPA_TOKENS_FILE'] = str(token_file)
     # Standalone browser login needs Joppa's own Google client. Unit tests cover
@@ -68,6 +68,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         else:
             raise AssertionError('HTTP server did not become ready')
         assert request('/health', token='')[1] == {'ok': True}
+        with urllib.request.urlopen(urllib.request.Request(base+'/api/me',headers={'Authorization':'Bearer '+owner_token})) as response:
+            assert response.headers.get('Cache-Control') == 'no-store'
         assert request('/api/workspaces', token='invalid')[0] == 401
         assert request('/auth/login', body={})[0] == 403  # Origin is mandatory.
         try:
@@ -91,7 +93,19 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert status == 409, 'agent cannot confirm owner wording'
         status, _ = command({'op': 'confirm', 'req': 'key', 'revision': 1, 'actor': 'owner'}, token=agent_token)
         assert status == 422, 'actor injection must fail deserialization'
-        assert request('/api/workspaces/missing')[0] == 409
+        assert request('/api/workspaces/missing')[0] == 404
+        other_ws = ws + '-other'
+        assert request('/api/workspaces/' + other_ws + '/commands',
+                       {'request_id':'create','command':{'op':'workspace','title':'Private second workspace'}}, other_token)[0] == 200
+        assert all(w['id'] != other_ws for w in request('/api/workspaces')[1])
+        assert all(w['id'] != ws for w in request('/api/workspaces',token=other_token)[1])
+        missing = request('/api/workspaces/missing',token=other_token)
+        assert request('/api/workspaces/' + ws,token=other_token) == missing
+        assert request('/api/workspaces/' + other_ws) == missing
+        for request_id in ('create','guessed-request'):
+            status, body = command({'op':'member','id':'other-owner','role':'human'},token=other_token,request_id=request_id)
+            assert status == 404 and body == missing[1]
+        assert command({'op':'enroll_member','id':'other-owner'})[0] == 409
         retry = str(uuid.uuid4())
         c = {'op': 'comment', 'req': 'key', 'revision': 1, 'id': 'hello', 'text': 'Hello', 'kind': 'comment'}
         assert command(c, request_id=retry)[0] == 200
@@ -106,6 +120,12 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         replies = [json.loads(line) for line in output.splitlines()]
         assert len(replies) == 2 and replies[1]['id'] == 2
         assert len(replies[0]['result']['tools']) == 4
+        foreign_read={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{
+            'name':'joppa_read','arguments':{'workspace':ws,'actor':'owner'}}}
+        reply=json.loads(subprocess.check_output([BIN],env={**env,'JOPPA_ACTOR':'other-owner'},
+                         input=json.dumps(foreign_read)+'\n',text=True))
+        assert reply['result']['isError'] is True
+        assert reply['result']['content'][0]['text'] == 'Workspace not found'
         snapshot = Path(temp) / 'snapshot.html'
         subprocess.run([BIN, 'board', ws, str(snapshot)], env=env, check=True, stdout=subprocess.DEVNULL)
         assert '\\u003c/script' in snapshot.read_text()

@@ -3,6 +3,7 @@ use crate::google_auth::{Google, Identity};
 use anyhow::{Result, ensure};
 use axum::http::{HeaderMap, header};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -26,6 +27,7 @@ struct Session {
 #[derive(Clone)]
 pub struct Login {
     pub users: BTreeMap<String, String>,
+    rules: Option<std::path::PathBuf>,
     google: Option<Google>,
     pending: Arc<Mutex<BTreeMap<String, Pending>>>,
     sessions: Arc<Mutex<BTreeMap<String, Session>>>,
@@ -50,12 +52,31 @@ impl Login {
                 "login users must be Google email addresses"
             );
             joppa::commands::identifier(actor)?;
+            ensure!(actor != "joppa-access", "reserved system identity");
+        }
+        let normalized: BTreeMap<_, _> = users
+            .iter()
+            .map(|(email, actor)| (email.to_ascii_lowercase(), actor.clone()))
+            .collect();
+        ensure!(
+            normalized.len() == users.len(),
+            "duplicate email identities"
+        );
+        ensure!(
+            users
+                .values()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == users.len(),
+            "each Google email must have its own actor"
+        );
+        let rules = std::env::var_os("JOPPA_ACCESS_RULES_FILE").map(std::path::PathBuf::from);
+        if let Some(path) = &rules {
+            joppa::access::Rules::read(path)?;
         }
         Ok(Self {
-            users: users
-                .into_iter()
-                .map(|(k, v)| (k.to_ascii_lowercase(), v))
-                .collect(),
+            users: normalized,
+            rules,
             google: Google::from_env()?,
             pending: Default::default(),
             sessions: Default::default(),
@@ -66,7 +87,7 @@ impl Login {
             anyhow::anyhow!("Google sign-in is being configured for Joppa. Please try again later.")
         })?;
         ensure!(
-            !self.users.is_empty(),
+            !self.users.is_empty() || self.rules.is_some(),
             "No Joppa accounts have been invited yet."
         );
         let mut pending = self.pending.lock().unwrap();
@@ -93,6 +114,7 @@ impl Login {
     }
     pub async fn callback(
         &self,
+        pool: &deadpool_postgres::Pool,
         id: &str,
         state: &str,
         code: Option<&str>,
@@ -119,10 +141,10 @@ impl Login {
             ))
         } else if let Some(code) = code {
             match &self.google {
-                Some(google) => google
-                    .exchange(code, &p.nonce, &p.verifier)
-                    .await
-                    .and_then(|identity| self.admit(&identity)),
+                Some(google) => match google.exchange(code, &p.nonce, &p.verifier).await {
+                    Ok(identity) => self.enroll(pool, &identity).await,
+                    Err(error) => Err(error),
+                },
                 None => Err(anyhow::anyhow!("Google sign-in has not been configured")),
             }
         } else {
@@ -147,10 +169,41 @@ impl Login {
             identity.email_verified && !identity.sub.is_empty(),
             "Unverified Google identity"
         );
+        if let Some(path) = &self.rules {
+            let rules = joppa::access::Rules::read(path)?;
+            ensure!(
+                !rules
+                    .resolve(&identity.email, identity.hd.as_deref())
+                    .is_empty(),
+                "This account has no workspace access."
+            );
+            return Ok(self
+                .users
+                .get(&identity.email.to_ascii_lowercase())
+                .cloned()
+                .unwrap_or_else(|| format!("user-{:x}", Sha256::digest(identity.sub.as_bytes()))));
+        }
         self.users
             .get(&identity.email.to_ascii_lowercase())
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("This account has no access to Joppa."))
+    }
+    async fn enroll(&self, pool: &deadpool_postgres::Pool, identity: &Identity) -> Result<String> {
+        let actor = self.admit(identity)?;
+        if let Some(path) = &self.rules {
+            let workspaces =
+                joppa::access::Rules::read(path)?.resolve(&identity.email, identity.hd.as_deref());
+            joppa::store::enroll(
+                pool,
+                &actor,
+                &identity.sub,
+                &identity.email.to_ascii_lowercase(),
+                identity.hd.as_deref(),
+                &workspaces,
+            )
+            .await?;
+        }
+        Ok(actor)
     }
     pub async fn poll(&self, id: &str) -> Result<Option<(String, String)>> {
         let mut pending = self.pending.lock().unwrap();
@@ -230,6 +283,7 @@ mod tests {
     fn login() -> Login {
         Login {
             users: BTreeMap::from([("owner@example.test".into(), "owner".into())]),
+            rules: None,
             google: Some(
                 Google::new(crate::google_auth::Config {
                     client_id: "joppa-client".into(),
@@ -245,6 +299,7 @@ mod tests {
     #[tokio::test]
     async fn state_is_browser_bound_single_use_and_sessions_are_revocable() {
         let l = login();
+        let pool = joppa::store::pool(joppa::store::DEFAULT_URL).unwrap();
         let (id, url) = l.start(None).await.unwrap();
         assert!(
             url["verification_url"]
@@ -255,15 +310,19 @@ mod tests {
         assert!(!url.to_string().contains(&id));
         assert!(l.poll(&id).await.unwrap().is_none());
         assert!(l.poll("another-browser").await.is_err());
-        assert!(l.callback(&id, "wrong-state", None, true).await.is_err());
-        let state = l.pending.lock().unwrap()[&id].state.clone();
         assert!(
-            l.callback("another-browser", &state, None, true)
+            l.callback(&pool, &id, "wrong-state", None, true)
                 .await
                 .is_err()
         );
-        l.callback(&id, &state, None, true).await.unwrap();
-        assert!(l.callback(&id, &state, None, true).await.is_err());
+        let state = l.pending.lock().unwrap()[&id].state.clone();
+        assert!(
+            l.callback(&pool, "another-browser", &state, None, true)
+                .await
+                .is_err()
+        );
+        l.callback(&pool, &id, &state, None, true).await.unwrap();
+        assert!(l.callback(&pool, &id, &state, None, true).await.is_err());
         assert!(l.poll(&id).await.is_err());
         let (id, _) = l.start(None).await.unwrap();
         l.pending.lock().unwrap().get_mut(&id).unwrap().result = Some(Ok("owner".into()));
@@ -277,6 +336,52 @@ mod tests {
         l.pending.lock().unwrap().get_mut(&id).unwrap().expires =
             Instant::now() - Duration::from_secs(1);
         assert!(l.poll(&id).await.is_err());
+    }
+    #[test]
+    fn domain_enrollment_uses_google_subject_not_colliding_email_initials() {
+        let path = std::env::temp_dir().join(format!("joppa-access-{}.json", random()));
+        std::fs::write(
+            &path,
+            r#"{"domains":{"alpha.example":["alpha"],"beta.example":["beta"]}}"#,
+        )
+        .unwrap();
+        let mut l = login();
+        l.rules = Some(path.clone());
+        let identity = |sub: &str, email: &str, hd: Option<&str>| {
+            serde_json::from_value::<Identity>(
+                json!({"sub":sub,"email":email,"email_verified":true,"hd":hd,"nonce":"n"}),
+            )
+            .unwrap()
+        };
+        let a = l
+            .admit(&identity(
+                "google-alpha",
+                "same@alpha.example",
+                Some("alpha.example"),
+            ))
+            .unwrap();
+        let b = l
+            .admit(&identity(
+                "google-beta",
+                "same@beta.example",
+                Some("beta.example"),
+            ))
+            .unwrap();
+        assert_ne!(a, b);
+        assert_eq!(
+            a,
+            l.admit(&identity(
+                "google-alpha",
+                "same@alpha.example",
+                Some("alpha.example")
+            ))
+            .unwrap()
+        );
+        assert!(
+            l.admit(&identity("personal", "same@alpha.example", None))
+                .is_err()
+        );
+        std::fs::remove_file(path).unwrap();
     }
     #[test]
     fn verified_google_email_requires_an_explicit_joppa_invitation() {

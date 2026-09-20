@@ -1,0 +1,11 @@
+{
+  "domains": {
+    "team-a.example": ["alpha"],
+    "team-b.example": ["beta"]
+  },
+  "emails": {
+    "owner@example.com": ["alpha", "beta"],
+    "contractor@example.com": ["alpha"],
+    "blocked@team-a.example": []
+  }
+}

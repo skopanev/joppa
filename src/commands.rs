@@ -13,6 +13,10 @@ pub enum Command {
         id: String,
         role: String,
     },
+    /// Internal enrollment event; public command entry points reject this operation.
+    EnrollMember {
+        id: String,
+    },
     Domain {
         id: String,
         title: String,
@@ -207,6 +211,19 @@ pub fn revision<'a>(
 }
 pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -> Result<()> {
     identifier(actor)?;
+    if let Command::EnrollMember { id } = command {
+        ensure!(
+            actor == "joppa-access" && !w.admin.is_empty(),
+            "internal enrollment required"
+        );
+        identifier(id)?;
+        ensure!(
+            id != "joppa-access" && !w.members.contains_key(id),
+            "invalid enrollment identity"
+        );
+        w.members.insert(id.clone(), "human".into());
+        return Ok(());
+    }
     if let Command::Workspace { title } = command {
         ensure!(w.admin.is_empty(), "workspace exists");
         nonempty(title)?;

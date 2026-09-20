@@ -1,5 +1,13 @@
 -- Additive migration: public tables from 0.1 remain untouched.
 CREATE SCHEMA IF NOT EXISTS joppa;
+-- Verified Google identities are bound once; neither email initials nor browser input select an actor.
+CREATE TABLE IF NOT EXISTS joppa.google_identities (
+    actor text PRIMARY KEY,
+    google_sub text NOT NULL UNIQUE,
+    email text NOT NULL UNIQUE,
+    hosted_domain text,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
 CREATE TABLE IF NOT EXISTS joppa.workspaces (
     id text PRIMARY KEY CHECK (length(btrim(id)) > 0),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp()

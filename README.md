@@ -80,6 +80,16 @@ mapping invited Google email addresses to existing Joppa actors, for example
 `{"owner@example.com": "owner"}`. Each actor must exist in the API identity file.
 Files containing secrets must be readable only by the service account.
 
+For automatic workspace assignment, set `JOPPA_ACCESS_RULES_FILE` to a private
+JSON file following [the access rules example](server/access-rules.json.example).
+A verified organization domain assigns its workspace list. An exact email rule
+overrides that list; `[]` denies access. Domain rules require Google's verified
+organization claim, not just the suffix of an email address. Personal accounts
+need explicit email rules. Rules are checked on protected requests, so revocation
+also applies to existing sessions. New grants enroll members at their next sign-in.
+The journal preserves membership history; current access rules remain authoritative.
+Keep real domains, addresses and workspace assignments out of Git.
+
 Open Joppa and choose **Continue with Google**. Complete sign-in in the Google
 window; the board opens automatically. Until sign-in, only the authorization
 screen is visible. The server verifies the token signature, audience, issuer,
@@ -89,7 +99,11 @@ separate HttpOnly cookies, expire after 12 hours, and are invalidated on sign-ou
 or server restart. Google credentials and API tokens never reach browser storage.
 Without Joppa's own Google configuration, sign-in fails closed with a setup message.
 
-The **Workspace** menu switches products. [How it works](http://127.0.0.1:6212/guide)
+The **Workspace** menu lists only accessible products. The full-width product tree
+shows domains, capabilities, requirements and acceptance criteria with distinct
+visual levels and check statuses. Create requirements through MCP; the browser
+supports reviewing and editing existing requirements.
+[How it works](http://127.0.0.1:6212/guide)
 explains domains, capabilities, requirements and acceptance criteria.
 Названия доменов и capabilities открывают их карточки. В карточке можно
 собрать дерево, редактировать REQ и AC, обсуждать, создать задачи, провести

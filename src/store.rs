@@ -8,6 +8,9 @@ use deadpool_postgres::Pool;
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio_postgres::GenericClient;
+#[path = "store_access.rs"]
+mod access;
+pub use access::{AccessDenied, enroll};
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 pub fn pool(url: &str) -> Result<Pool> {
@@ -71,6 +74,17 @@ pub async fn execute(
         &[&workspace],
     )
     .await?;
+    access::check(
+        &*tx,
+        workspace,
+        actor,
+        matches!(command, Command::Workspace { .. }),
+    )
+    .await?;
+    ensure!(
+        actor != "joppa-access" && !matches!(command, Command::EnrollMember { .. }),
+        "internal enrollment operation"
+    );
     let (mut state, events) = load(&*tx, workspace).await?;
     let payload = serde_json::to_string(command)?;
     if let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace, &request_id]).await? {
@@ -97,6 +111,7 @@ fn summaries(state: &Workspace) -> Value {
 }
 pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
+    access::check(&**conn, workspace, actor, false).await?;
     let (state, events) = load(&**conn, workspace).await?;
     ensure!(
         state.members.contains_key(actor),
@@ -129,12 +144,19 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
 }
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
+    let allowed = access::scope(&**conn, actor).await?;
     let rows = conn
-        .query("SELECT id FROM joppa.workspaces ORDER BY id", &[])
+        .query(
+            &format!("{} ORDER BY workspace", access::MEMBERSHIP),
+            &[&actor],
+        )
         .await?;
     let mut items = vec![];
     for row in rows {
         let id: String = row.get(0);
+        if allowed.as_ref().is_some_and(|set| !set.contains(&id)) {
+            continue;
+        }
         let (w, _) = load(&**conn, &id).await?;
         if w.members.contains_key(actor) {
             items.push(json!({"id": id, "title": w.title}));
