@@ -219,3 +219,14 @@ Call `joppa_model_docs` before authoring a product tree. Optional `section` is
 source documentation compiled into the running server; no local checkout is
 needed. `joppa_help` supplies command shapes and this API contract. Initialization
 instructions provide the short rules and direct agents to both tools.
+
+## Search
+
+`joppa_search` accepts `workspace`, `query`, optional `kind` and `limit` (1–50,
+default 10). It returns current matching system IDs with explicit full-text or
+hybrid mode and embedding coverage. Workspace authorization applies before any
+provider request and before returning results. See [search](search.md) for
+freshness, archived data, provider setup and ranking limits.
+
+`joppa_help` also returns the full search guide under `search`, so agents can
+read indexing limits and failure behavior without a local checkout.

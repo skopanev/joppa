@@ -1,6 +1,7 @@
 pub mod access;
 pub mod checks;
 pub mod commands;
+pub mod embeddings;
 mod intake;
 pub mod model;
 pub mod sessions;

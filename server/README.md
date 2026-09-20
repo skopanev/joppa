@@ -1,11 +1,12 @@
 # Single-server deployment
 
 Target: Ubuntu 24.04 LTS, one shared vCPU, 2 GB RAM. PostgreSQL 16 stores the
-journal and will host pgvector and full-text search. DeepInfra performs embedding
+journal, pgvector embeddings and full-text search. DeepInfra performs embedding
 inference. Joppa has its own Google OAuth client and invited account list.
 
-At present, vector ingestion and the hybrid search endpoint are not implemented;
-installing the PostgreSQL extension alone does not enable product search.
+MCP search indexes current product wording. Full-text search works without an
+external key; set the private DeepInfra configuration to enable semantic indexing
+and hybrid results. See [search setup and limits](../docs/search.md).
 
 ## Deploy
 
@@ -35,7 +36,7 @@ addresses, SSH keys, product data or live credentials belong in Git.
 
 The private config directory must contain `tokens.json` and `login-users.json`
 (formats in the root README). It may also contain `google-client.json`,
-`access-rules.json`, `backup.env` and `storage.env`. Only those six files are transferred. Optional
+`access-rules.json`, `backup.env`, `storage.env` and `search.env`. Only those seven files are transferred. Optional
 files omitted on an update keep their existing server configuration. Without a
 Google client on the server, the authorization page loads but sign-in stays disabled.
 
@@ -87,7 +88,8 @@ Use official Ubuntu/PostgreSQL packages for PostgreSQL 16 and pgvector. Enable
 `CREATE EXTENSION IF NOT EXISTS vector` as the database administrator. The
 application role must not own the journal tables or run as a PostgreSQL superuser.
 Apply migrations as the database owner and grant the runtime role only schema
-USAGE, table SELECT/INSERT and sequence USAGE/SELECT. WORM triggers remain intact.
+USAGE, table SELECT/INSERT and sequence USAGE/SELECT. Only the two rebuildable
+search cache tables additionally permit UPDATE/DELETE. WORM triggers remain intact.
 
 The `postgres-2gb.conf` settings are an initial budget, not a measured capacity.
 Compile release binaries with one build job, preferably outside the production
@@ -138,3 +140,12 @@ service. Both environment files are owned by root with mode 0600. Verify bucket
 scopes: a different key ID alone does not prove separation of permissions.
 The storage configuration is ready for the attachment implementation; application
 upload endpoints are not yet implemented.
+
+## Semantic search configuration
+
+Use `search.env` from [the template](search.env.example) for the private DeepInfra
+key. It is installed as `/etc/joppa/search.env`, root:root 0600, and loaded by
+systemd. Restart the application after changing it. Indexing is asynchronous;
+MCP search reports the number of current and embedded documents. No key means
+full-text-only mode, not simulated semantic search. Embeddings are part of the
+PostgreSQL backup and can also be rebuilt from journal content.

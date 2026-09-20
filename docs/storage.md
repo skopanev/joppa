@@ -38,6 +38,7 @@ CREATE ROLE joppa_runtime LOGIN;
 GRANT CONNECT ON DATABASE joppa TO joppa_runtime;
 GRANT USAGE ON SCHEMA joppa TO joppa_runtime;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_runtime;
+GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;
 ```
 
@@ -61,3 +62,7 @@ Business migration means assigning a workspace and owners, importing wording as
 new revisions, confirming it and collecting evidence. Changing a persisted event
 format requires a version or read-time conversion, never an UPDATE to history.
 Do not silently change the meaning of already-recorded commands.
+
+Search documents and their checkpoint are derived caches, rebuilt from events.
+They alone permit update/delete. Their mutability never changes business history
+or evidence. See [search freshness and recovery](search.md).

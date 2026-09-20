@@ -23,6 +23,7 @@ struct App {
     identities: Arc<BTreeMap<String, String>>,
     login: web_auth::Login,
     oauth_origin: Option<String>,
+    embedder: Option<joppa::embeddings::Embedder>,
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
 async fn no_store(
@@ -316,6 +317,10 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         );
     }
     let oauth_origin = login.public_origin()?;
+    let embedder = joppa::embeddings::Embedder::from_env()?;
+    if let Some(embedder) = embedder.clone() {
+        tokio::spawn(joppa::store::search::worker(pool.clone(), embedder));
+    }
     let app = Router::new()
         .merge(oauth::routes())
         .merge(mcp::routes())
@@ -345,6 +350,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             identities: Arc::new(identities),
             login,
             oauth_origin,
+            embedder,
         })
         .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;

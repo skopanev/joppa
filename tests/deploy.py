@@ -23,7 +23,7 @@ class Deployment(unittest.TestCase):
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-qm", "fixture")
         self.config = self.root / "private config"
         self.config.mkdir()
-        for name in ("tokens.json", "login-users.json", "google-client.json", "access-rules.json", "backup.env", "storage.env", "unrelated-secret"):
+        for name in ("tokens.json", "login-users.json", "google-client.json", "access-rules.json", "backup.env", "storage.env", "search.env", "unrelated-secret"):
             (self.config / name).write_text("test-only-value")
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -63,6 +63,7 @@ elif 'install.sh' in cmd:
         names = json.loads((self.root / "contents.json").read_text())
         self.assertNotIn("./private/unrelated-secret", names)
         self.assertIn("./private/backup.env", names)
+        self.assertIn("./private/search.env", names)
         self.assertIn("./private/access-rules.json", names)
         self.assertIn("./source.tar", names)
         self.assertIn("rm -rf -- '/root/joppa-deploy.TEST1234'", self.log.read_text())

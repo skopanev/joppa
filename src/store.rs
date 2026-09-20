@@ -40,6 +40,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/007_command_receipts.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/008_search.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -230,3 +232,6 @@ pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
     }
     Ok(result)
 }
+
+#[path = "search.rs"]
+pub mod search;

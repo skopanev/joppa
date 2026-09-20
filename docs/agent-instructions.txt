@@ -18,3 +18,5 @@ Domains with archived=true and their capabilities are historical, not active sco
 For new items, omit local IDs and let Joppa generate them. The response contains the resolved command and public system IDs. Preserve existing REQ/AC IDs when editing; an omitted AC ID creates a new AC.
 Use joppa_batch for related writes: 1–100 operations in one transaction, optional ref labels, and explicit {"$ref":"label/id"} links to earlier generated IDs. Retry identical input with the same request_id; never regenerate it after a lost response.
 Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.
+
+Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.

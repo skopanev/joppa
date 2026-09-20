@@ -28,12 +28,12 @@ titles while approval and changes of authority remain with the owner.
 
 ## Run locally for development
 
-Use Rust 1.88+, PostgreSQL 16 and Python 3 for examples/check adapters.
+Use Rust 1.88+, PostgreSQL 16 with pgvector and Python 3 for examples/check adapters.
 If a local PostgreSQL container does not already exist:
 
 ```sh
 docker run -d --name joppa-db -e POSTGRES_PASSWORD=joppa \
-  -p 127.0.0.1:55433:5432 -v joppa-data:/var/lib/postgresql/data postgres:16
+  -p 127.0.0.1:55433:5432 -v joppa-data:/var/lib/postgresql/data pgvector/pgvector:pg16
 # Wait until pg_isready reports accepting connections:
 docker exec joppa-db pg_isready -U postgres
 docker exec joppa-db createdb -U postgres joppa
@@ -161,6 +161,7 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 |---|---|
 | `joppa_list` | List accessible products |
 | `joppa_read` | Read a workspace or resolve a copied system ID |
+| `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_model_docs` | Read English model, process and evidence rules |
 | `joppa_help` | Read command shapes and API rules |
 | `joppa_command` | Append one operation; omit IDs for new objects |
@@ -234,7 +235,7 @@ JOPPA_TEST_DATABASE_URL=postgresql://postgres:joppa@127.0.0.1:55433/joppa_test_l
 Integration tests require an isolated database whose name starts with
 `joppa_test`. They exercise concurrent changes/results/acceptance, workspace
 isolation, retries, migration repeatability, preserved legacy tables and WORM.
-CI runs PostgreSQL 16 and the HTTP, OAuth, session and access checks too.
+CI runs PostgreSQL 16 with pgvector and the HTTP, OAuth, session, search and access checks too.
 
 ## Current boundaries
 
@@ -243,8 +244,10 @@ Repository-specific CI integration and business-data migration need product
 onboarding and owner review. There is no background task executor, automatic
 legal-policy interpretation or proof that an AC set is complete.
 
-Vector ingestion, hybrid search and attachment uploads are not yet implemented.
-Their server/provider configuration is preparatory. Journal reads currently
+Agent search combines PostgreSQL full-text and pgvector results when the private
+DeepInfra key is configured; otherwise it reports full-text mode. See [search](docs/search.md).
+Attachment upload endpoints are not yet implemented; their storage configuration
+is preparatory. Journal reads currently
 replay the whole workspace; larger volumes will need projections and paginated
 history. The portal is for reading and owner reordering; authoring and decisions
 use MCP.

@@ -81,12 +81,13 @@ runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa <<'SQL'
 GRANT CONNECT ON DATABASE joppa TO joppa_app;
 GRANT USAGE ON SCHEMA joppa TO joppa_app;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
+GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
 SQL
 for name in tokens.json login-users.json google-client.json access-rules.json; do
     [[ ! -f "$stage/private/$name" ]] || install -m 640 -o root -g joppa "$stage/private/$name" "/etc/joppa/$name"
 done
-for name in backup.env storage.env; do
+for name in backup.env storage.env search.env; do
     [[ ! -f "$stage/private/$name" ]] || install -m 600 -o root -g root "$stage/private/$name" "/etc/joppa/$name"
 done
 if [[ -f /etc/joppa/google-client.json ]] && ! grep -q '^JOPPA_GOOGLE_CLIENT_FILE=' /etc/joppa/runtime.env; then

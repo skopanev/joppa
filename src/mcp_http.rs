@@ -56,7 +56,7 @@ async fn endpoint(
     if message["jsonrpc"] != "2.0" || !message["method"].is_string() || !message.is_object() {
         return (StatusCode::BAD_REQUEST,Json(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid request"}}))).into_response();
     }
-    match crate::protocol::handle(&app.pool, &actor, &message).await {
+    match crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref()).await {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),
     }

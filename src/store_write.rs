@@ -222,6 +222,13 @@ async fn write(
         }.await.with_context(|| format!("operation {}", index + 1))?;
         results.push(apply);
     }
+    super::search::project(
+        &*tx,
+        &workspace,
+        &state,
+        (events.len() + operations.len()) as u64,
+    )
+    .await?;
     let mut result = if batch {
         json!({"results":results})
     } else {

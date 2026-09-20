@@ -56,6 +56,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     # the OAuth exchange and session binding with a local Google fixture.
     env.pop('JOPPA_GOOGLE_CLIENT_FILE', None)
     env.pop('JOPPA_LOGIN_USERS_FILE', None)
+    env.pop('DEEPINFRA_API_KEY', None)
 
     server = subprocess.Popen([BIN, 'serve', str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
@@ -130,7 +131,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # Remote MCP notifications return 202 without a JSON-RPC response.
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_command','joppa_batch','joppa_help','joppa_model_docs'}
+        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search'}
         def mcp(name, arguments, token=agent_token):
             status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':name,'arguments':arguments}}, token)
@@ -138,6 +139,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             result = response['result']
             assert not result.get('isError'), result
             return json.loads(result['content'][0]['text'])
+        assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         docs = mcp('joppa_model_docs', {})
         assert set(docs) == {'model','process','green'}
         assert docs['model'] == (ROOT/'docs/model.md').read_text()
@@ -169,6 +171,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         public_id = next(iter(created['results'][1]['system_ids']['requirement'].values()))
         resolved = mcp('joppa_read',{'item_id':public_id})
         assert resolved['selection']['id'] == created['results'][1]['command']['req']
+        found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
+        assert found['mode'] == 'full_text' and found['semantic_status'] == 'not_configured'
+        assert found['items'][0]['system_id'] == public_id
+        denied_search = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
+            'params':{'name':'joppa_search','arguments':{'workspace':mcp_ws,'query':'recovery'}}},other_token)[1]
+        assert denied_search['result']['isError']
+        assert denied_search['result']['content'][0]['text'] == 'Workspace not found'
         foreign_read={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{
             'name':'joppa_read','arguments':{'workspace':ws,'actor':'owner'}}}
         reply=request('/mcp',foreign_read,other_token)[1]

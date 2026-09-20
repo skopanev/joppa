@@ -16,6 +16,7 @@ retained for reading; the new model never writes through it.
 | Agents had to invent creation IDs | Server-generated local IDs, returned permanent IDs, immutable request receipts | Authoring retry, concurrency and revision tests |
 | Related tree creation needed separate round trips | Atomic batches with explicit references to earlier generated IDs | Full rollback and batch replay tests |
 | Agent titles could not be corrected before confirmation | Draft-title edits without changing authority or confirming | Draft/confirmed/archived permission tests |
+| Finding wording required reading the entire tree | Authorized full-text/hybrid search with current IDs and explicit coverage | Search freshness, isolation, provider failure and stale-vector tests |
 | Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
 `tests/browser.cjs` checks the read-only portal: navigation, copying references,
@@ -41,7 +42,8 @@ checks that subject against target builds/configuration. Connecting it to a
 product's deployment pipeline, migrating real content and assigning access are
 product onboarding work. Joppa does not assume access or decisions on their behalf.
 
-Vector ingestion, hybrid search and attachment upload endpoints remain outside
-the implemented workflow. Server configuration for their providers is preparatory,
-not evidence that those features work. The journal is replayed per workspace;
+Search uses a synchronous current-state full-text projection and asynchronous
+DeepInfra embeddings in pgvector. Provider configuration is required for semantic
+results; coverage and fallback are explicit. Attachment upload endpoints remain
+outside the implemented workflow; their storage configuration is preparatory. The journal is replayed per workspace;
 large datasets will need projections and paginated history.
