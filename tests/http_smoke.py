@@ -96,6 +96,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'workspace', 'title': 'Проверка карточки'})
         ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
         ok({'op':'member','id':'legal','role':'human'})
+        ok({'op':'member','id':'reviewer','role':'human'})
         ok({'op': 'domain', 'id': 'security', 'title': 'Доступ к данным', 'authority': 'owner'})
         ok({'op': 'capability', 'id': 'restrict', 'title': 'Ограничивать доступ', 'domain': 'security'})
         ok({'op':'capability','id':'audit','title':'Audit access','domain':'security'})
@@ -183,7 +184,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert gate.returncode == 0, gate.stderr
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
         assert gate.returncode != 0
-        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'agent'})
+        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'reviewer'})
         # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',

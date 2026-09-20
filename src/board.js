@@ -176,14 +176,16 @@ function filterControls(root) {
   if(filters.status&&!statusLabels[filters.status])filters.status='';
   const toolbar=E('section',undefined,'tree-toolbar');toolbar.setAttribute('aria-label','Filter product tree');
   const fields=E('div',undefined,'filter-fields');
-  if(filters.person&&filters.person!=='@me'&&!data.state.members[filters.person])filters.person='';
+  if(filters.person&&filters.person===viewerActor)filters.person='@me';
+  if(filters.person&&filters.person!=='@me'&&data.state.members[filters.person]!=='human')filters.person='';
+  if(filters.person==='@me'&&!viewerActor)filters.person='';
   fields.append(filterPicker('domain','Filter by domain','Domain',[
     {id:'',title:'All domains',hint:String(Object.keys(data.state.domains).length)},
     ...orderedEntries('domain').map(([id,d])=>({id,title:d.title,hint:String(Object.values(data.state.capabilities).filter(c=>c.domain===id).length)+' capabilities'}))
   ],filters.domain,value=>{filters.domain=value;applyFilters();}));
   const people=[{id:'',title:'Everyone',hint:'All responsibilities'}];
   if(viewerActor)people.push({id:'@me',title:'Assigned to me',hint:'My responsibilities'});
-  for(const [id,role] of Object.entries(data.state.members))people.push({id,title:id===viewerActor?'Me':id,hint:role});
+  for(const [id,role] of Object.entries(data.state.members))if(role==='human'&&id!==viewerActor)people.push({id,title:id,hint:'Responsibilities'});
   fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;applyFilters();}));
   fields.prepend(fields.lastElementChild);
   toolbar.append(fields);
