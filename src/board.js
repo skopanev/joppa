@@ -332,16 +332,16 @@ function historyTitle(kind,id,position){
 function historyEvent(parent,event,q){
   const c=event.command;
   const names={domain:'Domain created',capability:'Capability created',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
-  const entry=E('article',undefined,'history-entry'),header=E('div',undefined,'history-event-header');
-  header.append(E('small',eventDate(event.recorded_at)+' · '+personLabel(event.actor),'history-meta'),E('span',names[c.op]||'Item updated','history-action'));entry.append(header);parent.append(entry);
-  const body=E('div',undefined,'history-body');entry.append(body);
+  const entry=E('article',undefined,'history-entry');
+  entry.append(E('time',eventDate(event.recorded_at),'history-time'),E('span',personLabel(event.actor),'history-author'));parent.append(entry);
+  const body=E('div',undefined,'history-body');body.append(E('strong',names[c.op]||'Item updated','history-action'));entry.append(body);
   const fact=(label,value)=>{if(value!==undefined&&value!==null&&value!==''){const p=E('p');p.append(E('span',label,'history-label'),E('span',String(value)));body.append(p);}};
-  const change=(label,before,after)=>{if(before===after)return;const block=E('div',undefined,'history-change');block.append(E('small',label));if(before)block.append(E('p',String(before),'history-before'));if(after)block.append(E('p',String(after),'history-after'));body.append(block);};
+  const change=(label,before,after)=>{if(before===after)return;const block=E('span',undefined,'history-change');block.append(E('span',label+': ','history-label'));if(before)block.append(E('del',String(before),'history-before'));if(before&&after)block.append(E('span',' → '));if(after)block.append(E('ins',String(after),'history-after'));body.append(block);};
   const title=(kind,id)=>historyTitle(kind,id,event.position);
   const revision=q?.revisions.find(r=>r.number===c.revision);
   if(c.reason)fact('Reason',c.reason);
   if(c.op==='domain'||c.op==='capability'){
-    fact('Title',c.title);if(c.domain)fact('Domain',title('domain',c.domain));if(c.authority)fact('Decision owner',personLabel(c.authority));
+    fact('',c.title);if(c.domain)fact('Domain',title('domain',c.domain));if(c.authority)fact('Decision owner',personLabel(c.authority));
   }else if(c.op==='edit_domain'||c.op==='edit_capability'){
     const kind=c.op.slice(5),previous=historicalCommand(kind,c.id,event.position-1);
     change('Title',previous?.title,c.title);if(c.authority)change('Decision owner',personLabel(previous?.authority),personLabel(c.authority));
@@ -534,7 +534,10 @@ function showHistory(kind,id,title,reqId){
   });
   const dialog=E('dialog',undefined,'history-dialog');dialog.setAttribute('aria-label','History: '+title);
   const header=E('div',undefined,'history-dialog-header'),heading=E('div');heading.append(E('small','History'),E('h2',title));
-  const close=button('×',()=>dialog.close(),'history-close');close.setAttribute('aria-label','Close history');header.append(heading,close);dialog.append(header);
+  const close=button('',()=>dialog.close(),'history-close');close.setAttribute('aria-label','Close history');
+  const closeIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','aria-hidden':'true'}))closeIcon.setAttribute(key,value);
+  const closePath=document.createElementNS(closeIcon.namespaceURI,'path');closePath.setAttribute('d','M6 6l12 12M6 18L18 6');closeIcon.append(closePath);close.append(closeIcon);header.append(heading,close);dialog.append(header);
   const content=E('div',undefined,'history-timeline');content.dataset.itemId=id;content.dataset.itemKind=kind;
   for(const event of events.reverse())historyEvent(content,event,q);
   if(!content.childNodes.length)content.append(E('p','No changes recorded yet.','hint'));
