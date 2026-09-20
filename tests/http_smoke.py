@@ -35,7 +35,7 @@ def request(path, body=None, token=owner_token):
     req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
-            return r.status, json.load(r)
+            return r.status, json.load(r) if r.status != 202 else None
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()
 
@@ -127,20 +127,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         c = {'op': 'comment', 'req': 'key', 'revision': 1, 'id': 'hello', 'text': 'Hello', 'kind': 'comment'}
         assert command(c, request_id=retry)[0] == 200
         assert command(c, request_id=retry)[1]['replayed'] is True
-        # Stdio notification produces no response; names and help are accessible.
-        messages = [
-            {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
-            {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
-            {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'joppa_read', 'arguments': {'workspace': ws}}},
-        ]
-        output = subprocess.check_output([BIN], env=env, input='\n'.join(map(json.dumps, messages)) + '\n', text=True)
-        replies = [json.loads(line) for line in output.splitlines()]
-        assert len(replies) == 2 and replies[1]['id'] == 2
-        assert len(replies[0]['result']['tools']) == 4
+        # Remote MCP notifications return 202 without a JSON-RPC response.
+        assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
+        reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
+        assert len(reply['result']['tools']) == 4
         foreign_read={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{
             'name':'joppa_read','arguments':{'workspace':ws,'actor':'owner'}}}
-        reply=json.loads(subprocess.check_output([BIN],env={**env,'JOPPA_ACTOR':'other-owner'},
-                         input=json.dumps(foreign_read)+'\n',text=True))
+        reply=request('/mcp',foreign_read,other_token)[1]
         assert reply['result']['isError'] is True
         assert reply['result']['content'][0]['text'] == 'Workspace not found'
         snapshot = Path(temp) / 'snapshot.html'
@@ -197,12 +190,12 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             for local_id,ref in items.items():
                 assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
                 msg={'jsonrpc':'2.0','id':9,'method':'tools/call','params':{'name':'joppa_read','arguments':{'item_id':ref}}}
-                found=json.loads(subprocess.check_output([BIN],env=env,input=json.dumps(msg)+'\n',text=True))
+                found=request('/mcp',msg)[1]
                 selection=json.loads(found['result']['content'][0]['text'])['selection']
                 assert selection['kind']==kind and selection['id']==local_id
                 if kind=='ac': assert selection['req'] in ('key','auto')
         msg['params']['arguments']['item_id']=refs['requirement']['key']
-        denied=json.loads(subprocess.check_output([BIN],env={**env,'JOPPA_ACTOR':'other-owner'},input=json.dumps(msg)+'\n',text=True))
+        denied=request('/mcp',msg,other_token)[1]
         assert denied['result']['isError'] and denied['result']['content'][0]['text']=='Workspace not found'
         subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
         assert request('/api/workspaces/'+ws)[1]['system_ids']==refs

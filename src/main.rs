@@ -1,12 +1,9 @@
 use anyhow::{Result, bail};
 use joppa::{commands::Command, store};
-use serde_json::{Value, json};
-use std::io::{Read, Write};
+use std::io::Read;
 #[allow(dead_code, clippy::all)]
 #[rustfmt::skip]
 mod legacy;
-mod client;
-mod client_config;
 mod google_auth;
 mod protocol;
 mod web;
@@ -16,21 +13,10 @@ mod web_auth;
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "legacy") {
-        return legacy::run().await;
-    }
-    let client_command = args.first().is_none_or(|s| {
-        matches!(
-            s.as_str(),
-            "mcp" | "list" | "read" | "command" | "login" | "logout" | "whoami"
-        )
-    });
-    if client_command
-        && (std::env::var_os("JOPPA_DATABASE_URL").is_none()
-            || args
-                .first()
-                .is_some_and(|s| matches!(s.as_str(), "login" | "logout" | "whoami")))
-    {
-        return client::run(&args).await;
+        if args.get(1).is_some_and(|s| s == "serve") {
+            return legacy::run().await;
+        }
+        bail!("legacy supports server mode only: legacy serve PORT");
     }
     let pool = store::pool(
         &std::env::var("JOPPA_DATABASE_URL").unwrap_or_else(|_| store::DEFAULT_URL.into()),
@@ -90,28 +76,8 @@ async fn main() -> Result<()> {
             std::fs::write(path, web::snapshot(&data))?;
             println!("{path}");
         }
-        None | Some("mcp") => {
-            let actor = actor()?;
-            let stdin = std::io::stdin();
-            for line in stdin.lines() {
-                let line = line?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let response = match serde_json::from_str::<Value>(&line) {
-                    Ok(msg) => protocol::handle(&pool, &actor, &msg).await,
-                    Err(e) => Some(
-                        json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":e.to_string()}}),
-                    ),
-                };
-                if let Some(response) = response {
-                    println!("{response}");
-                    std::io::stdout().flush()?;
-                }
-            }
-        }
         _ => bail!(
-            "commands: migrate | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list | board WORKSPACE FILE | mcp | legacy ..."
+            "commands: migrate | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list | board WORKSPACE FILE | legacy ..."
         ),
     }
     Ok(())
@@ -119,7 +85,7 @@ async fn main() -> Result<()> {
 fn actor() -> Result<String> {
     let actor = std::env::var("JOPPA_ACTOR").map_err(|_| {
         anyhow::anyhow!(
-            "set JOPPA_ACTOR; local CLI/MCP uses the identity assigned by its trusted launcher"
+            "set JOPPA_ACTOR; server administration uses the identity assigned by its trusted launcher"
         )
     })?;
     joppa::commands::identifier(&actor)?;

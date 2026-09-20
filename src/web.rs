@@ -12,15 +12,17 @@ use joppa::{commands::Command, sessions, store};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};
-#[path = "web_device.rs"]
-mod device;
+#[path = "mcp_http.rs"]
+mod mcp;
+#[path = "mcp_oauth.rs"]
+mod oauth;
 
 #[derive(Clone)]
 struct App {
     pool: Pool,
     identities: Arc<BTreeMap<String, String>>,
     login: web_auth::Login,
-    devices: joppa::device_auth::Devices,
+    oauth_origin: Option<String>,
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
 async fn no_store(
@@ -49,15 +51,7 @@ async fn authenticate(
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "));
         match token {
-            Some(t) => match app.identities.get(t) {
-                Some(actor) => Some(actor.clone()),
-                None => joppa::device_auth::actor(&app.pool, t).await.map_err(|_| {
-                    (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(json!({"error":"Could not check credentials"})),
-                    )
-                })?,
-            },
+            Some(t) => app.identities.get(t).cloned(),
             None => None,
         }
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
@@ -321,8 +315,10 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             "login identity needs a configured API actor"
         );
     }
+    let oauth_origin = login.public_origin()?;
     let app = Router::new()
-        .merge(device::routes())
+        .merge(oauth::routes())
+        .merge(mcp::routes())
         .route("/", get(|| async { Html(page()) }))
         .route(
             "/favicon.svg",
@@ -348,7 +344,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             pool,
             identities: Arc::new(identities),
             login,
-            devices: Default::default(),
+            oauth_origin,
         })
         .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;

@@ -47,8 +47,8 @@ Rules are reread for each protected request: removing access takes effect for
 existing sessions, without rewriting journal history. Adding a new workspace
 grant enrolls the user on their next sign-in. Unknown workspaces fail enrollment.
 Each account has its own identity; API keys and browser sessions use the same
-store authorization checks. Keep database credentials and the trusted MCP
-launcher private: database administrators are outside this access boundary.
+store authorization checks. MCP clients connect directly over HTTPS with OAuth.
+Keep database credentials private: database administrators are outside this access boundary.
 
 `login-users.json` can retain explicit actor aliases for existing people. Accounts
 admitted through access rules receive a stable identity derived from their Google

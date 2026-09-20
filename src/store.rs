@@ -34,6 +34,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/004_cli_credentials.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/005_mcp_oauth.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }

@@ -2,7 +2,7 @@
 
 POST /api/workspaces/{workspace}/commands: {"request_id":"unique-id","command":{...}}.
 GET /api/workspaces; GET /api/workspaces/{workspace}. Authorization: Bearer <token>.
-CLI: JOPPA_ACTOR=alice joppa command product request-id < command.json.
+MCP: POST /mcp over HTTPS; actor comes from OAuth or a private service credential.
 Every operation below includes "op" with its name. IDs contain ASCII letters, digits, -, _, . (120 bytes max).
 Actor is supplied by authentication, not by command fields. Null means optional; omitted Option fields also work.
 
@@ -73,12 +73,12 @@ code server-side with PKCE, and verifies Google's signed ID token and Joppa acce
 HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
 `POST /auth/logout` invalidates the session server-side.
 
-Browser sign-in, sign-out, polling and device approval require an exact same-origin `Origin` header.
+Browser sign-in, sign-out, polling and OAuth consent require an exact same-origin `Origin` header.
 Content command requests without an Authorization header
 return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Session token hashes and revocations persist in PostgreSQL; sign-in survives
 server restarts until the original 12-hour expiry or explicit sign-out. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
 (or null for an identity without a Google binding).
-Bearer tokens remain available for CLI/agent integrations. The browser never
+Bearer tokens remain available for service integrations. The browser never
 stores or displays them. Missing Google configuration does not enable a fallback.
 
 ## Tree ordering and item history
@@ -116,17 +116,31 @@ new copies and newly created items. It appends aliases and preserves all old IDs
 content, history and workspace permissions. Title-only renames leave IDs unchanged.
 
 
-## Native client authentication
+## HTTPS MCP authentication
 
-`POST /auth/device/start` creates a 10-minute connection code and an independent
-secret. Open `/connect?code=...` in a browser. After Google sign-in,
-`POST /auth/device/approve` requires a session cookie and a same-origin header;
-bearer credentials cannot approve connections. The user explicitly approves the code.
-`POST /auth/device/poll` with `{code,device_secret}` collects the key once.
-`POST /auth/device/revoke` with that Bearer key revokes it. Keys expire after 90 days.
-Start and poll are CLI endpoints and do not require a browser Origin header.
-`POST /mcp` accepts JSON-RPC with a Bearer credential; notifications return 204.
-The native `joppa mcp` client adapts this HTTPS endpoint to MCP stdio.
+Clients connect directly to `/mcp` over Streamable HTTP. A missing or invalid
+credential returns 401 with a `WWW-Authenticate` resource-metadata URL.
+`/.well-known/oauth-protected-resource/mcp` names the authorization server;
+`/.well-known/oauth-authorization-server` advertises its endpoints.
+
+`POST /oauth/register` registers public clients with exact HTTPS or loopback
+redirect URIs. `/oauth/authorize` requires code and PKCE S256. The consent page
+uses Joppa's existing Google browser sign-in. `/oauth/approve` requires a browser
+session, exact same Origin and explicit consent, then returns a single-use code.
+`POST /oauth/token` accepts form-encoded authorization_code or refresh_token
+exchanges. Access tokens last one hour. Refresh tokens last 90 days, rotate
+on every use, and a replay revokes the entire token family.
+`POST /oauth/revoke` with token and client_id revokes that family.
+
+The only resource is the canonical `/mcp` URL. An explicitly different resource
+is rejected; older clients that omit it receive a token for `/mcp` only.
+MCP tokens cannot be used as browser cookies or REST API credentials.
+Notifications return 202 without a body. GET returns 405 after authentication;
+this server does not require an SSE stream or protocol session.
+
+The former local client, stdio transport, device-code login and `/connect`
+page have been removed. Existing device-key hashes remain historical records
+in the WORM database, but are no longer accepted for authentication.
 
 Archived domains and their capabilities remain in read responses for history and
 ID resolution, but are absent from the active tree. New capabilities and REQs cannot
