@@ -283,15 +283,18 @@ function requirementDetails(root, selected, revisionNumber=null) {
     req: selected,
     revision: r.number
   };
+  const acList=E('ol',undefined,'ac-list');
+  acList.setAttribute('aria-label','Acceptance criteria');
+  if(r.acs.length)root.append(E('h3','Acceptance criteria','ac-list-title'),acList);
   for (const a of r.acs) {
     const status = s?.acs[a.id];
-    const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
+    const item = E('li',undefined,'ac-item '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),itemActions('ac',a.id,a.text,selected));item.append(heading);
     if(['pass','fail'].includes(status?.verification))item.append(E('span',status.verification==='pass'?'Passed':'Failed','badge '+status.verification));
     if(current&&!status?.ready&&a.assessment?.reason)item.append(E('p',a.assessment.reason));
     if(a.depends_on?.length)item.append(E('p','Depends on: '+a.depends_on.map(id=>r.acs.find(ac=>ac.id===id)?.text||'Another acceptance criterion').join('; ')));
     if(a.decider)item.append(E('p','Decision: '+personLabel(a.decider)));
-    root.append(item);
+    acList.append(item);
   }
   tasks(root, r);
   runs(root, r, base);
