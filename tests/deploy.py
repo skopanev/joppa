@@ -84,6 +84,13 @@ elif 'install.sh' in cmd:
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
 
+    def test_environment_configuration(self):
+        env = {**self.env, "JOPPA_DEPLOY_HOST": "root@server.example",
+               "JOPPA_DOMAIN": "app.example.test", "JOPPA_CONFIG_DIR": str(self.config)}
+        result = subprocess.run(["bash", str(self.repo / "server/deploy.sh")],
+                                env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

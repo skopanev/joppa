@@ -14,6 +14,7 @@ __pycache__/
 # Deployment inputs are private; only explicit templates belong in Git.
 .env
 .env.*
+!.env.example
 *.env
 !*.env.example
 *.dump

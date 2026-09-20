@@ -3,6 +3,11 @@
 # Optional: JOPPA_SSH_CONFIG=/private/path/to/ssh_config
 set -euo pipefail
 umask 077
+if [[ $# == 0 ]]; then
+    : "${JOPPA_DEPLOY_HOST:?Load your private .env first}" "${JOPPA_DOMAIN:?}" "${JOPPA_CONFIG_DIR:?}"
+    set -- "$JOPPA_DEPLOY_HOST" "$JOPPA_DOMAIN" "$JOPPA_CONFIG_DIR"
+    [[ -z ${JOPPA_INITIAL_DUMP:-} ]] || set -- "$@" "$JOPPA_INITIAL_DUMP"
+fi
 [[ $# -ge 3 && $# -le 4 ]] || {
     echo 'Usage: server/deploy.sh SSH_TARGET DOMAIN PRIVATE_CONFIG_DIR [INITIAL_DUMP]' >&2
     exit 2
@@ -50,7 +55,7 @@ remote_stage=$(ssh "${ssh_args[@]}" "$target" 'umask 077; mktemp -d /root/joppa-
 [[ "$remote_stage" =~ ^/root/joppa-deploy\.[a-zA-Z0-9]+$ ]] || {
     remote_stage=; echo 'Unexpected remote staging path' >&2; exit 1;
 }
-tar -C "$local_stage" -czf - . | ssh "${ssh_args[@]}" "$target" "tar -xzf - -C '$remote_stage'"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$local_stage" -czf - . | ssh "${ssh_args[@]}" "$target" "tar -xzf - -C '$remote_stage'"
 ssh "${ssh_args[@]}" "$target" \
     "mkdir '$remote_stage/source'; tar -xf '$remote_stage/source.tar' -C '$remote_stage/source'; bash '$remote_stage/source/server/install.sh' '$domain' '$remote_stage'"
 curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 \

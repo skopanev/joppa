@@ -17,6 +17,18 @@ server/deploy.sh root@SERVER_IP app.example.com /private/joppa-config
 server/deploy.sh root@SERVER_IP app.example.com /private/joppa-config /private/initial.dump
 ```
 
+Alternatively, copy the root `.env.example` to the ignored `.env`, fill its
+deployment parameters, then load it explicitly and run without arguments:
+
+```sh
+set -a; . ./.env; set +a
+server/deploy.sh
+```
+
+The script does not silently source files. `.env.example` contains placeholders;
+`.env` and the private JSON/Spaces files never belong in Git. Clear
+`JOPPA_INITIAL_DUMP` after the first deployment.
+
 Set `JOPPA_SSH_CONFIG` to use a private SSH configuration file. The host key must
 already be trusted. The domain must point at the host. No hostnames, account
 addresses, SSH keys, product data or live credentials belong in Git.
