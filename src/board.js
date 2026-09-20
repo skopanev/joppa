@@ -106,7 +106,7 @@ $('tree').replaceChildren();
 };
 $('refresh').onclick = () => load().catch(notify);
 const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
-let filters={query:'',domain:'',status:''};
+let filters={domain:'',status:''};
 let filterWorkspace=null;
 function requirementStatus(id) {
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
@@ -119,22 +119,20 @@ function requirementStatus(id) {
 }
 function filterControls(root) {
   if(filterWorkspace!==ws){
-    filterWorkspace=ws;filters={query:'',domain:'',status:''};
+    filterWorkspace=ws;filters={domain:'',status:''};
     try{const saved=JSON.parse(sessionStorage.getItem('joppa-filters:'+ws));
-      if(saved && typeof saved.query==='string' && typeof saved.domain==='string' && typeof saved.status==='string')filters=saved;
+      if(saved && typeof saved.domain==='string' && typeof saved.status==='string')filters={domain:saved.domain,status:saved.status};
     }catch{}
   }
   if(filters.domain&&!data.state.domains[filters.domain])filters.domain='';
   if(filters.status&&!statusLabels[filters.status])filters.status='';
   const toolbar=E('section',undefined,'tree-toolbar');toolbar.setAttribute('aria-label','Filter product tree');
   const fields=E('div',undefined,'filter-fields');
-  const search=E('input');search.type='search';search.id='tree-search';search.placeholder='Search titles, IDs and acceptance criteria';search.setAttribute('aria-label','Search product tree');search.value=filters.query;
-  search.oninput=()=>{filters.query=search.value;applyFilters();};
   const domain=E('select');domain.id='domain-filter';domain.setAttribute('aria-label','Filter by domain');
   const all=E('option','All domains');all.value='';domain.append(all);
   for(const [id,d] of Object.entries(data.state.domains)){const option=E('option',d.title);option.value=id;domain.append(option);}
   domain.value=filters.domain;domain.onchange=()=>{filters.domain=domain.value;applyFilters();};
-  fields.append(search,domain);toolbar.append(fields);
+  fields.append(domain);toolbar.append(fields);
   const statuses=E('div',undefined,'status-filters');statuses.setAttribute('role','group');statuses.setAttribute('aria-label','Requirement status');
   for(const [key,label] of [['','All requirements'],...Object.entries(statusLabels)]){
     const b=button('',()=>{filters.status=filters.status===key?'':key;applyFilters();},'status-filter '+(key||'all'));
@@ -143,38 +141,34 @@ function filterControls(root) {
   toolbar.append(statuses);
   const bottom=E('div',undefined,'filter-bottom');
   const results=E('span','','filter-results');results.id='filter-results';results.setAttribute('role','status');
-  const actions=E('div',undefined,'tree-view-actions');
-  actions.append(button('Clear filters',()=>{filters={query:'',domain:'',status:''};search.value='';domain.value='';applyFilters();},'clear-filters'));
-  bottom.append(results,actions);toolbar.append(bottom);root.append(toolbar);
+  bottom.append(results);toolbar.append(bottom);root.append(toolbar);
 }
 function applyFilters(reveal=true) {
   if(!data)return;
   try{sessionStorage.setItem('joppa-filters:'+ws,JSON.stringify(filters));}catch{}
-  const query=filters.query.trim().toLocaleLowerCase();
-  const matches=(...parts)=>!query||parts.join(' ').toLocaleLowerCase().includes(query);
   const counts=Object.fromEntries(Object.keys(statusLabels).map(key=>[key,0]));
   let shown=0,visibleDomains=0;
   for(const group of $('tree').querySelectorAll('.tree-domain')){
-    const did=group.dataset.domain,d=data.state.domains[did];
+    const did=group.dataset.domain;
     const domainAllowed=!filters.domain||filters.domain===did;
     let domainVisible=false;
     for(const cap of group.querySelectorAll('.tree-capability')){
-      const cid=cap.dataset.capability,c=data.state.capabilities[cid];let capVisible=false;
+      let capVisible=false;
       for(const row of cap.querySelectorAll('.tree-requirement')){
-        const id=row.dataset.requirement,r=data.state.requirements[id].revisions.at(-1);
-        const match=domainAllowed&&matches(did,d.title,cid,c.title,id,r.title,r.body,...r.acs.flatMap(a=>[a.id,a.text]));
+        const id=row.dataset.requirement;
+        const match=domainAllowed;
         const status=requirementStatus(id);
         if(match)counts[status]++;
         row.hidden=!match||!!(filters.status&&filters.status!==status);
-        if(!row.hidden){shown++;capVisible=true;if(reveal&&(query||filters.status||filters.domain))row.open=true;}
+        if(!row.hidden){shown++;capVisible=true;if(reveal&&(filters.status||filters.domain))row.open=true;}
       }
-      if(!filters.status&&domainAllowed&&matches(did,d.title,cid,c.title))capVisible=true;
+      if(!filters.status&&domainAllowed)capVisible=true;
       cap.hidden=!capVisible;domainVisible ||= capVisible;
-      if(capVisible&&reveal&&(query||filters.status||filters.domain))cap.open=true;
+      if(capVisible&&reveal&&(filters.status||filters.domain))cap.open=true;
     }
-    if(!filters.status&&domainAllowed&&matches(did,d.title))domainVisible=true;
+    if(!filters.status&&domainAllowed)domainVisible=true;
     group.hidden=!domainVisible;
-    if(domainVisible){visibleDomains++;if(reveal&&(query||filters.status||filters.domain))group.open=true;}
+    if(domainVisible){visibleDomains++;if(reveal&&(filters.status||filters.domain))group.open=true;}
   }
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   for(const b of $('tree').querySelectorAll('.status-filter')){
@@ -182,7 +176,6 @@ function applyFilters(reveal=true) {
     b.querySelector('.filter-count').textContent=key?counts[key]:total;
   }
   $('filter-results').textContent=shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
-  $('tree').querySelector('.clear-filters').disabled=!(filters.query||filters.domain||filters.status);
   $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
 }
 function render() {
@@ -219,7 +212,7 @@ function render() {
     t.append(group);
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
-  const empty=E('p','No matching items. Try another search or clear the filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
+  const empty=E('p','No requirements match this status.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   intake(t);
 }
@@ -350,7 +343,7 @@ if(!window.SNAPSHOT){
     .finally(()=>document.body.classList.remove('checking-session'));
 }
 function openRequirement(id) {
-  filters={query:'',domain:'',status:''};render();
+  filters={domain:'',status:''};render();
   const req=[...$('tree').querySelectorAll('.tree-requirement')].find(e=>e.dataset.requirement===id);
   if(!req)return;
   for(let node=req;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;

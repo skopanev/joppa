@@ -43,12 +43,12 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 .tree-requirement{border-left-color:var(--status-line,#bdc8c0)}
 .badge.waiting,.badge.available,.badge.progress,.badge.ready,.badge.pass,.badge.fail{color:var(--status-ink);background:var(--status-bg);font-weight:600}
 .tree-requirement .badge{border:1px solid #23372d13}
-.tree-toolbar{margin:0 0 28px}.filter-fields{display:flex;gap:12px}.filter-fields input{flex:1;min-width:0;border:1px solid #cbd6cc;border-radius:7px;background:#fff;padding:11px 14px;font-size:14px;color:#25382c}.filter-fields select{width:220px;font-size:14px;border-color:#cbd6cc;background:#fff}
+.tree-toolbar{margin:0 0 28px}.filter-fields{display:flex;gap:12px}.filter-fields select{width:220px;font-size:14px;border-color:#cbd6cc;background:#fff}
 .status-filters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.status-filter{display:flex;align-items:center;gap:10px;font-size:12px;padding:8px 11px;border-color:transparent;background:var(--status-bg,#e6eae4);color:var(--status-ink,#3a4f40)}.status-filter strong{font-size:13px;font-variant-numeric:tabular-nums}.status-filter:hover{background:var(--status-bg,#e6eae4);border-color:var(--status-line,#889b8a)}.status-filter[aria-pressed=true]{border-color:var(--status-ink,#3a4f40);box-shadow:inset 0 0 0 1px var(--status-ink,#3a4f40)}
-.filter-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.filter-results{font-size:12px;color:var(--muted)}.tree-view-actions{display:flex;gap:14px}.tree-view-actions button{background:transparent;border:0;padding:4px 0;font-size:12px;color:#3b6552}.tree-view-actions button:hover{text-decoration:underline}.filter-empty{padding:28px;border:1px dashed #bdcbbc;border-radius:8px;text-align:center;color:var(--muted)}
+.filter-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.filter-results{font-size:12px;color:var(--muted)}.filter-empty{padding:28px;border:1px dashed #bdcbbc;border-radius:8px;text-align:center;color:var(--muted)}
 #tree [hidden]{display:none!important}
 .requirement-detail>article.pass{background:#f0f8ee}.requirement-detail>article.fail{background:#fff0ec}
-@media(max-width:760px){.filter-fields{flex-direction:column}.filter-fields select{width:100%}.status-filters{gap:7px}.status-filter{font-size:11px;padding:7px 9px;gap:7px}.filter-bottom{gap:8px}.tree-view-actions{gap:18px}.tree-capability>.title-row{padding:9px 11px}.tree-requirement{padding:12px}.tree-toolbar{margin-bottom:24px}}
+@media(max-width:760px){.filter-fields{flex-direction:column}.filter-fields select{width:100%}.status-filters{gap:7px}.status-filter{font-size:11px;padding:7px 9px;gap:7px}.filter-bottom{gap:8px}.tree-capability>.title-row{padding:9px 11px}.tree-requirement{padding:12px}.tree-toolbar{margin-bottom:24px}}
 
 .tree-domain .node-title{min-width:0;overflow-wrap:anywhere;flex:1}
 .tree-capability{margin:0!important;padding:16px 0;border-top:1px solid var(--line)}

@@ -101,8 +101,7 @@ Without Joppa's own Google configuration, sign-in fails closed with a setup mess
 
 The **Workspace** menu lists only accessible products. The full-width product tree
 shows domains, capabilities, requirements and acceptance criteria with distinct
-visual levels and check statuses. Search titles, IDs and ACs; combine domain and
-status filters with live counts. Filter choices stay within each workspace.
+visual levels and check statuses. Use domain and status filters with live counts. Filter choices stay within each workspace.
 Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
 The portal is read-only: use **Agent**
 on a domain, capability or requirement to copy its system ID and title for your agent.
