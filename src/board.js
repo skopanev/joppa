@@ -4,7 +4,8 @@ let token = '',
   ws = '',
   data = null,
   selected = '',
-  revisionNumber = null;
+  revisionNumber = null,
+  selectedNode = null;
 const $ = id => document.getElementById(id),
   E = (tag, text, cls) => {
     const e = document.createElement(tag);
@@ -28,9 +29,18 @@ async function api(path, body) {
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }
+// getRandomValues also works on the private-network HTTP address.
+function newId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 async function send(command) {
   await api('workspaces/' + encodeURIComponent(ws) + '/commands', {
-    request_id: crypto.randomUUID(),
+    request_id: newId(),
     command
   });
   await load();
@@ -94,6 +104,8 @@ const options = map => Object.entries(map).map(([id, v]) => [id, v.title || id])
 async function list() {
   const list = await api('workspaces');
   $('workspaces').replaceChildren();
+  $('workspaces').disabled = list.length === 0;
+  if (!list.length) {const o=E('option','Пока нет воркспейсов');o.value='';$('workspaces').append(o);}
   for (const w of list) {
     const o = E('option', w.title);
     o.value = w.id;
@@ -103,6 +115,7 @@ async function list() {
   $('workspaces').value = ws;
   bootstrap();
   if (ws) await load();
+  else {$('tree').replaceChildren();$('card').replaceChildren(E('h1','Первый продукт'),E('p','Создайте воркспейс — общее дерево продукта для всех его репозиториев.'));}
 }
 let loadNumber = 0;
 async function load() {
@@ -112,20 +125,29 @@ async function load() {
   data = next;
   render();
 }
+async function signIn(value) {
+  token = value;
+  actor = (await api('me')).actor;
+  $('identity').textContent = actor;
+  sessionStorage.setItem('joppa-token',token);
+  $('logout').hidden=false;
+  await list();
+  $('login').hidden = true;
+  $('login').style.display = 'none';
+  $('login').reset();
+}
 $('login').onsubmit = async e => {
   e.preventDefault();
-  token = new FormData(e.target).get('token');
-  try {
-    actor = (await api('me')).actor;
-    $('identity').textContent = actor;
-    await list();
-  } catch (e) {
-    notify(e);
-  }
+  try { await signIn(new FormData(e.target).get('token')); }
+  catch (e) { notify(e); }
 };
+$('logout').onclick=()=>{sessionStorage.removeItem('joppa-token');location.reload();};
 $('workspaces').onchange = async e => {
   ws = e.target.value;
+  selectedNode = null;
   selected = '';
+  $('card').replaceChildren(E('p','Открываю воркспейс…'));
+  $('tree').replaceChildren();
   revisionNumber = null;
   try {
     await load();
@@ -156,13 +178,14 @@ function render() {
   t.append(E('p', !data.launch.configured ? 'Условия запуска ещё не заданы' : data.launch.ready ? 'Обязательные условия запуска приняты' : 'До запуска осталось условий: ' + data.launch.blockers.length));
   for (const [did, d] of Object.entries(data.state.domains)) {
     const group = E('section');
-    group.append(E('h3', d.title), E('small', 'Решает: ' + d.authority + (d.confirmed ? '' : ' · ждёт подтверждения')));
+    const domainHeading=E('div',undefined,'title-row');domainHeading.append(button(d.title,()=>openNode('domain',did),'node-link'),E('small','DOMAIN','type-label'));group.append(domainHeading,E('small',(d.confirmed?'Решает: ':'Черновик · предложен ответственный: ')+d.authority));
     for (const [cid, c] of Object.entries(data.state.capabilities).filter(([, c]) => c.domain === did)) {
-      group.append(E('p', c.title));
+      const capabilityHeading=E('div',undefined,'title-row');capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));group.append(capabilityHeading);
       for (const [id, q] of Object.entries(data.state.requirements).filter(([, q]) => q.capability === cid)) {
         const r = q.revisions.at(-1),
           s = data.summary[id];
         group.append(button((s.accepted ? '✓ ' : s.ready_for_acceptance ? '◉ ' : '○ ') + r.title, () => {
+          selectedNode = null;
           selected = id;
           revisionNumber = null;
           card();
@@ -176,7 +199,7 @@ function render() {
     settings(t);
     intake(t);
   }
-  if (!selected || !data.state.requirements[selected]) selected = Object.keys(data.state.requirements)[0] || '';
+  if (selected && !data.state.requirements[selected]) selected = '';
   card();
 }
 function settings(t) {
@@ -221,7 +244,7 @@ function intake(t) {
   const d = details(t, 'Обращения · ' + Object.keys(data.state.intake).length);
   const f = form(d, 'Сохранить дословно', v => send({
     op: 'intake',
-    id: 'i-' + crypto.randomUUID(),
+    id: 'i-' + newId(),
     said: v.get('said'),
     author: v.get('author')
   }));
@@ -279,15 +302,13 @@ function intake(t) {
 function card() {
   const root = $('card');
   root.replaceChildren();
-  if (!selected) {
-    root.append(E('p', 'Добавьте домен, способность и первое требование.'));
-    return;
-  }
+  if (selectedNode) {nodeCard(root);return;}
+  if (!selected) {workspaceCard(root);return;}
   const q = data.state.requirements[selected],
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
-  root.append(E('h1', r.title), E('p', selected + ' · редакция ' + r.number + ' · владелец ' + r.owner), E('p', r.body));
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));root.append(heading,E('p',selected+' · редакция '+r.number+' · владелец '+r.owner),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
     const o = E('option', 'Редакция ' + old.number + ' · ' + old.reason);
@@ -319,7 +340,7 @@ function card() {
   for (const a of r.acs) {
     const item = E('article');
     const status = s?.acs[a.id];
-    item.append(E('h3', a.id + ' · ' + a.text), E('span', status?.verification || 'см. историю', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Готов к работе' : a.assessment?.reason || 'Ждёт разбора'));
+    item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'см. историю', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Готов к работе' : a.assessment?.reason || 'Ждёт разбора'));
     if (a.before_launch) item.append(E('small', 'Обязательно перед запуском'));
     if (a.decider) item.append(E('p', 'Решение: ' + a.decider));
     if (current && !window.SNAPSHOT) {
@@ -383,7 +404,8 @@ function historyEvent(parent, event, q) {
   const raw = details(d, 'Данные записи');
   raw.append(E('pre', JSON.stringify(c, null, 2)));
 }
-function edit(r) {
+function edit(r, capability = '') {
+  selectedNode = null;
   const root = $('card');
   root.replaceChildren(E('h2', r ? 'Новая редакция — все проверки начнутся с n/a' : 'Новое требование'));
   const f = form(root, 'Сохранить редакцию', v => {
@@ -409,7 +431,7 @@ function edit(r) {
     });
   });
   field(f, 'req', 'ID требования', 'text', r ? selected : '').readOnly = !!r;
-  field(f, 'capability', 'Способность', 'text', r ? data.state.requirements[selected].capability : '', options(data.state.capabilities));
+  field(f, 'capability', 'Способность', 'text', r ? data.state.requirements[selected].capability : capability, options(data.state.capabilities));
   field(f, 'title', 'Что должно быть правдой', 'text', r?.title);
   field(f, 'body', 'Контекст', 'textarea', r?.body);
   field(f, 'owner', 'Владелец', 'text', r?.owner || actor, humans());
@@ -531,7 +553,7 @@ function comments(root, q, r, base) {
   const f = form(d, 'Ответить в карточке', v => send({
     ...base,
     op: 'comment',
-    id: 'c-' + crypto.randomUUID(),
+    id: 'c-' + newId(),
     text: v.get('text'),
     kind: v.get('kind'),
     reply_to: v.get('reply_to') || null,
@@ -548,5 +570,53 @@ if (window.SNAPSHOT) {
   $('refresh').remove();
   data = window.SNAPSHOT;
   ws = data.workspace;
+  const option=E('option',data.state.title);option.value=ws;$('workspaces').replaceChildren(option);
   render();
+}
+
+// A private launch link passes the bearer token in the fragment, never to the
+// HTTP server or its logs. Remove it from browser history before authentication.
+if (!window.SNAPSHOT && location.hash.startsWith('#token=')) {
+  const launchToken = new URLSearchParams(location.hash.slice(1)).get('token');
+  history.replaceState(null, '', location.pathname + location.search);
+  signIn(launchToken).catch(notify);
+} else if(!window.SNAPSHOT && sessionStorage.getItem('joppa-token')) {
+  signIn(sessionStorage.getItem('joppa-token')).catch(e=>{sessionStorage.removeItem('joppa-token');notify(e);});
+}
+function openNode(kind,id) {selected='';revisionNumber=null;selectedNode={kind,id};card();}
+function openRequirement(id) {selectedNode=null;selected=id;revisionNumber=null;card();}
+function workspaceCard(root) {
+  root.append(E('h1',data.state.title),E('p','Воркспейс — один продукт. Его репозитории объединены общими требованиями.','hint'));
+  root.append(E('p',`${Object.keys(data.state.domains).length} доменов · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} требований`,'node-stats'));
+  root.append(E('h2','Домены — где принимают решения'),E('p','Выберите область бизнеса. Внутри — capabilities: что продукт умеет делать.'));
+  for (const [id,d] of Object.entries(data.state.domains)) {
+    const block=E('article');block.append(button(d.title,()=>openNode('domain',id),'node-link'),E('small',d.confirmed?'Подтверждён':'Черновик · ещё не подтверждён'));
+    for(const [cid,c]of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id))block.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'));
+    root.append(block);
+  }
+  if(!Object.keys(data.state.domains).length)root.append(E('p','Начните с домена: кто принимает решения в этой части продукта? Добавить его можно в «Настроить продукт».'));
+}
+function nodeCard(root) {
+  const {kind,id}=selectedNode;
+  const domain=kind==='domain'?data.state.domains[id]:data.state.domains[data.state.capabilities[id].domain];
+  const node=kind==='domain'?domain:data.state.capabilities[id];
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));root.append(button('← '+data.state.title,()=>{selectedNode=null;card();}),heading,E('p',kind==='domain'?data.state.title:domain.title,'breadcrumbs'));
+  root.append(E('p',kind==='domain'?'Домен — область бизнеса с понятным ответом на вопрос «кто здесь принимает решения?».':'Capability — способность продукта. Проверка формулировки: «мы умеем …».','hint'));
+  root.append(E('p',(node.confirmed?'Подтверждено. ':'Черновик. ')+(kind==='domain'?'Ответственный за решения: '+domain.authority:'Принадлежит домену «'+domain.title+'».')));
+  root.append(E('p','У домена и capability нет собственной «зелени»: проверяют AC конкретных требований.'));
+  if(kind==='domain') {
+    root.append(E('h2','Capabilities · что мы умеем'));
+    for(const [cid,c]of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id))root.append(button(c.title,()=>openNode('capability',cid),'nav'));
+  } else {
+    root.append(E('h2','Требования · что должно быть правдой'));
+    const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===id);
+    for(const [rid,q]of reqs)root.append(button(q.revisions.at(-1).title,()=>openRequirement(rid),'nav'));
+    if(!reqs.length)root.append(E('p','Требования ещё не сформулированы. Сама capability не означает, что её поведение уже определено или проверено.'));
+    if(!window.SNAPSHOT)root.append(button('Добавить требование сюда',()=>edit(null,id),'write'));
+  }
+  if(!window.SNAPSHOT&&actor===data.state.admin){
+    const edit=details(root,kind==='domain'?'Уточнить домен':'Уточнить capability');
+    const f=form(edit,'Сохранить уточнение',v=>send({op:kind==='domain'?'edit_domain':'edit_capability',id,title:v.get('title'),reason:v.get('reason'),...(kind==='domain'?{authority:v.get('authority')}:{})}));
+    field(f,'title','Название','text',node.title);if(kind==='domain')field(f,'authority','Кто принимает решения','text',domain.authority,humans());field(f,'reason','Почему меняем','textarea');
+  }
 }

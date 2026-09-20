@@ -368,17 +368,16 @@ fn draw(
 
             out.push_str(&format!(
                 "<details class=\"{cls}\" data-st=\"{state_cls}\"><summary>\
-<span class=\"rhead\"><span class=\"lvl\">requirement</span>\
+<span class=\"req-t\">{}</span>\
+<span class=\"rhead\">\
                  <span class=\"rno\">{}</span>\
                  <button class=\"rid\" data-id=\"{}\" data-copy=\"{}\" title=\"скопировать\" aria-label=\"скопировать\">\
                  <svg viewBox=\"0 0 16 16\" width=\"11\" height=\"11\" aria-hidden=\"true\">\
                  <rect x=\"5.4\" y=\"1.6\" width=\"9\" height=\"9\" rx=\"1.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\
                  <path d=\"M10.6 13.2v.8a1.6 1.6 0 0 1-1.6 1.6H3a1.6 1.6 0 0 1-1.6-1.6V6.4A1.6 1.6 0 0 1 3 4.8h.8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/>\
-                 </svg></button></span>\
-                 <span class=\"req-t\">{}</span>{}\
+                 </svg></button><span class=\"lvl\">requirement</span></span>{}\
                  <span class=\"st {state_cls}\">{}</span></summary><div class=\"req-in\">",
-                esc(&id), esc(&id), esc(&format!("{id} — {title}")),
-                esc(&title),
+                esc(&title), esc(&id), esc(&id), esc(&format!("{id} — {title}")),
                 match &source {
                     Some(src) => format!("<span class=\"cite\">{}</span>", esc(src)),
                     None => "<span class=\"cite none-cite\">источник не указан</span>".to_string(),
@@ -465,8 +464,8 @@ fn draw(
             };
             out.push_str(&format!(
                 "<details class=\"{tag}\"{open} data-node=\"{}\"><summary>\
-                 <span class=\"head\"><span class=\"lvl\">{lvl}</span>\
-                 <span class=\"ttl\">{}</span></span>{}\
+                 <span class=\"head\"><span class=\"ttl\">{}</span>\
+                 <span class=\"lvl\">{lvl}</span></span>{}\
                  </summary><div class=\"inner\">",
                 esc(&id), shown, bar(go, wait, empty)
             ));
@@ -641,7 +640,6 @@ summary:hover .head::before,summary:hover .rhead::before{{opacity:.8}}
 .term{{font-weight:700}}
 .lvl{{font-size:var(--t1);letter-spacing:.09em;text-transform:uppercase;
  font-weight:500;flex:none;color:var(--muted);opacity:.5;line-height:1.35}}
-.cap>summary .lvl{{display:none}}
 
 .cnt{{display:flex;flex-wrap:wrap;gap:.35rem;margin:0 0 0 auto;
  font-size:var(--t1);font-weight:500}}

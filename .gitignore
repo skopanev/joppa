@@ -7,3 +7,6 @@ docs/project-fit.md
 
 __pycache__/
 *.pyc
+
+# Local runtime, credentials and private product bootstrap data
+.local/

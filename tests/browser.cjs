@@ -34,7 +34,12 @@ const assert = require('node:assert/strict');
       state: 'attached'
     });
     await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
-    await page.getByRole('button', {name: /Ключ до запуска/}).click();
+    // Domain and capability navigation explain the model in the actual UI.
+    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
+    await page.getByText('Домен — область бизнеса с понятным ответом на вопрос «кто здесь принимает решения?».',{exact:true}).waitFor();
+    await page.locator('#tree').getByRole('button',{name:'Ограничивать доступ',exact:true}).click();
+    await page.getByText('Capability — способность продукта. Проверка формулировки: «мы умеем …».',{exact:true}).waitFor();
+    await page.locator('#tree').getByRole('button', {name: /Ключ до запуска/}).click();
     await page.getByRole('heading', {
       name: 'Ключ до запуска',
       exact: true
@@ -138,11 +143,22 @@ const assert = require('node:assert/strict');
     }).waitFor();
     assert.equal(await page.getByLabel('Постоянный ID условия').inputValue(), 'key-rights');
     await page.goto('file://' + process.env.JOPPA_TEST_SNAPSHOT);
+    await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
     await page.getByRole('heading', {
       name: 'Ключ до запуска',
       exact: true
     }).waitFor();
     assert.equal(await page.evaluate(() => window.attacked), undefined);
+    await page.goto(process.env.JOPPA_TEST_URL+'/guide');
+    await page.getByRole('heading',{name:'Четыре уровня дерева'}).waitFor();
+    // The launch link works without manually finding/pasting a token, and erases it.
+    await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
+    await page.locator('#identity').filter({hasText:'owner'}).waitFor();
+    assert.equal(await page.evaluate(()=>location.hash),'');
+    await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
+    await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).waitFor();
+    await page.reload();
+    await page.locator('#identity').filter({hasText:'owner'}).waitFor();
     assert.deepEqual(errors, []);
     console.log('Browser: wording → readiness → exact manual evidence → acceptance → launch gate; XSS-safe snapshot passed');
   } finally {

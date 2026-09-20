@@ -95,6 +95,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     }
     let app = Router::new()
         .route("/", get(|| async { Html(page()) }))
+        .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
         .route("/api/me", get(me))
         .route("/api/workspaces", get(list))
         .route("/api/workspaces/{workspace}", get(read))
