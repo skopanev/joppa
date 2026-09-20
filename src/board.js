@@ -235,8 +235,7 @@ function render() {
   const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
   t.replaceChildren();
   const intro=E('div',undefined,'tree-intro');
-  intro.append(E('p','Product tree','tree-eyebrow'),E('h1',data.state.title));
-  intro.append(E('p',`${Object.keys(data.state.domains).length} domains · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} requirements`,'node-stats'));
+  intro.append(E('h1',data.state.title));
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
   t.append(intro);
   filterControls(t);
