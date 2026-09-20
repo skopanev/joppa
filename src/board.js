@@ -273,22 +273,12 @@ function requirementDetails(root, selected, revisionNumber=null) {
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
+  root.dataset.revision=r.number;
   if(current)root.dataset.status=requirementStatus(selected);
+  else delete root.dataset.status;
   if(!current)root.append(E('h3',r.title));
-  root.append(E('p',selected+' · revision '+r.number+' · owner '+r.owner,'hint'),E('p',r.body));
-  const revisions = E('select');
-  for (const old of q.revisions) {
-    const o = E('option', 'Revision ' + old.number + ' · ' + old.reason);
-    o.value = old.number;
-    revisions.append(o);
-  }
-  revisions.setAttribute('aria-label','Requirement revision');
-  revisions.value = r.number;
-  revisions.onchange = e => {
-    requirementDetails(root,selected,+e.target.value);
-  };
-  root.append(revisions);
-  root.append(E('p',current?statusLabels[requirementStatus(selected)]:'Previous revision. See its checks and history for evidence.',current?'badge '+requirementStatus(selected):'hint'));
+  root.append(E('p','Revision '+r.number+(current?'':' · Previous revision'),'hint revision-label'));
+  if(r.body?.trim())root.append(E('p',r.body));
   const base = {
     req: selected,
     revision: r.number
@@ -297,10 +287,10 @@ function requirementDetails(root, selected, revisionNumber=null) {
     const status = s?.acs[a.id];
     const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),itemActions('ac',a.id,a.text,selected));item.append(heading);
-    item.append(E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
-    if (a.before_launch) item.append(E('small', 'Required before launch'));
-    if (a.depends_on?.length) item.append(E('p','Depends on: '+a.depends_on.join(', ')));
-    if (a.decider) item.append(E('p', 'Decision: ' + a.decider));
+    if(['pass','fail'].includes(status?.verification))item.append(E('span',status.verification==='pass'?'Passed':'Failed','badge '+status.verification));
+    if(current&&!status?.ready&&a.assessment?.reason)item.append(E('p',a.assessment.reason));
+    if(a.depends_on?.length)item.append(E('p','Depends on: '+a.depends_on.map(id=>r.acs.find(ac=>ac.id===id)?.text||'Another acceptance criterion').join('; ')));
+    if(a.decider)item.append(E('p','Decision: '+personLabel(a.decider)));
     root.append(item);
   }
   tasks(root, r);
@@ -387,12 +377,14 @@ function historyEvent(parent,event,q){
   if(c.revision)fact('Revision',c.revision);
 }
 function tasks(root, r) {
+  if(!Object.keys(r.tasks).length)return;
   const d = details(root, 'Tasks · ' + Object.keys(r.tasks).length);
   for (const [id, t] of Object.entries(r.tasks)) {
     d.append(E('p', id + ' · ' + t.title + ' · ' + t.acs.join(', ') + ' · ' + t.projects.join(', ') + ' · ' + (t.done ? 'Completed: ' + t.done : 'Assignee: ' + t.assignee)));
   }
 }
 function runs(root, r, base) {
+  if(!Object.keys(r.runs).length)return;
   const d = details(root, 'Checks · ' + Object.keys(r.runs).length);
   for (const [id, run] of Object.entries(r.runs)) {
     const block = details(d, id + ' · ' + (run.finished ? 'Finished' : 'Running'));
@@ -408,9 +400,10 @@ function runs(root, r, base) {
   }
 }
 function comments(root, q, r) {
-  const d = details(root, 'Discussion');
-  d.open = true;
-  for (const [id, c] of Object.entries(q.comments).filter(([, c]) => c.revision === r.number)) {
+  const entries=Object.entries(q.comments).filter(([, c])=>c.revision===r.number);
+  if(!entries.length)return;
+  const d = details(root, 'Discussion · '+entries.length);
+  for (const [id, c] of entries) {
     d.append(E('small', id + ' · ' + c.actor + ' · ' + c.kind + (c.withdrawn ? ' · withdrawn' : '') + (c.reply_to ? ' · reply to ' + c.reply_to : '')), E('p', c.text));
   }
 }
@@ -534,6 +527,24 @@ function showHistory(kind,id,title,reqId){
   });
   const dialog=E('dialog',undefined,'history-dialog');dialog.setAttribute('aria-label','History: '+title);
   const header=E('div',undefined,'history-dialog-header'),heading=E('div');heading.append(E('small','History'),E('h2',title));
+  if(kind==='requirement'){
+    const card=[...document.querySelectorAll('[data-requirement]')].find(node=>node.dataset.requirement===id);
+    const body=card?.querySelector('.requirement-detail');
+    const revisions=E('select',undefined,'history-revisions');
+    revisions.setAttribute('aria-label','Requirement revision');
+    for(const revision of [...q.revisions].reverse()){
+      const option=E('option','Revision '+revision.number+(revision===q.revisions.at(-1)?' · Latest':'')+(revision.reason?' · '+revision.reason:''));
+      option.value=revision.number;revisions.append(option);
+    }
+    revisions.value=body?.dataset.revision||q.revisions.at(-1).number;
+    revisions.onchange=()=>{
+      if(!body)return;
+      requirementDetails(body,id,Number(revisions.value));
+      card.open=true;dialog.close();
+      body.scrollIntoView({block:'nearest'});
+    };
+    heading.append(revisions);
+  }
   const close=button('',()=>dialog.close(),'history-close');close.setAttribute('aria-label','Close history');
   const closeIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','aria-hidden':'true'}))closeIcon.setAttribute(key,value);
