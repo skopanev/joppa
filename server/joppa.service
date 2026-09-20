@@ -1,0 +1,36 @@
+[Unit]
+Description=Joppa product commitments
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=joppa
+Group=joppa
+WorkingDirectory=/var/lib/joppa
+EnvironmentFile=/etc/joppa/runtime.env
+EnvironmentFile=-/etc/joppa/storage.env
+ExecStart=/opt/joppa/bin/joppa serve 6212 127.0.0.1
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/joppa
+MemoryHigh=384M
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

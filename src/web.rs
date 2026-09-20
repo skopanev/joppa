@@ -55,6 +55,27 @@ fn result(value: Result<Value>) -> ApiResult {
         )
     })
 }
+async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) {
+    let check = async {
+        let conn = app.pool.get().await?;
+        let row = conn.query_one(
+            "SELECT to_regclass('joppa.events') IS NOT NULL AND to_regclass('joppa.workspaces') IS NOT NULL", &[]
+        ).await?;
+        Ok::<bool, anyhow::Error>(row.get(0))
+    };
+    let healthy = matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(3), check).await,
+        Ok(Ok(true))
+    );
+    (
+        if healthy {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(json!({"ok":healthy})),
+    )
+}
 async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers)?;
     result(store::list(&app.pool, &actor).await)
@@ -223,6 +244,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     let app = Router::new()
         .route("/", get(|| async { Html(page()) }))
         .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
+        .route("/health", get(health))
         .route("/auth/login", post(login_user))
         .route("/auth/poll", post(poll_login))
         .route("/auth/google/callback", get(google_callback))

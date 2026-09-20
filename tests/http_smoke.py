@@ -67,6 +67,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
                 time.sleep(0.1)
         else:
             raise AssertionError('HTTP server did not become ready')
+        assert request('/health', token='')[1] == {'ok': True}
         assert request('/api/workspaces', token='invalid')[0] == 401
         assert request('/auth/login', body={})[0] == 403  # Origin is mandatory.
         try:
