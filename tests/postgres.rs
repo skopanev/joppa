@@ -50,6 +50,18 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         json!({"op":"workspace","title":"Another product"}),
     )
     .await?;
+    execute(
+        &pool,
+        &other,
+        "outsider",
+        "same-local-name",
+        json!({"op":"domain","id":"d","title":"Other domain","authority":"outsider"}),
+    )
+    .await?;
+    assert_ne!(
+        before["system_ids"]["domain"]["d"],
+        store::read(&pool, &other, "outsider").await?["system_ids"]["domain"]["d"]
+    );
     let visible = store::list(&pool, "outsider").await?;
     assert!(visible.as_array().unwrap().iter().any(|w| w["id"] == other));
     assert!(!visible.as_array().unwrap().iter().any(|w| w["id"] == ws));
@@ -151,7 +163,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
             .get::<_, i64>(0),
         1
     );
-    for table in ["joppa.events", "joppa.workspaces"] {
+    for table in ["joppa.events", "joppa.workspaces", "joppa.item_ids"] {
         for sql in [
             format!(
                 "UPDATE {table} SET {}={} WHERE false",
@@ -181,6 +193,15 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     // Runtime role cannot disable triggers, rewrite history or own the schema.
     let tx = conn.transaction().await?;
     tx.batch_execute("CREATE ROLE joppa_test_runtime NOLOGIN; GRANT USAGE ON SCHEMA joppa TO joppa_test_runtime; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_test_runtime; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_test_runtime; SET LOCAL ROLE joppa_test_runtime").await?;
+    tx.execute("INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,coalesce(max(position),0)+1,'owner','runtime-create','{\"op\":\"domain\",\"id\":\"runtime\",\"title\":\"Runtime\",\"authority\":\"owner\"}'::jsonb FROM joppa.events WHERE workspace=$1",&[&ws]).await?;
+    assert!(
+        tx.query_opt(
+            "SELECT id FROM joppa.item_ids WHERE workspace=$1 AND local_id='runtime'",
+            &[&ws]
+        )
+        .await?
+        .is_some()
+    );
     tx.batch_execute("SAVEPOINT permissions").await?;
     assert!(
         tx.batch_execute("ALTER TABLE joppa.events DISABLE TRIGGER events_worm")
@@ -197,6 +218,10 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
             .unwrap()
             .len(),
         2
+    );
+    assert_eq!(
+        before["system_ids"],
+        store::read(&pool, &ws, "owner").await?["system_ids"]
     );
     Ok(())
 }

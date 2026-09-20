@@ -97,6 +97,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
         ok({'op': 'domain', 'id': 'security', 'title': 'Доступ к данным', 'authority': 'owner'})
         ok({'op': 'capability', 'id': 'restrict', 'title': 'Ограничивать доступ', 'domain': 'security'})
+        ok({'op':'capability','id':'audit','title':'Audit access','domain':'security'})
         ok({'op':'domain','id':'operations','title':'Operations','authority':'owner'})
         ok({'op':'capability','id':'observe','title':'Observe service health','domain':'operations'})
         ok({'op': 'revise', 'req': 'key', 'expected_revision': 0, 'capability': 'restrict',
@@ -185,6 +186,23 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',
             'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True}]})
+        refs=request('/api/workspaces/'+ws)[1]['system_ids']
+        all_refs=[ref for items in refs.values() for ref in items.values()]
+        assert len(all_refs)==len(set(all_refs))
+        for kind,items in refs.items():
+            tag={'domain':'D','capability':'C','requirement':'R','ac':'A'}[kind]
+            for local_id,ref in items.items():
+                assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
+                msg={'jsonrpc':'2.0','id':9,'method':'tools/call','params':{'name':'joppa_read','arguments':{'item_id':ref}}}
+                found=json.loads(subprocess.check_output([BIN],env=env,input=json.dumps(msg)+'\n',text=True))
+                selection=json.loads(found['result']['content'][0]['text'])['selection']
+                assert selection['kind']==kind and selection['id']==local_id
+                if kind=='ac': assert selection['req'] in ('key','auto')
+        msg['params']['arguments']['item_id']=refs['requirement']['key']
+        denied=json.loads(subprocess.check_output([BIN],env={**env,'JOPPA_ACTOR':'other-owner'},input=json.dumps(msg)+'\n',text=True))
+        assert denied['result']['isError'] and denied['result']['content'][0]['text']=='Workspace not found'
+        subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
+        assert request('/api/workspaces/'+ws)[1]['system_ids']==refs
         before=request('/api/workspaces/'+ws)[1]
         ok({'op':'rename_workspace','title':'Review workspace','reason':'Name clarified'})
         after=request('/api/workspaces/'+ws)[1]
@@ -195,7 +213,12 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             browser_env = {**env, 'JOPPA_TEST_URL': base, 'JOPPA_TEST_TOKEN': owner_token,
                            'JOPPA_TEST_WORKSPACE': ws, 'JOPPA_TEST_SNAPSHOT': str(snapshot)}
             subprocess.run(['node', str(ROOT / 'tests/browser.cjs')], env=browser_env, check=True)
-            assert request('/api/workspaces/'+ws)[1]['history']==after['history'], 'portal must not write'
+            ordered=request('/api/workspaces/'+ws)[1]
+            assert ordered['history'][:-3]==after['history'], 'existing history must be immutable'
+            assert [e['command']['op'] for e in ordered['history'][-3:]]==['reorder_tree']*3
+            assert {**ordered['state'],'tree_order':after['state']['tree_order']}==after['state']
+            assert ordered['summary']==after['summary']
+            assert ordered['system_ids']==refs
         print('HTTP auth, workspace isolation, idempotency, CLI snapshot and MCP smoke passed')
     finally:
         server.terminate()

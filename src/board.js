@@ -1,5 +1,6 @@
 /* SNAPSHOT */
-let ws = '', data = null;
+let ws = '', data = null, viewerActor = '';
+let orderSaving=false,draggedNode=null,orderMenu=null;
 const $ = id => document.getElementById(id),
   E = (tag, text, cls) => {
     const e = document.createElement(tag);
@@ -59,6 +60,7 @@ async function load() {
 }
 async function showApp(identity) {
   if(identity.email===undefined)identity={...identity,...await api('me')};
+  viewerActor=identity.actor;
   $('identity').textContent=identity.email||'Account';
   document.body.classList.add('authenticated');
   $('logout').hidden=false;
@@ -188,27 +190,29 @@ function render() {
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
   t.append(intro);
   filterControls(t);
-  for (const [did,d] of Object.entries(data.state.domains)) {
+  for (const [did,d] of orderedEntries('domain')) {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
-    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did,d.title));group.append(heading);
+    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did,d.title));group.append(heading);addOrdering(group,heading,'domain',null,did);
     const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));group.append(body);
-    for(const [cid,c] of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===did)){
+    for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid,c.title));cap.append(head);
-      const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===cid);
+      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid,c.title));cap.append(head);addOrdering(cap,head,'capability',did,cid);
+      const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
         const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),copyButton('requirement',id,r.title));
-        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
+        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);addOrdering(req,reqHead,'requirement',cid,id);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
         cap.append(req);
       }
+      appendNodeHistory(cap,'capability',cid);
       body.append(cap);
     }
+    appendNodeHistory(body,'domain',did);
     t.append(group);
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
@@ -245,7 +249,8 @@ function requirementDetails(root, selected, revisionNumber=null) {
   for (const a of r.acs) {
     const status = s?.acs[a.id];
     const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
-    item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
+    const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),copyButton('ac',a.id,a.text));item.append(heading);
+    item.append(E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
     if (a.before_launch) item.append(E('small', 'Required before launch'));
     if (a.depends_on?.length) item.append(E('p','Depends on: '+a.depends_on.join(', ')));
     if (a.decider) item.append(E('p', 'Decision: ' + a.decider));
@@ -254,13 +259,15 @@ function requirementDetails(root, selected, revisionNumber=null) {
   tasks(root, r);
   runs(root, r, base);
   comments(root, q, r);
-  const h = details(root, 'Revision history');
-  for (const ev of data.history.filter(e => e.command.req === selected)) {
-    historyEvent(h, ev, q);
-  }
+  appendNodeHistory(root,'requirement',selected,q);
 }
+
 function historyEvent(parent, event, q) {
   const names = {
+    reorder_tree: 'Order changed',
+    edit_domain: 'Domain updated',
+    edit_capability: 'Capability updated',
+    confirm_tree: 'Structure confirmed',
     revise: 'Revision saved',
     comment: 'Discussion reply',
     assess: 'Readiness assessed',
@@ -278,7 +285,8 @@ function historyEvent(parent, event, q) {
   };
   const c = event.command,
     d = details(parent, event.recorded_at + ' · ' + event.actor + ' · ' + (names[c.op] || c.op));
-  if (c.op === 'revise') {
+  if(c.op==='reorder_tree'){d.append(E('p','Before: '+c.expected.join(' → ')),E('p','After: '+c.ids.join(' → ')));}
+  else if (c.op === 'revise') {
     const old = q.revisions[c.expected_revision - 1];
     d.append(E('p', 'Reason: ' + c.reason), E('p', 'Wording: ' + (old?.title || '—') + ' → ' + c.title));
     if (old?.body !== c.body) d.append(E('p', 'Context: ' + (old?.body || '—') + ' → ' + c.body));
@@ -366,7 +374,9 @@ function intake(root) {
 }
 function copyButton(kind,id,title) {
   const b=button('',async()=>{
-    const text=id+' — '+title;
+    const systemId=data.system_ids?.[kind]?.[id];
+    if(!systemId)throw Error('System ID unavailable. Refresh the page.');
+    const text=systemId+' — '+title;
     try{
       if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
       await navigator.clipboard.writeText(text);
@@ -385,9 +395,104 @@ function copyButton(kind,id,title) {
   const square=document.createElementNS(svgNS,'rect');
   for(const [key,value] of Object.entries({x:'8',y:'8',width:'12',height:'12',rx:'2'}))square.setAttribute(key,value);
   const back=document.createElementNS(svgNS,'path');back.setAttribute('d','M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4');
-  icon.append(square,back);b.append(icon,E('span','Agent'));
-  b.title='Copy ID and title for your agent';
+  icon.append(square,back);
+  const face=icon.cloneNode(false);face.setAttribute('width','18');face.setAttribute('height','18');face.classList.add('agent-face');
+  for(const [tag,attrs] of [
+    ['rect',{x:'4',y:'7',width:'16',height:'13',rx:'4'}],
+    ['path',{d:'M12 7V4m-2 0h4M1 12v4m22-4v4M9 16h6'}],
+    ['circle',{cx:'8.5',cy:'12',r:'1',fill:'currentColor',stroke:'none'}],
+    ['circle',{cx:'15.5',cy:'12',r:'1',fill:'currentColor',stroke:'none'}]
+  ]){const part=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attrs))part.setAttribute(key,value);face.append(part);}
+  b.append(icon,face);
+  b.title='Copy for agent';
   b.setAttribute('aria-label','Copy '+kind+' ID and title: '+id);
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
+}
+
+function orderedEntries(kind,parent=null) {
+  const map=kind==='domain'?data.state.domains:kind==='capability'?data.state.capabilities:data.state.requirements;
+  const ids=Object.keys(map).filter(id=>kind==='domain'||(kind==='capability'?map[id].domain:map[id].capability)===parent).sort();
+  const key=kind+(parent?':'+parent:'');
+  const saved=(data.state.tree_order?.[key]||[]).filter(id=>ids.includes(id));
+  return [...saved,...ids.filter(id=>!saved.includes(id))].map(id=>[id,map[id]]);
+}
+function appendNodeHistory(root,kind,id,q=null) {
+  const history=details(root,'History');history.className='node-history';
+  const created=data.history.find(e=>e.command.op===kind&&e.command.id===id)?.position||0;
+  for(const event of data.history){
+    if(event.position<created)continue;
+    const c=event.command;
+    const moved=c.op==='reorder_tree'&&c.kind===kind&&c.ids.includes(id)&&c.expected.indexOf(id)!==c.ids.indexOf(id);
+    const changed=kind==='requirement'?c.req===id:((c.op===kind||c.op==='edit_'+kind)&&c.id===id)||c.op==='confirm_tree';
+    if(moved||changed)historyEvent(history,event,q);
+  }
+}
+
+function closeOrderMenu(){orderMenu?.remove();orderMenu=null;}
+document.addEventListener('click',e=>{if(orderMenu&&!orderMenu.contains(e.target))closeOrderMenu();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOrderMenu();});
+async function saveOrder(kind,parent,expected,ids,focusId) {
+  if(orderSaving||ids.every((id,index)=>id===expected[index]))return;
+  const targetWorkspace=ws;orderSaving=true;closeOrderMenu();
+  document.querySelectorAll('.reorder-handle').forEach(b=>b.disabled=true);
+  try{
+    const response=await fetch('/api/workspaces/'+encodeURIComponent(targetWorkspace)+'/order',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({request_id:crypto.randomUUID(),kind,parent,expected,ids})
+    });
+    const result=await response.json();
+    if(!response.ok){if(ws===targetWorkspace)await load();throw Error(result.error||'Could not save the order.');}
+    if(ws===targetWorkspace){
+      await load();
+    }
+    notify('Order saved.');
+  }finally{
+    orderSaving=false;document.querySelectorAll('.reorder-handle').forEach(b=>b.disabled=false);
+    if(ws===targetWorkspace){
+      const moved=[...document.querySelectorAll('[data-tree-node]')].find(e=>e.dataset.treeNode===kind+':'+focusId);
+      moved?.querySelector(':scope > summary > .reorder-handle')?.focus({preventScroll:true});
+    }
+  }
+}
+function moveSibling(kind,parent,id,offset) {
+  const expected=orderedEntries(kind,parent).map(([id])=>id),ids=[...expected],index=ids.indexOf(id),next=index+offset;
+  if(next<0||next>=ids.length)return;
+  [ids[index],ids[next]]=[ids[next],ids[index]];
+  return saveOrder(kind,parent,expected,ids,id);
+}
+function addOrdering(node,summary,kind,parent,id) {
+  if(window.SNAPSHOT||viewerActor!==data.state.admin)return;
+  const handle=E('button','⠿','reorder-handle');handle.type='button';handle.draggable=true;handle.disabled=orderSaving;
+  handle.setAttribute('aria-label','Reorder '+kind+': '+id);handle.setAttribute('aria-haspopup','menu');
+  handle.title='Drag to reorder, or click for move options';summary.classList.add('can-reorder');summary.append(handle);
+  handle.onclick=e=>{
+    e.preventDefault();e.stopPropagation();closeOrderMenu();
+    const menu=E('div',undefined,'reorder-menu');menu.setAttribute('role','menu');menu.setAttribute('aria-label','Move item');
+    const siblings=orderedEntries(kind,parent),index=siblings.findIndex(([key])=>key===id);
+    for(const [label,offset] of [['Move up',-1],['Move down',1]]){
+      const b=button(label,()=>moveSibling(kind,parent,id,offset));b.setAttribute('role','menuitem');b.disabled=index+offset<0||index+offset>=siblings.length;menu.append(b);
+    }
+    orderMenu=menu;document.body.append(menu);
+    const rect=handle.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(rect.right-150,innerWidth-158))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom+5,innerHeight-100))+'px';
+    menu.querySelector('button:not(:disabled)')?.focus();
+  };
+  handle.onkeydown=e=>{if(['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();Promise.resolve(moveSibling(kind,parent,id,e.key==='ArrowUp'?-1:1)).catch(notify);}};
+  handle.ondragstart=e=>{if(orderSaving){e.preventDefault();return;}draggedNode={kind,parent,id,workspace:ws};e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move';closeOrderMenu();};
+  const clear=()=>document.querySelectorAll('[data-drop]').forEach(e=>delete e.dataset.drop);
+  handle.ondragend=()=>{draggedNode=null;clear();};
+  summary.ondragover=e=>{
+    clear();
+    if(!draggedNode||orderSaving||draggedNode.workspace!==ws||draggedNode.kind!==kind||draggedNode.parent!==parent||draggedNode.id===id)return;
+    e.preventDefault();e.stopPropagation();clear();e.dataTransfer.dropEffect='move';
+    const rect=summary.getBoundingClientRect();summary.dataset.drop=e.clientY<rect.top+rect.height/2?'before':'after';
+  };
+  summary.ondragleave=e=>{if(!summary.contains(e.relatedTarget))delete summary.dataset.drop;};
+  summary.ondrop=e=>{
+    if(!summary.dataset.drop||!draggedNode||draggedNode.workspace!==ws||draggedNode.kind!==kind||draggedNode.parent!==parent)return;
+    e.preventDefault();e.stopPropagation();
+    const from=draggedNode.id,expected=orderedEntries(kind,parent).map(([id])=>id),ids=expected.filter(id=>id!==from);
+    ids.splice(ids.indexOf(id)+(summary.dataset.drop==='after'?1:0),0,from);
+    draggedNode=null;clear();saveOrder(kind,parent,expected,ids,from).catch(notify);
+  };
 }

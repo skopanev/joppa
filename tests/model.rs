@@ -334,3 +334,70 @@ fn unchanged_specialist_decision_can_be_reused_but_evidence_cannot() {
     a["revision"] = json!(4);
     w.no("agent", a);
 }
+
+#[test]
+fn tree_order_is_owner_only_scoped_and_does_not_change_requirement_evidence() {
+    let mut w = World::new();
+    w.ready();
+    w.run("verified", "pass");
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"other","title":"Other","authority":"owner"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"capability","id":"second","title":"Second","domain":"d"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"capability","id":"foreign","title":"Foreign","domain":"other"}),
+    );
+    let mut second = revision(0);
+    second["req"] = json!("second");
+    second["acs"] = json!([{"id":"second-ac","text":"Separate criterion"}]);
+    w.ok("agent", second);
+    let before = serde_json::to_value(&w.state).unwrap();
+    for (kind, parent, expected, ids) in [
+        ("domain", None, vec!["d", "other"], vec!["other", "d"]),
+        (
+            "capability",
+            Some("d"),
+            vec!["c", "second"],
+            vec!["second", "c"],
+        ),
+        (
+            "requirement",
+            Some("c"),
+            vec!["r", "second"],
+            vec!["second", "r"],
+        ),
+    ] {
+        let command =
+            json!({"op":"reorder_tree","kind":kind,"parent":parent,"expected":expected,"ids":ids});
+        w.no("agent", command.clone());
+        let mut invalid = command.clone();
+        invalid["ids"] = json!(["foreign", "foreign"]);
+        w.no("owner", invalid);
+        w.ok("owner", command.clone());
+        w.no("owner", command); // stale order cannot overwrite another move
+        assert_eq!(
+            joppa::tree_order::ordered_ids(&w.state, kind, parent).unwrap(),
+            ids
+        );
+    }
+    let mut after = serde_json::to_value(&w.state).unwrap();
+    after["tree_order"] = before["tree_order"].clone();
+    assert_eq!(
+        after, before,
+        "ordering preserves all content, revisions and checks"
+    );
+    w.ok(
+        "owner",
+        json!({"op":"capability","id":"added","title":"Added","domain":"d"}),
+    );
+    assert_eq!(
+        joppa::tree_order::ordered_ids(&w.state, "capability", Some("d")).unwrap(),
+        vec!["second", "c", "added"]
+    );
+    assert!(joppa::tree_order::ordered_ids(&w.state, "domain", Some("d")).is_err());
+}

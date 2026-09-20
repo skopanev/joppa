@@ -28,6 +28,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/001_journal.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/002_item_ids.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -117,6 +119,19 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
         state.members.contains_key(actor),
         "workspace not found or access denied"
     );
+    let mut system_ids = json!({"domain":{},"capability":{},"requirement":{},"ac":{}});
+    for row in conn
+        .query(
+            "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?
+    {
+        let kind: String = row.get(0);
+        let local: String = row.get(1);
+        let id: String = row.get(2);
+        system_ids[&kind][&local] = json!(id);
+    }
     let summaries = summaries(&state);
     let configured = state.requirements.values().any(|q| {
         q.revisions
@@ -139,7 +154,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
         })
         .collect();
     Ok(
-        json!({"workspace": workspace, "position": events.len(), "state": state, "summary": summaries, "history": events, "launch": {"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."}}),
+        json!({"workspace": workspace, "system_ids":system_ids, "position": events.len(), "state": state, "summary": summaries, "history": events, "launch": {"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."}}),
     )
 }
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
@@ -188,4 +203,38 @@ pub fn gate(card: &Value, subject: &std::collections::BTreeMap<String, String>) 
         );
     }
     Ok(())
+}
+
+/// Resolve a globally unique reference without exposing another workspace's content.
+pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let row = conn
+        .query_opt(
+            "SELECT workspace,kind,local_id FROM joppa.item_ids WHERE id=$1",
+            &[&id],
+        )
+        .await?
+        .ok_or(AccessDenied)?;
+    let workspace: String = row.get(0);
+    let kind: String = row.get(1);
+    let local_id: String = row.get(2);
+    drop(conn);
+    let mut result = read(pool, &workspace, actor).await?;
+    result["selection"] = json!({"kind":kind,"id":local_id,"system_id":id});
+    if kind == "ac" {
+        let state: Workspace = serde_json::from_value(result["state"].clone())?;
+        for (req, q) in &state.requirements {
+            if let Some(revision) = q
+                .revisions
+                .iter()
+                .rev()
+                .find(|r| r.acs.iter().any(|ac| ac.id == local_id))
+            {
+                result["selection"]["req"] = json!(req);
+                result["selection"]["revision"] = json!(revision.number);
+                break;
+            }
+        }
+    }
+    Ok(result)
 }

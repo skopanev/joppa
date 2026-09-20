@@ -137,6 +137,113 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         403,
         "real authenticated browser remains read-only"
     );
+    // This narrow cookie endpoint may reorder, but cannot mutate content or cross workspaces.
+    let workspace = format!("order-{}", uuid::Uuid::new_v4());
+    for (i, value) in [
+        json!({"op":"workspace","title":"Ordering test"}),
+        json!({"op":"domain","id":"a","title":"A","authority":"owner"}),
+        json!({"op":"domain","id":"b","title":"B","authority":"owner"}),
+        json!({"op":"member","id":"other-owner","role":"human"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        store::execute(
+            &pool,
+            &workspace,
+            "owner",
+            &format!("setup-{i}"),
+            &serde_json::from_value(value)?,
+        )
+        .await?;
+    }
+    let endpoint = format!("{base}/api/workspaces/{workspace}/order");
+    let body = json!({"request_id":"move","kind":"domain","parent":null,"expected":["a","b"],"ids":["b","a"]});
+    for origin in [None, Some("https://foreign.example")] {
+        let mut request = client.post(&endpoint).header("cookie", &cookie).json(&body);
+        if let Some(origin) = origin {
+            request = request.header("origin", origin);
+        }
+        assert_eq!(request.send().await?.status(), 403);
+    }
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .header("origin", &base)
+            .json(&body)
+            .send()
+            .await?
+            .status(),
+        401
+    );
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .header("origin", &base)
+            .header("cookie", format!("joppa_session={other}"))
+            .json(&body)
+            .send()
+            .await?
+            .status(),
+        409
+    );
+    assert_eq!(
+        client
+            .post(format!("{base}/api/workspaces/absent/order"))
+            .header("origin", &base)
+            .header("cookie", &cookie)
+            .json(&body)
+            .send()
+            .await?
+            .status(),
+        404
+    );
+    let mut injected = body.clone();
+    injected["command"] = json!({"op":"workspace","title":"Forbidden"});
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .header("origin", &base)
+            .header("cookie", &cookie)
+            .json(&injected)
+            .send()
+            .await?
+            .status(),
+        422
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("origin", &base)
+                .header("cookie", &cookie)
+                .json(&body)
+                .send()
+                .await?
+                .status(),
+            200
+        );
+    }
+    let saved = store::read(&pool, &workspace, "owner").await?;
+    assert_eq!(
+        saved["history"].as_array().unwrap().len(),
+        5,
+        "retry appends no extra event"
+    );
+    assert_eq!(saved["state"]["tree_order"]["domain"], json!(["b", "a"]));
+    let mut stale = body.clone();
+    stale["request_id"] = json!("stale");
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .header("origin", &base)
+            .header("cookie", &cookie)
+            .json(&stale)
+            .send()
+            .await?
+            .status(),
+        409
+    );
     let response = client
         .post(format!("{base}/auth/logout"))
         .header("cookie", &cookie)

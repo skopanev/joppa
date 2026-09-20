@@ -5,3 +5,4 @@ mod intake;
 pub mod model;
 pub mod sessions;
 pub mod store;
+pub mod tree_order;

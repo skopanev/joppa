@@ -13,6 +13,12 @@ pub enum Command {
         title: String,
         reason: String,
     },
+    ReorderTree {
+        kind: String,
+        parent: Option<String>,
+        expected: Vec<String>,
+        ids: Vec<String>,
+    },
     Member {
         id: String,
         role: String,
@@ -252,6 +258,14 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             nonempty(title)?;
             nonempty(reason)?;
             w.title = title.clone();
+        }
+        Command::ReorderTree {
+            kind,
+            parent,
+            expected,
+            ids,
+        } => {
+            crate::tree_order::reorder(w, actor, kind, parent.as_deref(), expected, ids)?;
         }
         Command::Member { id, role } => {
             ensure!(actor == w.admin, "workspace owner required");

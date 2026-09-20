@@ -132,6 +132,32 @@ async fn command(
         .await,
     )
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OrderRequest {
+    request_id: String,
+    kind: String,
+    parent: Option<String>,
+    expected: Vec<String>,
+    ids: Vec<String>,
+}
+async fn reorder(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<OrderRequest>,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    // The only browser write: a typed ordering operation, protected against CSRF.
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let command = Command::ReorderTree {
+        kind: request.kind,
+        parent: request.parent,
+        expected: request.expected,
+        ids: request.ids,
+    };
+    result(store::execute(&app.pool, &workspace, &actor, &request.request_id, &command).await)
+}
 async fn me(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(
@@ -303,6 +329,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces", get(list))
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/commands", post(command))
+        .route("/api/workspaces/{workspace}/order", post(reorder))
         .with_state(App {
             pool,
             identities: Arc::new(identities),

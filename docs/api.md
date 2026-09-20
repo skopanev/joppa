@@ -10,6 +10,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 workspace: title
 rename_workspace: title, reason; workspace owner only; preserves workspace ID and history
 member: id, role (human|agent|runner); workspace owner only
+reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only
 project: id, repository
 domain: id, title, authority (human member)
 capability: id, title, domain
@@ -72,9 +73,39 @@ HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
 `POST /auth/logout` invalidates the session server-side.
 
 All POST auth endpoints require an exact same-origin `Origin` header.
-Browser sessions are read-only: command requests without an Authorization header
+Content command requests without an Authorization header
 return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Session token hashes and revocations persist in PostgreSQL; sign-in survives
 server restarts until the original 12-hour expiry or explicit sign-out. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
 (or null for an identity without a Google binding).
 Bearer tokens remain available for CLI/agent integrations. The browser never
 stores or displays them. Missing Google configuration does not enable a fallback.
+
+## Tree ordering and item history
+
+`POST /api/workspaces/{workspace}/order` is the only browser write. It accepts
+`{"request_id":"unique-id","kind":"domain","parent":null,"expected":["a","b"],"ids":["b","a"]}`.
+An authenticated workspace owner and same-origin Origin header are required.
+Unknown fields are rejected. `expected` must match the current sibling order;
+`ids` must contain exactly those siblings once. Moves between parents are rejected.
+Retrying the same request ID is idempotent. New siblings append to the saved order.
+The same operation is available through MCP as `reorder_tree`.
+
+Every completed operation appends one journal event with actor and database time.
+Each domain, capability and requirement exposes its relevant events in History.
+REQ wording and AC changes are saved together through `revise`, never per keystroke.
+Reordering records an event but leaves revisions, acceptance and check evidence intact.
+
+## Permanent item IDs
+
+Read responses include `system_ids`, grouped by `domain`, `capability`, `requirement`
+and `ac`. Each ID is `workspace-D|C|R|A-XXXXXXXXXX` with a random 10-character
+uppercase alphanumeric suffix and a database-wide unique constraint. A collision
+is retried; IDs are immutable and survive wording changes, revisions and ordering.
+Existing cards receive IDs additively without rewriting journal events.
+
+Copy buttons at all four levels copy only this permanent ID and the selected title
+or AC text. Resolve a copied ID through `joppa_read({"item_id":"..."})`; it returns
+the authorized workspace and `selection` with kind and local command ID. AC selections
+also include the parent REQ and latest revision containing the AC.
+`joppa_read({"workspace":"..."})` remains available; supply exactly one selector.
+Commands continue to use local IDs from the resolved workspace, never guessed slugs.

@@ -7,6 +7,8 @@ pub struct Workspace {
     pub admin: String,
     pub members: BTreeMap<String, String>,
     pub domains: BTreeMap<String, Domain>,
+    #[serde(default)]
+    pub tree_order: BTreeMap<String, Vec<String>>,
     pub capabilities: BTreeMap<String, Capability>,
     pub projects: BTreeMap<String, String>,
     pub requirements: BTreeMap<String, Requirement>,

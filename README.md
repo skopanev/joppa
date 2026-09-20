@@ -103,9 +103,15 @@ The **Workspace** menu lists only accessible products. The full-width product tr
 shows domains, capabilities, requirements and acceptance criteria with distinct
 visual levels and check statuses. Use domain and status filters with live counts. Filter choices stay within each workspace.
 Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
-The portal is read-only: use **Agent**
-on a domain, capability or requirement to copy its system ID and title for your agent.
-All changes and decisions go through MCP. Browser sessions cannot submit commands.
+Use the **copy + robot** button
+on a domain, capability, requirement or AC to copy its permanent, database-wide unique
+ID and title/text for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
+`joppa_read({"item_id":"..."})`.
+Content changes and decisions go through MCP. The workspace owner can reorder siblings
+using the drag handle, its Move up/down menu or arrow keys. The order is shared and persists
+after reload. Domain, capability and REQ cards have History: one saved operation per entry, with author and time.
+AC wording history is part of its REQ revisions.
+Reordering does not create a REQ revision or reset checks.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
 Если старый сервер уже занимает 6212, запустите новый на `6213`.
 Публичный доступ требует своего HTTPS-прокси.

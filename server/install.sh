@@ -60,7 +60,9 @@ if [[ "$db_exists" != 1 ]]; then
         rm -f "$stage/initial.dump"
     fi
 fi
-runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa < migrations/001_journal.sql
+for migration in migrations/*.sql; do
+    runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa < "$migration"
+done
 runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa -c 'CREATE EXTENSION IF NOT EXISTS vector'
 # Generate a database password only once and keep it out of argv, logs and Git.
 python3 - <<'PY'
