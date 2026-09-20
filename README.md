@@ -103,8 +103,9 @@ The **Workspace** menu lists only accessible products. The full-width product tr
 shows domains, capabilities, requirements and acceptance criteria with distinct
 visual levels and check statuses. Search titles, IDs and ACs; combine domain and
 status filters with live counts. Filter choices stay within each workspace.
-The portal is read-only: use **Copy for agent**
-on a domain, capability or requirement to discuss its context with your agent.
+Every page reload collapses the tree; open domains individually.
+The portal is read-only: use **Copy ID**
+on a domain, capability or requirement to pass its identifier to your agent.
 All changes and decisions go through MCP. Browser sessions cannot submit commands.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
 Если старый сервер уже занимает 6212, запустите новый на `6213`.

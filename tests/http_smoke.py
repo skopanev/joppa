@@ -181,7 +181,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert gate.returncode == 0, gate.stderr
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
         assert gate.returncode != 0
-        # Copy must distinguish the viewed historical revision from the latest status.
+        # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',
             'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True}]})

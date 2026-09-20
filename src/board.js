@@ -149,10 +149,10 @@ function filterControls(root) {
   const bottom=E('div',undefined,'filter-bottom');
   const results=E('span','','filter-results');results.id='filter-results';results.setAttribute('role','status');
   const actions=E('div',undefined,'tree-view-actions');
-  actions.append(button('Clear filters',()=>{filters={query:'',domain:'',status:''};search.value='';domain.value='';applyFilters();},'clear-filters'),button('Expand all',()=>{for(const d of root.querySelectorAll('.tree-domain:not([hidden])'))d.open=true;}),button('Collapse all',()=>{for(const d of root.querySelectorAll('.tree-domain'))d.open=false;}));
+  actions.append(button('Clear filters',()=>{filters={query:'',domain:'',status:''};search.value='';domain.value='';applyFilters();},'clear-filters'));
   bottom.append(results,actions);toolbar.append(bottom);root.append(toolbar);
 }
-function applyFilters() {
+function applyFilters(reveal=true) {
   if(!data)return;
   try{sessionStorage.setItem('joppa-filters:'+ws,JSON.stringify(filters));}catch{}
   const query=filters.query.trim().toLocaleLowerCase();
@@ -178,7 +178,7 @@ function applyFilters() {
     }
     if(!filters.status&&domainAllowed&&matches(did,d.title))domainVisible=true;
     group.hidden=!domainVisible;
-    if(domainVisible){visibleDomains++;if(query||filters.status||filters.domain)group.open=true;}
+    if(domainVisible){visibleDomains++;if(reveal&&(query||filters.status||filters.domain))group.open=true;}
   }
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   for(const b of $('tree').querySelectorAll('.status-filter')){
@@ -191,7 +191,7 @@ function applyFilters() {
 }
 function render() {
   const t = $('tree');
-  const collapsed=new Set([...t.querySelectorAll('.tree-domain:not([open])')].map(d=>d.dataset.domain));
+  const opened=new Set([...t.querySelectorAll('.tree-domain[open]')].map(d=>d.dataset.domain));
   t.replaceChildren();
   const intro=E('div',undefined,'tree-intro');
   intro.append(E('p','Product tree','tree-eyebrow'),E('h1',data.state.title));
@@ -201,7 +201,7 @@ function render() {
   filterControls(t);
   for (const [did, d] of Object.entries(data.state.domains)) {
     const group = E('details',undefined,'tree-domain');
-    group.dataset.domain=did;group.open=!collapsed.has(did);
+    group.dataset.domain=did;group.open=opened.has(did);
     const domainHeading=E('summary',undefined,'title-row');
     const domainButton=button(d.title,()=>openNode('domain',did),'node-link');
     domainButton.addEventListener('click',e=>e.preventDefault());
@@ -234,7 +234,7 @@ function render() {
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
   const empty=E('p','No matching items. Try another search or clear the filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
-  applyFilters();
+  applyFilters(false);
   intake(t);
   if (selected && !data.state.requirements[selected]) selected = '';
   card();
@@ -253,7 +253,7 @@ function card() {
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
   if(current)root.dataset.status=requirementStatus(selected);
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));heading.append(copyButton('requirement',selected,r.number));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));heading.append(copyButton('requirement',selected));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
     const o = E('option', 'Revision ' + old.number + ' · ' + old.reason);
@@ -424,44 +424,21 @@ function intake(root) {
     }
   }
 }
-function agentContext(kind,id,number) {
-  const state=data.state;
-  const requirement=kind==='requirement'?state.requirements[id]:null;
-  const capability=kind==='capability'?state.capabilities[id]:requirement?state.capabilities[requirement.capability]:null;
-  const domainId=kind==='domain'?id:capability.domain;
-  const capabilities=Object.fromEntries(Object.entries(state.capabilities).filter(([cid,c])=>kind==='domain'?c.domain===id:cid===(requirement?requirement.capability:id)));
-  const requirements=Object.fromEntries(Object.entries(state.requirements).filter(([rid,q])=>kind==='requirement'?rid===id:Object.hasOwn(capabilities,q.capability)));
-  const summary=Object.fromEntries(Object.entries(data.summary).filter(([rid])=>Object.hasOwn(requirements,rid)));
-  const history=data.history.filter(({command:c})=>
-    (c.req && Object.hasOwn(requirements,c.req)) ||
-    (['domain','edit_domain'].includes(c.op) && c.id===domainId) ||
-    (['capability','edit_capability'].includes(c.op) && Object.hasOwn(capabilities,c.id)) ||
-    ['workspace','rename_workspace','confirm_tree'].includes(c.op));
-  const context={workspace:{id:ws,title:state.title},position:data.position,
-    selection:{kind,id,...(number?{revision:number}:{})},
-    domain:{id:domainId,...state.domains[domainId]},capabilities,requirements,
-    latest_revision_summary:summary,history};
-  return 'Joppa — '+kind+' context\n'+
-    'Discuss this item with me. Read the latest workspace through Joppa MCP before proposing changes. '+
-    'Preserve the stated scope; do not add platforms or acceptance criteria by assumption.\n'+
-    'This is a snapshot, not live state. The selection identifies the revision being viewed; summaries describe the latest revisions.\n\n'+
-    JSON.stringify(context,null,2);
-}
-function copyButton(kind,id,number) {
-  const b=button('Copy for agent',async()=>{
-    const text=agentContext(kind,id,number);
+function copyButton(kind,id) {
+  const b=button('Copy ID',async()=>{
+    const text=id;
     try{
       if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      notify('Context copied. Paste it into your agent chat.');
+      notify('ID copied.');
     }catch{
       const dialog=E('dialog',undefined,'copy-dialog');
-      dialog.setAttribute('aria-label','Copy context for your agent');
-      const area=E('textarea');area.readOnly=true;area.value=text;area.setAttribute('aria-label','Agent context');
-      dialog.append(E('h2','Copy for agent'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
+      dialog.setAttribute('aria-label','Copy item ID');
+      const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','Item ID');
+      dialog.append(E('h2','Copy ID'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
       dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();area.focus();area.select();
     }
   },'copy-context');
-  b.title='Copy this '+kind+' and its context for an agent';
+  b.title='Copy '+kind+' ID';
   return b;
 }
