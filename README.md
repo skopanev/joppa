@@ -117,6 +117,9 @@ on desktop using the drag handle, its Move up/down menu or arrow keys.
 Dragging previews the position; Escape cancels it. Reorder controls are hidden on mobile. The order is shared and persists
 after reload. The history icon on every domain, capability, REQ and AC opens a plain timeline:
 time, author and change, one saved operation per entry.
+REQ History also contains the revision selector. Cards show a short revision label;
+internal IDs stay behind the copy button. Empty Tasks, Checks and Discussion sections
+are hidden; populated sections show task titles, people and readable evidence.
 Reordering does not create a REQ revision or reset checks.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
 If port 6212 is occupied, use another local port such as 6213. Public access

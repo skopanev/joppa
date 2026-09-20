@@ -295,7 +295,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
   }
   tasks(root, r);
   runs(root, r, base);
-  comments(root, q, r);
+  comments(root, q, r, selected);
 }
 
 function personLabel(actor){
@@ -376,35 +376,61 @@ function historyEvent(parent,event,q){
   }else if(c.op==='confirm_tree')fact('Decision','The product structure was approved.');
   if(c.revision)fact('Revision',c.revision);
 }
+function cardFact(root,label,value){
+  if(value===undefined||value===null||value==='')return;
+  const line=E('p',undefined,'detail-fact');
+  line.append(E('span',label+': ','hint'),E('span',value));root.append(line);
+}
+function acTitle(r,id){return r.acs.find(a=>a.id===id)?.text||'Acceptance criterion';}
 function tasks(root, r) {
   if(!Object.keys(r.tasks).length)return;
-  const d = details(root, 'Tasks · ' + Object.keys(r.tasks).length);
-  for (const [id, t] of Object.entries(r.tasks)) {
-    d.append(E('p', id + ' · ' + t.title + ' · ' + t.acs.join(', ') + ' · ' + t.projects.join(', ') + ' · ' + (t.done ? 'Completed: ' + t.done : 'Assignee: ' + t.assignee)));
+  const d=details(root,'Tasks · '+Object.keys(r.tasks).length);
+  for(const t of Object.values(r.tasks)){
+    const item=E('article',undefined,'detail-entry');
+    item.append(E('h3',t.title),E('p',(t.done!==null?'Completed':'In progress')+' · '+personLabel(t.assignee),'hint'));
+    cardFact(item,'Acceptance criteria',t.acs.map(id=>acTitle(r,id)).join('; '));
+    cardFact(item,'Projects',t.projects.map(id=>data.state.projects[id]||id).join(', '));
+    cardFact(item,'Work',({implementation:'Implementation',manual:'Manual action',decision:'Decision'})[t.purpose]);
+    cardFact(item,'Result',t.done);d.append(item);
   }
 }
 function runs(root, r, base) {
   if(!Object.keys(r.runs).length)return;
-  const d = details(root, 'Checks · ' + Object.keys(r.runs).length);
-  for (const [id, run] of Object.entries(r.runs)) {
-    const block = details(d, id + ' · ' + (run.finished ? 'Finished' : 'Running'));
-    block.append(E('p', 'Subject: ' + JSON.stringify(run.subject)), E('p', 'Scope: ' + run.scope + ' · discovery ' + (run.discovery_complete ? 'complete' : 'incomplete')));
-    for (const c of run.plan) {
-      const result = run.results[c.id];
-      const recorded = data.history.find(e => e.command.op === 'result' && e.command.req === base.req && e.command.revision === base.revision && e.command.run === id && e.command.evidence.check === c.id);
-      if (recorded) block.append(E('small', recorded.actor + ' · ' + recorded.recorded_at));
-      block.append(E('small','Method: '+c.method+' · AC: '+c.ac));
-      if(result?.link)block.append(E('p','Evidence: '+result.link));
-      block.append(E('h3', c.id), E('p', 'Expected: ' + c.expected.join(', ')), E('p', result ? 'Observed: ' + result.observed.join(', ') + ' · ' + result.outcome + ' · ' + result.note : 'No result yet'));
+  const d=details(root,'Checks · '+Object.keys(r.runs).length);
+  for(const [id,run] of Object.entries(r.runs)){
+    const block=details(d,run.scope+' · '+(run.finished?'Finished':'Running'));
+    for(const [component,version] of Object.entries(run.subject))cardFact(block,data.state.projects[component]||component,version);
+    if(!run.discovery_complete)block.append(E('p','Check discovery is incomplete.','hint'));
+    for(const c of run.plan){
+      const result=run.results[c.id];
+      const recorded=data.history.find(e=>e.command.op==='result'&&e.command.req===base.req&&e.command.revision===base.revision&&e.command.run===id&&e.command.evidence.check===c.id);
+      const item=E('article',undefined,'detail-entry');
+      item.append(E('h3',acTitle(r,c.ac)));
+      const method=c.method==='manual'?'Manual check':'Automated test';
+      const outcome=result?({pass:'Passed',fail:'Failed',skip:'Skipped'})[result.outcome]:'Awaiting result';
+      item.append(E('p',method+' · '+outcome,'hint'));
+      if(recorded)item.append(E('p',eventDate(recorded.recorded_at)+' · '+personLabel(recorded.actor),'hint'));
+      cardFact(item,'Expected',c.expected.join(', '));
+      if(result){
+        cardFact(item,'Observed',result.observed.join(', ')||'Nothing recorded');
+        cardFact(item,'Note',result.note);cardFact(item,'Evidence',result.link);
+      }
+      block.append(item);
     }
   }
 }
-function comments(root, q, r) {
-  const entries=Object.entries(q.comments).filter(([, c])=>c.revision===r.number);
+function comments(root, q, r, reqId) {
+  const entries=Object.entries(q.comments).filter(([,c])=>c.revision===r.number);
   if(!entries.length)return;
-  const d = details(root, 'Discussion · '+entries.length);
-  for (const [id, c] of entries) {
-    d.append(E('small', id + ' · ' + c.actor + ' · ' + c.kind + (c.withdrawn ? ' · withdrawn' : '') + (c.reply_to ? ' · reply to ' + c.reply_to : '')), E('p', c.text));
+  const d=details(root,'Discussion · '+entries.length);
+  const kinds={comment:'Comment',suggestion:'Suggestion',decision:'Decision',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Correction'};
+  for(const [id,c] of entries){
+    const item=E('article',undefined,'detail-entry');
+    const event=data.history.find(e=>e.command.op==='comment'&&e.command.req===reqId&&e.command.id===id);
+    item.append(E('p',[event&&eventDate(event.recorded_at),personLabel(c.actor),kinds[c.kind]||'Comment',c.withdrawn&&'Withdrawn'].filter(Boolean).join(' · '),'hint'));
+    if(c.reply_to)cardFact(item,'In reply to',q.comments[c.reply_to]?.text);
+    if(c.ac)cardFact(item,'Acceptance criterion',acTitle(r,c.ac));
+    item.append(E('p',c.text));d.append(item);
   }
 }
 if (window.SNAPSHOT) {

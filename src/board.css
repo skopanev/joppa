@@ -89,3 +89,5 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 @media(max-width:760px){.history-timeline .history-entry{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 0}.history-body{grid-column:1 / -1}.history-author{text-align:right}.history-dialog-header{padding:16px 18px}}
 
 .history-revisions{display:block;width:100%;max-width:460px;min-height:40px;margin-top:14px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:inherit;font:inherit;font-size:14px}.requirement-detail>.revision-label{margin:0 0 12px}
+
+.detail-entry{padding:14px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}.detail-entry h3{margin:0 0 6px;font-size:15px;line-height:1.5}.detail-entry p,.detail-fact{margin:6px 0;font-size:14px;line-height:1.6;white-space:pre-wrap}.detail-entry .hint{font-size:12px}
