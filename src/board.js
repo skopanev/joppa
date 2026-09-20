@@ -1,6 +1,6 @@
 /* SNAPSHOT */
 let ws = '', data = null, viewerActor = '';
-let orderSaving=false,draggedNode=null,orderMenu=null;
+let orderSaving=false,draggedNode=null,orderMenu=null,filterMenu=null;
 const $ = id => document.getElementById(id),
   E = (tag, text, cls) => {
     const e = document.createElement(tag);
@@ -108,7 +108,7 @@ $('tree').replaceChildren();
 };
 $('refresh').onclick = () => load().catch(notify);
 const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
-let filters={domain:'',status:''};
+let filters={domain:'',status:'',person:''};
 let filterWorkspace=null;
 function requirementStatus(id) {
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
@@ -119,22 +119,72 @@ function requirementStatus(id) {
   if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
   return 'available';
 }
+function matchesPerson(id) {
+  const actor=filters.person==='@me'?viewerActor:filters.person;
+  if(!actor)return true;
+  const r=data.state.requirements[id].revisions.at(-1);
+  return r.owner===actor||Object.values(r.tasks).some(t=>!t.done&&t.assignee===actor)||
+    r.acs.some(a=>!data.summary[id].acs[a.id]?.ready&&(a.decider===actor||a.assessment?.recipient===actor));
+}
+function closeFilterMenu(restore=false){
+  if(!filterMenu)return;
+  const {menu,trigger}=filterMenu;menu.remove();trigger.setAttribute('aria-expanded','false');filterMenu=null;
+  if(restore)trigger.focus();
+}
+document.addEventListener('click',e=>{if(filterMenu&&!filterMenu.host.contains(e.target))closeFilterMenu();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&filterMenu){e.preventDefault();closeFilterMenu(true);}});
+function filterPicker(kind,label,caption,options,value,change){
+  const host=E('div',undefined,'filter-picker '+kind+'-picker');
+  const trigger=E('button',undefined,'filter-select');trigger.type='button';trigger.id=kind+'-filter';
+  for(const [key,val] of Object.entries({role:'combobox','aria-label':label,'aria-haspopup':'listbox','aria-expanded':'false','aria-controls':kind+'-options'}))trigger.setAttribute(key,val);
+  const mark=E('span',kind==='domain'?'◈':'◎','picker-mark');mark.setAttribute('aria-hidden','true');
+  const text=E('span',undefined,'picker-text'),selected=E('span',options.find(o=>o.id===value)?.title,'picker-value');
+  text.append(E('small',caption),selected);
+  const chevron=E('span','⌄','picker-chevron');chevron.setAttribute('aria-hidden','true');trigger.append(mark,text,chevron);host.append(trigger);
+  function open(last=false){
+    closeFilterMenu();
+    const menu=E('div',undefined,'filter-menu');menu.id=kind+'-options';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',label);
+    for(const option of options){
+      const row=E('button',undefined,'filter-option');row.type='button';row.tabIndex=-1;row.setAttribute('role','option');row.setAttribute('aria-label',option.title);row.setAttribute('aria-selected',String(option.id===value));
+      row.append(E('span',option.title),E('small',option.hint),E('span',option.id===value?'✓':'','option-check'));
+      row.onclick=()=>{value=option.id;selected.textContent=option.title;closeFilterMenu(true);change(value);};menu.append(row);
+    }
+    menu.onkeydown=e=>{
+      const rows=[...menu.children],index=rows.indexOf(document.activeElement);let next;
+      if(e.key==='ArrowDown')next=(index+1)%rows.length;
+      if(e.key==='ArrowUp')next=(index+rows.length-1)%rows.length;
+      if(e.key==='Home')next=0;if(e.key==='End')next=rows.length-1;
+      if(next!==undefined){e.preventDefault();rows[next].focus();}
+      if(e.key==='Tab')closeFilterMenu();
+    };
+    host.append(menu);filterMenu={host,menu,trigger};trigger.setAttribute('aria-expanded','true');
+    (last?menu.lastElementChild:menu.querySelector('[aria-selected=true]')||menu.firstElementChild).focus();
+  }
+  trigger.onclick=()=>{if(filterMenu?.trigger===trigger)closeFilterMenu();else open();};
+  trigger.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();open(e.key==='ArrowUp');}};
+  return host;
+}
 function filterControls(root) {
   if(filterWorkspace!==ws){
-    filterWorkspace=ws;filters={domain:'',status:''};
+    filterWorkspace=ws;filters={domain:'',status:'',person:''};
     try{const saved=JSON.parse(sessionStorage.getItem('joppa-filters:'+ws));
-      if(saved && typeof saved.domain==='string' && typeof saved.status==='string')filters={domain:saved.domain,status:saved.status};
+      if(saved && typeof saved.domain==='string' && typeof saved.status==='string')filters={domain:saved.domain,status:saved.status,person:typeof saved.person==='string'?saved.person:''};
     }catch{}
   }
   if(filters.domain&&!data.state.domains[filters.domain])filters.domain='';
   if(filters.status&&!statusLabels[filters.status])filters.status='';
   const toolbar=E('section',undefined,'tree-toolbar');toolbar.setAttribute('aria-label','Filter product tree');
   const fields=E('div',undefined,'filter-fields');
-  const domain=E('select');domain.id='domain-filter';domain.setAttribute('aria-label','Filter by domain');
-  const all=E('option','All domains');all.value='';domain.append(all);
-  for(const [id,d] of Object.entries(data.state.domains)){const option=E('option',d.title);option.value=id;domain.append(option);}
-  domain.value=filters.domain;domain.onchange=()=>{filters.domain=domain.value;applyFilters();};
-  fields.append(domain);toolbar.append(fields);
+  if(filters.person&&filters.person!=='@me'&&!data.state.members[filters.person])filters.person='';
+  fields.append(filterPicker('domain','Filter by domain','Domain',[
+    {id:'',title:'All domains',hint:String(Object.keys(data.state.domains).length)},
+    ...orderedEntries('domain').map(([id,d])=>({id,title:d.title,hint:String(Object.values(data.state.capabilities).filter(c=>c.domain===id).length)+' capabilities'}))
+  ],filters.domain,value=>{filters.domain=value;applyFilters();}));
+  const people=[{id:'',title:'Everyone',hint:'All responsibilities'}];
+  if(viewerActor)people.push({id:'@me',title:'Assigned to me',hint:'My responsibilities'});
+  for(const [id,role] of Object.entries(data.state.members))people.push({id,title:id===viewerActor?'Me':id,hint:role});
+  fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;applyFilters();}));
+  toolbar.append(fields);
   const statuses=E('div',undefined,'status-filters');statuses.setAttribute('role','group');statuses.setAttribute('aria-label','Requirement status');
   for(const [key,label] of [['','All requirements'],...Object.entries(statusLabels)]){
     const b=button('',()=>{filters.status=filters.status===key?'':key;applyFilters();},'status-filter '+(key||'all'));
@@ -158,19 +208,19 @@ function applyFilters(reveal=true) {
       let capVisible=false;
       for(const row of cap.querySelectorAll('.tree-requirement')){
         const id=row.dataset.requirement;
-        const match=domainAllowed;
+        const match=domainAllowed&&matchesPerson(id);
         const status=requirementStatus(id);
         if(match)counts[status]++;
         row.hidden=!match||!!(filters.status&&filters.status!==status);
-        if(!row.hidden){shown++;capVisible=true;if(reveal&&(filters.status||filters.domain))row.open=true;}
+        if(!row.hidden){shown++;capVisible=true;if(reveal&&(filters.status||filters.domain||filters.person))row.open=true;}
       }
-      if(!filters.status&&domainAllowed)capVisible=true;
+      if(!filters.status&&!filters.person&&domainAllowed)capVisible=true;
       cap.hidden=!capVisible;domainVisible ||= capVisible;
-      if(capVisible&&reveal&&(filters.status||filters.domain))cap.open=true;
+      if(capVisible&&reveal&&(filters.status||filters.domain||filters.person))cap.open=true;
     }
-    if(!filters.status&&domainAllowed)domainVisible=true;
+    if(!filters.status&&!filters.person&&domainAllowed)domainVisible=true;
     group.hidden=!domainVisible;
-    if(domainVisible){visibleDomains++;if(reveal&&(filters.status||filters.domain))group.open=true;}
+    if(domainVisible){visibleDomains++;if(reveal&&(filters.status||filters.domain||filters.person))group.open=true;}
   }
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   for(const b of $('tree').querySelectorAll('.status-filter')){
@@ -181,6 +231,7 @@ function applyFilters(reveal=true) {
   $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
 }
 function render() {
+  closeFilterMenu();
   const t = $('tree');
   const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
   t.replaceChildren();
@@ -216,7 +267,7 @@ function render() {
     t.append(group);
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
-  const empty=E('p','No requirements match this status.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
+  const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   intake(t);
 }
@@ -351,7 +402,7 @@ if(!window.SNAPSHOT){
     .finally(()=>document.body.classList.remove('checking-session'));
 }
 function openRequirement(id) {
-  filters={domain:'',status:''};render();
+  filters={domain:'',status:'',person:''};render();
   const req=[...$('tree').querySelectorAll('.tree-requirement')].find(e=>e.dataset.requirement===id);
   if(!req)return;
   for(let node=req;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
@@ -463,7 +514,9 @@ function moveSibling(kind,parent,id,offset) {
 }
 function addOrdering(node,summary,kind,parent,id) {
   if(window.SNAPSHOT||viewerActor!==data.state.admin)return;
-  const handle=E('button','⠿','reorder-handle');handle.type='button';handle.draggable=true;handle.disabled=orderSaving;
+  const handle=E('button',undefined,'reorder-handle');
+  const grip=document.createElementNS('http://www.w3.org/2000/svg','svg');grip.setAttribute('viewBox','0 0 16 20');grip.setAttribute('width','16');grip.setAttribute('height','20');grip.setAttribute('aria-hidden','true');
+  for(const x of [5,11])for(const y of [4,10,16]){const dot=document.createElementNS(grip.namespaceURI,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r','1.4');dot.setAttribute('fill','currentColor');grip.append(dot);}handle.append(grip);handle.type='button';handle.draggable=true;handle.disabled=orderSaving;
   handle.setAttribute('aria-label','Reorder '+kind+': '+id);handle.setAttribute('aria-haspopup','menu');
   handle.title='Drag to reorder, or click for move options';summary.classList.add('can-reorder');summary.append(handle);
   handle.onclick=e=>{
@@ -478,9 +531,17 @@ function addOrdering(node,summary,kind,parent,id) {
     menu.querySelector('button:not(:disabled)')?.focus();
   };
   handle.onkeydown=e=>{if(['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();Promise.resolve(moveSibling(kind,parent,id,e.key==='ArrowUp'?-1:1)).catch(notify);}};
-  handle.ondragstart=e=>{if(orderSaving){e.preventDefault();return;}draggedNode={kind,parent,id,workspace:ws};e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move';closeOrderMenu();};
   const clear=()=>document.querySelectorAll('[data-drop]').forEach(e=>delete e.dataset.drop);
-  handle.ondragend=()=>{draggedNode=null;clear();};
+  const finish=()=>{draggedNode=null;clear();document.body.classList.remove('tree-dragging');node.classList.remove('drag-source');document.querySelectorAll('.drag-preview').forEach(e=>e.remove());};
+  handle.ondragstart=e=>{
+    if(orderSaving){e.preventDefault();return;}
+    draggedNode={kind,parent,id,workspace:ws};e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move';closeOrderMenu();closeFilterMenu();
+    const preview=E('div',undefined,'drag-preview '+kind);preview.append(grip.cloneNode(true),E('div',undefined,'drag-preview-text'));
+    preview.lastChild.append(E('small',kind==='requirement'?'Requirement':kind[0].toUpperCase()+kind.slice(1)),E('strong',summary.querySelector('.node-title').textContent));
+    document.body.append(preview);e.dataTransfer.setDragImage(preview,28,28);
+    requestAnimationFrame(()=>{if(draggedNode){node.classList.add('drag-source');document.body.classList.add('tree-dragging');}});
+  };
+  handle.ondragend=finish;
   summary.ondragover=e=>{
     clear();
     if(!draggedNode||orderSaving||draggedNode.workspace!==ws||draggedNode.kind!==kind||draggedNode.parent!==parent||draggedNode.id===id)return;
@@ -493,6 +554,6 @@ function addOrdering(node,summary,kind,parent,id) {
     e.preventDefault();e.stopPropagation();
     const from=draggedNode.id,expected=orderedEntries(kind,parent).map(([id])=>id),ids=expected.filter(id=>id!==from);
     ids.splice(ids.indexOf(id)+(summary.dataset.drop==='after'?1:0),0,from);
-    draggedNode=null;clear();saveOrder(kind,parent,expected,ids,from).catch(notify);
+    finish();saveOrder(kind,parent,expected,ids,from).catch(notify);
   };
 }

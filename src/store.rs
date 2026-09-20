@@ -30,6 +30,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/002_item_ids.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/003_reference_prefix.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -122,8 +124,11 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
     let mut system_ids = json!({"domain":{},"capability":{},"requirement":{},"ac":{}});
     for row in conn
         .query(
-            "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1",
-            &[&workspace],
+            "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2",
+            &[
+                &workspace,
+                &state.reference_prefix.as_deref().unwrap_or(workspace),
+            ],
         )
         .await?
     {

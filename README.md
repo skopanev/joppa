@@ -101,7 +101,8 @@ Without Joppa's own Google configuration, sign-in fails closed with a setup mess
 
 The **Workspace** menu lists only accessible products. The full-width product tree
 shows domains, capabilities, requirements and acceptance criteria with distinct
-visual levels and check statuses. Use domain and status filters with live counts. Filter choices stay within each workspace.
+visual levels and check statuses. Use domain, person and status filters with live counts. **Assigned to me** includes REQs
+you own, unfinished tasks assigned to you and ACs awaiting your decision. Filter choices stay within each workspace.
 Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
 Use the **copy + robot** button
 on a domain, capability, requirement or AC to copy its permanent, database-wide unique

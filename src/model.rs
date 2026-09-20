@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
     pub title: String,
+    #[serde(default)]
+    pub reference_prefix: Option<String>,
     pub admin: String,
     pub members: BTreeMap<String, String>,
     pub domains: BTreeMap<String, Domain>,

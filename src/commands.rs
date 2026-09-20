@@ -12,6 +12,8 @@ pub enum Command {
     RenameWorkspace {
         title: String,
         reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference_prefix: Option<String>,
     },
     ReorderTree {
         kind: String,
@@ -253,11 +255,19 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
     match command {
-        Command::RenameWorkspace { title, reason } => {
+        Command::RenameWorkspace {
+            title,
+            reason,
+            reference_prefix,
+        } => {
             ensure!(actor == w.admin, "workspace owner renames the workspace");
             nonempty(title)?;
             nonempty(reason)?;
             w.title = title.clone();
+            if let Some(prefix) = reference_prefix {
+                identifier(prefix)?;
+                w.reference_prefix = Some(prefix.clone());
+            }
         }
         Command::ReorderTree {
             kind,

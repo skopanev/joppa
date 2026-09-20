@@ -8,7 +8,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 
 ```text
 workspace: title
-rename_workspace: title, reason; workspace owner only; preserves workspace ID and history
+rename_workspace: title, reason, reference_prefix:null; workspace owner only; preserves workspace ID and history
 member: id, role (human|agent|runner); workspace owner only
 reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only
 project: id, repository
@@ -109,3 +109,7 @@ the authorized workspace and `selection` with kind and local command ID. AC sele
 also include the parent REQ and latest revision containing the AC.
 `joppa_read({"workspace":"..."})` remains available; supply exactly one selector.
 Commands continue to use local IDs from the resolved workspace, never guessed slugs.
+
+An explicit `rename_workspace` with `reference_prefix` changes the prefix used by
+new copies and newly created items. It appends aliases and preserves all old IDs,
+content, history and workspace permissions. Title-only renames leave IDs unchanged.
