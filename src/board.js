@@ -229,6 +229,7 @@ function applyFilters(reveal=true) {
   $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
 }
 function render() {
+  draggedNode?.cancel();
   closeFilterMenu();
   const t = $('tree');
   const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
@@ -242,26 +243,24 @@ function render() {
   for (const [did,d] of orderedEntries('domain')) {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
-    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did,d.title));group.append(heading);addOrdering(group,heading,'domain',null,did);
+    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);addOrdering(group,heading,'domain',null,did);
     const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid,c.title));cap.append(head);addOrdering(cap,head,'capability',did,cid);
+      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);addOrdering(cap,head,'capability',did,cid);
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
-        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),copyButton('requirement',id,r.title));
+        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title));
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);addOrdering(req,reqHead,'requirement',cid,id);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
         cap.append(req);
       }
-      appendNodeHistory(cap,'capability',cid);
       body.append(cap);
     }
-    appendNodeHistory(body,'domain',did);
     t.append(group);
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
@@ -298,7 +297,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
   for (const a of r.acs) {
     const status = s?.acs[a.id];
     const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
-    const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),copyButton('ac',a.id,a.text));item.append(heading);
+    const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),itemActions('ac',a.id,a.text,selected));item.append(heading);
     item.append(E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
     if (a.before_launch) item.append(E('small', 'Required before launch'));
     if (a.depends_on?.length) item.append(E('p','Depends on: '+a.depends_on.join(', ')));
@@ -308,46 +307,85 @@ function requirementDetails(root, selected, revisionNumber=null) {
   tasks(root, r);
   runs(root, r, base);
   comments(root, q, r);
-  appendNodeHistory(root,'requirement',selected,q);
 }
 
-function historyEvent(parent, event, q) {
-  const names = {
-    reorder_tree: 'Order changed',
-    edit_domain: 'Domain updated',
-    edit_capability: 'Capability updated',
-    confirm_tree: 'Structure confirmed',
-    revise: 'Revision saved',
-    comment: 'Discussion reply',
-    assess: 'Readiness assessed',
-    confirm: 'Wording confirmed',
-    task: 'Task created',
-    complete_task: 'Task completed',
-    plan: 'Check plan sealed',
-    result: 'Check result',
-    finish: 'Run completed',
-    accept: 'Result accepted',
-    revoke: 'Acceptance revoked',
-    issue: 'Issue confirmed',
-    resolve: 'Fix confirmed',
-    withdraw_decision: 'Decision withdrawn'
-  };
-  const c = event.command,
-    d = details(parent, event.recorded_at + ' · ' + event.actor + ' · ' + (names[c.op] || c.op));
-  if(c.op==='reorder_tree'){d.append(E('p','Before: '+c.expected.join(' → ')),E('p','After: '+c.ids.join(' → ')));}
-  else if (c.op === 'revise') {
-    const old = q.revisions[c.expected_revision - 1];
-    d.append(E('p', 'Reason: ' + c.reason), E('p', 'Wording: ' + (old?.title || '—') + ' → ' + c.title));
-    if (old?.body !== c.body) d.append(E('p', 'Context: ' + (old?.body || '—') + ' → ' + c.body));
-    const ids = new Set([...(old?.acs || []).map(a => a.id), ...c.acs.map(a => a.id)]);
-    for (const id of ids) {
-      const a = old?.acs.find(a => a.id === id),
-        b = c.acs.find(a => a.id === id);
-      if (JSON.stringify(a) !== JSON.stringify(b)) d.append(E('p', id + ': ' + (a?.text || '—') + ' → ' + (b?.text || '—')));
+function personLabel(actor){
+  if(actor===viewerActor)return 'You';
+  return {agent:'Agent',runner:'Test runner'}[data.state.members[actor]]||actor||'Not assigned';
+}
+function eventDate(value){
+  const date=new Date(value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
+  return Number.isNaN(date.getTime())?'Date unavailable':new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(date);
+}
+function historicalCommand(kind,id,position){
+  return data.history.findLast(e=>e.position<=position&&(
+    kind==='requirement'?e.command.op==='revise'&&e.command.req===id:
+    (e.command.op===kind||e.command.op==='edit_'+kind)&&e.command.id===id))?.command;
+}
+function historyTitle(kind,id,position){
+  if(kind==='ac'){
+    for(const event of [...data.history].reverse())if(event.position<=position&&event.command.op==='revise'){
+      const ac=event.command.acs.find(a=>a.id===id);if(ac)return ac.text;
     }
-  } else d.append(E('p', c.text || c.reason || c.title || c.assessment?.reason || c.evidence?.note || 'Revision ' + c.revision + (c.run ? ' · run ' + c.run : '')));
-  const raw = details(d, 'Event data');
-  raw.append(E('pre', JSON.stringify(c, null, 2)));
+  }
+  return historicalCommand(kind,id,position)?.title||id;
+}
+function historyEvent(parent,event,q){
+  const c=event.command;
+  const names={domain:'Domain created',capability:'Capability created',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
+  const entry=E('article',undefined,'history-entry'),header=E('div',undefined,'history-event-header');
+  header.append(E('small',eventDate(event.recorded_at)+' · '+personLabel(event.actor),'history-meta'),E('span',names[c.op]||'Item updated','history-action'));entry.append(header);parent.append(entry);
+  const body=E('div',undefined,'history-body');entry.append(body);
+  const fact=(label,value)=>{if(value!==undefined&&value!==null&&value!==''){const p=E('p');p.append(E('span',label,'history-label'),E('span',String(value)));body.append(p);}};
+  const change=(label,before,after)=>{if(before===after)return;const block=E('div',undefined,'history-change');block.append(E('small',label));if(before)block.append(E('p',String(before),'history-before'));if(after)block.append(E('p',String(after),'history-after'));body.append(block);};
+  const title=(kind,id)=>historyTitle(kind,id,event.position);
+  const revision=q?.revisions.find(r=>r.number===c.revision);
+  if(c.reason)fact('Reason',c.reason);
+  if(c.op==='domain'||c.op==='capability'){
+    fact('Title',c.title);if(c.domain)fact('Domain',title('domain',c.domain));if(c.authority)fact('Decision owner',personLabel(c.authority));
+  }else if(c.op==='edit_domain'||c.op==='edit_capability'){
+    const kind=c.op.slice(5),previous=historicalCommand(kind,c.id,event.position-1);
+    change('Title',previous?.title,c.title);if(c.authority)change('Decision owner',personLabel(previous?.authority),personLabel(c.authority));
+  }else if(c.op==='reorder_tree'){
+    const id=parent.dataset.itemId;
+    if(id&&c.ids.includes(id))body.append(E('p','Moved from position '+(c.expected.indexOf(id)+1)+' to '+(c.ids.indexOf(id)+1)+'.'));
+  }else if(c.op==='revise'){
+    const old=q.revisions[c.expected_revision-1];
+    fact('Revision',c.expected_revision+1);change('Title',old?.title,c.title);change('Description',old?.body,c.body);
+    if(old?.owner!==c.owner)change('Owner',old?personLabel(old.owner):null,personLabel(c.owner));
+    const previous=historicalCommand('requirement',c.req,event.position-1);
+    if(previous?.capability!==c.capability)change('Capability',previous?title('capability',previous.capability):null,title('capability',c.capability));
+    for(const id of new Set([...(old?.acs||[]).map(a=>a.id),...c.acs.map(a=>a.id)])){
+      if(parent.dataset.itemKind==='ac'&&id!==parent.dataset.itemId)continue;
+      const before=old?.acs.find(a=>a.id===id),after=c.acs.find(a=>a.id===id);
+      change(!before?'Acceptance criterion added':!after?'Acceptance criterion removed':'Acceptance criterion',before?.text,after?.text);
+      if(after){
+        if(before?.decider!==after.decider&&(before?.decider||after.decider))change('Decision owner · '+after.text,before?.decider?personLabel(before.decider):null,personLabel(after.decider));
+        if(!!before?.before_launch!==!!after.before_launch)fact('Required before launch · '+after.text,after.before_launch?'Yes':'No');
+        if(JSON.stringify(before?.depends_on||[])!==JSON.stringify(after.depends_on||[]))change('Dependencies · '+after.text,before?.depends_on?.map(id=>historyTitle('ac',id,event.position-1)).join('; '),after.depends_on?.map(id=>title('ac',id)).join('; ')||'None');
+      }
+    }
+  }else if(c.op==='comment'){
+    fact('Comment',c.text);if(c.ac)fact('Acceptance criterion',title('ac',c.ac));
+    if(c.reply_to)fact('In reply to',q?.comments[c.reply_to]?.text);
+  }else if(c.op==='assess'){
+    fact('Acceptance criterion',title('ac',c.ac));fact('Outcome',c.assessment.ready?'Ready to work':'Waiting for a decision');fact('Explanation',c.assessment.reason);
+    if(c.assessment.recipient)fact('Waiting for',personLabel(c.assessment.recipient));
+  }else if(c.op==='task'){
+    fact('Task',c.title);fact('Assigned to',personLabel(c.assignee));fact('Acceptance criteria',c.acs.map(id=>title('ac',id)).join('; '));
+  }else if(c.op==='complete_task'){
+    fact('Task',revision?.tasks[c.id]?.title);fact('Result',c.evidence);
+  }else if(c.op==='plan'){
+    fact('Scope',c.scope);fact('Checks',c.checks.length);
+    for(const check of c.checks){fact(check.method==='manual'?'Manual check':'Automated check',title('ac',check.ac));fact('Expected',check.expected.join(', '));}
+  }else if(c.op==='result'){
+    const check=revision?.runs[c.run]?.plan.find(p=>p.id===c.evidence.check);
+    if(check){fact('Acceptance criterion',title('ac',check.ac));fact('Method',check.method==='manual'?'Manual check':'Automated test');fact('Expected',check.expected.join(', '));}
+    fact('Result',{pass:'Passed',fail:'Failed',skip:'Not checked'}[c.evidence.outcome]);fact('Observed',c.evidence.observed.join(', '));fact('Note',c.evidence.note);fact('Evidence',c.evidence.link);
+  }else if(c.op==='issue'||c.op==='resolve'||c.op==='withdraw_decision'){
+    if(c.ac)fact('Acceptance criterion',title('ac',c.ac));fact('Discussion',q?.comments[c.comment]?.text);
+  }else if(c.op==='confirm_tree')fact('Decision','The product structure was approved.');
+  if(c.revision)fact('Revision',c.revision);
 }
 function tasks(root, r) {
   const d = details(root, 'Tasks · ' + Object.keys(r.tasks).length);
@@ -466,16 +504,44 @@ function orderedEntries(kind,parent=null) {
   const saved=(data.state.tree_order?.[key]||[]).filter(id=>ids.includes(id));
   return [...saved,...ids.filter(id=>!saved.includes(id))].map(id=>[id,map[id]]);
 }
-function appendNodeHistory(root,kind,id,q=null) {
-  const history=details(root,'History');history.className='node-history';
+function itemActions(kind,id,title,reqId=null){
+  const actions=E('div',undefined,'node-actions');actions.append(copyButton(kind,id,title));
+  const history=button('',()=>showHistory(kind,id,title,reqId),'history-button');history.title='View history';history.setAttribute('aria-label','View '+kind+' history: '+id);
+  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))icon.setAttribute(key,value);
+  const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','M3 11a9 9 0 1 1 2.7 7.4M3 4v7h7M12 7v5l3 2');icon.append(path);history.append(icon);
+  history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(history);return actions;
+}
+function showHistory(kind,id,title,reqId){
+  const q=data.state.requirements[kind==='requirement'?id:reqId];
   const created=data.history.find(e=>e.command.op===kind&&e.command.id===id)?.position||0;
-  for(const event of data.history){
-    if(event.position<created)continue;
+  const events=data.history.filter(event=>{
+    if(event.position<created)return false;
     const c=event.command;
-    const moved=c.op==='reorder_tree'&&c.kind===kind&&c.ids.includes(id)&&c.expected.indexOf(id)!==c.ids.indexOf(id);
-    const changed=kind==='requirement'?c.req===id:((c.op===kind||c.op==='edit_'+kind)&&c.id===id)||c.op==='confirm_tree';
-    if(moved||changed)historyEvent(history,event,q);
-  }
+    if(c.op==='reorder_tree')return c.kind===kind&&c.ids.includes(id)&&c.expected.indexOf(id)!==c.ids.indexOf(id);
+    if(kind==='requirement')return c.req===id;
+    if(kind!=='ac')return ((c.op===kind||c.op==='edit_'+kind)&&c.id===id)||c.op==='confirm_tree';
+    if(c.req!==reqId)return false;
+    if(c.op==='revise')return c.acs.some(a=>a.id===id)||!!q.revisions[c.expected_revision-1]?.acs.some(a=>a.id===id);
+    const revision=q.revisions.find(r=>r.number===c.revision);
+    if(!revision?.acs.some(a=>a.id===id))return false;
+    if(c.ac)return c.ac===id;
+    if(c.op==='task')return c.acs.includes(id);
+    if(c.op==='complete_task')return revision.tasks[c.id]?.acs.includes(id);
+    if(c.op==='plan')return c.checks.some(check=>check.ac===id);
+    if(c.op==='result')return revision.runs[c.run]?.plan.some(check=>check.id===c.evidence.check&&check.ac===id);
+    if(c.op==='resolve')return revision.issues[c.id]?.ac===id;
+    return true;
+  });
+  const dialog=E('dialog',undefined,'history-dialog');dialog.setAttribute('aria-label','History: '+title);
+  const header=E('div',undefined,'history-dialog-header'),heading=E('div');heading.append(E('small','History'),E('h2',title));
+  const close=button('×',()=>dialog.close(),'history-close');close.setAttribute('aria-label','Close history');header.append(heading,close);dialog.append(header);
+  const content=E('div',undefined,'history-timeline');content.dataset.itemId=id;content.dataset.itemKind=kind;
+  for(const event of events.reverse())historyEvent(content,event,q);
+  if(!content.childNodes.length)content.append(E('p','No changes recorded yet.','hint'));
+  dialog.append(content);dialog.addEventListener('close',()=>dialog.remove());
+  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
+  document.body.append(dialog);dialog.showModal();
 }
 
 function closeOrderMenu(){orderMenu?.remove();orderMenu=null;}
@@ -514,11 +580,12 @@ function addOrdering(node,summary,kind,parent,id) {
   if(window.SNAPSHOT||viewerActor!==data.state.admin)return;
   const handle=E('button',undefined,'reorder-handle');
   const grip=document.createElementNS('http://www.w3.org/2000/svg','svg');grip.setAttribute('viewBox','0 0 16 20');grip.setAttribute('width','16');grip.setAttribute('height','20');grip.setAttribute('aria-hidden','true');
-  for(const x of [5,11])for(const y of [4,10,16]){const dot=document.createElementNS(grip.namespaceURI,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r','1.4');dot.setAttribute('fill','currentColor');grip.append(dot);}handle.append(grip);handle.type='button';handle.draggable=true;handle.disabled=orderSaving;
+  for(const x of [5,11])for(const y of [4,10,16]){const dot=document.createElementNS(grip.namespaceURI,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r','1.4');dot.setAttribute('fill','currentColor');grip.append(dot);}handle.append(grip);handle.type='button';handle.disabled=orderSaving;
+  let ignoreClick=false;
   handle.setAttribute('aria-label','Reorder '+kind+': '+id);handle.setAttribute('aria-haspopup','menu');
   handle.title='Drag to reorder, or click for move options';summary.classList.add('can-reorder');summary.append(handle);
   handle.onclick=e=>{
-    e.preventDefault();e.stopPropagation();closeOrderMenu();
+    e.preventDefault();e.stopPropagation();if(ignoreClick)return;closeOrderMenu();
     const menu=E('div',undefined,'reorder-menu');menu.setAttribute('role','menu');menu.setAttribute('aria-label','Move item');
     const siblings=orderedEntries(kind,parent),index=siblings.findIndex(([key])=>key===id);
     for(const [label,offset] of [['Move up',-1],['Move down',1]]){
@@ -529,29 +596,71 @@ function addOrdering(node,summary,kind,parent,id) {
     menu.querySelector('button:not(:disabled)')?.focus();
   };
   handle.onkeydown=e=>{if(['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();Promise.resolve(moveSibling(kind,parent,id,e.key==='ArrowUp'?-1:1)).catch(notify);}};
-  const clear=()=>document.querySelectorAll('[data-drop]').forEach(e=>delete e.dataset.drop);
-  const finish=()=>{draggedNode=null;clear();document.body.classList.remove('tree-dragging');node.classList.remove('drag-source');document.querySelectorAll('.drag-preview').forEach(e=>e.remove());};
-  handle.ondragstart=e=>{
-    if(orderSaving){e.preventDefault();return;}
-    draggedNode={kind,parent,id,workspace:ws};e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move';closeOrderMenu();closeFilterMenu();
-    const preview=E('div',undefined,'drag-preview '+kind);preview.append(grip.cloneNode(true),E('div',undefined,'drag-preview-text'));
-    preview.lastChild.append(E('small',kind==='requirement'?'Requirement':kind[0].toUpperCase()+kind.slice(1)),E('strong',summary.querySelector('.node-title').textContent));
-    document.body.append(preview);e.dataTransfer.setDragImage(preview,28,28);
-    requestAnimationFrame(()=>{if(draggedNode){node.classList.add('drag-source');document.body.classList.add('tree-dragging');}});
-  };
-  handle.ondragend=finish;
-  summary.ondragover=e=>{
-    clear();
-    if(!draggedNode||orderSaving||draggedNode.workspace!==ws||draggedNode.kind!==kind||draggedNode.parent!==parent||draggedNode.id===id)return;
-    e.preventDefault();e.stopPropagation();clear();e.dataTransfer.dropEffect='move';
-    const rect=summary.getBoundingClientRect();summary.dataset.drop=e.clientY<rect.top+rect.height/2?'before':'after';
-  };
-  summary.ondragleave=e=>{if(!summary.contains(e.relatedTarget))delete summary.dataset.drop;};
-  summary.ondrop=e=>{
-    if(!summary.dataset.drop||!draggedNode||draggedNode.workspace!==ws||draggedNode.kind!==kind||draggedNode.parent!==parent)return;
-    e.preventDefault();e.stopPropagation();
-    const from=draggedNode.id,expected=orderedEntries(kind,parent).map(([id])=>id),ids=expected.filter(id=>id!==from);
-    ids.splice(ids.indexOf(id)+(summary.dataset.drop==='after'?1:0),0,from);
-    finish();saveOrder(kind,parent,expected,ids,from).catch(notify);
+  handle.onpointerdown=e=>{
+    if(e.button!==0||orderSaving||matchMedia('(max-width:760px)').matches)return;
+    const container=node.parentElement,originalNext=node.nextSibling,wasOpen=node.open;
+    const expected=orderedEntries(kind,parent).map(([key])=>key),workspace=ws;
+    const siblings=()=>[...container.children].filter(n=>n.dataset.treeNode?.startsWith(kind+':'));
+    let active=false,preview=null,frame=null,point={x:e.clientX,y:e.clientY},valid=false;
+    const start={...point},pointer=e.pointerId;
+    function cleanup(commit=false){
+      const moved=active;active=false;
+      for(const n of siblings())for(const animation of n.getAnimations())animation.cancel();
+      document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
+      document.removeEventListener('pointercancel',cancel);document.removeEventListener('keydown',escape);
+      window.removeEventListener('blur',cancel);window.removeEventListener('resize',cancel);
+      cancelAnimationFrame(frame);preview?.remove();node.classList.remove('drag-source');document.body.classList.remove('tree-dragging');draggedNode=null;
+      if(!moved)return;
+      ignoreClick=true;setTimeout(()=>{ignoreClick=false;},0);
+      node.open=wasOpen;
+      if(!commit){container.insertBefore(node,originalNext?.parentElement===container?originalNext:null);return;}
+      const ids=siblings().map(n=>n.dataset.treeNode.slice(kind.length+1));
+      saveOrder(kind,parent,expected,ids,id).catch(notify);
+    }
+    function cancel(){cleanup(false);}
+    function escape(event){if(event.key==='Escape'){event.preventDefault();cancel();}}
+    function place(){
+      if(!node.isConnected||ws!==workspace){cancel();return;}
+      const bounds=container.getBoundingClientRect();
+      valid=point.x>=bounds.left-16&&point.x<=bounds.right+16&&point.y>=bounds.top-40&&point.y<=bounds.bottom+40;
+      preview.classList.toggle('invalid-drop',!valid);
+      const x=Math.max(8,Math.min(innerWidth-preview.offsetWidth-8,point.x-preview.offsetWidth+35));
+      preview.style.transform=`translate3d(${x}px,${point.y-28}px,0)`;
+      if(!valid)return;
+      const others=siblings().filter(n=>n!==node&&!n.hidden);
+      for(const n of others)for(const animation of n.getAnimations())animation.cancel();
+      const before=others.find(n=>{const r=n.getBoundingClientRect();return point.y<r.top+r.height/2;});
+      const next=before||(others.at(-1)?.nextSibling);
+      if(next===node||node.nextSibling===next)return;
+      const positions=new Map(others.map(n=>[n,n.getBoundingClientRect().top]));
+      container.insertBefore(node,next||null);
+      if(!matchMedia('(prefers-reduced-motion:reduce)').matches)for(const n of others){
+        const delta=positions.get(n)-n.getBoundingClientRect().top;
+        if(delta)n.animate([{transform:`translateY(${delta}px)`},{transform:'translateY(0)'}],{duration:140,easing:'ease-out'});
+      }
+    }
+    function scroll(){
+      if(!active)return;
+      const speed=point.y<100?-Math.min(14,(100-point.y)/4):point.y>innerHeight-70?Math.min(14,(point.y-innerHeight+70)/4):0;
+      if(speed){window.scrollBy(0,speed);place();}
+      if(active)frame=requestAnimationFrame(scroll);
+    }
+    function move(event){
+      if(event.pointerId!==pointer)return;
+      point={x:event.clientX,y:event.clientY};
+      if(!active){
+        if(Math.hypot(point.x-start.x,point.y-start.y)<5)return;
+        active=true;closeOrderMenu();closeFilterMenu();node.open=false;
+        preview=E('div',undefined,'drag-preview '+kind);preview.append(grip.cloneNode(true),E('div',undefined,'drag-preview-text'));
+        preview.lastChild.append(E('small',kind==='requirement'?'Requirement':kind[0].toUpperCase()+kind.slice(1)),E('strong',summary.querySelector('.node-title').textContent));
+        document.body.append(preview);node.classList.add('drag-source');document.body.classList.add('tree-dragging');frame=requestAnimationFrame(scroll);
+      }
+      event.preventDefault();place();
+    }
+    function up(event){if(event.pointerId===pointer)cleanup(active&&valid);}
+    draggedNode={cancel};
+    document.addEventListener('pointermove',move,{passive:false});document.addEventListener('pointerup',up);
+    document.addEventListener('pointercancel',cancel);document.addEventListener('keydown',escape);
+    window.addEventListener('blur',cancel);window.addEventListener('resize',cancel);
   };
 }

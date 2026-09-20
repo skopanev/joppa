@@ -109,9 +109,10 @@ on a domain, capability, requirement or AC to copy its permanent, database-wide 
 ID and title/text for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
 `joppa_read({"item_id":"..."})`.
 Content changes and decisions go through MCP. The workspace owner can reorder siblings
-using the drag handle, its Move up/down menu or arrow keys. The order is shared and persists
-after reload. Domain, capability and REQ cards have History: one saved operation per entry, with author and time.
-AC wording history is part of its REQ revisions.
+on desktop using the drag handle, its Move up/down menu or arrow keys.
+Dragging previews the position; Escape cancels it. Reorder controls are hidden on mobile. The order is shared and persists
+after reload. The history icon on every domain, capability, REQ and AC opens a plain timeline:
+time, author and change, one saved operation per entry.
 Reordering does not create a REQ revision or reset checks.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
 Если старый сервер уже занимает 6212, запустите новый на `6213`.
