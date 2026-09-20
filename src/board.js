@@ -109,7 +109,7 @@ $('tree').replaceChildren();
 $('refresh').onclick = () => load().catch(notify);
 const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
 let filters={domain:'',status:'',person:''};
-let filterWorkspace=null;
+let filterWorkspace=null,statusCounts={};
 function requirementStatus(id) {
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
   if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
@@ -137,7 +137,8 @@ function filterPicker(kind,label,caption,options,value,change){
   const host=E('div',undefined,'filter-picker '+kind+'-picker');
   const trigger=E('button',undefined,'filter-select');trigger.type='button';trigger.id=kind+'-filter';
   for(const [key,val] of Object.entries({role:'combobox','aria-label':label,'aria-haspopup':'listbox','aria-expanded':'false','aria-controls':kind+'-options'}))trigger.setAttribute(key,val);
-  const mark=E('span',kind==='domain'?'◈':'◎','picker-mark');mark.setAttribute('aria-hidden','true');
+  const mark=E('span',kind==='domain'?'◈':kind==='person'?'◎':'●','picker-mark');mark.setAttribute('aria-hidden','true');
+  if(kind==='status')mark.className='picker-mark '+value;
   const text=E('span',undefined,'picker-text'),selected=E('span',options.find(o=>o.id===value)?.title,'picker-value');
   text.append(E('small',caption),selected);
   const chevron=E('span','⌄','picker-chevron');chevron.setAttribute('aria-hidden','true');trigger.append(mark,text,chevron);host.append(trigger);
@@ -145,9 +146,9 @@ function filterPicker(kind,label,caption,options,value,change){
     closeFilterMenu();
     const menu=E('div',undefined,'filter-menu');menu.id=kind+'-options';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',label);
     for(const option of options){
-      const row=E('button',undefined,'filter-option');row.type='button';row.tabIndex=-1;row.setAttribute('role','option');row.setAttribute('aria-label',option.title);row.setAttribute('aria-selected',String(option.id===value));
-      row.append(E('span',option.title),E('small',option.hint),E('span',option.id===value?'✓':'','option-check'));
-      row.onclick=()=>{value=option.id;selected.textContent=option.title;closeFilterMenu(true);change(value);};menu.append(row);
+      const row=E('button',undefined,'filter-option'+(kind==='status'?' status-option '+(option.id||'all'):''));row.type='button';row.tabIndex=-1;row.setAttribute('role','option');row.setAttribute('aria-label',option.title);row.setAttribute('aria-selected',String(option.id===value));
+      row.append(E('span',option.title),E('small',typeof option.hint==='function'?option.hint():option.hint),E('span',option.id===value?'✓':'','option-check'));
+      row.onclick=()=>{value=option.id;selected.textContent=option.title;if(kind==='status')mark.className='picker-mark '+value;closeFilterMenu(true);change(value);};menu.append(row);
     }
     menu.onkeydown=e=>{
       const rows=[...menu.children],index=rows.indexOf(document.activeElement);let next;
@@ -184,13 +185,12 @@ function filterControls(root) {
   if(viewerActor)people.push({id:'@me',title:'Assigned to me',hint:'My responsibilities'});
   for(const [id,role] of Object.entries(data.state.members))people.push({id,title:id===viewerActor?'Me':id,hint:role});
   fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;applyFilters();}));
+  fields.prepend(fields.lastElementChild);
   toolbar.append(fields);
-  const statuses=E('div',undefined,'status-filters');statuses.setAttribute('role','group');statuses.setAttribute('aria-label','Requirement status');
-  for(const [key,label] of [['','All requirements'],...Object.entries(statusLabels)]){
-    const b=button('',()=>{filters.status=filters.status===key?'':key;applyFilters();},'status-filter '+(key||'all'));
-    b.dataset.status=key;b.append(E('span',label),E('strong','0','filter-count'));statuses.append(b);
-  }
-  toolbar.append(statuses);
+  fields.append(filterPicker('status','Filter by status','Status',[
+    {id:'',title:'All statuses',hint:()=>Object.values(statusCounts).reduce((a,b)=>a+b,0)+' requirements'},
+    ...Object.entries(statusLabels).map(([id,title])=>({id,title,hint:()=>(statusCounts[id]||0)+' requirements'}))
+  ],filters.status,value=>{filters.status=value;applyFilters();}));
   const bottom=E('div',undefined,'filter-bottom');
   const results=E('span','','filter-results');results.id='filter-results';results.setAttribute('role','status');
   bottom.append(results);toolbar.append(bottom);root.append(toolbar);
@@ -222,11 +222,7 @@ function applyFilters(reveal=true) {
     group.hidden=!domainVisible;
     if(domainVisible){visibleDomains++;if(reveal&&(filters.status||filters.domain||filters.person))group.open=true;}
   }
-  const total=Object.values(counts).reduce((a,b)=>a+b,0);
-  for(const b of $('tree').querySelectorAll('.status-filter')){
-    const key=b.dataset.status;b.setAttribute('aria-pressed',String(filters.status===key));
-    b.querySelector('.filter-count').textContent=key?counts[key]:total;
-  }
+  statusCounts=counts;
   $('filter-results').textContent=shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
   $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
 }
