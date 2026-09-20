@@ -2,7 +2,7 @@ use crate::web_auth;
 use anyhow::{Result, ensure};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::Html,
     routing::{get, post},
@@ -116,11 +116,48 @@ async fn login_user(State(app): State<App>, headers: HeaderMap) -> AuthResult {
     let mut response = auth_headers();
     response.insert(
         header::SET_COOKIE,
-        web_auth::set_cookie(&headers, "joppa_login", &id, 600)
+        web_auth::set_cookie(&headers, "joppa_login", &id, 300)
+            .replace("SameSite=Strict", "SameSite=Lax")
             .parse()
             .unwrap(),
     );
     Ok((response, Json(data)))
+}
+#[derive(Deserialize)]
+struct Callback {
+    state: Option<String>,
+    code: Option<String>,
+    error: Option<String>,
+}
+async fn google_callback(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(q): Query<Callback>,
+) -> (HeaderMap, Html<String>) {
+    let result = match (
+        web_auth::cookie(&headers, "joppa_login"),
+        q.state.as_deref(),
+    ) {
+        (Some(id), Some(state)) => {
+            app.login
+                .callback(id, state, q.code.as_deref(), q.error.is_some())
+                .await
+        }
+        _ => Err(anyhow::anyhow!("Missing sign-in state")),
+    };
+    let message = if result.is_ok() {
+        "Return to Joppa to finish signing in. You can close this window."
+    } else {
+        "This sign-in has expired or belongs to another browser. Return to Joppa and try again."
+    };
+    let mut h = auth_headers();
+    h.insert(header::REFERRER_POLICY, "no-referrer".parse().unwrap());
+    (
+        h,
+        Html(format!(
+            "<!doctype html><html lang=\"en\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Joppa · Sign-in</title><style>body{{font:16px/1.6 system-ui;background:#f5f5f0;color:#263729;display:grid;place-items:center;min-height:90vh;margin:0}}main{{max-width:360px;padding:32px}}h1{{letter-spacing:-.05em;font-size:40px}}</style><main><h1>joppa.</h1><p>{message}</p></main></html>"
+        )),
+    )
 }
 async fn poll_login(State(app): State<App>, headers: HeaderMap) -> AuthResult {
     web_auth::check_origin(&headers).map_err(auth_error)?;
@@ -188,6 +225,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
         .route("/auth/login", post(login_user))
         .route("/auth/poll", post(poll_login))
+        .route("/auth/google/callback", get(google_callback))
         .route("/auth/logout", post(logout))
         .route("/api/me", get(me))
         .route("/api/workspaces", get(list))

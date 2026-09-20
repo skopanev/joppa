@@ -16,6 +16,17 @@ const assert = require('node:assert/strict');
         height: 900
       }
     });
+    // UI fixture only: Google protocol and real server sessions are tested in Rust.
+    // The fixture supplies the existing test API identity after the mocked popup.
+    let signedIn=false;
+    await page.route('**/api/**',async route=>{
+      const request=route.request();
+      if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
+      await route.continue({headers:{...request.headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
+    });
+    await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
+    await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
+    await page.route('**/auth/logout',route=>{signedIn=false;return route.fulfill({json:{ok:true}});});
     async function save(locator) {
       await Promise.all([page.waitForResponse(r => r.request().method() === 'POST'), locator.click()]);
       await page.getByText('Saved to history.', {

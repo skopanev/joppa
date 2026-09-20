@@ -59,14 +59,19 @@ the prior decision explicitly. Withdrawal blocks every AC assessment that cites 
 
 ## Browser authentication
 
-`POST /auth/login` starts the configured NTK Google device flow and returns a
-verification URL. The device secret stays on the server; the browser receives
-an HttpOnly attempt cookie. `POST /auth/poll` returns `pending` until Google
-sign-in completes, then sets a separate, 12-hour HttpOnly session cookie.
-Only explicitly mapped NTK user IDs receive access. `POST /auth/logout`
-invalidates that session server-side. These endpoints and cookie-authenticated
-commands require an exact same-origin `Origin` header. Cookies are `Secure`
-when accessed through HTTPS. Sessions do not survive a server restart.
+Joppa owns its Google OAuth client and invitation list; there is no dependency
+on another product's authentication service.
 
-`GET /api/me` returns the authenticated actor. Bearer tokens remain available
-for CLI/agent integrations; the browser never stores or displays them.
+`POST /auth/login` returns a Google authorization URL and sets an HttpOnly attempt
+cookie (`SameSite=Lax`, so Google's top-level callback can identify the browser).
+`GET /auth/google/callback` validates the state and browser binding, exchanges the
+code server-side with PKCE, and verifies Google's signed ID token and Joppa access.
+`POST /auth/poll` returns `pending` until completion, then sets a separate 12-hour
+HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
+`POST /auth/logout` invalidates the session server-side.
+
+All POST auth endpoints and cookie-authenticated commands require an exact
+same-origin `Origin` header. Cookies are `Secure` over HTTPS. Sessions do not
+survive a server restart. `GET /api/me` returns the authenticated Joppa actor.
+Bearer tokens remain available for CLI/agent integrations. The browser never
+stores or displays them. Missing Google configuration does not enable a fallback.

@@ -16,7 +16,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from auth_provider import Provider
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = str(ROOT / 'target/debug/joppa')
@@ -53,11 +52,10 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     token_file.write_text(json.dumps({owner_token: 'owner', agent_token: 'agent'}))
     token_file.chmod(0o600)
     env['JOPPA_TOKENS_FILE'] = str(token_file)
-    identities = Path(temp) / 'identities.json'
-    identities.write_text(json.dumps({'ntk-owner': 'owner'}))
-    provider = Provider()
-    env['JOPPA_LOGIN_USERS_FILE'] = str(identities)
-    env['JOPPA_NTK_URL'] = provider.url
+    # Standalone browser login needs Joppa's own Google client. Unit tests cover
+    # the OAuth exchange and session binding with a local Google fixture.
+    env.pop('JOPPA_GOOGLE_CLIENT_FILE', None)
+    env.pop('JOPPA_LOGIN_USERS_FILE', None)
 
     server = subprocess.Popen([BIN, 'serve', str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
@@ -71,64 +69,14 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             raise AssertionError('HTTP server did not become ready')
         assert request('/api/workspaces', token='invalid')[0] == 401
         assert request('/auth/login', body={})[0] == 403  # Origin is mandatory.
-        def auth_request(path, cookie='', origin=base):
-            req = urllib.request.Request(base + path, data=b'', headers={'Origin': origin, 'Cookie': cookie})
-            return urllib.request.urlopen(req, timeout=5)
-        def begin():
-            with auth_request('/auth/login') as response:
-                data = json.load(response)
-                assert 'device_secret' not in data
-                cookie = response.headers['Set-Cookie'].split(';')[0]
-                return cookie, data['verification_url']
-        attempt, verification_url = begin()
-        with auth_request('/auth/poll', attempt) as response:
-            assert json.load(response)['status'] == 'pending'
         try:
-            auth_request('/auth/poll')
-            raise AssertionError('another browser cannot collect this sign-in')
+            urllib.request.urlopen(urllib.request.Request(base+'/auth/login', data=b'', headers={'Origin':base}))
+            raise AssertionError('unconfigured Google login must fail closed')
         except urllib.error.HTTPError as e:
-            assert e.code == 403
-        provider.user = 'outsider'
-        urllib.request.urlopen(verification_url).close()
-        try:
-            auth_request('/auth/poll', attempt)
-            raise AssertionError('unapproved provider identity must fail')
-        except urllib.error.HTTPError as e:
-            assert e.code == 403
-        provider.user = 'ntk-owner'
-        attempt, verification_url = begin()
-        urllib.request.urlopen(verification_url).close()
-        with auth_request('/auth/poll', attempt) as response:
-            cookie = response.headers['Set-Cookie']
-            assert 'HttpOnly' in cookie and 'SameSite=Strict' in cookie
-            data = json.load(response)
-            assert data['actor'] == 'owner' and 'key' not in data
-            assert owner_token not in cookie
-        cookie = cookie.split(';')[0]
-        with urllib.request.urlopen(urllib.request.Request(base+'/api/me', headers={'Cookie': cookie})) as me:
-            assert json.load(me)['actor'] == 'owner'
-        try:
-            auth_request('/auth/poll', attempt)
-            raise AssertionError('completed attempt cannot be replayed')
-        except urllib.error.HTTPError as e:
-            assert e.code == 403
-        try:
-            urllib.request.urlopen(urllib.request.Request(base+'/api/me', headers={'Cookie': cookie, 'Authorization': 'Bearer invalid'}))
-            raise AssertionError('invalid explicit credentials cannot fall back to a cookie')
-        except urllib.error.HTTPError as e:
-            assert e.code == 401
-        forged = urllib.request.Request(base+'/api/workspaces/'+ws+'/commands', data=json.dumps({'request_id':'csrf','command':{'op':'workspace','title':'forged'}}).encode(), headers={'Content-Type':'application/json','Cookie':cookie,'Origin':'https://unrelated.example'})
-        try:
-            urllib.request.urlopen(forged)
-            raise AssertionError('cross-origin cookie write must fail')
-        except urllib.error.HTTPError as e:
-            assert e.code == 403
-        auth_request('/auth/logout', cookie).close()
-        try:
-            urllib.request.urlopen(urllib.request.Request(base+'/api/me', headers={'Cookie': cookie}))
-            raise AssertionError('logout must invalidate the server session')
-        except urllib.error.HTTPError as e:
-            assert e.code == 401
+            assert e.code == 403 and 'configured for Joppa' in e.read().decode()
+        with urllib.request.urlopen(base+'/auth/google/callback?state=forged&error=%3Cscript%3Ealert(1)%3C/script%3E') as response:
+            html=response.read().decode()
+            assert '<script>' not in html and 'another browser' in html
 
         ok({'op': 'workspace', 'title': 'Проверка карточки'})
         ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
@@ -195,4 +143,3 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     finally:
         server.terminate()
         server.wait(timeout=5)
-        provider.close()

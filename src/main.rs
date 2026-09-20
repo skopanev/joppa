@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 #[allow(dead_code, clippy::all)]
 #[rustfmt::skip]
 mod legacy;
+mod google_auth;
 mod protocol;
 mod web;
 mod web_auth;

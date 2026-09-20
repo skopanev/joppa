@@ -61,19 +61,33 @@ export JOPPA_TOKENS_FILE=/tmp/joppa-tokens.json
 ./target/debug/joppa serve 6212
 ```
 
-Browser sign-in uses Google's existing NTK flow. Before starting `serve`, configure
-`JOPPA_NTK_URL` with your HTTPS NTK service URL and `JOPPA_LOGIN_USERS_FILE`
-with a private JSON file mapping verified NTK user IDs to Joppa actor IDs,
-for example `{"ntk-user-id": "owner"}`. Each actor must also exist in the API
-identity file. NTK enrollment does not automatically grant Joppa access.
+Browser sign-in belongs to Joppa and talks directly to Google. It does not use
+NTK or any other product's accounts, keys, service or OAuth client.
 
-Open **http://127.0.0.1:6212** and choose **Continue with Google**. Complete
-sign-in in the Google window; the board opens automatically. Before sign-in,
-only the authorization screen is visible. Browser sessions use separate,
-HttpOnly cookies, expire after 12 hours, and are invalidated on sign-out or
-server restart. API tokens and NTK credentials never appear in the browser.
-The NTK device flow issues an NTK key as usual; Joppa verifies it against
-`/v1/me` and discards it. Revocation of those NTK keys remains an NTK operation.
+Before starting `serve`, set `JOPPA_GOOGLE_CLIENT_FILE` to a private JSON file:
+
+```json
+{
+  "client_id": "YOUR_JOPPA_CLIENT.apps.googleusercontent.com",
+  "client_secret": "YOUR_JOPPA_CLIENT_SECRET",
+  "redirect_uri": "https://YOUR_JOPPA_DOMAIN/auth/google/callback"
+}
+```
+
+Register that exact callback in Joppa's Google Cloud OAuth client. HTTPS is
+required outside localhost. Set `JOPPA_LOGIN_USERS_FILE` to a private JSON file
+mapping invited Google email addresses to existing Joppa actors, for example
+`{"owner@example.com": "owner"}`. Each actor must exist in the API identity file.
+Files containing secrets must be readable only by the service account.
+
+Open Joppa and choose **Continue with Google**. Complete sign-in in the Google
+window; the board opens automatically. Until sign-in, only the authorization
+screen is visible. The server verifies the token signature, audience, issuer,
+expiry, nonce and email verification before applying Joppa's own invitation list.
+OAuth uses a browser-bound, single-use state and PKCE. Browser sessions have
+separate HttpOnly cookies, expire after 12 hours, and are invalidated on sign-out
+or server restart. Google credentials and API tokens never reach browser storage.
+Without Joppa's own Google configuration, sign-in fails closed with a setup message.
 
 The **Workspace** menu switches products. [How it works](http://127.0.0.1:6212/guide)
 explains domains, capabilities, requirements and acceptance criteria.
