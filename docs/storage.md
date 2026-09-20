@@ -1,28 +1,39 @@
-# Хранение и доверие
+# Storage and trust
 
-Команда становится событием только после проверки модели внутри транзакции.
-Advisory lock на воркспейс охватывает чтение, проверку и вставку: две правки с
-одним expected_revision не проходят одновременно. Повтор request_id не дублирует событие.
+A command becomes an event only after model validation inside a transaction.
+A workspace advisory lock covers reading, validation and insertion. Two edits
+with the same `expected_revision` cannot both succeed. Replaying a request does
+not duplicate its event.
 
-Бизнес-журнал хранится в `workspaces` и `events`. Отдельные таблицы хранят
-постоянные ID, браузерные сессии и хеши OAuth-токенов. Отзыв ключа — отдельная
-запись; исходная запись не меняется. В `events.command` хранится
-типизированный JSON команды; неизвестные поля отвергаются. Воркспейс является
-границей ссылок: чужой REQ, AC, проект или человек не разрешается по чужому ID.
-Вычисляемые структуры не являются второй записываемой копией истины.
+The business journal uses `workspaces` and `events`. Separate tables store
+permanent item IDs, workspace aliases, browser sessions and OAuth token hashes.
+Revocations append records rather than changing credentials in place. Event
+payloads are typed JSON; unknown command fields are rejected. References are
+scoped to a workspace: a foreign REQ, AC, project or person cannot be selected
+by guessing an ID. Derived state is not another writable source of truth.
 
-Редакция хранит текст REQ, владельца и весь состав AC. Команда `revise` не
-изменяет прежнюю редакцию. Оценки, проверки, приёмка и обсуждение ссылаются
-на её номер. Результат получает автора и время из события, а не из свободных
-полей отправителя. `intake.author` — атрибуция исходной фразы; реальный автор
-записи отдельно виден в журнале.
+`command_receipts` stores original inputs and resolved results atomically with
+new events. This preserves generated IDs across retries and server restarts.
+A batch uses one transaction and lock, but one event per operation. An error
+rolls back all events, generated IDs, aliases and the receipt. Receipt lookup
+occurs after access checks; knowing a request ID never grants access.
 
-## Роли PostgreSQL
+Workspace renames append a canonical ID and reserve a new alias; the immutable
+storage identity and old links survive. Both names resolve through the same
+access checks. A name cannot be reassigned to another workspace.
 
-Миграцию выполняет владелец схемы. Сервер работает другой ролью:
+A revision fixes the REQ wording, owner and entire AC set. `revise` never edits
+an old revision. Assessments, checks, acceptance and discussion reference the
+revision number. Evidence author and time come from authentication and the
+server event, not caller-supplied labels. `intake.author` attributes the source
+message; the authenticated writer remains separately visible in history.
+
+## PostgreSQL roles
+
+Run migrations as the schema owner. Run the application with another role:
 
 ```sql
--- Создайте login/password своим способом управления секретами.
+-- Supply the login password through your own secret-management process.
 CREATE ROLE joppa_runtime LOGIN;
 GRANT CONNECT ON DATABASE joppa TO joppa_runtime;
 GRANT USAGE ON SCHEMA joppa TO joppa_runtime;
@@ -30,22 +41,23 @@ GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;
 ```
 
-Не передавайте эту роль/строку подключения конечным участникам: бизнес-проверки
-и авторизация происходят в сервере. INSERT напрямую — административный путь,
-он не заменяет командный API. У серверной роли нет права менять/удалять события,
-владеть таблицами или отключать триггеры. Даже владелец при обычных UPDATE,
-DELETE, TRUNCATE получает ошибку WORM. Суперпользователь, резервные копии и
-физическая защита диска относятся к администрированию инфраструктуры.
+Reapply grants after additive migrations. Do not give this connection string to
+end users. Business validation and authorization happen in the server; direct
+INSERT is an administrative path, not a substitute for the command API.
 
-## Совместимость
+The runtime role cannot update/delete events, own tables or disable triggers.
+Even normal UPDATE, DELETE and TRUNCATE by the table owner encounter WORM
+triggers. A database superuser can bypass those protections. Physical storage,
+backups and protection against infrastructure administrators are separate duties.
 
-Схема 0.1 остаётся в `public`. Новая миграция её не читает и не переписывает.
-Нельзя автоматически перенести `done_at` в доказательство, а свободный `by` —
-в подтверждённое решение человека. Старую доску можно открыть отдельным
-`joppa legacy serve PORT`. Миграция бизнес-содержимого означает создать
-воркспейс и владельцев, перенести формулировки как новые редакции и проверить их.
+## Compatibility
 
-Смена существующего формата событий требует версии/преобразования при чтении,
-не UPDATE журнала. Не меняйте смысл уже сохранённого варианта команды при
-дальнейшем развитии. В 0.2 формат первый; последующие форматы должны иметь
-отдельную версию до изменения семантики старых событий.
+The 0.1 schema remains in `public`; migrations neither import nor overwrite it.
+Old `done_at` values cannot become verified evidence automatically, and free-text
+`by` values cannot become authenticated human decisions. The administrative
+`joppa legacy serve PORT` command can expose the old read-only board.
+
+Business migration means assigning a workspace and owners, importing wording as
+new revisions, confirming it and collecting evidence. Changing a persisted event
+format requires a version or read-time conversion, never an UPDATE to history.
+Do not silently change the meaning of already-recorded commands.

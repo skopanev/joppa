@@ -373,7 +373,18 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             authority,
             reason,
         } => {
-            ensure!(actor == w.admin, "workspace owner edits domain authority");
+            let domain = w
+                .domains
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown domain"))?;
+            ensure!(
+                actor == w.admin
+                    || (w.members[actor] == "agent"
+                        && !domain.confirmed
+                        && !domain.archived
+                        && domain.authority == *authority),
+                "only the workspace owner edits confirmed domains or changes authority; agents may edit draft titles"
+            );
             nonempty(title)?;
             nonempty(reason)?;
             human(w, authority)?;
@@ -385,7 +396,17 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             d.authority = authority.clone();
         }
         Command::EditCapability { id, title, reason } => {
-            ensure!(actor == w.admin, "workspace owner edits capability");
+            let capability = w
+                .capabilities
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown capability"))?;
+            ensure!(
+                actor == w.admin
+                    || (w.members[actor] == "agent"
+                        && !capability.confirmed
+                        && !w.domains[&capability.domain].archived),
+                "only the workspace owner edits confirmed capabilities; agents may edit draft titles"
+            );
             nonempty(title)?;
             nonempty(reason)?;
             w.capabilities

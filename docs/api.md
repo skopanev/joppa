@@ -15,9 +15,9 @@ project: id, repository
 domain: id, title, authority (human member)
 capability: id, title, domain
 confirm_tree: (no fields); workspace owner validates agent draft
-edit_domain: id, title, authority, reason; workspace owner only
+edit_domain: id, title, authority, reason; owner, or agent changing only an unconfirmed title
 set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
-edit_capability: id, title, reason; workspace owner only
+edit_capability: id, title, reason; owner, or agent changing an unconfirmed title
 revise: req, expected_revision (0 for new), capability, title, body, owner, reason,
         acs:[{id,text,depends_on:[],decider:null,before_launch:false}]
 confirm: req, revision; REQ owner confirms wording
@@ -157,3 +157,65 @@ the code. For its exact callback URL, Joppa displays a Copy code button directly
 on the consent page. The code remains bound to the registered callback, client
 and PKCE verifier, is single-use, and expires after five minutes. Other clients
 return to their registered callback automatically.
+
+## Automatic IDs and batches
+
+Through `joppa_command`, omit `id` when creating a domain, capability, project,
+intake, comment, task or issue. Omit `run` for a new check plan. For `revise`,
+omit `req` only when `expected_revision` is 0; omit `id` on newly added ACs.
+The server assigns UUIDs and returns the resolved `command` and `system_ids`
+for domains, capabilities, REQs and ACs. Explicit local IDs remain supported.
+An omitted field means a new identity; null or an empty string is not an ID.
+
+When revising, retain the existing REQ and AC IDs. Do not omit IDs on existing
+ACs to change their wording. Parent references, member identities, owners,
+authorities and assignees must identify existing objects or people. They are
+never guessed or automatically created. Archived IDs remain reserved.
+
+A successful request persists its original input and result in an immutable
+receipt. Retry exactly the same input with the same `request_id` to get the
+same generated IDs. Different input or a different actor is rejected. A failed
+transaction consumes neither IDs nor the request ID. Do not change request IDs
+merely because a successful response was lost.
+
+`joppa_batch` accepts `workspace`, `request_id` and `operations` (1–100 entries).
+Every entry has `command` and an optional unique `ref` label. Commands execute in
+order in one database transaction: either all append, or none do. Each operation
+retains its own actor/time/history entry. Permissions are identical to individual
+commands; a batch does not confer approval authority.
+
+A later command can reference a resolved earlier command field using an explicit
+object `{"$ref":"label/field"}`. Nested paths use JSON Pointer syntax after the
+label, for example `requirement/acs/0/id`. Forward or missing references fail the
+whole batch. Plain text is never interpreted as a template.
+
+```json
+{
+  "workspace": "product",
+  "request_id": "create-access-tree-1",
+  "operations": [
+    {"ref":"area","command":{"op":"domain","title":"Access","authority":"owner"}},
+    {"ref":"ability","command":{"op":"capability","title":"Restore paid access","domain":{"$ref":"area/id"}}},
+    {"ref":"requirement","command":{
+      "op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},
+      "title":"Paid access survives signing in again","body":"Only iOS is in scope",
+      "owner":"owner","reason":"Agreed product scope",
+      "acs":[{"text":"On iOS, an active subscription unlocks paid features after signing in again"}]
+    }}
+  ]
+}
+```
+
+The response has `results` in operation order, each with `position`, resolved
+`command` and applicable `system_ids`; `summary` and `replayed` describe the
+package. Referenced values and generated IDs remain identical on replay.
+The administrative typed command interface still expects explicit local IDs;
+interactive agents should use the HTTPS MCP tools.
+
+## Methodology through MCP
+
+Call `joppa_model_docs` before authoring a product tree. Optional `section` is
+`model`, `process`, `green` or `all` (default). The response contains the English
+source documentation compiled into the running server; no local checkout is
+needed. `joppa_help` supplies command shapes and this API contract. Initialization
+instructions provide the short rules and direct agents to both tools.

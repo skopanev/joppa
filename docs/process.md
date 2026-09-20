@@ -1,172 +1,146 @@
-# Как идёт работа
+# How work moves
 
-## Кто что делает
+## Who does what
 
-**REQ и AC — результат совместной работы людей и агента.** У каждого REQ один
-владелец: он отвечает за смысл требования и принимает результат.
+People and agents formulate REQ and ACs together. Every requirement has one
+owner responsible for its meaning and acceptance.
 
-| Кто | Что делает |
+| Participant | Responsibility |
 |---|---|
-| Владелец REQ | Уточняет REQ и AC с участниками, разбирает замечания, получает нужные решения и принимает результат |
-| Бизнес, руководитель, комплаенс, юрист | Описывают запрос, определяют правила и границы в пределах своих полномочий; решения остаются в карточке REQ |
-| Тестировщик и поддержка | Сообщают о проблеме. Проверяющий указывает, что проверил и какой получил результат |
-| Разработчик | Выполняет работу и разбирается в спорных технических вопросах |
-| Агент | Помогает сформулировать REQ и AC, оценивает готовность каждого AC, создаёт и выполняет работу, запускает проверки; недостающие решения уточняет у владельца |
+| REQ owner | Clarify wording, handle comments, obtain decisions and accept the result |
+| Business, executive, compliance or legal specialist | Define rules and scope within their authority; record decisions in the REQ card |
+| Tester or support | Report problems; identify what was checked and the observed result |
+| Developer | Implement work and resolve technical questions |
+| Agent | Help formulate REQ/ACs, assess readiness, organize work and run checks; ask for missing decisions |
 
-Технический разбор — шаг работы, обычно его выполняет агент. От автора
-обращения не требуется знать устройство кода, номер сборки или оценивать
-разработку; важную дату указать можно.
+Technical analysis is work, usually performed by an agent. An intake author does
+not need to understand code, identify a build or estimate implementation. A
+relevant deadline can be recorded without becoming an implementation estimate.
 
-При разборе агент проверяет, достаточно ли определён каждый AC для работы.
-Если не хватает решения, он записывает конкретный вопрос и кому он адресован.
-Уже принятое решение можно использовать со ссылкой на него; повторное
-согласование нужно, когда меняется смысл или появляется новое условие.
-Клиенты и платформы берутся из согласованного AC и его контекста; недостающие
-границы агент уточняет, а не расширяет до всех поддерживаемых платформ.
-Подробнее — [объём AC](model.md#объём-ac).
+The agent assesses every AC when analyzing or revising a requirement. Missing
+policy becomes a concrete question addressed to a person. Link an existing
+applicable decision rather than repeatedly asking for it. A material change
+requires a new decision. Platforms come from the agreed AC and context; see
+[AC scope](model.md#ac-scope).
 
-## Обсуждение и правки
+## Discussion and corrections
 
-Нашли проблему в REQ или AC — оставили комментарий в карточке REQ. Владелец
-ответил там же; при необходимости REQ и AC поправили. В истории видны автор,
-время и содержание каждой правки, а в обсуждении — её причина. Отдельного
-процесса предложений нет.
+Found a gap? Comment in the REQ card. The owner answers there and, when needed,
+updates REQ and ACs. History records the author, time and content of each saved
+operation, with the reason in the discussion. No separate suggestions process.
 
-Комментарий сам по себе не останавливает работу. Если без ответа нельзя
-однозначно выполнить или проверить AC, агент указывает этот AC и недостающий
-ответ. Ждут затронутый AC и зависимые от него; независимая работа продолжается.
+A comment does not automatically stop work. If an answer is necessary to
+implement or check an AC, mark that AC as waiting with the specific question and
+recipient. Its dependents wait too; independent ready ACs may proceed.
 
-## Приём
+An OAuth-connected assistant acts as the signed-in user. That credential does
+not itself authorize a business decision. Confirm wording, accept results,
+record specialist decisions or submit manual evidence only on explicit user
+instruction. Unattended automation uses a separate agent or runner identity.
 
-Человек пишет обычной фразой. Текст сохраняется **дословно**: по нему потом
-сверяют, не подменили ли смысл при разборе.
+## Intake
 
-Агент определяет род — баг, правило, вопрос, замысел — и спрашивает **ровно то,
-чего не хватает этому роду**. Список вопросов лежит в базе, а не в промпте:
-меняется политика приёма — владелец добавляет событие `questions`, а не правит
-инструкцию агенту. У незавершённых пунктов этого рода ответы собираются заново;
-предыдущие остаются в истории.
+Save the original message **verbatim**, without trimming or paraphrasing. It is
+the reference for checking that later analysis preserved the author's meaning.
 
-**Обращение нельзя отвергнуть.** Сырое — нормальное состояние. Отказывают
-готовности, а не факту, что человек что-то сказал.
+Classify each point as a bug, policy, question or idea, then ask only the fields
+missing for that kind. Required questions live in workspace policy, not solely
+in an agent prompt. The owner changes policy with `questions`; unfinished points
+of that kind collect answers again while older answers remain in history.
 
-### Обращение распадается на пункты
+Raw intake is valid. Reject readiness when information is missing, not the fact
+that someone reported a problem.
 
-Живая просьба почти никогда не однородна. «Сделайте четыре события» на деле
-означает «два делаем, одно не делаем совсем, одно решается иначе».
+### Split a message into points
 
-Поэтому разбирается не обращение целиком, а каждый пункт, и **у каждого своя
-судьба**. Когда пункт решили не делать, причина сохраняется рядом с ним — через
-месяц видно, почему не сделали, и то же самое не заводят заново.
+A request for four things may lead to two implementations, one refusal and one
+alternative solution. Each point gets its own outcome. Record the reason for a
+refusal next to the point so it is not recreated without that context later.
 
-## Три пути обращения
+## Three routes
 
-**Запрос правила.** Уточняем сумму, перечень, область действия → получается
-требование → уполномоченный подтверждает формулировку → технический разбор →
-работа.
+1. **Policy request:** clarify amounts, lists and scope; formulate a REQ; have
+   the authority confirm wording; analyze and implement it.
+2. **Idea requiring a decision:** ask the responsible person first. Do not create
+   implementation work for a disputed AC before the decision. Independent ready
+   ACs can proceed. Conditions of the decision, including review dates when
+   relevant, belong in the REQ and ACs.
+3. **Support problem:** link an existing REQ. A confirmed defect invalidates the
+   affected result; resolution and a fresh successful run restore eligibility
+   for acceptance. A bug does not automatically create another requirement.
 
-**Замысел, которому нужно решение.** Сначала создаётся запрос решения
-ответственному. **До решения работа по спорному условию не создаётся** — размер
-скидки выбирает не разработчик. Независимые готовые AC можно выполнять. Условия
-решения (в том числе срок пересмотра) входят в REQ и AC.
+### When there is no suitable requirement
 
-**Проблема от поддержки.** Связывается с **существующим** требованием, нового не
-создаёт. Если нарушение подтверждено, результат больше нельзя считать
-проверенным. После исправления и успешной проверки готовность подтверждается
-заново.
+Always record the problem, then establish expected behavior.
 
-> Баг не создаёт требование — он гасит зелёное у существующего.
-
-### Если подходящего требования нет
-
-Так бывает постоянно, и дерево тут ни при чём: продукт делает много такого, что
-никто не выписывал. Процесс на этом **не должен застревать**.
-
-```
-проблема принята и сохранена          ← всегда, без условий
-   ↓
-выясняем ожидаемое поведение          ← «а как должно быть?»
-   ↓
-   ├─ требование нашлось               → привязываем, как обычно
-   ├─ требования нет, но поведение
-   │  очевидно и никем не оспорено     → формулируем, помечаем как
-   │                                     невыясненное, работа идёт
-   └─ поведение спорно                 → запрос решения тому, кто
-                                         отвечает; проблема ждёт
+```text
+Existing REQ found              -> link it.
+No REQ; behavior is undisputed  -> draft one, mark it unconfirmed, analyze work.
+Expected behavior is disputed  -> request a decision; affected work waits.
 ```
 
-Средняя ветка — рабочая лошадь, и в ней есть риск: требование, выписанное задним
-числом под уже случившийся баг, легко подогнать под то, что удобно починить.
-Поэтому оно **помечено как невыясненное** и требует подтверждения, как всякое
-другое. До подтверждения работа идёт, но зелёным оно не становится.
+Retrospective wording is easy to tailor to a convenient fix. It needs the same
+owner confirmation as any other REQ. The tree being incomplete must not block
+intake, and intake never proves the tree complete.
 
-Неполнота дерева не должна мешать принимать проблемы. Принимать — всегда;
-обещать, что дерево полно, — никогда.
+## Readiness and results
 
-## Состояния
+“Ready for work” means the condition is sufficiently specified and no known
+blocking question remains. “Waiting for a decision” identifies a specific
+question and person. An unready AC remains part of the requirement.
 
-Агент оценивает готовность каждого AC при разборе и после правок. «Готов к
-работе» означает, что условие определено и известных нерешённых вопросов нет.
-«Ждёт решения» означает конкретный вопрос в карточке и того, от кого нужен
-ответ. Неготовый AC остаётся в составе требования; независимые AC можно брать.
+Each REQ revision has its own state. Work availability, check results and owner
+acceptance are separate facts.
 
-У каждой редакции REQ своё состояние. Сводка выводится из готовности AC,
-результатов проверок этой редакции и её приёмки владельцем.
-Доступность работы и результат показываются отдельно:
-
-| Требование | Что значит |
+| Summary | Meaning |
 |---|---|
-| Ждёт разбора | AC не выписаны — взять в работу нечего |
-| Можно брать N из M AC | эти AC готовы к работе; остальные ждут уточнений или зависимостей |
-| Проверено N из M AC | эти условия подтверждены проверками |
-| Готово к приёмке | все AC подтверждены на одном предмете; требуется решение владельца |
-| Принято | владелец принял проверенный результат по текущей редакции REQ и AC |
+| Awaiting analysis | No ACs have been specified |
+| N of M ACs ready for work | Those ACs can proceed; others await answers or dependencies |
+| N of M ACs verified | Checks support those conditions |
+| Ready for acceptance | All ACs passed on one subject; the owner must decide |
+| Accepted | The owner accepted that revision and its checked result |
 
-Молчание не означает согласия: формулировку нужно подтвердить. Изменился смысл —
-требуется новое подтверждение.
+Silence is not approval. Confirm wording explicitly. Changed meaning requires
+confirmation again. A specialist's decision may be reused only when the REQ
+context and the relevant AC are unchanged; cite it in the new assessment.
 
-## Приёмка
+## Acceptance
 
-После проверок владелец REQ принимает результат либо оставляет замечание в
-карточке. Решение сохраняется с автором, временем и принятой редакцией REQ и AC.
-Принятие не заменяет отсутствующую или упавшую проверку.
+After checks, the REQ owner accepts the result or comments in the card. The
+record identifies the author, time, revision and run. Acceptance never replaces
+a missing or failing check.
 
-После сохранения правки REQ или его AC появляется новая редакция. Все её AC
-получают «не проверено», приёмки у неё ещё нет. Прежняя редакция сохраняет свои
-результаты и решение владельца. Это правило относится и к небольшим правкам:
-автоматически переносить прежнюю зелень не пытаемся.
+Saving any REQ or AC wording change creates a new revision. All its ACs start
+unverified, and it has no acceptance. Even a small edit requires fresh results.
+Earlier revisions retain their checks and acceptance unchanged.
 
-Агент сверяет реализацию и тесты с новой редакцией, вносит нужные изменения и
-запускает проверки всех её AC. Подходящие код и тесты можно использовать снова;
-результаты нужны новые. После успешных проверок владелец принимает эту редакцию.
+The agent compares code and tests with the new revision, changes them where
+needed and reruns every AC's checks. Reuse suitable implementation and tests,
+not their old results. The owner then accepts the new revision.
 
-Исправление комментария или пересмотр решения оставляет новую запись в той же
-карточке со ссылкой на прежнюю. История не переписывается — [правило WORM](model.md#неизменяемая-история--worm).
+Corrections and withdrawn decisions append linked records. They never rewrite
+history; see [WORM](model.md#immutable-history--worm).
 
-Все участники могут пропустить условие. Приёмка означает, что владелец счёл
-результат достаточным на тот момент. Найденный позже пробел или дефект обсуждают
-в той же карточке. Исправляют затронутую часть. Если при этом изменили REQ или
-AC, новая редакция проходит все свои проверки и приёмку заново; прежние факты
-остаются в истории.
+People and agents can both miss a condition. Acceptance records what the owner
+considered sufficient then; it does not prove completeness. Discuss later gaps
+in the same card. Changed wording requires a new revision, fresh checks and
+fresh acceptance. Historical facts remain intact.
 
-## Репозитории — другая ось
+## Repositories and tasks
 
-Дерево описывает **продукт**. Проект и модуль показывают, **где выполняется
-работа**. Одно требование спокойно делается в нескольких местах, поэтому проект
-указывается у работы, а не у требования.
+The tree describes the product. A project identifies a repository where work
+happens. One REQ may involve app, backend and infrastructure. Link repositories
+to tasks, not to separate copies of the business tree.
 
-## Ориентиры длины
+A task references concrete ACs of a revision and has an assignee and purpose:
+implementation, manual work or a decision. Completing it records what was done;
+it does not turn an AC green. Decision tasks reference the actual decision
+comment. Manual work still needs its explicit expected/observed evidence.
 
-| Что | Ориентир | Зачем |
-|---|---|---|
-| AC | 110 | краткое условие приёмки требования; проверок одного условия может быть несколько |
-| Требование | 140 | одно утверждение, одно предложение; длиннее — внутри союз «и» |
-| Домен, капабилити | 60 | должно влезать в заголовок |
-| Тело требования | 800 | контекст, а не документ: подробности живут в источнике |
+## Editing guidance
 
-Границы спорные: один разбор предлагает поднять AC до 250, другой — что длина
-вообще ничего не доказывает и должна быть подсказкой, а не отказом. Третий
-заметил главное: **пустая строка проходит**, и пустой AC опаснее длинного.
-
-В 0.2 длина — ориентир для редактирования, не отказ в записи. Пустые
-формулировки REQ/AC запрещены; дословное сырое обращение сохраняется без обрезки.
+Approximate character counts can help editing: 60 for domain/capability titles,
+140 for a REQ title, 110 for an AC and 800 for a REQ body. Longer wording is not
+rejected solely for length. Keep detailed sources linked rather than treating
+the body as an entire document. Empty REQ/AC wording is rejected, and raw intake
+is stored without truncation.

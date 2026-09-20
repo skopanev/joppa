@@ -1,154 +1,117 @@
-# Как «готово» перестаёт быть рисованным
+# What green means
 
-## Номер AC живёт в тесте, а не тест в трекере
+## The AC ID lives in the test
 
-Два варианта связи, и они неравноценны.
+Put the AC identifier in the test name or annotation, beside the code. A tracker
+entry containing a test filename breaks silently when the test moves. A tag
+moves with the test; deleting a declared test leaves missing evidence.
 
-**Тест называют в AC.** В трекере лежит имя теста, CI гоняет, мы сверяем.
-Ломается на первом переименовании: связь молча рвётся. Хуже — её никто не
-поддерживает, потому что правят код, а не трекер.
-
-**AC называют в тесте.** Идентификатор живёт в имени или метке теста, рядом с
-кодом. Переехал файл — связь переехала. Удалили тест — AC перестал докладываться
-и вернулся в открытые. **Связь живёт там, где меняется.**
-
-```
-AC       r-thr.2   «10 000,00 подлежит отчёту — граница включена»
-тест     it('[r-thr.2] на пороге отчёт формируется', ...)
-прогон   сборка b1f4a2c → r-thr.1 pass · r-thr.2 pass · r-thr.4 fail
-joppa    принимает отчёт, не выставляет ничего сама
+```text
+AC      threshold-inclusive: the 10,000.00 boundary is inclusive
+Test    it('[threshold-inclusive] reports at the threshold', ...)
+Run     build b1f4a2c -> check outcomes
+Joppa   records the report and derives the verdict
 ```
 
-## Один тест — один AC
+The current check protocol uses the stable local AC ID returned by MCP in the
+`[AC-id]` tag. Resolve a copied public system ID through `joppa_read` first.
 
-Прохождение доказывает всё, что тест утверждает. **Падение не указывает, что
-именно сломалось.** Поэтому тест называет ровно один номер, и отчёт с двумя
-номерами на одном тесте отвергается.
+## One test — one AC
 
-Цена: сквозной прогон называет тот AC, ради которого написан, а остальное
-остаётся недоказанным, пока не появятся свои узкие проверки. Направление
-безопасное — «не доказано» лучше, чем «доказано заодно».
+A failure in a test claiming several ACs does not identify which condition
+failed. Each automated check names exactly one AC. Joppa rejects a second AC tag.
 
-Обратное остаётся многим: **у одного AC сколько угодно тестов.** Условие
-приёмки «граница проходит по 10 000,00 включительно» проверяется тремя тестами —
-ниже, ровно, выше — и все три несут один и тот же номер. Это один AC, а не три:
-условие одно, способов его нарушить несколько.
+One AC may have many tests. An inclusive threshold can need below, at and above
+boundary tests; all three carry the same AC ID. An end-to-end test establishes
+the condition it explicitly checks. Other conditions need their own evidence.
 
-## Правило зелени
+## The rule
 
-```
-AC редакции R зелёный на сборке S
-  ⇔  известен непустой ожидаемый набор его проверок
-      И полнота сбора проверок подтверждена
-      И для R на S есть результат КАЖДОЙ из них
-      И ни один не упал
-      И ни один не пропущен
-```
+An AC in revision R is green on subject S only when:
 
-Первое условие — главное, и его легко потерять. «Хотя бы одна проверка и ни одна
-не упала» **допускает ложное готово**: если исполнитель собрал один тест из пяти,
-остальные четыре не попадут в отчёт вовсе — не как пропуск, а никак. Отсутствие
-результата обязано запрещать зелень наравне с падением.
+1. Its expected check set is known and nonempty.
+2. Discovery completed across the declared scope.
+3. Every expected check has a result for R on S.
+4. Every check passed: none failed, was skipped or is missing.
 
-**Откуда берётся ожидаемый набор.** Прогонщик перед запуском собирает все тесты
-с метками в предусмотренной области и объявляет список — до того, как появился
-хоть один вердикт. Найденные, но не запущенные тесты остаются в отчёте как
-пропущенные. Ненайденного теста в этом списке нет: по самому списку нельзя
-доказать, что сбор был полным.
+“One check passed and none failed” is insufficient. Discovering only one of five
+tests must not look like 100% coverage. Seal the expected plan **before** any
+results, so the reporter cannot choose only successful rows afterward.
 
-Поэтому прогонщик отдельно сообщает, завершён ли сбор во всей предусмотренной
-области. Ошибка сбора или обработка только её части запрещает зелень, даже если
-все найденные тесты прошли. **Если полнота сбора не подтверждена, зелень
-невозможна.** Это проверка полноты сбора, а не достаточности самих тестов.
+The runner declares the scope, checks and whether discovery completed. A
+discovered but unexecuted check stays missing or skipped. An undiscovered test
+cannot be inferred from a plan that never named it; completeness of discovery
+must be supplied separately. Failed or partial discovery prevents green even
+when all collected tests pass. This checks the discovery claim, not whether
+the test suite is sufficient or honest.
 
-Без запечатывания списка до результатов исполнитель выбирает знаменатель сам:
-создал только прошедшие строки — получил сто процентов.
+## Repeated runs
 
-## Какой прогон считается при повторах
+For a revision and subject, the current verdict comes from the **latest-started
+completed** run of the full expected set. Start order is journal order when the
+plan was sealed, not a client timestamp or report arrival time. A late result
+from an older run cannot replace a newer verdict. Until a new run finishes,
+the previous completed run remains visible.
 
-Для одной редакции на одной сборке прогонов бывает несколько. Считается
-**последний запущенный среди завершённых** прогонов её полного набора проверок.
-Порядок фиксирует журнал при запечатывании плана, а не часы клиента: поздний
-отчёт старого прогона не заменяет результат более нового. Приёмка не позволяет
-выбрать старый зелёный прогон. Пока новый прогон не завершён, виден прежний.
+A later completed failure removes green; acceptance cannot select an earlier
+successful run. A requirement revision is checked only when all its ACs pass
+on **one subject**. Results from different revisions do not combine.
 
-Правило, без которого это ломается: **поздний отказ не прячется выбором раннего
-успеха.** Если после зелёного прогона той же редакции на той же сборке пришёл
-красный, зелень снимается. Обратное — выбрать прогон, где всё хорошо, — способ
-нарисовать готовность, не подделывая ни одной строки.
+The subject is a map of relevant immutable component builds or configurations,
+not necessarily one Git SHA. App, backend, infrastructure and published content
+may all matter. The plan must identify the actual combination being checked.
 
-**Редакция требования зелёная, когда все её AC зелёные на одном предмете.**
-Результаты разных редакций не складываются.
+Green means “checks passed.” The owner still needs to accept that revision and
+run in the REQ card. See [acceptance](process.md#acceptance).
 
-Здесь зелень означает **«проверки пройдены»**. После этого REQ готов к приёмке:
-владелец принимает результат в карточке требования или оставляет замечание.
-Его решение относится к конкретной редакции REQ и AC и не заменяет проверки.
-Обсуждение и история правок описаны в [процессе](process.md#приёмка).
+## New revisions
 
-## Новая редакция
+Every saved change to a REQ or any AC creates a revision with **all ACs at n/a**.
 
-Сохранение правки REQ или любого его AC создаёт новую редакцию. **Все AC этой редакции
-получают n/a**, даже если часть текста не изменилась.
+| State | Meaning |
+|---|---|
+| n/a | This revision has not been verified |
+| Red | A check ran and failed |
+| Green | Required checks ran and passed |
 
-```
-n/a       эту редакцию не проверяли          серое
-красное   проверили, и не прошло             красное
-зелёное   проверили, прошло                  зелёное
-```
+Red is observed failure; n/a is absent evidence. Old results remain facts about
+old revisions. They are neither rewritten as failures nor copied forward.
+A late report for an older revision cannot establish a newer one.
 
-Разница между серым и красным важнее, чем кажется. Красное — это знание:
-проверка была и обнаружила поломку. Серое — отсутствие знания: про новую
-формулировку никто ничего не выяснял.
+Compare code and tests with the new revision, update as necessary and rerun all
+its checks. Rewriting suitable tests is unnecessary. New results and owner
+acceptance are necessary.
 
-**Старый успех никуда не переезжает.** Он остался у прежней редакции и там
-остаётся навсегда. Против новой редакции его просто нет — не «устарел», не
-«сброшен», а не относится к делу.
+## Three invariants
 
-Прежние тестовые результаты не переписываются и не становятся падениями.
-Они остаются у прежней редакции. Отчёт указывает редакцию, которую проверял:
-опоздавший результат старого прогона не может позеленить новую редакцию.
+- Joppa derives verdicts from evidence. Missing evidence never means done.
+- New revisions inherit no green or acceptance.
+- Conditions that require human inspection use the same plan/result records,
+  with a human author and concrete evidence.
 
-Чтобы вернуть зелень, агент сверяет код и тесты с новой редакцией, исправляет
-их при необходимости и заново проверяет все её AC. Переписывать подходящие
-тесты не требуется. После этого нужна новая приёмка владельца.
+## Limits
 
-## Три правила, на которых держится
+A passing test can check the wrong thing or contain an empty assertion. The tag
+and report cannot establish semantic adequacy; someone must review them.
 
-- **joppa никогда не красит сама.** Только принимает отчёты. Нет отчёта — не
-  сделано, никогда не «сделано по умолчанию».
-- **Новая редакция начинает без зелени.** Подтвердить её могут только результаты
-  проверок этой редакции; время получения отчёта не заменяет номер редакции.
-- **Что машиной не проверить — проверяется человеком, но той же записью.**
-  Метод «инспекция», автор — человек, свидетельство — что смотрел. Другой род
-  доказательства, тот же столбец.
+The AC set can omit a significant condition. Neither the schema nor owner
+acceptance proves completeness. Discuss a newly found gap in the same card and,
+when wording changes, verify and accept the new revision.
 
-## Чего это не доказывает
+## Manual checks and launch
 
-**Тест проходит, но проверяет не то.** Метка есть, прогон зелёный, внутри
-пустышка. Никакие данные этого не поймают — только чужой взгляд на тест.
-Зелёное значит «проверка с этим номером прошла», а не «утверждение истинно».
+The plan contains the exact expected list. The result contains the observed
+list, inspection note and optional evidence link. Authenticated actor and server
+time identify who recorded it. Expected `read, verify` versus observed
+`read, verify, delete` cannot pass. Manual lists are compared as sets. Missing
+evidence is not a pass; only a human identity can submit manual results.
 
-**Полнота набора AC.** Что всё существенное выписано — суждение, а не свойство
-схемы. Приёмка владельцем тоже не гарантирует полноту. Найденный позже случай
-возвращается в обсуждение карточки REQ; при необходимости условия уточняют.
-Новая редакция проходит все свои проверки заново.
+An AC needed before production has `before_launch: true`. The server-side
+administrative command `joppa gate WORKSPACE < subject.json` requires acceptance
+of mandatory conditions for the specified builds/configuration. Having no
+launch conditions does not imply readiness. A deployment is blocked only when
+its pipeline actually invokes and enforces this gate.
 
-Обе границы настоящие, и делать вид, что их нет, нельзя.
-
-## Ручная проверка и запуск
-
-В плане ручной проверки — точный ожидаемый список. В результате — фактический
-список, способ осмотра и, при наличии, ссылка на свидетельство. Автор-человек и
-время сохраняются сервером. Например, ожидаются права `read`, `verify`;
-фактически есть ещё `delete` — результат не может быть `pass`. Отсутствие
-свидетельства не считается прохождением. Ручной список сверяется как множество.
-
-Условие «до запуска production» отмечается `before_launch` в AC. Команда
-`joppa gate workspace < subject.json` требует приёмки этих условий и совпадения
-проверенных версий/настроек с целевым предметом. Отсутствие условий запуска
-также не выдаётся за готовность. Встраивание этой команды в deploy-процесс
-делает её настоящим блокером запуска.
-
-План нового прогона той же редакции не может потерять прежнюю проверку или
-переопределить её AC/метод/ожидание. Если меняется сам договор о проверках,
-создаётся новая редакция с причиной и новой приёмкой.
+A subsequent plan in the same revision cannot omit a previously declared check
+or change its AC, method or expectation. Changing that verification contract
+requires a new revision with a reason and fresh acceptance.

@@ -24,7 +24,7 @@ jobs:
       - run: cargo test
       - run: cargo test --test oauth -- --ignored
       - run: cargo test --test sessions -- --ignored
-      - run: cargo test --test postgres --test references -- --ignored
+      - run: cargo test --test postgres --test references --test authoring -- --ignored
       - run: cargo test --test access -- --ignored
         env:
           JOPPA_ACCESS_RULES_FILE: ${{ runner.temp }}/joppa-test-access.json

@@ -8,4 +8,5 @@ SELECT pg_advisory_xact_lock(91827101);
 \ir migrations/004_cli_credentials.sql
 \ir migrations/005_mcp_oauth.sql
 \ir migrations/006_workspace_aliases.sql
+\ir migrations/007_command_receipts.sql
 COMMIT;

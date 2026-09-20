@@ -184,7 +184,7 @@ const assert=require('node:assert/strict');
   await req.getByText('</script><script>window.attacked=true</script>',{exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.attacked),undefined);
   await page.goto(process.env.JOPPA_TEST_URL+'/guide');
-  await page.getByRole('heading',{name:'Four levels of the tree'}).waitFor();
+  await page.getByRole('heading',{name:'The product tree and its tasks'}).waitFor();
   await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
   await page.locator('#identity').filter({hasText:'Account'}).waitFor({state:'attached'});
   assert.equal(await page.evaluate(()=>location.hash),'');

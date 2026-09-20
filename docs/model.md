@@ -1,174 +1,147 @@
-# Четыре уровня
+# Four levels of the product tree
 
-Признак, по которому можно закрыть спор, а не описание.
+One workspace represents one product, even when several repositories deliver it.
+Use the question each level answers to decide where an item belongs.
 
----
-
-## Domain — где живёт решение
-
-Часть бизнеса. Не отдел и не система.
-
-**Признак:** когда возникает вопрос «поднимаем порог или нет», домен отвечает,
-**кто решает**. Это адрес полномочия, а не рубрика для складывания.
-
-- переживает реорганизацию: отдел переименуют — домен останется;
-- их мало, четыре-восемь;
-- **своего состояния нет.** «Комплаенс готов» — фраза без смысла.
-
-> **Ошибка, которую мы уже сделали:** назвали домен «Маркетинг». Это отдел.
-> Правильным оказался «Рост» — то, чем занимаются, а не кто.
-
----
-
-## Capability — что мы умеем
-
-**Признак:** подставьте «мы умеем ___». Получилось осмысленно — капабилити.
-
-```
-мы умеем скринить транзакции   → да
-мы умеем выводить деньги       → да
-мы умеем экран оператора       → нет, это КАК, а не что
-мы умеем admin-api             → нет, это ГДЕ лежит код
+```text
+Domain                  Which business area is this, and who decides?
+  Capability            What can the product do?
+    Requirement (REQ)   What behavior do we commit to?
+      AC                What concrete condition makes that commitment acceptable?
+        Task            What work is needed to meet or verify this condition?
 ```
 
-У капабилити **нет истинности**. Нельзя сказать «скрининг — правда». Можно
-сказать «умеем» или «не умеем» — это про наличие, а не про поведение.
+Tasks are work attached to ACs, not a fifth level of business classification.
+Tests implement checks of ACs. A task being complete does not prove an AC.
 
-Своего состояния тоже нет: только сводка по требованиям внутри.
+## Domain — where a decision belongs
 
----
+A domain is a business area with a clear decision authority. It is neither a
+team nor a system. When a threshold is disputed, the domain identifies who can
+decide it. The area survives a team reorganization.
 
-## Requirement — утверждение, которое прямо сейчас правда или неправда
+For example, **Growth** describes a business area; **Marketing department**
+describes an organizational unit. **Access and subscriptions** identifies the
+area where someone decides what a subscription includes.
 
-**Признак:** подставьте «сейчас это правда?». Вопрос осмысленный — требование.
+A domain has no independent delivery status. “Compliance is done” does not say
+which commitments have been checked. Its displayed progress is a summary below it.
 
-| Формулировка | Требование? |
+## Capability — what we can do
+
+Complete “We can …”. If the result describes a product ability, it is a capability.
+
+| Candidate | Interpretation |
 |---|---|
-| Входящий перевод свыше 5000 уходит на ручную проверку | да |
-| После отмены подписки доступ живёт до конца оплаченного периода | да |
-| Улучшить скрининг | нет — не проверить |
-| Сделать экран оператора | нет — это работа |
+| We can screen transactions | Capability |
+| We can withdraw funds | Capability |
+| We can restore paid access | Capability |
+| Build an operator screen | Task or implementation choice |
+| admin-api | Repository or system component |
 
-**Это единственный уровень, у которого есть истинность.** Домен и капабилити её
-не имеют, AC сам по себе не имеет — он способ её поймать.
+A capability groups commitments about an ability. It has no independent truth
+or delivery verdict; its progress is derived from its requirements.
 
-Требование про **продукт**, не про работу. Не «сделать», а «работает так». Если
-в формулировке есть глагол действия с исполнителем — это задача, и место ей не
-здесь.
+## Requirement — a product commitment
 
-Второй признак: если внутри спрятался союз «и», соединяющий два разных
-поведения, — это два требования.
+A requirement states behavior you can ask “Is this true now?” about.
 
-### Карточка REQ
+| Wording | Requirement? |
+|---|---|
+| Incoming transfers above 5,000 go to manual review | Yes |
+| Canceling a subscription preserves access until the paid period ends | Yes |
+| Improve screening | No: the result is unspecified |
+| Build an operator screen | No: that describes work |
 
-У требования один ответственный — **владелец**, который принимает результат.
-В карточке находятся формулировка REQ, его AC, обсуждение и история правок.
-REQ и AC формулируют вместе люди и агент: агент помогает сделать условия
-понятными и проверяемыми, уполномоченные люди принимают содержательные решения.
+Describe how the product behaves. Separate unrelated behaviors joined by “and”
+into separate commitments when they can be accepted independently.
 
-Исполнитель, агент или тестировщик, заметивший пробел, пишет комментарий в этой
-карточке. Владелец отвечает там же: соглашается, уточняет или отклоняет с
-причиной. При необходимости получает решение уполномоченного — комплаенса,
-руководителя или юриста. По итогам
-ответа правят REQ или AC; отдельной формы предложения нет.
+### The REQ card
 
-История сохраняет, кто, когда и что изменил: прежний и новый текст REQ и AC,
-добавление и удаление условий. Причина остаётся в связанном обсуждении.
-Каждая сохранённая правка REQ или его AC создаёт новую редакцию требования.
-У неё свои результаты проверок и приёмка владельца. Все AC новой редакции получают n/a;
-результаты предыдущей остаются у неё и в новую не переносятся.
-Комментарий или ответ в обсуждении сам по себе новую редакцию не создаёт.
-Порядок работы — в [процессе](process.md).
+Each REQ has one owner who answers for its meaning and accepts its result.
+People and agents formulate REQ and ACs together. Agents help make conditions
+clear and testable; authorized people decide business policy and scope.
 
-### Неизменяемая история — WORM
+The card contains wording, ACs, discussion and revision history. Anyone finding
+a gap leaves a comment there. The owner accepts, clarifies or rejects the
+suggestion with a reason, obtaining a specialist decision where needed. There
+is no separate proposal entity or approval workflow to maintain.
 
-Сохранённые редакции REQ вместе с их AC, комментарии, результаты проверок и
-решения владельца не переписываются и не удаляются. Исправление комментария,
-отзыв решения или повторная проверка добавляются новой записью со ссылкой на
-предыдущую. Изменение или удаление AC меняет состав новой редакции; в прежней
-этот AC сохраняется.
+Each saved change to the REQ or its ACs creates a new REQ revision. History
+preserves who changed what and when, including previous wording and removed
+ACs. Each revision owns its check results and acceptance. **Every AC in a new
+revision starts at n/a**, including unchanged ones. Comments alone do not create
+revisions. See the [process](process.md).
 
-Текущее состояние каждой редакции вычисляется по относящимся к ней записям.
-Сами записи остаются неизменными. В 0.2 это журнал событий PostgreSQL с запретом UPDATE, DELETE и TRUNCATE;
-граница доверия и права серверной роли описаны в [хранении](storage.md).
+### Immutable history — WORM
 
----
+Saved revisions, comments, check results and decisions are append-only. Correct
+a comment or withdraw a decision by adding a linked record. Removing an AC from
+a new revision does not erase it from earlier revisions.
 
-## AC — условие приёмки требования
+Revision state is computed from immutable records. PostgreSQL rejects UPDATE,
+DELETE and TRUNCATE of the journal. This is application/database WORM, not a
+promise against a database superuser; see [storage and trust](storage.md).
 
-**Признак:** что именно должно выполняться, чтобы считать обязательство
-выполненным. Не «как проверить» — это уже тест.
+## AC — one acceptance condition
 
-```
-требование   сумма на пороге и выше подлежит отчёту
-             ↑ общее обязательство
+An AC states a concrete condition under which a requirement is acceptable.
+It describes **what must hold**; a test describes **how to check it**.
 
-  AC  граница проходит по 10 000,00 включительно
-        тест  9 999,99 не подлежит
-        тест  10 000,00 подлежит
-        тест  10 000,01 подлежит
-  AC  сравнение идёт по неокруглённому значению
-        тест  сумма 9 999,996 не округляется вверх до порога
-  AC  вместе с операцией сохраняются курс, его источник и время снятия
-        тест  все три поля непусты после зачисления
+```text
+REQ  Amounts at or above the reporting threshold are reportable.
+  AC  The threshold is 10,000.00 inclusive.
+      Test  9,999.99 is not reportable.
+      Test  10,000.00 is reportable.
+      Test  10,000.01 is reportable.
+  AC  Comparison uses the unrounded amount.
+      Test  9,999.996 is not rounded up before comparison.
+  AC  The operation records the exchange rate, its source and capture time.
+      Test  All three fields are present after crediting.
 ```
 
-Три уровня, и их легко спутать:
+A REQ describes the whole commitment; an AC describes one condition for accepting
+it. Both are checkable statements. Their difference is scope, not whether a
+statement can be true. One boundary condition can need three tests: below,
+exactly at and above the boundary. That is one AC, not three.
 
-| | Что это | Сколько |
-|---|---|---|
-| **Требование** | общее обязательство | одно |
-| **AC** | конкретное условие его приёмки | несколько на требование |
-| **Тест** | реализация проверки условия | несколько на AC |
+### AC scope
 
-**Граница между требованием и AC — объём, а не истинность.** Вопрос «сейчас это
-правда?» осмыслен для обоих: «сумма на пороге подлежит отчёту» и «граница
-включительно» — оба проверяемы. Разделяет их то, что требование описывает
-обязательство целиком, а AC — одно условие, при котором обязательство считается
-выполненным.
+Work stays inside the agreed AC and context. If a client matters, name it in the
+AC: “On iOS, paid access survives signing in again.” That does not add Android or
+Web. Adding platforms or other behavior requires a human scope decision.
 
-**Граница между AC и тестом — реализация.** Ниже, ровно и выше — это **один**
-AC («граница включительно») и **три** теста. Условие одно, способов его нарушить
-несколько.
+When the client is material but unspecified, ask before implementation. Missing
+scope never means “all supported platforms.” Agents may choose additional tests
+of the agreed condition, such as active and expired subscriptions, without
+inventing new product commitments.
 
-### Объём AC
+## Decision procedure
 
-**Агент берёт в работу AC в согласованных границах.** Если условие относится к
-iOS, клиент указывают прямо в тексте: «На iOS после повторного входа оплаченный
-доступ сохраняется». Добавление Android или Web требует решения человека.
+| Question | Place |
+|---|---|
+| Which business area owns this decision? | Domain |
+| What can the product do? | Capability |
+| What behavior do we promise as a whole? | REQ |
+| What individual condition makes that promise acceptable? | AC |
+| What work implements or verifies the condition? | Task attached to ACs |
+| How is the condition checked? | Test or manual check |
 
-Если клиент важен, но из AC и согласованного контекста непонятно, какой именно
-имеется в виду, агент уточняет это до начала работы. Отсутствие уточнения не
-означает «на всех платформах».
+## Size signals, not validation rules
 
-Способы проверки агент выбирает сам: например, проверяет повторный вход с
-действующей и истёкшей подпиской. Эти проверки не добавляют новых клиентов
-или возможностей к согласованному условию.
+A few domains (often 4–8), a few capabilities per domain (often 3–8), and a small
+set of ACs (often 2–6) usually remain readable. A very large set may hide multiple
+commitments; a single AC may merely repeat an overly narrow REQ. These are review
+prompts, not quotas. Use as many conditions and tests as the actual commitment
+requires. Never manufacture ACs to reach a target count.
 
----
+## Creating and maintaining the tree
 
-## Решающая процедура
+Agents can propose domains and capabilities. The workspace owner confirms the
+tree. An agent can clarify an unconfirmed title, but cannot change the domain's
+authority or edit a confirmed item. Confirmation is an explicit human decision.
 
-```
-есть тот, кто по этому решает            →  domain
-можно сказать «мы умеем ___»             →  capability
-описывает обязательство целиком          →  requirement
-одно условие приёмки обязательства       →  AC
-реализация проверки условия              →  тест, он в коде
-```
-
-Первые два вопроса отсекают уровни, у которых **нет истинности**. Последние три
-делятся по объёму: обязательство → условие приёмки → проверка.
-
-## Размеры — не правило, а признак ошибки
-
-| Уровень | Сколько | Что значит выход за |
-|---|---|---|
-| Доменов | 4–8 | больше — это отделы, а не домены |
-| Капабилити в домене | 3–8 | больше — домен слишком широк |
-| Требований | сколько нужно | — |
-| AC в требовании | 2–6 | один — не дописали; десять — требований было два |
-| Тестов на AC | 1–5 | больше — условие внутри оказалось составным |
-
-Один AC под требованием почти всегда значит, что AC и есть само требование, а
-требование написали слишком узко. Десять — что внутри два разных поведения.
+Creation through MCP can omit local IDs; the server generates them and returns
+both resolved command fields and permanent public IDs. Keep IDs when revising
+existing objects. Archived objects retain their identity and history; create a
+new object for genuinely new scope. See [API authoring](api.md#automatic-ids-and-batches).

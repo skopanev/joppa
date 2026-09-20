@@ -1,0 +1,235 @@
+use super::*;
+use serde::Deserialize;
+use std::collections::BTreeMap;
+use uuid::Uuid;
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BatchOperation {
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    pub command: Value,
+}
+
+pub async fn execute(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    command: &Command,
+) -> Result<Value> {
+    execute_input(
+        pool,
+        workspace,
+        actor,
+        request_id,
+        &serde_json::to_value(command)?,
+    )
+    .await
+}
+pub async fn execute_input(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    command: &Value,
+) -> Result<Value> {
+    write(
+        pool,
+        workspace,
+        actor,
+        request_id,
+        &[BatchOperation {
+            reference: None,
+            command: command.clone(),
+        }],
+        false,
+    )
+    .await
+}
+pub async fn execute_batch(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    operations: &[BatchOperation],
+) -> Result<Value> {
+    write(pool, workspace, actor, request_id, operations, true).await
+}
+
+fn generate(command: &mut Value) -> Result<()> {
+    let op = command["op"].as_str().unwrap_or("").to_owned();
+    let c = command
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("command must be an object"))?;
+    let key = match op.as_str() {
+        "domain" | "capability" | "project" | "intake" | "comment" | "task" | "issue" => Some("id"),
+        "plan" => Some("run"),
+        "revise" if c.get("expected_revision").and_then(Value::as_u64) == Some(0) => Some("req"),
+        _ => None,
+    };
+    if let Some(key) = key {
+        c.entry(key)
+            .or_insert_with(|| json!(Uuid::new_v4().to_string()));
+    }
+    if op == "revise"
+        && let Some(acs) = c.get_mut("acs").and_then(Value::as_array_mut)
+    {
+        for ac in acs {
+            if let Some(ac) = ac.as_object_mut() {
+                ac.entry("id")
+                    .or_insert_with(|| json!(Uuid::new_v4().to_string()));
+            }
+        }
+    }
+    Ok(())
+}
+
+// Explicit references avoid interpreting titles or user-provided text as templates.
+fn resolve(value: &Value, refs: &BTreeMap<String, Value>) -> Result<Value> {
+    match value {
+        Value::Object(map) if map.contains_key("$ref") => {
+            ensure!(map.len() == 1, "$ref must be the only field");
+            let path = map["$ref"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("$ref must be a string"))?;
+            let (name, path) = path
+                .split_once('/')
+                .ok_or_else(|| anyhow::anyhow!("use $ref: label/field"))?;
+            refs.get(name)
+                .and_then(|v| v.pointer(&format!("/{path}")))
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("unknown or forward batch reference: {name}/{path}"))
+        }
+        Value::Object(map) => Ok(Value::Object(
+            map.iter()
+                .map(|(k, v)| Ok((k.clone(), resolve(v, refs)?)))
+                .collect::<Result<_>>()?,
+        )),
+        Value::Array(values) => Ok(Value::Array(
+            values
+                .iter()
+                .map(|v| resolve(v, refs))
+                .collect::<Result<_>>()?,
+        )),
+        _ => Ok(value.clone()),
+    }
+}
+
+async fn item_ids(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    command: &Command,
+) -> Result<Value> {
+    let mut keys = BTreeMap::<&str, Vec<String>>::new();
+    match command {
+        Command::Domain { id, .. } => {
+            keys.insert("domain", vec![id.clone()]);
+        }
+        Command::Capability { id, .. } => {
+            keys.insert("capability", vec![id.clone()]);
+        }
+        Command::Revise { req, acs, .. } => {
+            keys.insert("requirement", vec![req.clone()]);
+            keys.insert("ac", acs.iter().map(|ac| ac.id.clone()).collect());
+        }
+        _ => {}
+    }
+    let mut ids = json!({});
+    for (kind, local) in keys {
+        ids[kind] = json!({});
+        for row in client.query("SELECT local_id,id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2 AND kind=$3 AND local_id=ANY($4)", &[&workspace, &state.reference_prefix.as_deref().unwrap_or(workspace), &kind, &local]).await? {
+            let local: String = row.get(0);
+            ids[kind][local] = json!(row.get::<_, String>(1));
+        }
+    }
+    Ok(ids)
+}
+
+async fn write(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    operations: &[BatchOperation],
+    batch: bool,
+) -> Result<Value> {
+    commands::identifier(workspace)?;
+    commands::identifier(request_id)?;
+    ensure!(
+        !operations.is_empty() && operations.len() <= 100,
+        "supply between 1 and 100 operations"
+    );
+    let input = json!({"batch":batch, "operations":operations});
+    let mut conn = pool.get().await?;
+    let tx = conn.transaction().await?;
+    let workspace = resolve_workspace(&*tx, workspace).await?;
+    tx.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+        &[&workspace],
+    )
+    .await?;
+    access::check(
+        &*tx,
+        &workspace,
+        actor,
+        operations[0].command["op"] == "workspace",
+    )
+    .await?;
+    ensure!(actor != "joppa-access", "internal enrollment operation");
+    if let Some(row) = tx.query_opt("SELECT actor,input::text,result::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
+        ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == input, "request_id reused with different content/actor");
+        let mut result: Value = serde_json::from_str(row.get::<_, &str>(2))?;
+        result["replayed"] = json!(true);
+        return Ok(result);
+    }
+    // Old single-operation requests retain their idempotency contract after upgrade.
+    if let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
+        ensure!(!batch, "request_id already used by an operation");
+        let command: Command = serde_json::from_value(operations[0].command.clone())?;
+        ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == serde_json::to_value(&command)?, "request_id reused with different content/actor");
+        return Ok(json!({"position":row.get::<_, i64>(2), "command":command, "replayed":true}));
+    }
+    let (mut state, events) = load(&*tx, &workspace).await?;
+    let mut refs = BTreeMap::new();
+    let mut results = vec![];
+    let batch_id = Uuid::new_v4();
+    for (index, operation) in operations.iter().enumerate() {
+        let apply = async {
+            if let Some(name) = &operation.reference {
+                commands::identifier(name)?;
+                ensure!(!refs.contains_key(name), "duplicate batch reference");
+            }
+            let mut value = resolve(&operation.command, &refs)?;
+            generate(&mut value)?;
+            let command: Command = serde_json::from_value(value)?;
+            ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
+            let position = (events.len() + index + 1) as u64;
+            commands::apply(&mut state, actor, &command, position)?;
+            if position == 1 {
+                tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
+                reserve_name(&*tx, &workspace, &workspace).await?;
+            }
+            if let Command::RenameWorkspace { workspace_id: Some(name), .. } = &command {
+                reserve_name(&*tx, name, &workspace).await?;
+            }
+            let event_request = if batch { format!("batch-{batch_id}-{index}") } else { request_id.to_owned() };
+            let payload = serde_json::to_string(&command)?;
+            tx.execute("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb)", &[&workspace,&(position as i64),&actor,&event_request,&payload]).await?;
+            if let Some(name) = &operation.reference { refs.insert(name.clone(), serde_json::to_value(&command)?); }
+            Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))
+        }.await.with_context(|| format!("operation {}", index + 1))?;
+        results.push(apply);
+    }
+    let mut result = if batch {
+        json!({"results":results})
+    } else {
+        results.remove(0)
+    };
+    result["replayed"] = json!(false);
+    result["summary"] = summaries(&state);
+    tx.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result) VALUES($1,$2,$3,$4::text::jsonb,$5::text::jsonb)", &[&workspace,&request_id,&actor,&input.to_string(),&result.to_string()]).await?;
+    tx.commit().await?;
+    Ok(result)
+}

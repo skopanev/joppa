@@ -38,6 +38,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/006_workspace_aliases.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/007_command_receipts.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -85,60 +87,9 @@ async fn reserve_name(client: &impl GenericClient, name: &str, workspace: &str) 
     );
     Ok(())
 }
-pub async fn execute(
-    pool: &Pool,
-    workspace: &str,
-    actor: &str,
-    request_id: &str,
-    command: &Command,
-) -> Result<Value> {
-    commands::identifier(workspace)?;
-    commands::identifier(request_id)?;
-    let mut conn = pool.get().await?;
-    let tx = conn.transaction().await?;
-    let resolved = resolve_workspace(&*tx, workspace).await?;
-    let workspace = resolved.as_str();
-    // Serializes creation too. Hash collisions only delay unrelated workspaces.
-    tx.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-        &[&workspace],
-    )
-    .await?;
-    access::check(
-        &*tx,
-        workspace,
-        actor,
-        matches!(command, Command::Workspace { .. }),
-    )
-    .await?;
-    ensure!(
-        actor != "joppa-access" && !matches!(command, Command::EnrollMember { .. }),
-        "internal enrollment operation"
-    );
-    let (mut state, events) = load(&*tx, workspace).await?;
-    let payload = serde_json::to_string(command)?;
-    if let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace, &request_id]).await? {
-        ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == serde_json::to_value(command)?, "request_id reused with different content/actor");
-        return Ok(json!({"position": row.get::<_, i64>(2), "replayed": true}));
-    }
-    let position = events.len() as u64 + 1;
-    commands::apply(&mut state, actor, command, position)?;
-    if position == 1 {
-        tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace])
-            .await?;
-        reserve_name(&*tx, workspace, workspace).await?;
-    }
-    if let Command::RenameWorkspace {
-        workspace_id: Some(name),
-        ..
-    } = command
-    {
-        reserve_name(&*tx, name, workspace).await?;
-    }
-    tx.execute("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb)", &[&workspace, &(position as i64), &actor, &request_id, &payload]).await?;
-    tx.commit().await?;
-    Ok(json!({"position": position, "replayed": false, "summary": summaries(&state)}))
-}
+#[path = "store_write.rs"]
+mod write;
+pub use write::{BatchOperation, execute, execute_batch, execute_input};
 fn summaries(state: &Workspace) -> Value {
     let summaries: serde_json::Map<String, Value> = state
         .requirements

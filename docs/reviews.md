@@ -1,226 +1,158 @@
-> Исторический разбор прототипа 0.1. Закрытые в 0.2 проблемы и их проверки
-> перечислены в [implementation.md](implementation.md). Описанные ниже SQL-аномалии
-> относятся к сохранённой legacy-схеме, не к новому журналу.
+> Historical review of prototype 0.1. [Implementation status](implementation.md)
+> identifies the issues addressed in 0.2 and their tests. SQL anomalies below
+> concern the retained legacy schema, not the current event journal.
 
-# Разбор модели, 18.09.2026
+# Model review — 18 September 2026
 
-Три независимых ревьюера смотрели схему и операции. Содержание данных из разбора
-исключено: требования и AC в базе демонстрационные, выведены из чужих документов
-и заголовков тикетов, никем не утверждены.
+Three independent reviewers examined the schema and operations. Business content
+is excluded: the reviewed requirements and ACs were unconfirmed demonstration
+data derived from source documents and ticket titles.
 
-Сходятся в главном: **дерево можно оставить, но схема не обеспечивает того, что
-обещает.** Наличие короткого AC подменяет допуск в работу.
+Their common finding: the tree can stay, but the prototype schema did not enforce
+its promises. A short AC was being treated as sufficient admission to work.
 
----
+## No complete write workflow
 
-## Контура записи нет вовсе
+All three found that no tool wrote `criterion_id`, `taken_by` or `done_at`; only
+manual SQL did. ACs were declared the unit of work, but tools stopped at placing
+items in the tree. Only three of 124 intake points had an AC link. The two manually
+set green checks were the only available completion path, not an isolated misuse.
 
-Все трое, независимо.
+## Tree integrity was weaker than claimed
 
-`criterion_id`, `taken_by`, `done_at` **не пишет ни один инструмент** — только
-`psql`. Модель объявляет единицей работы AC, а инструменты останавливаются на
-«уложить в дерево». Из 124 пунктов привязка к AC есть у трёх.
+The following live-database insertions were accepted:
 
-Отсюда следствие, которое я считал аномалией: две зелёные галочки, проставленные
-вручную, — не нарушение, а **единственно возможный путь**.
-
----
-
-## Дерево держится хуже, чем заявлено
-
-Проверено вставками в живой базе, все приняты:
-
-| Проба | Результат |
+| Probe | Prototype behavior |
 |---|---|
-| требование под требованием | принимается |
-| капабилити под требованием | принимается |
-| узел сам себе родитель | принимается *(исправлено)* |
-| AC на домене | принимается, и не видна нигде |
-| пустой AC (`''`, `'   '`) | принимается |
+| Requirement under requirement | Accepted |
+| Capability under requirement | Accepted |
+| Node parenting itself | Accepted; subsequently fixed |
+| AC attached to a domain | Accepted but invisible in views |
+| Empty or whitespace-only AC | Accepted |
 
-`CHECK shape` проверяет только наличие родителя, но не его **вид**.
+`CHECK shape` validated the presence of a parent, not its kind. Cycles disappeared
+from the tree instead of producing an error. AC counts only traversed requirements,
+so an AC on a domain was invisible.
 
-Узел с циклом не вешает обход, а **исчезает** из дерева без единой ошибки:
-невидимая работа вместо отказа.
+The proposed relational fix was a composite key `(id, kind)` and matching parent
+foreign key, restricted to permitted kind pairs.
 
-AC, повешенный на домен, не появляется нигде — все подсчёты идут только по
-требованиям.
+**Correction to the original review:** a foreign key targeting a partial unique
+index `WHERE kind='requirement'` does not work. This was reproduced on PostgreSQL
+16.15: a foreign key target must be a primary key, unique constraint or non-partial
+unique index. The earlier alternative repeated another reviewer's assertion
+without checking it. The current model instead validates typed commands and
+workspace-local parent references before recording events.
 
-**Как чинить.** Составной ключ `(id, kind)` и внешний ключ на пару
-`(parent_id, parent_kind)` с разрешёнными сочетаниями.
+## Two links could contradict each other
 
-> **Исправление.** В первой редакции здесь был второй вариант — внешний ключ на
-> частичный уникальный индекс `where kind='requirement'`. Он **не работает**, и
-> я повторил чужое утверждение, не проверив. Измерено на PostgreSQL 16.15:
->
-> ```
-> create unique index t_req on t(id) where kind='requirement';
-> create table u(node_id text references t(id));
-> ERROR:  there is no unique constraint matching given keys for referenced table "t"
-> ```
->
-> Цель внешнего ключа — первичный ключ, уникальное ограничение либо
-> **нечастичный** уникальный индекс. Остаётся составной ключ.
+`items.node_id` could name requirement A while `items.criterion_id` named an AC
+of requirement B. Neither a constraint nor a trigger rejected this.
 
----
+`ON DELETE SET NULL` silently detached work when its AC was deleted. A point can
+legitimately refer to a REQ before ACs are written, but when both links exist,
+they must agree. Deleting an AC must not silently erase work provenance.
 
-## Две привязки противоречат молча
+## Check/write races
 
-`items.node_id` = требование A при `items.criterion_id` = AC требования B —
-принимается, ни ограничения, ни триггера.
+**Correction to the original review:** calling `sort()` did not resume work after
+a refusal. The legacy implementation rejected points whose outcome was not
+`work`; the review initially failed to check that branch.
 
-`ON DELETE SET NULL` у внешнего ключа: удаление AC **тихо отвязывает работу**.
+The actual issue was that the outcome check and subsequent write were separate
+queries without a row lock. Concurrent calls could interleave. `place()` had the
+same structure: two calls could create two requirements for one point, with the
+last link winning and the other requirement orphaned. It also omitted kind and
+required-answer validation when no outcome had been set.
 
-Обе привязки нужны — пункт может относиться к требованию до того, как выписаны
-AC. Но при непустом `criterion_id` должно выполняться `node_id = criterion.node_id`,
-а удаление AC с привязанной работой — запрещаться.
+Transitions need a lock or a version check in the writing transaction. Reconsidering
+a refusal should record a new actor and reason, not happen as an accidental side
+effect of classification with old outcome metadata left behind.
 
----
+## False green
 
-## Гонка между проверкой и записью
+Changing AC wording retained `done_at`. Deleting a completed AC left its REQ green
+by shrinking the denominator from two of two to one of one. Scope reduction was
+indistinguishable from successful work.
 
-> **Исправление.** В первой редакции здесь было сказано, что после отказа
-> достаточно вызвать `sort()` и работа возобновится. **Это неверно:**
-> `src/main.rs:297` отвергает вызов по пункту с исходом, отличным от `work`.
-> Я записал чужое утверждение, не сверив с кодом.
+Any UPDATE could set or clear `done_at`, and there was no `done_by`. Node-level
+`taken_by`, `taken_at` and `done_at` were unused; the board ignored them. These
+columns were a second apparent source of truth with no operational meaning.
 
-Настоящая дыра тоньше и остаётся: проверка исхода — **отдельный запрос** от
-записи, без блокировки строки. Два одновременных вызова могут разойтись между
-чтением и записью.
+Queue and tree also disagreed: routing a point to a REQ without ACs removed it
+from intake while the REQ remained unready. This affected 43 of 64 requirements
+in the reviewed dataset. “Placed in the tree” did not mean “ready for work.”
 
-Та же форма у `place()`: готовность читается одним запросом, привязка пишется
-другим. Два одновременных вызова создают два требования для одного пункта,
-последний побеждает, первое остаётся сиротой. Плюс `place()` не проверяет ни
-род, ни обязательные ответы — при пустом исходе его можно вызвать сразу.
+## Provenance proved less than promised
 
-Лечится блокировкой строки на время перехода либо проверкой версии в той же
-транзакции. Отдельно: **пересмотр отказа должен быть своей операцией** с новым
-автором и основанием, а не побочным действием классификации — сейчас при смене
-рода сохраняются прежние `outcome_by` и `outcome_at`.
+The original intake text was separately stored, but the path from it to the
+final wording was not reconstructible. Requirements lacked authors/history;
+`place()` silently reassigned points; decisions used a hard-coded pseudo-author;
+answers overwrote earlier answers; freely supplied actor strings allowed
+impersonation. Intake and split operations trimmed text despite promising
+verbatim preservation.
 
----
+Ordinary tables also offer no protection against an administrator rewriting
+records. Application-role restrictions improve routine traceability but do not
+establish physical immutability against infrastructure administrators.
 
-## Ложная зелень
+## Intake behavior was not demonstrated
 
-**Текст AC можно переписать — `done_at` остаётся.** Проверено.
+The dataset had 124 messages and 124 points, one to one. No stored example showed
+`split` handling a mixed request. The data did not substantiate that workflow.
 
-**Удалили выполненный AC — требование осталось зелёным**, просто уменьшился
-знаменатель: «готово 1 из 1» вместо «2 из 2». Изменение принятого объёма
-неотличимо от выполнения.
+## Verification alternatives considered
 
-`done_at` ставится и снимается любым `UPDATE`; `done_by` не существует —
-честному закрывающему негде записаться.
+The original reviewers agreed on runs, expectations and results, but differed
+on how much structure to add. These alternatives are historical: the current
+choice is immutable REQ revisions with AC sets, fresh checks and owner acceptance.
 
-`nodes.taken_by / taken_at / done_at` — мёртвые колонки: ноль заполненных строк,
-доска их сознательно игнорирует. Второй источник истины, который ни на что не
-влияет.
-
-**Расхождение очереди и дерева:** пункт уложен под требование без AC — обращение
-исчезает из очереди, а требование навсегда «ждёт разбора». Очередь говорит «в
-дереве», дерево — «взять нечего». Сейчас таких 43 из 64.
-
----
-
-## Происхождение доказывает меньше обещанного
-
-Доказуемо **сказанное** — текст обращения и пункта хранятся отдельно. Не
-доказуем **путь** от сказанного к формулировке:
-
-- у требований нет ни автора, ни истории;
-- `place()` перекладывает пункт между требованиями без следа;
-- `outcome_by='разбор'` — зашитый псевдоавтор;
-- ответы перезаписываются на месте, прежние исчезают;
-- `author`, `answered_by`, `outcome_by` — свободные строки: любой агент может
-  назвать себя тем, кто принял решение;
-- `file()` и `split()` делают `trim`, хотя обещано «дословно».
-
-Отдельно: обычная таблица в базе не доказывает ничего против переписывания
-администратором. Для повседневной прослеживаемости хватит запрета `UPDATE` и
-`DELETE` для роли приложения; обещать большее от одного текстового поля нельзя.
-
----
-
-## Приём не подтверждён данными
-
-124 обращения и 124 пункта, **один к одному**. `split` — сердце этапа приёма —
-в реальных данных не разобрал ни одного неоднородного обращения. Его обещание не
-подтверждено ни одной строкой.
-
----
-
-## Минимум проверки
-
-Ниже — варианты первоначального разбора. В текущей модели выбраны неизменяемые
-редакции REQ и AC: новая редакция начинает без подтверждённых проверок и требует
-новой приёмки. Правило описано в [модели](model.md#неизменяемая-история--worm)
-и [правиле зелени](green.md#новая-редакция); вариант без редакций ниже исторический.
-
-Сходятся на направлении «прогон + ожидание + результат», расходятся в объёме.
-
-**Одной таблицей:**
+One proposal used a single table:
 
 ```sql
 checks(id, criterion_id, at, by, method, subject, expected, observed, pass)
 ```
 
-`done_at` **выводится**, а не хранится: AC выполнен, если последняя проверка
-прошла и не старее правки самого AC. Версионность без таблицы версий. Ожидаемое
-снимается в строку прогона — самодостаточно против поздней правки AC.
+Completion would be derived from the newest check, provided it was not older than
+the AC wording. Captured expectations would resist later AC changes, but the
+approach did not provide the current revision model.
 
-**Тремя таблицами** — если нужен план, зафиксированный **до** результатов:
-ревизии AC, прогоны с запечатанным планом, ячейки с единственным результатом.
-Иначе исполнитель создаёт только пройденные строки и получает сто процентов от
-удобного знаменателя.
+Another proposal separated AC revisions, runs with a plan sealed before results,
+and result cells. Without a sealed plan, a reporter could insert only passing
+checks and report a convenient 100% denominator.
 
-Общее у обоих: **ни одна схема не докажет, что набор случаев полон, метод
-адекватен, а свидетельство истинно.** Это основания приёмки, их кто-то должен
-рассмотреть и зафиксировать.
+Neither representation proves case coverage, method adequacy or truthful evidence.
+Those remain acceptance judgments that someone must examine and record.
 
----
+## Scale
 
-## Объём
+Legacy `collect()` loaded all tables every two seconds, then scanned ACs for
+every requirement. That was inexpensive at 64 requirements and 73 ACs but became
+quadratic: 5,000 requirements with 20 ACs each implied about 100 million comparisons
+per refresh. Grouping by requirement in one pass was the proposed fix.
 
-`collect()` тянет все строки всех таблиц и пересобирается каждые две секунды,
-а свод сканирует AC **по каждому требованию** — квадратично. На нынешних
-64 × 73 это копейки, на 5000 × 20 — около ста миллионов сравнений каждые две
-секунды.
+Legacy `ls()` applied a limit of fifty before filtering; it could claim everything
+was processed while the fifty-first item was still waiting.
 
-Лечится группировкой в хеш-таблицу за один проход — для узлов дерева это уже
-сделано.
+## Schema reproducibility
 
-`ls()` режет по пятьдесят **до** фильтрации: если последние пятьдесят разобраны,
-функция пишет «всё разобрано», когда пятьдесят первое ждёт.
+`schema.sql` originally omitted `criteria` and columns introduced through ad hoc
+ALTER statements. A clean deployment therefore created a different system.
 
----
+The file was repaired and compared against live columns and 23 constraints.
+The first comparison falsely passed because both queries failed and empty output
+matched empty output. A corrected comparison exposed the actual discrepancy.
 
-## Расхождение схемы и файла
+## Fixed at the time of that review
 
-`schema.sql` не воспроизводил работающую систему: `criteria` и часть колонок
-жили только в `ALTER`-ах по ходу. Развернуть с нуля значило получить **другую
-систему**, чем та, которую разбирали.
+The schema file was made reproducible, self-parenting was rejected, and the two
+incorrect assertions above were corrected. Other issues were still open then.
+This historical status is not the current release status; see
+[implemented fixes and tests](implementation.md).
 
-*Исправлено.* Файл полный и сверен с живой базой по колонкам и по 23
-ограничениям. Первая сверка соврала — запрос упал на обеих базах, и пустое
-сошлось с пустым; вторая нашла настоящее расхождение.
+## How to use a review
 
----
-
-## Что исправлено на сегодня
-
-- `schema.sql` воспроизводит систему целиком, сверка автоматическая;
-- запрет самородительства добавлен и проверен отказом;
-- две фактические ошибки в этом документе — см. врезки выше.
-
-Остальное открыто.
-
----
-
-## Как читать этот документ
-
-Две правки выше — не придирки к формулировкам, а урок про сам разбор:
-**я дважды записал чужое утверждение, не проверив.** Одно опровергается одной
-командой к базе, второе — одной строкой кода.
-
-Если разбор попадает в документ без сверки, он становится указанием к работе на
-том же основании, что и проверенное. Поэтому дальше: любое утверждение о
-поведении кода или базы — с воспроизведением рядом.
+Twice, a claim copied from another reviewer became apparent evidence without a
+reproduction. One was refuted by one database statement, the other by one code
+branch. Claims about database or code behavior need a reproducible check before
+they become implementation requirements.

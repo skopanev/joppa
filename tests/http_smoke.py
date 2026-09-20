@@ -130,7 +130,45 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # Remote MCP notifications return 202 without a JSON-RPC response.
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-        assert len(reply['result']['tools']) == 4
+        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_command','joppa_batch','joppa_help','joppa_model_docs'}
+        def mcp(name, arguments, token=agent_token):
+            status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
+                'params':{'name':name,'arguments':arguments}}, token)
+            assert status == 200, (status, response)
+            result = response['result']
+            assert not result.get('isError'), result
+            return json.loads(result['content'][0]['text'])
+        docs = mcp('joppa_model_docs', {})
+        assert set(docs) == {'model','process','green'}
+        assert docs['model'] == (ROOT/'docs/model.md').read_text()
+        assert docs['process'] == (ROOT/'docs/process.md').read_text()
+        assert docs['green'] == (ROOT/'docs/green.md').read_text()
+        assert set(mcp('joppa_model_docs', {'section':'green'})) == {'green'}
+        mcp_ws = ws + '-authoring'
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'create',
+            'command':{'op':'workspace','title':'MCP authoring checks'}},owner_token)
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'member',
+            'command':{'op':'member','id':'agent','role':'agent'}},owner_token)
+        draft = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-generated',
+            'command':{'op':'domain','title':'Draft area','authority':'owner'}})
+        draft_id = draft['command']['id']
+        uuid.UUID(draft_id)
+        assert draft['system_ids']['domain'][draft_id].startswith(mcp_ws+'-D-')
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-draft-edit',
+            'command':{'op':'edit_domain','id':draft_id,'title':'Clear area','authority':'owner','reason':'Clarification'}})
+        batch = {'workspace':mcp_ws,'request_id':'mcp-batch','operations':[
+            {'ref':'cap','command':{'op':'capability','title':'Recover access','domain':draft_id}},
+            {'command':{'op':'revise','expected_revision':0,'capability':{'$ref':'cap/id'},
+                'title':'Recovery preserves access','body':'Only iOS','owner':'owner','reason':'Agreed scope',
+                'acs':[{'text':'On iOS paid access is preserved'}]}}
+        ]}
+        created = mcp('joppa_batch',batch)
+        replay = mcp('joppa_batch',batch)
+        assert replay['replayed'] and created['results'] == replay['results']
+        assert created['results'][1]['command']['capability'] == created['results'][0]['command']['id']
+        public_id = next(iter(created['results'][1]['system_ids']['requirement'].values()))
+        resolved = mcp('joppa_read',{'item_id':public_id})
+        assert resolved['selection']['id'] == created['results'][1]['command']['req']
         foreign_read={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{
             'name':'joppa_read','arguments':{'workspace':ws,'actor':'owner'}}}
         reply=request('/mcp',foreign_read,other_token)[1]

@@ -1,6 +1,6 @@
 Resolve copied system IDs with joppa_read({"item_id":"..."}); use selection and workspace for commands. Never guess local IDs.
 One workspace is one product, possibly many repositories. Domain -> capability -> REQ -> AC.
-Read joppa_help before commands. Preserve intake verbatim. Ask only missing intake policy fields.
+Read joppa_model_docs for methodology and joppa_help before commands. Preserve intake verbatim. Ask only missing intake policy fields.
 REQ and ACs are authored jointly. People decide policy; the agent checks readiness, never invents authority.
 On every new revision assess EACH AC. If uncertain, ready=false, reason=concrete question, recipient=member.
 Do not silently add Android/Web/all mobile platforms to an iOS AC. Scope is in AC text.
@@ -14,3 +14,7 @@ A completed task is not proof of an AC. A decision task references the actual de
 Never edit history, overwrite evidence, hide failed tests, select an older green run, or copy results to a new revision.
 Interactive browser-approved clients act as the signed-in user. Never treat that credential as a human decision: confirm wording, accept work, record specialist decisions or manual evidence only on explicit user instruction. Unattended agents must use a separate agent identity.
 Domains with archived=true and their capabilities are historical, not active scope. Do not add work beneath them. Restore only on explicit owner instruction; never reuse their IDs for different items.
+
+For new items, omit local IDs and let Joppa generate them. The response contains the resolved command and public system IDs. Preserve existing REQ/AC IDs when editing; an omitted AC ID creates a new AC.
+Use joppa_batch for related writes: 1–100 operations in one transaction, optional ref labels, and explicit {"$ref":"label/id"} links to earlier generated IDs. Retry identical input with the same request_id; never regenerate it after a lost response.
+Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.

@@ -1,40 +1,47 @@
-# Что закрыто в 0.2
+# What 0.2 implements
 
-Это реализация обсуждённой модели поверх отдельного журнала PostgreSQL.
-Старую схему сохраняем для чтения/старого режима; новая модель через неё не пишет.
+The discussed model runs on a separate PostgreSQL journal. The legacy schema is
+retained for reading; the new model never writes through it.
 
-| Проблема прототипа | Исправление | Проверка |
+| Prototype issue | Implementation | Evidence |
 |---|---|---|
-| Уровни дерева и ссылки не защищены | Типизированные команды, проверка родителя, изоляция воркспейса, постоянный AC ID | `tree_cycles_blank_acs_unauthorized_users_and_spurious_scope_are_rejected`, PostgreSQL isolation |
-| Правка текста сохраняла прежний done_at | Неизменяемая редакция со всем набором AC; новые проверки и приёмка | `revision_resets_every_ac_and_old_evidence_and_acceptance_survive` |
-| Зелень выставлялась вручную | Запечатанный план, полнота сбора, результаты всех проверок, один AC на тест | `full_sealed_plan_and_manual_evidence_are_required`, `skipped_results_and_second_ac_tags_never_turn_green` |
-| Не было реальных владельцев и решений | Участники, личность из транспортного контекста, владелец REQ, назначенный специалист | `specialist_decision_cannot_be_impersonated`, HTTP actor injection |
-| Отмена решения/ошибка уничтожала историю | Новые события отзыва и подтверждения дефекта; повторная проверка | `withdrawn_decision_blocks_only_affected_work_and_preserves_comment`, `ordinary_comment_does_not_invalidate_but_confirmed_issue_requires_new_run` |
-| Не было работы через несколько репозиториев и ручной работы | Задачи по AC с несколькими проектами, виды implementation/manual/decision | `independent_acs_and_cross_repository_tasks_do_not_fake_green` |
-| Повтор или гонка меняли чужой результат | Блокировка воркспейса в транзакции, expected_revision, request_id | PostgreSQL: concurrent revise/result/accept/issue, retry |
-| Не было запрета переписывания прошлого | Журнал без UPDATE/DELETE/TRUNCATE; ограниченная серверная роль | PostgreSQL: WORM triggers and runtime permissions |
+| Tree levels and references were unprotected | Typed commands, parent validation, workspace isolation and stable AC IDs | Model validation and PostgreSQL isolation tests |
+| Wording edits kept old done_at | Immutable REQ revisions containing all ACs; fresh checks and acceptance | `revision_resets_every_ac_and_old_evidence_and_acceptance_survive` |
+| Green could be assigned manually | Sealed complete plan, every expected result, one AC per automated test | Full-plan, skipped-result and multiple-tag tests |
+| Owners and decisions were unauthenticated labels | Transport identity, membership, REQ owner and named specialist | Impersonation, access and HTTP actor-injection tests |
+| Corrections destroyed history | Withdrawal and confirmed-defect events, then fresh checks | Decision withdrawal and issue-resolution tests |
+| Work could not span repositories or manual actions | AC-linked tasks with projects and implementation/manual/decision purposes | Cross-repository and independent-AC tests |
+| Retries and races changed results | Workspace transaction lock, expected revision and request identity | Concurrent revise/result/accept/issue tests |
+| Historical data could be overwritten | WORM triggers and restricted runtime role | PostgreSQL update/delete/truncate and grant tests |
+| Agents had to invent creation IDs | Server-generated local IDs, returned permanent IDs, immutable request receipts | Authoring retry, concurrency and revision tests |
+| Related tree creation needed separate round trips | Atomic batches with explicit references to earlier generated IDs | Full rollback and batch replay tests |
+| Agent titles could not be corrected before confirmation | Draft-title edits without changing authority or confirming | Draft/confirmed/archived permission tests |
+| Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
-Браузерный сценарий в `tests/browser.cjs` проверяет портал только для чтения:
-навигацию, копирование ID для агента, выбор старой редакции, мобильный
-экран и безопасный снимок. Изменения через HTTP-интеграцию, приёмку,
-условие запуска, CLI и MCP проверяет `tests/http_smoke.py`.
-Команды из браузерной сессии отклоняются сервером; обсуждение и изменения
-записываются через MCP.
+`tests/browser.cjs` checks the read-only portal: navigation, copying references,
+older revisions, mobile layout and safe snapshots. `tests/http_smoke.py` covers
+integration writes, acceptance, launch gates, the administrative binary and MCP.
+Browser-cookie content writes are rejected; content is authored through MCP.
+The owner can reorder siblings in the portal.
 
-## Осознанные границы
+## Deliberate boundaries
 
-Проверка готовности агентом — действие агента через `assess`, не встроенная
-магическая модель. joppa хранит вопрос и адресата, проверяет ссылку на решение
-нужного человека и запрещает начать спорную работу. Смысл юридического решения,
-полноту AC и честность тестового кода база не доказывает.
+An agent records readiness through `assess`; Joppa does not contain a model that
+magically decides it. The system stores a question and recipient, validates
+references to the appropriate person's decision and prevents disputed work from
+starting. It cannot prove legal meaning, AC completeness or test honesty.
 
-Новые CI-адаптеры используют общий протокол plan → result → finish.
-`scripts/run_checks.py` — рабочий адаптер для команд из полного manifest.
-Полнота manifest подтверждается вызывающей стороной; отсутствие из него
-вообще неизвестного теста нельзя обнаружить без интеграции с его test discovery.
-Ожидаемые проверки в уже известном плане одной редакции исчезнуть не могут.
+CI adapters use plan → result → finish. `scripts/run_checks.py` executes commands
+from a complete manifest. The caller attests to discovery completeness; an
+unknown omitted test cannot be detected without the repository's discovery
+integration. Previously declared checks cannot disappear within a revision.
 
-Приёмка относится к конкретному прогону на конкретном предмете. `gate` сверяет
-его с целевыми версиями и настройками. Установка gate в чужие deploy-процессы,
-перенос реальных данных и выдача пользователям токенов выполняются при подключении
-конкретного продукта. Текущая реализация не предполагает чужих доступов и решений.
+Acceptance identifies a run on a specific subject. The administrative `gate`
+checks that subject against target builds/configuration. Connecting it to a
+product's deployment pipeline, migrating real content and assigning access are
+product onboarding work. Joppa does not assume access or decisions on their behalf.
+
+Vector ingestion, hybrid search and attachment upload endpoints remain outside
+the implemented workflow. Server configuration for their providers is preparatory,
+not evidence that those features work. The journal is replayed per workspace;
+large datasets will need projections and paginated history.
