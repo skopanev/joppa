@@ -8,6 +8,17 @@ CREATE TABLE IF NOT EXISTS joppa.google_identities (
     hosted_domain text,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+-- Browser credentials survive application restarts. Raw bearer secrets are never stored.
+CREATE TABLE IF NOT EXISTS joppa.browser_sessions (
+    token_hash text PRIMARY KEY CHECK (length(token_hash) = 64),
+    actor text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    expires_at timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS joppa.revoked_sessions (
+    token_hash text PRIMARY KEY REFERENCES joppa.browser_sessions(token_hash),
+    revoked_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
 CREATE TABLE IF NOT EXISTS joppa.workspaces (
     id text PRIMARY KEY CHECK (length(btrim(id)) > 0),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp()

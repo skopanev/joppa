@@ -267,6 +267,7 @@ function comments(root, q, r) {
   }
 }
 if (window.SNAPSHOT) {
+  document.body.classList.remove('checking-session');
   document.body.classList.add('snapshot');
   $('login-screen').remove();
   $('refresh').remove();
@@ -281,7 +282,11 @@ if (window.SNAPSHOT) {
 if(!window.SNAPSHOT){
   sessionStorage.removeItem('joppa-token');
   if(location.hash.startsWith('#token='))history.replaceState(null,'',location.pathname+location.search);
-  fetch('/api/me').then(async r=>{if(r.ok)await showApp(await r.json());}).catch(notify);
+  fetch('/api/me').then(async r=>{
+    if(r.ok)await showApp(await r.json());
+    else if(r.status!==401)throw Error('Could not restore your session. Please reload the page.');
+  }).catch(e=>{$('login-status').textContent=e.message;$('login-status').dataset.error='true';})
+    .finally(()=>document.body.classList.remove('checking-session'));
 }
 function closeMobileTree() {
   document.body.classList.add('detail-open');

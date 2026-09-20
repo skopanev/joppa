@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use deadpool_postgres::Pool;
-use joppa::{commands::Command, store};
+use joppa::{commands::Command, sessions, store};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};
@@ -36,26 +36,31 @@ struct Request {
     request_id: String,
     command: Command,
 }
-fn authenticate(
+async fn authenticate(
     app: &App,
     headers: &HeaderMap,
 ) -> std::result::Result<String, (StatusCode, Json<Value>)> {
-    headers
-        .get("authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .and_then(|t| app.identities.get(t))
-        .cloned()
-        .or_else(|| {
-            if headers.contains_key(header::AUTHORIZATION) {
-                return None;
-            }
-            web_auth::cookie(headers, "joppa_session").and_then(|t| app.login.actor(t))
-        })
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error":"Please sign in to continue"})),
-        ))
+    let actor = if headers.contains_key(header::AUTHORIZATION) {
+        headers
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.strip_prefix("Bearer "))
+            .and_then(|t| app.identities.get(t))
+            .cloned()
+    } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
+        sessions::actor(&app.pool, token).await.map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"Could not check your session. Please retry."})),
+            )
+        })?
+    } else {
+        None
+    };
+    actor.ok_or((
+        StatusCode::UNAUTHORIZED,
+        Json(json!({"error":"Please sign in to continue"})),
+    ))
 }
 fn result(value: Result<Value>) -> ApiResult {
     value.map(Json).map_err(|e| {
@@ -91,7 +96,7 @@ async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) {
     )
 }
 async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
-    let actor = authenticate(&app, &headers)?;
+    let actor = authenticate(&app, &headers).await?;
     result(store::list(&app.pool, &actor).await)
 }
 async fn read(
@@ -99,7 +104,7 @@ async fn read(
     Path(workspace): Path<String>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let actor = authenticate(&app, &headers)?;
+    let actor = authenticate(&app, &headers).await?;
     result(store::read(&app.pool, &workspace, &actor).await)
 }
 async fn command(
@@ -115,7 +120,7 @@ async fn command(
             Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
         ));
     }
-    let actor = authenticate(&app, &headers)?;
+    let actor = authenticate(&app, &headers).await?;
     result(
         store::execute(
             &app.pool,
@@ -128,7 +133,7 @@ async fn command(
     )
 }
 async fn me(State(app): State<App>, headers: HeaderMap) -> ApiResult {
-    let actor = authenticate(&app, &headers)?;
+    let actor = authenticate(&app, &headers).await?;
     result(
         async {
             let conn = app.pool.get().await?;
@@ -214,14 +219,22 @@ async fn poll_login(State(app): State<App>, headers: HeaderMap) -> AuthResult {
     match app.login.poll(id).await.map_err(auth_error)? {
         None => Ok((response, Json(json!({"status":"pending"})))),
         Some((token, actor)) => {
+            sessions::create(&app.pool, &token, &actor)
+                .await
+                .map_err(auth_error)?;
             if let Some(old) = web_auth::cookie(&headers, "joppa_session") {
-                app.login.logout(old);
+                sessions::revoke(&app.pool, old).await.map_err(auth_error)?;
             }
             response.append(
                 header::SET_COOKIE,
-                web_auth::set_cookie(&headers, "joppa_session", &token, 43200)
-                    .parse()
-                    .unwrap(),
+                web_auth::set_cookie(
+                    &headers,
+                    "joppa_session",
+                    &token,
+                    sessions::LIFETIME_SECONDS,
+                )
+                .parse()
+                .unwrap(),
             );
             response.append(
                 header::SET_COOKIE,
@@ -236,7 +249,9 @@ async fn poll_login(State(app): State<App>, headers: HeaderMap) -> AuthResult {
 async fn logout(State(app): State<App>, headers: HeaderMap) -> AuthResult {
     web_auth::check_origin(&headers).map_err(auth_error)?;
     if let Some(token) = web_auth::cookie(&headers, "joppa_session") {
-        app.login.logout(token);
+        sessions::revoke(&app.pool, token)
+            .await
+            .map_err(auth_error)?;
     }
     let mut response = auth_headers();
     response.insert(

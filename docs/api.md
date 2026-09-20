@@ -73,8 +73,8 @@ HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
 
 All POST auth endpoints require an exact same-origin `Origin` header.
 Browser sessions are read-only: command requests without an Authorization header
-return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Sessions do not
-survive a server restart. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
+return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Session token hashes and revocations persist in PostgreSQL; sign-in survives
+server restarts until the original 12-hour expiry or explicit sign-out. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
 (or null for an identity without a Google binding).
 Bearer tokens remain available for CLI/agent integrations. The browser never
 stores or displays them. Missing Google configuration does not enable a fallback.

@@ -95,8 +95,8 @@ window; the board opens automatically. Until sign-in, only the authorization
 screen is visible. The server verifies the token signature, audience, issuer,
 expiry, nonce and email verification before applying Joppa's own invitation list.
 OAuth uses a browser-bound, single-use state and PKCE. Browser sessions have
-separate HttpOnly cookies, expire after 12 hours, and are invalidated on sign-out
-or server restart. Google credentials and API tokens never reach browser storage.
+separate HttpOnly cookies and expire after 12 hours. Session token hashes and
+sign-out revocations are stored in PostgreSQL, so deployments preserve sign-in. Google credentials and API tokens never reach browser storage.
 Without Joppa's own Google configuration, sign-in fails closed with a setup message.
 
 The **Workspace** menu lists only accessible products. The full-width product tree

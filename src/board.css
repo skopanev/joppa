@@ -29,3 +29,5 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout,body:not(.
 .copy-context{margin-left:auto;align-self:center;flex:none;font-size:12px;padding:8px 12px;color:#32644c;background:#f2f6ee;border-color:#cfdbc9;letter-spacing:0;white-space:nowrap}.copy-dialog{width:min(720px,calc(100% - 32px));max-height:85vh;padding:24px;border:1px solid var(--line);border-radius:12px;color:var(--text);background:#fcfdfb}.copy-dialog::backdrop{background:#20342766}.copy-dialog h2{margin-top:0}.copy-dialog textarea{height:45vh;font:12px/1.5 ui-monospace,monospace}.copy-dialog button{margin-top:12px}
 
 #card details small{display:block;margin:8px 0}
+
+.checking-session .login-content{visibility:hidden}

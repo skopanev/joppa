@@ -20,17 +20,11 @@ struct Pending {
     result: Option<std::result::Result<String, String>>,
 }
 #[derive(Clone)]
-struct Session {
-    actor: String,
-    expires: Instant,
-}
-#[derive(Clone)]
 pub struct Login {
     pub users: BTreeMap<String, String>,
     rules: Option<std::path::PathBuf>,
     google: Option<Google>,
     pending: Arc<Mutex<BTreeMap<String, Pending>>>,
-    sessions: Arc<Mutex<BTreeMap<String, Session>>>,
 }
 fn random() -> String {
     format!(
@@ -79,7 +73,6 @@ impl Login {
             rules,
             google: Google::from_env()?,
             pending: Default::default(),
-            sessions: Default::default(),
         })
     }
     pub async fn start(&self, previous: Option<&str>) -> Result<(String, Value)> {
@@ -220,24 +213,7 @@ impl Login {
         pending.remove(id);
         let actor = result.map_err(anyhow::Error::msg)?;
         let token = random();
-        let mut sessions = self.sessions.lock().unwrap();
-        sessions.retain(|_, s| s.expires > Instant::now());
-        sessions.insert(
-            token.clone(),
-            Session {
-                actor: actor.clone(),
-                expires: Instant::now() + Duration::from_secs(43200),
-            },
-        );
         Ok(Some((token, actor)))
-    }
-    pub fn actor(&self, token: &str) -> Option<String> {
-        let mut sessions = self.sessions.lock().unwrap();
-        sessions.retain(|_, s| s.expires > Instant::now());
-        sessions.get(token).map(|s| s.actor.clone())
-    }
-    pub fn logout(&self, token: &str) {
-        self.sessions.lock().unwrap().remove(token);
     }
 }
 pub fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
@@ -293,11 +269,10 @@ mod tests {
                 .unwrap(),
             ),
             pending: Default::default(),
-            sessions: Default::default(),
         }
     }
     #[tokio::test]
-    async fn state_is_browser_bound_single_use_and_sessions_are_revocable() {
+    async fn state_is_browser_bound_and_single_use() {
         let l = login();
         let pool = joppa::store::pool(joppa::store::DEFAULT_URL).unwrap();
         let (id, url) = l.start(None).await.unwrap();
@@ -329,9 +304,7 @@ mod tests {
         let (token, actor) = l.poll(&id).await.unwrap().unwrap();
         assert_eq!(actor, "owner");
         assert!(l.poll(&id).await.is_err());
-        assert_eq!(l.actor(&token), Some("owner".into()));
-        l.logout(&token);
-        assert!(l.actor(&token).is_none());
+        assert_eq!(token.len(), 64);
         let (id, _) = l.start(None).await.unwrap();
         l.pending.lock().unwrap().get_mut(&id).unwrap().expires =
             Instant::now() - Duration::from_secs(1);
