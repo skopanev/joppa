@@ -149,3 +149,39 @@ systemd. Restart the application after changing it. Indexing is asynchronous;
 MCP search reports the number of current and embedded documents. No key means
 full-text-only mode, not simulated semantic search. Embeddings are part of the
 PostgreSQL backup and can also be rebuilt from journal content.
+
+## Recovery drill
+
+Verify a newly uploaded Spaces backup against an isolated PostgreSQL 16 instance
+with pgvector. Successful `pg_restore --list` only checks the archive catalog;
+it does not prove that the application can reconstruct its state.
+
+1. Run the existing backup service and check its exit status. Download the new
+   object through authenticated Spaces access into a private directory. Record
+   its checksum and confirm that anonymous access is denied.
+2. Restore into an empty, isolated database with `pg_restore --exit-on-error
+   --single-transaction --no-owner --no-acl`. Do not restore over the production
+   database or route production clients to the test instance.
+3. Point the administrative server binary at the restored database. Supply the
+   matching private `JOPPA_ACCESS_RULES_FILE` and `JOPPA_LOGIN_USERS_FILE` when
+   checking Google-bound identities. The dump includes identity bindings but not
+   these filesystem policies; missing policy deliberately denies access.
+4. Read every expected workspace through the application. Compare journal
+   positions, events, canonical workspace IDs, aliases, permanent item IDs and
+   reconstructed cards. If production has advanced, compare the restored event
+   prefix; compare full current cards only at equal journal positions.
+5. Stop the isolated instance after verification. Retain a private verification
+   report with backup checksum, time and restored positions. A downloaded dump
+   contains private product data and credential hashes; keep it access-restricted
+   under the same handling policy as the backup itself.
+
+Back up private configuration separately in encrypted storage: Google client,
+identity/access rules, service credentials, database connection configuration
+and provider credentials cannot be recovered from `pg_dump`. Restore these
+through secret management; never put them in Git or the public verification report.
+
+The daily timer establishes backup frequency, not retention. Timestamped objects
+expire only under a configured Spaces lifecycle rule. An API key may upload and
+download backups but lack permission to inspect lifecycle settings. In that case
+verify retention in the bucket's control panel; do not infer a 30-day policy from
+successful uploads or remove old objects merely to achieve an assumed count.
