@@ -14,16 +14,13 @@ temporary=$(mktemp "$backup_dir/.joppa-$stamp.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
 pg_dump --format=custom --no-owner --no-acl --file="$temporary" joppa
 pg_restore --list "$temporary" >/dev/null
-dump="$backup_dir/joppa-$stamp.dump"
-mv "$temporary" "$dump"
 put() {
     curl --fail --silent --show-error --connect-timeout 10 --max-time 300 \
         --retry 3 --retry-delay 5 --aws-sigv4 "aws:amz:${SPACES_REGION}:s3" \
         --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-        --upload-file "$dump" "${SPACES_ENDPOINT%/}/${SPACES_BUCKET}/$1"
+        --upload-file "$temporary" "${SPACES_ENDPOINT%/}/${SPACES_BUCKET}/$1"
 }
 put "postgres/joppa-$stamp.dump"
 put "postgres/latest.dump"
 printf 'Backup uploaded: joppa-%s.dump\n' "$stamp"
-# Delete only our completed daily dumps, never unrelated files or failed partials.
-find "$backup_dir" -maxdepth 1 -type f -name 'joppa-????????T??????Z.dump' -mtime +14 -delete
+# The EXIT trap removes the temporary dump on success or failure; Spaces is the archive.

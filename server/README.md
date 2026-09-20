@@ -13,7 +13,8 @@ installing the PostgreSQL extension alone does not enable product search.
 - `/opt/joppa/bin/joppa`: application executable, owned by root.
 - `/etc/joppa/`: private runtime configuration, root:joppa, directory mode 0750.
 - `/var/lib/joppa/`: runtime directory owned by the unprivileged service account.
-- `/var/backups/joppa/`: database dumps, owned by postgres, directory mode 0700.
+- `/var/backups/joppa/`: temporary dump during upload and the backup lock,
+  owned by postgres, directory mode 0700; no local backup archive.
 - Caddy owns public ports 80/443; the API and PostgreSQL listen on loopback only.
 
 Use official Ubuntu/PostgreSQL packages for PostgreSQL 16 and pgvector. Enable
@@ -55,8 +56,10 @@ Like NTK, the timer reads standard Spaces variables from `/etc/joppa/backup.env`
 owned by root with mode 0600 (see `backup.env.example`). systemd supplies these
 to the backup process; the application does not receive the backup credentials.
 The script uploads a timestamped dump and `postgres/latest.dump` using curl
-SigV4. No separate S3 client is required. It retains 14 days locally; configure
-Spaces lifecycle retention separately for timestamped dumps. Test a download
+SigV4. No separate S3 client is required. The temporary dump is removed when the
+script exits, including on upload failure; failed uploads leave the service failed
+and existing Spaces backups unchanged. Configure Spaces lifecycle retention
+separately for timestamped dumps. Test a download
 and restore before calling the backup setup complete. Application credentials
 need their own private, encrypted backup, separate from the database dumps.
 
