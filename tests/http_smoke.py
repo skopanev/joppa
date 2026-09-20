@@ -97,6 +97,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
         ok({'op': 'domain', 'id': 'security', 'title': 'Доступ к данным', 'authority': 'owner'})
         ok({'op': 'capability', 'id': 'restrict', 'title': 'Ограничивать доступ', 'domain': 'security'})
+        ok({'op':'domain','id':'operations','title':'Operations','authority':'owner'})
+        ok({'op':'capability','id':'observe','title':'Observe service health','domain':'operations'})
         ok({'op': 'revise', 'req': 'key', 'expected_revision': 0, 'capability': 'restrict',
             'title': 'Ключ до запуска', 'body': '</script><script>window.attacked=true</script>',
             'owner': 'owner', 'reason': 'Проверка полного цикла',

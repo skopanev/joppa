@@ -101,7 +101,9 @@ Without Joppa's own Google configuration, sign-in fails closed with a setup mess
 
 The **Workspace** menu lists only accessible products. The full-width product tree
 shows domains, capabilities, requirements and acceptance criteria with distinct
-visual levels and check statuses. The portal is read-only: use **Copy for agent**
+visual levels and check statuses. Search titles, IDs and ACs; combine domain and
+status filters with live counts. Filter choices stay within each workspace.
+The portal is read-only: use **Copy for agent**
 on a domain, capability or requirement to discuss its context with your agent.
 All changes and decisions go through MCP. Browser sessions cannot submit commands.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.

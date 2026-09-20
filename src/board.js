@@ -110,6 +110,85 @@ $('workspaces').onchange=async e=>{
 };
 $('mobile-tree').onclick=()=>{selectedNode=null;selected='';revisionNumber=null;card();};
 $('refresh').onclick = () => load().catch(notify);
+const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
+let filters={query:'',domain:'',status:''};
+let filterWorkspace=null;
+function requirementStatus(id) {
+  const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
+  if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
+  if(s.accepted)return 'pass';
+  if(s.ready_for_acceptance)return 'ready';
+  if(!r.confirmed||!r.acs.length||Object.values(s.acs).some(a=>!a.ready))return 'waiting';
+  if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
+  return 'available';
+}
+function filterControls(root) {
+  if(filterWorkspace!==ws){
+    filterWorkspace=ws;filters={query:'',domain:'',status:''};
+    try{const saved=JSON.parse(sessionStorage.getItem('joppa-filters:'+ws));
+      if(saved && typeof saved.query==='string' && typeof saved.domain==='string' && typeof saved.status==='string')filters=saved;
+    }catch{}
+  }
+  if(filters.domain&&!data.state.domains[filters.domain])filters.domain='';
+  if(filters.status&&!statusLabels[filters.status])filters.status='';
+  const toolbar=E('section',undefined,'tree-toolbar');toolbar.setAttribute('aria-label','Filter product tree');
+  const fields=E('div',undefined,'filter-fields');
+  const search=E('input');search.type='search';search.id='tree-search';search.placeholder='Search titles, IDs and acceptance criteria';search.setAttribute('aria-label','Search product tree');search.value=filters.query;
+  search.oninput=()=>{filters.query=search.value;applyFilters();};
+  const domain=E('select');domain.id='domain-filter';domain.setAttribute('aria-label','Filter by domain');
+  const all=E('option','All domains');all.value='';domain.append(all);
+  for(const [id,d] of Object.entries(data.state.domains)){const option=E('option',d.title);option.value=id;domain.append(option);}
+  domain.value=filters.domain;domain.onchange=()=>{filters.domain=domain.value;applyFilters();};
+  fields.append(search,domain);toolbar.append(fields);
+  const statuses=E('div',undefined,'status-filters');statuses.setAttribute('role','group');statuses.setAttribute('aria-label','Requirement status');
+  for(const [key,label] of [['','All requirements'],...Object.entries(statusLabels)]){
+    const b=button('',()=>{filters.status=filters.status===key?'':key;applyFilters();},'status-filter '+(key||'all'));
+    b.dataset.status=key;b.append(E('span',label),E('strong','0','filter-count'));statuses.append(b);
+  }
+  toolbar.append(statuses);
+  const bottom=E('div',undefined,'filter-bottom');
+  const results=E('span','','filter-results');results.id='filter-results';results.setAttribute('role','status');
+  const actions=E('div',undefined,'tree-view-actions');
+  actions.append(button('Clear filters',()=>{filters={query:'',domain:'',status:''};search.value='';domain.value='';applyFilters();},'clear-filters'),button('Expand all',()=>{for(const d of root.querySelectorAll('.tree-domain:not([hidden])'))d.open=true;}),button('Collapse all',()=>{for(const d of root.querySelectorAll('.tree-domain'))d.open=false;}));
+  bottom.append(results,actions);toolbar.append(bottom);root.append(toolbar);
+}
+function applyFilters() {
+  if(!data)return;
+  try{sessionStorage.setItem('joppa-filters:'+ws,JSON.stringify(filters));}catch{}
+  const query=filters.query.trim().toLocaleLowerCase();
+  const matches=(...parts)=>!query||parts.join(' ').toLocaleLowerCase().includes(query);
+  const counts=Object.fromEntries(Object.keys(statusLabels).map(key=>[key,0]));
+  let shown=0,visibleDomains=0;
+  for(const group of $('tree').querySelectorAll('.tree-domain')){
+    const did=group.dataset.domain,d=data.state.domains[did];
+    const domainAllowed=!filters.domain||filters.domain===did;
+    let domainVisible=false;
+    for(const cap of group.querySelectorAll('.tree-capability')){
+      const cid=cap.dataset.capability,c=data.state.capabilities[cid];let capVisible=false;
+      for(const row of cap.querySelectorAll('.tree-requirement')){
+        const id=row.dataset.requirement,r=data.state.requirements[id].revisions.at(-1);
+        const match=domainAllowed&&matches(did,d.title,cid,c.title,id,r.title,r.body,...r.acs.flatMap(a=>[a.id,a.text]));
+        const status=requirementStatus(id);
+        if(match)counts[status]++;
+        row.hidden=!match||!!(filters.status&&filters.status!==status);
+        if(!row.hidden){shown++;capVisible=true;}
+      }
+      if(!filters.status&&domainAllowed&&matches(did,d.title,cid,c.title))capVisible=true;
+      cap.hidden=!capVisible;domainVisible ||= capVisible;
+    }
+    if(!filters.status&&domainAllowed&&matches(did,d.title))domainVisible=true;
+    group.hidden=!domainVisible;
+    if(domainVisible){visibleDomains++;if(query||filters.status||filters.domain)group.open=true;}
+  }
+  const total=Object.values(counts).reduce((a,b)=>a+b,0);
+  for(const b of $('tree').querySelectorAll('.status-filter')){
+    const key=b.dataset.status;b.setAttribute('aria-pressed',String(filters.status===key));
+    b.querySelector('.filter-count').textContent=key?counts[key]:total;
+  }
+  $('filter-results').textContent=shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
+  $('tree').querySelector('.clear-filters').disabled=!(filters.query||filters.domain||filters.status);
+  $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
+}
 function render() {
   const t = $('tree');
   const collapsed=new Set([...t.querySelectorAll('.tree-domain:not([open])')].map(d=>d.dataset.domain));
@@ -119,6 +198,7 @@ function render() {
   intro.append(E('p',`${Object.keys(data.state.domains).length} domains · ${Object.keys(data.state.capabilities).length} capabilities · ${Object.keys(data.state.requirements).length} requirements`,'node-stats'));
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
   t.append(intro);
+  filterControls(t);
   for (const [did, d] of Object.entries(data.state.domains)) {
     const group = E('details',undefined,'tree-domain');
     group.dataset.domain=did;group.open=!collapsed.has(did);
@@ -129,15 +209,13 @@ function render() {
     domainHeading.dataset.node='domain:'+did;group.append(domainHeading);
     const domainBody=E('div',undefined,'domain-body');group.append(domainBody);
     for (const [cid, c] of Object.entries(data.state.capabilities).filter(([, c]) => c.domain === did)) {
-      const capability=E('section',undefined,'tree-capability');
+      const capability=E('section',undefined,'tree-capability');capability.dataset.capability=cid;
       const capabilityHeading=E('div',undefined,'title-row');capabilityHeading.dataset.node='capability:'+cid;capabilityHeading.append(button(c.title,()=>openNode('capability',cid),'node-link cap-link'),E('small','CAPABILITY','type-label'));capability.append(capabilityHeading);
       for (const [id, q] of Object.entries(data.state.requirements).filter(([, q]) => q.capability === cid)) {
         const r = q.revisions.at(-1),
           s = data.summary[id];
-        const failed=Object.values(s.acs).some(a=>a.verification==='fail');
-        const tone=failed?'fail':s.accepted?'pass':s.ready_for_acceptance?'ready':'waiting';
-        const label=failed?'Checks failed':s.accepted?'Accepted':s.ready_for_acceptance?'Awaiting acceptance':r.confirmed?'In progress':'Awaiting confirmation';
-        const req=E('div',undefined,'tree-requirement '+tone);
+        const tone=requirementStatus(id),label=statusLabels[tone];
+        const req=E('div',undefined,'tree-requirement '+tone);req.dataset.requirement=id;
         const reqHeading=E('div',undefined,'title-row');
         const reqButton=button(r.title,()=>openRequirement(id),'node-link tree-req');reqButton.dataset.node='req:'+id;
         reqHeading.append(reqButton,E('small','REQ','type-label'));req.append(reqHeading,E('span',label,'badge '+tone));
@@ -155,6 +233,8 @@ function render() {
     t.append(group);
   }
   if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
+  const empty=E('p','No matching items. Try another search or clear the filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
+  applyFilters();
   intake(t);
   if (selected && !data.state.requirements[selected]) selected = '';
   card();
@@ -164,12 +244,15 @@ function card() {
   document.body.classList.toggle('detail-open',!!(selectedNode||selected));
   refreshSelection();
   root.replaceChildren();
+  root.dataset.kind=selectedNode?.kind||(selected?'requirement':'');
+  delete root.dataset.status;
   if (selectedNode) {nodeCard(root);return;}
   if (!selected) return;
   const q = data.state.requirements[selected],
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
+  if(current)root.dataset.status=requirementStatus(selected);
   const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));heading.append(copyButton('requirement',selected,r.number));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
@@ -183,7 +266,7 @@ function card() {
     card();
   };
   root.append(revisions);
-  root.append(E('p', s ? s.accepted ? 'Accepted' : s.ready_for_acceptance ? 'Ready for acceptance' : r.confirmed ? 'In progress' : 'Wording awaiting confirmation' : 'Previous revision. See its checks and history for evidence.'));
+  root.append(E('p',current?statusLabels[requirementStatus(selected)]:'Previous revision. See its checks and history for evidence.',current?'badge '+requirementStatus(selected):'hint'));
   const base = {
     req: selected,
     revision: r.number
@@ -303,7 +386,7 @@ function openNode(kind,id) {selected='';revisionNumber=null;selectedNode={kind,i
 function openRequirement(id) {selectedNode=null;selected=id;revisionNumber=null;closeMobileTree();card();}
 function sectionHead(root,title,count) {const head=E('div',undefined,'node-section-head');head.append(E('h2',title),E('small',String(count)));root.append(head);}
 function catalogRow(root,title,kind,action,count) {
-  const row=E('div',undefined,'catalog-row');row.append(button(title,action,'node-link'),E('small',kind,'type-label'));
+  const row=E('div',undefined,'catalog-row');row.dataset.kind=kind;row.append(button(title,action,'node-link'),E('small',kind,'type-label'));
   if(count!==undefined){const counts=E('div',undefined,'counts');counts.append(E('span',count+' REQ'));row.append(counts);}
   root.append(row);return row;
 }
