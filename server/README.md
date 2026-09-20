@@ -4,9 +4,47 @@ Target: Ubuntu 24.04 LTS, one shared vCPU, 2 GB RAM. PostgreSQL 16 stores the
 journal and will host pgvector and full-text search. DeepInfra performs embedding
 inference. Joppa has its own Google OAuth client and invited account list.
 
-These are deployment templates, not evidence that a server has been installed.
 At present, vector ingestion and the hybrid search endpoint are not implemented;
 installing the PostgreSQL extension alone does not enable product search.
+
+## Deploy
+
+From a clean, committed checkout, with root SSH access to an Ubuntu 24.04 host:
+
+```sh
+server/deploy.sh root@SERVER_IP app.example.com /private/joppa-config
+# Only for the first deployment to a host without a Joppa database:
+server/deploy.sh root@SERVER_IP app.example.com /private/joppa-config /private/initial.dump
+```
+
+Set `JOPPA_SSH_CONFIG` to use a private SSH configuration file. The host key must
+already be trusted. The domain must point at the host. No hostnames, account
+addresses, SSH keys, product data or live credentials belong in Git.
+
+The private config directory must contain `tokens.json` and `login-users.json`
+(formats in the root README). It may also contain `google-client.json`,
+`backup.env` and `storage.env`. Only those five files are transferred. Optional
+files omitted on an update keep their existing server configuration. Without a
+Google client on the server, the authorization page loads but sign-in stays disabled.
+
+The deploy script archives tracked files from HEAD, provisions missing dependencies,
+builds with one job, creates the database and a restricted runtime role, applies
+additive migrations, installs systemd services and configures Caddy HTTPS. It
+generates the database password on the host. An initial dump is accepted only
+when the database does not exist; updates never restore over existing data.
+Transferred dumps and staging files are removed after use. Interrupted network
+connections can leave a private remote staging directory; the script reports
+cleanup failures so it can be removed after the interrupted deployment ends.
+
+A failed application health check restores the previous binary when available;
+database migrations and configuration changes are not rolled back. The final
+check calls the public HTTPS health endpoint. This does not verify Google login
+or establish Spaces retention: those require their own acceptance checks.
+
+When backup credentials are present, the daily timer is enabled for 03:30 UTC
+with up to 15 minutes of jitter. Run the backup service once and verify a Spaces
+download and restore. Local dumps exist only during the upload; history is kept
+in Spaces, whose lifecycle must be configured separately.
 
 ## Layout
 
@@ -52,7 +90,7 @@ After deployment verify HTTPS, anonymous API denial, authenticated workspace
 reads, and the Google flow once the own client credentials are configured.
 
 Install the backup service and timer after creating the backup directory.
-Like NTK, the timer reads standard Spaces variables from `/etc/joppa/backup.env`
+The timer reads standard Spaces variables from `/etc/joppa/backup.env`
 owned by root with mode 0600 (see `backup.env.example`). systemd supplies these
 to the backup process; the application does not receive the backup credentials.
 The script uploads a timestamped dump and `postgres/latest.dump` using curl

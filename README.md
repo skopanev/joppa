@@ -61,8 +61,8 @@ export JOPPA_TOKENS_FILE=/tmp/joppa-tokens.json
 ./target/debug/joppa serve 6212
 ```
 
-Browser sign-in belongs to Joppa and talks directly to Google. It does not use
-NTK or any other product's accounts, keys, service or OAuth client.
+Browser sign-in talks directly to Google using Joppa's own OAuth client
+and invitation list.
 
 Before starting `serve`, set `JOPPA_GOOGLE_CLIENT_FILE` to a private JSON file:
 

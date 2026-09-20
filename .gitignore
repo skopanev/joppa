@@ -10,3 +10,17 @@ __pycache__/
 
 # Local runtime, credentials and private product bootstrap data
 .local/
+
+# Deployment inputs are private; only explicit templates belong in Git.
+.env
+.env.*
+*.env
+!*.env.example
+*.dump
+*.dump.*
+*.sql.gz
+*.sql.zst
+*.tfstate*
+google-client*.json
+tokens.json
+login-users.json
