@@ -104,8 +104,8 @@ shows domains, capabilities, requirements and acceptance criteria with distinct
 visual levels and check statuses. Search titles, IDs and ACs; combine domain and
 status filters with live counts. Filter choices stay within each workspace.
 Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
-The portal is read-only: use **Copy ID**
-on a domain, capability or requirement to pass its identifier to your agent.
+The portal is read-only: use **Agent**
+on a domain, capability or requirement to copy its system ID and title for your agent.
 All changes and decisions go through MCP. Browser sessions cannot submit commands.
 [How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
 Если старый сервер уже занимает 6212, запустите новый на `6213`.

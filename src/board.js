@@ -198,17 +198,17 @@ function render() {
   for (const [did,d] of Object.entries(data.state.domains)) {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
-    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did));group.append(heading);
+    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),E('span',d.confirmed?'Confirmed':'Draft','badge '+(d.confirmed?'confirmed':'waiting')),copyButton('domain',did,d.title));group.append(heading);
     const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));group.append(body);
     for(const [cid,c] of Object.entries(data.state.capabilities).filter(([,c])=>c.domain===did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid));cap.append(head);
+      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),copyButton('capability',cid,c.title));cap.append(head);
       const reqs=Object.entries(data.state.requirements).filter(([,q])=>q.capability===cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
-        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),copyButton('requirement',id));
+        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),copyButton('requirement',id,r.title));
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
@@ -371,23 +371,30 @@ function intake(root) {
     }
   }
 }
-function copyButton(kind,id) {
-  const b=button('Copy ID',async()=>{
-    const text=id;
+function copyButton(kind,id,title) {
+  const b=button('',async()=>{
+    const text=id+' — '+title;
     try{
       if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      notify('ID copied.');
+      notify('Copied for your agent.');
     }catch{
       const dialog=E('dialog',undefined,'copy-dialog');
-      dialog.setAttribute('aria-label','Copy item ID');
-      const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','Item ID');
-      dialog.append(E('h2','Copy ID'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
+      dialog.setAttribute('aria-label','Copy for your agent');
+      const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','ID and title');
+      dialog.append(E('h2','Copy for your agent'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
       dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();area.focus();area.select();
     }
   },'copy-context');
-  b.title='Copy '+kind+' ID';
-  b.setAttribute('aria-label','Copy '+kind+' ID: '+id);
+  const svgNS='http://www.w3.org/2000/svg';
+  const icon=document.createElementNS(svgNS,'svg');
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'14',height:'14',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))icon.setAttribute(key,value);
+  const square=document.createElementNS(svgNS,'rect');
+  for(const [key,value] of Object.entries({x:'8',y:'8',width:'12',height:'12',rx:'2'}))square.setAttribute(key,value);
+  const back=document.createElementNS(svgNS,'path');back.setAttribute('d','M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4');
+  icon.append(square,back);b.append(icon,E('span','Agent'));
+  b.title='Copy ID and title for your agent';
+  b.setAttribute('aria-label','Copy '+kind+' ID and title: '+id);
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
 }

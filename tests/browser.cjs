@@ -49,9 +49,9 @@ const assert=require('node:assert/strict');
   await page.context().grantPermissions(['clipboard-read','clipboard-write']);
   async function copied(node,kind,id){
    const before=await isOpen(node);
-   await node.locator(':scope > summary').getByRole('button',{name:'Copy '+kind+' ID: '+id,exact:true}).click();
-   await page.getByText('ID copied.',{exact:true}).waitFor();
-   assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),id);
+   await node.locator(':scope > summary').getByRole('button',{name:'Copy '+kind+' ID and title: '+id,exact:true}).click();
+   await page.getByText('Copied for your agent.',{exact:true}).waitFor();
+   assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),id+' — '+await title(node).textContent());
    assert.equal(await isOpen(node),before,'copy must not toggle the branch');
   }
   await copied(domain,'domain','security');await copied(cap,'capability','restrict');await copied(req,'requirement','key');
@@ -84,10 +84,10 @@ const assert=require('node:assert/strict');
   await search.fill('key-rights');
   await req.getByRole('combobox',{name:'Requirement revision'}).waitFor();
   await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
-  await req.getByRole('button',{name:'Copy requirement ID: key',exact:true}).click();
-  const fallback=page.getByRole('dialog',{name:'Copy item ID'});await fallback.waitFor();
+  await req.getByRole('button',{name:'Copy requirement ID and title: key',exact:true}).click();
+  const fallback=page.getByRole('dialog',{name:'Copy for your agent'});await fallback.waitFor();
   assert(await fallback.getByRole('textbox').evaluate(e=>e.readOnly));
-  assert.equal(await fallback.getByRole('textbox').inputValue(),'key');
+  assert.equal(await fallback.getByRole('textbox').inputValue(),'key — Ключ до запуска');
   await fallback.getByRole('button',{name:'Close',exact:true}).click();
   await page.getByRole('button',{name:'Clear filters',exact:true}).click();
   await page.screenshot({path:'/tmp/joppa-tree-desktop.png',fullPage:true});
@@ -115,6 +115,6 @@ const assert=require('node:assert/strict');
   await (await popupPromise).close();await page.locator('#login-cancel').click();
   assert(await page.locator('#login-button').isEnabled());
   assert.deepEqual(errors,[]);
-  console.log('Browser: inline expansion, reload collapse, no scrollbar shift, ID-only copy, historical evidence, filters, mobile, read-only and auth passed');
+  console.log('Browser: inline expansion, reload collapse, no scrollbar shift, ID and title copy, historical evidence, filters, mobile, read-only and auth passed');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
