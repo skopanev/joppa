@@ -1,6 +1,5 @@
 /* SNAPSHOT */
-let actor = '',
-  ws = '',
+let ws = '',
   data = null,
   selected = '',
   revisionNumber = null,
@@ -19,38 +18,13 @@ function notify(e) {
   $('notice').dataset.kind=e instanceof Error?'error':'success';
   if(e && !(e instanceof Error))noticeTimer=setTimeout(()=>{$('notice').textContent='';},4500);
 }
-async function api(path, body) {
-  const r = await fetch('/api/' + path, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      ...(body ? {
-        'Content-Type': 'application/json'
-      } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+async function api(path) {
+  const r = await fetch('/api/' + path);
   const j = await r.json();
-  if(r.status===401){loadNumber++;data=null;actor='';selected='';selectedNode=null;document.body.classList.remove('authenticated','detail-open');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
+  if(r.status===401){loadNumber++;data=null;selected='';selectedNode=null;document.body.classList.remove('authenticated','detail-open');$('tree').replaceChildren();$('card').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
   if(r.status===404 && path.startsWith('workspaces/')){data=null;selected='';selectedNode=null;document.body.classList.remove('detail-open');$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));$('card').replaceChildren();}
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
-}
-// getRandomValues also works on the private-network HTTP address.
-function newId() {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 15) | 64;
-  bytes[8] = (bytes[8] & 63) | 128;
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-}
-async function send(command) {
-  await api('workspaces/' + encodeURIComponent(ws) + '/commands', {
-    request_id: newId(),
-    command
-  });
-  await load();
-  notify('Saved to history.');
 }
 function button(text, fn, cls = '') {
   const b = E('button', text, cls);
@@ -64,49 +38,6 @@ function details(parent, title) {
   parent.append(d);
   return d;
 }
-function field(form, name, label, type = 'text', value = '', options = null) {
-  const l = E('label', label);
-  let i;
-  if (options) {
-    i = E('select');
-    for (const [v, t] of options) {
-      const o = E('option', t);
-      o.value = v;
-      i.append(o);
-    }
-  } else i = E(type === 'textarea' ? 'textarea' : 'input');
-  i.name = name;
-  i.setAttribute('aria-label', label);
-  if (i.tagName === 'INPUT') i.type = type;
-  if (type === 'checkbox') i.checked = !!value;else i.value = value ?? '';
-  l.append(i);
-  const submit = form.querySelector(':scope > button[type=submit]');
-  if (submit) form.insertBefore(l, submit);else form.append(l);
-  return i;
-}
-function form(parent, label, fn) {
-  const f = E('form');
-  const b = E('button', label);
-  b.type = 'submit';
-  f.append(b);
-  f.onsubmit = async e => {
-    e.preventDefault();
-    b.disabled = true;
-    notify('');
-    try {
-      await fn(new FormData(f), f);
-    } catch (e) {
-      notify(e);
-    } finally {
-      b.disabled = false;
-    }
-  };
-  parent.append(f);
-  return f;
-}
-const members = () => Object.entries(data.state.members).map(([id, role]) => [id, id + ' · ' + role]);
-const humans = () => members().filter(([id]) => data.state.members[id] === 'human');
-const options = map => Object.entries(map).map(([id, v]) => [id, v.title || id]);
 async function list() {
   const list = await api('workspaces');
   $('workspaces').replaceChildren();
@@ -119,7 +50,6 @@ async function list() {
   }
   if (!list.some(w => w.id === ws)) ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = ws;
-  bootstrap();
   if (ws) await load();
   else {document.body.classList.remove('detail-open');data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));$('card').replaceChildren();}
 }
@@ -132,8 +62,8 @@ async function load() {
   render();
 }
 async function showApp(identity) {
-  actor=identity.actor;
-  $('identity').textContent=identity.email||actor;
+  if(identity.email===undefined)identity={...identity,...await api('me')};
+  $('identity').textContent=identity.email||'Account';
   document.body.classList.add('authenticated');
   $('logout').hidden=false;
   await list();
@@ -180,21 +110,6 @@ $('workspaces').onchange=async e=>{
 };
 $('mobile-tree').onclick=()=>{selectedNode=null;selected='';revisionNumber=null;card();};
 $('refresh').onclick = () => load().catch(notify);
-function bootstrap() {
-  const s = $('setup');
-  s.replaceChildren();
-  const d = details(s, 'New workspace');
-  const f = form(d, 'Create', async v => {
-    ws = v.get('id');
-    await send({
-      op: 'workspace',
-      title: v.get('title')
-    });
-    await list();
-  });
-  field(f, 'id', 'Workspace ID');
-  field(f, 'title', 'Name');
-}
 function render() {
   const t = $('tree');
   const collapsed=new Set([...t.querySelectorAll('.tree-domain:not([open])')].map(d=>d.dataset.domain));
@@ -239,109 +154,10 @@ function render() {
     }
     t.append(group);
   }
-  if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP or workspace settings.','empty-state'));
-  if (!window.SNAPSHOT) {
-    const actions=E('div',undefined,'tree-actions');settings(actions);intake(actions);t.append(actions);
-  }
+  if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
+  intake(t);
   if (selected && !data.state.requirements[selected]) selected = '';
   card();
-}
-function settings(t) {
-  const d = details(t, 'Workspace settings');
-  let f = form(d, 'Add member', v => send({
-    op: 'member',
-    id: v.get('id'),
-    role: v.get('role')
-  }));
-  field(f, 'id', 'Member ID');
-  field(f, 'role', 'Role', 'text', 'human', [['human', 'Human'], ['agent', 'Agent'], ['runner', 'CI']]);
-  f = form(d, 'Add domain', v => send({
-    op: 'domain',
-    id: v.get('id'),
-    title: v.get('title'),
-    authority: v.get('authority')
-  }));
-  field(f, 'id', 'Domain ID');
-  field(f, 'title', 'Name');
-  field(f, 'authority', 'Decision owner', 'text', '', humans());
-  f = form(d, 'Add capability', v => send({
-    op: 'capability',
-    id: v.get('id'),
-    title: v.get('title'),
-    domain: v.get('domain')
-  }));
-  field(f, 'id', 'Capability ID');
-  field(f, 'title', 'We can…');
-  field(f, 'domain', 'Domain', 'text', '', options(data.state.domains));
-  d.append(button('Confirm structure', () => send({
-    op: 'confirm_tree'
-  })));
-  f = form(d, 'Add repository', v => send({
-    op: 'project',
-    id: v.get('id'),
-    repository: v.get('repository')
-  }));
-  field(f, 'id', 'Project ID');
-  field(f, 'repository', 'Repository URL');
-}
-function intake(t) {
-  const d = details(t, 'Intake · ' + Object.keys(data.state.intake).length);
-  const f = form(d, 'Save original wording', v => send({
-    op: 'intake',
-    id: 'i-' + newId(),
-    said: v.get('said'),
-    author: v.get('author')
-  }));
-  field(f, 'author', 'Author', 'text', actor);
-  field(f, 'said', 'Request', 'textarea');
-  for (const [id, i] of Object.entries(data.state.intake)) {
-    const item = details(d, id + ' · ' + i.author);
-    item.append(E('p', i.said));
-    if (!Object.keys(i.points).length) {
-      const split = form(item, 'Split into items', v => send({
-        op: 'split',
-        id,
-        points: v.get('points').split('\n').filter(Boolean)
-      }));
-      field(split, 'points', 'One item per line', 'textarea', i.said);
-    }
-    for (const [pid, p] of Object.entries(i.points)) {
-      const point = details(item, pid + ' · ' + (p.outcome || 'Unreviewed'));
-      point.append(E('p', p.said));
-      if (p.outcome) {
-        point.append(E('p', p.reason));
-        continue;
-      }
-      let f = form(point, 'Assign category', v => send({
-        op: 'sort',
-        id,
-        point: pid,
-        kind: v.get('kind')
-      }));
-      field(f, 'kind', 'Category', 'text', p.kind, Object.keys(data.state.questions).map(k => [k, k]));
-      for (const key of data.state.questions[p.kind] || []) {
-        f = form(point, 'Save answer', v => send({
-          op: 'answer',
-          id,
-          point: pid,
-          field: key,
-          value: v.get('value')
-        }));
-        field(f, 'value', key, 'textarea', p.answers[key] || '');
-      }
-      f = form(point, 'Record decision', v => send({
-        op: 'route',
-        id,
-        point: pid,
-        outcome: v.get('outcome'),
-        reason: v.get('reason'),
-        req: v.get('outcome') === 'work' ? v.get('req') : null
-      }));
-      field(f, 'outcome', 'Decision', 'text', 'work', [['work', 'Proceed'], ['refused', 'Decline'], ['elsewhere', 'Handle elsewhere']]);
-      field(f, 'req', 'Requirement', 'text', '', Object.keys(data.state.requirements).map(k => [k, k]));
-      field(f, 'reason', 'Reason', 'textarea');
-    }
-  }
 }
 function card() {
   const root = $('card');
@@ -354,7 +170,7 @@ function card() {
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
     current = r === q.revisions.at(-1),
     s = current ? data.summary[selected] : null;
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',r.title),E('small','REQ','type-label'));heading.append(copyButton('requirement',selected,r.number));root.append(heading,E('p',selected+' · revision '+r.number+' · owner '+r.owner),E('p',r.body));
   const revisions = E('select');
   for (const old of q.revisions) {
     const o = E('option', 'Revision ' + old.number + ' · ' + old.reason);
@@ -372,46 +188,18 @@ function card() {
     req: selected,
     revision: r.number
   };
-  if (current && !window.SNAPSHOT) {
-    root.append(button('Edit requirement', () => edit(r), 'write'), button('Confirm wording', () => send({
-      ...base,
-      op: 'confirm'
-    }), 'write'));
-    if (s.ready_for_acceptance && !s.accepted) root.append(button('Accept result', () => send({
-      ...base,
-      op: 'accept',
-      run: s.run
-    }), 'write'));
-  }
   for (const a of r.acs) {
     const status = s?.acs[a.id];
     const item = E('article',undefined,'ac-card '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     item.append(E('h3', a.text), E('small','AC · '+a.id), E('span', status?.verification || 'See history', 'badge ' + (status?.verification || '')), E('p', status?.ready ? 'Ready to work' : a.assessment?.reason || 'Awaiting review'));
     if (a.before_launch) item.append(E('small', 'Required before launch'));
+    if (a.depends_on?.length) item.append(E('p','Depends on: '+a.depends_on.join(', ')));
     if (a.decider) item.append(E('p', 'Decision: ' + a.decider));
-    if (current && !window.SNAPSHOT) {
-      const d = details(item, 'Assess readiness');
-      const f = form(d, 'Save assessment', v => send({
-        ...base,
-        op: 'assess',
-        ac: a.id,
-        assessment: {
-          ready: v.get('ready') === 'yes',
-          reason: v.get('reason'),
-          recipient: v.get('recipient') || null,
-          decision: v.get('decision') || null
-        }
-      }));
-      field(f, 'ready', 'Readiness', 'text', 'no', [['no', 'Awaiting decision'], ['yes', 'Ready to work']]);
-      field(f, 'reason', 'Reason or specific question', 'textarea', a.assessment?.reason || '');
-      field(f, 'recipient', 'Question for', 'text', '', [['', '—'], ...members()]);
-      field(f, 'decision', 'Decision in discussion', 'text', '', [['', '—'], ...Object.entries(q.comments).filter(([, c]) => c.kind === 'decision' && !c.withdrawn).map(([id, c]) => [id, c.actor + ': ' + c.text.slice(0, 70)])]);
-    }
     root.append(item);
   }
-  tasks(root, r, base, current);
-  runs(root, r, base, current);
-  comments(root, q, r, base);
+  tasks(root, r);
+  runs(root, r, base);
+  comments(root, q, r);
   const h = details(root, 'Revision history');
   for (const ev of data.history.filter(e => e.command.req === selected)) {
     historyEvent(h, ev, q);
@@ -450,89 +238,13 @@ function historyEvent(parent, event, q) {
   const raw = details(d, 'Event data');
   raw.append(E('pre', JSON.stringify(c, null, 2)));
 }
-function edit(r) {
-  if(!r)return;
-  selectedNode = null;
-  document.body.classList.add('detail-open');
-  const root = $('card');
-  root.replaceChildren(E('h2','New revision · all checks reset to n/a'));
-  const f = form(root, 'Save revision', v => {
-    const acs = [...f.querySelectorAll('fieldset')].map(row => ({
-      id: row.querySelector('[name=ac_id]').value,
-      text: row.querySelector('[name=ac_text]').value,
-      decider: row.querySelector('[name=decider]').value || null,
-      before_launch: row.querySelector('[name=before_launch]').checked,
-      depends_on: row.querySelector('[name=depends]').value.split(',').map(s => s.trim()).filter(Boolean)
-    }));
-    selected = v.get('req');
-    revisionNumber = null;
-    return send({
-      op: 'revise',
-      req: selected,
-      expected_revision: r.number,
-      capability: v.get('capability'),
-      title: v.get('title'),
-      body: v.get('body'),
-      owner: v.get('owner'),
-      reason: v.get('reason'),
-      acs
-    });
-  });
-  field(f, 'req', 'Requirement ID', 'text', selected).readOnly = true;
-  field(f, 'capability', 'Capability', 'text', data.state.requirements[selected].capability, options(data.state.capabilities));
-  field(f, 'title', 'What must be true', 'text', r?.title);
-  field(f, 'body', 'Context', 'textarea', r?.body);
-  field(f, 'owner', 'Owner', 'text', r?.owner || actor, humans());
-  field(f, 'reason', 'Reason for change', 'textarea');
-  function acrow(a = {}) {
-    const row = E('fieldset');
-    field(row, 'ac_id', 'Stable AC ID', 'text', a.id || '');
-    field(row, 'ac_text', 'Acceptance criterion, including the relevant platform', 'textarea', a.text || '');
-    field(row, 'decider', 'Decision needed from', 'text', a.decider || '', [['', 'Not required'], ...humans()]);
-    field(row, 'depends', 'Depends on ACs (comma-separated IDs)', 'text', (a.depends_on || []).join(', '));
-    field(row, 'before_launch', 'Required before launch', 'checkbox', a.before_launch);
-    row.append(button('Remove from this revision', () => row.remove()));
-    f.insertBefore(row, f.querySelector('button[type=submit]'));
-  }
-  for (const a of r?.acs || [{}]) acrow(a);
-  f.append(button('Add AC', () => acrow()));
-  root.append(button('Cancel', card));
-}
-function tasks(root, r, base, current) {
+function tasks(root, r) {
   const d = details(root, 'Tasks · ' + Object.keys(r.tasks).length);
   for (const [id, t] of Object.entries(r.tasks)) {
     d.append(E('p', id + ' · ' + t.title + ' · ' + t.acs.join(', ') + ' · ' + t.projects.join(', ') + ' · ' + (t.done ? 'Completed: ' + t.done : 'Assignee: ' + t.assignee)));
-    if (current && !t.done && !window.SNAPSHOT) {
-      const f = form(d, 'Complete task', v => send({
-        ...base,
-        op: 'complete_task',
-        id,
-        evidence: v.get('evidence')
-      }));
-      field(f, 'evidence', t.purpose === 'decision' ? 'Decision ID from discussion' : 'What changed and where to find the result', 'textarea');
-    }
   }
-  if (!current || window.SNAPSHOT) return;
-  const f = form(d, 'Create task', v => send({
-    ...base,
-    op: 'task',
-    id: v.get('id'),
-    title: v.get('title'),
-    acs: v.getAll('acs'),
-    projects: v.getAll('projects'),
-    purpose: v.get('purpose'),
-    assignee: v.get('assignee')
-  }));
-  field(f, 'id', 'Task ID');
-  field(f, 'title', 'What to do');
-  field(f, 'assignee', 'Assignee', 'text', actor, members());
-  field(f, 'purpose', 'Work type', 'text', 'implementation', [['implementation', 'Implementation'], ['manual', 'Configuration / manual work'], ['decision', 'Get a decision']]);
-  const a = field(f, 'acs', 'Acceptance criteria', 'text', '', r.acs.map(a => [a.id, a.id]));
-  a.multiple = true;
-  const p = field(f, 'projects', 'Repositories (optional)', 'text', '', options(data.state.projects));
-  p.multiple = true;
 }
-function runs(root, r, base, current) {
+function runs(root, r, base) {
   const d = details(root, 'Checks · ' + Object.keys(r.runs).length);
   for (const [id, run] of Object.entries(r.runs)) {
     const block = details(d, id + ' · ' + (run.finished ? 'Finished' : 'Running'));
@@ -541,76 +253,18 @@ function runs(root, r, base, current) {
       const result = run.results[c.id];
       const recorded = data.history.find(e => e.command.op === 'result' && e.command.req === base.req && e.command.revision === base.revision && e.command.run === id && e.command.evidence.check === c.id);
       if (recorded) block.append(E('small', recorded.actor + ' · ' + recorded.recorded_at));
+      block.append(E('small','Method: '+c.method+' · AC: '+c.ac));
+      if(result?.link)block.append(E('p','Evidence: '+result.link));
       block.append(E('h3', c.id), E('p', 'Expected: ' + c.expected.join(', ')), E('p', result ? 'Observed: ' + result.observed.join(', ') + ' · ' + result.outcome + ' · ' + result.note : 'No result yet'));
-      if (!run.finished && !result && c.method === 'manual' && !window.SNAPSHOT) {
-        const f = form(block, 'Record check', v => send({
-          ...base,
-          op: 'result',
-          run: id,
-          evidence: {
-            check: c.id,
-            outcome: v.get('outcome'),
-            observed: v.get('observed').split('\n').filter(Boolean),
-            note: v.get('note'),
-            link: v.get('link') || null
-          }
-        }));
-        field(f, 'outcome', 'Result', 'text', 'pass', [['pass', 'Passed'], ['fail', 'Failed'], ['skip', 'Skipped']]);
-        field(f, 'observed', 'Observed list — one item per line', 'textarea');
-        field(f, 'note', 'What was checked and how', 'textarea');
-        field(f, 'link', 'Evidence URL');
-      }
     }
-    if (!run.finished && !window.SNAPSHOT) block.append(button('Finish run', () => send({
-      ...base,
-      op: 'finish',
-      run: id
-    })));
-  }
-  if (current && !window.SNAPSHOT) {
-    const f = form(d, 'Seal manual check plan', v => send({
-      ...base,
-      op: 'plan',
-      run: v.get('id'),
-      subject: {
-        environment: v.get('subject')
-      },
-      scope: v.get('scope'),
-      discovery_complete: v.get('complete') === 'on',
-      checks: r.acs.map(a => ({
-        id: 'manual-' + a.id,
-        ac: a.id,
-        method: 'manual',
-        expected: v.get('expected-' + a.id).split('\n').filter(Boolean)
-      }))
-    }));
-    field(f, 'id', 'Run ID');
-    field(f, 'subject', 'Environment and configuration version');
-    field(f, 'scope', 'Check scope');
-    field(f, 'complete', 'All checks in this scope are included', 'checkbox');
-    for (const a of r.acs) field(f, 'expected-' + a.id, a.id + ' · expected list', 'textarea');
   }
 }
-function comments(root, q, r, base) {
+function comments(root, q, r) {
   const d = details(root, 'Discussion');
   d.open = true;
   for (const [id, c] of Object.entries(q.comments).filter(([, c]) => c.revision === r.number)) {
     d.append(E('small', id + ' · ' + c.actor + ' · ' + c.kind + (c.withdrawn ? ' · withdrawn' : '') + (c.reply_to ? ' · reply to ' + c.reply_to : '')), E('p', c.text));
   }
-  if (window.SNAPSHOT) return;
-  const f = form(d, 'Post reply', v => send({
-    ...base,
-    op: 'comment',
-    id: 'c-' + newId(),
-    text: v.get('text'),
-    kind: v.get('kind'),
-    reply_to: v.get('reply_to') || null,
-    ac: v.get('ac') || null
-  }));
-  field(f, 'kind', 'Reply type', 'text', 'comment', [['comment', 'Comment / suggestion'], ['decision', 'Specialist decision'], ['accept', 'Accept suggestion'], ['change', 'Amend suggestion'], ['reject', 'Reject with reason'], ['correction', 'Correct earlier reply']]);
-  field(f, 'text', 'Reply', 'textarea');
-  field(f, 'reply_to', 'Reply to comment ID');
-  field(f, 'ac', 'Acceptance criterion', 'text', '', [['', 'Entire requirement'], ...r.acs.map(a => [a.id, a.id])]);
 }
 if (window.SNAPSHOT) {
   document.body.classList.add('snapshot');
@@ -653,7 +307,7 @@ function nodeCard(root) {
   const domain=kind==='domain'?data.state.domains[id]:data.state.domains[data.state.capabilities[id].domain];
   const node=kind==='domain'?domain:data.state.capabilities[id];
   root.append(button('← '+data.state.title,()=>{selectedNode=null;card();},'back-link'));
-  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));root.append(heading);
+  const heading=E('div',undefined,'title-row');heading.append(E('h1',node.title),E('small',kind==='domain'?'DOMAIN':'CAPABILITY','type-label'));heading.append(copyButton(kind,id));root.append(heading);
   const meta=E('div',undefined,'node-meta');meta.append(E('span',node.confirmed?'Confirmed':'Draft','badge'),E('span',kind==='domain'?'Decision owner: '+domain.authority:domain.title));root.append(meta);
   if(kind==='domain') {
     const caps=Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id);
@@ -665,11 +319,61 @@ function nodeCard(root) {
     for(const [rid,q]of reqs)catalogRow(root,q.revisions.at(-1).title,'REQ',()=>openRequirement(rid));
     if(!reqs.length){const empty=E('div',undefined,'empty-state');empty.append(E('p','No requirements here yet.'));root.append(empty);}
   }
-  const help=details(root,kind==='domain'?'What is a domain?':'What is a capability?');help.classList.add('node-help');
-  help.append(E('p',kind==='domain'?'A domain is a business area with a clear decision owner.':'A capability describes what the product can do. Start with “We can…”','hint'),E('p','Domains and capabilities organize the work. Checks verify the acceptance criteria of individual requirements.','hint'));
-  if(!window.SNAPSHOT&&actor===data.state.admin){
-    const edit=details(root,kind==='domain'?'Edit domain':'Edit capability');
-    const f=form(edit,'Save changes',v=>send({op:kind==='domain'?'edit_domain':'edit_capability',id,title:v.get('title'),reason:v.get('reason'),...(kind==='domain'?{authority:v.get('authority')}:{})}));
-    field(f,'title','Name','text',node.title);if(kind==='domain')field(f,'authority','Decision owner','text',domain.authority,humans());field(f,'reason','Reason for change','textarea');
+}
+
+function intake(root) {
+  const entries=Object.entries(data.state.intake);
+  if(!entries.length)return;
+  const section=details(root,'Intake · '+entries.length);
+  for(const [id,item] of entries){
+    const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
+    for(const [pid,point] of Object.entries(item.points)){
+      const block=details(entry,pid+' · '+(point.outcome||'Unreviewed'));
+      block.append(E('p',point.said));
+      for(const [key,value] of Object.entries(point.answers||{}))block.append(E('p',key+': '+value));
+      if(point.reason)block.append(E('p',point.reason));
+      if(point.req)block.append(button(point.req,()=>openRequirement(point.req),'node-link'));
+    }
   }
+}
+function agentContext(kind,id,number) {
+  const state=data.state;
+  const requirement=kind==='requirement'?state.requirements[id]:null;
+  const capability=kind==='capability'?state.capabilities[id]:requirement?state.capabilities[requirement.capability]:null;
+  const domainId=kind==='domain'?id:capability.domain;
+  const capabilities=Object.fromEntries(Object.entries(state.capabilities).filter(([cid,c])=>kind==='domain'?c.domain===id:cid===(requirement?requirement.capability:id)));
+  const requirements=Object.fromEntries(Object.entries(state.requirements).filter(([rid,q])=>kind==='requirement'?rid===id:Object.hasOwn(capabilities,q.capability)));
+  const summary=Object.fromEntries(Object.entries(data.summary).filter(([rid])=>Object.hasOwn(requirements,rid)));
+  const history=data.history.filter(({command:c})=>
+    (c.req && Object.hasOwn(requirements,c.req)) ||
+    (['domain','edit_domain'].includes(c.op) && c.id===domainId) ||
+    (['capability','edit_capability'].includes(c.op) && Object.hasOwn(capabilities,c.id)) ||
+    ['workspace','rename_workspace','confirm_tree'].includes(c.op));
+  const context={workspace:{id:ws,title:state.title},position:data.position,
+    selection:{kind,id,...(number?{revision:number}:{})},
+    domain:{id:domainId,...state.domains[domainId]},capabilities,requirements,
+    latest_revision_summary:summary,history};
+  return 'Joppa — '+kind+' context\n'+
+    'Discuss this item with me. Read the latest workspace through Joppa MCP before proposing changes. '+
+    'Preserve the stated scope; do not add platforms or acceptance criteria by assumption.\n'+
+    'This is a snapshot, not live state. The selection identifies the revision being viewed; summaries describe the latest revisions.\n\n'+
+    JSON.stringify(context,null,2);
+}
+function copyButton(kind,id,number) {
+  const b=button('Copy for agent',async()=>{
+    const text=agentContext(kind,id,number);
+    try{
+      if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      notify('Context copied. Paste it into your agent chat.');
+    }catch{
+      const dialog=E('dialog',undefined,'copy-dialog');
+      dialog.setAttribute('aria-label','Copy context for your agent');
+      const area=E('textarea');area.readOnly=true;area.value=text;area.setAttribute('aria-label','Agent context');
+      dialog.append(E('h2','Copy for agent'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
+      dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();area.focus();area.select();
+    }
+  },'copy-context');
+  b.title='Copy this '+kind+' and its context for an agent';
+  return b;
 }

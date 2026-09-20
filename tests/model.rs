@@ -3,6 +3,23 @@ use common::*;
 use serde_json::json;
 
 #[test]
+fn only_workspace_owner_can_rename_without_changing_content() {
+    let mut w = World::new();
+    let command =
+        json!({"op":"rename_workspace","title":"New product name","reason":"Product naming"});
+    w.no("agent", command.clone());
+    w.no("legal", command.clone());
+    w.no(
+        "owner",
+        json!({"op":"rename_workspace","title":" ","reason":"Product naming"}),
+    );
+    let mut expected = serde_json::to_value(&w.state).unwrap();
+    expected["title"] = json!("New product name");
+    w.ok("owner", command);
+    assert_eq!(serde_json::to_value(&w.state).unwrap(), expected);
+}
+
+#[test]
 fn independent_acs_and_cross_repository_tasks_do_not_fake_green() {
     let mut w = World::new();
     w.ok("agent", assess("ios", true));

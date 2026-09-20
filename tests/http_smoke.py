@@ -71,6 +71,18 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         with urllib.request.urlopen(urllib.request.Request(base+'/api/me',headers={'Authorization':'Bearer '+owner_token})) as response:
             assert response.headers.get('Cache-Control') == 'no-store'
         assert request('/api/workspaces', token='invalid')[0] == 401
+        assert request('/api/me')[1] == {'actor':'owner','email':None}
+        # Cookie/no-credential commands are rejected before authentication or DB access.
+        payload=json.dumps({'request_id':'portal-write','command':{'op':'workspace','title':'Forbidden'}}).encode()
+        for cookie in ('', 'joppa_session=browser-session'):
+            req=urllib.request.Request(base+'/api/workspaces/portal-write/commands',data=payload,
+                headers={'Content-Type':'application/json','Origin':base,'Cookie':cookie})
+            try:
+                urllib.request.urlopen(req)
+                raise AssertionError('portal write must be forbidden')
+            except urllib.error.HTTPError as e:
+                assert e.code == 403 and 'read-only' in e.read().decode()
+
         assert request('/auth/login', body={})[0] == 403  # Origin is mandatory.
         try:
             urllib.request.urlopen(urllib.request.Request(base+'/auth/login', data=b'', headers={'Origin':base}))
@@ -149,17 +161,39 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert result.returncode == code, result.stderr
             card = request('/api/workspaces/' + ws)[1]
             assert card['summary']['auto']['ready_for_acceptance'] is (code == 0)
+        # Changes are made by an integration; the portal only reads the result.
+        ok({'op':'confirm','req':'key','revision':1})
+        ok({'op':'assess','req':'key','revision':1,'ac':'key-rights',
+            'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
+        ok({'op':'plan','req':'key','revision':1,'run':'manual1',
+            'subject':{'environment':'config-v1'},'scope':'Key permissions before launch',
+            'discovery_complete':True,'checks':[{'id':'manual-key-rights','ac':'key-rights',
+                'method':'manual','expected':['read','verify']}]})
+        ok({'op':'result','req':'key','revision':1,'run':'manual1',
+            'evidence':{'check':'manual-key-rights','outcome':'pass','observed':['read','verify'],
+                'note':'Compared the provider permission list'}})
+        ok({'op':'finish','req':'key','revision':1,'run':'manual1'})
+        ok({'op':'accept','req':'key','revision':1,'run':'manual1'})
+        assert request('/api/workspaces/'+ws)[1]['summary']['key']['accepted'] is True
+        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v1"}', text=True, capture_output=True)
+        assert gate.returncode == 0, gate.stderr
+        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
+        assert gate.returncode != 0
+        # Copy must distinguish the viewed historical revision from the latest status.
+        ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
+            'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',
+            'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True}]})
+        before=request('/api/workspaces/'+ws)[1]
+        ok({'op':'rename_workspace','title':'Review workspace','reason':'Name clarified'})
+        after=request('/api/workspaces/'+ws)[1]
+        assert after['workspace']==before['workspace']
+        assert after['history'][:-1]==before['history']
+        assert after['state']=={**before['state'],'title':'Review workspace'}
         if '--browser' in sys.argv:
             browser_env = {**env, 'JOPPA_TEST_URL': base, 'JOPPA_TEST_TOKEN': owner_token,
                            'JOPPA_TEST_WORKSPACE': ws, 'JOPPA_TEST_SNAPSHOT': str(snapshot)}
             subprocess.run(['node', str(ROOT / 'tests/browser.cjs')], env=browser_env, check=True)
-            card = request('/api/workspaces/' + ws)[1]
-            assert card['summary']['key']['accepted'] is True
-            # Actual deployment gate rejects a different target.
-            gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v1"}', text=True, capture_output=True)
-            assert gate.returncode == 0, gate.stderr
-            gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
-            assert gate.returncode != 0
+            assert request('/api/workspaces/'+ws)[1]['history']==after['history'], 'portal must not write'
         print('HTTP auth, workspace isolation, idempotency, CLI snapshot and MCP smoke passed')
     finally:
         server.terminate()

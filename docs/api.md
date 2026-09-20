@@ -8,6 +8,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 
 ```text
 workspace: title
+rename_workspace: title, reason; workspace owner only; preserves workspace ID and history
 member: id, role (human|agent|runner); workspace owner only
 project: id, repository
 domain: id, title, authority (human member)
@@ -70,8 +71,10 @@ code server-side with PKCE, and verifies Google's signed ID token and Joppa acce
 HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
 `POST /auth/logout` invalidates the session server-side.
 
-All POST auth endpoints and cookie-authenticated commands require an exact
-same-origin `Origin` header. Cookies are `Secure` over HTTPS. Sessions do not
-survive a server restart. `GET /api/me` returns the authenticated Joppa actor.
+All POST auth endpoints require an exact same-origin `Origin` header.
+Browser sessions are read-only: command requests without an Authorization header
+return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Sessions do not
+survive a server restart. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
+(or null for an identity without a Google binding).
 Bearer tokens remain available for CLI/agent integrations. The browser never
 stores or displays them. Missing Google configuration does not enable a fallback.

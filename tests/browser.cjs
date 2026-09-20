@@ -21,18 +21,13 @@ const assert = require('node:assert/strict');
     let signedIn=false;
     await page.route('**/api/**',async route=>{
       const request=route.request();
+      assert.equal(request.method(),'GET','portal API calls must be read-only');
       if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
       await route.continue({headers:{...request.headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
     });
     await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
     await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
     await page.route('**/auth/logout',route=>{signedIn=false;return route.fulfill({json:{ok:true}});});
-    async function save(locator) {
-      await Promise.all([page.waitForResponse(r => r.request().method() === 'POST'), locator.click()]);
-      await page.getByText('Saved to history.', {
-        exact: true
-      }).waitFor();
-    }
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(process.env.JOPPA_TEST_URL);
@@ -57,115 +52,59 @@ const assert = require('node:assert/strict');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.screenshot({path:'/tmp/joppa-tree-mobile.png',fullPage:true});
     await page.setViewportSize({width:1280,height:900});
-    // Domain and capability navigation explain the model in the actual UI.
+    await page.context().grantPermissions(['clipboard-read','clipboard-write']);
+    async function copied(){
+      await page.getByRole('button',{name:'Copy for agent',exact:true}).click();
+      await page.getByText('Context copied. Paste it into your agent chat.',{exact:true}).waitFor();
+      const text=await page.evaluate(()=>navigator.clipboard.readText());
+      return JSON.parse(text.slice(text.indexOf('{')));
+    }
+    function noForms(){return page.locator('form').count().then(n=>assert.equal(n,0));}
+    await noForms();
+    assert(await page.locator('.brand-mark').isVisible());
+    assert.equal(await page.locator('link[rel=icon]').count(),1);
+    assert.equal(await page.locator('#workspaces').evaluate(e=>getComputedStyle(e).fontSize),'16px');
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).click();
-    await page.getByText('What is a domain?',{exact:true}).click();
-    await page.getByText('A domain is a business area with a clear decision owner.',{exact:true}).waitFor();
+    assert.equal(await page.getByText('What is a domain?',{exact:true}).count(),0);
+    const domain=await copied();
+    assert.deepEqual(domain.selection,{kind:'domain',id:'security'});
+    assert.equal(domain.workspace.id,process.env.JOPPA_TEST_WORKSPACE);
+    assert.deepEqual(Object.keys(domain.capabilities),['restrict']);
+    assert.deepEqual(Object.keys(domain.requirements).sort(),['auto','key']);
+    await noForms();
     await page.getByRole('button',{name:'← Product tree',exact:true}).click();
     await page.locator('#tree').getByRole('button',{name:'Ограничивать доступ',exact:true}).click();
-    await page.getByText('What is a capability?',{exact:true}).click();
-    await page.getByText('A capability describes what the product can do. Start with “We can…”',{exact:true}).waitFor();
+    assert.equal(await page.getByText('What is a capability?',{exact:true}).count(),0);
+    assert.deepEqual((await copied()).selection,{kind:'capability',id:'restrict'});
+    await noForms();
     await page.getByRole('button',{name:'← Product tree',exact:true}).click();
-    await page.locator('#tree').getByRole('button', {name: /Ключ до запуска/}).click();
-    await page.getByRole('heading', {
-      name: 'Ключ до запуска',
-      exact: true
-    }).waitFor();
-    assert.equal(await page.evaluate(() => window.attacked), undefined);
-    await page.getByRole('button', {
-      name: 'Confirm wording',
-      exact: true
-    }).click();
-    await page.locator('#card').getByText('In progress', {
-      exact: true
-    }).waitFor();
-    await page.getByText('Assess readiness', {
-      exact: true
-    }).click();
-    const assess = page.locator('form').filter({
-      has: page.getByRole('button', {
-        name: 'Save assessment',
-        exact: true
-      })
-    });
-    await assess.getByLabel('Readiness', {
-      exact: true
-    }).selectOption('yes');
-    await assess.getByLabel('Reason or specific question').fill('Список подтверждён владельцем');
-    await assess.getByRole('button', {
-      name: 'Save assessment'
-    }).click();
-    await page.locator('p').filter({
-      hasText: /^Ready to work$/
-    }).waitFor();
-    await page.getByText('Checks · 0', {
-      exact: true
-    }).click();
-    const plan = page.locator('form').filter({
-      has: page.getByRole('button', {
-        name: 'Seal manual check plan',
-        exact: true
-      })
-    });
-    await plan.getByLabel('Run ID').fill('manual1');
-    await plan.getByLabel('Environment and configuration version').fill('config-v1');
-    await plan.getByLabel('Check scope').fill('Права ключа перед запуском');
-    await plan.getByLabel('All checks in this scope are included').check();
-    await plan.getByLabel('key-rights · expected list').fill('read\nverify');
-    await plan.getByRole('button', {
-      name: 'Seal manual check plan'
-    }).click();
-    await page.getByText('Checks · 1', {
-      exact: true
-    }).waitFor();
-    await page.getByText('Checks · 1', {
-      exact: true
-    }).click();
-    await page.getByText('manual1 · Running', {
-      exact: true
-    }).click();
-    const report = page.locator('form').filter({
-      has: page.getByRole('button', {
-        name: 'Record check',
-        exact: true
-      })
-    });
-    await report.getByLabel('Observed list — one item per line').fill('read\nverify');
-    await report.getByLabel('What was checked and how').fill('Открыл права ключа в панели провайдера');
-    await save(report.getByRole('button', {
-      name: 'Record check',
-      exact: true
-    }));
-    await page.getByText('Checks · 1', {
-      exact: true
-    }).click();
-    await page.getByText('manual1 · Running', {
-      exact: true
-    }).click();
-    await save(page.getByRole('button', {
-      name: 'Finish run',
-      exact: true
-    }));
-    await page.getByRole('button', {
-      name: 'Accept result',
-      exact: true
-    }).click();
-    await page.locator('#card').getByText('Accepted', {
-      exact: true
-    }).waitFor();
-    await page.screenshot({
-      path: '/tmp/joppa-browser-check.png',
-      fullPage: true
-    });
-    // Editing a typo creates a new revision with no inherited green. Leave it unsaved here.
-    await page.getByRole('button', {
-      name: 'Edit requirement',
-      exact: true
-    }).click();
-    await page.getByRole('heading', {
-      name: 'New revision · all checks reset to n/a'
-    }).waitFor();
-    assert.equal(await page.getByLabel('Stable AC ID').inputValue(), 'key-rights');
+    await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
+    await page.getByRole('heading',{name:'Ключ до запуска',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.attacked),undefined);
+    const req=await copied();
+    assert.deepEqual(req.selection,{kind:'requirement',id:'key',revision:2});
+    assert.deepEqual(Object.keys(req.requirements),['key']);
+    assert.equal(req.requirements.key.revisions.at(-1).acs[0].id,'key-rights');
+    assert(req.history.some(e=>e.command.op==='accept'));
+    assert(req.history.every(e=>!e.command.req || e.command.req==='key'));
+    assert.equal(req.latest_revision_summary.key.accepted,false);
+    await page.locator('#card > select').selectOption('1');
+    assert.deepEqual((await copied()).selection,{kind:'requirement',id:'key',revision:1});
+    await page.getByText('Checks · 1',{exact:true}).click();
+    await page.getByText('manual1 · Finished',{exact:true}).click();
+    await page.getByText('Expected: read, verify',{exact:true}).waitFor();
+    await page.getByText(/Observed: read, verify/).waitFor();
+    await noForms();
+    assert.equal(await page.getByRole('button',{name:/Edit |Confirm |Accept |Save |Create |Post reply|Finish run|Record check/}).count(),0);
+    await page.screenshot({path:'/tmp/joppa-browser-check.png',fullPage:true});
+    // Denied clipboard access exposes a selectable read-only fallback, not a false success.
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
+    await page.getByRole('button',{name:'Copy for agent',exact:true}).click();
+    const fallback=page.getByRole('dialog',{name:'Copy context for your agent'});
+    await fallback.waitFor();
+    assert(await fallback.getByRole('textbox').evaluate(e=>e.readOnly));
+    assert((await fallback.getByRole('textbox').inputValue()).includes('key-rights'));
+    await fallback.getByRole('button',{name:'Close',exact:true}).click();
     await page.goto('file://' + process.env.JOPPA_TEST_SNAPSHOT);
     await page.locator('#tree').getByRole('button',{name:/Ключ до запуска/}).click();
     await page.getByRole('heading', {
@@ -177,12 +116,12 @@ const assert = require('node:assert/strict');
     await page.getByRole('heading',{name:'Four levels of the tree'}).waitFor();
     // Cookie login survives refresh; obsolete token fragments are erased.
     await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
-    await page.locator('#identity').filter({hasText:'owner'}).waitFor();
+    await page.locator('#identity').filter({hasText:'Account'}).waitFor();
     assert.equal(await page.evaluate(()=>location.hash),'');
     await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
     await page.locator('#tree').getByRole('button',{name:'Доступ к данным',exact:true}).waitFor();
     await page.reload();
-    await page.locator('#identity').filter({hasText:'owner'}).waitFor();
+    await page.locator('#identity').filter({hasText:'Account'}).waitFor();
     await page.locator('#tree .tree-domain').first().waitFor();
     await page.setViewportSize({width:390,height:844});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -205,7 +144,7 @@ const assert = require('node:assert/strict');
     await page.locator('#login-cancel').click();
     assert.equal(await page.locator('#login-button').isEnabled(),true);
     assert.deepEqual(errors, []);
-    console.log('Browser: wording → readiness → exact manual evidence → acceptance → launch gate; XSS-safe snapshot passed');
+    console.log('Browser: read-only tree, scoped clipboard, historical revision, fallback, mobile and XSS-safe snapshot passed');
   } finally {
     await browser.close();
   }

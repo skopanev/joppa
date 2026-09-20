@@ -9,6 +9,10 @@ pub enum Command {
     Workspace {
         title: String,
     },
+    RenameWorkspace {
+        title: String,
+        reason: String,
+    },
     Member {
         id: String,
         role: String,
@@ -243,6 +247,12 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
     match command {
+        Command::RenameWorkspace { title, reason } => {
+            ensure!(actor == w.admin, "workspace owner renames the workspace");
+            nonempty(title)?;
+            nonempty(reason)?;
+            w.title = title.clone();
+        }
         Command::Member { id, role } => {
             ensure!(actor == w.admin, "workspace owner required");
             identifier(id)?;

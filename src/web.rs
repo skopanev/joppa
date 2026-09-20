@@ -108,15 +108,14 @@ async fn command(
     headers: HeaderMap,
     Json(request): Json<Request>,
 ) -> ApiResult {
-    let actor = authenticate(&app, &headers)?;
+    // Browser cookies only grant read access. Writes require integration credentials.
     if !headers.contains_key(header::AUTHORIZATION) {
-        web_auth::check_origin(&headers).map_err(|_| {
-            (
-                StatusCode::FORBIDDEN,
-                Json(json!({"error":"cross-origin request denied"})),
-            )
-        })?;
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
+        ));
     }
+    let actor = authenticate(&app, &headers)?;
     result(
         store::execute(
             &app.pool,
@@ -130,7 +129,20 @@ async fn command(
 }
 async fn me(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers)?;
-    Ok(Json(json!({"actor":actor})))
+    result(
+        async {
+            let conn = app.pool.get().await?;
+            let email: Option<String> = conn
+                .query_opt(
+                    "SELECT email FROM joppa.google_identities WHERE actor=$1",
+                    &[&actor],
+                )
+                .await?
+                .map(|row| row.get(0));
+            Ok(json!({"actor":actor,"email":email}))
+        }
+        .await,
+    )
 }
 type AuthResult = std::result::Result<(HeaderMap, Json<Value>), (StatusCode, Json<Value>)>;
 fn auth_error(e: impl std::fmt::Display) -> (StatusCode, Json<Value>) {

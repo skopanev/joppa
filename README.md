@@ -101,14 +101,12 @@ Without Joppa's own Google configuration, sign-in fails closed with a setup mess
 
 The **Workspace** menu lists only accessible products. The full-width product tree
 shows domains, capabilities, requirements and acceptance criteria with distinct
-visual levels and check statuses. Create requirements through MCP; the browser
-supports reviewing and editing existing requirements.
-[How it works](http://127.0.0.1:6212/guide)
-explains domains, capabilities, requirements and acceptance criteria.
-Названия доменов и capabilities открывают их карточки. В карточке можно
-собрать дерево, редактировать REQ и AC, обсуждать, создать задачи, провести
-ручную проверку и принять результат. Если старый сервер уже занимает 6212,
-запустите новый на `6213`. Публичный доступ требует своего HTTPS-прокси.
+visual levels and check statuses. The portal is read-only: use **Copy for agent**
+on a domain, capability or requirement to discuss its context with your agent.
+All changes and decisions go through MCP. Browser sessions cannot submit commands.
+[How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
+Если старый сервер уже занимает 6212, запустите новый на `6213`.
+Публичный доступ требует своего HTTPS-прокси.
 
 ## CLI, MCP и HTTP
 
