@@ -4,7 +4,9 @@
 Advisory lock на воркспейс охватывает чтение, проверку и вставку: две правки с
 одним expected_revision не проходят одновременно. Повтор request_id не дублирует событие.
 
-Постоянных таблиц две: `workspaces` и `events`. В `events.command` хранится
+Бизнес-журнал хранится в `workspaces` и `events`. Отдельные таблицы хранят
+постоянные ID, браузерные сессии и хеши ключей CLI. Отзыв ключа — отдельная
+запись; исходная запись не меняется. В `events.command` хранится
 типизированный JSON команды; неизвестные поля отвергаются. Воркспейс является
 границей ссылок: чужой REQ, AC, проект или человек не разрешается по чужому ID.
 Вычисляемые структуры не являются второй записываемой копией истины.
@@ -24,7 +26,7 @@ Advisory lock на воркспейс охватывает чтение, про�
 CREATE ROLE joppa_runtime LOGIN;
 GRANT CONNECT ON DATABASE joppa TO joppa_runtime;
 GRANT USAGE ON SCHEMA joppa TO joppa_runtime;
-GRANT SELECT, INSERT ON joppa.workspaces, joppa.events TO joppa_runtime;
+GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;
 ```
 

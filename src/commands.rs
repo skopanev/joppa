@@ -39,6 +39,11 @@ pub enum Command {
         title: String,
         domain: String,
     },
+    SetDomainArchived {
+        id: String,
+        archived: bool,
+        reason: String,
+    },
     ConfirmTree {},
     EditDomain {
         id: String,
@@ -302,6 +307,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             w.domains.insert(
                 id.clone(),
                 Domain {
+                    archived: false,
                     title: title.clone(),
                     authority: authority.clone(),
                     confirmed: actor == w.admin,
@@ -312,6 +318,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             identifier(id)?;
             nonempty(title)?;
             ensure!(w.domains.contains_key(domain), "unknown domain");
+            ensure!(!w.domains[domain].archived, "domain is archived");
             ensure!(!w.capabilities.contains_key(id), "capability exists");
             w.capabilities.insert(
                 id.clone(),
@@ -321,6 +328,28 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
                     confirmed: actor == w.admin,
                 },
             );
+        }
+        Command::SetDomainArchived {
+            id,
+            archived,
+            reason,
+        } => {
+            ensure!(actor == w.admin, "workspace owner archives domains");
+            nonempty(reason)?;
+            let domain = w
+                .domains
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown domain"))?;
+            ensure!(domain.archived != *archived, "archive state is unchanged");
+            if *archived {
+                ensure!(
+                    !w.requirements
+                        .values()
+                        .any(|r| w.capabilities[&r.capability].domain == *id),
+                    "only domains without requirements can be archived"
+                );
+            }
+            w.domains.get_mut(id).unwrap().archived = *archived;
         }
         Command::ConfirmTree {} => {
             ensure!(actor == w.admin, "workspace owner confirms the tree");
@@ -417,6 +446,10 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             ensure!(
                 w.capabilities.contains_key(capability),
                 "unknown capability"
+            );
+            ensure!(
+                !w.domains[&w.capabilities[capability].domain].archived,
+                "domain is archived"
             );
             validate_acs(w, acs)?;
             for (other_id, other) in &w.requirements {

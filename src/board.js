@@ -172,7 +172,7 @@ function filterControls(root) {
       if(saved && typeof saved.domain==='string' && typeof saved.status==='string')filters={domain:saved.domain,status:saved.status,person:typeof saved.person==='string'?saved.person:''};
     }catch{}
   }
-  if(filters.domain&&!data.state.domains[filters.domain])filters.domain='';
+  if(filters.domain&&(!data.state.domains[filters.domain]||data.state.domains[filters.domain].archived))filters.domain='';
   if(filters.status&&!statusLabels[filters.status])filters.status='';
   const toolbar=E('section',undefined,'tree-toolbar');toolbar.setAttribute('aria-label','Filter product tree');
   const fields=E('div',undefined,'filter-fields');
@@ -180,7 +180,7 @@ function filterControls(root) {
   if(filters.person&&filters.person!=='@me'&&data.state.members[filters.person]!=='human')filters.person='';
   if(filters.person==='@me'&&!viewerActor)filters.person='';
   fields.append(filterPicker('domain','Filter by domain','Domain',[
-    {id:'',title:'All domains',hint:String(Object.keys(data.state.domains).length)},
+    {id:'',title:'All domains',hint:String(orderedEntries('domain').length)},
     ...orderedEntries('domain').map(([id,d])=>({id,title:d.title,hint:String(Object.values(data.state.capabilities).filter(c=>c.domain===id).length)+' capabilities'}))
   ],filters.domain,value=>{filters.domain=value;applyFilters();}));
   const people=[{id:'',title:'Everyone',hint:'All responsibilities'}];
@@ -226,7 +226,7 @@ function applyFilters(reveal=true) {
   }
   statusCounts=counts;
   $('filter-results').textContent=shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
-  $('filter-empty').hidden=visibleDomains>0||!Object.keys(data.state.domains).length;
+  $('filter-empty').hidden=visibleDomains>0||!orderedEntries('domain').length;
 }
 function render() {
   draggedNode?.cancel();
@@ -262,7 +262,7 @@ function render() {
     }
     t.append(group);
   }
-  if(!Object.keys(data.state.domains).length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
+  if(!orderedEntries('domain').length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
   const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   intake(t);
@@ -331,7 +331,7 @@ function historyTitle(kind,id,position){
 }
 function historyEvent(parent,event,q){
   const c=event.command;
-  const names={domain:'Domain created',capability:'Capability created',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
+  const names={set_domain_archived:c.archived?'Domain archived':'Domain restored',domain:'Domain created',capability:'Capability created',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
   const entry=E('article',undefined,'history-entry');
   entry.append(E('time',eventDate(event.recorded_at),'history-time'),E('span',personLabel(event.actor),'history-author'));parent.append(entry);
   const body=E('div',undefined,'history-body');body.append(E('strong',names[c.op]||'Item updated','history-action'));entry.append(body);
@@ -498,7 +498,7 @@ function copyButton(kind,id,title) {
 
 function orderedEntries(kind,parent=null) {
   const map=kind==='domain'?data.state.domains:kind==='capability'?data.state.capabilities:data.state.requirements;
-  const ids=Object.keys(map).filter(id=>kind==='domain'||(kind==='capability'?map[id].domain:map[id].capability)===parent).sort();
+  const ids=Object.keys(map).filter(id=>kind==='domain'?!map[id].archived:(kind==='capability'?map[id].domain:map[id].capability)===parent).sort();
   const key=kind+(parent?':'+parent:'');
   const saved=(data.state.tree_order?.[key]||[]).filter(id=>ids.includes(id));
   return [...saved,...ids.filter(id=>!saved.includes(id))].map(id=>[id,map[id]]);
@@ -519,7 +519,7 @@ function showHistory(kind,id,title,reqId){
     const c=event.command;
     if(c.op==='reorder_tree')return c.kind===kind&&c.ids.includes(id)&&c.expected.indexOf(id)!==c.ids.indexOf(id);
     if(kind==='requirement')return c.req===id;
-    if(kind!=='ac')return ((c.op===kind||c.op==='edit_'+kind)&&c.id===id)||c.op==='confirm_tree';
+    if(kind!=='ac')return ((c.op===kind||c.op==='edit_'+kind||(kind==='domain'&&c.op==='set_domain_archived'))&&c.id===id)||c.op==='confirm_tree';
     if(c.req!==reqId)return false;
     if(c.op==='revise')return c.acs.some(a=>a.id===id)||!!q.revisions[c.expected_revision-1]?.acs.some(a=>a.id===id);
     const revision=q.revisions.find(r=>r.number===c.revision);

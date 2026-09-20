@@ -401,3 +401,45 @@ fn tree_order_is_owner_only_scoped_and_does_not_change_requirement_evidence() {
     );
     assert!(joppa::tree_order::ordered_ids(&w.state, "domain", Some("d")).is_err());
 }
+
+#[test]
+fn archive_clears_unused_tree_without_losing_ids_or_allowing_hidden_work() {
+    let mut w = World::new();
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"seed","title":"Example","authority":"owner"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"capability","id":"seed-cap","title":"Example ability","domain":"seed"}),
+    );
+    let archive = json!({"op":"set_domain_archived","id":"seed","archived":true,"reason":"Start a fresh tree"});
+    w.no("agent", archive.clone());
+    w.no("legal", archive.clone());
+    w.ok("owner", archive.clone());
+    assert!(w.state.domains["seed"].archived);
+    assert!(w.state.capabilities.contains_key("seed-cap"));
+    assert_eq!(
+        joppa::tree_order::ordered_ids(&w.state, "domain", None).unwrap(),
+        vec!["d"]
+    );
+    w.no(
+        "owner",
+        json!({"op":"domain","id":"seed","title":"Replacement","authority":"owner"}),
+    );
+    w.no(
+        "owner",
+        json!({"op":"capability","id":"hidden","title":"Hidden work","domain":"seed"}),
+    );
+    let mut req = revision(0);
+    req["req"] = json!("seed-req");
+    req["capability"] = json!("seed-cap");
+    req["acs"] = json!([{"id":"seed-ac","text":"An observable result"}]);
+    w.no("agent", req.clone());
+    let mut restore = archive.clone();
+    restore["archived"] = json!(false);
+    w.ok("owner", restore);
+    w.ok("agent", req);
+    w.no("owner", archive);
+    assert_eq!(w.state.requirements["seed-req"].revisions.len(), 1);
+}

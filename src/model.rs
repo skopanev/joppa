@@ -19,6 +19,8 @@ pub struct Workspace {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Domain {
+    #[serde(default)]
+    pub archived: bool,
     pub title: String,
     pub authority: String,
     pub confirmed: bool,

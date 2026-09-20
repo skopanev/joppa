@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>joppa</title><link rel="icon" href="/favicon.svg">
+<style>
+:root{font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263729;background:#f5f5f0}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:28px}main{width:min(100%,440px)}.brand{font-weight:650;font-size:26px;letter-spacing:-.05em;display:flex;align-items:center;gap:10px}.brand img{width:26px;height:32px}h1{font-size:40px;line-height:1.15;letter-spacing:-.045em;font-weight:600;margin:42px 0 20px}p{color:#66726d}code{display:block;padding:18px;background:#e4ece1;border-radius:10px;letter-spacing:.12em;text-align:center;font-size:22px;color:#285f58;margin:24px 0}button{width:100%;border:0;border-radius:10px;background:#285f58;color:white;padding:16px;font-family:inherit;font-size:17px;font-weight:600;line-height:1.4;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:3px solid #7f9b69;outline-offset:4px}#account{font-size:14px;overflow-wrap:anywhere}#status{font-size:15px;min-height:24px}a{color:#285f58}small{display:block;color:#66726d;margin:16px 0;font-size:14px}
+</style>
+<main><div class="brand"><img src="/favicon.svg" alt="">joppa.</div><h1>Connect your agent.</h1>
+<p>Check that this code matches the one in your terminal.</p><code id="code"></code>
+<p id="account"></p><small>Your CLI and agents will act as your account, with access to your workspaces. Only approve a connection you started.</small>
+<button id="connect" disabled>Checking sign-in…</button><p id="status" role="status" aria-live="polite"></p><a href="/">Back to your workspace</a></main>
+<script>
+const code=new URLSearchParams(location.search).get('code')||'',button=document.getElementById('connect'),status=document.getElementById('status');
+document.getElementById('code').textContent=code;
+let signedIn=false;
+async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Please try again.');return data;}
+async function check(){try{const me=await api('/api/me');signedIn=true;document.getElementById('account').textContent='Signed in as '+(me.email||me.actor);button.textContent='Connect Joppa CLI';}catch{button.textContent='Continue with Google';}button.disabled=false;}
+button.onclick=async()=>{
+ button.disabled=true;status.textContent='';let popup;
+ try{
+  if(!signedIn){
+   popup=window.open('about:blank','joppa-google','popup,width=520,height=700');if(!popup)throw Error('Allow the sign-in window, then try again.');popup.opener=null;
+   const start=await api('/auth/login',{});popup.location=start.verification_url;status.textContent='Complete sign-in in the Google window.';
+   const deadline=Date.now()+start.expires_in*1000;
+   while(Date.now()<deadline){await new Promise(r=>setTimeout(r,1800));const result=await api('/auth/poll',{});if(result.status==='ready'){popup.close();await check();status.textContent='Check the code, then connect.';return;}}
+   throw Error('Sign-in expired. Please try again.');
+  }
+  await api('/auth/device/approve',{code});button.textContent='Connected';status.textContent='Your terminal can now finish connecting. You can close this window.';button.disabled=true;
+ }catch(e){popup?.close();status.textContent=e.message;button.disabled=false;}
+};
+if(/^[A-F0-9]{4}(-[A-F0-9]{4}){2}$/.test(code))check();else{button.textContent='Connection unavailable';status.textContent='Run joppa login in your terminal to start a connection.';}
+</script></html>

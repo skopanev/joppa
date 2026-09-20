@@ -5,6 +5,8 @@ use std::io::{Read, Write};
 #[allow(dead_code, clippy::all)]
 #[rustfmt::skip]
 mod legacy;
+mod client;
+mod client_config;
 mod google_auth;
 mod protocol;
 mod web;
@@ -15,6 +17,20 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "legacy") {
         return legacy::run().await;
+    }
+    let client_command = args.first().is_none_or(|s| {
+        matches!(
+            s.as_str(),
+            "mcp" | "list" | "read" | "command" | "login" | "logout" | "whoami"
+        )
+    });
+    if client_command
+        && (std::env::var_os("JOPPA_DATABASE_URL").is_none()
+            || args
+                .first()
+                .is_some_and(|s| matches!(s.as_str(), "login" | "logout" | "whoami")))
+    {
+        return client::run(&args).await;
     }
     let pool = store::pool(
         &std::env::var("JOPPA_DATABASE_URL").unwrap_or_else(|_| store::DEFAULT_URL.into()),

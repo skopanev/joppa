@@ -16,6 +16,7 @@ domain: id, title, authority (human member)
 capability: id, title, domain
 confirm_tree: (no fields); workspace owner validates agent draft
 edit_domain: id, title, authority, reason; workspace owner only
+set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
 edit_capability: id, title, reason; workspace owner only
 revise: req, expected_revision (0 for new), capability, title, body, owner, reason,
         acs:[{id,text,depends_on:[],decider:null,before_launch:false}]
@@ -72,7 +73,7 @@ code server-side with PKCE, and verifies Google's signed ID token and Joppa acce
 HttpOnly `SameSite=Strict` session cookie. Attempts cannot be collected twice.
 `POST /auth/logout` invalidates the session server-side.
 
-All POST auth endpoints require an exact same-origin `Origin` header.
+Browser sign-in, sign-out, polling and device approval require an exact same-origin `Origin` header.
 Content command requests without an Authorization header
 return 403, including same-origin requests with a valid session cookie. Cookies are `Secure` over HTTPS. Session token hashes and revocations persist in PostgreSQL; sign-in survives
 server restarts until the original 12-hour expiry or explicit sign-out. `GET /api/me` returns the authenticated Joppa actor and its verified Google email
@@ -113,3 +114,21 @@ Commands continue to use local IDs from the resolved workspace, never guessed sl
 An explicit `rename_workspace` with `reference_prefix` changes the prefix used by
 new copies and newly created items. It appends aliases and preserves all old IDs,
 content, history and workspace permissions. Title-only renames leave IDs unchanged.
+
+
+## Native client authentication
+
+`POST /auth/device/start` creates a 10-minute connection code and an independent
+secret. Open `/connect?code=...` in a browser. After Google sign-in,
+`POST /auth/device/approve` requires a session cookie and a same-origin header;
+bearer credentials cannot approve connections. The user explicitly approves the code.
+`POST /auth/device/poll` with `{code,device_secret}` collects the key once.
+`POST /auth/device/revoke` with that Bearer key revokes it. Keys expire after 90 days.
+Start and poll are CLI endpoints and do not require a browser Origin header.
+`POST /mcp` accepts JSON-RPC with a Bearer credential; notifications return 204.
+The native `joppa mcp` client adapts this HTTPS endpoint to MCP stdio.
+
+Archived domains and their capabilities remain in read responses for history and
+ID resolution, but are absent from the active tree. New capabilities and REQs cannot
+be created beneath them. `set_domain_archived` with `archived:false` restores them.
+IDs are never recycled. Domains with requirements cannot be archived.

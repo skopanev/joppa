@@ -13,7 +13,7 @@ pub async fn handle(pool: &Pool, actor: &str, msg: &Value) -> Option<Value> {
         "tools/list" => Ok(json!({"tools": [
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
             tool("joppa_read", "Read a workspace or resolve a copied globally unique item_id, with history and checks. Supply workspace OR item_id.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"}}), json!([])),
-            tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the trusted launcher, never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
+            tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the authenticated credential (or trusted local launcher), never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
             tool("joppa_help", "Get all operation shapes and workflow rules before authoring commands", json!({}), json!([]))
         ]})),
         "tools/call" => call(pool, actor, msg)

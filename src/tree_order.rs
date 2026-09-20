@@ -10,7 +10,12 @@ pub fn key(kind: &str, parent: Option<&str>) -> String {
 }
 pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Vec<String>> {
     let members: BTreeSet<String> = match (kind, parent) {
-        ("domain", None) => w.domains.keys().cloned().collect(),
+        ("domain", None) => w
+            .domains
+            .iter()
+            .filter(|(_, d)| !d.archived)
+            .map(|(id, _)| id.clone())
+            .collect(),
         ("capability", Some(domain)) => {
             ensure!(w.domains.contains_key(domain), "unknown parent domain");
             w.capabilities
