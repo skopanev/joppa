@@ -178,9 +178,17 @@ async fn authorize(State(app): State<App>, Query(a): Query<Authorization>) -> OA
     )
         .into_response())
 }
+// Antigravity's native CLI asks the user to paste a code. Its hosted callback
+// only displays that code; keep this manual completion on our own origin.
+fn manual_callback(uri: &str) -> bool {
+    matches!(
+        uri,
+        "https://antigravity.google/oauth-callback" | "https://antigravity.google/oauth-callback/"
+    )
+}
 async fn details(State(app): State<App>, Query(a): Query<Authorization>) -> OAuthResult {
     let name = validate(&app, &a).await?;
-    Ok(Json(json!({"client_name":name,"redirect_uri":a.redirect_uri})).into_response())
+    Ok(Json(json!({"client_name":name,"redirect_uri":a.redirect_uri,"manual":manual_callback(&a.redirect_uri)})).into_response())
 }
 async fn approve(
     State(app): State<App>,
@@ -204,7 +212,10 @@ async fn approve(
     }
     let code = random();
     let resource = format!("{}/mcp", base(&app).map_err(IntoResponse::into_response)?);
-    app.pool.get().await.map_err(internal)?.execute("INSERT INTO joppa.oauth_codes(hash,actor,client_id,redirect_uri,challenge,resource) VALUES($1,$2,$3,$4,$5,$6)",&[&hash(&code),&actor,&a.client_id,&a.redirect_uri,&a.code_challenge,&resource]).await.map_err(internal)?;
+    app.pool.get().await.map_err(internal)?.execute("INSERT INTO joppa.oauth_codes(hash,actor,client_id,redirect_uri,challenge,resource,expires_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '5 minutes')",&[&hash(&code),&actor,&a.client_id,&a.redirect_uri,&a.code_challenge,&resource]).await.map_err(internal)?;
+    if manual_callback(&a.redirect_uri) {
+        return Ok(Json(json!({"code":code,"expires_in":300})).into_response());
+    }
     let mut url = reqwest::Url::parse(&a.redirect_uri).map_err(invalid)?;
     url.query_pairs_mut().append_pair("code", &code);
     if let Some(state) = a.state {

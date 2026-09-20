@@ -36,6 +36,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/005_mcp_oauth.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/006_workspace_aliases.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -65,6 +67,24 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
     }
     Ok((state, events))
 }
+async fn resolve_workspace(client: &impl GenericClient, name: &str) -> Result<String> {
+    Ok(client
+        .query_opt(
+            "SELECT workspace FROM joppa.workspace_aliases WHERE name=$1",
+            &[&name],
+        )
+        .await?
+        .map(|r| r.get(0))
+        .unwrap_or_else(|| name.to_owned()))
+}
+async fn reserve_name(client: &impl GenericClient, name: &str, workspace: &str) -> Result<()> {
+    client.execute("INSERT INTO joppa.workspace_aliases(name,workspace) VALUES($1,$2) ON CONFLICT DO NOTHING", &[&name,&workspace]).await?;
+    ensure!(
+        resolve_workspace(client, name).await? == workspace,
+        "workspace ID is already in use"
+    );
+    Ok(())
+}
 pub async fn execute(
     pool: &Pool,
     workspace: &str,
@@ -76,6 +96,8 @@ pub async fn execute(
     commands::identifier(request_id)?;
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
+    let resolved = resolve_workspace(&*tx, workspace).await?;
+    let workspace = resolved.as_str();
     // Serializes creation too. Hash collisions only delay unrelated workspaces.
     tx.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
@@ -104,6 +126,14 @@ pub async fn execute(
     if position == 1 {
         tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace])
             .await?;
+        reserve_name(&*tx, workspace, workspace).await?;
+    }
+    if let Command::RenameWorkspace {
+        workspace_id: Some(name),
+        ..
+    } = command
+    {
+        reserve_name(&*tx, name, workspace).await?;
     }
     tx.execute("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb)", &[&workspace, &(position as i64), &actor, &request_id, &payload]).await?;
     tx.commit().await?;
@@ -119,6 +149,8 @@ fn summaries(state: &Workspace) -> Value {
 }
 pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
+    let resolved = resolve_workspace(&**conn, workspace).await?;
+    let workspace = resolved.as_str();
     access::check(&**conn, workspace, actor, false).await?;
     let (state, events) = load(&**conn, workspace).await?;
     ensure!(
@@ -163,7 +195,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
         })
         .collect();
     Ok(
-        json!({"workspace": workspace, "system_ids":system_ids, "position": events.len(), "state": state, "summary": summaries, "history": events, "launch": {"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."}}),
+        json!({"workspace": state.workspace_id.as_deref().unwrap_or(workspace), "system_ids":system_ids, "position": events.len(), "state": state, "summary": summaries, "history": events, "launch": {"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."}}),
     )
 }
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
@@ -183,7 +215,7 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
         }
         let (w, _) = load(&**conn, &id).await?;
         if w.members.contains_key(actor) {
-            items.push(json!({"id": id, "title": w.title}));
+            items.push(json!({"id": w.workspace_id.as_deref().unwrap_or(&id), "title": w.title}));
         }
     }
     Ok(json!(items))

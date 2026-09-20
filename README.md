@@ -124,6 +124,8 @@ Reordering does not create a REQ revision or reset checks.
 Тип подключения — HTTP (Streamable HTTP). Локальный бинарник Joppa не нужен.
 Добавьте сервер в свой клиент, выберите вход, войдите через Google и разрешите
 доступ. Клиент сам сохранит и обновит свои OAuth-токены.
+В agy: `/mcp` → joppa → Authenticate. После согласия Joppa показывает
+**Copy code**; вставьте код в поле agy. Страница возврата Antigravity не нужна.
 
 Claude Code (глобально):
 

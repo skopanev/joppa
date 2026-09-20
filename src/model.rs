@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     pub title: String,
     #[serde(default)]
     pub reference_prefix: Option<String>,

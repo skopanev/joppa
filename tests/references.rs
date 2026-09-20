@@ -82,3 +82,105 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
     );
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() -> Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
+    store::migrate(&pool).await?;
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let old = format!("old-name-{suffix}");
+    let new = format!("new-name-{suffix}");
+    let owner = format!("owner-{suffix}");
+    for value in [
+        json!({"op":"workspace","title":"Product"}),
+        json!({"op":"domain","id":"domain","title":"Area","authority":owner}),
+    ] {
+        store::execute(
+            &pool,
+            &old,
+            &owner,
+            &uuid::Uuid::new_v4().to_string(),
+            &serde_json::from_value(value)?,
+        )
+        .await?;
+    }
+    let before = store::read(&pool, &old, &owner).await?;
+    let rename = serde_json::from_value(
+        json!({"op":"rename_workspace","title":"Current product","reason":"Owner changed product ID","workspace_id":new}),
+    )?;
+    assert!(
+        store::execute(&pool, &old, "outsider", "rename", &rename)
+            .await
+            .is_err()
+    );
+    store::execute(&pool, &old, &owner, "rename", &rename).await?;
+    assert_eq!(
+        store::execute(&pool, &new, &owner, "rename", &rename).await?["replayed"],
+        true
+    );
+    let after = store::read(&pool, &new, &owner).await?;
+    assert_eq!(after["workspace"], new);
+    assert_eq!(store::read(&pool, &old, &owner).await?, after);
+    assert_eq!(
+        store::list(&pool, &owner).await?,
+        json!([{"id":new,"title":"Current product"}])
+    );
+    assert_eq!(after["system_ids"], before["system_ids"]);
+    assert_eq!(
+        &after["history"].as_array().unwrap()[..2],
+        before["history"].as_array().unwrap()
+    );
+    let item = before["system_ids"]["domain"]["domain"].as_str().unwrap();
+    assert_eq!(
+        store::read_item(&pool, item, &owner).await?["workspace"],
+        new
+    );
+    for name in [&old, &new] {
+        assert!(store::read(&pool, name, "outsider").await.is_err());
+        assert!(
+            store::execute(
+                &pool,
+                name,
+                "outsider",
+                "takeover",
+                &serde_json::from_value(json!({"op":"workspace","title":"Other"}))?
+            )
+            .await
+            .is_err()
+        );
+    }
+    let other = format!("other-{suffix}");
+    store::execute(
+        &pool,
+        &other,
+        &owner,
+        "create",
+        &serde_json::from_value(json!({"op":"workspace","title":"Other"}))?,
+    )
+    .await?;
+    assert!(
+        store::execute(&pool, &other, &owner, "claim-name", &rename)
+            .await
+            .is_err()
+    );
+    let change = serde_json::from_value(
+        json!({"op":"capability","id":"ability","domain":"domain","title":"Ability"}),
+    )?;
+    let (a, b) = tokio::join!(
+        store::execute(&pool, &old, &owner, "concurrent-alias", &change),
+        store::execute(&pool, &new, &owner, "concurrent-alias", &change)
+    );
+    assert!(a.is_ok() && b.is_ok());
+    assert_ne!(a?["replayed"], b?["replayed"]);
+    store::migrate(&pool).await?;
+    assert_eq!(store::read(&pool, &old, &owner).await?["workspace"], new);
+    Ok(())
+}

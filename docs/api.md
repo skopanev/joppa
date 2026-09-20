@@ -8,7 +8,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 
 ```text
 workspace: title
-rename_workspace: title, reason, reference_prefix:null; workspace owner only; preserves workspace ID and history
+rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
 member: id, role (human|agent|runner); workspace owner only
 reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only
 project: id, repository
@@ -146,3 +146,14 @@ Archived domains and their capabilities remain in read responses for history and
 ID resolution, but are absent from the active tree. New capabilities and REQs cannot
 be created beneath them. `set_domain_archived` with `archived:false` restores them.
 IDs are never recycled. Domains with requirements cannot be archived.
+
+Workspace renames may set `workspace_id` to a new unique public ID. Lists and read
+responses then return that ID. Previous workspace names remain permanent aliases;
+existing item references, journal records and access boundaries are preserved.
+Access rules can use either name. Names cannot be claimed by another workspace.
+
+Antigravity CLI uses manual code entry with a hosted callback that only displays
+the code. For its exact callback URL, Joppa displays a Copy code button directly
+on the consent page. The code remains bound to the registered callback, client
+and PKCE verifier, is single-use, and expires after five minutes. Other clients
+return to their registered callback automatically.

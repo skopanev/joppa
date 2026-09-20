@@ -345,6 +345,52 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
             .await
             .is_err()
     );
+    // Antigravity's manual code entry does not depend on its hosted callback page.
+    let manual_redirect = "https://antigravity.google/oauth-callback";
+    let client: Value = http
+        .post(format!("{base}/oauth/register"))
+        .json(&json!({"client_name":"Antigravity","redirect_uris":[manual_redirect]}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let mut manual = a.clone();
+    manual["client_id"] = client["client_id"].clone();
+    manual["redirect_uri"] = json!(manual_redirect);
+    let details: Value = http
+        .get(format!("{base}/oauth/details?{}", form(&manual)))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(details["manual"], true);
+    let issued: Value = http
+        .post(format!("{base}/oauth/approve"))
+        .header("Origin", &base)
+        .header("Cookie", &cookie)
+        .json(&manual)
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert!(issued.get("redirect").is_none());
+    assert_eq!(issued["expires_in"], 300);
+    let mut grant = grant.clone();
+    grant["client_id"] = client["client_id"].clone();
+    grant["redirect_uri"] = json!(manual_redirect);
+    grant["code"] = issued["code"].clone();
+    let r = exchange(&http, &base, &grant).await?;
+    assert_eq!(r.status(), 200);
+    let token: Value = r.json().await?;
+    assert_eq!(
+        http.post(&resource)
+            .bearer_auth(token["access_token"].as_str().unwrap())
+            .json(&probe)
+            .send()
+            .await?
+            .status(),
+        200
+    );
     std::fs::remove_dir_all(dir)?;
     Ok(())
 }

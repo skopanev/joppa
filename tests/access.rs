@@ -198,6 +198,33 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
         json!([{"id":alpha,"title":alpha}])
     );
     assert!(store::read(&pool, &beta, &bob).await.is_err());
+    // Both old policy names and canonical names retain the same access boundary.
+    let canonical = format!("canonical-{id}");
+    let rename = serde_json::from_value(
+        json!({"op":"rename_workspace","title":"Current product","workspace_id":canonical,"reason":"Rename product ID"}),
+    )?;
+    store::execute(&pool, &alpha, "admin", "rename", &rename).await?;
+    assert_eq!(
+        store::list(&pool, &bob).await?,
+        json!([{"id":canonical,"title":"Current product"}])
+    );
+    config["domains"]["beta.example"] = json!([canonical]);
+    std::fs::write(&path, serde_json::to_vec(&config)?)?;
+    store::enroll(
+        &pool,
+        &bob,
+        &bob,
+        &bob_mail,
+        Some("beta.example"),
+        &BTreeSet::from([canonical.clone()]),
+    )
+    .await?;
+    assert_eq!(
+        store::read(&pool, &canonical, &bob).await?["workspace"],
+        canonical
+    );
+    assert!(store::read(&pool, &beta, &bob).await.is_err());
+    assert!(store::read(&pool, &canonical, &alice).await.is_err());
     // Configuration errors fail closed instead of falling back to old membership.
     std::fs::write(&path, b"invalid json")?;
     assert!(store::list(&pool, &bob).await.is_err());

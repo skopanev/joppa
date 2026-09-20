@@ -43,7 +43,11 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
     let path = std::env::var_os("JOPPA_ACCESS_RULES_FILE").ok_or(AccessDenied)?;
     let rules =
         crate::access::Rules::read(std::path::Path::new(&path)).map_err(|_| AccessDenied)?;
-    Ok(Some(rules.resolve(&email, hosted_domain.as_deref())))
+    let mut allowed = BTreeSet::new();
+    for name in rules.resolve(&email, hosted_domain.as_deref()) {
+        allowed.insert(resolve_workspace(client, &name).await?);
+    }
+    Ok(Some(allowed))
 }
 
 pub async fn check(
@@ -105,8 +109,12 @@ pub async fn enroll(
         identity.get::<_, String>(0) == google_sub && identity.get::<_, String>(1) == email,
         "Identity already belongs to another account"
     );
+    let mut normalized = BTreeSet::new();
+    for name in workspaces {
+        normalized.insert(resolve_workspace(&*tx, name).await?);
+    }
     // BTreeSet order prevents opposite lock ordering on concurrent enrollment.
-    for workspace in workspaces {
+    for workspace in &normalized {
         tx.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
             &[workspace],

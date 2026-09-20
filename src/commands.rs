@@ -10,6 +10,8 @@ pub enum Command {
         title: String,
     },
     RenameWorkspace {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_id: Option<String>,
         title: String,
         reason: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -261,6 +263,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
     ensure!(w.members.contains_key(actor), "not a workspace member");
     match command {
         Command::RenameWorkspace {
+            workspace_id,
             title,
             reason,
             reference_prefix,
@@ -269,6 +272,10 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             nonempty(title)?;
             nonempty(reason)?;
             w.title = title.clone();
+            if let Some(id) = workspace_id {
+                identifier(id)?;
+                w.workspace_id = Some(id.clone());
+            }
             if let Some(prefix) = reference_prefix {
                 identifier(prefix)?;
                 w.reference_prefix = Some(prefix.clone());
