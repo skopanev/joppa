@@ -154,6 +154,11 @@ Codex, in the user's `config.toml`:
 url = "https://YOUR_JOPPA_DOMAIN/mcp"
 ```
 
+Then run `codex mcp login joppa` in a terminal with the same Codex configuration.
+Complete browser sign-in and choose **Return to app**, then reconnect MCP.
+The browser must be able to reach Codex's local callback; containers need that
+callback exposed. In the Codex app, use MCP server settings → **Authenticate**.
+
 agy, globally:
 
 ```sh

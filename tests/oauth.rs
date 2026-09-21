@@ -102,6 +102,18 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
                 .to_str()?
                 .contains("/.well-known/oauth-protected-resource/mcp")
         );
+        assert!(
+            r.headers()["www-authenticate"]
+                .to_str()?
+                .contains("codex mcp login joppa")
+        );
+        let body: Value = r.json().await?;
+        assert!(
+            body["error_description"]
+                .as_str()
+                .unwrap()
+                .contains("codex mcp login joppa")
+        );
     }
     let meta: Value = http
         .get(format!("{base}/.well-known/oauth-protected-resource/mcp"))
@@ -261,6 +273,12 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         .json()
         .await?;
     assert_eq!(r["result"]["protocolVersion"], "2025-06-18");
+    assert!(
+        r["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("codex mcp login joppa")
+    );
     assert_eq!(
         http.post(&resource)
             .bearer_auth(access)

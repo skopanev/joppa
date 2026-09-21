@@ -20,3 +20,5 @@ Use joppa_batch for related writes: 1–100 operations in one transaction, optio
 Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.
 
 Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.
+
+If authentication is needed, use the MCP client's native OAuth. In Codex CLI, run `codex mcp login joppa` in a terminal with the same Codex configuration; finish browser sign-in with Return to app, then reconnect MCP. In Codex app, use MCP server settings > Authenticate. In Claude Code or agy, use /mcp > joppa > Authenticate. If renamed, use the server name from client settings. Do not ask for API keys, manually exchange OAuth tokens, or replace HTTP MCP with a local Joppa binary.
