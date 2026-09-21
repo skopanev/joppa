@@ -186,9 +186,13 @@ fn manual_callback(uri: &str) -> bool {
         "https://antigravity.google/oauth-callback" | "https://antigravity.google/oauth-callback/"
     )
 }
+fn copy_link_callback(uri: &str) -> bool {
+    reqwest::Url::parse(uri)
+        .is_ok_and(|url| matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")))
+}
 async fn details(State(app): State<App>, Query(a): Query<Authorization>) -> OAuthResult {
     let name = validate(&app, &a).await?;
-    Ok(Json(json!({"client_name":name,"redirect_uri":a.redirect_uri,"manual":manual_callback(&a.redirect_uri)})).into_response())
+    Ok(Json(json!({"client_name":name,"redirect_uri":a.redirect_uri,"manual":manual_callback(&a.redirect_uri),"copy_link":copy_link_callback(&a.redirect_uri)})).into_response())
 }
 async fn approve(
     State(app): State<App>,
@@ -221,7 +225,7 @@ async fn approve(
     if let Some(state) = a.state {
         url.query_pairs_mut().append_pair("state", &state);
     }
-    Ok(Json(json!({"redirect":url.as_str()})).into_response())
+    Ok(Json(json!({"redirect":url.as_str(),"copy_link":copy_link_callback(&a.redirect_uri),"expires_in":300})).into_response())
 }
 #[derive(Deserialize)]
 struct Exchange {

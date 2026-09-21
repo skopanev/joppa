@@ -135,6 +135,12 @@ and refreshes its OAuth credentials.
 In agy: `/mcp` → joppa → Authenticate. After approval Joppa displays **Copy code**;
 paste it into agy. The external Antigravity callback page is not needed.
 
+For a localhost callback, Joppa displays **Copy sign-in link**. Paste the entire
+link into your client's pending authorization prompt, including `code` and
+`state`. Clients with a local callback listener can use **Return to app**.
+The link is single-use and expires after five minutes; start authentication
+again if it expires. Hosted HTTPS callbacks still return directly to the client.
+
 Claude Code, globally:
 
 ```sh

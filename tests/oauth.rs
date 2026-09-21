@@ -127,7 +127,7 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
     let client:Value=http.post(format!("{base}/oauth/register")).json(&json!({"client_name":"Integration client","redirect_uris":[redirect],"token_endpoint_auth_method":"none"})).send().await?.json().await?;
     let id = client["client_id"].as_str().unwrap();
     let verifier = "test-pkce-verifier-abcdefghijklmnopqrstuvwxyz0123456789";
-    let a = json!({"client_id":id,"redirect_uri":redirect,"response_type":"code","code_challenge":URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())),"code_challenge_method":"S256","state":"opaque-client-state","scope":"joppa","resource":resource});
+    let a = json!({"client_id":id,"redirect_uri":redirect,"response_type":"code","code_challenge":URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes())),"code_challenge_method":"S256","state":"opaque+client&state=/?","scope":"joppa","resource":resource});
     let browser = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
@@ -189,9 +189,11 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         .await?
         .json()
         .await?;
+    assert_eq!(accepted["copy_link"], true);
+    assert_eq!(accepted["expires_in"], 300);
     let callback = reqwest::Url::parse(accepted["redirect"].as_str().unwrap())?;
     let pairs: std::collections::BTreeMap<_, _> = callback.query_pairs().into_owned().collect();
-    assert_eq!(pairs["state"], "opaque-client-state");
+    assert_eq!(pairs["state"], "opaque+client&state=/?");
     let grant = json!({"grant_type":"authorization_code","client_id":id,"code":pairs["code"],"redirect_uri":redirect,"code_verifier":verifier,"resource":resource});
     for (field, value) in [
         (
@@ -309,6 +311,8 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         .await?
         .json()
         .await?;
+    assert_eq!(accepted["copy_link"], true);
+    assert_eq!(accepted["expires_in"], 300);
     let callback = reqwest::Url::parse(accepted["redirect"].as_str().unwrap())?;
     let code = callback
         .query_pairs()
@@ -345,6 +349,51 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
             .await
             .is_err()
     );
+    // Hosted callbacks keep redirecting; exact loopback hosts offer a copyable link.
+    for (redirect, copy_link) in [
+        ("https://client.example/callback?existing=yes", false),
+        ("https://localhost.example/callback", false),
+        ("http://localhost:45678/callback", true),
+        ("http://[::1]:45678/callback", true),
+    ] {
+        let client: Value = http
+            .post(format!("{base}/oauth/register"))
+            .json(&json!({"redirect_uris":[redirect]}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        let mut request = a.clone();
+        request["client_id"] = client["client_id"].clone();
+        request["redirect_uri"] = json!(redirect);
+        let details: Value = http
+            .get(format!("{base}/oauth/details?{}", form(&request)))
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(details["copy_link"], copy_link);
+        let approved: Value = http
+            .post(format!("{base}/oauth/approve"))
+            .header("Origin", &base)
+            .header("Cookie", &cookie)
+            .json(&request)
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(approved["copy_link"], copy_link);
+        assert!(approved.get("code").is_none());
+        let callback = reqwest::Url::parse(approved["redirect"].as_str().unwrap())?;
+        let query: std::collections::BTreeMap<_, _> = callback.query_pairs().into_owned().collect();
+        assert_eq!(query["state"], a["state"].as_str().unwrap());
+        if redirect.contains("existing=yes") {
+            assert_eq!(query["existing"], "yes");
+        }
+        let grant = json!({"grant_type":"authorization_code","client_id":client["client_id"],
+            "code":query["code"],"redirect_uri":redirect,"code_verifier":verifier,"resource":resource});
+        assert_eq!(exchange(&http, &base, &grant).await?.status(), 200);
+    }
     // Antigravity's manual code entry does not depend on its hosted callback page.
     let manual_redirect = "https://antigravity.google/oauth-callback";
     let client: Value = http
