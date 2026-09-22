@@ -58,11 +58,11 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
     )
     .await?;
     // A previously issued human API key cannot bypass the new access rules.
-    assert!(store::read(&pool, &alpha, &legacy_actor).await.is_err());
+    assert!(store::read(&pool, &alpha, &legacy_actor, &store::Scope::full()).await.is_err());
     config["emails"]["legacy@example.test"] = json!([alpha]);
     std::fs::write(&path, serde_json::to_vec(&config)?)?;
-    assert!(store::read(&pool, &alpha, &legacy_actor).await.is_ok());
-    assert!(store::read(&pool, &beta, &legacy_actor).await.is_err());
+    assert!(store::read(&pool, &alpha, &legacy_actor, &store::Scope::full()).await.is_ok());
+    assert!(store::read(&pool, &beta, &legacy_actor, &store::Scope::full()).await.is_err());
     let rules = Rules::read(&path)?;
     for (actor, email, domain) in [
         (&alice, &alice_mail, "alpha.example"),
@@ -87,9 +87,9 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
         json!([{"id":beta,"title":beta}])
     );
     for (actor, own, foreign) in [(&alice, &alpha, &beta), (&bob, &beta, &alpha)] {
-        assert!(store::read(&pool, own, actor).await.is_ok());
-        let foreign_error = store::read(&pool, foreign, actor).await.unwrap_err();
-        let missing_error = store::read(&pool, "missing", actor).await.unwrap_err();
+        assert!(store::read(&pool, own, actor, &store::Scope::full()).await.is_ok());
+        let foreign_error = store::read(&pool, foreign, actor, &store::Scope::full()).await.unwrap_err();
+        let missing_error = store::read(&pool, "missing", actor, &store::Scope::full()).await.unwrap_err();
         assert_eq!(foreign_error.to_string(), missing_error.to_string());
         assert!(foreign_error.is::<store::AccessDenied>());
         for request in ["create", "new-request"] {
@@ -164,7 +164,7 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
     config["emails"][&alice_mail] = json!([]);
     std::fs::write(&path, serde_json::to_vec(&config)?)?;
     assert_eq!(store::list(&pool, &alice).await?, json!([]));
-    assert!(store::read(&pool, &alpha, &alice).await.is_err());
+    assert!(store::read(&pool, &alpha, &alice, &store::Scope::full()).await.is_err());
     assert!(
         store::execute(
             &pool,
@@ -177,13 +177,13 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
         .is_err()
     );
     assert_eq!(
-        store::read(&pool, &alpha, "admin").await?["state"]["members"][&alice],
+        store::read(&pool, &alpha, "admin", &store::Scope::full()).await?["state"]["members"][&alice],
         "human"
     );
     // Moving a domain does not leave the old workspace accessible after reenrollment.
     config["domains"]["beta.example"] = json!([alpha]);
     std::fs::write(&path, serde_json::to_vec(&config)?)?;
-    assert!(store::read(&pool, &beta, &bob).await.is_err());
+    assert!(store::read(&pool, &beta, &bob, &store::Scope::full()).await.is_err());
     store::enroll(
         &pool,
         &bob,
@@ -197,7 +197,7 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
         store::list(&pool, &bob).await?,
         json!([{"id":alpha,"title":alpha}])
     );
-    assert!(store::read(&pool, &beta, &bob).await.is_err());
+    assert!(store::read(&pool, &beta, &bob, &store::Scope::full()).await.is_err());
     // Both old policy names and canonical names retain the same access boundary.
     let canonical = format!("canonical-{id}");
     let rename = serde_json::from_value(
@@ -220,16 +220,16 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
     )
     .await?;
     assert_eq!(
-        store::read(&pool, &canonical, &bob).await?["workspace"],
+        store::read(&pool, &canonical, &bob, &store::Scope::full()).await?["workspace"],
         canonical
     );
-    assert!(store::read(&pool, &beta, &bob).await.is_err());
-    assert!(store::read(&pool, &canonical, &alice).await.is_err());
+    assert!(store::read(&pool, &beta, &bob, &store::Scope::full()).await.is_err());
+    assert!(store::read(&pool, &canonical, &alice, &store::Scope::full()).await.is_err());
     // Configuration errors fail closed instead of falling back to old membership.
     std::fs::write(&path, b"invalid json")?;
     assert!(store::list(&pool, &bob).await.is_err());
     std::fs::remove_file(&path)?;
-    assert!(store::read(&pool, &alpha, &bob).await.is_err());
+    assert!(store::read(&pool, &alpha, &bob, &store::Scope::full()).await.is_err());
     std::fs::remove_file(aliases_path)?;
     Ok(())
 }

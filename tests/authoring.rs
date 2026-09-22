@@ -147,7 +147,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             .unwrap()
             .starts_with(&format!("{ws}-A-"))
     );
-    let before = store::read(&pool, &ws, "owner").await?;
+    let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     // Each failed package leaves neither a partial tree nor a consumed request ID.
     for bad in [
         json!({"op":"capability","title":"Broken","domain":"absent"}),
@@ -167,7 +167,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             .await
             .unwrap_err();
         assert!(format!("{error:#}").contains("operation 2"));
-        assert_eq!(store::read(&pool, &ws, "owner").await?, before);
+        assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, before);
     }
     store::execute_batch(&pool, &ws, "agent", "retry-after-error", &operations).await?;
     let mut revision = a["results"][2]["command"].clone();
@@ -183,9 +183,9 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             .is_err()
     );
     // Generated values persist as journal facts, and receipts cannot be rewritten.
-    let after = store::read(&pool, &ws, "owner").await?;
+    let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &ws, "owner").await?, after);
+    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, after);
     assert_eq!(
         store::execute_batch(&pool, &ws, "agent", "batch", &operations).await?["results"],
         a["results"]

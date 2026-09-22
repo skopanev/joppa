@@ -52,7 +52,13 @@ pub fn summary(r: &Revision) -> Value {
     json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "ready_for_acceptance": green, "accepted": accepted})
 }
 
-pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command, position: u64) -> Result<()> {
+pub fn apply(
+    w: &mut Workspace,
+    actor: &str,
+    cmd: &Command,
+    position: u64,
+    _recorded_at: &str,
+) -> Result<()> {
     match cmd {
         Command::Task {
             req,

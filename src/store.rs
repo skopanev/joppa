@@ -60,7 +60,7 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         let position = row.get::<_, i64>(0) as u64;
         let actor: String = row.get(1);
         let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
-        commands::apply(&mut state, &actor, &command, position)
+        commands::apply(&mut state, &actor, &command, position, row.get(2))
             .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
         events.push(Event {
             position,
@@ -100,7 +100,66 @@ fn summaries(state: &Workspace) -> Value {
         .collect();
     Value::Object(summaries)
 }
-pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
+/// Что именно просят прочитать.
+///
+/// Появилось не от любви к настройкам: `read` отдавал воркспейс целиком —
+/// состояние со всеми ревизиями, AC, задачами, прогонами и находками, плюс
+/// ВСЮ историю событий. На живом воркспейсе это 165 тысяч знаков: столько не
+/// влезает ни в один контекст, и человек шёл выгружать дамп и разбирать его
+/// скриптом вместо того, чтобы спросить.
+///
+/// Два слагаемых растут без предела — история и количество требований, — и
+/// одно ограничение их не покрывает. Поэтому здесь не «страница», а
+/// постепенное раскрытие: сначала оглавление, потом то, что попросили.
+pub struct Scope {
+    /// Полный ответ, как раньше. Нужен доске в браузере: она не ограничена
+    /// контекстом, и деление на страницы там только мешало бы.
+    pub full: bool,
+    /// Одно требование целиком: все ревизии, AC, задачи, прогоны, находки.
+    pub req: Option<String>,
+    /// Историю по умолчанию НЕ отдаём: она самая большая часть и нужна реже
+    /// всего. Число событий видно и без неё.
+    pub history: bool,
+    /// Сколько событий истории за раз.
+    pub limit: usize,
+    /// Непрозрачная отметка места. Непрозрачная не для красоты: клиент не
+    /// должен на неё опираться, иначе её нельзя будет поменять.
+    pub cursor: Option<String>,
+}
+impl Scope {
+    pub fn full() -> Self {
+        Self { full: true, req: None, history: true, limit: usize::MAX, cursor: None }
+    }
+    pub fn from_args(a: &Value) -> Result<Self> {
+        let limit = a["limit"].as_u64().unwrap_or(50).clamp(1, 200) as usize;
+        Ok(Self {
+            full: false,
+            req: a["req"].as_str().map(str::to_string),
+            history: a["history"].as_bool().unwrap_or(false),
+            limit,
+            cursor: a["cursor"].as_str().map(str::to_string),
+        })
+    }
+}
+
+/// Курсор — это позиция события, закодированная так, чтобы её не читали
+/// глазами и не подставляли руками. Состояния на сервере он не заводит:
+/// хранимые курсоры пришлось бы чистить, а этот живёт в самой строке.
+fn encode_cursor(position: u64) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("p{position}"))
+}
+fn decode_cursor(cursor: &str) -> Result<u64> {
+    use base64::Engine as _;
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(cursor)
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok())
+        .and_then(|s| s.strip_prefix('p').and_then(|n| n.parse().ok()));
+    raw.context("invalid cursor")
+}
+
+pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> Result<Value> {
     let conn = pool.get().await?;
     let resolved = resolve_workspace(&**conn, workspace).await?;
     let workspace = resolved.as_str();
@@ -147,9 +206,84 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
                 .map(move |a| json!({"req": id, "revision": r.number, "ac": a.id}))
         })
         .collect();
-    Ok(
-        json!({"workspace": state.workspace_id.as_deref().unwrap_or(workspace), "system_ids":system_ids, "position": events.len(), "state": state, "summary": summaries, "history": events, "launch": {"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."}}),
-    )
+    let launch = json!({"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."});
+    let mut out = json!({
+        "workspace": state.workspace_id.as_deref().unwrap_or(workspace),
+        "system_ids": system_ids,
+        "position": events.len(),
+        "launch": launch,
+    });
+
+    if scope.full {
+        out["state"] = json!(state);
+        out["summary"] = json!(summaries);
+        out["history"] = json!(events);
+        return Ok(out);
+    }
+
+    // Одно требование целиком — то, ради чего обычно и читают.
+    if let Some(req) = &scope.req {
+        let q = state
+            .requirements
+            .get(req)
+            .with_context(|| format!("unknown requirement {req}"))?;
+        out["requirement"] = json!({"id": req, "capability": q.capability, "revisions": q.revisions, "comments": q.comments});
+        out["summary"] = summaries.get(req).cloned().unwrap_or(Value::Null);
+        return Ok(out);
+    }
+
+    // По умолчанию — ОГЛАВЛЕНИЕ. Домены и капабилити целиком: их десятки, и
+    // без них не сориентироваться. Требования — заголовком и состоянием, без
+    // ревизий, AC, задач, прогонов и находок: их сотни, и каждое тянет за
+    // собой столько же, сколько весь остальной ответ.
+    let requirements: Vec<Value> = state
+        .requirements
+        .iter()
+        .map(|(id, q)| {
+            let r = q.revisions.last().unwrap();
+            json!({
+                "id": id,
+                "capability": q.capability,
+                "title": r.title,
+                "revision": r.number,
+                "confirmed": r.confirmed,
+                "acs": r.acs.len(),
+                "comments": q.comments.len(),
+                "summary": summaries.get(id).cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect();
+    out["index"] = json!({
+        "domains": state.domains,
+        "capabilities": state.capabilities,
+        "requirements": requirements,
+        "members": state.members,
+        "reading": "Requirements are listed without revisions, acceptance criteria, tasks, runs or issues. Read one with req=<id>. History is omitted unless history=true.",
+    });
+
+    if scope.history {
+        let from = match &scope.cursor {
+            Some(c) => decode_cursor(c)?,
+            None => 0,
+        };
+        let page: Vec<_> = events
+            .iter()
+            .filter(|e| e.position > from)
+            .take(scope.limit)
+            .collect();
+        let last = page.last().map(|e| e.position);
+        out["history"] = json!(page);
+        // Усечение объявляется, а не подразумевается: молча обрезанный ответ
+        // читается как полный, и по нему делают выводы.
+        let more = last.is_some_and(|p| events.iter().any(|e| e.position > p));
+        out["history_truncated"] = json!(more);
+        if let (true, Some(p)) = (more, last) {
+            out["nextCursor"] = json!(encode_cursor(p));
+        }
+    } else {
+        out["history_events"] = json!(events.len());
+    }
+    Ok(out)
 }
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
@@ -213,23 +347,37 @@ pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
     let kind: String = row.get(1);
     let local_id: String = row.get(2);
     drop(conn);
-    let mut result = read(pool, &workspace, actor).await?;
-    result["selection"] = json!({"kind":kind,"id":local_id,"system_id":id});
-    if kind == "ac" {
-        let state: Workspace = serde_json::from_value(result["state"].clone())?;
-        for (req, q) in &state.requirements {
-            if let Some(revision) = q
-                .revisions
-                .iter()
-                .rev()
-                .find(|r| r.acs.iter().any(|ac| ac.id == local_id))
-            {
-                result["selection"]["req"] = json!(req);
-                result["selection"]["revision"] = json!(revision.number);
-                break;
+    // Скопированный номер разрешается В САМ ПРЕДМЕТ, а не в весь воркспейс.
+    // Раньше запрос «что это за идентификатор» возвращал всё содержимое —
+    // ответ в сотню тысяч знаков на вопрос про одну строку.
+    let mut selection = json!({"kind":kind,"id":local_id,"system_id":id});
+    let mut scope = Scope::from_args(&json!({}))?;
+    match kind.as_str() {
+        "requirement" => scope.req = Some(local_id.clone()),
+        "ac" => {
+            let conn = pool.get().await?;
+            let (state, _) = load(&**conn, &workspace).await?;
+            drop(conn);
+            for (req, q) in &state.requirements {
+                if let Some(revision) = q
+                    .revisions
+                    .iter()
+                    .rev()
+                    .find(|r| r.acs.iter().any(|ac| ac.id == local_id))
+                {
+                    selection["req"] = json!(req);
+                    selection["revision"] = json!(revision.number);
+                    scope.req = Some(req.clone());
+                    break;
+                }
             }
         }
+        // Домен и капабилити сами по себе малы, но их содержимое — нет.
+        // Оглавления довольно, чтобы увидеть, что внутри.
+        _ => {}
     }
+    let mut result = read(pool, &workspace, actor, &scope).await?;
+    result["selection"] = selection;
     Ok(result)
 }
 

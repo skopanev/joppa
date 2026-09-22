@@ -35,11 +35,15 @@ pub enum Command {
         id: String,
         title: String,
         authority: String,
+        #[serde(default)]
+        description: String,
     },
     Capability {
         id: String,
         title: String,
         domain: String,
+        #[serde(default)]
+        description: String,
     },
     SetDomainArchived {
         id: String,
@@ -51,11 +55,15 @@ pub enum Command {
         id: String,
         title: String,
         authority: String,
+        #[serde(default)]
+        description: String,
         reason: String,
     },
     EditCapability {
         id: String,
         title: String,
+        #[serde(default)]
+        description: String,
         reason: String,
     },
     WithdrawDecision {
@@ -228,7 +236,13 @@ pub fn revision<'a>(
         .get_mut((n - 1) as usize)
         .ok_or_else(|| anyhow::anyhow!("unknown revision"))
 }
-pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -> Result<()> {
+pub fn apply(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
     identifier(actor)?;
     if let Command::EnrollMember { id } = command {
         ensure!(
@@ -306,6 +320,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             id,
             title,
             authority,
+            description,
         } => {
             identifier(id)?;
             nonempty(title)?;
@@ -317,11 +332,17 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
                     archived: false,
                     title: title.clone(),
                     authority: authority.clone(),
+                    description: description.clone(),
                     confirmed: actor == w.admin,
                 },
             );
         }
-        Command::Capability { id, title, domain } => {
+        Command::Capability {
+            id,
+            title,
+            domain,
+            description,
+        } => {
             identifier(id)?;
             nonempty(title)?;
             ensure!(w.domains.contains_key(domain), "unknown domain");
@@ -332,6 +353,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
                 Capability {
                     title: title.clone(),
                     domain: domain.clone(),
+                    description: description.clone(),
                     confirmed: actor == w.admin,
                 },
             );
@@ -371,6 +393,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             id,
             title,
             authority,
+            description,
             reason,
         } => {
             let domain = w
@@ -394,8 +417,14 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
                 .ok_or_else(|| anyhow::anyhow!("unknown domain"))?;
             d.title = title.clone();
             d.authority = authority.clone();
+            d.description = description.clone();
         }
-        Command::EditCapability { id, title, reason } => {
+        Command::EditCapability {
+            id,
+            title,
+            description,
+            reason,
+        } => {
             let capability = w
                 .capabilities
                 .get(id)
@@ -409,10 +438,12 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             );
             nonempty(title)?;
             nonempty(reason)?;
-            w.capabilities
+            let cap = w
+                .capabilities
                 .get_mut(id)
-                .ok_or_else(|| anyhow::anyhow!("unknown capability"))?
-                .title = title.clone();
+                .ok_or_else(|| anyhow::anyhow!("unknown capability"))?;
+            cap.title = title.clone();
+            cap.description = description.clone();
         }
         Command::WithdrawDecision {
             req,
@@ -598,6 +629,9 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
                 Comment {
                     revision: *n,
                     actor: actor.into(),
+                    // Из журнала, не от клиента: по этим отметкам потом
+                    // восстанавливают, кто что знал и когда.
+                    at: recorded_at.to_string(),
                     text: text.clone(),
                     kind: kind.clone(),
                     reply_to: reply_to.clone(),
@@ -672,7 +706,7 @@ pub fn apply(w: &mut Workspace, actor: &str, command: &Command, position: u64) -
             r.acceptance = None;
         }
         Command::Workspace { .. } => unreachable!(),
-        _ => checks::apply(w, actor, command, position)?,
+        _ => checks::apply(w, actor, command, position, recorded_at)?,
     }
     Ok(())
 }

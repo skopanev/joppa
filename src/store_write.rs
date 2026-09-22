@@ -206,7 +206,10 @@ async fn write(
             let command: Command = serde_json::from_value(value)?;
             ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
             let position = (events.len() + index + 1) as u64;
-            commands::apply(&mut state, actor, &command, position)?;
+            // Время пустое намеренно: настоящее ставит БД в recorded_at при вставке,
+            // а эта проекция нужна лишь чтобы проверить команду. Ответ состояния не
+            // содержит, и клиент всё равно перечитает доску из журнала.
+            commands::apply(&mut state, actor, &command, position, "")?;
             if position == 1 {
                 tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
                 reserve_name(&*tx, &workspace, &workspace).await?;

@@ -19,6 +19,8 @@ For new items, omit local IDs and let Joppa generate them. The response contains
 Use joppa_batch for related writes: 1–100 operations in one transaction, optional ref labels, and explicit {"$ref":"label/id"} links to earlier generated IDs. Retry identical input with the same request_id; never regenerate it after a lost response.
 Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.
 
+Read narrowly. joppa_read without req returns an index: domains and capabilities in full, requirements as title and status only. Read one requirement with req; a workspace holds hundreds, and all of them at once fit no context. History is omitted unless history=true, then paged with cursor until nextCursor is absent.
+
 Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.
 
 If authentication is needed, use the MCP client's native OAuth. In Codex CLI, run `codex mcp login joppa` in a terminal with the same Codex configuration; finish browser sign-in with Return to app, then reconnect MCP. In Codex app, use MCP server settings > Authenticate. In Claude Code or agy, use /mcp > joppa > Authenticate. If renamed, use the server name from client settings. Do not ask for API keys, manually exchange OAuth tokens, or replace HTTP MCP with a local Joppa binary.

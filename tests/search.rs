@@ -82,7 +82,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     revision["title"] = json!("Subscription renewal preserves access");
     revision["body"] = json!("Платежи за подписку принимаются на iOS.");
     store::execute_input(&pool, &ws, "owner", "wording", &revision).await?;
-    let before = store::read(&pool, &ws, "owner").await?;
+    let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     let text = store::search::find(
         &pool,
         "agent",
@@ -166,7 +166,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         .await?["items"],
         text["items"]
     );
-    assert_eq!(store::read(&pool, &ws, "owner").await?, before);
+    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, before);
     let provider = Provider::default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -270,9 +270,9 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
             .unwrap()
             .starts_with(&new)
     );
-    let after = store::read(&pool, &ws, "owner").await?;
+    let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &ws, "owner").await?, after);
+    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, after);
     assert_eq!(
         store::search::find(
             &pool,

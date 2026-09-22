@@ -21,7 +21,9 @@ impl World {
     pub fn apply(&mut self, actor: &str, value: Value) -> anyhow::Result<()> {
         let cmd: Command = serde_json::from_value(value)?;
         let mut copy = self.state.clone();
-        commands::apply(&mut copy, actor, &cmd, self.position + 1)?;
+        // Время в тестах предсказуемое: иначе проверки на содержимое
+        // комментария зависели бы от часов машины.
+        commands::apply(&mut copy, actor, &cmd, self.position + 1, "2026-01-01T00:00:00Z")?;
         self.state = copy;
         self.position += 1;
         Ok(())

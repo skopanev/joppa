@@ -38,9 +38,9 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     for (i, v) in setup().into_iter().enumerate() {
         execute(&pool, &ws, "owner", &format!("setup-{i}"), v).await?;
     }
-    let before = store::read(&pool, &ws, "owner").await?;
+    let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(before["launch"]["ready"], false);
-    assert!(store::read(&pool, &ws, "outsider").await.is_err());
+    assert!(store::read(&pool, &ws, "outsider", &store::Scope::full()).await.is_err());
     let other = format!("{ws}-other");
     execute(
         &pool,
@@ -60,7 +60,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     .await?;
     assert_ne!(
         before["system_ids"]["domain"]["d"],
-        store::read(&pool, &other, "outsider").await?["system_ids"]["domain"]["d"]
+        store::read(&pool, &other, "outsider", &store::Scope::full()).await?["system_ids"]["domain"]["d"]
     );
     let visible = store::list(&pool, "outsider").await?;
     assert!(visible.as_array().unwrap().iter().any(|w| w["id"] == other));
@@ -130,7 +130,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         json!({"op":"accept","req":"r","revision":2,"run":"run"}),
     )
     .await?;
-    let card = store::read(&pool, &ws, "owner").await?;
+    let card = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(card["summary"]["r"]["accepted"], true);
     assert_eq!(card["launch"]["ready"], true);
     execute(&pool,&ws,"agent","bug-comment",json!({"op":"comment","req":"r","revision":2,"id":"bug","text":"Regression","kind":"comment","ac":"ios"})).await?;
@@ -153,7 +153,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     issue?;
     let _ = accept;
     assert_eq!(
-        store::read(&pool, &ws, "owner").await?["summary"]["r"]["accepted"],
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["summary"]["r"]["accepted"],
         false
     );
     let mut conn = pool.get().await?;
@@ -213,7 +213,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     assert!(tx.batch_execute("DELETE FROM joppa.events").await.is_err());
     tx.rollback().await?;
     assert_eq!(
-        store::read(&pool, &ws, "owner").await?["state"]["requirements"]["r"]["revisions"]
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["state"]["requirements"]["r"]["revisions"]
             .as_array()
             .unwrap()
             .len(),
@@ -221,7 +221,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     );
     assert_eq!(
         before["system_ids"],
-        store::read(&pool, &ws, "owner").await?["system_ids"]
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["system_ids"]
     );
     Ok(())
 }

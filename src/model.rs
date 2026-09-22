@@ -25,12 +25,19 @@ pub struct Domain {
     pub archived: bool,
     pub title: String,
     pub authority: String,
+    /// Свободное пояснение: что сюда относится и чем этот домен не является.
+    /// Заголовок в шестьдесят знаков не вмещает границу, а спор о границе —
+    /// самый частый спор о дереве.
+    #[serde(default)]
+    pub description: String,
     pub confirmed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Capability {
     pub title: String,
     pub domain: String,
+    #[serde(default)]
+    pub description: String,
     pub confirmed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,6 +65,11 @@ pub struct Revision {
 pub struct Ac {
     pub id: String,
     pub text: String,
+    /// Пояснение к условию: оговорки, границы, чего оно НЕ требует.
+    /// Сам текст AC остаётся коротким — он должен читаться одним взглядом,
+    /// а подробности, без которых спорят, живут здесь.
+    #[serde(default)]
+    pub description: String,
     #[serde(default)]
     pub depends_on: Vec<String>,
     #[serde(default)]
@@ -79,6 +91,11 @@ pub struct Assessment {
 pub struct Comment {
     pub revision: u32,
     pub actor: String,
+    /// Время записи в журнал, а НЕ присланное клиентом. Второй источник
+    /// правды о времени означал бы, что его можно подделать, а по этим
+    /// отметкам потом восстанавливают, кто что знал и когда.
+    #[serde(default)]
+    pub at: String,
     pub text: String,
     pub kind: String,
     pub reply_to: Option<String>,

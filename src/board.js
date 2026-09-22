@@ -38,7 +38,10 @@ function details(parent, title) {
 async function list() {
   const list = await api('workspaces');
   $('workspaces').replaceChildren();
-  $('workspaces').disabled = list.length === 0;
+  // Выбирать не из чего — значит и выбора нет. При одном воркспейсе список
+  // остаётся видимым (человек должен знать, где он), но перестаёт быть
+  // элементом управления: щелчок по нему не обещает того, чего не случится.
+  $('workspaces').disabled = list.length <= 1;
   if (!list.length) {const o=E('option','No workspaces yet');o.value='';$('workspaces').append(o);}
   for (const w of list) {
     const o = E('option', w.title);
@@ -289,11 +292,38 @@ function requirementDetails(root, selected, revisionNumber=null) {
   for (const a of r.acs) {
     const status = s?.acs[a.id];
     const item = E('li',undefined,'ac-item '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
-    const heading=E('div',undefined,'ac-heading');heading.append(E('h3',a.text),itemActions('ac',a.id,a.text,selected));item.append(heading);
-    if(['pass','fail'].includes(status?.verification))item.append(E('span',status.verification==='pass'?'Passed':'Failed','badge '+status.verification));
-    if(current&&!status?.ready&&a.assessment?.reason)item.append(E('p',a.assessment.reason));
-    if(a.depends_on?.length)item.append(E('p','Depends on: '+a.depends_on.map(id=>r.acs.find(ac=>ac.id===id)?.text||'Another acceptance criterion').join('; ')));
-    if(a.decider)item.append(E('p','Decision: '+personLabel(a.decider)));
+    // Заголовок одной строкой: текст условия, исход справа. Раньше значок
+    // уезжал под заголовок и читался как ещё одно свойство, а не как ответ.
+    const heading=E('div',undefined,'ac-heading');
+    heading.append(E('p',a.text,'ac-text'));
+    if(['pass','fail'].includes(status?.verification))
+      heading.append(E('span',status.verification==='pass'?'Passed':'Failed','badge '+status.verification));
+    heading.append(itemActions('ac',a.id,a.text,selected));
+    item.append(heading);
+    if(a.description?.trim())item.append(E('p',a.description,'ac-description'));
+    // Свойства — подписанными парами, а не стопкой одинаковых абзацев:
+    // причина, зависимость и решающий выглядели одинаково и сливались.
+    const meta=E('dl',undefined,'ac-meta');
+    const meta_row=(label,value)=>{meta.append(E('dt',label),E('dd',value));};
+    if(current&&!status?.ready&&a.assessment?.reason)meta_row('Not ready',a.assessment.reason);
+    // Зависимости — короткими ссылками по номеру, а не полными текстами
+    // соседних условий: строка из трёх текстов нечитаема.
+    if(a.depends_on?.length){
+      const refs=E('span');
+      a.depends_on.forEach((id,i)=>{
+        const n=r.acs.findIndex(ac=>ac.id===id);
+        const label=n>=0?'#'+(n+1):'unknown';
+        const link=E('button',label,'ac-ref');
+        link.type='button';
+        link.title=n>=0?r.acs[n].text:'Another acceptance criterion';
+        link.onclick=()=>{const t=acList.children[n];if(t){t.scrollIntoView({block:'center',behavior:'smooth'});t.classList.add('flash');setTimeout(()=>t.classList.remove('flash'),900);}};
+        if(i)refs.append(document.createTextNode(' '));
+        refs.append(link);
+      });
+      meta_row('Depends on',refs);
+    }
+    if(a.decider)meta_row('Decided by',personLabel(a.decider));
+    if(meta.children.length)item.append(meta);
     acList.append(item);
   }
   tasks(root, r);

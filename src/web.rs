@@ -113,7 +113,9 @@ async fn read(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    result(store::read(&app.pool, &workspace, &actor).await)
+    // Доске — полный ответ: браузер не ограничен контекстом, и деление на
+    // страницы там только мешало бы. Ограничение нужно агенту, а не человеку.
+    result(store::read(&app.pool, &workspace, &actor, &store::Scope::full()).await)
 }
 async fn command(
     State(app): State<App>,

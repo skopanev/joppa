@@ -25,7 +25,7 @@ pub async fn handle(
         "tools/list" => Ok(json!({"tools": [
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
             tool("joppa_search", "Find current domains, capabilities, requirements and ACs inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string","enum":["domain","capability","requirement","ac"]},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
-            tool("joppa_read", "Read a workspace or resolve a copied globally unique item_id, with history and checks. Supply workspace OR item_id.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"}}), json!([])),
+            tool("joppa_read", "Read a workspace index, one requirement in full, or resolve a copied item_id. Supply workspace OR item_id. Without req the answer is an index: domains and capabilities in full, requirements as title and status only — read one with req. History is omitted unless history=true, then paged with cursor. A workspace holds hundreds of requirements; asking for everything at once does not fit any context.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement in full: revisions, acceptance criteria, tasks, runs, issues, comments"},"history":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50},"cursor":{"type":"string","description":"Opaque position from a previous nextCursor"}}), json!([])),
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the authenticated credential, never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help first. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":{"type":"object"}},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology in English: product levels, ownership, readiness, revision history, checks and acceptance. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green"]}}), json!([])),
@@ -86,7 +86,9 @@ async fn call(
             .await
         }
         "joppa_read" => match (a["workspace"].as_str(), a["item_id"].as_str()) {
-            (Some(workspace), None) => store::read(pool, workspace, actor).await,
+            (Some(workspace), None) => {
+                store::read(pool, workspace, actor, &store::Scope::from_args(a)?).await
+            }
             (None, Some(id)) => store::read_item(pool, id, actor).await,
             _ => anyhow::bail!("supply workspace OR item_id"),
         },

@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
             let mut input = String::new();
             std::io::stdin().read_to_string(&mut input)?;
             let subject = serde_json::from_str(&input)?;
-            let card = store::read(&pool, workspace, &actor()?).await?;
+            let card = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
             store::gate(&card, &subject)?;
             println!("explicit launch conditions accepted for this subject");
         }
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
             let workspace = args
                 .get(1)
                 .ok_or_else(|| anyhow::anyhow!("read WORKSPACE"))?;
-            println!("{}", store::read(&pool, workspace, &actor()?).await?);
+            println!("{}", store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?);
         }
         Some("list") => println!("{}", store::list(&pool, &actor()?).await?),
         Some("board") => {
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
             let path = args
                 .get(2)
                 .ok_or_else(|| anyhow::anyhow!("output path required"))?;
-            let data = store::read(&pool, workspace, &actor()?).await?;
+            let data = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
             std::fs::write(path, web::snapshot(&data))?;
             println!("{path}");
         }

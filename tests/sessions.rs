@@ -224,7 +224,7 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
             200
         );
     }
-    let saved = store::read(&pool, &workspace, "owner").await?;
+    let saved = store::read(&pool, &workspace, "owner", &store::Scope::full()).await?;
     assert_eq!(
         saved["history"].as_array().unwrap().len(),
         5,
