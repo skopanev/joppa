@@ -8,7 +8,13 @@ const assert=require('node:assert/strict');
   await page.route('**/api/**',async route=>{
    assert.equal(route.request().method(),'GET','portal must only read product data');
    if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
-   await route.continue({headers:{...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
+   const headers={...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN};
+   if(new URL(route.request().url()).pathname==='/api/workspaces/'+process.env.JOPPA_TEST_WORKSPACE){
+    const response=await route.fetch({headers});const json=await response.json();
+    json.member_labels={...json.member_labels,reviewer:'rita.petrov'};
+    return route.fulfill({response,json});
+   }
+   await route.continue({headers});
   });
   await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
   await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
@@ -121,7 +127,7 @@ const assert=require('node:assert/strict');
   await title(auto).click();
   await auto.getByText('Tasks · 1',{exact:true}).click();
   await auto.getByRole('heading',{name:'Implement command',exact:true}).waitFor();
-  await auto.getByText('In progress · reviewer',{exact:true}).waitFor();
+  await auto.getByText('In progress · rita.petrov',{exact:true}).waitFor();
   assert(!(await auto.locator('.requirement-detail').innerText()).includes('agent-task'));
   await title(auto).click();
   assert.equal(await page.locator('form').count(),0);
@@ -158,7 +164,8 @@ const assert=require('node:assert/strict');
   assert.equal(await page.locator('.tree-requirement:visible').count(),2);
   await page.getByRole('combobox',{name:'Filter by person'}).click();
   for(const hidden of ['agent','Me','owner'])assert.equal(await page.getByRole('option',{name:hidden,exact:true}).count(),0);
-  await page.getByRole('option',{name:'reviewer',exact:true}).click();
+  await page.getByRole('option',{name:'rita.petrov',exact:true}).click();
+  assert.equal(await page.evaluate(()=>filters.person),'reviewer','filter keeps the actor ID behind the email label');
   assert.deepEqual(await page.locator('.tree-requirement:visible').evaluateAll(nodes=>nodes.map(n=>n.dataset.requirement)),['auto']);
   await chooseFilter('Filter by person','legal');
   assert.deepEqual(await page.locator('.tree-requirement:visible').evaluateAll(nodes=>nodes.map(n=>n.dataset.requirement)),['key']);

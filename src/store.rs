@@ -256,6 +256,24 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
     });
 
     if scope.full {
+        let humans: Vec<_> = state
+            .members
+            .iter()
+            .filter(|(_, role)| role.as_str() == "human")
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut labels = serde_json::Map::new();
+        for row in conn.query(
+            "SELECT actor, split_part(email, '@', 1) FROM joppa.google_identities WHERE actor = ANY($1)",
+            &[&humans],
+        ).await? {
+            let actor: String = row.get(0);
+            let label: String = row.get(1);
+            if !label.is_empty() {
+                labels.insert(actor, json!(label));
+            }
+        }
+        out["member_labels"] = json!(labels);
         out["state"] = json!(state);
         out["summary"] = json!(summaries);
         out["history"] = json!(events);

@@ -189,7 +189,7 @@ function filterControls(root) {
   ],filters.domain,value=>{filters.domain=value;applyFilters();}));
   const people=[{id:'',title:'Everyone',hint:'All responsibilities'}];
   if(viewerActor)people.push({id:'@me',title:'Assigned to me',hint:'My responsibilities'});
-  for(const [id,role] of Object.entries(data.state.members))if(role==='human'&&id!==viewerActor)people.push({id,title:id,hint:'Responsibilities'});
+  for(const [id,role] of Object.entries(data.state.members))if(role==='human'&&id!==viewerActor)people.push({id,title:personLabel(id),hint:'Responsibilities'});
   fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;applyFilters();}));
   fields.prepend(fields.lastElementChild);
   toolbar.append(fields);
@@ -352,7 +352,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
 
 function personLabel(actor){
   if(actor===viewerActor)return 'You';
-  return {agent:'Agent',runner:'Test runner'}[data.state.members[actor]]||actor||'Not assigned';
+  return data.member_labels?.[actor]||{agent:'Agent',runner:'Test runner'}[data.state.members[actor]]||actor?.split('@')[0]||'Not assigned';
 }
 function eventDate(value){
   const date=new Date(value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
