@@ -1,4 +1,5 @@
 /* SNAPSHOT */
+const FILE_ICON='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z M14 2v6h6 M8 13h8 M8 17h5';
 let ws = '', data = null, viewerActor = '';
 let filterMenu=null;
 const $ = id => document.getElementById(id),
@@ -245,17 +246,15 @@ function render() {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
     heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
-    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));
+    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+personLabel(d.authority),'node-meta'));
     // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
     // и держать её за кнопкой значит не показывать вовсе.
     if(d.description?.trim())body.append(E('p',d.description,'node-description'));
-    objectAttachments(body,'domain',did);
     group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
       const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
-      objectAttachments(cap,'capability',cid);
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
@@ -297,7 +296,6 @@ function requirementDetails(root, selected, revisionNumber=null) {
   if(r.body?.trim())root.append(E('p',r.body));
   const reqNote=notesOf('requirement:'+selected).description;
   if(reqNote?.trim())root.append(E('p',reqNote,'node-description'));
-  objectAttachments(root,'requirement',selected);
   const base = {
     req: selected,
     revision: r.number
@@ -342,7 +340,6 @@ function requirementDetails(root, selected, revisionNumber=null) {
     }
     if(a.decider)meta_row('Decided by',personLabel(a.decider));
     if(meta.children.length)item.append(meta);
-    objectAttachments(item,'ac',a.id,selected);
     acList.append(item);
   }
   tasks(root, r);
@@ -520,13 +517,21 @@ function intake(root) {
   const section=details(root,'Intake · '+entries.length);
   for(const [id,item] of entries){
     const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
-    entry.querySelector('summary').append(notesButton('intake',id,item.said));
-    objectAttachments(entry,'intake',id);
+    const intakeActions=E('span',undefined,'intake-actions');
+    intakeActions.append(notesButton('intake',id,item.said));
+    const intakeFiles=filesButton('intake',id,item.said);
+    if(intakeFiles)intakeActions.append(intakeFiles);
+    entry.querySelector('summary').append(intakeActions);
+
     for(const [pid,point] of Object.entries(item.points)){
       const block=details(entry,pid+' · '+(point.outcome||'Unreviewed'));
       block.append(E('p',point.said));
-      block.querySelector('summary').append(notesButton('point',pid,point.said,id));
-      objectAttachments(block,'point',pid,id);
+      const pointActions=E('span',undefined,'intake-actions');
+      pointActions.append(notesButton('point',pid,point.said,id));
+      const pointFiles=filesButton('point',pid,point.said,id);
+      if(pointFiles)pointActions.append(pointFiles);
+      block.querySelector('summary').append(pointActions);
+
       for(const [key,value] of Object.entries(point.answers||{}))block.append(E('p',key+': '+value));
       if(point.reason)block.append(E('p',point.reason));
       if(point.req)block.append(button(point.req,()=>openRequirement(point.req),'node-link'));
@@ -585,6 +590,8 @@ function itemActions(kind,id,title,reqId=null,revision=null){
   // как свойство требования, хотя на деле это отметка версии.
   actions.append(copyButton(kind,id,title));
   actions.append(notesButton(kind,id,title,reqId));
+  const files=filesButton(kind,id,title,reqId);
+  if(files)actions.append(files);
   if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
   const history=button('',()=>showHistory(kind,id,title,reqId),'history-button');history.title='View history';history.setAttribute('aria-label','View '+kind+' history: '+id);
   const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -686,35 +693,54 @@ function svgIcon(d,size=16){
 function notesButton(kind,id,title,reqId){
   const target=address(kind,id,reqId);
   const n=liveNotes(target);
-  const count=n.comments.length+n.attachments.length;
+  const count=n.comments.length;
   const b=button('',()=>showNotes(kind,id,title,reqId),'notes-button');
   if(count)b.classList.add('has-notes');
   else if(n.description||describedText(kind,id,reqId,target))b.classList.add('has-notes','description-only');
-  b.title='Notes, discussion and attachments';
+  b.title='Description and discussion';
   b.setAttribute('aria-label','Notes on '+kind+' '+id+(count?': '+count:''));
   b.append(svgIcon('M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.9L3 20.5l1.6-4.6A8.4 8.4 0 0 1 3.5 11 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z'));
   if(count)b.append(E('span',String(count),'notes-count'));
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
 }
+function filesButton(kind,id,title,reqId){
+  const target=address(kind,id,reqId),attachments=liveNotes(target).attachments;
+  if(!attachments.length)return null;
+  const b=button('',()=>showFiles(title,attachments),'files-button');
+  b.dataset.target=target;
+  b.title='Files · '+attachments.length;
+  b.setAttribute('aria-label','Files on '+kind+' '+id+': '+attachments.length);
+  b.setAttribute('aria-haspopup','dialog');
+  b.append(svgIcon(FILE_ICON),E('span',String(attachments.length),'files-count'));
+  b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+  return b;
+}
 function attachmentList(attachments){
-  const list=E('ul',undefined,'notes-files');
+  const list=E('ul',undefined,'files-list');
   for(const [,a] of attachments){
-    const li=E('li');
-    const link=E('a',a.name);link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
+    const li=E('li'),link=E('a',undefined,'file-link');
+    link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
     link.target='_blank';link.rel='noopener';
-    li.append(link,E('span',fileSize(a.size)+' · '+a.actor+' · '+when(a.at),'note-at'));
-    list.append(li);
+    const icon=E('span',undefined,'file-icon');icon.append(svgIcon(FILE_ICON,22));
+    const info=E('span',undefined,'file-info');
+    info.append(E('span',a.name,'file-name'),E('span',[fileSize(a.size),personLabel(a.actor),when(a.at)].filter(Boolean).join(' · '),'file-meta'));
+    link.append(icon,info,svgIcon('M7 17 17 7 M7 7h10v10',16));
+    li.append(link);list.append(li);
   }
-  if(!attachments.length)list.append(E('li','No attachments yet.','hint'));
   return list;
 }
-function objectAttachments(root,kind,id,reqId){
-  const attachments=liveNotes(address(kind,id,reqId)).attachments;
-  const section=details(root,'Attachments · '+attachments.length);
-  section.classList.add('object-attachments');
-  section.dataset.target=address(kind,id,reqId);
-  section.append(attachmentList(attachments));
+function showFiles(title,attachments){
+  const dialog=E('dialog',undefined,'notes-dialog files-dialog');
+  dialog.setAttribute('aria-label','Files: '+title);
+  const header=E('div',undefined,'history-dialog-header'),heading=E('div');
+  heading.append(E('small','Files · '+attachments.length),E('h2',title));
+  const close=button('',()=>dialog.close(),'history-close');
+  close.setAttribute('aria-label','Close files');close.append(svgIcon('M6 6l12 12M6 18L18 6',18));
+  header.append(heading,close);dialog.append(header,attachmentList(attachments));
+  dialog.addEventListener('close',()=>dialog.remove());
+  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
+  document.body.append(dialog);dialog.showModal();
 }
 function fileSize(bytes){
   if(bytes<1024)return bytes+' B';
@@ -757,12 +783,6 @@ function showNotes(kind,id,title,reqId){
   if(!ordered.length)thread.append(E('p','Nothing said here yet.','hint'));
   talk.append(thread);
   body.append(talk);
-
-  /* Вложения */
-  const files=E('section',undefined,'notes-section');
-  files.append(E('h3','Attachments'+(n.attachments.length?' · '+n.attachments.length:''),'notes-heading'));
-  files.append(attachmentList(n.attachments));
-  body.append(files);
 
   dialog.addEventListener('close',()=>dialog.remove());
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
