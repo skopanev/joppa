@@ -6,7 +6,11 @@ const assert=require('node:assert/strict');
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   let signedIn=false;
   await page.route('**/api/**',async route=>{
-   assert(route.request().method()==='GET'||(route.request().method()==='POST'&&new URL(route.request().url()).pathname.endsWith('/order')),'portal only writes tree order');
+   // Портал пишет РОВНО три вещи: порядок дерева, заметки (пояснение,
+   // реплика, вложение) и загрузку файла под вложение. Всё остальное —
+   // структуру продукта — меняет только MCP, где у действующего своя учётка.
+   const path=new URL(route.request().url()).pathname;
+   assert(route.request().method()==='GET'||(route.request().method()==='POST'&&(path.endsWith('/order')||path.endsWith('/commands')||path.endsWith('/blobs'))),'portal writes only order, notes and attachments');
    if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
    await route.continue({headers:{...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
   });

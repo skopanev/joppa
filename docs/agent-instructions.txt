@@ -19,6 +19,8 @@ For new items, omit local IDs and let Joppa generate them. The response contains
 Use joppa_batch for related writes: 1–100 operations in one transaction, optional ref labels, and explicit {"$ref":"label/id"} links to earlier generated IDs. Retry identical input with the same request_id; never regenerate it after a lost response.
 Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.
 
+Any object takes a description, comments and attachments at its address: domain:<id>, capability:<id>, requirement:<id>, ac:<req>/<ac>, intake:<id>, point:<intake>/<point>. describe writes the explanation (2000 characters; a domain or capability keeps it in itself, an AC keeps its own inside the revision and gets a note beside it), note adds a comment, attach records a file already uploaded to the blobs endpoint. The index shows only their counts; read one object with target=<address>.
+
 Read narrowly. joppa_read without req returns an index: domains and capabilities in full, requirements as title and status only. Read one requirement with req; a workspace holds hundreds, and all of them at once fit no context. History is omitted unless history=true, then paged with cursor until nextCursor is absent.
 
 Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.

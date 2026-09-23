@@ -147,3 +147,71 @@ fn an_attachment_records_the_file_and_detaching_keeps_it() {
         json!({"op":"detach","target":"requirement:r","id":"nope","reason":"x"}),
     );
 }
+
+/// Оглавление несёт ЧИСЛА заметок, а не их содержимое; целиком объект
+/// отдаётся только по его адресу. Это и есть та экономия, ради которой
+/// читают оглавление: обсуждение на сто реплик не должно попадать в ответ
+/// на вопрос «что вообще есть в воркспейсе».
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL (database name must start with joppa_test)"]
+async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow::Result<()> {
+    use joppa::{commands::Command, store};
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    store::migrate(&pool).await?;
+    let ws = format!("notes{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos());
+    let mut n = 0;
+    let mut run = |v: serde_json::Value| {
+        n += 1;
+        let id = format!("{ws}-{n}");
+        let pool = pool.clone();
+        let ws = ws.clone();
+        async move {
+            store::execute(&pool, &ws, "prober", &id, &serde_json::from_value::<Command>(v)?).await
+        }
+    };
+    run(json!({"op":"workspace","title":"Notes probe"})).await?;
+    run(json!({"op":"domain","id":"billing","title":"Billing","authority":"prober"})).await?;
+    run(json!({"op":"capability","id":"invoice","title":"Invoices","domain":"billing"})).await?;
+    run(json!({"op":"revise","req":"r1","expected_revision":0,"capability":"invoice","title":"Invoice is delivered","body":"","owner":"prober","reason":"first","acs":[{"id":"pdf","text":"A PDF is produced"}]})).await?;
+    run(json!({"op":"note","target":"domain:billing","id":"n1","text":"Who owns refunds?"})).await?;
+    run(json!({"op":"note","target":"domain:billing","id":"n2","text":"Not us."})).await?;
+    run(json!({"op":"attach","target":"domain:billing","id":"f1","name":"chart.png","content_type":"image/png","size":10,"hash":"b".repeat(64)})).await?;
+    run(json!({"op":"withdraw_note","target":"domain:billing","id":"n2","reason":"wrong"})).await?;
+
+    let scope = store::Scope::from_args(&json!({}))?;
+    let index = store::read(&pool, &ws, "prober", &scope).await?;
+    let notes = &index["index"]["domains"]["billing"]["notes"];
+    // Отозванная реплика в счёт не идёт: счётчик обещает, сколько сообщений
+    // человек увидит, открыв объект.
+    assert_eq!(notes["comments"], json!(1), "{index}");
+    assert_eq!(notes["attachments"], json!(1));
+    assert_eq!(notes["described"], json!(false));
+    assert!(
+        index["index"]["domains"]["billing"].get("comments").is_none(),
+        "the index must not carry the text of the discussion: {index}"
+    );
+    // Капабилити без заметок не несёт пустышку — она весила бы столько же,
+    // сколько настоящий счётчик, и её пришлось бы читать на каждом объекте.
+    assert_eq!(index["index"]["capabilities"]["invoice"]["notes"], json!(null));
+
+    let one = store::read(
+        &pool,
+        &ws,
+        "prober",
+        &store::Scope::from_args(&json!({"target":"domain:billing"}))?,
+    )
+    .await?;
+    assert_eq!(one["notes"]["comments"]["n1"]["text"], json!("Who owns refunds?"));
+    assert_eq!(one["notes"]["attachments"]["f1"]["name"], json!("chart.png"));
+    assert!(one.get("index").is_none(), "one object is not the whole tree");
+
+    let bad = store::read(
+        &pool,
+        &ws,
+        "prober",
+        &store::Scope::from_args(&json!({"target":"domain:missing"}))?,
+    )
+    .await;
+    assert!(bad.is_err(), "an unknown address is refused, not answered with emptiness");
+    Ok(())
+}

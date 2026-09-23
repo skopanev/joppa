@@ -19,8 +19,10 @@ retained for reading; the new model never writes through it.
 | Finding wording required reading the entire tree | Authorized full-text/hybrid search with current IDs and explicit coverage | Search freshness, isolation, provider failure and stale-vector tests |
 | Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
-`tests/browser.cjs` checks the read-only portal: navigation, copying references,
-older revisions, mobile layout and safe snapshots. `tests/http_smoke.py` covers
+`tests/browser.cjs` checks the portal: navigation, copying references, older
+revisions, mobile layout, safe snapshots and the notes panel. The portal writes
+only three things — tree order, notes (description, comment, attachment) and the
+file upload behind an attachment; structure is changed through MCP alone. `tests/http_smoke.py` covers
 integration writes, acceptance, launch gates, the administrative binary and MCP.
 Browser-cookie content writes are rejected; content is authored through MCP.
 The owner can reorder siblings in the portal.
