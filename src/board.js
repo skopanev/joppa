@@ -349,7 +349,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
     const item = E('li',undefined,'ac-item '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     // Заголовок одной строкой: текст условия, исход справа. Раньше значок
     // уезжал под заголовок и читался как ещё одно свойство, а не как ответ.
-    const circle=statusCircle(acSignal(status,r,a.id),r.acs.indexOf(a)+1);circle.classList.add('ac-status');item.append(circle);
+    const circle=statusCircle(acSignal(status,r,a.id));circle.classList.add('ac-status');item.append(circle);
     const heading=E('div',undefined,'ac-heading');
     heading.append(E('p',a.text,'ac-text'));
     heading.append(itemActions('ac',a.id,a.text,selected));
