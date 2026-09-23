@@ -48,16 +48,23 @@ async fn upload(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> ApiResult {
-    if !headers.contains_key(header::AUTHORIZATION) {
-        web_auth::check_origin(&headers)
-            .map_err(|e| (StatusCode::FORBIDDEN, Json(json!({"error": e.to_string()}))))?;
-    }
+    require_write_credential(&headers)?;
     let actor = authenticate(&app, &headers).await?;
     // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
     // хранилище, ничего не имея в воркспейсе.
-    store::read(&app.pool, &workspace, &actor, &store::Scope::from_args(&json!({})).unwrap())
-        .await
-        .map_err(|_| (StatusCode::NOT_FOUND, Json(json!({"error":"workspace not found or access denied"}))))?;
+    store::read(
+        &app.pool,
+        &workspace,
+        &actor,
+        &store::Scope::from_args(&json!({})).unwrap(),
+    )
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"workspace not found or access denied"})),
+        )
+    })?;
     result(
         store::put_blob(&app.pool, &body)
             .await
@@ -187,21 +194,17 @@ async fn read(
     // страницы там только мешало бы. Ограничение нужно агенту, а не человеку.
     result(store::read(&app.pool, &workspace, &actor, &store::Scope::full()).await)
 }
-/// Что человеку РАЗРЕШЕНО делать прямо из браузера.
-///
-/// Всё остальное — структура: домены, требования, условия приёмки — меняется
-/// только через MCP, где у действующего есть своя учётка и своя ответственность.
-/// А пояснение, реплика и приложенный файл — человеческие действия, и гонять
-/// их через агента означало бы, что в журнале вместо автора стоит посредник.
-fn browser_may(command: &Command) -> bool {
-    matches!(
-        command,
-        Command::Describe { .. }
-            | Command::Note { .. }
-            | Command::WithdrawNote { .. }
-            | Command::Attach { .. }
-            | Command::Detach { .. }
-    )
+/// Browser sessions can read product data; writes require agent/service credentials.
+fn require_write_credential(
+    headers: &HeaderMap,
+) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    if !headers.contains_key(header::AUTHORIZATION) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
+        ));
+    }
+    Ok(())
 }
 async fn command(
     State(app): State<App>,
@@ -209,20 +212,7 @@ async fn command(
     headers: HeaderMap,
     Json(request): Json<Request>,
 ) -> ApiResult {
-    // Browser cookies only grant read access. Writes require integration credentials.
-    if !headers.contains_key(header::AUTHORIZATION) {
-        if !browser_may(&request.command) {
-            return Err((
-                StatusCode::FORBIDDEN,
-                Json(json!({"error":"The portal changes only notes, descriptions and attachments. Use Joppa MCP for the rest."})),
-            ));
-        }
-        // Запрос из браузера принимается только со своей страницы: иначе
-        // чужой сайт мог бы писать в журнал вашей кукой.
-        web_auth::check_origin(&headers).map_err(|e| {
-            (StatusCode::FORBIDDEN, Json(json!({"error": e.to_string()})))
-        })?;
-    }
+    require_write_credential(&headers)?;
     let actor = authenticate(&app, &headers).await?;
     result(
         store::execute(
@@ -250,8 +240,9 @@ async fn reorder(
     headers: HeaderMap,
     Json(request): Json<OrderRequest>,
 ) -> ApiResult {
+    require_write_credential(&headers)?;
     let actor = authenticate(&app, &headers).await?;
-    // The only browser write: a typed ordering operation, protected against CSRF.
+    // Legacy integration endpoint; browser sessions cannot reorder the tree.
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let command = Command::ReorderTree {
         kind: request.kind,

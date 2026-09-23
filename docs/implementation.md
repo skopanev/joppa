@@ -20,12 +20,12 @@ retained for reading; the new model never writes through it.
 | Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
 `tests/browser.cjs` checks the portal: navigation, copying references, older
-revisions, mobile layout, safe snapshots and the notes panel. The portal writes
-only three things — tree order, notes (description, comment, attachment) and the
-file upload behind an attachment; structure is changed through MCP alone. `tests/http_smoke.py` covers
-integration writes, acceptance, launch gates, the administrative binary and MCP.
-Browser-cookie content writes are rejected; content is authored through MCP.
-The owner can reorder siblings in the portal.
+revisions, mobile layout, safe snapshots and the read-only notes panel. Browsing
+must not issue product writes or change stored data. `tests/http_smoke.py` covers
+integration writes, acceptance, launch gates, the administrative binary and MCP,
+including agent-authored object notes and revision comments. `tests/sessions.rs`
+checks that even an owner's valid browser cookie cannot submit commands, upload
+attachments or reorder the tree. All product authoring goes through agents.
 
 ## Deliberate boundaries
 

@@ -99,9 +99,14 @@ stores or displays them. Missing Google configuration does not enable a fallback
 
 ## Tree ordering and item history
 
-`POST /api/workspaces/{workspace}/order` is the only browser write. It accepts
+The portal is read-only. Browser session cookies cannot submit commands, upload
+blobs or reorder the tree. Use MCP for all product changes, including `note`
+(comments on any object) and `comment` (revision discussion).
+
+`POST /api/workspaces/{workspace}/order` is a legacy integration endpoint. It accepts
 `{"request_id":"unique-id","kind":"domain","parent":null,"expected":["a","b"],"ids":["b","a"]}`.
-An authenticated workspace owner and same-origin Origin header are required.
+An authenticated workspace owner, service bearer credential and same-origin Origin
+header are required. Browser cookies are insufficient.
 Unknown fields are rejected. `expected` must match the current sibling order;
 `ids` must contain exactly those siblings once. Moves between parents are rejected.
 Retrying the same request ID is idempotent. New siblings append to the saved order.

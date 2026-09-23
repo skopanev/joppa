@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = str(ROOT / 'target/debug/joppa')
+BIN = os.environ.get('JOPPA_BIN', str(ROOT / 'target/debug/joppa'))
 url = os.environ['JOPPA_TEST_DATABASE_URL']
 assert urllib.parse.urlparse(url).path.rsplit('/', 1)[-1].startswith('joppa_test'), 'test DB only'
 env = {**os.environ, 'JOPPA_DATABASE_URL': url, 'JOPPA_ACTOR': 'owner'}
@@ -140,6 +140,16 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert not result.get('isError'), result
             return json.loads(result['content'][0]['text'])
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
+        # Agents can still add both object notes and revision discussion through MCP.
+        for request_id, value in [
+            ('agent-note', {'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}),
+            ('agent-comment', {'op':'comment','req':'key','revision':1,'id':'agent-comment','text':'Agent discussion','kind':'comment'}),
+        ]:
+            mcp('joppa_command', {'workspace':ws,'request_id':request_id,'command':value})
+        readback = request('/api/workspaces/'+ws)[1]['state']
+        assert readback['notes']['requirement:key']['comments']['agent-note']['text'] == 'Agent note'
+        assert readback['requirements']['key']['comments']['agent-comment']['text'] == 'Agent discussion'
+
         docs = mcp('joppa_model_docs', {})
         assert set(docs) == {'model','process','green'}
         assert docs['model'] == (ROOT/'docs/model.md').read_text()
@@ -256,12 +266,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             browser_env = {**env, 'JOPPA_TEST_URL': base, 'JOPPA_TEST_TOKEN': owner_token,
                            'JOPPA_TEST_WORKSPACE': ws, 'JOPPA_TEST_SNAPSHOT': str(snapshot)}
             subprocess.run(['node', str(ROOT / 'tests/browser.cjs')], env=browser_env, check=True)
-            ordered=request('/api/workspaces/'+ws)[1]
-            assert ordered['history'][:-3]==after['history'], 'existing history must be immutable'
-            assert [e['command']['op'] for e in ordered['history'][-3:]]==['reorder_tree']*3
-            assert {**ordered['state'],'tree_order':after['state']['tree_order']}==after['state']
-            assert ordered['summary']==after['summary']
-            assert ordered['system_ids']==refs
+            assert request('/api/workspaces/'+ws)[1] == after, 'browsing must never mutate product data'
         print('HTTP auth, workspace isolation, idempotency, CLI snapshot and MCP smoke passed')
     finally:
         server.terminate()

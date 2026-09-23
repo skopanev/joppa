@@ -112,12 +112,12 @@ Use the **copy + robot** button
 on a domain, capability, requirement or AC to copy its permanent, database-wide unique
 ID and title/text for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
 `joppa_read({"item_id":"..."})`.
-Content changes and decisions go through MCP. The workspace owner can reorder siblings
-on desktop using the drag handle, its Move up/down menu or arrow keys.
-Dragging previews the position; Escape cancels it. Reorder controls are hidden on mobile. The order is shared and persists
-after reload. The history icon on every domain, capability, REQ and AC opens a plain timeline:
+The portal is read-only, including descriptions, comments, attachments and tree order.
+Use the workspace, filter and revision menus to choose what to view. All content
+changes and decisions go through agents using MCP. The history icon on every
+domain, capability, REQ and AC opens a plain timeline:
 time, author and change, one saved operation per entry.
-REQ History also contains the revision selector. Cards show a short revision label;
+REQ History also contains the revision selector. Cards show a short revision label next to the history button;
 internal IDs stay behind the copy button. Empty Tasks, Checks and Discussion sections
 are hidden; populated sections show task titles, people and readable evidence.
 Reordering does not create a REQ revision or reset checks.
@@ -263,7 +263,7 @@ DeepInfra key is configured; otherwise it reports full-text mode. See [search](d
 Attachment upload endpoints are not yet implemented; their storage configuration
 is preparatory. Journal reads currently
 replay the whole workspace; larger volumes will need projections and paginated
-history. The portal is for reading and owner reordering; authoring and decisions
+history. The portal is read-only; authoring and decisions
 use MCP.
 
 See the [model](docs/model.md), [process](docs/process.md), [green rule](docs/green.md),

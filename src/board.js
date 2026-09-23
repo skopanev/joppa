@@ -1,6 +1,6 @@
 /* SNAPSHOT */
 let ws = '', data = null, viewerActor = '';
-let orderSaving=false,draggedNode=null,orderMenu=null,filterMenu=null;
+let filterMenu=null;
 const $ = id => document.getElementById(id),
   E = (tag, text, cls) => {
     const e = document.createElement(tag);
@@ -232,7 +232,6 @@ function applyFilters(reveal=true) {
   $('filter-empty').hidden=visibleDomains>0||!orderedEntries('domain').length;
 }
 function render() {
-  draggedNode?.cancel();
   closeFilterMenu();
   const t = $('tree');
   const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
@@ -245,7 +244,7 @@ function render() {
   for (const [did,d] of orderedEntries('domain')) {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
-    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);addOrdering(group,heading,'domain',null,did);
+    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
     const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));
     // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
     // и держать её за кнопкой значит не показывать вовсе.
@@ -253,7 +252,7 @@ function render() {
     group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);addOrdering(cap,head,'capability',did,cid);
+      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
@@ -261,7 +260,7 @@ function render() {
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
         const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title,null,r.number));
-        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);addOrdering(req,reqHead,'requirement',cid,id);
+        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
         cap.append(req);
@@ -576,9 +575,9 @@ function itemActions(kind,id,title,reqId=null,revision=null){
   // Номер ревизии стоит ВПЛОТНУЮ к истории: это один вопрос — «которая это
   // редакция и что было до неё». Отдельной строкой под заголовком он читался
   // как свойство требования, хотя на деле это отметка версии.
-  if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
   actions.append(copyButton(kind,id,title));
   actions.append(notesButton(kind,id,title,reqId));
+  if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
   const history=button('',()=>showHistory(kind,id,title,reqId),'history-button');history.title='View history';history.setAttribute('aria-label','View '+kind+' history: '+id);
   const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))icon.setAttribute(key,value);
@@ -663,18 +662,6 @@ function describedText(kind,id,reqId,target){
   if(kind==='capability')return data.state.capabilities[id]?.description||'';
   return notesOf(target).description||'';
 }
-async function send(command){
-  const targetWorkspace=ws;
-  const r=await fetch('/api/workspaces/'+encodeURIComponent(targetWorkspace)+'/commands',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({request_id:crypto.randomUUID(),command})
-  });
-  const j=await r.json();
-  if(!r.ok)throw Error(j.error||'Could not save.');
-  if(ws===targetWorkspace)await load();
-  return j;
-}
-function newId(prefix){return prefix+'-'+crypto.randomUUID().replaceAll('-','').slice(0,12);}
 function when(at){
   if(!at)return '';
   const d=new Date(at.replace(' ','T').replace(/\+00$/,'Z'));
@@ -707,7 +694,6 @@ function fileSize(bytes){
   if(bytes<1024*1024)return Math.round(bytes/1024)+' KB';
   return (bytes/(1024*1024)).toFixed(1)+' MB';
 }
-const DESCRIPTION_MAX=2000;
 function showNotes(kind,id,title,reqId){
   const target=address(kind,id,reqId);
   const n=liveNotes(target);
@@ -722,31 +708,7 @@ function showNotes(kind,id,title,reqId){
   const descSection=E('section',undefined,'notes-section');
   descSection.append(E('h3','Description','notes-heading'));
   const descText=describedText(kind,id,reqId,target);
-  const area=E('textarea');area.className='notes-description';area.value=descText;
-  area.maxLength=DESCRIPTION_MAX;area.rows=4;
-  area.placeholder='What this is, where its boundary runs, what it does NOT cover.';
-  area.setAttribute('aria-label','Description');
-  const counter=E('span','','notes-counter');
-  const countdown=()=>{counter.textContent=area.value.length+' / '+DESCRIPTION_MAX;};
-  countdown();area.addEventListener('input',countdown);
-  const saveDesc=button('Save description',async()=>{
-    if(area.value===descText)return notify('Nothing changed.');
-    saveDesc.disabled=true;
-    try{
-      if(kind==='domain'){
-        const d=data.state.domains[id];
-        await send({op:'edit_domain',id,title:d.title,authority:d.authority,description:area.value,reason:'description'});
-      }else if(kind==='capability'){
-        const c=data.state.capabilities[id];
-        await send({op:'edit_capability',id,title:c.title,description:area.value,reason:'description'});
-      }else{
-        await send({op:'describe',target,text:area.value,reason:'description'});
-      }
-      notify('Description saved.');dialog.close();
-    }finally{saveDesc.disabled=false;}
-  },'primary');
-  const descFoot=E('div',undefined,'notes-foot');descFoot.append(counter,saveDesc);
-  descSection.append(area,descFoot);
+  descSection.append(E('p',descText||'No description yet.',descText?'notes-description':'hint'));
   if(kind==='ac'){
     const own=currentAc(reqId,id)?.description;
     if(own)descSection.append(E('p','From the revision: '+own,'hint'));
@@ -758,70 +720,30 @@ function showNotes(kind,id,title,reqId){
   talk.append(E('h3','Discussion'+(n.comments.length?' · '+n.comments.length:''),'notes-heading'));
   const thread=E('div',undefined,'notes-thread');
   const ordered=n.comments.sort((a,b)=>String(a[1].at).localeCompare(String(b[1].at)));
-  for(const [noteId,c] of ordered){
+  for(const [,c] of ordered){
     const item=E('article',undefined,'note');
     const meta=E('div',undefined,'note-meta');
     meta.append(E('span',c.actor,'note-actor'),E('time',when(c.at),'note-at'));
-    if(c.actor===viewerActor){
-      meta.append(button('Withdraw',async()=>{
-        await send({op:'withdraw_note',target,id:noteId,reason:'withdrawn by author'});
-        notify('Comment withdrawn.');dialog.close();
-      },'note-withdraw'));
-    }
     item.append(meta,E('p',c.text,'note-text'));
     thread.append(item);
   }
   if(!ordered.length)thread.append(E('p','Nothing said here yet.','hint'));
   talk.append(thread);
-  const draft=E('textarea');draft.className='notes-draft';draft.rows=3;
-  draft.placeholder='Say something about this.';draft.setAttribute('aria-label','New comment');
-  const post=button('Comment',async()=>{
-    if(!draft.value.trim())return notify(Error('An empty comment says nothing.'));
-    post.disabled=true;
-    try{
-      await send({op:'note',target,id:newId('n'),text:draft.value.trim(),reply_to:null});
-      notify('Comment added.');dialog.close();
-    }finally{post.disabled=false;}
-  },'primary');
-  const talkFoot=E('div',undefined,'notes-foot');talkFoot.append(E('span','','notes-counter'),post);
-  talk.append(draft,talkFoot);
   body.append(talk);
 
   /* Вложения */
   const files=E('section',undefined,'notes-section');
   files.append(E('h3','Attachments'+(n.attachments.length?' · '+n.attachments.length:''),'notes-heading'));
   const list=E('ul',undefined,'notes-files');
-  for(const [fileId,a] of n.attachments){
+  for(const [,a] of n.attachments){
     const li=E('li');
     const link=E('a',a.name);link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
     link.target='_blank';link.rel='noopener';
     li.append(link,E('span',fileSize(a.size)+' · '+a.actor+' · '+when(a.at),'note-at'));
-    if(a.actor===viewerActor){
-      li.append(button('Remove',async()=>{
-        await send({op:'detach',target,id:fileId,reason:'removed by author'});
-        notify('Attachment removed.');dialog.close();
-      },'note-withdraw'));
-    }
     list.append(li);
   }
   if(!n.attachments.length)list.append(E('li','Nothing attached yet.','hint'));
   files.append(list);
-  const picker=E('input');picker.type='file';picker.className='notes-file';
-  picker.setAttribute('aria-label','Choose a file to attach');
-  const upload=button('Attach file',async()=>{
-    const file=picker.files?.[0];
-    if(!file)return notify(Error('Choose a file first.'));
-    upload.disabled=true;
-    try{
-      const r=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/blobs',{method:'POST',body:file});
-      const j=await r.json();
-      if(!r.ok)throw Error(j.error||'Upload failed.');
-      await send({op:'attach',target,id:newId('f'),name:file.name,content_type:file.type||'application/octet-stream',size:j.size,hash:j.hash});
-      notify('Attached.');dialog.close();
-    }finally{upload.disabled=false;}
-  },'primary');
-  const fileFoot=E('div',undefined,'notes-foot');fileFoot.append(E('span','10 MB per file, any number of them','notes-counter'),upload);
-  files.append(picker,fileFoot);
   body.append(files);
 
   dialog.addEventListener('close',()=>dialog.remove());
@@ -830,125 +752,4 @@ function showNotes(kind,id,title,reqId){
 }
 function currentAc(reqId,acId){
   return data.state.requirements[reqId]?.revisions.at(-1)?.acs.find(a=>a.id===acId);
-}
-
-function closeOrderMenu(){orderMenu?.remove();orderMenu=null;}
-document.addEventListener('click',e=>{if(orderMenu&&!orderMenu.contains(e.target))closeOrderMenu();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOrderMenu();});
-async function saveOrder(kind,parent,expected,ids,focusId) {
-  if(orderSaving||ids.every((id,index)=>id===expected[index]))return;
-  const targetWorkspace=ws;orderSaving=true;closeOrderMenu();
-  document.querySelectorAll('.reorder-handle').forEach(b=>b.disabled=true);
-  try{
-    const response=await fetch('/api/workspaces/'+encodeURIComponent(targetWorkspace)+'/order',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({request_id:crypto.randomUUID(),kind,parent,expected,ids})
-    });
-    const result=await response.json();
-    if(!response.ok){if(ws===targetWorkspace)await load();throw Error(result.error||'Could not save the order.');}
-    if(ws===targetWorkspace){
-      await load();
-    }
-    notify('Order saved.');
-  }finally{
-    orderSaving=false;document.querySelectorAll('.reorder-handle').forEach(b=>b.disabled=false);
-    if(ws===targetWorkspace){
-      const moved=[...document.querySelectorAll('[data-tree-node]')].find(e=>e.dataset.treeNode===kind+':'+focusId);
-      moved?.querySelector(':scope > summary > .reorder-handle')?.focus({preventScroll:true});
-    }
-  }
-}
-function moveSibling(kind,parent,id,offset) {
-  const expected=orderedEntries(kind,parent).map(([id])=>id),ids=[...expected],index=ids.indexOf(id),next=index+offset;
-  if(next<0||next>=ids.length)return;
-  [ids[index],ids[next]]=[ids[next],ids[index]];
-  return saveOrder(kind,parent,expected,ids,id);
-}
-function addOrdering(node,summary,kind,parent,id) {
-  if(window.SNAPSHOT||viewerActor!==data.state.admin)return;
-  const handle=E('button',undefined,'reorder-handle');
-  const grip=document.createElementNS('http://www.w3.org/2000/svg','svg');grip.setAttribute('viewBox','0 0 16 20');grip.setAttribute('width','16');grip.setAttribute('height','20');grip.setAttribute('aria-hidden','true');
-  for(const x of [5,11])for(const y of [4,10,16]){const dot=document.createElementNS(grip.namespaceURI,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r','1.4');dot.setAttribute('fill','currentColor');grip.append(dot);}handle.append(grip);handle.type='button';handle.disabled=orderSaving;
-  let ignoreClick=false;
-  handle.setAttribute('aria-label','Reorder '+kind+': '+id);handle.setAttribute('aria-haspopup','menu');
-  handle.title='Drag to reorder, or click for move options';summary.classList.add('can-reorder');summary.append(handle);
-  handle.onclick=e=>{
-    e.preventDefault();e.stopPropagation();if(ignoreClick)return;closeOrderMenu();
-    const menu=E('div',undefined,'reorder-menu');menu.setAttribute('role','menu');menu.setAttribute('aria-label','Move item');
-    const siblings=orderedEntries(kind,parent),index=siblings.findIndex(([key])=>key===id);
-    for(const [label,offset] of [['Move up',-1],['Move down',1]]){
-      const b=button(label,()=>moveSibling(kind,parent,id,offset));b.setAttribute('role','menuitem');b.disabled=index+offset<0||index+offset>=siblings.length;menu.append(b);
-    }
-    orderMenu=menu;document.body.append(menu);
-    const rect=handle.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(rect.right-150,innerWidth-158))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom+5,innerHeight-100))+'px';
-    menu.querySelector('button:not(:disabled)')?.focus();
-  };
-  handle.onkeydown=e=>{if(['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();Promise.resolve(moveSibling(kind,parent,id,e.key==='ArrowUp'?-1:1)).catch(notify);}};
-  handle.onpointerdown=e=>{
-    if(e.button!==0||orderSaving||matchMedia('(max-width:760px)').matches)return;
-    const container=node.parentElement,originalNext=node.nextSibling,wasOpen=node.open;
-    const expected=orderedEntries(kind,parent).map(([key])=>key),workspace=ws;
-    const siblings=()=>[...container.children].filter(n=>n.dataset.treeNode?.startsWith(kind+':'));
-    let active=false,preview=null,frame=null,point={x:e.clientX,y:e.clientY},valid=false;
-    const start={...point},pointer=e.pointerId;
-    function cleanup(commit=false){
-      const moved=active;active=false;
-      for(const n of siblings())for(const animation of n.getAnimations())animation.cancel();
-      document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
-      document.removeEventListener('pointercancel',cancel);document.removeEventListener('keydown',escape);
-      window.removeEventListener('blur',cancel);window.removeEventListener('resize',cancel);
-      cancelAnimationFrame(frame);preview?.remove();node.classList.remove('drag-source');document.body.classList.remove('tree-dragging');draggedNode=null;
-      if(!moved)return;
-      ignoreClick=true;setTimeout(()=>{ignoreClick=false;},0);
-      node.open=wasOpen;
-      if(!commit){container.insertBefore(node,originalNext?.parentElement===container?originalNext:null);return;}
-      const ids=siblings().map(n=>n.dataset.treeNode.slice(kind.length+1));
-      saveOrder(kind,parent,expected,ids,id).catch(notify);
-    }
-    function cancel(){cleanup(false);}
-    function escape(event){if(event.key==='Escape'){event.preventDefault();cancel();}}
-    function place(){
-      if(!node.isConnected||ws!==workspace){cancel();return;}
-      const bounds=container.getBoundingClientRect();
-      valid=point.x>=bounds.left-16&&point.x<=bounds.right+16&&point.y>=bounds.top-40&&point.y<=bounds.bottom+40;
-      preview.classList.toggle('invalid-drop',!valid);
-      const x=Math.max(8,Math.min(innerWidth-preview.offsetWidth-8,point.x-preview.offsetWidth+35));
-      preview.style.transform=`translate3d(${x}px,${point.y-28}px,0)`;
-      if(!valid)return;
-      const others=siblings().filter(n=>n!==node&&!n.hidden);
-      for(const n of others)for(const animation of n.getAnimations())animation.cancel();
-      const before=others.find(n=>{const r=n.getBoundingClientRect();return point.y<r.top+r.height/2;});
-      const next=before||(others.at(-1)?.nextSibling);
-      if(next===node||node.nextSibling===next)return;
-      const positions=new Map(others.map(n=>[n,n.getBoundingClientRect().top]));
-      container.insertBefore(node,next||null);
-      if(!matchMedia('(prefers-reduced-motion:reduce)').matches)for(const n of others){
-        const delta=positions.get(n)-n.getBoundingClientRect().top;
-        if(delta)n.animate([{transform:`translateY(${delta}px)`},{transform:'translateY(0)'}],{duration:140,easing:'ease-out'});
-      }
-    }
-    function scroll(){
-      if(!active)return;
-      const speed=point.y<100?-Math.min(14,(100-point.y)/4):point.y>innerHeight-70?Math.min(14,(point.y-innerHeight+70)/4):0;
-      if(speed){window.scrollBy(0,speed);place();}
-      if(active)frame=requestAnimationFrame(scroll);
-    }
-    function move(event){
-      if(event.pointerId!==pointer)return;
-      point={x:event.clientX,y:event.clientY};
-      if(!active){
-        if(Math.hypot(point.x-start.x,point.y-start.y)<5)return;
-        active=true;closeOrderMenu();closeFilterMenu();node.open=false;
-        preview=E('div',undefined,'drag-preview '+kind);preview.append(grip.cloneNode(true),E('div',undefined,'drag-preview-text'));
-        preview.lastChild.append(E('small',kind==='requirement'?'Requirement':kind[0].toUpperCase()+kind.slice(1)),E('strong',summary.querySelector('.node-title').textContent));
-        document.body.append(preview);node.classList.add('drag-source');document.body.classList.add('tree-dragging');frame=requestAnimationFrame(scroll);
-      }
-      event.preventDefault();place();
-    }
-    function up(event){if(event.pointerId===pointer)cleanup(active&&valid);}
-    draggedNode={cancel};
-    document.addEventListener('pointermove',move,{passive:false});document.addEventListener('pointerup',up);
-    document.addEventListener('pointercancel',cancel);document.addEventListener('keydown',escape);
-    window.addEventListener('blur',cancel);window.addEventListener('resize',cancel);
-  };
 }

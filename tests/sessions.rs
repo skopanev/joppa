@@ -137,13 +137,13 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         403,
         "real authenticated browser remains read-only"
     );
-    // This narrow cookie endpoint may reorder, but cannot mutate content or cross workspaces.
-    let workspace = format!("order-{}", uuid::Uuid::new_v4());
+    // Even a real owner's session cannot mutate notes, descriptions, attachments or order.
+    let workspace = format!("readonly-{}", uuid::Uuid::new_v4());
     for (i, value) in [
-        json!({"op":"workspace","title":"Ordering test"}),
+        json!({"op":"workspace","title":"Read-only test"}),
         json!({"op":"domain","id":"a","title":"A","authority":"owner"}),
         json!({"op":"domain","id":"b","title":"B","authority":"owner"}),
-        json!({"op":"member","id":"other-owner","role":"human"}),
+        json!({"op":"note","target":"domain:a","id":"existing","text":"Visible comment"}),
     ]
     .into_iter()
     .enumerate()
@@ -157,92 +157,48 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         )
         .await?;
     }
-    let endpoint = format!("{base}/api/workspaces/{workspace}/order");
-    let body = json!({"request_id":"move","kind":"domain","parent":null,"expected":["a","b"],"ids":["b","a"]});
-    for origin in [None, Some("https://foreign.example")] {
-        let mut request = client.post(&endpoint).header("cookie", &cookie).json(&body);
-        if let Some(origin) = origin {
-            request = request.header("origin", origin);
-        }
-        assert_eq!(request.send().await?.status(), 403);
+    let before = store::read(&pool, &workspace, "owner", &store::Scope::full()).await?;
+    let response = client
+        .get(format!("{base}/api/workspaces/{workspace}"))
+        .header("cookie", &cookie)
+        .send()
+        .await?;
+    assert_eq!(response.status(), 200);
+    for command in [
+        json!({"op":"note","target":"domain:a","id":"new","text":"Forbidden"}),
+        json!({"op":"describe","target":"domain:a","text":"Forbidden","reason":"edit"}),
+        json!({"op":"withdraw_note","target":"domain:a","id":"existing","reason":"remove"}),
+        json!({"op":"attach","target":"domain:a","id":"f","name":"a.txt","content_type":"text/plain","size":1,"hash":"a".repeat(64)}),
+        json!({"op":"detach","target":"domain:a","id":"f","reason":"remove"}),
+    ] {
+        let response = client
+            .post(format!("{base}/api/workspaces/{workspace}/commands"))
+            .header("cookie", &cookie)
+            .header("origin", &base)
+            .json(&json!({"request_id":"forbidden", "command":command}))
+            .send()
+            .await?;
+        assert_eq!(response.status(), 403);
+        assert!(response.text().await?.contains("read-only"));
     }
     assert_eq!(
         client
-            .post(&endpoint)
-            .header("origin", &base)
-            .json(&body)
-            .send()
-            .await?
-            .status(),
-        401
-    );
-    assert_eq!(
-        client
-            .post(&endpoint)
-            .header("origin", &base)
-            .header("cookie", format!("joppa_session={other}"))
-            .json(&body)
-            .send()
-            .await?
-            .status(),
-        409
-    );
-    assert_eq!(
-        client
-            .post(format!("{base}/api/workspaces/absent/order"))
-            .header("origin", &base)
+            .post(format!("{base}/api/workspaces/{workspace}/blobs"))
             .header("cookie", &cookie)
-            .json(&body)
-            .send()
-            .await?
-            .status(),
-        404
-    );
-    let mut injected = body.clone();
-    injected["command"] = json!({"op":"workspace","title":"Forbidden"});
-    assert_eq!(
-        client
-            .post(&endpoint)
             .header("origin", &base)
-            .header("cookie", &cookie)
-            .json(&injected)
+            .body("Forbidden upload")
             .send()
             .await?
             .status(),
-        422
+        403
     );
-    for _ in 0..2 {
-        assert_eq!(
-            client
-                .post(&endpoint)
-                .header("origin", &base)
-                .header("cookie", &cookie)
-                .json(&body)
-                .send()
-                .await?
-                .status(),
-            200
-        );
-    }
-    let saved = store::read(&pool, &workspace, "owner", &store::Scope::full()).await?;
+    assert_eq!(client.post(format!("{base}/api/workspaces/{workspace}/order"))
+        .header("cookie", &cookie).header("origin", &base)
+        .json(&json!({"request_id":"move","kind":"domain","parent":null,"expected":["a","b"],"ids":["b","a"]}))
+        .send().await?.status(), 403);
     assert_eq!(
-        saved["history"].as_array().unwrap().len(),
-        5,
-        "retry appends no extra event"
-    );
-    assert_eq!(saved["state"]["tree_order"]["domain"], json!(["b", "a"]));
-    let mut stale = body.clone();
-    stale["request_id"] = json!("stale");
-    assert_eq!(
-        client
-            .post(&endpoint)
-            .header("origin", &base)
-            .header("cookie", &cookie)
-            .json(&stale)
-            .send()
-            .await?
-            .status(),
-        409
+        store::read(&pool, &workspace, "owner", &store::Scope::full()).await?,
+        before
     );
     let response = client
         .post(format!("{base}/auth/logout"))
