@@ -18,6 +18,53 @@ pub struct Workspace {
     pub requirements: BTreeMap<String, Requirement>,
     pub intake: BTreeMap<String, Intake>,
     pub questions: BTreeMap<String, Vec<String>>,
+    /// Пояснения, обсуждение и вложения — на ЛЮБОМ объекте, по его адресу.
+    ///
+    /// Ключ — адрес вида `domain:billing`, `capability:billing.invoice`,
+    /// `requirement:r-xxx`, `ac:r-xxx/2`, `intake:i-xxx`, `point:i-xxx/1`.
+    /// Отдельная карта, а не три поля в каждой структуре: иначе один и тот
+    /// же механизм пришлось бы написать шесть раз и он разошёлся бы
+    /// шестью способами.
+    #[serde(default)]
+    pub notes: BTreeMap<String, Notes>,
+}
+/// Всё, что человек навесил на объект сверх его собственных полей.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct Notes {
+    /// Пояснение к объекту. Для домена, капабилити и AC описание живёт в
+    /// самом объекте — оно версионируется вместе с ним; сюда попадает
+    /// описание тех объектов, у которых своего поля нет.
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub comments: BTreeMap<String, Note>,
+    #[serde(default)]
+    pub attachments: BTreeMap<String, Attachment>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Note {
+    pub actor: String,
+    /// Время записи в журнал, а не присланное клиентом.
+    pub at: String,
+    pub text: String,
+    #[serde(default)]
+    pub reply_to: Option<String>,
+    #[serde(default)]
+    pub withdrawn: bool,
+}
+/// Вложение: здесь только про файл, самого файла здесь нет.
+///
+/// Байты лежат в joppa.blobs по этому отпечатку — см. миграцию 009.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Attachment {
+    pub name: String,
+    pub content_type: String,
+    pub size: u64,
+    pub hash: String,
+    pub actor: String,
+    pub at: String,
+    #[serde(default)]
+    pub removed: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Domain {

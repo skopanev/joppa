@@ -186,7 +186,7 @@ for the same result, including generated IDs. Batches can reference earlier
 created objects without client-generated slugs. See [API examples](docs/api.md#automatic-ids-and-batches).
 
 OAuth uses client registration, authorization codes and PKCE S256. Access tokens
-last one hour. Refresh tokens last 90 days and rotate on use; reuse revokes the
+last one hour. Refresh tokens last 30 days and rotate on use; reuse revokes the
 entire family. Tokens are restricted to `/mcp`, stored server-side only as hashes
 and survive deployment. Workspace access is checked for every operation.
 The public origin comes from the Google callback, or explicit `JOPPA_PUBLIC_URL`.

@@ -99,6 +99,47 @@ pub enum Command {
         reply_to: Option<String>,
         ac: Option<String>,
     },
+    /// Пояснение к объекту, у которого нет своего поля описания.
+    /// У домена, капабилити и AC оно есть — там его правят вместе с самим
+    /// объектом, чтобы описание менялось одной ревизией с тем, что описывает.
+    Describe {
+        target: String,
+        text: String,
+        reason: String,
+    },
+    /// Свободный комментарий на любом объекте.
+    ///
+    /// Не путать с `Comment`: тот — процессный журнал требования, он несёт
+    /// ревизию, вид и силу решения. Здесь — обычная человеческая реплика,
+    /// какую вешают на домен или на пункт интейка.
+    Note {
+        target: String,
+        id: String,
+        text: String,
+        #[serde(default)]
+        reply_to: Option<String>,
+    },
+    WithdrawNote {
+        target: String,
+        id: String,
+        reason: String,
+    },
+    /// Вложение. Сами байты уже лежат в хранилище — сюда едет отпечаток.
+    Attach {
+        target: String,
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+        hash: String,
+    },
+    /// Снятие вложения. Файл из хранилища не удаляется: он мог быть
+    /// приложен и в другом месте, а ссылка из истории должна открываться.
+    Detach {
+        target: String,
+        id: String,
+        reason: String,
+    },
     Assess {
         req: String,
         revision: u32,
@@ -209,6 +250,59 @@ pub fn identifier(s: &str) -> Result<()> {
                 .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)),
         "invalid id: {s}"
     );
+    Ok(())
+}
+/// Предел пояснения. Две тысячи знаков — около страницы: достаточно, чтобы
+/// объяснить границу и оговорки, и мало, чтобы вместо пояснения написать сюда
+/// само требование. Предел объявлен здесь одним числом, потому что он входит
+/// и в проверку, и в описание инструмента, и в подсказку в интерфейсе.
+pub const DESCRIPTION_MAX: usize = 2000;
+
+/// Проверка адреса объекта: `вид:идентификатор`.
+///
+/// Адрес проверяется на СУЩЕСТВОВАНИЕ объекта, а не только на форму. Иначе
+/// комментарий уезжал бы в никуда и находился бы только тем, кто угадал ту же
+/// опечатку: заметка на несуществующем домене не видна нигде.
+pub fn target(w: &Workspace, address: &str) -> Result<()> {
+    let (kind, rest) = address
+        .split_once(':')
+        .ok_or_else(|| anyhow::anyhow!("address looks like kind:id, for example domain:billing"))?;
+    match kind {
+        "domain" => ensure!(w.domains.contains_key(rest), "no such domain: {rest}"),
+        "capability" => ensure!(
+            w.capabilities.contains_key(rest),
+            "no such capability: {rest}"
+        ),
+        "requirement" => ensure!(w.requirements.contains_key(rest), "no such requirement: {rest}"),
+        "ac" => {
+            let (req, ac) = rest
+                .split_once('/')
+                .ok_or_else(|| anyhow::anyhow!("an acceptance criterion is ac:<requirement>/<id>"))?;
+            let r = w
+                .requirements
+                .get(req)
+                .and_then(|r| r.revisions.last())
+                .ok_or_else(|| anyhow::anyhow!("no such requirement: {req}"))?;
+            ensure!(
+                r.acs.iter().any(|a| a.id == ac),
+                "no such acceptance criterion in the current revision: {ac}"
+            );
+        }
+        "intake" => ensure!(w.intake.contains_key(rest), "no such intake: {rest}"),
+        "point" => {
+            let (intake, point) = rest
+                .split_once('/')
+                .ok_or_else(|| anyhow::anyhow!("an intake point is point:<intake>/<id>"))?;
+            let i = w
+                .intake
+                .get(intake)
+                .ok_or_else(|| anyhow::anyhow!("no such intake: {intake}"))?;
+            ensure!(i.points.contains_key(point), "no such point: {point}");
+        }
+        other => bail!(
+            "unknown kind {other}: address a domain, capability, requirement, ac, intake or point"
+        ),
+    }
     Ok(())
 }
 pub fn human(w: &Workspace, actor: &str) -> Result<()> {
@@ -579,6 +673,117 @@ pub fn apply(
             let r = revision(w, req, *n, true)?;
             ensure!(r.owner == actor, "REQ owner confirms its formulation");
             r.confirmed = true;
+        }
+        Command::Describe { target: t, text, reason } => {
+            target(w, t)?;
+            nonempty(reason)?;
+            ensure!(
+                text.chars().count() <= DESCRIPTION_MAX,
+                "a description is at most {DESCRIPTION_MAX} characters"
+            );
+            // Домен и капабилити НЕ версионируются — их пояснение живёт в
+            // них самих, и правка здесь ничего не переписывает задним числом.
+            // У условия приёмки описание — часть ревизии, а ревизию трогать
+            // нельзя: там оно остаётся как было, а это пояснение ложится
+            // рядом, отдельной заметкой.
+            if let Some(id) = t.strip_prefix("domain:") {
+                w.domains.get_mut(id).unwrap().description = text.clone();
+            } else if let Some(id) = t.strip_prefix("capability:") {
+                w.capabilities.get_mut(id).unwrap().description = text.clone();
+            } else {
+                w.notes.entry(t.clone()).or_default().description = text.clone();
+            }
+        }
+        Command::Note {
+            target: t,
+            id,
+            text,
+            reply_to,
+        } => {
+            target(w, t)?;
+            identifier(id)?;
+            nonempty(text)?;
+            let notes = w.notes.entry(t.clone()).or_default();
+            ensure!(!notes.comments.contains_key(id), "comment {id} exists");
+            if let Some(parent) = reply_to {
+                ensure!(
+                    notes.comments.contains_key(parent),
+                    "no such comment to reply to: {parent}"
+                );
+            }
+            notes.comments.insert(
+                id.clone(),
+                Note {
+                    actor: actor.into(),
+                    at: recorded_at.to_string(),
+                    text: text.clone(),
+                    reply_to: reply_to.clone(),
+                    withdrawn: false,
+                },
+            );
+        }
+        Command::WithdrawNote { target: t, id, reason } => {
+            target(w, t)?;
+            nonempty(reason)?;
+            let note = w
+                .notes
+                .get_mut(t)
+                .and_then(|n| n.comments.get_mut(id))
+                .ok_or_else(|| anyhow::anyhow!("no such comment: {id}"))?;
+            ensure!(note.actor == actor, "a comment is withdrawn by its author");
+            note.withdrawn = true;
+        }
+        Command::Attach {
+            target: t,
+            id,
+            name,
+            content_type,
+            size,
+            hash,
+        } => {
+            target(w, t)?;
+            identifier(id)?;
+            nonempty(name)?;
+            ensure!(*size > 0, "an empty attachment carries nothing");
+            // Именно НИЖНИЙ регистр: хранилище кладёт файл под ключом из
+            // {:x}, и тот же отпечаток заглавными буквами прошёл бы проверку,
+            // но не нашёл бы файла — вложение было бы записано и не
+            // открывалось бы.
+            ensure!(
+                hash.len() == 64
+                    && hash
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+                "the attachment digest is a sha256 in lowercase hex"
+            );
+            let notes = w.notes.entry(t.clone()).or_default();
+            ensure!(!notes.attachments.contains_key(id), "attachment {id} exists");
+            notes.attachments.insert(
+                id.clone(),
+                Attachment {
+                    name: name.clone(),
+                    content_type: if content_type.is_empty() {
+                        "application/octet-stream".into()
+                    } else {
+                        content_type.clone()
+                    },
+                    size: *size,
+                    hash: hash.clone(),
+                    actor: actor.into(),
+                    at: recorded_at.to_string(),
+                    removed: false,
+                },
+            );
+        }
+        Command::Detach { target: t, id, reason } => {
+            target(w, t)?;
+            nonempty(reason)?;
+            let a = w
+                .notes
+                .get_mut(t)
+                .and_then(|n| n.attachments.get_mut(id))
+                .ok_or_else(|| anyhow::anyhow!("no such attachment: {id}"))?;
+            a.removed = true;
         }
         Command::Comment {
             req,

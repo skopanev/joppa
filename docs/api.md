@@ -39,6 +39,22 @@ accept: req, revision, run; REQ owner only, latest completed run must pass every
 revoke: req, revision, reason
 issue: req, revision, id, ac, comment (existing comment ID); owner confirms defect
 resolve: req, revision, id, comment; owner confirms resolution, then rerun checks
+describe: target, text (2000 chars max), reason; an explanation on ANY object.
+          A domain or capability keeps it in itself (they are not versioned).
+          Everything else keeps it as a note beside the object — an AC's own
+          description belongs to its revision and is never rewritten in place.
+note: target, id, text, reply_to:null; a plain comment on ANY object
+withdraw_note: target, id, reason; the author only
+attach: target, id, name, content_type, size, hash; the bytes are uploaded first to
+        POST /api/workspaces/{workspace}/blobs (raw body, 10 MB max), which answers
+        {hash,size}; any number of attachments per object
+detach: target, id, reason; the file itself stays — it may be attached elsewhere
+
+target addresses an object: domain:<id>, capability:<id>, requirement:<id>,
+ac:<req>/<ac>, intake:<id>, point:<intake>/<point>.
+joppa_read returns only COUNTS of notes in the index; ask target=<address> for one
+object's description, comments and attachments in full.
+
 intake: id, said (verbatim), author (source attribution, not authenticated identity)
 split: id, points:["verbatim point"]
 questions: kind (bug|policy|question|idea), fields:["field-id"]; workspace owner only
@@ -128,7 +144,7 @@ redirect URIs. `/oauth/authorize` requires code and PKCE S256. The consent page
 uses Joppa's existing Google browser sign-in. `/oauth/approve` requires a browser
 session, exact same Origin and explicit consent, then returns a single-use code.
 `POST /oauth/token` accepts form-encoded authorization_code or refresh_token
-exchanges. Access tokens last one hour. Refresh tokens last 90 days, rotate
+exchanges. Access tokens last one hour. Refresh tokens last 30 days, rotate
 on every use, and a replay revokes the entire token family.
 `POST /oauth/revoke` with token and client_id revokes that family.
 

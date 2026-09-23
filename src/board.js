@@ -246,10 +246,15 @@ function render() {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
     heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);addOrdering(group,heading,'domain',null,did);
-    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));group.append(body);
+    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+d.authority,'node-meta'));
+    // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
+    // и держать её за кнопкой значит не показывать вовсе.
+    if(d.description?.trim())body.append(E('p',d.description,'node-description'));
+    group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
       const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);addOrdering(cap,head,'capability',did,cid);
+      if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
@@ -289,6 +294,8 @@ function requirementDetails(root, selected, revisionNumber=null) {
     chip.title=current?'Current revision':'Previous revision';
   }
   if(r.body?.trim())root.append(E('p',r.body));
+  const reqNote=notesOf('requirement:'+selected).description;
+  if(reqNote?.trim())root.append(E('p',reqNote,'node-description'));
   const base = {
     req: selected,
     revision: r.number
@@ -308,6 +315,8 @@ function requirementDetails(root, selected, revisionNumber=null) {
     heading.append(itemActions('ac',a.id,a.text,selected));
     item.append(heading);
     if(a.description?.trim())item.append(E('p',a.description,'ac-description'));
+    const acNote=notesOf('ac:'+selected+'/'+a.id).description;
+    if(acNote?.trim())item.append(E('p',acNote,'ac-description'));
     // Свойства — подписанными парами, а не стопкой одинаковых абзацев:
     // причина, зависимость и решающий выглядели одинаково и сливались.
     const meta=E('dl',undefined,'ac-meta');
@@ -569,6 +578,7 @@ function itemActions(kind,id,title,reqId=null,revision=null){
   // как свойство требования, хотя на деле это отметка версии.
   if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
   actions.append(copyButton(kind,id,title));
+  actions.append(notesButton(kind,id,title,reqId));
   const history=button('',()=>showHistory(kind,id,title,reqId),'history-button');history.title='View history';history.setAttribute('aria-label','View '+kind+' history: '+id);
   const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))icon.setAttribute(key,value);
@@ -630,6 +640,196 @@ function showHistory(kind,id,title,reqId){
   dialog.append(content);dialog.addEventListener('close',()=>dialog.remove());
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   document.body.append(dialog);dialog.showModal();
+}
+
+/* ---- Заметки: пояснение, обсуждение и вложения на любом объекте ---- */
+
+// Адрес объекта. Тот же вид, что понимает сервер, — вид:идентификатор.
+function address(kind,id,reqId){return kind==='ac'?'ac:'+reqId+'/'+id:kind+':'+id;}
+function notesOf(target){return (data?.state?.notes||{})[target]||{description:'',comments:{},attachments:{}};}
+function liveNotes(target){
+  const n=notesOf(target);
+  return {
+    description:n.description||'',
+    comments:Object.entries(n.comments||{}).filter(([,c])=>!c.withdrawn),
+    attachments:Object.entries(n.attachments||{}).filter(([,a])=>!a.removed),
+  };
+}
+// Описание объекта может жить в нём самом (домен, капабилити) — тогда
+// показываем его, а не пустую заметку. Одно поле в интерфейсе, два места
+// хранения: человеку разница не нужна, ему нужен текст.
+function describedText(kind,id,reqId,target){
+  if(kind==='domain')return data.state.domains[id]?.description||'';
+  if(kind==='capability')return data.state.capabilities[id]?.description||'';
+  return notesOf(target).description||'';
+}
+async function send(command){
+  const targetWorkspace=ws;
+  const r=await fetch('/api/workspaces/'+encodeURIComponent(targetWorkspace)+'/commands',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({request_id:crypto.randomUUID(),command})
+  });
+  const j=await r.json();
+  if(!r.ok)throw Error(j.error||'Could not save.');
+  if(ws===targetWorkspace)await load();
+  return j;
+}
+function newId(prefix){return prefix+'-'+crypto.randomUUID().replaceAll('-','').slice(0,12);}
+function when(at){
+  if(!at)return '';
+  const d=new Date(at.replace(' ','T').replace(/\+00$/,'Z'));
+  return isNaN(d)?at:d.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
+}
+function svgIcon(d,size=16){
+  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [k,v] of Object.entries({viewBox:'0 0 24 24',width:String(size),height:String(size),fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))icon.setAttribute(k,v);
+  const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d',d);icon.append(path);
+  return icon;
+}
+// Кнопка с цифрой. Цифра — это и есть ответ на вопрос «тут что-то обсуждали?»,
+// ради которого иначе пришлось бы открывать каждый объект по очереди.
+function notesButton(kind,id,title,reqId){
+  const target=address(kind,id,reqId);
+  const n=liveNotes(target);
+  const count=n.comments.length+n.attachments.length;
+  const b=button('',()=>showNotes(kind,id,title,reqId),'notes-button');
+  if(count)b.classList.add('has-notes');
+  else if(n.description||describedText(kind,id,reqId,target))b.classList.add('has-notes','description-only');
+  b.title='Notes, discussion and attachments';
+  b.setAttribute('aria-label','Notes on '+kind+' '+id+(count?': '+count:''));
+  b.append(svgIcon('M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.9L3 20.5l1.6-4.6A8.4 8.4 0 0 1 3.5 11 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z'));
+  if(count)b.append(E('span',String(count),'notes-count'));
+  b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+  return b;
+}
+function fileSize(bytes){
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1024*1024)return Math.round(bytes/1024)+' KB';
+  return (bytes/(1024*1024)).toFixed(1)+' MB';
+}
+const DESCRIPTION_MAX=2000;
+function showNotes(kind,id,title,reqId){
+  const target=address(kind,id,reqId);
+  const n=liveNotes(target);
+  const dialog=E('dialog',undefined,'notes-dialog');dialog.setAttribute('aria-label','Notes: '+title);
+  const header=E('div',undefined,'history-dialog-header'),heading=E('div');
+  heading.append(E('small','Notes'),E('h2',title));
+  const close=button('',()=>dialog.close(),'history-close');close.setAttribute('aria-label','Close notes');
+  close.append(svgIcon('M6 6l12 12M6 18L18 6',18));header.append(heading,close);dialog.append(header);
+  const body=E('div',undefined,'notes-body');dialog.append(body);
+
+  /* Описание */
+  const descSection=E('section',undefined,'notes-section');
+  descSection.append(E('h3','Description','notes-heading'));
+  const descText=describedText(kind,id,reqId,target);
+  const area=E('textarea');area.className='notes-description';area.value=descText;
+  area.maxLength=DESCRIPTION_MAX;area.rows=4;
+  area.placeholder='What this is, where its boundary runs, what it does NOT cover.';
+  area.setAttribute('aria-label','Description');
+  const counter=E('span','','notes-counter');
+  const countdown=()=>{counter.textContent=area.value.length+' / '+DESCRIPTION_MAX;};
+  countdown();area.addEventListener('input',countdown);
+  const saveDesc=button('Save description',async()=>{
+    if(area.value===descText)return notify('Nothing changed.');
+    saveDesc.disabled=true;
+    try{
+      if(kind==='domain'){
+        const d=data.state.domains[id];
+        await send({op:'edit_domain',id,title:d.title,authority:d.authority,description:area.value,reason:'description'});
+      }else if(kind==='capability'){
+        const c=data.state.capabilities[id];
+        await send({op:'edit_capability',id,title:c.title,description:area.value,reason:'description'});
+      }else{
+        await send({op:'describe',target,text:area.value,reason:'description'});
+      }
+      notify('Description saved.');dialog.close();
+    }finally{saveDesc.disabled=false;}
+  },'primary');
+  const descFoot=E('div',undefined,'notes-foot');descFoot.append(counter,saveDesc);
+  descSection.append(area,descFoot);
+  if(kind==='ac'){
+    const own=currentAc(reqId,id)?.description;
+    if(own)descSection.append(E('p','From the revision: '+own,'hint'));
+  }
+  body.append(descSection);
+
+  /* Обсуждение */
+  const talk=E('section',undefined,'notes-section');
+  talk.append(E('h3','Discussion'+(n.comments.length?' · '+n.comments.length:''),'notes-heading'));
+  const thread=E('div',undefined,'notes-thread');
+  const ordered=n.comments.sort((a,b)=>String(a[1].at).localeCompare(String(b[1].at)));
+  for(const [noteId,c] of ordered){
+    const item=E('article',undefined,'note');
+    const meta=E('div',undefined,'note-meta');
+    meta.append(E('span',c.actor,'note-actor'),E('time',when(c.at),'note-at'));
+    if(c.actor===viewerActor){
+      meta.append(button('Withdraw',async()=>{
+        await send({op:'withdraw_note',target,id:noteId,reason:'withdrawn by author'});
+        notify('Comment withdrawn.');dialog.close();
+      },'note-withdraw'));
+    }
+    item.append(meta,E('p',c.text,'note-text'));
+    thread.append(item);
+  }
+  if(!ordered.length)thread.append(E('p','Nothing said here yet.','hint'));
+  talk.append(thread);
+  const draft=E('textarea');draft.className='notes-draft';draft.rows=3;
+  draft.placeholder='Say something about this.';draft.setAttribute('aria-label','New comment');
+  const post=button('Comment',async()=>{
+    if(!draft.value.trim())return notify(Error('An empty comment says nothing.'));
+    post.disabled=true;
+    try{
+      await send({op:'note',target,id:newId('n'),text:draft.value.trim(),reply_to:null});
+      notify('Comment added.');dialog.close();
+    }finally{post.disabled=false;}
+  },'primary');
+  const talkFoot=E('div',undefined,'notes-foot');talkFoot.append(E('span','','notes-counter'),post);
+  talk.append(draft,talkFoot);
+  body.append(talk);
+
+  /* Вложения */
+  const files=E('section',undefined,'notes-section');
+  files.append(E('h3','Attachments'+(n.attachments.length?' · '+n.attachments.length:''),'notes-heading'));
+  const list=E('ul',undefined,'notes-files');
+  for(const [fileId,a] of n.attachments){
+    const li=E('li');
+    const link=E('a',a.name);link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
+    link.target='_blank';link.rel='noopener';
+    li.append(link,E('span',fileSize(a.size)+' · '+a.actor+' · '+when(a.at),'note-at'));
+    if(a.actor===viewerActor){
+      li.append(button('Remove',async()=>{
+        await send({op:'detach',target,id:fileId,reason:'removed by author'});
+        notify('Attachment removed.');dialog.close();
+      },'note-withdraw'));
+    }
+    list.append(li);
+  }
+  if(!n.attachments.length)list.append(E('li','Nothing attached yet.','hint'));
+  files.append(list);
+  const picker=E('input');picker.type='file';picker.className='notes-file';
+  picker.setAttribute('aria-label','Choose a file to attach');
+  const upload=button('Attach file',async()=>{
+    const file=picker.files?.[0];
+    if(!file)return notify(Error('Choose a file first.'));
+    upload.disabled=true;
+    try{
+      const r=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/blobs',{method:'POST',body:file});
+      const j=await r.json();
+      if(!r.ok)throw Error(j.error||'Upload failed.');
+      await send({op:'attach',target,id:newId('f'),name:file.name,content_type:file.type||'application/octet-stream',size:j.size,hash:j.hash});
+      notify('Attached.');dialog.close();
+    }finally{upload.disabled=false;}
+  },'primary');
+  const fileFoot=E('div',undefined,'notes-foot');fileFoot.append(E('span','10 MB per file, any number of them','notes-counter'),upload);
+  files.append(picker,fileFoot);
+  body.append(files);
+
+  dialog.addEventListener('close',()=>dialog.remove());
+  dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
+  document.body.append(dialog);dialog.showModal();
+}
+function currentAc(reqId,acId){
+  return data.state.requirements[reqId]?.revisions.at(-1)?.acs.find(a=>a.id===acId);
 }
 
 function closeOrderMenu(){orderMenu?.remove();orderMenu=null;}

@@ -36,6 +36,76 @@ async fn no_store(
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     response
 }
+/// Приём файла: сырые байты, имя и тип — в заголовках.
+///
+/// Ответ несёт отпечаток и размер; само вложение появляется в журнале
+/// отдельной командой Attach. Разделено намеренно: загрузка может не дойти
+/// до записи (закрыли вкладку), и тогда в базе остаётся неприкаянный файл,
+/// а не запись о вложении, которое нельзя открыть.
+async fn upload(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> ApiResult {
+    if !headers.contains_key(header::AUTHORIZATION) {
+        web_auth::check_origin(&headers)
+            .map_err(|e| (StatusCode::FORBIDDEN, Json(json!({"error": e.to_string()}))))?;
+    }
+    let actor = authenticate(&app, &headers).await?;
+    // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
+    // хранилище, ничего не имея в воркспейсе.
+    store::read(&app.pool, &workspace, &actor, &store::Scope::from_args(&json!({})).unwrap())
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, Json(json!({"error":"workspace not found or access denied"}))))?;
+    result(
+        store::put_blob(&app.pool, &body)
+            .await
+            .map(|(hash, size)| json!({"hash": hash, "size": size})),
+    )
+}
+/// Процентное кодирование для имени файла в заголовке.
+///
+/// Своё, а не библиотечное: единственное место во всём сервере, где оно
+/// нужно, а имя файла приходит от человека и может нести что угодно —
+/// перевод строки в заголовке разрезал бы ответ надвое.
+fn percent(name: &str) -> String {
+    name.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
+async fn download(
+    State(app): State<App>,
+    Path((workspace, hash)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> std::result::Result<axum::response::Response, (StatusCode, Json<Value>)> {
+    use axum::response::IntoResponse;
+    let actor = authenticate(&app, &headers).await?;
+    match store::get_blob(&app.pool, &workspace, &actor, &hash).await {
+        Ok((name, content_type, bytes)) => Ok((
+            [
+                (header::CONTENT_TYPE, content_type),
+                // inline, а не attachment: картинку и текст хочется увидеть,
+                // не скачивая. Имя всё равно уходит — на случай сохранения.
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("inline; filename*=UTF-8''{}", percent(&name)),
+                ),
+            ],
+            bytes,
+        )
+            .into_response()),
+        Err(_) => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"no such attachment here"})),
+        )),
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -117,6 +187,22 @@ async fn read(
     // страницы там только мешало бы. Ограничение нужно агенту, а не человеку.
     result(store::read(&app.pool, &workspace, &actor, &store::Scope::full()).await)
 }
+/// Что человеку РАЗРЕШЕНО делать прямо из браузера.
+///
+/// Всё остальное — структура: домены, требования, условия приёмки — меняется
+/// только через MCP, где у действующего есть своя учётка и своя ответственность.
+/// А пояснение, реплика и приложенный файл — человеческие действия, и гонять
+/// их через агента означало бы, что в журнале вместо автора стоит посредник.
+fn browser_may(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Describe { .. }
+            | Command::Note { .. }
+            | Command::WithdrawNote { .. }
+            | Command::Attach { .. }
+            | Command::Detach { .. }
+    )
+}
 async fn command(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -125,10 +211,17 @@ async fn command(
 ) -> ApiResult {
     // Browser cookies only grant read access. Writes require integration credentials.
     if !headers.contains_key(header::AUTHORIZATION) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
-        ));
+        if !browser_may(&request.command) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error":"The portal changes only notes, descriptions and attachments. Use Joppa MCP for the rest."})),
+            ));
+        }
+        // Запрос из браузера принимается только со своей страницы: иначе
+        // чужой сайт мог бы писать в журнал вашей кукой.
+        web_auth::check_origin(&headers).map_err(|e| {
+            (StatusCode::FORBIDDEN, Json(json!({"error": e.to_string()})))
+        })?;
     }
     let actor = authenticate(&app, &headers).await?;
     result(
@@ -347,6 +440,13 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
+        // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с
+        // невнятным 413 раньше, чем дойдёт до нашей проверки предела.
+        .route(
+            "/api/workspaces/{workspace}/blobs",
+            post(upload).layer(axum::extract::DefaultBodyLimit::max(store::ATTACHMENT_MAX)),
+        )
+        .route("/api/workspaces/{workspace}/blobs/{hash}", get(download))
         .with_state(App {
             pool,
             identities: Arc::new(identities),

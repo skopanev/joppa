@@ -311,7 +311,9 @@ async fn token(State(app): State<App>, Form(e): Form<Exchange>) -> OAuthResult {
     let refresh = format!("jpr_{}", random());
     for (raw, kind, seconds) in [
         (&access, "access", 3600i32),
-        (&refresh, "refresh", 90 * 24 * 3600),
+        // Тридцать дней — столько же, сколько в ntk. Один срок на оба
+        // сервера: разные означали бы, что человек помнит, какой где.
+        (&refresh, "refresh", 30 * 24 * 3600),
     ] {
         tx.execute("INSERT INTO joppa.oauth_tokens(hash,kind,actor,client_id,resource,family,expires_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+make_interval(secs=>$7))",&[&hash(raw),&kind,&actor,&e.client_id,&resource,&family,&(seconds as f64)]).await.map_err(internal)?;
     }

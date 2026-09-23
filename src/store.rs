@@ -42,6 +42,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/008_search.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/009_annotations.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -125,10 +127,13 @@ pub struct Scope {
     /// Непрозрачная отметка места. Непрозрачная не для красоты: клиент не
     /// должен на неё опираться, иначе её нельзя будет поменять.
     pub cursor: Option<String>,
+    /// Один объект: его пояснение, обсуждение и вложения целиком.
+    /// В оглавлении от них видны только числа.
+    pub target: Option<String>,
 }
 impl Scope {
     pub fn full() -> Self {
-        Self { full: true, req: None, history: true, limit: usize::MAX, cursor: None }
+        Self { full: true, req: None, history: true, limit: usize::MAX, cursor: None, target: None }
     }
     pub fn from_args(a: &Value) -> Result<Self> {
         let limit = a["limit"].as_u64().unwrap_or(50).clamp(1, 200) as usize;
@@ -138,6 +143,7 @@ impl Scope {
             history: a["history"].as_bool().unwrap_or(false),
             limit,
             cursor: a["cursor"].as_str().map(str::to_string),
+            target: a["target"].as_str().map(str::to_string),
         })
     }
 }
@@ -186,6 +192,20 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         system_ids[&kind][&local] = json!(id);
     }
     let summaries = summaries(&state);
+    // Заметки в оглавлении — ЧИСЛАМИ. Иначе одно обсуждение на сто реплик
+    // весит больше, чем всё дерево, и попадает в каждый ответ.
+    let counts = |address: String| match state.notes.get(&address) {
+        None => Value::Null,
+        Some(n) => {
+            let comments = n.comments.values().filter(|c| !c.withdrawn).count();
+            let attachments = n.attachments.values().filter(|a| !a.removed).count();
+            if comments == 0 && attachments == 0 && n.description.is_empty() {
+                Value::Null
+            } else {
+                json!({"comments": comments, "attachments": attachments, "described": !n.description.is_empty()})
+            }
+        }
+    };
     let configured = state.requirements.values().any(|q| {
         q.revisions
             .last()
@@ -227,8 +247,25 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             .requirements
             .get(req)
             .with_context(|| format!("unknown requirement {req}"))?;
+        let mut notes = json!({});
+        for (address, n) in &state.notes {
+            let mine = address == &format!("requirement:{req}")
+                || address.starts_with(&format!("ac:{req}/"));
+            if mine {
+                notes[address] = json!(n);
+            }
+        }
         out["requirement"] = json!({"id": req, "capability": q.capability, "revisions": q.revisions, "comments": q.comments});
+        out["notes"] = notes;
         out["summary"] = summaries.get(req).cloned().unwrap_or(Value::Null);
+        return Ok(out);
+    }
+
+    // Один объект: всё, что на него навешано.
+    if let Some(address) = &scope.target {
+        commands::target(&state, address)?;
+        out["target"] = json!(address);
+        out["notes"] = json!(state.notes.get(address).cloned().unwrap_or_default());
         return Ok(out);
     }
 
@@ -249,13 +286,32 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 "confirmed": r.confirmed,
                 "acs": r.acs.len(),
                 "comments": q.comments.len(),
+                "notes": counts(format!("requirement:{id}")),
                 "summary": summaries.get(id).cloned().unwrap_or(Value::Null),
             })
         })
         .collect();
+    let domains: serde_json::Map<String, Value> = state
+        .domains
+        .iter()
+        .map(|(id, d)| {
+            let mut v = json!(d);
+            v["notes"] = counts(format!("domain:{id}"));
+            (id.clone(), v)
+        })
+        .collect();
+    let capabilities: serde_json::Map<String, Value> = state
+        .capabilities
+        .iter()
+        .map(|(id, c)| {
+            let mut v = json!(c);
+            v["notes"] = counts(format!("capability:{id}"));
+            (id.clone(), v)
+        })
+        .collect();
     out["index"] = json!({
-        "domains": state.domains,
-        "capabilities": state.capabilities,
+        "domains": domains,
+        "capabilities": capabilities,
         "requirements": requirements,
         "members": state.members,
         "reading": "Requirements are listed without revisions, acceptance criteria, tasks, runs or issues. Read one with req=<id>. History is omitted unless history=true.",
@@ -383,3 +439,63 @@ pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
 
 #[path = "search.rs"]
 pub mod search;
+
+/// Предел одного вложения. Количество не ограничено — их столько, сколько
+/// нужно; ограничен РАЗМЕР, потому что байты лежат в той же базе, что и
+/// журнал, и её резервная копия снимается целиком.
+pub const ATTACHMENT_MAX: usize = 10 * 1024 * 1024;
+
+/// Положить файл и вернуть его отпечаток.
+///
+/// Отпечаток — sha256 содержимого, поэтому повторная загрузка того же файла
+/// ничего не добавляет: она возвращает тот же ключ. Проверки доступа здесь
+/// нет намеренно — хранилище не знает про воркспейсы; правом распоряжается
+/// то место, где отпечаток попадает в журнал.
+pub async fn put_blob(pool: &Pool, bytes: &[u8]) -> Result<(String, usize)> {
+    use sha2::{Digest, Sha256};
+    ensure!(!bytes.is_empty(), "an empty file carries nothing");
+    ensure!(
+        bytes.len() <= ATTACHMENT_MAX,
+        "an attachment is at most {} MB",
+        ATTACHMENT_MAX / (1024 * 1024)
+    );
+    let hash = format!("{:x}", Sha256::digest(bytes));
+    pool.get()
+        .await?
+        .execute(
+            "INSERT INTO joppa.blobs(hash,bytes,size) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+            &[&hash, &bytes, &(bytes.len() as i64)],
+        )
+        .await?;
+    Ok((hash, bytes.len()))
+}
+
+/// Выдать файл — но только тому, кто видит объект, к которому он приложен.
+///
+/// Отпечаток глобален: один и тот же файл может лежать в двух воркспейсах.
+/// Поэтому право проверяется не по файлу, а по УПОМИНАНИЮ: этот отпечаток
+/// должен встречаться в заметках ЭТОГО воркспейса. Иначе знание отпечатка
+/// было бы паролем, а он вычисляется из содержимого.
+pub async fn get_blob(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    hash: &str,
+) -> Result<(String, String, Vec<u8>)> {
+    let conn = pool.get().await?;
+    let resolved = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &resolved, actor, false).await?;
+    let (state, _) = load(&**conn, &resolved).await?;
+    ensure!(state.members.contains_key(actor), "workspace not found or access denied");
+    let found = state
+        .notes
+        .values()
+        .flat_map(|n| n.attachments.values())
+        .find(|a| a.hash == hash)
+        .ok_or(AccessDenied)?;
+    let row = conn
+        .query_opt("SELECT bytes FROM joppa.blobs WHERE hash=$1", &[&hash])
+        .await?
+        .ok_or(AccessDenied)?;
+    Ok((found.name.clone(), found.content_type.clone(), row.get(0)))
+}
