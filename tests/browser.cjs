@@ -174,15 +174,21 @@ const assert=require('node:assert/strict');
   await title(domain).click();await title(cap).click();await title(req).click();
   assert.equal(await page.locator('.reorder-handle,.reorder-menu').count(),0);
   assert.equal(await req.locator(':scope > summary .rev-chip + .history-button').count(),1);
-  const filesButtons=page.locator('.files-button');
+  await req.locator('.ac-list').waitFor();
+  const filesButtons=page.locator('.files-button:enabled');
   const attachmentTargets=await filesButtons.evaluateAll(nodes=>nodes.map(n=>n.dataset.target));
   for(const target of ['domain:security','capability:restrict','requirement:key','ac:key/key-rights','intake:request']) {
    assert(attachmentTargets.includes(target),'file icon missing: '+target);
   }
   assert(attachmentTargets.some(t=>t.startsWith('point:request/')));
-  assert.equal(await filesButtons.count(),6,'file icons appear only for objects with attachments');
+  assert.equal(await filesButtons.count(),6,'file icons are enabled only for objects with attachments');
   assert.equal(await page.locator('.object-attachments,.files-list').count(),0,'no inline lists or empty sections');
-  assert.equal(await page.locator('[data-domain="operations"] .files-button').count(),0,'no icon for zero attachments');
+  const emptyFiles=page.locator('[data-domain="operations"] > summary .files-button');
+  assert(await emptyFiles.isDisabled(),'empty file icon is visible and disabled');
+  assert(await emptyFiles.isVisible());
+  assert.equal(await emptyFiles.locator('.files-count').count(),0);
+  assert(await page.locator('[data-domain="operations"] > summary .notes-button').isDisabled());
+  assert.equal(await page.locator('.files-button:enabled:not(.has-files),.notes-button:enabled:not(.has-notes)').count(),0,'active icons are highlighted');
   await req.getByRole('button',{name:'Files on requirement key: 1',exact:true}).click();
   assert(await isOpen(req),'opening files must not collapse the requirement');
   const files=page.getByRole('dialog',{name:'Files: Ключ до запуска'});

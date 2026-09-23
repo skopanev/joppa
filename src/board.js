@@ -696,8 +696,8 @@ function notesButton(kind,id,title,reqId){
   const count=n.comments.length;
   const b=button('',()=>showNotes(kind,id,title,reqId),'notes-button');
   if(count)b.classList.add('has-notes');
-  else if(n.description||describedText(kind,id,reqId,target))b.classList.add('has-notes','description-only');
-  b.title='Description and discussion';
+  b.disabled=count===0;
+  b.title=count?'Comments · '+count:'No comments';
   b.setAttribute('aria-label','Notes on '+kind+' '+id+(count?': '+count:''));
   b.append(svgIcon('M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.9L3 20.5l1.6-4.6A8.4 8.4 0 0 1 3.5 11 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z'));
   if(count)b.append(E('span',String(count),'notes-count'));
@@ -706,13 +706,15 @@ function notesButton(kind,id,title,reqId){
 }
 function filesButton(kind,id,title,reqId){
   const target=address(kind,id,reqId),attachments=liveNotes(target).attachments;
-  if(!attachments.length)return null;
   const b=button('',()=>showFiles(title,attachments),'files-button');
   b.dataset.target=target;
-  b.title='Files · '+attachments.length;
+  b.disabled=attachments.length===0;
+  if(attachments.length)b.classList.add('has-files');
+  b.title=attachments.length?'Files · '+attachments.length:'No files';
   b.setAttribute('aria-label','Files on '+kind+' '+id+': '+attachments.length);
   b.setAttribute('aria-haspopup','dialog');
-  b.append(svgIcon(FILE_ICON),E('span',String(attachments.length),'files-count'));
+  b.append(svgIcon(FILE_ICON));
+  if(attachments.length)b.append(E('span',String(attachments.length),'files-count'));
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
 }
