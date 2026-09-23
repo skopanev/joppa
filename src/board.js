@@ -123,6 +123,41 @@ function requirementStatus(id) {
   if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
   return 'available';
 }
+function requirementSignal(id){
+  if(!data.state.requirements[id].revisions.at(-1).acs.length)return {tone:'grey',label:'No acceptance criteria'};
+  const status=requirementStatus(id);
+  return {tone:status==='fail'?'red':status==='pass'?'green':status==='available'?'grey':'yellow',label:statusLabels[status]};
+}
+function aggregateSignal(children,noun){
+  if(!children.length)return {tone:'grey',label:'No '+noun};
+  const counts={green:0,yellow:0,red:0,grey:0};
+  for(const child of children)counts[child.tone]++;
+  const tone=counts.red?'red':counts.green===children.length?'green':counts.grey===children.length?'grey':'yellow';
+  const parts=[[counts.green,'complete'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
+  return {tone,label:'Current '+noun+': '+parts.join(' · ')};
+}
+function treeSignals(){
+  const requirements=Object.fromEntries(Object.keys(data.state.requirements).map(id=>[id,requirementSignal(id)]));
+  const capabilities=Object.fromEntries(Object.keys(data.state.capabilities).map(id=>[id,aggregateSignal(Object.entries(data.state.requirements).filter(([,q])=>q.capability===id).map(([rid])=>requirements[rid]),'requirements')]));
+  const domains=Object.fromEntries(Object.keys(data.state.domains).map(id=>[id,aggregateSignal(Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id).map(([cid])=>capabilities[cid]),'capabilities')]));
+  return {requirements,capabilities,domains};
+}
+function acSignal(status,r,id){
+  if(!status)return {tone:'grey',label:'Historical revision'};
+  if(status.verification==='fail')return {tone:'red',label:'Checks failed'};
+  if(status.verification==='pass')return {tone:'green',label:'Checks passed'};
+  if(!status.ready)return {tone:'yellow',label:'Waiting for decision'};
+  const working=Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
+  return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked'};
+}
+function statusCircle(signal,number){
+  const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
+  circle.dataset.tone=signal.tone;circle.setAttribute('role','img');circle.setAttribute('aria-label',signal.label);circle.title=signal.label;
+  return circle;
+}
+function nodeTitle(text,signal){
+  const title=E('span',text,'node-title');title.prepend(statusCircle(signal));return title;
+}
 function matchesPerson(id) {
   const actor=filters.person==='@me'?viewerActor:filters.person;
   if(!actor)return true;
@@ -234,6 +269,7 @@ function applyFilters(reveal=true) {
 }
 function render() {
   closeFilterMenu();
+  const signals=treeSignals();
   const t = $('tree');
   const opened=new Set([...t.querySelectorAll('details[data-tree-node][open]')].map(d=>d.dataset.treeNode));
   t.replaceChildren();
@@ -245,7 +281,7 @@ function render() {
   for (const [did,d] of orderedEntries('domain')) {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
-    heading.append(E('span',d.title,'node-title'),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
+    heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
     const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+personLabel(d.authority),'node-meta'));
     // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
     // и держать её за кнопкой значит не показывать вовсе.
@@ -253,14 +289,14 @@ function render() {
     group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
+      const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
-        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title,null,r.number));
+        const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
         const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
@@ -285,6 +321,8 @@ function requirementDetails(root, selected, revisionNumber=null) {
   root.dataset.revision=r.number;
   if(current)root.dataset.status=requirementStatus(selected);
   else delete root.dataset.status;
+  const currentCircle=root.parentElement?.querySelector(':scope > summary > .node-title > .status-circle');
+  if(currentCircle)currentCircle.replaceWith(statusCircle(current?requirementSignal(selected):{tone:'grey',label:'Historical revision · '+r.number}));
   if(!current)root.append(E('h3',r.title));
   // Метка живёт в заголовке, рядом с историей, и обновляется при листании
   // ревизий: иначе она показывала бы последнюю, пока на экране предыдущая.
@@ -311,10 +349,9 @@ function requirementDetails(root, selected, revisionNumber=null) {
     const item = E('li',undefined,'ac-item '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     // Заголовок одной строкой: текст условия, исход справа. Раньше значок
     // уезжал под заголовок и читался как ещё одно свойство, а не как ответ.
+    const circle=statusCircle(acSignal(status,r,a.id),r.acs.indexOf(a)+1);circle.classList.add('ac-status');item.append(circle);
     const heading=E('div',undefined,'ac-heading');
     heading.append(E('p',a.text,'ac-text'));
-    if(['pass','fail'].includes(status?.verification))
-      heading.append(E('span',status.verification==='pass'?'Passed':'Failed','badge '+status.verification));
     heading.append(itemActions('ac',a.id,a.text,selected));
     item.append(heading);
     if(a.description?.trim())item.append(E('p',a.description,'ac-description'));
@@ -324,7 +361,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
     // причина, зависимость и решающий выглядели одинаково и сливались.
     const meta=E('dl',undefined,'ac-meta');
     const meta_row=(label,value)=>{meta.append(E('dt',label),E('dd',value));};
-    if(current&&!status?.ready&&a.assessment?.reason)meta_row('Not ready',a.assessment.reason);
+    if(current&&!status?.ready&&a.assessment?.reason)item.append(E('p',a.assessment.reason,'ac-reason'));
     // Зависимости — короткими ссылками по номеру, а не полными текстами
     // соседних условий: строка из трёх текстов нечитаема.
     if(a.depends_on?.length){
@@ -439,7 +476,8 @@ function tasks(root, r) {
   const d=details(root,'Tasks · '+Object.keys(r.tasks).length);
   for(const t of Object.values(r.tasks)){
     const item=E('article',undefined,'detail-entry');
-    item.append(E('h3',t.title),E('p',(t.done!==null?'Completed':'In progress')+' · '+personLabel(t.assignee),'hint'));
+    const heading=E('h3',t.title);heading.prepend(statusCircle({tone:t.done!==null?'green':'yellow',label:t.done!==null?'Task completed':'In progress'}));
+    item.append(heading,E('p',personLabel(t.assignee),'hint'));
     cardFact(item,'Acceptance criteria',t.acs.map(id=>acTitle(r,id)).join('; '));
     cardFact(item,'Projects',t.projects.map(id=>data.state.projects[id]||id).join(', '));
     cardFact(item,'Work',({implementation:'Implementation',manual:'Manual action',decision:'Decision'})[t.purpose]);
@@ -451,6 +489,9 @@ function runs(root, r, base) {
   const d=details(root,'Checks · '+Object.keys(r.runs).length);
   for(const [id,run] of Object.entries(r.runs)){
     const block=details(d,run.scope+' · '+(run.finished?'Finished':'Running'));
+    const failed=Object.values(run.results).some(result=>result.outcome==='fail');
+    const passed=run.finished&&run.discovery_complete&&run.plan.length&&run.plan.every(check=>run.results[check.id]?.outcome==='pass');
+    block.querySelector('summary').prepend(statusCircle({tone:failed?'red':passed?'green':!run.finished?'yellow':'grey',label:failed?'Checks failed':passed?'Checks passed':!run.finished?'Checks running':'Checks incomplete'}));
     for(const [component,version] of Object.entries(run.subject))cardFact(block,data.state.projects[component]||component,version);
     if(!run.discovery_complete)block.append(E('p','Check discovery is incomplete.','hint'));
     for(const c of run.plan){
@@ -460,7 +501,8 @@ function runs(root, r, base) {
       item.append(E('h3',acTitle(r,c.ac)));
       const method=c.method==='manual'?'Manual check':'Automated test';
       const outcome=result?({pass:'Passed',fail:'Failed',skip:'Skipped'})[result.outcome]:'Awaiting result';
-      item.append(E('p',method+' · '+outcome,'hint'));
+      const checkStatus=E('p',method+' · '+outcome,'hint');
+      checkStatus.prepend(statusCircle({tone:result?.outcome==='pass'?'green':result?.outcome==='fail'?'red':'grey',label:outcome}));item.append(checkStatus);
       if(recorded)item.append(E('p',eventDate(recorded.recorded_at)+' · '+personLabel(recorded.actor),'hint'));
       cardFact(item,'Expected',c.expected.join(', '));
       if(result){

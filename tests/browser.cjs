@@ -60,6 +60,44 @@ const assert=require('node:assert/strict');
   const acList=req.getByRole('list',{name:'Acceptance criteria',exact:true});
   assert.equal(await acList.evaluate(e=>e.tagName),'OL');
   assert.equal(await acList.getByRole('listitem').count(),1);
+  const signal=node=>node.locator(':scope > summary > .node-title > .status-circle');
+  assert.equal(await signal(domain).getAttribute('data-tone'),'red');
+  assert.equal(await signal(cap).getAttribute('data-tone'),'red');
+  assert.equal(await signal(req).getAttribute('data-tone'),'yellow');
+  assert.equal(await acList.locator('.ac-status').first().getAttribute('data-tone'),'yellow');
+  assert.equal(await page.locator('[data-domain="operations"] > summary .status-circle').getAttribute('data-tone'),'grey');
+  assert.equal(await req.locator(':scope > summary > .badge,.ac-heading > .badge').count(),0);
+  assert.equal(await req.getByText('Not ready',{exact:true}).count(),0);
+  const rollups=await page.evaluate(()=>{
+   const original=data;data=structuredClone(data);
+   try{
+    data.state.capabilities=Object.fromEntries(Object.entries(data.state.capabilities).filter(([id])=>id==='restrict'));
+    data.state.requirements=Object.fromEntries(Object.entries(data.state.requirements).filter(([id])=>['key','auto'].includes(id)));
+    for(const [id,q] of Object.entries(data.state.requirements)){
+     const r=q.revisions.at(-1);r.confirmed=true;r.tasks={};r.runs={};
+     data.summary[id]={accepted:true,ready_for_acceptance:true,acs:Object.fromEntries(r.acs.map(a=>[a.id,{ready:true,verification:'pass'}]))};
+    }
+    const result={allAccepted:treeSignals().domains.security.tone};
+    data.summary.key.accepted=false;result.awaitingAcceptance=treeSignals().domains.security.tone;
+    data.summary.key.accepted=true;
+    for(const id of ['key','auto']){
+     data.summary[id].accepted=false;data.summary[id].ready_for_acceptance=false;
+     for(const ac of Object.values(data.summary[id].acs))ac.verification='n/a';
+    }
+    result.unchecked=treeSignals().domains.security.tone;
+    data.summary.key.accepted=true;data.summary.key.ready_for_acceptance=true;
+    for(const ac of Object.values(data.summary.key.acs))ac.verification='pass';
+    result.mixed=treeSignals().domains.security.tone;
+    Object.values(data.summary.auto.acs)[0].verification='fail';result.failed=treeSignals().domains.security.tone;
+    delete data.state.requirements.auto;
+    data.state.capabilities.empty={domain:'security',title:'Empty'};
+    result.emptyChild=treeSignals().domains.security.tone;
+    data.state.requirements={};result.emptyTree=treeSignals().domains.security.tone;
+    return result;
+   }finally{data=original;}
+  });
+  assert.deepEqual(rollups,{allAccepted:'green',awaitingAcceptance:'yellow',unchecked:'grey',mixed:'yellow',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
+
   assert.equal(await page.locator('#sidebar').isVisible(),true);
   assert.deepEqual(await geometry(),collapsedGeometry,'expansion must not shift the layout');
   await page.context().grantPermissions(['clipboard-read','clipboard-write']);
@@ -100,6 +138,8 @@ const assert=require('node:assert/strict');
   await reqHistory.getByRole('combobox',{name:'Requirement revision'}).selectOption('1');
   await reqHistory.waitFor({state:'detached'});
   await req.locator(':scope > summary .rev-chip.past').filter({hasText:'rev. 1'}).waitFor();
+  assert.equal(await signal(req).getAttribute('data-tone'),'grey');
+  assert.equal(await req.locator('.ac-status').first().getAttribute('data-tone'),'grey');
   const oldBody=await req.locator('.requirement-body').textContent();
   await title(req).click();await bodyPreview.waitFor();
   assert.equal(await bodyPreview.textContent(),oldBody);
@@ -126,8 +166,8 @@ const assert=require('node:assert/strict');
   const auto=page.locator('[data-requirement="auto"]');
   await title(auto).click();
   await auto.getByText('Tasks · 1',{exact:true}).click();
-  await auto.getByRole('heading',{name:'Implement command',exact:true}).waitFor();
-  await auto.getByText('In progress · rita.petrov',{exact:true}).waitFor();
+  await auto.getByRole('heading',{name:/Implement command/}).waitFor();
+  await auto.getByText('rita.petrov',{exact:true}).waitFor();
   assert(!(await auto.locator('.requirement-detail').innerText()).includes('agent-task'));
   await title(auto).click();
   assert.equal(await page.locator('form').count(),0);
@@ -153,6 +193,8 @@ const assert=require('node:assert/strict');
   await resetFilters();
   await chooseFilter('Filter by status','Waiting for decision');
   await req.locator(':scope > summary .rev-chip').filter({hasText:'rev. 2'}).waitFor();
+  assert.equal(await page.locator('[data-requirement="auto"]').isVisible(),false);
+  assert.equal(await signal(domain).getAttribute('data-tone'),'red','hidden failures remain in the parent status');
   await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
   await req.getByRole('button',{name:'Copy requirement ID and title: key',exact:true}).click();
   const fallback=page.getByRole('dialog',{name:'Copy for your agent'});await fallback.waitFor();
