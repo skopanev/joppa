@@ -261,6 +261,7 @@ function render() {
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
         const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title,null,r.number));
+        const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
@@ -293,7 +294,9 @@ function requirementDetails(root, selected, revisionNumber=null) {
     chip.classList.toggle('past',!current);
     chip.title=current?'Current revision':'Previous revision';
   }
-  if(r.body?.trim())root.append(E('p',r.body));
+  const preview=root.parentElement?.querySelector(':scope > summary > .requirement-preview');
+  if(preview){preview.textContent=r.body||'';preview.hidden=!r.body?.trim();}
+  if(r.body?.trim())root.append(E('p',r.body,'requirement-body'));
   const reqNote=notesOf('requirement:'+selected).description;
   if(reqNote?.trim())root.append(E('p',reqNote,'node-description'));
   const base = {

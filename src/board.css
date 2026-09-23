@@ -112,3 +112,5 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 .notes-button.has-notes,.files-button.has-files{color:#285b3d;background:#deead8;border-color:#82a47466}.notes-button.has-notes:hover,.files-button.has-files:hover{color:#1e4c30;background:#d0e2c8;border-color:#6e946f99}.notes-button:disabled,.files-button:disabled{color:#96a398;background:transparent;border-color:transparent;opacity:.55;cursor:default}.notes-button:disabled svg,.files-button:disabled svg{stroke-width:1}.notes-button.has-notes svg,.files-button.has-files svg{stroke-width:1.9}
 
 .history-dialog-header>div:focus{outline:none}
+
+.tree-requirement>summary{flex-wrap:wrap}.requirement-preview{flex-basis:100%;min-width:0;margin-top:3px;font-size:13px;font-weight:400;line-height:1.6;color:#5d6c63;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.requirement-preview[hidden],.tree-requirement[open]>summary>.requirement-preview{display:none}.requirement-body{white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:760px){.tree-requirement>summary>.requirement-preview{grid-column:1 / -1;grid-row:4;margin-top:4px}}
