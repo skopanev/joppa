@@ -128,7 +128,8 @@ Existing cards receive IDs additively without rewriting journal events.
 Copy buttons at all four levels copy only this permanent ID and the selected title
 or AC text. Resolve a copied ID through `joppa_read({"item_id":"..."})`; it returns
 the authorized workspace and `selection` with kind and local command ID. AC selections
-also include the parent REQ and latest revision containing the AC.
+also include the parent REQ and selected revision (current by default). An AC absent
+from that revision has `selection.present=false`; resolution never silently reads an older revision.
 `joppa_read({"workspace":"..."})` remains available; supply exactly one selector.
 Commands continue to use local IDs from the resolved workspace, never guessed slugs.
 
@@ -251,3 +252,26 @@ freshness, archived data, provider setup and ranking limits.
 
 `joppa_help` also returns the full search guide under `search`, so agents can
 read indexing limits and failure behavior without a local checkout.
+
+## MCP revision reads
+
+`joppa_read` returns a workspace index or one requirement's **current revision only**.
+Each indexed requirement and selected requirement includes `revision_count`.
+A selected requirement also reports `current_revision`; its `revisions` array
+contains exactly one revision, and `comments` contains only that revision's discussion.
+Its summary describes the selected revision, including when reading an older one.
+Object notes are shared across revisions and remain separate from revision discussion.
+
+- `{"workspace":"product","req":"r-xxx"}` reads the current revision.
+- `{"workspace":"product","req":"r-xxx","history":true}` returns requirement
+  metadata and revision count, with no revision bodies, notes, discussion or event log.
+- `{"workspace":"product","req":"r-xxx","revision":2}` reads only revision 2.
+- `{"item_id":"<copied REQ or AC ID>","history":true}` and the corresponding
+  `revision:2` request follow the same rules. Revision numbers belong to the parent REQ.
+
+No bulk revision or event-log read is exposed by MCP. `history:true` without a
+selected requirement returns the index with counts. Explicit `revision` takes
+precedence over count-only discovery. Invalid or missing revision numbers produce
+an error, never a fallback to current. `cursor` and `limit` from older history
+clients are rejected with instructions to select a revision. The portal and
+administrative snapshots retain full history.

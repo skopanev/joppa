@@ -254,6 +254,64 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',
             'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True,'decider':'legal'}]})
         refs=request('/api/workspaces/'+ws)[1]['system_ids']
+        # MCP discovers revision counts, then reads exactly one chosen revision.
+        tools_reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
+        schema=next(t for t in tools_reply['result']['tools'] if t['name']=='joppa_read')['inputSchema']['properties']
+        assert schema['revision']['minimum']==1 and 'cursor' not in schema and 'limit' not in schema
+        def rejected_read(arguments, token=agent_token):
+            response=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
+                'params':{'name':'joppa_read','arguments':arguments}}, token)[1]['result']
+            assert response.get('isError'), response
+            return response['content'][0]['text']
+        for selector in ({'workspace':ws,'req':'key'}, {'item_id':refs['requirement']['key']}, {'item_id':refs['ac']['key-rights']}):
+            latest=mcp('joppa_read',selector)
+            assert latest['requirement']['revision_count']==2
+            assert latest['requirement']['current_revision']==2
+            assert [r['number'] for r in latest['requirement']['revisions']]==[2]
+            assert latest['requirement']['comments']=={}
+            assert latest['requirement']['revisions'][0]['runs']=={}
+            assert latest['summary']['accepted'] is False
+            assert 'history' not in latest and 'state' not in latest
+            history=mcp('joppa_read',{**selector,'history':True})
+            assert history['requirement']=={'id':'key','capability':'restrict','revision_count':2,'current_revision':2}
+            for key in ('history','notes','summary','state','nextCursor'):
+                assert key not in history, history
+            for flags in ({'revision':1}, {'history':True,'revision':1}):
+                previous=mcp('joppa_read',{**selector,**flags})
+                assert [r['number'] for r in previous['requirement']['revisions']]==[1]
+                assert set(previous['requirement']['comments'])=={'hello','agent-comment'}
+                assert set(previous['requirement']['revisions'][0]['runs'])=={'manual1'}
+                assert previous['summary']['accepted'] is True
+                assert 'history' not in previous and 'state' not in previous
+            for bad in (0,-1,1.5,'1',None,4294967296,999):
+                assert 'revision' in rejected_read({**selector,'revision':bad})
+            assert 'Workspace not found'==rejected_read({**selector,'revision':999},other_token)
+            assert 'revision' in rejected_read({**selector,'history':True,'cursor':'old-cursor'})
+        for history in (False,True):
+            index=mcp('joppa_read',{'workspace':ws,'history':history})
+            row=next(r for r in index['index']['requirements'] if r['id']=='key')
+            assert row['revision_count']==2 and row['revision']==2
+            assert 'revisions' not in row and 'history' not in index and 'state' not in index
+        assert 'revision requires' in rejected_read({'workspace':ws,'revision':1})
+        assert 'revision requires' in rejected_read({'item_id':refs['domain']['security'],'revision':1})
+        # A copied AC removed from current wording must not silently return the old revision.
+        generated_req=created['results'][1]['command']['req']
+        generated_ac=created['results'][1]['command']['acs'][0]['id']
+        generated_ac_ref=created['results'][1]['system_ids']['ac'][generated_ac]
+        mcp('joppa_batch',{'workspace':mcp_ws,'request_id':'replace-ac','operations':[
+            {'command':{'op':'note','target':'ac:'+generated_req+'/'+generated_ac,'id':'old-ac-note','text':'Old AC note'}},
+            {'command':{'op':'revise','req':generated_req,'expected_revision':1,
+                'capability':created['results'][0]['command']['id'],'title':'Recovery preserves access',
+                'body':'Updated scope','owner':'owner','reason':'Replaced criterion',
+                'acs':[{'text':'New criterion'}]}}
+        ]})
+        removed=mcp('joppa_read',{'item_id':generated_ac_ref})
+        assert removed['selection']['present'] is False and removed['selection']['revision']==2
+        assert [r['number'] for r in removed['requirement']['revisions']]==[2]
+        assert 'Old AC note' not in json.dumps(removed)
+        restored=mcp('joppa_read',{'item_id':generated_ac_ref,'revision':1})
+        assert restored['selection']['present'] is True and restored['selection']['revision']==1
+        assert [r['number'] for r in restored['requirement']['revisions']]==[1]
         all_refs=[ref for items in refs.values() for ref in items.values()]
         assert len(all_refs)==len(set(all_refs))
         for kind,items in refs.items():

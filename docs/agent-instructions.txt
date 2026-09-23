@@ -21,7 +21,7 @@ Agent identities may clarify unconfirmed domain/capability titles, but cannot ch
 
 Any object takes a description, comments and attachments at its address: domain:<id>, capability:<id>, requirement:<id>, ac:<req>/<ac>, intake:<id>, point:<intake>/<point>. describe writes the explanation (2000 characters; a domain or capability keeps it in itself, an AC keeps its own inside the revision and gets a note beside it), note adds a comment, attach records a file already uploaded to the blobs endpoint. The index shows only their counts; read one object with target=<address>.
 
-Read narrowly. joppa_read without req returns an index: domains and capabilities in full, requirements as title and status only. Read one requirement with req; a workspace holds hundreds, and all of them at once fit no context. History is omitted unless history=true, then paged with cursor until nextCursor is absent.
+Read narrowly. joppa_read without req returns an index with revision_count for each requirement. Reading one req or a copied requirement/AC item_id returns ONLY the current revision and its revision comments/evidence. history=true returns revision counts only, never an event log or revision bodies. Read an older revision explicitly with revision=N: exactly one revision is returned. Never request or dump all revisions. An AC absent from the selected revision has selection.present=false; it does not silently select an older revision.
 
 Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.
 

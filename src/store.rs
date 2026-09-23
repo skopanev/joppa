@@ -114,55 +114,76 @@ fn summaries(state: &Workspace) -> Value {
 /// одно ограничение их не покрывает. Поэтому здесь не «страница», а
 /// постепенное раскрытие: сначала оглавление, потом то, что попросили.
 pub struct Scope {
-    /// Полный ответ, как раньше. Нужен доске в браузере: она не ограничена
-    /// контекстом, и деление на страницы там только мешало бы.
+    /// Full state for the browser and administrative snapshots only.
     pub full: bool,
-    /// Одно требование целиком: все ревизии, AC, задачи, прогоны, находки.
+    /// One requirement, current revision unless a number is requested.
     pub req: Option<String>,
-    /// Историю по умолчанию НЕ отдаём: она самая большая часть и нужна реже
-    /// всего. Число событий видно и без неё.
+    pub revision: Option<u32>,
+    /// Revision counts only, never an event or revision dump.
     pub history: bool,
-    /// Сколько событий истории за раз.
-    pub limit: usize,
-    /// Непрозрачная отметка места. Непрозрачная не для красоты: клиент не
-    /// должен на неё опираться, иначе её нельзя будет поменять.
-    pub cursor: Option<String>,
-    /// Один объект: его пояснение, обсуждение и вложения целиком.
-    /// В оглавлении от них видны только числа.
     pub target: Option<String>,
 }
 impl Scope {
     pub fn full() -> Self {
-        Self { full: true, req: None, history: true, limit: usize::MAX, cursor: None, target: None }
+        Self {
+            full: true,
+            req: None,
+            revision: None,
+            history: false,
+            target: None,
+        }
     }
     pub fn from_args(a: &Value) -> Result<Self> {
-        let limit = a["limit"].as_u64().unwrap_or(50).clamp(1, 200) as usize;
+        ensure!(
+            a.get("cursor").is_none() && a.get("limit").is_none(),
+            "history returns revision counts; request one revision by number, not cursor or limit"
+        );
+        let revision = a
+            .get("revision")
+            .map(|value| {
+                value
+                    .as_u64()
+                    .and_then(|n| u32::try_from(n).ok())
+                    .filter(|n| *n > 0)
+                    .context("revision must be a positive integer")
+            })
+            .transpose()?;
+        let history = a
+            .get("history")
+            .map(|value| value.as_bool().context("history must be a boolean"))
+            .transpose()?
+            .unwrap_or(false);
+        let req = a
+            .get("req")
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_string)
+                    .context("req must be a string")
+            })
+            .transpose()?;
+        let target = a
+            .get("target")
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_string)
+                    .context("target must be a string")
+            })
+            .transpose()?;
+        ensure!(req.is_none() || target.is_none(), "supply req OR target");
+        ensure!(
+            target.is_none() || (revision.is_none() && !history),
+            "revision and history require a requirement, not a notes target"
+        );
         Ok(Self {
             full: false,
-            req: a["req"].as_str().map(str::to_string),
-            history: a["history"].as_bool().unwrap_or(false),
-            limit,
-            cursor: a["cursor"].as_str().map(str::to_string),
-            target: a["target"].as_str().map(str::to_string),
+            req,
+            revision,
+            history,
+            target,
         })
     }
-}
-
-/// Курсор — это позиция события, закодированная так, чтобы её не читали
-/// глазами и не подставляли руками. Состояния на сервере он не заводит:
-/// хранимые курсоры пришлось бы чистить, а этот живёт в самой строке.
-fn encode_cursor(position: u64) -> String {
-    use base64::Engine as _;
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("p{position}"))
-}
-fn decode_cursor(cursor: &str) -> Result<u64> {
-    use base64::Engine as _;
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(cursor)
-        .ok()
-        .and_then(|b| String::from_utf8(b).ok())
-        .and_then(|s| s.strip_prefix('p').and_then(|n| n.parse().ok()));
-    raw.context("invalid cursor")
 }
 
 pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> Result<Value> {
@@ -241,23 +262,52 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         return Ok(out);
     }
 
-    // Одно требование целиком — то, ради чего обычно и читают.
+    ensure!(
+        scope.revision.is_none() || scope.req.is_some(),
+        "revision requires req or a requirement/AC item_id"
+    );
+
+    // Return only the requested revision; history is discovery by count.
     if let Some(req) = &scope.req {
         let q = state
             .requirements
             .get(req)
             .with_context(|| format!("unknown requirement {req}"))?;
+        let current = q.revisions.last().context("requirement has no revisions")?;
+        out["requirement"] = json!({"id": req, "capability": q.capability,
+            "revision_count": q.revisions.len(), "current_revision": current.number});
+        if scope.history && scope.revision.is_none() {
+            return Ok(out);
+        }
+        let revision = match scope.revision {
+            Some(number) => q
+                .revisions
+                .iter()
+                .find(|r| r.number == number)
+                .with_context(|| format!("unknown revision {number} for requirement {req}"))?,
+            None => current,
+        };
+        let comments: serde_json::Map<String, Value> = q
+            .comments
+            .iter()
+            .filter(|(_, c)| c.revision == revision.number)
+            .map(|(id, c)| (id.clone(), json!(c)))
+            .collect();
         let mut notes = json!({});
         for (address, n) in &state.notes {
             let mine = address == &format!("requirement:{req}")
-                || address.starts_with(&format!("ac:{req}/"));
+                || revision
+                    .acs
+                    .iter()
+                    .any(|ac| address == &format!("ac:{req}/{}", ac.id));
             if mine {
                 notes[address] = json!(n);
             }
         }
-        out["requirement"] = json!({"id": req, "capability": q.capability, "revisions": q.revisions, "comments": q.comments});
+        out["requirement"]["revisions"] = json!([revision]);
+        out["requirement"]["comments"] = json!(comments);
         out["notes"] = notes;
-        out["summary"] = summaries.get(req).cloned().unwrap_or(Value::Null);
+        out["summary"] = checks::summary(revision);
         return Ok(out);
     }
 
@@ -283,6 +333,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 "capability": q.capability,
                 "title": r.title,
                 "revision": r.number,
+                "revision_count": q.revisions.len(),
                 "confirmed": r.confirmed,
                 "acs": r.acs.len(),
                 "comments": q.comments.len(),
@@ -314,31 +365,9 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         "capabilities": capabilities,
         "requirements": requirements,
         "members": state.members,
-        "reading": "Requirements are listed without revisions, acceptance criteria, tasks, runs or issues. Read one with req=<id>. History is omitted unless history=true.",
+        "reading": "Read one requirement with req: current revision only. revision_count gives the number available; request revision=N for exactly one older revision. history=true returns counts only, never events or revision bodies.",
     });
 
-    if scope.history {
-        let from = match &scope.cursor {
-            Some(c) => decode_cursor(c)?,
-            None => 0,
-        };
-        let page: Vec<_> = events
-            .iter()
-            .filter(|e| e.position > from)
-            .take(scope.limit)
-            .collect();
-        let last = page.last().map(|e| e.position);
-        out["history"] = json!(page);
-        // Усечение объявляется, а не подразумевается: молча обрезанный ответ
-        // читается как полный, и по нему делают выводы.
-        let more = last.is_some_and(|p| events.iter().any(|e| e.position > p));
-        out["history_truncated"] = json!(more);
-        if let (true, Some(p)) = (more, last) {
-            out["nextCursor"] = json!(encode_cursor(p));
-        }
-    } else {
-        out["history_events"] = json!(events.len());
-    }
     Ok(out)
 }
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
@@ -391,6 +420,19 @@ pub fn gate(card: &Value, subject: &std::collections::BTreeMap<String, String>) 
 
 /// Resolve a globally unique reference without exposing another workspace's content.
 pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
+    read_item_scoped(pool, id, actor, Scope::from_args(&json!({}))?).await
+}
+
+pub async fn read_item_scoped(
+    pool: &Pool,
+    id: &str,
+    actor: &str,
+    mut scope: Scope,
+) -> Result<Value> {
+    ensure!(
+        scope.req.is_none() && scope.target.is_none(),
+        "item_id cannot be combined with req or target"
+    );
     let conn = pool.get().await?;
     let row = conn
         .query_opt(
@@ -402,12 +444,12 @@ pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
     let workspace: String = row.get(0);
     let kind: String = row.get(1);
     let local_id: String = row.get(2);
+    access::check(&**conn, &workspace, actor, false).await?;
     drop(conn);
     // Скопированный номер разрешается В САМ ПРЕДМЕТ, а не в весь воркспейс.
     // Раньше запрос «что это за идентификатор» возвращал всё содержимое —
     // ответ в сотню тысяч знаков на вопрос про одну строку.
     let mut selection = json!({"kind":kind,"id":local_id,"system_id":id});
-    let mut scope = Scope::from_args(&json!({}))?;
     match kind.as_str() {
         "requirement" => scope.req = Some(local_id.clone()),
         "ac" => {
@@ -415,14 +457,23 @@ pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
             let (state, _) = load(&**conn, &workspace).await?;
             drop(conn);
             for (req, q) in &state.requirements {
-                if let Some(revision) = q
-                    .revisions
+                if q.revisions
                     .iter()
-                    .rev()
-                    .find(|r| r.acs.iter().any(|ac| ac.id == local_id))
+                    .any(|r| r.acs.iter().any(|ac| ac.id == local_id))
                 {
+                    let revision = match scope.revision {
+                        Some(number) => q
+                            .revisions
+                            .iter()
+                            .find(|r| r.number == number)
+                            .with_context(|| {
+                                format!("unknown revision {number} for requirement {req}")
+                            })?,
+                        None => q.revisions.last().context("requirement has no revisions")?,
+                    };
                     selection["req"] = json!(req);
                     selection["revision"] = json!(revision.number);
+                    selection["present"] = json!(revision.acs.iter().any(|ac| ac.id == local_id));
                     scope.req = Some(req.clone());
                     break;
                 }
@@ -486,7 +537,10 @@ pub async fn get_blob(
     let resolved = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &resolved, actor, false).await?;
     let (state, _) = load(&**conn, &resolved).await?;
-    ensure!(state.members.contains_key(actor), "workspace not found or access denied");
+    ensure!(
+        state.members.contains_key(actor),
+        "workspace not found or access denied"
+    );
     let found = state
         .notes
         .values()
