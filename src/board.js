@@ -587,15 +587,15 @@ function copyButton(kind,id,title) {
   const b=button('',async()=>{
     const systemId=data.system_ids?.[kind]?.[id];
     if(!systemId)throw Error('System ID unavailable. Refresh the page.');
-    const text=systemId+' — '+title;
+    const text=systemId;
     try{
       if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      notify('Copied for your agent.');
+      notify('Copied ID for your agent.');
     }catch{
       const dialog=E('dialog',undefined,'copy-dialog');
       dialog.setAttribute('aria-label','Copy for your agent');
-      const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','ID and title');
+      const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','ID');
       dialog.append(E('h2','Copy for your agent'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
       dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();area.focus();area.select();
     }
@@ -616,7 +616,7 @@ function copyButton(kind,id,title) {
   ]){const part=document.createElementNS(svgNS,tag);for(const [key,value] of Object.entries(attrs))part.setAttribute(key,value);face.append(part);}
   b.append(icon,face);
   b.title='Copy for agent';
-  b.setAttribute('aria-label','Copy '+kind+' ID and title: '+id);
+  b.setAttribute('aria-label','Copy '+kind+' ID: '+id);
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
 }

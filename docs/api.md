@@ -125,7 +125,7 @@ uppercase alphanumeric suffix and a database-wide unique constraint. A collision
 is retried; IDs are immutable and survive wording changes, revisions and ordering.
 Existing cards receive IDs additively without rewriting journal events.
 
-Copy buttons at all four levels copy only this permanent ID and the selected title
+Copy buttons at all four levels copy only this permanent ID
 or AC text. Resolve a copied ID through `joppa_read({"item_id":"..."})`; it returns
 the authorized workspace and `selection` with kind and local command ID. AC selections
 also include the parent REQ and selected revision (current by default). An AC absent

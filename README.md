@@ -110,7 +110,7 @@ you own, unfinished tasks assigned to you and ACs awaiting your decision. Filter
 Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
 Use the **copy + robot** button
 on a domain, capability, requirement or AC to copy its permanent, database-wide unique
-ID and title/text for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
+Only the permanent ID is copied for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
 `joppa_read({"item_id":"..."})`.
 The portal is read-only, including descriptions, comments, attachments and tree order.
 Use the workspace, filter and revision menus to choose what to view. All content
