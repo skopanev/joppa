@@ -88,6 +88,9 @@ const assert=require('node:assert/strict');
     data.summary.key.accepted=true;data.summary.key.ready_for_acceptance=true;
     for(const ac of Object.values(data.summary.key.acs))ac.verification='pass';
     result.mixed=treeSignals().domains.security.tone;
+    result.orangePriority=aggregateSignal([{tone:'orange'},{tone:'yellow'}],'requirements').tone;
+    result.greyPriority=aggregateSignal([{tone:'grey'},{tone:'green'}],'requirements').tone;
+    result.greenOnly=aggregateSignal([{tone:'green'},{tone:'green'}],'requirements').tone;
     Object.values(data.summary.auto.acs)[0].verification='fail';result.failed=treeSignals().domains.security.tone;
     delete data.state.requirements.auto;
     data.state.capabilities.empty={domain:'security',title:'Empty'};
@@ -96,7 +99,7 @@ const assert=require('node:assert/strict');
     return result;
    }finally{data=original;}
   });
-  assert.deepEqual(rollups,{allGreen:'green',ownerNotAccepted:'green',unchecked:'grey',mixed:'yellow',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
+  assert.deepEqual(rollups,{allGreen:'green',ownerNotAccepted:'green',unchecked:'grey',mixed:'yellow',orangePriority:'orange',greyPriority:'grey',greenOnly:'green',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
 
   assert.equal(await page.locator('#sidebar').isVisible(),true);
   assert.deepEqual(await geometry(),collapsedGeometry,'expansion must not shift the layout');

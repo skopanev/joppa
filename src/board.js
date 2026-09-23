@@ -123,7 +123,11 @@ function requirementStatus(id) {
   return 'available';
 }
 function requirementSignal(id){
-  if(!data.state.requirements[id].revisions.at(-1).acs.length)return {tone:'grey',label:'No acceptance criteria'};
+  const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
+  if(!r.acs.length)return {tone:'grey',label:'No acceptance criteria'};
+  const acSignals=r.acs.map(a=>acSignal(s.acs[a.id],r,a.id,id));
+  if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:'Checks failed'};
+  if(acSignals.some(signal=>signal.tone==='orange'))return {tone:'orange',label:'Checks stale'};
   const status=requirementStatus(id);
   return {tone:status==='fail'?'red':status==='pass'?'green':status==='available'?'grey':'yellow',label:statusLabels[status]};
 }
@@ -131,7 +135,7 @@ function aggregateSignal(children,noun){
   if(!children.length)return {tone:'grey',label:'No '+noun};
   const counts={green:0,yellow:0,orange:0,red:0,grey:0};
   for(const child of children)counts[child.tone]++;
-  const tone=counts.red?'red':counts.green===children.length?'green':counts.orange===children.length?'orange':counts.grey===children.length?'grey':'yellow';
+  const tone=counts.red?'red':counts.orange?'orange':counts.yellow?'yellow':counts.grey?'grey':'green';
   const parts=[[counts.green,'complete'],[counts.orange,'stale'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
   return {tone,label:'Current '+noun+': '+parts.join(' · ')};
 }
