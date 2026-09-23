@@ -37,6 +37,12 @@ result: req, revision, run,
 finish: req, revision, run
 accept: req, revision, run; REQ owner only, latest completed run must pass every AC
 revoke: req, revision, reason
+
+Each check is linked to exactly one AC through the sealed plan. Joppa records the
+result timestamp on the immutable event: a fresh pass is green, a pass older
+than seven days is shown as stale orange, and a failure remains red. The portal
+derives these colors from plan/result evidence; agents cannot set a color
+directly.
 issue: req, revision, id, ac, comment (existing comment ID); owner confirms defect
 resolve: req, revision, id, comment; owner confirms resolution, then rerun checks
 describe: target, text (2000 chars max), reason; an explanation on ANY object.

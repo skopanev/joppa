@@ -77,8 +77,8 @@ const assert=require('node:assert/strict');
      const r=q.revisions.at(-1);r.confirmed=true;r.tasks={};r.runs={};
      data.summary[id]={accepted:true,ready_for_acceptance:true,acs:Object.fromEntries(r.acs.map(a=>[a.id,{ready:true,verification:'pass'}]))};
     }
-    const result={allAccepted:treeSignals().domains.security.tone};
-    data.summary.key.accepted=false;result.awaitingAcceptance=treeSignals().domains.security.tone;
+    const result={allGreen:treeSignals().domains.security.tone};
+    data.summary.key.accepted=false;result.ownerNotAccepted=treeSignals().domains.security.tone;
     data.summary.key.accepted=true;
     for(const id of ['key','auto']){
      data.summary[id].accepted=false;data.summary[id].ready_for_acceptance=false;
@@ -96,7 +96,7 @@ const assert=require('node:assert/strict');
     return result;
    }finally{data=original;}
   });
-  assert.deepEqual(rollups,{allAccepted:'green',awaitingAcceptance:'yellow',unchecked:'grey',mixed:'yellow',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
+  assert.deepEqual(rollups,{allGreen:'green',ownerNotAccepted:'green',unchecked:'grey',mixed:'yellow',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
 
   assert.equal(await page.locator('#sidebar').isVisible(),true);
   assert.deepEqual(await geometry(),collapsedGeometry,'expansion must not shift the layout');

@@ -35,10 +35,12 @@ Touchpoints: `src/checks.rs`, `src/store.rs`, `src/model.rs`, `src/board.js`.
 
 ## 2. Put check evidence under each AC and summarize it up the tree
 
-Priority: high. Status: partly implemented. Four-colour circles now show AC and
+Priority: high. Status: partly implemented. Status circles now show AC and
 REQ status and aggregate current children up to Capability and Domain, including
-filtered-out children; empty branches cannot become green. Remaining: per-AC
-check lists and compatibility of evidence across releases. Depends on item 1
+filtered-out children; empty branches cannot become green. Per-AC check lists
+are now visible, including expected and observed evidence; remaining work is
+compatibility of evidence across releases and freshness policy integration.
+Depends on item 1
 for current-release labels.
 
 Problem: test evidence is in the REQ-level Checks section. Readers need to see
@@ -50,13 +52,14 @@ Acceptance criteria:
 - Under an AC, list its declared check names and outcomes, linked to the exact
   REQ revision, run and component versions; expose expected/observed evidence.
 - Distinguish no declared checks, missing results, skipped results and a running
-  plan. None can produce a green number. Render the AC number grey for
-  unverified, yellow for pending decisions or work, red for failure and green
-  only for a server-verified pass.
+  plan. None can produce a green circle. Render the AC circle grey for
+  unverified, yellow for pending decisions or work, red for failure, orange for
+  a pass older than seven days, and green only for a fresh server-verified pass.
 - A REQ is green for verification only when all of its ACs pass on one subject.
   A capability aggregates every current REQ, including items hidden by filters;
   empty capabilities or empty AC sets cannot appear verified.
-- Preserve owner acceptance as a separate label. If child requirements were
+- Preserve owner acceptance as a separate label; it must not gate the green
+  verification circle. If child requirements were
   checked against incompatible releases, do not imply one verified product release.
 - Verify an all-pass set, a single failure, missing or skipped evidence, a new
   revision, an empty branch and filtering that hides a failing child.

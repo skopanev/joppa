@@ -111,14 +111,13 @@ $('tree').replaceChildren();
   try{await load();}catch(e){notify(e);}
 };
 $('refresh').onclick = () => load().catch(notify);
-const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'Accepted',fail:'Checks failed'};
+const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'All ACs green',fail:'Checks failed'};
 let filters={domain:'',status:'',person:''};
 let filterWorkspace=null,statusCounts={};
 function requirementStatus(id) {
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
   if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
-  if(s.accepted)return 'pass';
-  if(s.ready_for_acceptance)return 'ready';
+  if(s.ready_for_acceptance)return 'pass';
   if(!r.confirmed||!r.acs.length||Object.values(s.acs).some(a=>!a.ready))return 'waiting';
   if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
   return 'available';
@@ -130,10 +129,10 @@ function requirementSignal(id){
 }
 function aggregateSignal(children,noun){
   if(!children.length)return {tone:'grey',label:'No '+noun};
-  const counts={green:0,yellow:0,red:0,grey:0};
+  const counts={green:0,yellow:0,orange:0,red:0,grey:0};
   for(const child of children)counts[child.tone]++;
-  const tone=counts.red?'red':counts.green===children.length?'green':counts.grey===children.length?'grey':'yellow';
-  const parts=[[counts.green,'complete'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
+  const tone=counts.red?'red':counts.green===children.length?'green':counts.orange===children.length?'orange':counts.grey===children.length?'grey':'yellow';
+  const parts=[[counts.green,'complete'],[counts.orange,'stale'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
   return {tone,label:'Current '+noun+': '+parts.join(' · ')};
 }
 function treeSignals(){
@@ -142,10 +141,29 @@ function treeSignals(){
   const domains=Object.fromEntries(Object.keys(data.state.domains).map(id=>[id,aggregateSignal(Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id).map(([cid])=>capabilities[cid]),'capabilities')]));
   return {requirements,capabilities,domains};
 }
-function acSignal(status,r,id){
+function latestCheckRun(r){
+  return Object.entries(r.runs||{}).filter(([,run])=>run.finished!==null&&run.finished!==undefined).sort(([,a],[,b])=>(b.started||0)-(a.started||0))[0];
+}
+function checkRecordedAt(r,entry,ac,reqId){
+  const dates=[];
+  const [runId,run]=entry||[];
+  for(const check of run?.plan||[])if(check.ac===ac&&run.results?.[check.id]){
+    const event=data.history.findLast(e=>e.command.op==='result'&&e.command.req===reqId&&e.command.revision===r.number&&e.command.run===runId&&e.command.evidence.check===check.id);
+    if(event?.recorded_at)dates.push(event.recorded_at);
+  }
+  return dates;
+}
+function staleCheck(recordedAt){
+  const time=Date.parse(String(recordedAt||'').replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
+  return Number.isFinite(time)&&Date.now()-time>7*24*60*60*1000;
+}
+function acSignal(status,r,id,reqId){
   if(!status)return {tone:'grey',label:'Historical revision'};
   if(status.verification==='fail')return {tone:'red',label:'Checks failed'};
-  if(status.verification==='pass')return {tone:'green',label:'Checks passed'};
+  if(status.verification==='pass'){
+    const run=latestCheckRun(r),stale=(checkRecordedAt(r,run,id,reqId)||[]).some(staleCheck);
+    return stale?{tone:'orange',label:'Checks passed · older than 7 days'}:{tone:'green',label:'Checks passed'};
+  }
   if(!status.ready)return {tone:'yellow',label:'Waiting for decision'};
   const working=Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
   return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked'};
@@ -349,7 +367,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
     const item = E('li',undefined,'ac-item '+(status?.verification==='pass'?'pass':status?.verification==='fail'?'fail':'unverified'));
     // Заголовок одной строкой: текст условия, исход справа. Раньше значок
     // уезжал под заголовок и читался как ещё одно свойство, а не как ответ.
-    const circle=statusCircle(acSignal(status,r,a.id));circle.classList.add('ac-status');item.append(circle);
+    const circle=statusCircle(acSignal(status,r,a.id,selected));circle.classList.add('ac-status');item.append(circle);
     const heading=E('div',undefined,'ac-heading');
     heading.append(E('p',a.text,'ac-text'));
     heading.append(itemActions('ac',a.id,a.text,selected));
@@ -380,6 +398,28 @@ function requirementDetails(root, selected, revisionNumber=null) {
     }
     if(a.decider)meta_row('Decided by',personLabel(a.decider));
     if(meta.children.length)item.append(meta);
+    const linkedChecks=[];
+    for(const [runId,run] of Object.entries(r.runs||{})){
+      for(const check of run.plan||[])if(check.ac===a.id)linkedChecks.push({runId,run,check,result:run.results?.[check.id]});
+    }
+    if(linkedChecks.length){
+      const checks=E('section',undefined,'ac-checks');
+      checks.append(E('h4','Tests linked to this AC · '+linkedChecks.length,'ac-checks-title'));
+      for(const {run,check,result} of linkedChecks){
+        const outcome=result?.outcome;
+        const stale=result?.outcome==='pass'&&staleCheck(data.history.findLast(e=>e.command.op==='result'&&e.command.req===selected&&e.command.revision===r.number&&e.command.run===runId&&e.command.evidence.check===check.id)?.recorded_at);
+        const tone=outcome==='fail'?'red':stale?'orange':outcome==='pass'?'green':result?'grey':run.finished?'grey':'yellow';
+        const label=outcome==='pass'?(stale?'Passed · older than 7 days':'Passed'):outcome==='fail'?'Failed':outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Awaiting result':'Running';
+        const row=E('article',undefined,'ac-check');
+        const heading=E('h5',undefined,'ac-check-heading');
+        heading.append(statusCircle({tone,label}),E('span',(check.method==='manual'?'Manual':'Automated')+' test · '+run.scope,'ac-check-name'));
+        row.append(heading);
+        cardFact(row,'Expected',(check.expected||[]).join(', '));
+        if(result)cardFact(row,'Observed',(result.observed||[]).join(', ')||'Nothing recorded');
+        checks.append(row);
+      }
+      item.append(checks);
+    }
     acList.append(item);
   }
   tasks(root, r);
