@@ -268,3 +268,5 @@ use MCP.
 
 See the [model](docs/model.md), [process](docs/process.md), [green rule](docs/green.md),
 [historical review](docs/reviews.md) and [implemented fixes](docs/implementation.md).
+
+Product follow-up work and acceptance criteria: [work queue](docs/roadmap.md).

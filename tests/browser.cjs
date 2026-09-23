@@ -174,7 +174,18 @@ const assert=require('node:assert/strict');
   await title(domain).click();await title(cap).click();await title(req).click();
   assert.equal(await page.locator('.reorder-handle,.reorder-menu').count(),0);
   assert.equal(await req.locator(':scope > summary .rev-chip + .history-button').count(),1);
-  await req.getByRole('button',{name:'Notes on requirement key: 1',exact:true}).click();
+  const sections=page.locator('.object-attachments');
+  const attachmentTargets=await sections.evaluateAll(nodes=>nodes.map(n=>n.dataset.target));
+  for(const target of ['domain:security','capability:restrict','requirement:key','ac:key/key-rights','intake:request']) {
+   assert(attachmentTargets.includes(target),'attachment section missing: '+target);
+  }
+  assert(attachmentTargets.some(t=>t.startsWith('point:request/')));
+  assert.equal(await sections.locator('a').count(),6,'all six object kinds show their attachment');
+  const attachmentHref=await req.locator(':scope > .requirement-detail > .object-attachments a').getAttribute('href');
+  const download=await page.evaluate(async href=>{const r=await fetch(href);return {status:r.status,text:await r.text()};},attachmentHref);
+  assert.deepEqual(download,{status:200,text:'Attachment evidence'});
+
+  await req.getByRole('button',{name:'Notes on requirement key: 2',exact:true}).click();
   const notes=page.getByRole('dialog',{name:'Notes: Ключ до запуска'});
   await notes.getByText('Agent note',{exact:true}).waitFor();
   assert.equal(await notes.locator('textarea,input,[contenteditable=true]').count(),0);

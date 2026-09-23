@@ -64,6 +64,26 @@ may all matter. The plan must identify the actual combination being checked.
 Green means “checks passed.” The owner still needs to accept that revision and
 run in the REQ card. See [acceptance](process.md#acceptance).
 
+### A new deployment with unchanged wording
+
+A report remains evidence about its recorded component combination. Deploying a
+new backend build does not rewrite that report, create a REQ revision or verify
+the new combination. Record and execute a new plan for the changed subject, then
+obtain acceptance of the new successful run.
+
+The current portal summarizes the latest-started completed run; it does not
+maintain a current-deployment comparison. Inspect the run subject before using
+a green card as evidence about production. A release pipeline must supply its
+actual target versions to the launch gate and enforce the result. The gate
+checks the keys declared by the recorded run; it cannot discover a component
+that the verification contract never named.
+
+For reproducibility, identify the input fixture/data version and record the
+steps, expected behavior, observed behavior and relevant report/log references.
+The current protocol has expected/observed lists, a note and an optional evidence
+link; it does not enforce a dedicated fixture schema or require an external link.
+
+
 ## New revisions
 
 Every saved change to a REQ or any AC creates a revision with **all ACs at n/a**.

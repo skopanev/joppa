@@ -249,11 +249,13 @@ function render() {
     // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
     // и держать её за кнопкой значит не показывать вовсе.
     if(d.description?.trim())body.append(E('p',d.description,'node-description'));
+    objectAttachments(body,'domain',did);
     group.append(body);
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
       const head=E('summary',undefined,'title-row');head.append(E('span',c.title,'node-title'),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
+      objectAttachments(cap,'capability',cid);
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
@@ -295,6 +297,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
   if(r.body?.trim())root.append(E('p',r.body));
   const reqNote=notesOf('requirement:'+selected).description;
   if(reqNote?.trim())root.append(E('p',reqNote,'node-description'));
+  objectAttachments(root,'requirement',selected);
   const base = {
     req: selected,
     revision: r.number
@@ -339,6 +342,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
     }
     if(a.decider)meta_row('Decided by',personLabel(a.decider));
     if(meta.children.length)item.append(meta);
+    objectAttachments(item,'ac',a.id,selected);
     acList.append(item);
   }
   tasks(root, r);
@@ -516,9 +520,13 @@ function intake(root) {
   const section=details(root,'Intake · '+entries.length);
   for(const [id,item] of entries){
     const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
+    entry.querySelector('summary').append(notesButton('intake',id,item.said));
+    objectAttachments(entry,'intake',id);
     for(const [pid,point] of Object.entries(item.points)){
       const block=details(entry,pid+' · '+(point.outcome||'Unreviewed'));
       block.append(E('p',point.said));
+      block.querySelector('summary').append(notesButton('point',pid,point.said,id));
+      objectAttachments(block,'point',pid,id);
       for(const [key,value] of Object.entries(point.answers||{}))block.append(E('p',key+': '+value));
       if(point.reason)block.append(E('p',point.reason));
       if(point.req)block.append(button(point.req,()=>openRequirement(point.req),'node-link'));
@@ -644,7 +652,7 @@ function showHistory(kind,id,title,reqId){
 /* ---- Заметки: пояснение, обсуждение и вложения на любом объекте ---- */
 
 // Адрес объекта. Тот же вид, что понимает сервер, — вид:идентификатор.
-function address(kind,id,reqId){return kind==='ac'?'ac:'+reqId+'/'+id:kind+':'+id;}
+function address(kind,id,reqId){return ['ac','point'].includes(kind)?kind+':'+reqId+'/'+id:kind+':'+id;}
 function notesOf(target){return (data?.state?.notes||{})[target]||{description:'',comments:{},attachments:{}};}
 function liveNotes(target){
   const n=notesOf(target);
@@ -688,6 +696,25 @@ function notesButton(kind,id,title,reqId){
   if(count)b.append(E('span',String(count),'notes-count'));
   b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   return b;
+}
+function attachmentList(attachments){
+  const list=E('ul',undefined,'notes-files');
+  for(const [,a] of attachments){
+    const li=E('li');
+    const link=E('a',a.name);link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
+    link.target='_blank';link.rel='noopener';
+    li.append(link,E('span',fileSize(a.size)+' · '+a.actor+' · '+when(a.at),'note-at'));
+    list.append(li);
+  }
+  if(!attachments.length)list.append(E('li','No attachments yet.','hint'));
+  return list;
+}
+function objectAttachments(root,kind,id,reqId){
+  const attachments=liveNotes(address(kind,id,reqId)).attachments;
+  const section=details(root,'Attachments · '+attachments.length);
+  section.classList.add('object-attachments');
+  section.dataset.target=address(kind,id,reqId);
+  section.append(attachmentList(attachments));
 }
 function fileSize(bytes){
   if(bytes<1024)return bytes+' B';
@@ -734,16 +761,7 @@ function showNotes(kind,id,title,reqId){
   /* Вложения */
   const files=E('section',undefined,'notes-section');
   files.append(E('h3','Attachments'+(n.attachments.length?' · '+n.attachments.length:''),'notes-heading'));
-  const list=E('ul',undefined,'notes-files');
-  for(const [,a] of n.attachments){
-    const li=E('li');
-    const link=E('a',a.name);link.href='/api/workspaces/'+encodeURIComponent(ws)+'/blobs/'+a.hash;
-    link.target='_blank';link.rel='noopener';
-    li.append(link,E('span',fileSize(a.size)+' · '+a.actor+' · '+when(a.at),'note-at'));
-    list.append(li);
-  }
-  if(!n.attachments.length)list.append(E('li','Nothing attached yet.','hint'));
-  files.append(list);
+  files.append(attachmentList(n.attachments));
   body.append(files);
 
   dialog.addEventListener('close',()=>dialog.remove());
