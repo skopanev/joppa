@@ -626,6 +626,7 @@ function showHistory(kind,id,title,reqId){
   });
   const dialog=E('dialog',undefined,'history-dialog');dialog.setAttribute('aria-label','History: '+title);
   const header=E('div',undefined,'history-dialog-header'),heading=E('div');heading.append(E('small','History'),E('h2',title));
+  heading.tabIndex=-1;heading.autofocus=true;
   if(kind==='requirement'){
     const card=[...document.querySelectorAll('[data-requirement]')].find(node=>node.dataset.requirement===id);
     const body=card?.querySelector('.requirement-detail');
