@@ -3,14 +3,19 @@ use anyhow::Result;
 use deadpool_postgres::Pool;
 use sha2::{Digest, Sha256};
 
-pub const LIFETIME_SECONDS: u64 = 43_200;
+/// Неделя от входа. Абсолютный срок: активность его не продлевает.
+/// Двенадцати часов не хватало — вход утром, к вечеру страница уже
+/// выкидывала на логин, и это читалось как поломка, а не как политика.
+pub const LIFETIME_SECONDS: u64 = 604_800;
 fn hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 pub async fn create(pool: &Pool, token: &str, actor: &str) -> Result<()> {
     pool.get().await?.execute(
-        "INSERT INTO joppa.browser_sessions(token_hash, actor, expires_at) VALUES($1,$2,clock_timestamp()+interval '12 hours')",
-        &[&hash(token), &actor],
+        // Срок считается от одной константы, а не от литерала в SQL: два
+        // места разъезжаются молча — кука живёт дольше строки в базе.
+        "INSERT INTO joppa.browser_sessions(token_hash, actor, expires_at) VALUES($1,$2,clock_timestamp()+make_interval(secs => $3))",
+        &[&hash(token), &actor, &(LIFETIME_SECONDS as f64)],
     ).await?;
     Ok(())
 }

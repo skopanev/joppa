@@ -255,7 +255,7 @@ function render() {
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
-        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title));
+        const reqHead=E('summary',undefined,'title-row');reqHead.append(E('span',r.title,'node-title'),E('small','REQ','type-label'),E('span',statusLabels[tone],'badge '+tone),itemActions('requirement',id,r.title,null,r.number));
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);addOrdering(req,reqHead,'requirement',cid,id);
         req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
         if(req.open)requirementDetails(content,id);
@@ -280,7 +280,14 @@ function requirementDetails(root, selected, revisionNumber=null) {
   if(current)root.dataset.status=requirementStatus(selected);
   else delete root.dataset.status;
   if(!current)root.append(E('h3',r.title));
-  root.append(E('p','Revision '+r.number+(current?'':' · Previous revision'),'hint revision-label'));
+  // Метка живёт в заголовке, рядом с историей, и обновляется при листании
+  // ревизий: иначе она показывала бы последнюю, пока на экране предыдущая.
+  const chip=root.parentElement?.querySelector('.rev-chip');
+  if(chip){
+    chip.textContent='rev. '+r.number;
+    chip.classList.toggle('past',!current);
+    chip.title=current?'Current revision':'Previous revision';
+  }
   if(r.body?.trim())root.append(E('p',r.body));
   const base = {
     req: selected,
@@ -555,8 +562,13 @@ function orderedEntries(kind,parent=null) {
   const saved=(data.state.tree_order?.[key]||[]).filter(id=>ids.includes(id));
   return [...saved,...ids.filter(id=>!saved.includes(id))].map(id=>[id,map[id]]);
 }
-function itemActions(kind,id,title,reqId=null){
-  const actions=E('div',undefined,'node-actions');actions.append(copyButton(kind,id,title));
+function itemActions(kind,id,title,reqId=null,revision=null){
+  const actions=E('div',undefined,'node-actions');
+  // Номер ревизии стоит ВПЛОТНУЮ к истории: это один вопрос — «которая это
+  // редакция и что было до неё». Отдельной строкой под заголовком он читался
+  // как свойство требования, хотя на деле это отметка версии.
+  if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
+  actions.append(copyButton(kind,id,title));
   const history=button('',()=>showHistory(kind,id,title,reqId),'history-button');history.title='View history';history.setAttribute('aria-label','View '+kind+' history: '+id);
   const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))icon.setAttribute(key,value);
@@ -582,7 +594,11 @@ function showHistory(kind,id,title,reqId){
     if(c.op==='plan')return c.checks.some(check=>check.ac===id);
     if(c.op==='result')return revision.runs[c.run]?.plan.some(check=>check.id===c.evidence.check&&check.ac===id);
     if(c.op==='resolve')return revision.issues[c.id]?.ac===id;
-    return true;
+    // Событие попадает в историю AC, только если НАЗЫВАЕТ его. Раньше здесь
+    // стояло true, и всё, что относилось к ревизии требования и не называло
+    // ни одного условия, показывалось в истории КАЖДОГО его условия — история
+    // AC читалась как история REQ.
+    return false;
   });
   const dialog=E('dialog',undefined,'history-dialog');dialog.setAttribute('aria-label','History: '+title);
   const header=E('div',undefined,'history-dialog-header'),heading=E('div');heading.append(E('small','History'),E('h2',title));
