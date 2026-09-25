@@ -36,6 +36,183 @@ fn independent_acs_and_cross_repository_tasks_do_not_fake_green() {
     assert_eq!(w.state.requirements["r"].revisions[0].acs.len(), 2);
 }
 #[test]
+fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
+    let mut w = World::new();
+    w.ok("agent", assess("ios", true));
+    for id in ["finished", "ongoing"] {
+        w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
+    }
+    w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
+    let mut next = revision(1);
+    next["carry_tasks"] = json!(true);
+    w.ok("agent", next);
+    let r = &w.state.requirements["r"].revisions[1];
+    assert_eq!(r.tasks.len(), 2);
+    assert_eq!(
+        r.tasks["finished"].done.as_deref(),
+        Some("merged build abc")
+    );
+    assert!(r.tasks.values().all(|task| task.review_required));
+    assert_eq!(r.tasks["ongoing"].origin_revision, 1);
+    let complete = json!({"op":"complete_task","req":"r","revision":2,"id":"ongoing","evidence":"merged build def"});
+    w.no("agent", complete.clone());
+    let review = json!({"op":"review_task","req":"r","revision":2,"id":"ongoing","ac":"ios","reason":"Still implements unchanged iOS condition"});
+    w.no("agent", review.clone());
+    w.ok("owner", review);
+    w.no("agent", complete.clone()); // New AC assessment is still required.
+    let mut a = assess("ios", true);
+    a["revision"] = json!(2);
+    w.ok("agent", a);
+    w.ok("agent", complete);
+    assert_eq!(
+        w.state.requirements["r"].revisions[1].tasks["ongoing"]
+            .done
+            .as_deref(),
+        Some("merged build def")
+    );
+    assert_eq!(
+        w.state.requirements["r"].revisions[0].tasks["ongoing"].done,
+        None
+    );
+}
+#[test]
+fn later_revision_recovers_historical_tasks_and_owner_can_retire_one() {
+    let mut w = World::new();
+    w.ok("agent", assess("ios", true));
+    w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":"old","title":"Old implementation","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
+    w.ok("agent", revision(1)); // Historical revise event: no task-carry marker.
+    assert!(w.state.requirements["r"].revisions[1].tasks.is_empty());
+    let mut third = revision(2);
+    third["carry_tasks"] = json!(true);
+    w.ok("agent", third);
+    assert_eq!(
+        w.state.requirements["r"].revisions[2].tasks["old"].origin_revision,
+        1
+    );
+    let retire = json!({"op":"retire_task","req":"r","revision":3,"id":"old","reason":"AC changed; old implementation is obsolete"});
+    w.no("agent", retire.clone());
+    w.ok("owner", retire);
+    assert_eq!(
+        w.state.requirements["r"].revisions[2].tasks["old"]
+            .retired
+            .as_deref(),
+        Some("AC changed; old implementation is obsolete")
+    );
+    w.no(
+        "agent",
+        json!({"op":"complete_task","req":"r","revision":3,"id":"old","evidence":"merged"}),
+    );
+    let mut fourth = revision(3);
+    fourth["carry_tasks"] = json!(true);
+    w.ok("agent", fourth);
+    assert!(!w.state.requirements["r"].revisions[3].tasks["old"].review_required);
+    assert!(
+        w.state.requirements["r"].revisions[3].tasks["old"]
+            .retired
+            .is_some()
+    );
+}
+#[test]
+fn removed_check_across_revision_needs_explicit_owner_review() {
+    let mut w = World::new();
+    w.ready();
+    w.run("first", "pass");
+    let mut next = revision(1);
+    next["coverage_policy"] = json!(true);
+    w.ok("agent", next);
+    w.ok("owner", json!({"op":"confirm","req":"r","revision":2}));
+    for ac in ["ios", "key"] {
+        let mut a = assess(ac, true);
+        a["revision"] = json!(2);
+        w.ok("agent", a);
+    }
+    w.ok("owner",json!({"op":"define_verification_scope","req":"r","revision":2,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Full access and key scope"}));
+    let mut second = plan("second");
+    second["revision"] = json!(2);
+    second["checks"][0]["id"] = json!("[ios] replacement check");
+    w.ok("runner", second);
+    assert_eq!(
+        w.summary(2)["coverage_change"][0]["id"],
+        "[ios] paid access"
+    );
+    assert_eq!(w.summary(2)["coverage_reviewed"], false);
+    let mut ios = result(
+        "second",
+        "[ios] replacement check",
+        "pass",
+        vec!["access retained"],
+    );
+    ios["revision"] = json!(2);
+    w.ok("runner", ios);
+    let mut key = result("second", "key-permissions", "pass", vec!["read", "verify"]);
+    key["revision"] = json!(2);
+    w.ok("owner", key);
+    w.ok(
+        "runner",
+        json!({"op":"finish","req":"r","revision":2,"run":"second"}),
+    );
+    assert_eq!(w.summary(2)["acs"]["ios"]["verification"], "pass");
+    assert_eq!(w.summary(2)["ready_for_acceptance"], false);
+    let accept = json!({"op":"accept","req":"r","revision":2,"run":"second"});
+    w.no("owner", accept.clone());
+    let review = json!({"op":"review_coverage","req":"r","revision":2,"run":"second","reason":"Old check was replaced with a correct contract check"});
+    w.no("agent", review.clone());
+    w.ok("owner", review);
+    assert_eq!(w.summary(2)["ready_for_acceptance"], true);
+    w.ok("owner", accept);
+}
+#[test]
+fn coverage_compares_to_last_prior_plan_even_when_intermediate_revision_has_none() {
+    let mut w = World::new();
+    w.ready();
+    w.run("first", "pass");
+    w.ok("agent", revision(1));
+    let mut third = revision(2);
+    third["coverage_policy"] = json!(true);
+    w.ok("agent", third);
+    w.ok("owner", json!({"op":"define_verification_scope","req":"r","revision":3,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Preserve full subject"}));
+    let mut new_plan = plan("third");
+    new_plan["revision"] = json!(3);
+    new_plan["checks"][0]["id"] = json!("[ios] replacement check");
+    w.ok("runner", new_plan);
+    assert_eq!(
+        w.summary(3)["coverage_change"][0]["id"],
+        "[ios] paid access"
+    );
+}
+#[test]
+fn owner_scope_contract_prevents_self_nominated_subject_coverage() {
+    let mut w = World::new();
+    w.ok("agent", assess("ios", true));
+    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"api","title":"Implement access","acs":["ios"],"projects":["app","backend"],"purpose":"implementation","assignee":"agent"}));
+    let mut next = revision(1);
+    next["coverage_policy"] = json!(true);
+    next["carry_tasks"] = json!(true);
+    w.ok("agent", next);
+    let mut plan2 = plan("second");
+    plan2["revision"] = json!(2);
+    w.no("runner", plan2.clone()); // Owner has not agreed the subject boundary.
+    let define = json!({"op":"define_verification_scope","req":"r","revision":2,"subject_keys":["app","backend","environment"],"scope":"iOS access and provider settings","reason":"These components affect both ACs"});
+    w.no("agent", define.clone());
+    w.ok("owner", define);
+    w.no("runner", plan2.clone()); // The extra infra key was not agreed.
+    plan2["subject"].as_object_mut().unwrap().remove("infra");
+    let mut missing = plan2.clone();
+    missing["subject"]
+        .as_object_mut()
+        .unwrap()
+        .remove("backend");
+    w.no("runner", missing);
+    let mut environment_only = plan2.clone();
+    environment_only["subject"]["backend"] = json!("production");
+    w.no("runner", environment_only);
+    let mut narrowed = plan2.clone();
+    narrowed["scope"] = json!("Only the app");
+    w.no("runner", narrowed);
+    w.ok("runner", plan2);
+    w.no("owner",json!({"op":"define_verification_scope","req":"r","revision":2,"subject_keys":["app"],"scope":"Only app","reason":"Narrowed after run"}));
+}
+#[test]
 fn revision_resets_every_ac_and_old_evidence_and_acceptance_survive() {
     let mut w = World::new();
     w.ready();
@@ -176,6 +353,27 @@ fn later_failure_and_late_old_success_cannot_be_hidden() {
         "owner",
         json!({"op":"accept","req":"r","revision":1,"run":"fixed"}),
     );
+}
+#[test]
+fn late_failure_from_older_started_run_does_not_replace_newer_pass() {
+    let mut w = World::new();
+    w.ready();
+    w.ok("runner", plan("older"));
+    w.run("newer", "pass");
+    w.ok(
+        "runner",
+        result("older", "[ios] paid access", "fail", vec!["access lost"]),
+    );
+    w.ok(
+        "owner",
+        result("older", "key-permissions", "pass", vec!["read", "verify"]),
+    );
+    w.ok(
+        "runner",
+        json!({"op":"finish","req":"r","revision":1,"run":"older"}),
+    );
+    assert_eq!(w.summary(1)["run"], "newer");
+    assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "pass");
 }
 #[test]
 fn specialist_decision_cannot_be_impersonated() {

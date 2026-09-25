@@ -44,6 +44,11 @@ cannot be inferred from a plan that never named it; completeness of discovery
 must be supplied separately. Failed or partial discovery prevents green even
 when all collected tests pass. This checks the discovery claim, not whether
 the test suite is sufficient or honest.
+For new REQ revisions, the owner first agrees the complete subject component
+keys and scope boundary. The server rejects a plan that omits or adds a key,
+narrows that boundary, or omits a project used by a Task. Environment labels
+alone cannot stand in for component versions. The owner still has to verify
+that the declared set covers all components that can affect the ACs.
 
 ## Repeated runs
 
@@ -53,8 +58,9 @@ plan was sealed, not a client timestamp or report arrival time. A late result
 from an older run cannot replace a newer verdict. Until a new run finishes,
 the previous completed run remains visible.
 
-A later completed failure removes green; acceptance cannot select an earlier
-successful run. A requirement revision is checked only when all its ACs pass
+A later-started completed failure removes green; a run started earlier never
+replaces the newer verdict merely by finishing late. Acceptance cannot select
+an earlier successful run. A requirement revision is checked only when all its ACs pass
 on **one subject**. Results from different revisions do not combine.
 
 The subject is a map of relevant immutable component builds or configurations,
@@ -135,3 +141,7 @@ its pipeline actually invokes and enforces this gate.
 A subsequent plan in the same revision cannot omit a previously declared check
 or change its AC, method or expectation. Changing that verification contract
 requires a new revision with a reason and fresh acceptance.
+New revisions also expose checks removed or changed relative to the latest
+sealed plan from an earlier revision. This does not turn passing evidence red, but it
+prevents owner acceptance until the owner explicitly reviews the coverage change
+with a reason. Historical revisions recorded before this policy remain readable.

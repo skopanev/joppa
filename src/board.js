@@ -146,7 +146,7 @@ $('tree').replaceChildren();
   try{await load();}catch(e){notify(e);}
 };
 $('refresh').onclick = () => load().catch(notify);
-const statusLabels={waiting:'Waiting for decision',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'All ACs green',fail:'Checks failed'};
+const statusLabels={waiting:'Waiting for decision',review:'Task review required',available:'Ready to work',progress:'In progress',ready:'Awaiting acceptance',pass:'All ACs green',fail:'Checks failed'};
 let filters={domain:'',status:'',person:''};
 let filterWorkspace=null,statusCounts={};
 function requirementStatus(id) {
@@ -155,6 +155,7 @@ function requirementStatus(id) {
   if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
   if(s.ready_for_acceptance)return 'pass';
   if(!r.confirmed||!r.acs.length||Object.values(s.acs).some(a=>!a.ready))return 'waiting';
+  if(Object.values(r.tasks).some(t=>t.review_required))return 'review';
   if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
   return 'available';
 }
@@ -167,14 +168,14 @@ function requirementSignal(id){
   if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:'Checks failed',at};
   if(acSignals.some(signal=>signal.tone==='orange'))return {tone:'orange',label:'Checks stale',at};
   const status=requirementStatus(id);
-  return {tone:status==='fail'?'red':status==='pass'?'green':status==='available'?'grey':'yellow',label:statusLabels[status],at};
+  return {tone:status==='fail'?'red':status==='pass'?'green':status==='review'?'purple':status==='available'?'grey':'yellow',label:statusLabels[status],at};
 }
 function aggregateSignal(children,noun){
   if(!children.length)return {tone:'grey',label:'No '+noun};
-  const counts={green:0,yellow:0,orange:0,red:0,grey:0};
+  const counts={green:0,yellow:0,orange:0,red:0,purple:0,grey:0};
   for(const child of children)counts[child.tone]++;
-  const tone=counts.red?'red':counts.orange?'orange':counts.yellow?'yellow':counts.grey?'grey':'green';
-  const parts=[[counts.green,'complete'],[counts.orange,'stale'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
+  const tone=counts.red?'red':counts.orange?'orange':counts.purple?'purple':counts.yellow?'yellow':counts.grey?'grey':'green';
+  const parts=[[counts.green,'complete'],[counts.orange,'stale'],[counts.purple,'needs review'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
   return {tone,label:'Current '+noun+': '+parts.join(' · '),at:children.map(child=>child.at).filter(Boolean).sort().at(-1)};
 }
 function treeSignals(){
@@ -210,7 +211,7 @@ function indexStatusEvents(){
   resultEventIndex=new Map();
   const revisions=new Map();
   for(const [req,q] of Object.entries(data.state.requirements))for(const r of q.revisions)revisions.set(req+'/'+r.number,r);
-  const relevant=new Set(['assess','confirm','task','complete_task','plan','result','finish','issue','resolve','withdraw_decision','accept','revoke']);
+  const relevant=new Set(['assess','confirm','task','review_task','retire_task','complete_task','define_verification_scope','plan','review_coverage','result','finish','issue','resolve','withdraw_decision','accept','revoke']);
   for(const event of data.history||[]){
     const c=event.command;
     if(c.op==='result')resultEventIndex.set(JSON.stringify([c.req,c.revision,c.run,c.evidence.check]),event);
@@ -225,6 +226,7 @@ function indexStatusEvents(){
     else if(c.ac)acs=[c.ac];
     else if(c.acs)acs=c.acs;
     else if(c.op==='complete_task')acs=r?.tasks?.[c.id]?.acs||[];
+    else if(c.op==='retire_task')acs=r?.tasks?.[c.id]?.acs||[];
     else if(c.op==='plan')acs=c.checks.map(check=>check.ac);
     else if(c.op==='result')acs=r?.runs?.[c.run]?.plan.filter(check=>check.id===c.evidence.check).map(check=>check.ac)||[];
     else if(c.op==='finish')acs=r?.runs?.[c.run]?.plan.map(check=>check.ac)||[];
@@ -245,7 +247,8 @@ function acSignal(status,r,id,reqId){
     return stale?{tone:'orange',label:'Checks passed · older than 7 days',at}:{tone:'green',label:'Checks passed',at};
   }
   if(!status.ready)return {tone:'yellow',label:'Waiting for decision',at};
-  const working=Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
+  if(Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.review_required))return {tone:'purple',label:'Task review required',at};
+  const working=Object.values(r.tasks).some(t=>!t.retired&&t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
   return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked',at};
 }
 let statusHint=null;
@@ -545,6 +548,18 @@ function requirementDetails(root, selected, revisionNumber=null) {
   const preview=root.parentElement?.querySelector(':scope > summary > .requirement-preview');
   if(preview){preview.textContent=r.body||'';preview.hidden=!r.body?.trim();}
   if(r.body?.trim())root.append(E('p',r.body,'requirement-body'));
+  if(r.verification_scope){
+    cardFact(root,'Verification scope',r.verification_scope.scope);
+    cardFact(root,'Required subject components',r.verification_scope.subject_keys.join(', '));
+  }
+  if(current&&s?.coverage_change?.length){
+    const review=E('section',undefined,'coverage-change');
+    review.append(E('h3','Verification coverage changed'));
+    review.append(E('p',s.coverage_reviewed?'The REQ owner reviewed these removed or changed checks.':'The REQ owner must review these removed or changed checks before acceptance.'));
+    const list=E('ul');
+    for(const check of s.coverage_change)list.append(E('li',(check.id||'Unnamed check')+' · '+(check.expected||[]).join(', ')));
+    review.append(list);root.append(review);
+  }
   cardFact(root,'Consumers',(r.consumers||[]).map(id=>data.state.consumers?.[id]?.title||id).join(', ')||'Not assigned');
   const sources=Object.values(r.sources||{}).filter(source=>!source.withdrawn);
   if(sources.length){
@@ -719,8 +734,11 @@ function tasks(root, r) {
   const d=details(root,'Tasks · '+Object.keys(r.tasks).length);
   for(const t of Object.values(r.tasks)){
     const item=E('article',undefined,'detail-entry');
-    const heading=E('h3',t.title);heading.prepend(statusCircle({tone:t.done!==null?'green':'yellow',label:t.done!==null?'Task completed':'In progress'}));
+    const heading=E('h3',t.title);heading.prepend(statusCircle({tone:t.retired?'grey':t.review_required?'purple':t.done!==null?'green':'yellow',label:t.retired?'Task no longer applies':t.review_required?'Review task against current REQ revision':t.done!==null?'Task completed':'Open task'}));
     item.append(heading,E('p',personLabel(t.assignee),'hint'));
+    if(t.review_required)item.append(E('p','The REQ changed. Its owner must review this task against the current AC before work can be completed.','hint'));
+    if(t.retired)cardFact(item,'No longer applies',t.retired);
+    if(t.origin_revision&&t.origin_revision!==r.number)cardFact(item,'Created in revision',String(t.origin_revision));
     cardFact(item,'Acceptance criteria',t.acs.map(id=>acTitle(r,id)).join('; '));
     cardFact(item,'Projects',t.projects.map(id=>data.state.projects[id]||id).join(', '));
     cardFact(item,'Work',({implementation:'Implementation',manual:'Manual action',decision:'Decision'})[t.purpose]);

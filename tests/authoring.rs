@@ -251,8 +251,90 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     );
     let receipt: Value=serde_json::from_str(conn.query_one("SELECT result::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id='batch'", &[&ws]).await?.get(0))?;
     assert_eq!(receipt["results"], a["results"]);
-    conn.execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?;
+    conn.execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws])
+        .await?;
     assert!(store::backfill_board(&pool).await? >= 1);
-    assert!(store::board_read(&pool,&ws,"owner",None,None,None).await?["state"]["domains"][domain].is_object());
+    assert!(
+        store::board_read(&pool, &ws, "owner", None, None, None).await?["state"]["domains"][domain]
+            .is_object()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -> Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
+    store::migrate(&pool).await?;
+    let ws = format!("carry-{}", uuid::Uuid::new_v4().simple());
+    for (id, actor, command) in [
+        (
+            "create",
+            "owner",
+            json!({"op":"workspace","title":"Task carry"}),
+        ),
+        (
+            "member",
+            "owner",
+            json!({"op":"member","id":"agent","role":"agent"}),
+        ),
+        (
+            "consumer",
+            "owner",
+            json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+        ),
+        (
+            "domain",
+            "agent",
+            json!({"op":"domain","id":"area","title":"Area","authority":"owner"}),
+        ),
+        (
+            "capability",
+            "agent",
+            json!({"op":"capability","id":"cap","title":"Ability","domain":"area"}),
+        ),
+        (
+            "revise-1",
+            "agent",
+            json!({"op":"revise","req":"req","expected_revision":0,"capability":"cap","consumers":["buyer"],"title":"Requirement","body":"Scope","owner":"owner","reason":"Start","acs":[{"id":"ac","text":"Works"}]}),
+        ),
+    ] {
+        store::execute_input(&pool, &ws, actor, id, &command).await?;
+    }
+    let multi = json!({"op":"task","req":"req","revision":1,"id":"bad","title":"Bad","acs":["ac","ac"],"projects":[],"purpose":"decision","assignee":"agent"});
+    assert!(
+        store::execute_input(&pool, &ws, "agent", "multi", &multi)
+            .await
+            .is_err()
+    );
+    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent"});
+    store::execute_input(&pool, &ws, "agent", "task", &task).await?;
+    let revise = json!({"op":"revise","req":"req","expected_revision":1,"capability":"cap","consumers":["buyer"],"title":"Requirement revised","body":"Scope","owner":"owner","reason":"Clarified","acs":[{"id":"ac","text":"Works better"}]});
+    let written = store::execute_input(&pool, &ws, "agent", "revise-2", &revise).await?;
+    assert_eq!(written["command"]["carry_tasks"], true);
+    assert_eq!(written["command"]["coverage_policy"], true);
+    let state = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
+    assert_eq!(
+        state["state"]["requirements"]["req"]["revisions"][1]["tasks"]["task"]["review_required"],
+        true
+    );
+    store::execute_input(&pool, &ws, "owner", "retire", &json!({"op":"retire_task","req":"req","revision":2,"id":"task","reason":"Decision changed"})).await?;
+    let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
+    assert_eq!(
+        after["state"]["requirements"]["req"]["revisions"][1]["tasks"]["task"]["retired"],
+        "Decision changed"
+    );
+    store::migrate(&pool).await?;
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        after
+    );
     Ok(())
 }

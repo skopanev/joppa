@@ -122,7 +122,31 @@ pub struct Revision {
     pub issues: BTreeMap<String, Issue>,
     pub acceptance: Option<Acceptance>,
     #[serde(default)]
+    pub coverage_policy: bool,
+    #[serde(default)]
+    pub coverage_change: Vec<Check>,
+    #[serde(default)]
+    pub coverage_review: Option<CoverageReview>,
+    /// The owner-approved component set and check boundary for this revision.
+    #[serde(default)]
+    pub verification_scope: Option<VerificationScope>,
+    #[serde(default)]
     pub sources: BTreeMap<String, SourceRef>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CoverageReview {
+    pub actor: String,
+    pub at: u64,
+    pub reason: String,
+    pub changes: Vec<Check>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VerificationScope {
+    pub subject_keys: Vec<String>,
+    pub scope: String,
+    pub actor: String,
+    pub at: u64,
+    pub reason: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SourceRef {
@@ -188,8 +212,16 @@ pub struct Task {
     pub purpose: String,
     pub assignee: String,
     pub done: Option<String>,
+    /// A copied task stays visible after REQ revision, but its fit to the new
+    /// wording must be confirmed before unfinished work can be completed.
+    #[serde(default)]
+    pub review_required: bool,
+    #[serde(default)]
+    pub origin_revision: u32,
+    #[serde(default)]
+    pub retired: Option<String>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Check {
     pub id: String,

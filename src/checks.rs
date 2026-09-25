@@ -45,11 +45,17 @@ pub fn summary(r: &Revision) -> Value {
     let statuses: BTreeMap<_, _> = r.acs.iter().map(|a| (a.id.clone(), json!({"ready": ready(r, &a.id), "verification": run.map_or("n/a", |(_, run)| verdict(r, run, &a.id))}))).collect();
     let green = !r.acs.is_empty()
         && run.is_some_and(|(_, run)| r.acs.iter().all(|a| verdict(r, run, &a.id) == "pass"));
+    let coverage_reviewed = r.coverage_change.is_empty()
+        || r.coverage_review
+            .as_ref()
+            .is_some_and(|review| review.changes == r.coverage_change);
     let accepted = green
+        && coverage_reviewed
         && r.acceptance
             .as_ref()
             .is_some_and(|a| run.is_some_and(|(id, _)| id == &a.run));
-    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "ready_for_acceptance": green, "accepted": accepted})
+    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "ready_for_acceptance": green && coverage_reviewed, "accepted": accepted,
+        "coverage_change": r.coverage_change, "coverage_reviewed": coverage_reviewed})
 }
 
 pub fn apply(
@@ -82,6 +88,14 @@ pub fn apply(
             }
             let r = revision(w, req, *n, true)?;
             ensure!(!r.tasks.contains_key(id), "task exists");
+            if let Some(contract) = &r.verification_scope {
+                for project in projects {
+                    ensure!(
+                        contract.subject_keys.contains(project),
+                        "task project is outside the agreed verification subject"
+                    );
+                }
+            }
             ensure!(!acs.is_empty(), "task needs at least one AC");
             for ac in acs {
                 ensure!(r.acs.iter().any(|a| &a.id == ac), "unknown AC");
@@ -99,8 +113,64 @@ pub fn apply(
                     purpose: purpose.clone(),
                     assignee: assignee.clone(),
                     done: None,
+                    review_required: false,
+                    origin_revision: *n,
+                    retired: None,
                 },
             );
+        }
+        Command::ReviewTask {
+            req,
+            revision: n,
+            id,
+            ac,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let r = revision(w, req, *n, true)?;
+            ensure!(r.owner == actor, "REQ owner reviews carried tasks");
+            ensure!(
+                r.acs.iter().any(|a| &a.id == ac),
+                "unknown AC in current revision"
+            );
+            let task = r
+                .tasks
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
+            ensure!(
+                task.review_required,
+                "task already reviewed for this revision"
+            );
+            if let Some(contract) = &r.verification_scope {
+                for project in &task.projects {
+                    ensure!(
+                        contract.subject_keys.contains(project),
+                        "task project is outside the agreed verification subject"
+                    );
+                }
+            }
+            task.acs = vec![ac.clone()];
+            task.review_required = false;
+        }
+        Command::RetireTask {
+            req,
+            revision: n,
+            id,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let r = revision(w, req, *n, true)?;
+            ensure!(r.owner == actor, "REQ owner retires carried tasks");
+            let task = r
+                .tasks
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
+            ensure!(
+                task.review_required,
+                "only a task pending revision review can be retired"
+            );
+            task.review_required = false;
+            task.retired = Some(reason.clone());
         }
         Command::CompleteTask {
             req,
@@ -124,6 +194,11 @@ pub fn apply(
                 "assignee or owner required"
             );
             ensure!(task.done.is_none(), "task already completed");
+            ensure!(
+                !task.review_required,
+                "task needs owner review after REQ revision"
+            );
+            ensure!(task.retired.is_none(), "task retired after REQ revision");
             if task.purpose == "decision" {
                 ensure!(
                     task.acs.len() == 1,
@@ -151,6 +226,38 @@ pub fn apply(
             }
             r.tasks.get_mut(id).unwrap().done = Some(evidence.clone());
         }
+        Command::DefineVerificationScope {
+            req,
+            revision: n,
+            subject_keys,
+            scope,
+            reason,
+        } => {
+            nonempty(scope)?;
+            nonempty(reason)?;
+            ensure!(
+                !subject_keys.is_empty(),
+                "verification scope needs at least one subject key"
+            );
+            let mut seen = BTreeSet::new();
+            for key in subject_keys {
+                nonempty(key)?;
+                ensure!(seen.insert(key), "duplicate subject key");
+            }
+            let r = revision(w, req, *n, true)?;
+            ensure!(r.owner == actor, "REQ owner defines verification scope");
+            ensure!(
+                r.runs.is_empty(),
+                "verification scope is sealed by the first check plan; revise REQ to change it"
+            );
+            r.verification_scope = Some(VerificationScope {
+                subject_keys: subject_keys.clone(),
+                scope: scope.clone(),
+                actor: actor.into(),
+                at: position,
+                reason: reason.clone(),
+            });
+        }
         Command::Plan {
             req,
             revision: n,
@@ -170,7 +277,61 @@ pub fn apply(
                 nonempty(k)?;
                 nonempty(v)?;
             }
+            let old_checks: Vec<Check> = if *n > 1 {
+                w.requirements
+                    .get(req)
+                    .and_then(|q| {
+                        q.revisions
+                            .iter()
+                            .take((*n - 1) as usize)
+                            .rev()
+                            .find_map(|old| old.runs.values().max_by_key(|run| run.started))
+                    })
+                    .map(|run| run.plan.clone())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             let r = revision(w, req, *n, true)?;
+            if r.coverage_policy {
+                let contract = r.verification_scope.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("REQ owner must define verification scope before a check plan")
+                })?;
+                ensure!(
+                    scope.trim() == contract.scope.trim(),
+                    "check scope differs from the owner-approved scope"
+                );
+                let actual: BTreeSet<_> = subject.keys().collect();
+                let required: BTreeSet<_> = contract.subject_keys.iter().collect();
+                ensure!(
+                    actual == required,
+                    "subject must contain exactly the owner-approved component keys"
+                );
+                for task in r.tasks.values().filter(|task| task.retired.is_none()) {
+                    for project in &task.projects {
+                        ensure!(
+                            required.contains(project),
+                            "subject omits a project used by a task"
+                        );
+                    }
+                }
+                for (component, version) in subject {
+                    ensure!(
+                        component == "environment"
+                            || ![
+                                "dev",
+                                "development",
+                                "test",
+                                "staging",
+                                "stage",
+                                "production",
+                                "prod"
+                            ]
+                            .contains(&version.to_ascii_lowercase().as_str()),
+                        "component version must identify a build or configuration, not an environment name"
+                    );
+                }
+            }
             ensure!(!r.runs.contains_key(run), "run exists; plan is sealed");
             ensure!(!checks.is_empty(), "empty plan");
             let mut ids = BTreeSet::new();
@@ -215,6 +376,19 @@ pub fn apply(
                     );
                 }
             }
+            if r.coverage_policy {
+                let changes: Vec<Check> = old_checks
+                    .into_iter()
+                    .filter(|old| !checks.iter().any(|new| new == old))
+                    .collect();
+                if r.coverage_review
+                    .as_ref()
+                    .is_some_and(|review| review.changes != changes)
+                {
+                    r.coverage_review = None;
+                }
+                r.coverage_change = changes;
+            }
             r.runs.insert(
                 run.clone(),
                 Run {
@@ -228,6 +402,32 @@ pub fn apply(
                     results: BTreeMap::new(),
                 },
             );
+        }
+        Command::ReviewCoverage {
+            req,
+            revision: n,
+            run,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let r = revision(w, req, *n, true)?;
+            ensure!(r.owner == actor, "REQ owner reviews verification coverage");
+            ensure!(
+                r.coverage_policy && !r.coverage_change.is_empty(),
+                "no coverage change to review"
+            );
+            let latest = r
+                .runs
+                .iter()
+                .max_by_key(|(_, item)| item.started)
+                .map(|(id, _)| id);
+            ensure!(latest == Some(run), "review the latest sealed check plan");
+            r.coverage_review = Some(CoverageReview {
+                actor: actor.into(),
+                at: position,
+                reason: reason.clone(),
+                changes: r.coverage_change.clone(),
+            });
         }
         Command::Result {
             req,
@@ -302,6 +502,13 @@ pub fn apply(
         } => {
             let r = revision(w, req, *n, true)?;
             ensure!(r.owner == actor, "only REQ owner accepts");
+            ensure!(
+                r.coverage_change.is_empty()
+                    || r.coverage_review
+                        .as_ref()
+                        .is_some_and(|review| review.changes == r.coverage_change),
+                "REQ owner must review checks removed or changed since the prior revision"
+            );
             let (id, last) = latest(r).ok_or_else(|| anyhow::anyhow!("no completed run"))?;
             ensure!(id == run, "cannot select an older run");
             ensure!(

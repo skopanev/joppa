@@ -107,6 +107,25 @@ pub enum Command {
         owner: String,
         reason: String,
         acs: Vec<Ac>,
+        /// Persisted compatibility marker: old journal revisions predate
+        /// cross-revision coverage review and remain replayable unchanged.
+        #[serde(default)]
+        coverage_policy: bool,
+        #[serde(default)]
+        carry_tasks: bool,
+    },
+    ReviewCoverage {
+        req: String,
+        revision: u32,
+        run: String,
+        reason: String,
+    },
+    DefineVerificationScope {
+        req: String,
+        revision: u32,
+        subject_keys: Vec<String>,
+        scope: String,
+        reason: String,
     },
     LinkSource {
         req: String,
@@ -200,6 +219,19 @@ pub enum Command {
         revision: u32,
         id: String,
         evidence: String,
+    },
+    ReviewTask {
+        req: String,
+        revision: u32,
+        id: String,
+        ac: String,
+        reason: String,
+    },
+    RetireTask {
+        req: String,
+        revision: u32,
+        id: String,
+        reason: String,
     },
     Plan {
         req: String,
@@ -315,11 +347,14 @@ pub fn target(w: &Workspace, address: &str) -> Result<()> {
             "no such capability: {rest}"
         ),
         "consumer" => ensure!(w.consumers.contains_key(rest), "no such consumer: {rest}"),
-        "requirement" => ensure!(w.requirements.contains_key(rest), "no such requirement: {rest}"),
+        "requirement" => ensure!(
+            w.requirements.contains_key(rest),
+            "no such requirement: {rest}"
+        ),
         "ac" => {
-            let (req, ac) = rest
-                .split_once('/')
-                .ok_or_else(|| anyhow::anyhow!("an acceptance criterion is ac:<requirement>/<id>"))?;
+            let (req, ac) = rest.split_once('/').ok_or_else(|| {
+                anyhow::anyhow!("an acceptance criterion is ac:<requirement>/<id>")
+            })?;
             let r = w
                 .requirements
                 .get(req)
@@ -616,7 +651,9 @@ pub fn apply(
                     || (w.members[actor] == "agent"
                         && !capability.confirmed
                         && !w.domains[&capability.domain].archived
-                        && owner.as_ref().is_none_or(|requested| capability.owner.as_ref() == Some(requested))),
+                        && owner
+                            .as_ref()
+                            .is_none_or(|requested| capability.owner.as_ref() == Some(requested))),
                 "only the workspace owner edits confirmed capabilities; agents may edit draft titles"
             );
             nonempty(title)?;
@@ -687,6 +724,8 @@ pub fn apply(
             owner,
             reason,
             acs,
+            coverage_policy,
+            carry_tasks,
         } => {
             identifier(req)?;
             nonempty(title)?;
@@ -743,6 +782,19 @@ pub fn apply(
                 .last()
                 .map(|old| old.sources.clone())
                 .unwrap_or_default();
+            let mut tasks = BTreeMap::new();
+            if *carry_tasks {
+                for old in &r.revisions {
+                    for (id, task) in &old.tasks {
+                        let mut task = task.clone();
+                        task.review_required = task.retired.is_none();
+                        if task.origin_revision == 0 {
+                            task.origin_revision = old.number;
+                        }
+                        tasks.insert(id.clone(), task);
+                    }
+                }
+            }
             let acs = acs
                 .iter()
                 .cloned()
@@ -761,10 +813,14 @@ pub fn apply(
                 reason: reason.clone(),
                 acs,
                 confirmed: false,
-                tasks: BTreeMap::new(),
+                tasks,
                 runs: BTreeMap::new(),
                 issues: BTreeMap::new(),
                 acceptance: None,
+                coverage_policy: *coverage_policy,
+                coverage_change: Vec::new(),
+                coverage_review: None,
+                verification_scope: None,
                 sources,
             });
         }
@@ -835,7 +891,11 @@ pub fn apply(
             ensure!(r.owner == actor, "REQ owner confirms its formulation");
             r.confirmed = true;
         }
-        Command::Describe { target: t, text, reason } => {
+        Command::Describe {
+            target: t,
+            text,
+            reason,
+        } => {
             target(w, t)?;
             nonempty(reason)?;
             ensure!(
@@ -883,7 +943,11 @@ pub fn apply(
                 },
             );
         }
-        Command::WithdrawNote { target: t, id, reason } => {
+        Command::WithdrawNote {
+            target: t,
+            id,
+            reason,
+        } => {
             target(w, t)?;
             nonempty(reason)?;
             let note = w
@@ -918,7 +982,10 @@ pub fn apply(
                 "the attachment digest is a sha256 in lowercase hex"
             );
             let notes = w.notes.entry(t.clone()).or_default();
-            ensure!(!notes.attachments.contains_key(id), "attachment {id} exists");
+            ensure!(
+                !notes.attachments.contains_key(id),
+                "attachment {id} exists"
+            );
             notes.attachments.insert(
                 id.clone(),
                 Attachment {
@@ -936,7 +1003,11 @@ pub fn apply(
                 },
             );
         }
-        Command::Detach { target: t, id, reason } => {
+        Command::Detach {
+            target: t,
+            id,
+            reason,
+        } => {
             target(w, t)?;
             nonempty(reason)?;
             let a = w

@@ -117,6 +117,11 @@ fn generate(command: &mut Value) -> Result<()> {
             }
         }
     }
+    if op == "revise" {
+        // New writes get the new policy; historical Revise events have no flag.
+        c.insert("coverage_policy".into(), json!(true));
+        c.insert("carry_tasks".into(), json!(true));
+    }
     Ok(())
 }
 
@@ -256,6 +261,9 @@ async fn write(
             if let Command::Revise { consumers, .. } = &command {
                 ensure!(!consumers.is_empty(), "REQ requires at least one consumer");
             }
+            if let Command::Task { acs, .. } = &command {
+                ensure!(acs.len() == 1, "task must belong to exactly one AC");
+            }
             ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
@@ -282,13 +290,7 @@ async fn write(
         }.await.with_context(|| format!("operation {}", index + 1))?;
         results.push(apply);
     }
-    super::search::project(
-        &*tx,
-        &workspace,
-        &recorded_state,
-        events.len() as u64,
-    )
-    .await?;
+    super::search::project(&*tx, &workspace, &recorded_state, events.len() as u64).await?;
     super::board::project(&*tx, &workspace, &recorded_state, &events).await?;
     let mut result = if batch {
         json!({"results":results})

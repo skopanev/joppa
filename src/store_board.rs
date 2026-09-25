@@ -2,7 +2,13 @@ use super::*;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
 
-fn stale_result(events: &[Event], req: &str, revision: u32, run: &str, check: &str) -> Option<DateTime<Utc>> {
+fn stale_result(
+    events: &[Event],
+    req: &str,
+    revision: u32,
+    run: &str,
+    check: &str,
+) -> Option<DateTime<Utc>> {
     let at = events.iter().rev().find(|event| matches!(&event.command,
         Command::Result { req: event_req, revision: event_revision, run: event_run, evidence }
         if event_req == req && *event_revision == revision && event_run == run && evidence.check == check));
@@ -13,7 +19,9 @@ fn stale_result(events: &[Event], req: &str, revision: u32, run: &str, check: &s
     {
         date.push_str(":00");
     }
-    DateTime::parse_from_rfc3339(&date).ok().map(|at| at.with_timezone(&Utc) + Duration::days(7))
+    DateTime::parse_from_rfc3339(&date)
+        .ok()
+        .map(|at| at.with_timezone(&Utc) + Duration::days(7))
 }
 
 fn stale_requirement(
@@ -31,9 +39,16 @@ fn stale_requirement(
     else {
         return None;
     };
-    r.acs.iter().filter(|ac|summary["acs"][&ac.id]["verification"] == "pass")
-        .flat_map(|ac|run.plan.iter().filter(move |check|check.ac==ac.id && run.results.contains_key(&check.id)))
-        .filter_map(|check|stale_result(events,id,r.number,run_id,&check.id)).min()
+    r.acs
+        .iter()
+        .filter(|ac| summary["acs"][&ac.id]["verification"] == "pass")
+        .flat_map(|ac| {
+            run.plan
+                .iter()
+                .filter(move |check| check.ac == ac.id && run.results.contains_key(&check.id))
+        })
+        .filter_map(|check| stale_result(events, id, r.number, run_id, &check.id))
+        .min()
 }
 
 fn event_time(events: &[Event], req: &str, revision: u32) -> Option<String> {
@@ -45,8 +60,12 @@ fn event_time(events: &[Event], req: &str, revision: u32) -> Option<String> {
                 | "assess"
                 | "confirm"
                 | "task"
+                | "review_task"
+                | "retire_task"
                 | "complete_task"
+                | "define_verification_scope"
                 | "plan"
+                | "review_coverage"
                 | "result"
                 | "finish"
                 | "issue"
@@ -74,7 +93,9 @@ fn requirement_signal(id: &str, q: &crate::model::Requirement, events: &[Event])
     let failed = acs.is_some_and(|a| a.values().any(|v| v["verification"] == "fail"));
     let unready = acs.is_some_and(|a| a.values().any(|v| v["ready"] != true));
     let stale_after = stale_requirement(id, q, &s, events);
-    let stale = stale_after.as_ref().is_some_and(|deadline| *deadline <= Utc::now());
+    let stale = stale_after
+        .as_ref()
+        .is_some_and(|deadline| *deadline <= Utc::now());
     let (tone, label, status) = if r.acs.is_empty() {
         ("grey", "No acceptance criteria", "waiting")
     } else if failed {
@@ -85,7 +106,13 @@ fn requirement_signal(id: &str, q: &crate::model::Requirement, events: &[Event])
         ("green", "All ACs green", "pass")
     } else if !r.confirmed || unready {
         ("yellow", "Waiting for decision", "waiting")
-    } else if !r.runs.is_empty() || r.tasks.values().any(|t| t.purpose != "decision") {
+    } else if r.tasks.values().any(|task| task.review_required) {
+        ("purple", "Task review required", "review")
+    } else if !r.runs.is_empty()
+        || r.tasks
+            .values()
+            .any(|t| t.retired.is_none() && t.purpose != "decision")
+    {
         ("yellow", "In progress", "progress")
     } else {
         ("grey", "Ready to work", "available")
@@ -104,6 +131,7 @@ fn aggregate(children: impl Iterator<Item = Value>, noun: &str) -> Value {
             "red" => "red",
             "orange" => "orange",
             "yellow" => "yellow",
+            "purple" => "purple",
             "green" => "green",
             _ => "grey",
         };
@@ -113,14 +141,16 @@ fn aggregate(children: impl Iterator<Item = Value>, noun: &str) -> Value {
                 latest = Some(at.to_owned());
             }
         }
-        if let Some(deadline)=child["stale_after"].as_str(){
-            if stale_after.as_deref().is_none_or(|old| deadline < old){stale_after=Some(deadline.to_owned());}
+        if let Some(deadline) = child["stale_after"].as_str() {
+            if stale_after.as_deref().is_none_or(|old| deadline < old) {
+                stale_after = Some(deadline.to_owned());
+            }
         }
     }
     if count == 0 {
         return json!({"tone":"grey","label":format!("No {noun}"),"at":null});
     }
-    let tone = ["red", "orange", "yellow", "grey", "green"]
+    let tone = ["red", "orange", "purple", "yellow", "grey", "green"]
         .into_iter()
         .find(|tone| counts.get(tone).copied().unwrap_or(0) > 0)
         .unwrap_or("grey");
@@ -128,6 +158,7 @@ fn aggregate(children: impl Iterator<Item = Value>, noun: &str) -> Value {
         ("green", "complete"),
         ("orange", "stale"),
         ("yellow", "pending"),
+        ("purple", "needs review"),
         ("red", "failed"),
         ("grey", "unchecked or empty"),
     ]
@@ -195,9 +226,9 @@ pub(super) async fn project(
             }
         }
     }
-    let blocker_count=blockers.len();
+    let blocker_count = blockers.len();
     let launch = json!({"ready":configured && blockers.is_empty(),"configured":configured,"blockers":blockers});
-    let first_view=json!({"title":&state.title,"members":&state.members,"domains":&state.domains,
+    let first_view = json!({"title":&state.title,"members":&state.members,"domains":&state.domains,
         "order":state.tree_order.get("domain").cloned().unwrap_or_default(),"signals":&domains,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),
         "counts":{"consumers":state.consumers.len(),"intake":state.intake.len()}});
@@ -237,8 +268,13 @@ pub async fn board_read(
     access::check(&**conn, &workspace, actor, false).await?;
     match level {
         None => {
-            let row=conn.query_one("SELECT position,first_view::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
-            let first=parsed(&row,1)?;
+            let row = conn
+                .query_one(
+                    "SELECT position,first_view::text FROM joppa.board_cache WHERE workspace=$1",
+                    &[&workspace],
+                )
+                .await?;
+            let first = parsed(&row, 1)?;
             let domains = &first["domains"];
             let members = &first["members"];
             let domain_keys: Vec<String> = domains
@@ -327,7 +363,12 @@ pub async fn board_read(
             )
         }
         Some("consumers") => {
-            let row=conn.query_one("SELECT (state->'consumers')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+            let row = conn
+                .query_one(
+                    "SELECT (state->'consumers')::text FROM joppa.board_cache WHERE workspace=$1",
+                    &[&workspace],
+                )
+                .await?;
             let consumers = parsed(&row, 0)?;
             let keys: Vec<String> = consumers
                 .as_object()
@@ -339,9 +380,14 @@ pub async fn board_read(
             )
         }
         Some("intake") => {
-            let row=conn.query_one("SELECT (state->'intake')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+            let row = conn
+                .query_one(
+                    "SELECT (state->'intake')::text FROM joppa.board_cache WHERE workspace=$1",
+                    &[&workspace],
+                )
+                .await?;
             Ok(json!({"intake":parsed(&row,0)?}))
-        },
+        }
         Some("filter") => {
             let row=conn.query_one("SELECT (state->'capabilities')::text, COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revisions',jsonb_build_array(value->'revisions'->-1),'revision_count',jsonb_array_length(value->'revisions'))) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text,summary::text,signals::text,(state->'tree_order')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
             let caps = parsed(&row, 0)?;
