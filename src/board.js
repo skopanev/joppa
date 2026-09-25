@@ -628,9 +628,10 @@ function intake(root) {
   }
 }
 function copyButton(kind,id,title) {
-  const b=button('',async()=>{
+  const b=E('button','', 'copy-context');b.type='button';
+  b.onclick=async()=>{
     const systemId=data.system_ids?.[kind]?.[id];
-    if(!systemId)throw Error('System ID unavailable. Refresh the page.');
+    if(!systemId){notify(Error('System ID unavailable. Refresh the page.'));return;}
     const text=systemId;
     try{
       if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
@@ -640,10 +641,18 @@ function copyButton(kind,id,title) {
       const dialog=E('dialog',undefined,'copy-dialog');
       dialog.setAttribute('aria-label','Copy for your agent');
       const area=E('input');area.readOnly=true;area.value=text;area.setAttribute('aria-label','ID');
-      dialog.append(E('h2','Copy for your agent'),E('p','Automatic copying is unavailable. Select the text and copy it with ⌘C or Ctrl+C.'),area,button('Close',()=>dialog.close()));
+      const copy=E('button','Copy ID');copy.type='button';
+      copy.onclick=()=>{
+        area.focus();area.select();
+        let copied=false;
+        try{copied=document.execCommand('copy');}catch{}
+        if(copied){dialog.close();notify('Copied ID for your agent.');}
+        else notify(Error('Touch and hold the selected ID, then choose Copy.'));
+      };
+      dialog.append(E('h2','Copy for your agent'),E('p','Tap Copy ID, or touch and hold the selected text and choose Copy.'),area,copy,button('Close',()=>dialog.close()));
       dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();area.focus();area.select();
     }
-  },'copy-context');
+  };
   const svgNS='http://www.w3.org/2000/svg';
   const icon=document.createElementNS(svgNS,'svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'14',height:'14',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))icon.setAttribute(key,value);
