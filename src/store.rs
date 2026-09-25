@@ -11,6 +11,9 @@ use tokio_postgres::GenericClient;
 #[path = "store_access.rs"]
 mod access;
 pub use access::{AccessDenied, enroll};
+#[path = "store_board.rs"]
+mod board;
+pub use board::board_read;
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 pub fn pool(url: &str) -> Result<Pool> {
@@ -46,8 +49,27 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/010_consumers.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/011_board_cache.sql"))
+        .await?;
+    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb", &[]).await? {
+        let id: String = row.get(0);
+        let (state, events) = load(&*tx, &id).await?;
+        board::project(&*tx, &id, &state, &events).await?;
+    }
     tx.commit().await?;
     Ok(())
+}
+pub async fn backfill_board(pool: &Pool) -> Result<usize> {
+    let conn = pool.get().await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) ORDER BY w.id", &[]).await?;
+    let mut done = 0;
+    for row in rows {
+        let id: String = row.get(0);
+        let (state, events) = load(&**conn, &id).await?;
+        board::project(&**conn, &id, &state, &events).await?;
+        done += 1;
+    }
+    Ok(done)
 }
 #[derive(Serialize)]
 pub struct Event {
@@ -201,7 +223,8 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         state.members.contains_key(actor),
         "workspace not found or access denied"
     );
-    let mut system_ids = json!({"domain":{},"capability":{},"consumer":{},"requirement":{},"ac":{}});
+    let mut system_ids =
+        json!({"domain":{},"capability":{},"consumer":{},"requirement":{},"ac":{}});
     for row in conn
         .query(
             "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2",
@@ -311,7 +334,8 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 .with_context(|| format!("unknown revision {number} for requirement {req}"))?,
             None => current,
         };
-        out["requirement"]["capability"] = json!(revision.capability.as_deref().unwrap_or(&q.capability));
+        out["requirement"]["capability"] =
+            json!(revision.capability.as_deref().unwrap_or(&q.capability));
         let comments: serde_json::Map<String, Value> = q
             .comments
             .iter()
@@ -412,9 +436,8 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
         if allowed.as_ref().is_some_and(|set| !set.contains(&id)) {
             continue;
         }
-        let (w, _) = load(&**conn, &id).await?;
-        if w.members.contains_key(actor) {
-            items.push(json!({"id": w.workspace_id.as_deref().unwrap_or(&id), "title": w.title}));
+        if let Some(card) = conn.query_opt("SELECT first_view->>'workspace_id',first_view->>'title' FROM joppa.board_cache WHERE workspace=$1 AND first_view->'members' ? $2", &[&id,&actor]).await? {
+            items.push(json!({"id": card.get::<_,String>(0), "title": card.get::<_,String>(1)}));
         }
     }
     Ok(json!(items))

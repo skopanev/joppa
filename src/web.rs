@@ -194,6 +194,31 @@ async fn read(
     // страницы там только мешало бы. Ограничение нужно агенту, а не человеку.
     result(store::read(&app.pool, &workspace, &actor, &store::Scope::full()).await)
 }
+#[derive(Deserialize)]
+struct BoardQuery {
+    level: Option<String>,
+    id: Option<String>,
+    revision: Option<u32>,
+}
+async fn board(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(query): Query<BoardQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(
+        store::board_read(
+            &app.pool,
+            &workspace,
+            &actor,
+            query.level.as_deref(),
+            query.id.as_deref(),
+            query.revision,
+        )
+        .await,
+    )
+}
 /// Browser sessions can read product data; writes require agent/service credentials.
 fn require_write_credential(
     headers: &HeaderMap,
@@ -429,6 +454,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/me", get(me))
         .route("/api/workspaces", get(list))
         .route("/api/workspaces/{workspace}", get(read))
+        .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с

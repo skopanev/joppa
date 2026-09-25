@@ -114,6 +114,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
         ok({'op':'member','id':'legal','role':'human'})
         ok({'op':'member','id':'reviewer','role':'human'})
+        ok({'op':'consumer','id':'customer','title':'Customer','owner':'owner'})
         ok({'op': 'domain', 'id': 'security', 'title': 'Доступ к данным', 'authority': 'owner'})
         ok({'op': 'capability', 'id': 'restrict', 'title': 'Ограничивать доступ', 'domain': 'security'})
         ok({'op':'capability','id':'audit','title':'Audit access','domain':'security'})
@@ -121,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'capability','id':'observe','title':'Observe service health','domain':'operations'})
         ok({'op': 'revise', 'req': 'key', 'expected_revision': 0, 'capability': 'restrict',
             'title': 'Ключ до запуска', 'body': '</script><script>window.attacked=true</script>',
-            'owner': 'owner', 'reason': 'Проверка полного цикла',
+            'owner': 'owner', 'consumers':['customer'], 'reason': 'Проверка полного цикла',
             'acs': [{'id': 'key-rights', 'text': 'До запуска у ключа только read и verify', 'before_launch': True}]})
         status, _ = command({'op': 'confirm', 'req': 'key', 'revision': 1}, token=agent_token)
         assert status == 409, 'agent cannot confirm owner wording'
@@ -201,6 +202,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert 'should-not-exist' not in mcp('joppa_read', {'workspace':mcp_ws}, owner_token)['index']['members']
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'member',
             'command':{'op':'member','id':'agent','role':'agent'}},owner_token)
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'consumer',
+            'command':{'op':'consumer','id':'customer','title':'Customer','owner':'owner'}},owner_token)
         draft = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-generated',
             'command':{'op':'domain','title':'Draft area','authority':'owner'}})
         draft_id = draft['command']['id']
@@ -211,7 +214,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         batch = {'workspace':mcp_ws,'request_id':'mcp-batch','operations':[
             {'ref':'cap','command':{'op':'capability','title':'Recover access','domain':draft_id}},
             {'command':{'op':'revise','expected_revision':0,'capability':{'$ref':'cap/id'},
-                'title':'Recovery preserves access','body':'Only iOS','owner':'owner','reason':'Agreed scope',
+                'title':'Recovery preserves access','body':'Only iOS','owner':'owner','consumers':['customer'],'reason':'Agreed scope',
                 'acs':[{'text':'On iOS paid access is preserved'}]}}
         ]}
         created = mcp('joppa_batch',batch)
@@ -238,7 +241,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert '\\u003c/script' in snapshot.read_text()
         # The generic automated runner really seals before execution and reports failures.
         ok({'op': 'revise', 'req': 'auto', 'expected_revision': 0, 'capability': 'restrict',
-            'title': 'Automated example', 'body': '', 'owner': 'owner', 'reason': 'Adapter test',
+            'title': 'Automated example', 'body': '', 'owner': 'owner', 'consumers':['customer'], 'reason': 'Adapter test',
             'acs': [{'id': 'auto-ac', 'text': 'Command exits successfully'}]})
         ok({'op': 'confirm', 'req': 'auto', 'revision': 1})
         ok({'op': 'assess', 'req': 'auto', 'revision': 1, 'ac': 'auto-ac',
@@ -277,7 +280,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'reviewer'})
         # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
-            'title':'Ключ до запуска','body':'Updated wording','owner':'owner','reason':'Clarify scope',
+            'title':'Ключ до запуска','body':'Updated wording','owner':'owner','consumers':['customer'],'reason':'Clarify scope',
             'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True,'decider':'legal'}]})
         refs=request('/api/workspaces/'+ws)[1]['system_ids']
         # MCP discovers revision counts, then reads exactly one chosen revision.
@@ -328,7 +331,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             {'command':{'op':'note','target':'ac:'+generated_req+'/'+generated_ac,'id':'old-ac-note','text':'Old AC note'}},
             {'command':{'op':'revise','req':generated_req,'expected_revision':1,
                 'capability':created['results'][0]['command']['id'],'title':'Recovery preserves access',
-                'body':'Updated scope','owner':'owner','reason':'Replaced criterion',
+                'body':'Updated scope','owner':'owner','consumers':['customer'],'reason':'Replaced criterion',
                 'acs':[{'text':'New criterion'}]}}
         ]})
         removed=mcp('joppa_read',{'item_id':generated_ac_ref})
@@ -341,7 +344,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         all_refs=[ref for items in refs.values() for ref in items.values()]
         assert len(all_refs)==len(set(all_refs))
         for kind,items in refs.items():
-            tag={'domain':'D','capability':'C','requirement':'R','ac':'A'}[kind]
+            tag={'domain':'D','capability':'C','consumer':'U','requirement':'R','ac':'A'}[kind]
             for local_id,ref in items.items():
                 assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
                 msg={'jsonrpc':'2.0','id':9,'method':'tools/call','params':{'name':'joppa_read','arguments':{'item_id':ref}}}

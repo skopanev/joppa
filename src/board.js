@@ -55,13 +55,47 @@ async function list() {
   else {data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));}
 }
 let loadNumber = 0;
+const loadedDomains=new Set(),loadedCapabilities=new Set(),loadedRequirements=new Set();
+let consumerOpen=false,consumersLoaded=false,intakeOpen=false,filterLoaded=false,filterLoading=null;
+const fullHistoryRequirements=new Set();
 async function load() {
   const request = ++loadNumber;
-  const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)));
+  const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));
   if (request !== loadNumber) return;
   data = next;
-  indexStatusEvents();
+  loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
+  fullHistoryRequirements.clear();
+  consumerOpen=false;consumersLoaded=false;intakeOpen=false;filterLoaded=false;filterLoading=null;
+  if(!data.lazy)indexStatusEvents();
   render();
+  if(data.lazy&&(filters.status||filters.person))await ensureFilterIndex();
+}
+async function boardPart(level,id,revision){
+  const params=new URLSearchParams({level});
+  if(id)params.set('id',id);
+  if(revision)params.set('revision',revision);
+  return api('workspaces/'+encodeURIComponent(ws)+'/board?'+params);
+}
+async function ensureFilterIndex(){
+  if(!data?.lazy||filterLoaded)return;
+  if(filterLoading)return filterLoading;
+  const request=loadNumber;
+  filterLoading=(async()=>{
+    const part=await boardPart('filter');
+    if(request!==loadNumber)return;
+    Object.assign(data.state.capabilities,part.capabilities);
+    for(const [id,q] of Object.entries(part.requirements))if(!loadedRequirements.has(id)&&!fullHistoryRequirements.has(id))data.state.requirements[id]=q;
+    Object.assign(data.state.tree_order,part.tree_order);
+    Object.assign(data.summary,part.summary);
+    Object.assign(data.signals.capabilities,part.signals.capabilities);
+    Object.assign(data.signals.requirements,part.signals.requirements);
+    Object.assign(data.system_ids.capability,part.system_ids.capability);
+    Object.assign(data.system_ids.requirement,part.system_ids.requirement);
+    Object.keys(data.state.domains).forEach(id=>loadedDomains.add(id));
+    Object.keys(data.state.capabilities).forEach(id=>loadedCapabilities.add(id));
+    filterLoaded=true;render();applyFilters();
+  })();
+  try{await filterLoading;}finally{filterLoading=null;}
 }
 async function showApp(identity) {
   if(identity.email===undefined)identity={...identity,...await api('me')};
@@ -116,6 +150,7 @@ const statusLabels={waiting:'Waiting for decision',available:'Ready to work',pro
 let filters={domain:'',status:'',person:''};
 let filterWorkspace=null,statusCounts={};
 function requirementStatus(id) {
+  if(data.lazy)return data.signals.requirements[id]?.status||'waiting';
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
   if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
   if(s.ready_for_acceptance)return 'pass';
@@ -124,6 +159,7 @@ function requirementStatus(id) {
   return 'available';
 }
 function requirementSignal(id){
+  if(data.lazy)return data.signals.requirements[id]||{tone:'grey',label:'No status yet'};
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
   const at=statusEventDate(id,r.number);
   if(!r.acs.length)return {tone:'grey',label:'No acceptance criteria',at};
@@ -142,6 +178,7 @@ function aggregateSignal(children,noun){
   return {tone,label:'Current '+noun+': '+parts.join(' · '),at:children.map(child=>child.at).filter(Boolean).sort().at(-1)};
 }
 function treeSignals(){
+  if(data.lazy)return data.signals;
   const requirements=Object.fromEntries(Object.keys(data.state.requirements).map(id=>[id,requirementSignal(id)]));
   const capabilities=Object.fromEntries(Object.keys(data.state.capabilities).map(id=>[id,aggregateSignal(Object.entries(data.state.requirements).filter(([,q])=>q.capability===id).map(([rid])=>requirements[rid]),'requirements')]));
   const domains=Object.fromEntries(Object.keys(data.state.domains).map(id=>[id,aggregateSignal(Object.entries(data.state.capabilities).filter(([,c])=>c.domain===id).map(([cid])=>capabilities[cid]),'capabilities')]));
@@ -187,12 +224,12 @@ function indexStatusEvents(){
     if(c.op==='revise')acs=c.acs.map(a=>a.id);
     else if(c.ac)acs=[c.ac];
     else if(c.acs)acs=c.acs;
-    else if(c.op==='complete_task')acs=r?.tasks[c.id]?.acs||[];
+    else if(c.op==='complete_task')acs=r?.tasks?.[c.id]?.acs||[];
     else if(c.op==='plan')acs=c.checks.map(check=>check.ac);
-    else if(c.op==='result')acs=r?.runs[c.run]?.plan.filter(check=>check.id===c.evidence.check).map(check=>check.ac)||[];
-    else if(c.op==='finish')acs=r?.runs[c.run]?.plan.map(check=>check.ac)||[];
-    else if(c.op==='resolve')acs=[r?.issues[c.id]?.ac].filter(Boolean);
-    else if(c.op==='withdraw_decision')acs=[data.state.requirements[c.req]?.comments[c.comment]?.ac].filter(Boolean);
+    else if(c.op==='result')acs=r?.runs?.[c.run]?.plan.filter(check=>check.id===c.evidence.check).map(check=>check.ac)||[];
+    else if(c.op==='finish')acs=r?.runs?.[c.run]?.plan.map(check=>check.ac)||[];
+    else if(c.op==='resolve')acs=[r?.issues?.[c.id]?.ac].filter(Boolean);
+    else if(c.op==='withdraw_decision')acs=[data.state.requirements[c.req]?.comments?.[c.comment]?.ac].filter(Boolean);
     for(const ac of acs)statusEventIndex.set(key+'/'+ac,event.recorded_at);
   }
 }
@@ -225,6 +262,8 @@ function showStatusHint(circle){
 }
 document.addEventListener('scroll',hideStatusHint,true);
 function statusCircle(signal,number){
+  if(signal?.stale_after&&Date.parse(signal.stale_after)<=Date.now()&&signal.tone!=='red')
+    signal={...signal,tone:'orange',label:signal.status?'Checks stale':'Contains stale checks'};
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
   const hint='Status: '+signal.label+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
   circle.dataset.tone=signal.tone;circle.dataset.hint=hint;circle.tabIndex=0;
@@ -241,6 +280,7 @@ function nodeTitle(text,signal){
 function matchesPerson(id) {
   const actor=filters.person==='@me'?viewerActor:filters.person;
   if(!actor)return true;
+  if(data.lazy&&!filterLoaded&&!loadedRequirements.has(id))return true;
   const r=data.state.requirements[id].revisions.at(-1);
   return r.owner===actor||Object.values(r.tasks).some(t=>!t.done&&t.assignee===actor)||
     r.acs.some(a=>!data.summary[id].acs[a.id]?.ready&&(a.owner===actor||a.assessment?.owner===actor));
@@ -300,18 +340,18 @@ function filterControls(root) {
   if(filters.person==='@me'&&!viewerActor)filters.person='';
   fields.append(filterPicker('domain','Filter by domain','Domain',[
     {id:'',title:'All domains',hint:String(orderedEntries('domain').length)},
-    ...orderedEntries('domain').map(([id,d])=>({id,title:d.title,hint:String(Object.values(data.state.capabilities).filter(c=>c.domain===id).length)+' capabilities'}))
+    ...orderedEntries('domain').map(([id,d])=>({id,title:d.title,hint:data.lazy&&!loadedDomains.has(id)?'Open to load':String(Object.values(data.state.capabilities).filter(c=>c.domain===id).length)+' capabilities'}))
   ],filters.domain,value=>{filters.domain=value;applyFilters();}));
   const people=[{id:'',title:'Everyone',hint:'All responsibilities'}];
   if(viewerActor)people.push({id:'@me',title:'Assigned to me',hint:'My responsibilities'});
   for(const [id,role] of Object.entries(data.state.members))if(role==='human'&&id!==viewerActor)people.push({id,title:personLabel(id),hint:'Responsibilities'});
-  fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;applyFilters();}));
+  fields.append(filterPicker('person','Filter by person','Assigned to',people,filters.person,value=>{filters.person=value;if(value&&data.lazy&&!filterLoaded)ensureFilterIndex().catch(notify);else applyFilters();}));
   fields.prepend(fields.lastElementChild);
   toolbar.append(fields);
   fields.append(filterPicker('status','Filter by status','Status',[
     {id:'',title:'All statuses',hint:()=>Object.values(statusCounts).reduce((a,b)=>a+b,0)+' requirements'},
     ...Object.entries(statusLabels).map(([id,title])=>({id,title,hint:()=>(statusCounts[id]||0)+' requirements'}))
-  ],filters.status,value=>{filters.status=value;applyFilters();}));
+  ],filters.status,value=>{filters.status=value;if(value&&data.lazy&&!filterLoaded)ensureFilterIndex().catch(notify);else applyFilters();}));
   const bottom=E('div',undefined,'filter-bottom');
   const results=E('span','','filter-results');results.id='filter-results';results.setAttribute('role','status');
   bottom.append(results);toolbar.append(bottom);root.append(toolbar);
@@ -344,7 +384,9 @@ function applyFilters(reveal=true) {
     if(domainVisible){visibleDomains++;if(reveal&&(filters.status||filters.domain||filters.person))group.open=true;}
   }
   statusCounts=counts;
-  $('filter-results').textContent=shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
+  $('filter-results').textContent=data.lazy&&!Object.keys(data.state.requirements).length
+    ?visibleDomains+' domains · open one to load its capabilities'
+    :shown+' of '+Object.keys(data.state.requirements).length+' requirements · '+visibleDomains+' domains';
   $('filter-empty').hidden=visibleDomains>0||!orderedEntries('domain').length;
 }
 function render() {
@@ -356,7 +398,7 @@ function render() {
   t.replaceChildren();
   const intro=E('div',undefined,'tree-intro');
   intro.append(E('h1',data.state.title));
-  if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+data.launch.blockers.length,'hint'));
+  if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers.length),'hint'));
   t.append(intro);
   filterControls(t);
   for (const [did,d] of orderedEntries('domain')) {
@@ -368,21 +410,72 @@ function render() {
     // и держать её за кнопкой значит не показывать вовсе.
     if(d.description?.trim())body.append(E('p',d.description,'node-description'));
     group.append(body);
+    if(data.lazy&&!loadedDomains.has(did))body.append(E('p','Open to load capabilities','empty-state'));
+    if(data.lazy)group.addEventListener('toggle',async()=>{
+      if(!group.open||loadedDomains.has(did))return;
+      const request=loadNumber;
+      try{
+        const part=await boardPart('domain',did);
+        if(request!==loadNumber)return;
+        Object.assign(data.state.capabilities,part.capabilities);
+        data.state.tree_order['capability:'+did]=part.order;
+        Object.assign(data.signals.capabilities,part.signals);
+        Object.assign(data.system_ids.capability,part.system_ids);
+        loadedDomains.add(did);render();
+      }catch(e){notify(e);}
+    });
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
       const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
       if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
+      if(data.lazy&&!loadedCapabilities.has(cid))cap.append(E('p','Open to load requirements','empty-state'));
+      if(data.lazy)cap.addEventListener('toggle',async()=>{
+        if(!cap.open||loadedCapabilities.has(cid))return;
+        const request=loadNumber;
+        try{
+          const part=await boardPart('capability',cid);
+          if(request!==loadNumber)return;
+          Object.assign(data.state.requirements,part.requirements);
+          data.state.tree_order['requirement:'+cid]=part.order;
+          Object.assign(data.signals.requirements,part.signals);
+          Object.assign(data.system_ids.requirement,part.system_ids);
+          loadedCapabilities.add(cid);render();
+        }catch(e){notify(e);}
+      });
       const reqs=orderedEntries('requirement',cid);
-      if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
+      if(!reqs.length&&(!data.lazy||loadedCapabilities.has(cid)))cap.append(E('p','No requirements yet.','empty-state'));
       for(const [id,q] of reqs){
         const r=q.revisions.at(-1),tone=requirementStatus(id);
         const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
         const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
         const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
         const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
-        req.addEventListener('toggle',()=>{if(req.open&&!content.childNodes.length)requirementDetails(content,id);});
-        if(req.open)requirementDetails(content,id);
+        req.addEventListener('toggle',async()=>{
+          if(!req.open||content.childNodes.length)return;
+          if(data.lazy&&!loadedRequirements.has(id)){
+            content.append(E('p','Loading requirement…','hint'));
+            const request=loadNumber;
+            try{
+              const part=await boardPart('requirement',id);
+              if(request!==loadNumber)return;
+              const old=data.state.requirements[id];
+              data.state.requirements[id]=fullHistoryRequirements.has(id)&&old?.revisions.length>1
+                ?{...old,...part.requirement,revisions:old.revisions.map(r=>r.number===part.requirement.revisions[0].number?part.requirement.revisions[0]:r)}
+                :part.requirement;
+              data.summary[id]=part.summary;
+              Object.assign(data.state.notes,part.notes);
+              Object.assign(data.state.consumers,part.consumers);
+              Object.assign(data.state.projects,part.projects);
+              Object.assign(data.system_ids.ac,part.system_ids?.ac||{});
+              data.history.push(...part.status_events);
+              indexStatusEvents();
+              loadedRequirements.add(id);
+              requirementDetails(content,id);
+            }catch(e){content.replaceChildren();notify(e);}
+          }else requirementDetails(content,id);
+        });
+        if(req.open&&(!data.lazy||loadedRequirements.has(id)))requirementDetails(content,id);
         cap.append(req);
       }
       body.append(cap);
@@ -397,10 +490,29 @@ function render() {
 }
 function consumers(root){
   const entries=Object.entries(data.state.consumers||{});
-  if(!entries.length)return;
-  const section=details(root,'Consumers · '+entries.length);
+  const count=data.lazy?data.counts.consumers:entries.length;
+  if(!count)return;
+  const section=details(root,'Consumers · '+count);
+  section.classList.add('consumer-section');
+  section.open=consumerOpen;
+  if(data.lazy&&!consumersLoaded){
+    section.append(E('p','Loading consumers…','consumer-loading'));
+    section.addEventListener('toggle',async()=>{
+      consumerOpen=section.open;
+      if(!section.open||consumersLoaded)return;
+      const request=loadNumber;
+      try{const part=await boardPart('consumers');if(request!==loadNumber)return;
+        Object.assign(data.state.consumers,part.consumers);
+        Object.assign(data.system_ids.consumer,part.system_ids||{});
+        consumersLoaded=true;
+        render();
+      }catch(e){notify(e);}
+    });
+    return;
+  }
+  section.addEventListener('toggle',()=>{consumerOpen=section.open;});
   for(const [id,consumer] of entries){
-    const item=E('article',undefined,'detail-entry');
+    const item=E('article',undefined,'detail-entry consumer-card');
     const heading=E('h3',undefined,'consumer-title');
     heading.append(E('span',consumer.title),itemActions('consumer',id,consumer.title));
     item.append(heading);
@@ -491,7 +603,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
     if(linkedChecks.length){
       const checks=E('section',undefined,'ac-checks');
       checks.append(E('h4','Tests linked to this AC · '+linkedChecks.length,'ac-checks-title'));
-      for(const {run,check,result} of linkedChecks){
+      for(const {runId,run,check,result} of linkedChecks){
         const outcome=result?.outcome;
         const stale=result?.outcome==='pass'&&staleCheck(resultEvent(selected,r.number,runId,check.id)?.recorded_at);
         const tone=outcome==='fail'?'red':stale?'orange':outcome==='pass'?'green':result?'grey':run.finished?'grey':'yellow';
@@ -680,7 +792,8 @@ if(!window.SNAPSHOT){
   }).catch(e=>{$('login-status').textContent=e.message;$('login-status').dataset.error='true';})
     .finally(()=>document.body.classList.remove('checking-session'));
 }
-function openRequirement(id) {
+async function openRequirement(id) {
+  if(data.lazy&&!data.state.requirements[id])await ensureFilterIndex();
   filters={domain:'',status:'',person:''};render();
   const req=[...$('tree').querySelectorAll('.tree-requirement')].find(e=>e.dataset.requirement===id);
   if(!req)return;
@@ -689,8 +802,23 @@ function openRequirement(id) {
 }
 function intake(root) {
   const entries=Object.entries(data.state.intake);
-  if(!entries.length)return;
-  const section=details(root,'Intake · '+entries.length);
+  const count=data.lazy?data.counts.intake:entries.length;
+  if(!count)return;
+  const section=details(root,'Intake · '+count);
+  section.open=intakeOpen;
+  if(data.lazy&&!entries.length){
+    section.append(E('p','Loading intake…','hint'));
+    section.addEventListener('toggle',async()=>{
+      intakeOpen=section.open;
+      if(!section.open||Object.keys(data.state.intake).length)return;
+      const request=loadNumber;
+      try{const part=await boardPart('intake');if(request!==loadNumber)return;
+        Object.assign(data.state.intake,part.intake);render();
+      }catch(e){notify(e);}
+    });
+    return;
+  }
+  section.addEventListener('toggle',()=>{intakeOpen=section.open;});
   for(const [id,item] of entries){
     const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
     if(item.owner)entry.append(E('p','Owner: '+personLabel(item.owner),'node-meta'));
@@ -785,7 +913,15 @@ function itemActions(kind,id,title,reqId=null,revision=null){
   const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','M3 11a9 9 0 1 1 2.7 7.4M3 4v7h7M12 7v5l3 2');icon.append(path);history.append(icon);
   history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(history);return actions;
 }
-function showHistory(kind,id,title,reqId){
+async function showHistory(kind,id,title,reqId){
+  const historyReq=reqId||(kind==='requirement'?id:null);
+  if(data.lazy&&(!data.fullHistory||historyReq&&!fullHistoryRequirements.has(historyReq))){
+    const part=await boardPart('history',historyReq||id);
+    data.history=part.history;
+    if(part.requirement){data.state.requirements[historyReq]=part.requirement;fullHistoryRequirements.add(historyReq);}
+    data.fullHistory=true;
+    indexStatusEvents();
+  }
   const q=data.state.requirements[kind==='requirement'?id:reqId];
   const created=data.history.find(e=>e.command.op===kind&&e.command.id===id)?.position||0;
   const events=data.history.filter(event=>{
@@ -848,6 +984,11 @@ function showHistory(kind,id,title,reqId){
 // Адрес объекта. Тот же вид, что понимает сервер, — вид:идентификатор.
 function address(kind,id,reqId){return ['ac','point'].includes(kind)?kind+':'+reqId+'/'+id:kind+':'+id;}
 function notesOf(target){return (data?.state?.notes||{})[target]||{description:'',comments:{},attachments:{}};}
+async function ensureNotes(target){
+  if(!data.lazy||Object.hasOwn(data.state.notes,target))return;
+  const part=await boardPart('notes',target);
+  data.state.notes[target]=part.notes;
+}
 function liveNotes(target){
   const n=notesOf(target);
   return {
@@ -881,10 +1022,10 @@ function notesButton(kind,id,title,reqId){
   const target=address(kind,id,reqId);
   const n=liveNotes(target);
   const count=n.comments.length;
-  const b=button('',()=>showNotes(kind,id,title,reqId),'notes-button');
+  const b=button('',async()=>{await ensureNotes(target);showNotes(kind,id,title,reqId);},'notes-button');
   if(count)b.classList.add('has-notes');
-  b.disabled=count===0;
-  b.title=count?'Comments · '+count:'No comments';
+  b.disabled=!data.lazy&&count===0;
+  b.title=count?'Comments · '+count:data.lazy?'Open notes':'No comments';
   b.setAttribute('aria-label','Notes on '+kind+' '+id+(count?': '+count:''));
   b.append(svgIcon('M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.9L3 20.5l1.6-4.6A8.4 8.4 0 0 1 3.5 11 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z'));
   if(count)b.append(E('span',String(count),'notes-count'));
@@ -893,11 +1034,11 @@ function notesButton(kind,id,title,reqId){
 }
 function filesButton(kind,id,title,reqId){
   const target=address(kind,id,reqId),attachments=liveNotes(target).attachments;
-  const b=button('',()=>showFiles(title,attachments),'files-button');
+  const b=button('',async()=>{await ensureNotes(target);showFiles(title,liveNotes(target).attachments);},'files-button');
   b.dataset.target=target;
-  b.disabled=attachments.length===0;
+  b.disabled=!data.lazy&&attachments.length===0;
   if(attachments.length)b.classList.add('has-files');
-  b.title=attachments.length?'Files · '+attachments.length:'No files';
+  b.title=attachments.length?'Files · '+attachments.length:data.lazy?'Open files':'No files';
   b.setAttribute('aria-label','Files on '+kind+' '+id+': '+attachments.length);
   b.setAttribute('aria-haspopup','dialog');
   b.append(svgIcon(FILE_ICON));

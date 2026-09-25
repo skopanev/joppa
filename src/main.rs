@@ -26,9 +26,16 @@ async fn main() -> Result<()> {
             store::migrate(&pool).await?;
             println!("journal schema ready; legacy tables untouched");
         }
+        Some("backfill-board") => {
+            println!(
+                "board projections created: {}",
+                store::backfill_board(&pool).await?
+            );
+        }
         Some("serve") => {
             let port = args.get(1).map(|s| s.parse()).transpose()?.unwrap_or(6212);
             let host = args.get(2).map(String::as_str).unwrap_or("127.0.0.1");
+            store::backfill_board(&pool).await?;
             web::serve(pool, host, port).await?;
         }
         Some("command") => {
@@ -62,7 +69,10 @@ async fn main() -> Result<()> {
             let workspace = args
                 .get(1)
                 .ok_or_else(|| anyhow::anyhow!("read WORKSPACE"))?;
-            println!("{}", store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?);
+            println!(
+                "{}",
+                store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?
+            );
         }
         Some("list") => println!("{}", store::list(&pool, &actor()?).await?),
         Some("board") => {
@@ -77,7 +87,7 @@ async fn main() -> Result<()> {
             println!("{path}");
         }
         _ => bail!(
-            "commands: migrate | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list | board WORKSPACE FILE | legacy ..."
+            "commands: migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list | board WORKSPACE FILE | legacy ..."
         ),
     }
     Ok(())

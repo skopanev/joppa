@@ -133,6 +133,8 @@ pub async fn enroll(
         let position = events.len() as i64 + 1;
         commands::apply(&mut state, "joppa-access", &command, position as u64, "")?;
         tx.execute("INSERT INTO joppa.events(workspace,position,request_id,actor,command) VALUES($1,$2,$3,'joppa-access',$4::text::jsonb)", &[workspace,&position,&format!("enroll-{actor}"),&serde_json::to_string(&command)?]).await?;
+        let (recorded_state, recorded_events) = load(&*tx, workspace).await?;
+        super::board::project(&*tx, workspace, &recorded_state, &recorded_events).await?;
     }
     tx.commit().await?;
     Ok(())

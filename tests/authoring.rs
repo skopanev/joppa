@@ -80,7 +80,14 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &json!({"op":"member","id":"agent","role":"agent"}),
     )
     .await?;
-    store::execute_input(&pool, &ws, "owner", "consumer", &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"})).await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "consumer",
+        &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+    )
+    .await?;
     let input = json!({"op":"domain","title":"Area","authority":"owner"});
     let (a, b) = tokio::join!(
         store::execute_input(&pool, &ws, "agent", "auto", &input),
@@ -140,6 +147,42 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     );
     let req = a["results"][2]["command"]["req"].as_str().unwrap();
     let ac = a["results"][2]["command"]["acs"][0]["id"].as_str().unwrap();
+    let domain = a["results"][0]["command"]["id"].as_str().unwrap();
+    let capability = a["results"][1]["command"]["id"].as_str().unwrap();
+    let first = store::board_read(&pool, &ws, "owner", None, None, None).await?;
+    assert!(first["state"]["domains"][domain].is_object());
+    assert_eq!(first["state"]["capabilities"], json!({}));
+    assert_eq!(first["state"]["requirements"], json!({}));
+    assert_eq!(first["history"], json!([]));
+    let branch = store::board_read(&pool, &ws, "owner", Some("domain"), Some(domain), None).await?;
+    assert!(branch["capabilities"][capability].is_object());
+    let branch = store::board_read(
+        &pool,
+        &ws,
+        "owner",
+        Some("capability"),
+        Some(capability),
+        None,
+    )
+    .await?;
+    assert_eq!(
+        branch["requirements"][req]["revisions"][0]["title"],
+        "Paid access persists"
+    );
+    assert!(
+        branch["requirements"][req]["revisions"][0]
+            .get("acs")
+            .is_none()
+    );
+    let detail =
+        store::board_read(&pool, &ws, "owner", Some("requirement"), Some(req), None).await?;
+    assert_eq!(detail["requirement"]["revisions"][0]["acs"][0]["id"], ac);
+    assert!(!detail["status_events"].as_array().unwrap().is_empty());
+    assert_eq!(
+        store::board_read(&pool, &ws, "owner", Some("consumers"), None, None).await?["consumers"]["buyer"]
+            ["title"],
+        "Buyer"
+    );
     uuid::Uuid::parse_str(req)?;
     uuid::Uuid::parse_str(ac)?;
     assert!(
@@ -168,7 +211,10 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             .await
             .unwrap_err();
         assert!(format!("{error:#}").contains("operation 2"));
-        assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, before);
+        assert_eq!(
+            store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+            before
+        );
     }
     store::execute_batch(&pool, &ws, "agent", "retry-after-error", &operations).await?;
     let mut revision = a["results"][2]["command"].clone();
@@ -186,7 +232,10 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     // Generated values persist as journal facts, and receipts cannot be rewritten.
     let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, after);
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        after
+    );
     assert_eq!(
         store::execute_batch(&pool, &ws, "agent", "batch", &operations).await?["results"],
         a["results"]
@@ -202,5 +251,8 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     );
     let receipt: Value=serde_json::from_str(conn.query_one("SELECT result::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id='batch'", &[&ws]).await?.get(0))?;
     assert_eq!(receipt["results"], a["results"]);
+    conn.execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?;
+    assert!(store::backfill_board(&pool).await? >= 1);
+    assert!(store::board_read(&pool,&ws,"owner",None,None,None).await?["state"]["domains"][domain].is_object());
     Ok(())
 }
