@@ -7,9 +7,19 @@ use std::collections::BTreeMap;
 
 pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::Intake { id, said, author } => {
+        Command::Intake { id, said, author, owner } => {
             identifier(id)?;
             nonempty(author)?;
+            if let Some(owner) = owner {
+                crate::commands::human(w, owner)?;
+            }
+            let assigned = owner.clone().unwrap_or_else(|| {
+                if w.members.get(actor).is_some_and(|role| role == "human") {
+                    actor.to_owned()
+                } else {
+                    w.admin.clone()
+                }
+            });
             ensure!(!w.intake.contains_key(id), "intake exists");
             // Deliberately no trim, minimum length or format constraint on the source text.
             w.intake.insert(
@@ -17,6 +27,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
                 Intake {
                     said: said.clone(),
                     author: author.clone(),
+                    owner: Some(assigned),
                     points: BTreeMap::new(),
                 },
             );

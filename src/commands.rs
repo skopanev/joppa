@@ -27,6 +27,20 @@ pub enum Command {
         id: String,
         role: String,
     },
+    Consumer {
+        id: String,
+        title: String,
+        #[serde(default)]
+        description: String,
+        owner: String,
+    },
+    EditConsumer {
+        id: String,
+        title: String,
+        description: String,
+        owner: String,
+        reason: String,
+    },
     /// Internal enrollment event; public command entry points reject this operation.
     EnrollMember {
         id: String,
@@ -34,7 +48,8 @@ pub enum Command {
     Domain {
         id: String,
         title: String,
-        authority: String,
+        #[serde(alias = "authority")]
+        owner: String,
         #[serde(default)]
         description: String,
     },
@@ -42,6 +57,8 @@ pub enum Command {
         id: String,
         title: String,
         domain: String,
+        #[serde(default)]
+        owner: Option<String>,
         #[serde(default)]
         description: String,
     },
@@ -54,7 +71,8 @@ pub enum Command {
     EditDomain {
         id: String,
         title: String,
-        authority: String,
+        #[serde(alias = "authority")]
+        owner: String,
         #[serde(default)]
         description: String,
         reason: String,
@@ -62,6 +80,8 @@ pub enum Command {
     EditCapability {
         id: String,
         title: String,
+        #[serde(default)]
+        owner: Option<String>,
         #[serde(default)]
         description: String,
         reason: String,
@@ -80,11 +100,30 @@ pub enum Command {
         req: String,
         expected_revision: u32,
         capability: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        consumers: Vec<String>,
         title: String,
         body: String,
         owner: String,
         reason: String,
         acs: Vec<Ac>,
+    },
+    LinkSource {
+        req: String,
+        revision: u32,
+        id: String,
+        kind: String,
+        uri: String,
+        #[serde(default)]
+        external_id: Option<String>,
+        version: String,
+        relation: String,
+    },
+    WithdrawSource {
+        req: String,
+        revision: u32,
+        id: String,
+        reason: String,
     },
     Confirm {
         req: String,
@@ -209,6 +248,8 @@ pub enum Command {
         id: String,
         said: String,
         author: String,
+        #[serde(default)]
+        owner: Option<String>,
     },
     Split {
         id: String,
@@ -273,6 +314,7 @@ pub fn target(w: &Workspace, address: &str) -> Result<()> {
             w.capabilities.contains_key(rest),
             "no such capability: {rest}"
         ),
+        "consumer" => ensure!(w.consumers.contains_key(rest), "no such consumer: {rest}"),
         "requirement" => ensure!(w.requirements.contains_key(rest), "no such requirement: {rest}"),
         "ac" => {
             let (req, ac) = rest
@@ -300,7 +342,7 @@ pub fn target(w: &Workspace, address: &str) -> Result<()> {
             ensure!(i.points.contains_key(point), "no such point: {point}");
         }
         other => bail!(
-            "unknown kind {other}: address a domain, capability, requirement, ac, intake or point"
+            "unknown kind {other}: address a domain, capability, consumer, requirement, ac, intake or point"
         ),
     }
     Ok(())
@@ -410,22 +452,63 @@ pub fn apply(
             );
             w.members.insert(id.clone(), role.clone());
         }
+        Command::Consumer {
+            id,
+            title,
+            description,
+            owner,
+        } => {
+            identifier(id)?;
+            nonempty(title)?;
+            human(w, owner)?;
+            ensure!(!w.consumers.contains_key(id), "consumer exists");
+            w.consumers.insert(
+                id.clone(),
+                Consumer {
+                    title: title.clone(),
+                    description: description.clone(),
+                    owner: owner.clone(),
+                },
+            );
+        }
+        Command::EditConsumer {
+            id,
+            title,
+            description,
+            owner,
+            reason,
+        } => {
+            nonempty(title)?;
+            nonempty(reason)?;
+            human(w, owner)?;
+            let consumer = w
+                .consumers
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown consumer"))?;
+            ensure!(
+                actor == w.admin || actor == consumer.owner,
+                "consumer owner required"
+            );
+            consumer.title = title.clone();
+            consumer.description = description.clone();
+            consumer.owner = owner.clone();
+        }
         Command::Domain {
             id,
             title,
-            authority,
+            owner,
             description,
         } => {
             identifier(id)?;
             nonempty(title)?;
-            human(w, authority)?;
+            human(w, owner)?;
             ensure!(!w.domains.contains_key(id), "domain exists");
             w.domains.insert(
                 id.clone(),
                 Domain {
                     archived: false,
                     title: title.clone(),
-                    authority: authority.clone(),
+                    owner: owner.clone(),
                     description: description.clone(),
                     confirmed: actor == w.admin,
                 },
@@ -435,6 +518,7 @@ pub fn apply(
             id,
             title,
             domain,
+            owner,
             description,
         } => {
             identifier(id)?;
@@ -442,11 +526,14 @@ pub fn apply(
             ensure!(w.domains.contains_key(domain), "unknown domain");
             ensure!(!w.domains[domain].archived, "domain is archived");
             ensure!(!w.capabilities.contains_key(id), "capability exists");
+            let assigned = owner.as_deref().unwrap_or(&w.domains[domain].owner);
+            human(w, assigned)?;
             w.capabilities.insert(
                 id.clone(),
                 Capability {
                     title: title.clone(),
                     domain: domain.clone(),
+                    owner: Some(assigned.to_owned()),
                     description: description.clone(),
                     confirmed: actor == w.admin,
                 },
@@ -486,7 +573,7 @@ pub fn apply(
         Command::EditDomain {
             id,
             title,
-            authority,
+            owner,
             description,
             reason,
         } => {
@@ -499,23 +586,24 @@ pub fn apply(
                     || (w.members[actor] == "agent"
                         && !domain.confirmed
                         && !domain.archived
-                        && domain.authority == *authority),
+                        && domain.owner == *owner),
                 "only the workspace owner edits confirmed domains or changes authority; agents may edit draft titles"
             );
             nonempty(title)?;
             nonempty(reason)?;
-            human(w, authority)?;
+            human(w, owner)?;
             let d = w
                 .domains
                 .get_mut(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown domain"))?;
             d.title = title.clone();
-            d.authority = authority.clone();
+            d.owner = owner.clone();
             d.description = description.clone();
         }
         Command::EditCapability {
             id,
             title,
+            owner,
             description,
             reason,
         } => {
@@ -527,16 +615,23 @@ pub fn apply(
                 actor == w.admin
                     || (w.members[actor] == "agent"
                         && !capability.confirmed
-                        && !w.domains[&capability.domain].archived),
+                        && !w.domains[&capability.domain].archived
+                        && owner.as_ref().is_none_or(|requested| capability.owner.as_ref() == Some(requested))),
                 "only the workspace owner edits confirmed capabilities; agents may edit draft titles"
             );
             nonempty(title)?;
             nonempty(reason)?;
+            if let Some(owner) = owner {
+                human(w, owner)?;
+            }
             let cap = w
                 .capabilities
                 .get_mut(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown capability"))?;
             cap.title = title.clone();
+            if let Some(owner) = owner {
+                cap.owner = Some(owner.clone());
+            }
             cap.description = description.clone();
         }
         Command::WithdrawDecision {
@@ -568,7 +663,7 @@ pub fn apply(
                         a.assessment = Some(Assessment {
                             ready: false,
                             reason: reason.clone(),
-                            recipient: Some(actor.into()),
+                            owner: Some(actor.into()),
                             decision: Some(comment.clone()),
                         });
                         r.acceptance = None;
@@ -586,6 +681,7 @@ pub fn apply(
             req,
             expected_revision,
             capability,
+            consumers,
             title,
             body,
             owner,
@@ -604,6 +700,13 @@ pub fn apply(
                 !w.domains[&w.capabilities[capability].domain].archived,
                 "domain is archived"
             );
+            ensure!(
+                consumers.iter().collect::<BTreeSet<_>>().len() == consumers.len(),
+                "duplicate consumer"
+            );
+            for consumer in consumers {
+                ensure!(w.consumers.contains_key(consumer), "unknown consumer");
+            }
             validate_acs(w, acs)?;
             for (other_id, other) in &w.requirements {
                 if other_id != req {
@@ -628,16 +731,18 @@ pub fn apply(
                 r.revisions.len() == *expected_revision as usize,
                 "stale revision; read the card again"
             );
-            ensure!(
-                r.capability == *capability,
-                "REQ cannot move silently to another capability"
-            );
             if let Some(old) = r.revisions.last() {
                 ensure!(
                     old.owner == *owner || actor == old.owner,
                     "only current owner can transfer responsibility"
                 );
             }
+            r.capability = capability.clone();
+            let sources = r
+                .revisions
+                .last()
+                .map(|old| old.sources.clone())
+                .unwrap_or_default();
             let acs = acs
                 .iter()
                 .cloned()
@@ -648,6 +753,8 @@ pub fn apply(
                 .collect();
             r.revisions.push(Revision {
                 number: expected_revision + 1,
+                capability: Some(capability.clone()),
+                consumers: consumers.clone(),
                 title: title.clone(),
                 body: body.clone(),
                 owner: owner.clone(),
@@ -658,7 +765,61 @@ pub fn apply(
                 runs: BTreeMap::new(),
                 issues: BTreeMap::new(),
                 acceptance: None,
+                sources,
             });
+        }
+        Command::LinkSource {
+            req,
+            revision: n,
+            id,
+            kind,
+            uri,
+            external_id,
+            version,
+            relation,
+        } => {
+            identifier(id)?;
+            identifier(kind)?;
+            nonempty(uri)?;
+            nonempty(version)?;
+            ensure!(
+                ["origin", "supports", "contradicts", "decision"].contains(&relation.as_str()),
+                "unknown source relation"
+            );
+            let r = revision(w, req, *n, true)?;
+            ensure!(!r.sources.contains_key(id), "source reference exists");
+            r.sources.insert(
+                id.clone(),
+                SourceRef {
+                    kind: kind.clone(),
+                    uri: uri.clone(),
+                    external_id: external_id.clone(),
+                    version: version.clone(),
+                    relation: relation.clone(),
+                    actor: actor.to_owned(),
+                    at: recorded_at.to_owned(),
+                    withdrawn: false,
+                },
+            );
+        }
+        Command::WithdrawSource {
+            req,
+            revision: n,
+            id,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let r = revision(w, req, *n, true)?;
+            let source = r
+                .sources
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown source reference"))?;
+            ensure!(!source.withdrawn, "source reference already withdrawn");
+            ensure!(
+                actor == source.actor || actor == r.owner,
+                "source author or REQ owner required"
+            );
+            source.withdrawn = true;
         }
         Command::Confirm { req, revision: n } => {
             let q = w
@@ -865,12 +1026,12 @@ pub fn apply(
                 .ok_or_else(|| anyhow::anyhow!("unknown AC"))?;
             if !assessment.ready {
                 let recipient = assessment
-                    .recipient
+                    .owner
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("waiting needs a recipient"))?;
                 ensure!(w.members.contains_key(recipient), "unknown recipient");
             }
-            if assessment.ready && a.decider.is_some() {
+            if assessment.ready && a.owner.is_some() {
                 let decision = assessment
                     .decision
                     .as_ref()
@@ -885,7 +1046,7 @@ pub fn apply(
                             && source.acs.iter().any(|old| {
                                 old.id == a.id
                                     && old.text == a.text
-                                    && old.decider == a.decider
+                                    && old.owner == a.owner
                                     && old.depends_on == a.depends_on
                                     && old.before_launch == a.before_launch
                             })
@@ -893,7 +1054,7 @@ pub fn apply(
                 ensure!(
                     decision.kind == "decision"
                         && !decision.withdrawn
-                        && Some(&decision.actor) == a.decider.as_ref()
+                        && Some(&decision.actor) == a.owner.as_ref()
                         && decision.ac.as_ref() == Some(ac)
                         && (decision.revision == *n || same_formulation),
                     "decision must be by designated human for this AC and unchanged formulation"
@@ -925,7 +1086,7 @@ fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
             ac.assessment.is_none(),
             "assess each AC after saving its revision"
         );
-        if let Some(d) = &ac.decider {
+        if let Some(d) = &ac.owner {
             human(w, d)?;
         }
     }

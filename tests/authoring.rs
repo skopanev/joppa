@@ -80,6 +80,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &json!({"op":"member","id":"agent","role":"agent"}),
     )
     .await?;
+    store::execute_input(&pool, &ws, "owner", "consumer", &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"})).await?;
     let input = json!({"op":"domain","title":"Area","authority":"owner"});
     let (a, b) = tokio::join!(
         store::execute_input(&pool, &ws, "agent", "auto", &input),
@@ -122,7 +123,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let operations: Vec<store::BatchOperation> = serde_json::from_value(json!([
         {"ref":"area","command":{"op":"domain","title":"Second area","authority":"owner"}},
         {"ref":"ability","command":{"op":"capability","title":"Keep paid access","domain":{"$ref":"area/id"}}},
-        {"ref":"requirement","command":{"op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},"title":"Paid access persists","body":"Only iOS","owner":"owner","reason":"Agreed scope","acs":[{"text":"On iOS access survives sign-in"}]}},
+        {"ref":"requirement","command":{"op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},"consumers":["buyer"],"title":"Paid access persists","body":"Only iOS","owner":"owner","reason":"Agreed scope","acs":[{"text":"On iOS access survives sign-in"}]}},
         {"command":{"op":"comment","req":{"$ref":"requirement/req"},"revision":1,"text":"Please review","kind":"comment","ac":{"$ref":"requirement/acs/0/id"}}}
     ]))?;
     let (a, b) = tokio::join!(

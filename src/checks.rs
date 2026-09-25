@@ -142,7 +142,7 @@ pub fn apply(
                 for ac in &task.acs {
                     let a = r.acs.iter().find(|a| &a.id == ac).unwrap();
                     ensure!(
-                        a.decider.as_ref().is_none_or(|d| d == &decision.actor),
+                        a.owner.as_ref().is_none_or(|d| d == &decision.actor),
                         "designated specialist must decide"
                     );
                 }

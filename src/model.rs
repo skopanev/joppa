@@ -14,6 +14,8 @@ pub struct Workspace {
     #[serde(default)]
     pub tree_order: BTreeMap<String, Vec<String>>,
     pub capabilities: BTreeMap<String, Capability>,
+    #[serde(default)]
+    pub consumers: BTreeMap<String, Consumer>,
     pub projects: BTreeMap<String, String>,
     pub requirements: BTreeMap<String, Requirement>,
     pub intake: BTreeMap<String, Intake>,
@@ -71,7 +73,8 @@ pub struct Domain {
     #[serde(default)]
     pub archived: bool,
     pub title: String,
-    pub authority: String,
+    #[serde(alias = "authority")]
+    pub owner: String,
     /// Свободное пояснение: что сюда относится и чем этот домен не является.
     /// Заголовок в шестьдесят знаков не вмещает границу, а спор о границе —
     /// самый частый спор о дереве.
@@ -84,8 +87,16 @@ pub struct Capability {
     pub title: String,
     pub domain: String,
     #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
     pub description: String,
     pub confirmed: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Consumer {
+    pub title: String,
+    pub description: String,
+    pub owner: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Requirement {
@@ -96,6 +107,10 @@ pub struct Requirement {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Revision {
     pub number: u32,
+    #[serde(default)]
+    pub capability: Option<String>,
+    #[serde(default)]
+    pub consumers: Vec<String>,
     pub title: String,
     pub body: String,
     pub owner: String,
@@ -106,6 +121,20 @@ pub struct Revision {
     pub runs: BTreeMap<String, Run>,
     pub issues: BTreeMap<String, Issue>,
     pub acceptance: Option<Acceptance>,
+    #[serde(default)]
+    pub sources: BTreeMap<String, SourceRef>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SourceRef {
+    pub kind: String,
+    pub uri: String,
+    pub external_id: Option<String>,
+    pub version: String,
+    pub relation: String,
+    pub actor: String,
+    pub at: String,
+    #[serde(default)]
+    pub withdrawn: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -120,7 +149,8 @@ pub struct Ac {
     #[serde(default)]
     pub depends_on: Vec<String>,
     #[serde(default)]
-    pub decider: Option<String>,
+    #[serde(alias = "decider")]
+    pub owner: Option<String>,
     #[serde(default)]
     pub before_launch: bool,
     #[serde(default)]
@@ -131,7 +161,8 @@ pub struct Ac {
 pub struct Assessment {
     pub ready: bool,
     pub reason: String,
-    pub recipient: Option<String>,
+    #[serde(alias = "recipient")]
+    pub owner: Option<String>,
     pub decision: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -204,6 +235,8 @@ pub struct Acceptance {
 pub struct Intake {
     pub said: String,
     pub author: String,
+    #[serde(default)]
+    pub owner: Option<String>,
     pub points: BTreeMap<String, Point>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

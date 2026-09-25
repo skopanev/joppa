@@ -10,22 +10,26 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 workspace: title (server administrative CLI only; rejected by HTTP API and MCP)
 rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
 member: id, role (human|agent|runner); workspace owner only
+consumer: id, title, description, owner (human member)
+edit_consumer: id, title, description, owner, reason; consumer owner or workspace owner
 reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only
 project: id, repository
-domain: id, title, authority (human member)
-capability: id, title, domain
+domain: id, title, owner (human member; legacy authority accepted)
+capability: id, title, domain, owner:null (defaults to domain owner)
 confirm_tree: (no fields); workspace owner validates agent draft
-edit_domain: id, title, authority, reason; owner, or agent changing only an unconfirmed title
+edit_domain: id, title, owner, reason; owner, or agent changing only an unconfirmed title
 set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
-edit_capability: id, title, reason; owner, or agent changing an unconfirmed title
-revise: req, expected_revision (0 for new), capability, title, body, owner, reason,
-        acs:[{id,text,depends_on:[],decider:null,before_launch:false}]
+edit_capability: id, title, owner:null (unchanged), reason; workspace owner, or agent changing an unconfirmed title without changing owner
+revise: req, expected_revision (0 for new), capability, consumers:[id,...], title, body, owner, reason,
+        acs:[{id,text,depends_on:[],owner:null,before_launch:false}]
+link_source: req, revision, id, kind, uri, external_id:null, version, relation (origin|supports|contradicts|decision)
+withdraw_source: req, revision, id, reason; source author or REQ owner
 confirm: req, revision; REQ owner confirms wording
 comment: req, revision, id, text, kind (comment|decision|accept|change|reject|correction),
          reply_to:null, ac:null
 withdraw_decision: req, revision, comment, reason; only the decision author
 assess: req, revision, ac,
-        assessment:{ready,reason,recipient:null,decision:null}
+        assessment:{ready,reason,owner:null,decision:null}
 task: req, revision, id, title, acs:[id], projects:[id],
       purpose (implementation|manual|decision), assignee
 complete_task: req, revision, id, evidence (decision comment ID for decision tasks)
@@ -56,12 +60,12 @@ attach: target, id, name, content_type, size, hash; the bytes are uploaded first
         {hash,size}; any number of attachments per object
 detach: target, id, reason; the file itself stays — it may be attached elsewhere
 
-target addresses an object: domain:<id>, capability:<id>, requirement:<id>,
+target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
 ac:<req>/<ac>, intake:<id>, point:<intake>/<point>.
 joppa_read returns only COUNTS of notes in the index; ask target=<address> for one
 object's description, comments and attachments in full.
 
-intake: id, said (verbatim), author (source attribution, not authenticated identity)
+intake: id, said (verbatim), author (source attribution, not authenticated identity), owner:null (defaults to actor)
 split: id, points:["verbatim point"]
 questions: kind (bug|policy|question|idea), fields:["field-id"]; workspace owner only
 sort: id, point, kind
@@ -78,7 +82,7 @@ Read responses include the entire journal with authenticated actor and database 
 Corrections use new comments with reply_to; historical snapshots and decisions are never rewritten.
 
 A specialist decision may be reused from an older revision only when the REQ title/body
-and that AC's text, decider, dependencies and launch condition are exactly unchanged.
+and that AC's text, owner, dependencies and launch condition are exactly unchanged.
 The new revision still needs fresh checks and owner confirmation. The assessment cites
 the prior decision explicitly. Withdrawal blocks every AC assessment that cites it.
 
@@ -188,7 +192,7 @@ return to their registered callback automatically.
 
 ## Automatic IDs and batches
 
-Through `joppa_command`, omit `id` when creating a domain, capability, project,
+Through `joppa_command`, omit `id` when creating a domain, capability, consumer, project,
 intake, comment, task or issue. Omit `run` for a new check plan. For `revise`,
 omit `req` only when `expected_revision` is 0; omit `id` on newly added ACs.
 The server assigns UUIDs and returns the resolved `command` and `system_ids`
@@ -222,10 +226,12 @@ whole batch. Plain text is never interpreted as a template.
   "workspace": "product",
   "request_id": "create-access-tree-1",
   "operations": [
-    {"ref":"area","command":{"op":"domain","title":"Access","authority":"owner"}},
+    {"ref":"area","command":{"op":"domain","title":"Access","owner":"owner"}},
     {"ref":"ability","command":{"op":"capability","title":"Restore paid access","domain":{"$ref":"area/id"}}},
+    {"ref":"buyer","command":{"op":"consumer","title":"Paying customer","description":"Uses paid features","owner":"owner"}},
     {"ref":"requirement","command":{
       "op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},
+      "consumers":[{"$ref":"buyer/id"}],
       "title":"Paid access survives signing in again","body":"Only iOS is in scope",
       "owner":"owner","reason":"Agreed product scope",
       "acs":[{"text":"On iOS, an active subscription unlocks paid features after signing in again"}]

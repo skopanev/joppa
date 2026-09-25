@@ -206,7 +206,7 @@ function matchesPerson(id) {
   if(!actor)return true;
   const r=data.state.requirements[id].revisions.at(-1);
   return r.owner===actor||Object.values(r.tasks).some(t=>!t.done&&t.assignee===actor)||
-    r.acs.some(a=>!data.summary[id].acs[a.id]?.ready&&(a.decider===actor||a.assessment?.recipient===actor));
+    r.acs.some(a=>!data.summary[id].acs[a.id]?.ready&&(a.owner===actor||a.assessment?.owner===actor));
 }
 function closeFilterMenu(restore=false){
   if(!filterMenu)return;
@@ -325,7 +325,7 @@ function render() {
     const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
     const heading=E('summary',undefined,'title-row');
     heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
-    const body=E('div',undefined,'domain-body');body.append(E('p','Decision owner: '+personLabel(d.authority),'node-meta'));
+    const body=E('div',undefined,'domain-body');body.append(E('p','Owner: '+personLabel(d.owner),'node-meta'));
     // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
     // и держать её за кнопкой значит не показывать вовсе.
     if(d.description?.trim())body.append(E('p',d.description,'node-description'));
@@ -333,6 +333,7 @@ function render() {
     for(const [cid,c] of orderedEntries('capability',did)){
       const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
       const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
+      if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
       if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
       const reqs=orderedEntries('requirement',cid);
       if(!reqs.length)cap.append(E('p','No requirements yet.','empty-state'));
@@ -353,7 +354,22 @@ function render() {
   if(!orderedEntries('domain').length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
   const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
+  consumers(t);
   intake(t);
+}
+function consumers(root){
+  const entries=Object.entries(data.state.consumers||{});
+  if(!entries.length)return;
+  const section=details(root,'Consumers · '+entries.length);
+  for(const [id,consumer] of entries){
+    const item=E('article',undefined,'detail-entry');
+    const heading=E('h3',undefined,'consumer-title');
+    heading.append(E('span',consumer.title),itemActions('consumer',id,consumer.title));
+    item.append(heading);
+    cardFact(item,'Owner',personLabel(consumer.owner));
+    if(consumer.description)item.append(E('p',consumer.description));
+    section.append(item);
+  }
 }
 function requirementDetails(root, selected, revisionNumber=null) {
   root.replaceChildren();
@@ -378,6 +394,12 @@ function requirementDetails(root, selected, revisionNumber=null) {
   const preview=root.parentElement?.querySelector(':scope > summary > .requirement-preview');
   if(preview){preview.textContent=r.body||'';preview.hidden=!r.body?.trim();}
   if(r.body?.trim())root.append(E('p',r.body,'requirement-body'));
+  cardFact(root,'Consumers',(r.consumers||[]).map(id=>data.state.consumers?.[id]?.title||id).join(', ')||'Not assigned');
+  const sources=Object.values(r.sources||{}).filter(source=>!source.withdrawn);
+  if(sources.length){
+    const section=details(root,'Sources · '+sources.length);
+    for(const source of sources)section.append(E('p',[source.kind,source.version,source.relation,source.uri].join(' · '),'detail-fact'));
+  }
   const reqNote=notesOf('requirement:'+selected).description;
   if(reqNote?.trim())root.append(E('p',reqNote,'node-description'));
   const base = {
@@ -421,7 +443,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
       });
       meta_row('Depends on',refs);
     }
-    if(a.decider)meta_row('Decided by',personLabel(a.decider));
+    if(a.owner)meta_row('Owner',personLabel(a.owner));
     if(meta.children.length)item.append(meta);
     const linkedChecks=[];
     for(const [runId,run] of Object.entries(r.runs||{})){
@@ -475,7 +497,7 @@ function historyTitle(kind,id,position){
 }
 function historyEvent(parent,event,q){
   const c=event.command;
-  const names={set_domain_archived:c.archived?'Domain archived':'Domain restored',domain:'Domain created',capability:'Capability created',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
+  const names={set_domain_archived:c.archived?'Domain archived':'Domain restored',domain:'Domain created',capability:'Capability created',consumer:'Consumer created',edit_consumer:'Consumer updated',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',link_source:'Source linked',withdraw_source:'Source withdrawn',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
   const entry=E('article',undefined,'history-entry');
   entry.append(E('time',eventDate(event.recorded_at),'history-time'),E('span',personLabel(event.actor),'history-author'));parent.append(entry);
   const body=E('div',undefined,'history-body');body.append(E('strong',names[c.op]||'Item updated','history-action'));entry.append(body);
@@ -485,10 +507,10 @@ function historyEvent(parent,event,q){
   const revision=q?.revisions.find(r=>r.number===c.revision);
   if(c.reason)fact('Reason',c.reason);
   if(c.op==='domain'||c.op==='capability'){
-    fact('',c.title);if(c.domain)fact('Domain',title('domain',c.domain));if(c.authority)fact('Decision owner',personLabel(c.authority));
+    fact('',c.title);if(c.domain)fact('Domain',title('domain',c.domain));if(c.owner)fact('Owner',personLabel(c.owner));
   }else if(c.op==='edit_domain'||c.op==='edit_capability'){
     const kind=c.op.slice(5),previous=historicalCommand(kind,c.id,event.position-1);
-    change('Title',previous?.title,c.title);if(c.authority)change('Decision owner',personLabel(previous?.authority),personLabel(c.authority));
+    change('Title',previous?.title,c.title);if(c.owner)change('Owner',personLabel(previous?.owner),personLabel(c.owner));
   }else if(c.op==='reorder_tree'){
     const id=parent.dataset.itemId;
     if(id&&c.ids.includes(id))body.append(E('p','Moved from position '+(c.expected.indexOf(id)+1)+' to '+(c.ids.indexOf(id)+1)+'.'));
@@ -496,6 +518,7 @@ function historyEvent(parent,event,q){
     const old=q.revisions[c.expected_revision-1];
     fact('Revision',c.expected_revision+1);change('Title',old?.title,c.title);change('Description',old?.body,c.body);
     if(old?.owner!==c.owner)change('Owner',old?personLabel(old.owner):null,personLabel(c.owner));
+    if(JSON.stringify(old?.consumers||[])!==JSON.stringify(c.consumers||[]))change('Consumers',(old?.consumers||[]).map(id=>data.state.consumers?.[id]?.title||id).join(', '),(c.consumers||[]).map(id=>data.state.consumers?.[id]?.title||id).join(', '));
     const previous=historicalCommand('requirement',c.req,event.position-1);
     if(previous?.capability!==c.capability)change('Capability',previous?title('capability',previous.capability):null,title('capability',c.capability));
     for(const id of new Set([...(old?.acs||[]).map(a=>a.id),...c.acs.map(a=>a.id)])){
@@ -503,7 +526,7 @@ function historyEvent(parent,event,q){
       const before=old?.acs.find(a=>a.id===id),after=c.acs.find(a=>a.id===id);
       change(!before?'Acceptance criterion added':!after?'Acceptance criterion removed':'Acceptance criterion',before?.text,after?.text);
       if(after){
-        if(before?.decider!==after.decider&&(before?.decider||after.decider))change('Decision owner · '+after.text,before?.decider?personLabel(before.decider):null,personLabel(after.decider));
+        if(before?.owner!==after.owner&&(before?.owner||after.owner))change('Owner · '+after.text,before?.owner?personLabel(before.owner):null,personLabel(after.owner));
         if(!!before?.before_launch!==!!after.before_launch)fact('Required before launch · '+after.text,after.before_launch?'Yes':'No');
         if(JSON.stringify(before?.depends_on||[])!==JSON.stringify(after.depends_on||[]))change('Dependencies · '+after.text,before?.depends_on?.map(id=>historyTitle('ac',id,event.position-1)).join('; '),after.depends_on?.map(id=>title('ac',id)).join('; ')||'None');
       }
@@ -511,9 +534,13 @@ function historyEvent(parent,event,q){
   }else if(c.op==='comment'){
     fact('Comment',c.text);if(c.ac)fact('Acceptance criterion',title('ac',c.ac));
     if(c.reply_to)fact('In reply to',q?.comments[c.reply_to]?.text);
+  }else if(c.op==='link_source'){
+    fact('Kind',c.kind);fact('Version',c.version);fact('Relation',c.relation);fact('Source',c.uri);
+  }else if(c.op==='withdraw_source'){
+    fact('Source',c.id);
   }else if(c.op==='assess'){
     fact('Acceptance criterion',title('ac',c.ac));fact('Outcome',c.assessment.ready?'Ready to work':'Waiting for a decision');fact('Explanation',c.assessment.reason);
-    if(c.assessment.recipient)fact('Waiting for',personLabel(c.assessment.recipient));
+    if(c.assessment.owner)fact('Waiting for',personLabel(c.assessment.owner));
   }else if(c.op==='task'){
     fact('Task',c.title);fact('Assigned to',personLabel(c.assignee));fact('Acceptance criteria',c.acs.map(id=>title('ac',id)).join('; '));
   }else if(c.op==='complete_task'){
@@ -627,6 +654,7 @@ function intake(root) {
   const section=details(root,'Intake · '+entries.length);
   for(const [id,item] of entries){
     const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
+    if(item.owner)entry.append(E('p','Owner: '+personLabel(item.owner),'node-meta'));
     const intakeActions=E('span',undefined,'intake-actions');
     intakeActions.append(notesButton('intake',id,item.said));
     const intakeFiles=filesButton('intake',id,item.said);

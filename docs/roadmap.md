@@ -1,9 +1,8 @@
 # Product work queue
 
 Owner: Joppa PM. Captured from the owner’s guide review on 2026-09-23 and
-portal feedback relayed by r2. These are repository-tracked work items, not
-implemented features or NTK ticket identifiers. No Joppa project is registered
-in the NTK workspaces currently accessible to this session.
+portal feedback relayed by r2. These are repository planning notes; active work
+belongs in Joppa Tasks. They are not implemented features.
 
 ## 1. Show whether evidence applies to the current release
 

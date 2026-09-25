@@ -71,6 +71,7 @@ pub fn setup() -> Vec<Value> {
         json!({"op":"member","id":"legal","role":"human"}),
         json!({"op":"domain","id":"d","title":"Access","authority":"owner"}),
         json!({"op":"capability","id":"c","title":"Keep paid access","domain":"d"}),
+        json!({"op":"consumer","id":"customer","title":"Paying customer","owner":"owner"}),
         json!({"op":"project","id":"app","repository":"https://example.test/app"}),
         json!({"op":"project","id":"backend","repository":"https://example.test/backend"}),
         json!({"op":"project","id":"infra","repository":"https://example.test/infra"}),
@@ -78,7 +79,7 @@ pub fn setup() -> Vec<Value> {
     ]
 }
 pub fn revision(expected: u32) -> Value {
-    json!({"op":"revise","req":"r","expected_revision":expected,"capability":"c","title":"Paid access persists","body":"Only iOS is in scope","owner":"owner","reason":"Agreed wording","acs":[{"id":"ios","text":"On iOS paid access survives login"},{"id":"key","text":"Before production key has exactly read and verify permissions","before_launch":true}]})
+    json!({"op":"revise","req":"r","expected_revision":expected,"capability":"c","consumers":["customer"],"title":"Paid access persists","body":"Only iOS is in scope","owner":"owner","reason":"Agreed wording","acs":[{"id":"ios","text":"On iOS paid access survives login"},{"id":"key","text":"Before production key has exactly read and verify permissions","before_launch":true}]})
 }
 pub fn assess(ac: &str, ready: bool) -> Value {
     json!({"op":"assess","req":"r","revision":1,"ac":ac,"assessment":{"ready":ready,"reason":if ready {"Known scope"} else {"Which exact permissions?"},"recipient":if ready {None} else {Some("legal")},"decision":null}})

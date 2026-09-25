@@ -97,7 +97,7 @@ fn generate(command: &mut Value) -> Result<()> {
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("command must be an object"))?;
     let key = match op.as_str() {
-        "domain" | "capability" | "project" | "intake" | "comment" | "task" | "issue" => Some("id"),
+        "domain" | "capability" | "consumer" | "project" | "intake" | "comment" | "task" | "issue" | "link_source" => Some("id"),
         "plan" => Some("run"),
         "revise" if c.get("expected_revision").and_then(Value::as_u64) == Some(0) => Some("req"),
         _ => None,
@@ -163,6 +163,9 @@ async fn item_ids(
         }
         Command::Capability { id, .. } => {
             keys.insert("capability", vec![id.clone()]);
+        }
+        Command::Consumer { id, .. } => {
+            keys.insert("consumer", vec![id.clone()]);
         }
         Command::Revise { req, acs, .. } => {
             keys.insert("requirement", vec![req.clone()]);
@@ -230,7 +233,8 @@ async fn write(
     if let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
         ensure!(!batch, "request_id already used by an operation");
         let command: Command = serde_json::from_value(operations[0].command.clone())?;
-        ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == serde_json::to_value(&command)?, "request_id reused with different content/actor");
+        let previous: Command = serde_json::from_str(row.get::<_, &str>(1))?;
+        ensure!(row.get::<_, String>(0) == actor && serde_json::to_value(&previous)? == serde_json::to_value(&command)?, "request_id reused with different content/actor");
         return Ok(json!({"position":row.get::<_, i64>(2), "command":command, "replayed":true}));
     }
     let (mut state, events) = load(&*tx, &workspace).await?;
@@ -246,6 +250,9 @@ async fn write(
             let mut value = resolve(&operation.command, &refs)?;
             generate(&mut value)?;
             let command: Command = serde_json::from_value(value)?;
+            if let Command::Revise { consumers, .. } = &command {
+                ensure!(!consumers.is_empty(), "REQ requires at least one consumer");
+            }
             ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),

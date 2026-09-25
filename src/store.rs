@@ -44,6 +44,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/009_annotations.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/010_consumers.sql"))
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -199,7 +201,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         state.members.contains_key(actor),
         "workspace not found or access denied"
     );
-    let mut system_ids = json!({"domain":{},"capability":{},"requirement":{},"ac":{}});
+    let mut system_ids = json!({"domain":{},"capability":{},"consumer":{},"requirement":{},"ac":{}});
     for row in conn
         .query(
             "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2",
@@ -254,6 +256,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
     let mut out = json!({
         "workspace": state.workspace_id.as_deref().unwrap_or(workspace),
         "system_ids": system_ids,
+        "consumers": state.consumers,
         "position": events.len(),
         "launch": launch,
     });
@@ -308,6 +311,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 .with_context(|| format!("unknown revision {number} for requirement {req}"))?,
             None => current,
         };
+        out["requirement"]["capability"] = json!(revision.capability.as_deref().unwrap_or(&q.capability));
         let comments: serde_json::Map<String, Value> = q
             .comments
             .iter()
@@ -355,6 +359,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 "title": r.title,
                 "revision": r.number,
                 "revision_count": q.revisions.len(),
+                "consumers": r.consumers,
                 "confirmed": r.confirmed,
                 "acs": r.acs.len(),
                 "comments": q.comments.len(),
@@ -384,6 +389,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
     out["index"] = json!({
         "domains": domains,
         "capabilities": capabilities,
+        "consumers": state.consumers,
         "requirements": requirements,
         "members": state.members,
         "reading": "Read one requirement with req: current revision only. revision_count gives the number available; request revision=N for exactly one older revision. history=true returns counts only, never events or revision bodies.",
