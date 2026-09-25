@@ -17,7 +17,7 @@ project: id, repository
 domain: id, title, owner (human member; legacy authority accepted)
 capability: id, title, domain, owner:null (defaults to domain owner)
 confirm_tree: (no fields); workspace owner validates agent draft
-edit_domain: id, title, owner, reason; owner, or agent changing only an unconfirmed title
+edit_domain: id, title, owner (legacy authority accepted), reason; owner, or agent changing only an unconfirmed title
 set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
 edit_capability: id, title, owner:null (unchanged), reason; workspace owner, or agent changing an unconfirmed title without changing owner
 revise: req, expected_revision (0 for new), capability, consumers:[id,...], title, body, owner, reason,
