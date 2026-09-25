@@ -93,7 +93,10 @@ async fn reserve_name(client: &impl GenericClient, name: &str, workspace: &str) 
 }
 #[path = "store_write.rs"]
 mod write;
-pub use write::{BatchOperation, execute, execute_batch, execute_input};
+pub use write::{
+    BatchOperation, execute, execute_batch, execute_input, execute_remote_batch,
+    execute_remote_input,
+};
 fn summaries(state: &Workspace) -> Value {
     let summaries: serde_json::Map<String, Value> = state
         .requirements

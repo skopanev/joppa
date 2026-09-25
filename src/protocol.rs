@@ -95,7 +95,7 @@ async fn call(
             _ => anyhow::bail!("supply workspace OR item_id"),
         },
         "joppa_command" => {
-            store::execute_input(
+            store::execute_remote_input(
                 pool,
                 field("workspace")?,
                 actor,
@@ -107,7 +107,7 @@ async fn call(
         "joppa_batch" => {
             let operations: Vec<store::BatchOperation> =
                 serde_json::from_value(a["operations"].clone())?;
-            store::execute_batch(
+            store::execute_remote_batch(
                 pool,
                 field("workspace")?,
                 actor,

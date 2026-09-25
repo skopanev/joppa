@@ -44,6 +44,30 @@ pub async fn execute_input(
             command: command.clone(),
         }],
         false,
+        true,
+    )
+    .await
+}
+/// Public HTTP and MCP credentials may write inside existing workspaces only.
+/// Provisioning a new workspace is reserved for the server-side CLI.
+pub async fn execute_remote_input(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    command: &Value,
+) -> Result<Value> {
+    write(
+        pool,
+        workspace,
+        actor,
+        request_id,
+        &[BatchOperation {
+            reference: None,
+            command: command.clone(),
+        }],
+        false,
+        false,
     )
     .await
 }
@@ -54,7 +78,17 @@ pub async fn execute_batch(
     request_id: &str,
     operations: &[BatchOperation],
 ) -> Result<Value> {
-    write(pool, workspace, actor, request_id, operations, true).await
+    write(pool, workspace, actor, request_id, operations, true, true).await
+}
+
+pub async fn execute_remote_batch(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    operations: &[BatchOperation],
+) -> Result<Value> {
+    write(pool, workspace, actor, request_id, operations, true, false).await
 }
 
 fn generate(command: &mut Value) -> Result<()> {
@@ -154,6 +188,7 @@ async fn write(
     request_id: &str,
     operations: &[BatchOperation],
     batch: bool,
+    allow_workspace_create: bool,
 ) -> Result<Value> {
     commands::identifier(workspace)?;
     commands::identifier(request_id)?;
@@ -161,6 +196,14 @@ async fn write(
         !operations.is_empty() && operations.len() <= 100,
         "supply between 1 and 100 operations"
     );
+    if !allow_workspace_create {
+        ensure!(
+            operations
+                .iter()
+                .all(|operation| operation.command["op"].as_str().is_some_and(|op| op != "workspace")),
+            "workspace creation is available only through the server CLI"
+        );
+    }
     let input = json!({"batch":batch, "operations":operations});
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
@@ -170,13 +213,12 @@ async fn write(
         &[&workspace],
     )
     .await?;
-    access::check(
-        &*tx,
-        &workspace,
-        actor,
-        operations[0].command["op"] == "workspace",
-    )
-    .await?;
+    // A new workspace has no access-rule entry yet. Only the trusted CLI path
+    // may create it; public HTTP/MCP writes always go through access::check.
+    let cli_create = allow_workspace_create && operations[0].command["op"] == "workspace";
+    if !cli_create {
+        access::check(&*tx, &workspace, actor, false).await?;
+    }
     ensure!(actor != "joppa-access", "internal enrollment operation");
     if let Some(row) = tx.query_opt("SELECT actor,input::text,result::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
         ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == input, "request_id reused with different content/actor");
@@ -205,6 +247,10 @@ async fn write(
             generate(&mut value)?;
             let command: Command = serde_json::from_value(value)?;
             ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
+            ensure!(
+                allow_workspace_create || !matches!(command, Command::Workspace { .. }),
+                "workspace creation is available only through the server CLI"
+            );
             let position = (events.len() + index + 1) as u64;
             // Время пустое намеренно: настоящее ставит БД в recorded_at при вставке,
             // а эта проекция нужна лишь чтобы проверить команду. Ответ состояния не

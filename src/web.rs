@@ -215,12 +215,12 @@ async fn command(
     require_write_credential(&headers)?;
     let actor = authenticate(&app, &headers).await?;
     result(
-        store::execute(
+        store::execute_remote_input(
             &app.pool,
             &workspace,
             &actor,
             &request.request_id,
-            &request.command,
+            &serde_json::to_value(&request.command).expect("validated command serializes"),
         )
         .await,
     )

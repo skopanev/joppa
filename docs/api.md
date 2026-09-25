@@ -7,7 +7,7 @@ Every operation below includes "op" with its name. IDs contain ASCII letters, di
 Actor is supplied by authentication, not by command fields. Null means optional; omitted Option fields also work.
 
 ```text
-workspace: title
+workspace: title (server administrative CLI only; rejected by HTTP API and MCP)
 rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
 member: id, role (human|agent|runner); workspace owner only
 reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only

@@ -1,4 +1,5 @@
 Resolve copied system IDs with joppa_read({"item_id":"..."}); use selection and workspace for commands. Never guess local IDs.
+New workspaces are provisioned by server administration; MCP cannot create one.
 One workspace is one product, possibly many repositories. Domain -> capability -> REQ -> AC.
 Read joppa_model_docs for methodology and joppa_help before commands. Preserve intake verbatim. Ask only missing intake policy fields.
 REQ and ACs are authored jointly. People decide policy; the agent checks readiness, never invents authority.

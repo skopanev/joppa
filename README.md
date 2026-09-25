@@ -41,6 +41,8 @@ docker exec joppa-db createdb -U postgres joppa
 
 For an existing database, start here. Migration adds the `joppa` schema without
 removing or importing legacy `public` tables.
+Create new workspaces only with the server administrative CLI; HTTP API and MCP
+can edit existing workspaces but cannot create them.
 
 ```sh
 cargo build --locked
