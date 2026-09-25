@@ -60,6 +60,7 @@ async function load() {
   const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)));
   if (request !== loadNumber) return;
   data = next;
+  indexStatusEvents();
   render();
 }
 async function showApp(identity) {
@@ -153,7 +154,7 @@ function checkRecordedAt(r,entry,ac,reqId){
   const dates=[];
   const [runId,run]=entry||[];
   for(const check of run?.plan||[])if(check.ac===ac&&run.results?.[check.id]){
-    const event=data.history.findLast(e=>e.command.op==='result'&&e.command.req===reqId&&e.command.revision===r.number&&e.command.run===runId&&e.command.evidence.check===check.id);
+    const event=resultEvent(reqId,r.number,runId,check.id);
     if(event?.recorded_at)dates.push(event.recorded_at);
   }
   return dates;
@@ -162,23 +163,41 @@ function staleCheck(recordedAt){
   const time=Date.parse(String(recordedAt||'').replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
   return Number.isFinite(time)&&Date.now()-time>7*24*60*60*1000;
 }
+let statusEventIndex=new Map();
+let resultEventIndex=new Map();
+function resultEvent(reqId,revision,runId,checkId){
+  return resultEventIndex.get(JSON.stringify([reqId,revision,runId,checkId]));
+}
+function indexStatusEvents(){
+  statusEventIndex=new Map();
+  resultEventIndex=new Map();
+  const revisions=new Map();
+  for(const [req,q] of Object.entries(data.state.requirements))for(const r of q.revisions)revisions.set(req+'/'+r.number,r);
+  const relevant=new Set(['assess','confirm','task','complete_task','plan','result','finish','issue','resolve','withdraw_decision','accept','revoke']);
+  for(const event of data.history||[]){
+    const c=event.command;
+    if(c.op==='result')resultEventIndex.set(JSON.stringify([c.req,c.revision,c.run,c.evidence.check]),event);
+    if(!c.req||c.op!=='revise'&&!relevant.has(c.op))continue;
+    const revision=c.op==='revise'?c.expected_revision+1:c.revision;
+    if(!revision)continue;
+    const key=c.req+'/'+revision;
+    statusEventIndex.set(key,event.recorded_at);
+    const r=revisions.get(key);
+    let acs=[];
+    if(c.op==='revise')acs=c.acs.map(a=>a.id);
+    else if(c.ac)acs=[c.ac];
+    else if(c.acs)acs=c.acs;
+    else if(c.op==='complete_task')acs=r?.tasks[c.id]?.acs||[];
+    else if(c.op==='plan')acs=c.checks.map(check=>check.ac);
+    else if(c.op==='result')acs=r?.runs[c.run]?.plan.filter(check=>check.id===c.evidence.check).map(check=>check.ac)||[];
+    else if(c.op==='finish')acs=r?.runs[c.run]?.plan.map(check=>check.ac)||[];
+    else if(c.op==='resolve')acs=[r?.issues[c.id]?.ac].filter(Boolean);
+    else if(c.op==='withdraw_decision')acs=[data.state.requirements[c.req]?.comments[c.comment]?.ac].filter(Boolean);
+    for(const ac of acs)statusEventIndex.set(key+'/'+ac,event.recorded_at);
+  }
+}
 function statusEventDate(reqId,revision,acId){
-  const r=data.state.requirements[reqId]?.revisions.find(r=>r.number===revision);
-  const event=data.history.findLast(e=>{
-    const c=e.command;
-    if(c.req!==reqId||c.revision!==revision&&!(c.op==='revise'&&c.expected_revision+1===revision))return false;
-    if(c.op==='revise')return !acId||c.acs.some(a=>a.id===acId);
-    if(!['assess','confirm','task','complete_task','plan','result','finish','issue','resolve','withdraw_decision','accept','revoke'].includes(c.op))return false;
-    if(!acId)return true;
-    if(c.ac)return c.ac===acId;
-    if(c.acs)return c.acs.includes(acId);
-    if(c.op==='complete_task')return r?.tasks[c.id]?.acs.includes(acId);
-    if(c.op==='plan')return c.checks.some(check=>check.ac===acId);
-    if(c.op==='result')return r?.runs[c.run]?.plan.some(check=>check.id===c.evidence.check&&check.ac===acId);
-    if(c.op==='finish')return r?.runs[c.run]?.plan.some(check=>check.ac===acId);
-    return false;
-  });
-  return event?.recorded_at;
+  return statusEventIndex.get(reqId+'/'+revision+(acId?'/'+acId:''));
 }
 function acSignal(status,r,id,reqId){
   const at=statusEventDate(reqId,r.number,id);
@@ -192,10 +211,28 @@ function acSignal(status,r,id,reqId){
   const working=Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
   return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked',at};
 }
+let statusHint=null;
+function hideStatusHint(){if(statusHint)statusHint.hidden=true;}
+function showStatusHint(circle){
+  if(!statusHint){statusHint=E('div',undefined,'status-hint');statusHint.hidden=true;document.body.append(statusHint);}
+  statusHint.textContent=circle.dataset.hint;
+  statusHint.hidden=false;
+  const dot=circle.getBoundingClientRect(),box=statusHint.getBoundingClientRect();
+  const left=Math.max(8,Math.min(dot.left+dot.width/2-box.width/2,window.innerWidth-box.width-8));
+  const below=dot.bottom+10;
+  const top=below+box.height<=window.innerHeight-8?below:Math.max(8,dot.top-box.height-10);
+  statusHint.style.left=left+'px';statusHint.style.top=top+'px';
+}
+document.addEventListener('scroll',hideStatusHint,true);
 function statusCircle(signal,number){
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
   const hint='Status: '+signal.label+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
-  circle.dataset.tone=signal.tone;circle.setAttribute('role','img');circle.setAttribute('aria-label',hint);circle.title=hint;
+  circle.dataset.tone=signal.tone;circle.dataset.hint=hint;circle.tabIndex=0;
+  circle.setAttribute('role','img');circle.setAttribute('aria-label',hint);
+  circle.addEventListener('pointerenter',()=>showStatusHint(circle));
+  circle.addEventListener('pointerleave',hideStatusHint);
+  circle.addEventListener('focus',()=>showStatusHint(circle));
+  circle.addEventListener('blur',hideStatusHint);
   return circle;
 }
 function nodeTitle(text,signal){
@@ -311,6 +348,7 @@ function applyFilters(reveal=true) {
   $('filter-empty').hidden=visibleDomains>0||!orderedEntries('domain').length;
 }
 function render() {
+  hideStatusHint();
   closeFilterMenu();
   const signals=treeSignals();
   const t = $('tree');
@@ -372,6 +410,7 @@ function consumers(root){
   }
 }
 function requirementDetails(root, selected, revisionNumber=null) {
+  hideStatusHint();
   root.replaceChildren();
   const q = data.state.requirements[selected],
     r = q.revisions.find(r => r.number === revisionNumber) || q.revisions.at(-1),
@@ -454,7 +493,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
       checks.append(E('h4','Tests linked to this AC · '+linkedChecks.length,'ac-checks-title'));
       for(const {run,check,result} of linkedChecks){
         const outcome=result?.outcome;
-        const stale=result?.outcome==='pass'&&staleCheck(data.history.findLast(e=>e.command.op==='result'&&e.command.req===selected&&e.command.revision===r.number&&e.command.run===runId&&e.command.evidence.check===check.id)?.recorded_at);
+        const stale=result?.outcome==='pass'&&staleCheck(resultEvent(selected,r.number,runId,check.id)?.recorded_at);
         const tone=outcome==='fail'?'red':stale?'orange':outcome==='pass'?'green':result?'grey':run.finished?'grey':'yellow';
         const label=outcome==='pass'?(stale?'Passed · older than 7 days':'Passed'):outcome==='fail'?'Failed':outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Awaiting result':'Running';
         const row=E('article',undefined,'ac-check');
@@ -588,7 +627,7 @@ function runs(root, r, base) {
     if(!run.discovery_complete)block.append(E('p','Check discovery is incomplete.','hint'));
     for(const c of run.plan){
       const result=run.results[c.id];
-      const recorded=data.history.find(e=>e.command.op==='result'&&e.command.req===base.req&&e.command.revision===base.revision&&e.command.run===id&&e.command.evidence.check===c.id);
+      const recorded=resultEvent(base.req,base.revision,id,c.id);
       const item=E('article',undefined,'detail-entry');
       item.append(E('h3',acTitle(r,c.ac)));
       const method=c.method==='manual'?'Manual check':'Automated test';
