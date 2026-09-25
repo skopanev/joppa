@@ -124,12 +124,13 @@ function requirementStatus(id) {
 }
 function requirementSignal(id){
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
-  if(!r.acs.length)return {tone:'grey',label:'No acceptance criteria'};
+  const at=statusEventDate(id,r.number);
+  if(!r.acs.length)return {tone:'grey',label:'No acceptance criteria',at};
   const acSignals=r.acs.map(a=>acSignal(s.acs[a.id],r,a.id,id));
-  if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:'Checks failed'};
-  if(acSignals.some(signal=>signal.tone==='orange'))return {tone:'orange',label:'Checks stale'};
+  if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:'Checks failed',at};
+  if(acSignals.some(signal=>signal.tone==='orange'))return {tone:'orange',label:'Checks stale',at};
   const status=requirementStatus(id);
-  return {tone:status==='fail'?'red':status==='pass'?'green':status==='available'?'grey':'yellow',label:statusLabels[status]};
+  return {tone:status==='fail'?'red':status==='pass'?'green':status==='available'?'grey':'yellow',label:statusLabels[status],at};
 }
 function aggregateSignal(children,noun){
   if(!children.length)return {tone:'grey',label:'No '+noun};
@@ -137,7 +138,7 @@ function aggregateSignal(children,noun){
   for(const child of children)counts[child.tone]++;
   const tone=counts.red?'red':counts.orange?'orange':counts.yellow?'yellow':counts.grey?'grey':'green';
   const parts=[[counts.green,'complete'],[counts.orange,'stale'],[counts.yellow,'pending'],[counts.red,'failed'],[counts.grey,'unchecked or empty']].filter(([n])=>n).map(([n,label])=>n+' '+label);
-  return {tone,label:'Current '+noun+': '+parts.join(' · ')};
+  return {tone,label:'Current '+noun+': '+parts.join(' · '),at:children.map(child=>child.at).filter(Boolean).sort().at(-1)};
 }
 function treeSignals(){
   const requirements=Object.fromEntries(Object.keys(data.state.requirements).map(id=>[id,requirementSignal(id)]));
@@ -161,20 +162,40 @@ function staleCheck(recordedAt){
   const time=Date.parse(String(recordedAt||'').replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
   return Number.isFinite(time)&&Date.now()-time>7*24*60*60*1000;
 }
+function statusEventDate(reqId,revision,acId){
+  const r=data.state.requirements[reqId]?.revisions.find(r=>r.number===revision);
+  const event=data.history.findLast(e=>{
+    const c=e.command;
+    if(c.req!==reqId||c.revision!==revision&&!(c.op==='revise'&&c.expected_revision+1===revision))return false;
+    if(c.op==='revise')return !acId||c.acs.some(a=>a.id===acId);
+    if(!['assess','confirm','task','complete_task','plan','result','finish','issue','resolve','withdraw_decision','accept','revoke'].includes(c.op))return false;
+    if(!acId)return true;
+    if(c.ac)return c.ac===acId;
+    if(c.acs)return c.acs.includes(acId);
+    if(c.op==='complete_task')return r?.tasks[c.id]?.acs.includes(acId);
+    if(c.op==='plan')return c.checks.some(check=>check.ac===acId);
+    if(c.op==='result')return r?.runs[c.run]?.plan.some(check=>check.id===c.evidence.check&&check.ac===acId);
+    if(c.op==='finish')return r?.runs[c.run]?.plan.some(check=>check.ac===acId);
+    return false;
+  });
+  return event?.recorded_at;
+}
 function acSignal(status,r,id,reqId){
-  if(!status)return {tone:'grey',label:'Historical revision'};
-  if(status.verification==='fail')return {tone:'red',label:'Checks failed'};
+  const at=statusEventDate(reqId,r.number,id);
+  if(!status)return {tone:'grey',label:'Historical revision',at};
+  if(status.verification==='fail')return {tone:'red',label:'Checks failed',at};
   if(status.verification==='pass'){
     const run=latestCheckRun(r),stale=(checkRecordedAt(r,run,id,reqId)||[]).some(staleCheck);
-    return stale?{tone:'orange',label:'Checks passed · older than 7 days'}:{tone:'green',label:'Checks passed'};
+    return stale?{tone:'orange',label:'Checks passed · older than 7 days',at}:{tone:'green',label:'Checks passed',at};
   }
-  if(!status.ready)return {tone:'yellow',label:'Waiting for decision'};
+  if(!status.ready)return {tone:'yellow',label:'Waiting for decision',at};
   const working=Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
-  return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked'};
+  return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked',at};
 }
 function statusCircle(signal,number){
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
-  circle.dataset.tone=signal.tone;circle.setAttribute('role','img');circle.setAttribute('aria-label',signal.label);circle.title=signal.label;
+  const hint='Status: '+signal.label+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
+  circle.dataset.tone=signal.tone;circle.setAttribute('role','img');circle.setAttribute('aria-label',hint);circle.title=hint;
   return circle;
 }
 function nodeTitle(text,signal){
@@ -344,7 +365,7 @@ function requirementDetails(root, selected, revisionNumber=null) {
   if(current)root.dataset.status=requirementStatus(selected);
   else delete root.dataset.status;
   const currentCircle=root.parentElement?.querySelector(':scope > summary > .node-title > .status-circle');
-  if(currentCircle)currentCircle.replaceWith(statusCircle(current?requirementSignal(selected):{tone:'grey',label:'Historical revision · '+r.number}));
+  if(currentCircle)currentCircle.replaceWith(statusCircle(current?requirementSignal(selected):{tone:'grey',label:'Historical revision · '+r.number,at:statusEventDate(selected,r.number)}));
   if(!current)root.append(E('h3',r.title));
   // Метка живёт в заголовке, рядом с историей, и обновляется при листании
   // ревизий: иначе она показывала бы последнюю, пока на экране предыдущая.
