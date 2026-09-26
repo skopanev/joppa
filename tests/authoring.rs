@@ -274,6 +274,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
     anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
     store::migrate(&pool).await?;
     let ws = format!("priority-{}", uuid::Uuid::new_v4().simple());
+    let public_ws = format!("public-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
         &pool,
         &ws,
@@ -282,6 +283,8 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &json!({"op":"workspace","title":"Priority"}),
     )
     .await?;
+    store::execute_input(&pool, &ws, "owner", "rename",
+        &json!({"op":"rename_workspace","workspace_id":public_ws,"title":"Public Priority","reason":"Public ID"})).await?;
     store::execute_input(
         &pool,
         &ws,
@@ -326,6 +329,37 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
                 "title":suffix,"acs":[format!("ac-{suffix}")],"projects":[],
                 "purpose":"implementation","contract":"Implement and provide evidence"})).await?;
     }
+    let original = store::task_queue(&pool, &ws, "owner", "all", 50, None).await?;
+    assert_eq!(original["workspace"], public_ws);
+    let created_at = original["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["id"] == "task-old")
+        .unwrap()["created_at"]
+        .as_u64()
+        .unwrap();
+    assert!(created_at > 0);
+    pool.get().await?.execute(
+        "UPDATE joppa.board_cache SET state=jsonb_set(state,ARRAY['requirements','req-old','revisions','0','tasks','task-old','created_at'],'0'::jsonb) WHERE workspace=$1",
+        &[&ws],
+    ).await?;
+    assert_eq!(
+        store::task_queue(&pool, &public_ws, "owner", "all", 50, None).await?["tasks"][0]["created_at"],
+        0
+    );
+    assert!(store::backfill_board(&pool).await? >= 1);
+    let repaired = store::task_queue(&pool, &public_ws, "owner", "all", 50, None).await?;
+    assert_eq!(repaired["workspace"], public_ws);
+    assert_eq!(
+        repaired["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|task| task["id"] == "task-old")
+            .unwrap()["created_at"],
+        created_at
+    );
     let mut priorities = vec!["domain:urgent"; 101];
     priorities.push("requirement:req-old");
     let preview = store::task_queue_filtered(

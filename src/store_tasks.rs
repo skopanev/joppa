@@ -138,19 +138,20 @@ pub async fn task_queue_filtered(
     access::check(&**conn, &workspace, actor, false).await?;
     let row = conn
         .query_one(
-            "SELECT position,(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
+            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
             &[&workspace],
         )
         .await?;
     let position = row.get::<_, i64>(0) as u64;
+    let public_workspace: &str = row.get(1);
     let mut state = Workspace::default();
-    state.members = serde_json::from_str(row.get::<_, &str>(1))?;
-    state.domains = serde_json::from_str(row.get::<_, &str>(2))?;
-    state.capabilities = serde_json::from_str(row.get::<_, &str>(3))?;
-    state.consumers = serde_json::from_str(row.get::<_, &str>(4))?;
-    state.projects = serde_json::from_str(row.get::<_, &str>(5))?;
+    state.members = serde_json::from_str(row.get::<_, &str>(2))?;
+    state.domains = serde_json::from_str(row.get::<_, &str>(3))?;
+    state.capabilities = serde_json::from_str(row.get::<_, &str>(4))?;
+    state.consumers = serde_json::from_str(row.get::<_, &str>(5))?;
+    state.projects = serde_json::from_str(row.get::<_, &str>(6))?;
     let requirements: std::collections::BTreeMap<String, Value> =
-        serde_json::from_str(row.get::<_, &str>(6))?;
+        serde_json::from_str(row.get::<_, &str>(7))?;
     for (req, value) in requirements {
         state.requirements.insert(
             req,
@@ -240,6 +241,6 @@ pub async fn task_queue_filtered(
     let next =
         (offset + items.len() < total).then(|| format!("{position}:{}", offset + items.len()));
     Ok(
-        json!({"workspace":workspace,"position":position,"view":view,"total":total,"tasks":items,"next_cursor":next}),
+        json!({"workspace":public_workspace,"position":position,"view":view,"total":total,"tasks":items,"next_cursor":next}),
     )
 }
