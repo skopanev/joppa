@@ -194,11 +194,16 @@ export JOPPA_TOKEN_FILE=/private/path/to/agent-token
 export JOPPA_WORKSPACE=product
 python3 client/joppa task list --view available
 python3 client/joppa task next --purpose implementation --request-id "$NEXT_REQUEST_ID"
+python3 client/joppa task next --priority domain:billing --priority requirement:r-123
 python3 client/joppa task claim TASK_ID --request-id "$CLAIM_REQUEST_ID"
 python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
 ```
 
-Commands print JSON. `next` selects and claims under one server lock. `claim`
+Commands print JSON. `next` selects and claims under one server lock. Repeat
+`--priority kind:id` in preference order; accepted kinds are domain, capability,
+requirement, ac, task, project and consumer. It tries the first scope with a
+claimable Task, then the next, then the ordinary oldest Task. `--project` and
+`--purpose` remain hard filters. `claim`
 accepts the Task ID from the queue; use `--req REQ --revision N` when an ID is
 ambiguous. Reuse a `--request-id` only for an identical retry. Exit code 3 means
 the Task was already claimed or no matching Task is available; other errors

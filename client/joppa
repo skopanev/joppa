@@ -119,6 +119,8 @@ def main():
     common(next_task, write=True)
     next_task.add_argument("--project")
     next_task.add_argument("--purpose", choices=["implementation", "manual", "decision"])
+    next_task.add_argument("--priority", action="append", default=[], metavar="KIND:ID",
+                           help="ordered preferred domain, capability, requirement, ac, task, project or consumer; repeat")
     release = actions.add_parser("release", help="return unfinished work to the queue")
     common(release, write=True, address=True)
     release.add_argument("--reason", required=True)
@@ -139,6 +141,8 @@ def main():
             value["project"] = args.project
         if args.purpose:
             value["purpose"] = args.purpose
+        if args.priority:
+            value["priorities"] = args.priority
         output = command(args, space, value)
     else:
         value = {"op": {"claim": "claim_task", "release": "release_task", "complete": "complete_task"}[args.action]}

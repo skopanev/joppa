@@ -263,6 +263,102 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
+    store::migrate(&pool).await?;
+    let ws = format!("priority-{}", uuid::Uuid::new_v4().simple());
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "create",
+        &json!({"op":"workspace","title":"Priority"}),
+    )
+    .await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "consumer",
+        &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+    )
+    .await?;
+    for (suffix, domain) in [("old", "ordinary"), ("new", "urgent")] {
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            &format!("domain-{suffix}"),
+            &json!({"op":"domain","id":domain,"title":domain,"authority":"owner"}),
+        )
+        .await?;
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            &format!("cap-{suffix}"),
+            &json!({"op":"capability","id":format!("cap-{suffix}"),"title":suffix,"domain":domain}),
+        )
+        .await?;
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            &format!("req-{suffix}"),
+            &json!({"op":"revise","req":format!("req-{suffix}"),"expected_revision":0,
+                "capability":format!("cap-{suffix}"),"consumers":["buyer"],"title":suffix,
+                "body":"Scope","owner":"owner","reason":"Start",
+                "acs":[{"id":format!("ac-{suffix}"),"text":"Works"}]}),
+        )
+        .await?;
+        store::execute_input(&pool, &ws, "owner", &format!("assess-{suffix}"),
+            &json!({"op":"assess","req":format!("req-{suffix}"),"revision":1,
+                "ac":format!("ac-{suffix}"),"assessment":{"ready":true,"reason":"Ready","owner":null,"decision":null}})).await?;
+        store::execute_input(&pool, &ws, "owner", &format!("task-{suffix}"),
+            &json!({"op":"task","req":format!("req-{suffix}"),"revision":1,"id":format!("task-{suffix}"),
+                "title":suffix,"acs":[format!("ac-{suffix}")],"projects":[],
+                "purpose":"implementation","contract":"Implement and provide evidence"})).await?;
+    }
+    let request =
+        json!({"op":"claim_next_task","priorities":["domain:urgent","requirement:req-old"]});
+    let first = store::execute_input(&pool, &ws, "owner", "next-1", &request).await?;
+    assert_eq!(first["command"]["id"], "task-new");
+    let second = store::execute_input(&pool, &ws, "owner", "next-2", &request).await?;
+    assert_eq!(second["command"]["id"], "task-old");
+    store::execute_input(&pool, &ws, "owner", "release-old",
+        &json!({"op":"release_task","req":"req-old","revision":1,"id":"task-old","reason":"Return"})).await?;
+    let fallback = store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "next-fallback",
+        &json!({"op":"claim_next_task","priorities":["domain:urgent"]}),
+    )
+    .await?;
+    assert_eq!(fallback["command"]["id"], "task-old");
+    assert!(
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            "bad-priority",
+            &json!({"op":"claim_next_task","priorities":["domain:typo"]})
+        )
+        .await
+        .is_err()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let db: String = pool

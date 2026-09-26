@@ -237,7 +237,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
         assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == 'mcp-open-task'
         claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
-            'command':{'op':'claim_next_task'}})
+            'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
         assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == 'mcp-open-task'
         assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['tasks'][0]['status'] == 'in_progress'
         client_env={**env,'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
@@ -247,6 +247,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             return json.loads(result.stdout)
         assert client('list','--view','mine')['tasks'][0]['id'] == 'mcp-open-task'
         client('release','mcp-open-task','--reason','Handoff to another process')
+        assert client('next','--priority','requirement:'+task_req,
+                      '--request-id','cli-priority-next')['command']['id'] == 'mcp-open-task'
+        client('release','mcp-open-task','--reason','Return to explicit claim')
         assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == 'mcp-open-task'
         assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
         found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})

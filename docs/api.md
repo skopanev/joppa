@@ -38,9 +38,13 @@ claim_task: req, revision, id; atomically assign an open task to the authenticat
 amend_task: req, revision, id, title, contract, projects:[id], reason; correct an
       unfinished Task in the current revision. REQ owner, assignee, or creator
       of an unclaimed Task may amend it. The AC and completion history stay put.
-claim_next_task: project (optional), purpose (optional); under the same
-      workspace lock, select the oldest claimable task and journal a concrete
-      claim_task. The response command contains req, revision and id.
+claim_next_task: project (optional), purpose (optional), priorities (optional
+      ordered list of kind:id selectors: domain, capability, requirement, ac,
+      task, project, consumer). Under the same workspace lock, select the
+      oldest claimable task matching the first priority that has one. If none
+      match, select the oldest claimable task overall. project and purpose are
+      hard filters. Unknown priority targets are errors. Journal a concrete
+      claim_task; the response command contains req, revision and id.
 release_task: req, revision, id, reason; assignee or REQ owner returns unfinished work to the queue
 complete_task: req, revision, id, evidence (decision comment ID for decision tasks)
 review_task: req, revision, id, ac, reason; REQ owner confirms that a retained task still belongs to this AC after a revision
