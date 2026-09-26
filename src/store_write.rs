@@ -125,6 +125,56 @@ fn generate(command: &mut Value) -> Result<()> {
     Ok(())
 }
 
+/// Resolve an atomic "take next" request under the workspace write lock.
+/// Only the concrete claim is journaled; the receipt preserves the original
+/// request for idempotent retries.
+fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Result<()> {
+    if value["op"] != "claim_next_task" {
+        return Ok(());
+    }
+    let object = value
+        .as_object()
+        .context("claim_next_task must be an object")?;
+    ensure!(
+        object
+            .keys()
+            .all(|key| ["op", "project", "purpose"].contains(&key.as_str())),
+        "unknown claim_next_task field"
+    );
+    let project = object
+        .get("project")
+        .map(|v| v.as_str().context("project must be a string"))
+        .transpose()?;
+    let purpose = object
+        .get("purpose")
+        .map(|v| v.as_str().context("purpose must be a string"))
+        .transpose()?;
+    if let Some(project) = project {
+        ensure!(state.projects.contains_key(project), "unknown project");
+    }
+    if let Some(purpose) = purpose {
+        ensure!(
+            ["implementation", "manual", "decision"].contains(&purpose),
+            "unknown task purpose"
+        );
+    }
+    let chosen = state
+        .requirements
+        .iter()
+        .filter_map(|(req, q)| q.revisions.last().map(|r| (req, r)))
+        .flat_map(|(req, r)| r.tasks.iter().map(move |(id, task)| (req, r, id, task)))
+        .filter(|(_, _, _, task)| {
+            project.is_none_or(|p| task.projects.iter().any(|id| id == p))
+                && purpose.is_none_or(|p| task.purpose == p)
+        })
+        .filter(|(_, r, _, task)| checks::claimable(state, actor, r, task).is_ok())
+        .min_by_key(|(req, _, id, task)| (task.created_at, (*req).clone(), (*id).clone()))
+        .map(|(req, r, id, _)| (req.clone(), r.number, id.clone()))
+        .context("no available Task matches this claim")?;
+    *value = json!({"op":"claim_task","req":chosen.0,"revision":chosen.1,"id":chosen.2});
+    Ok(())
+}
+
 // Explicit references avoid interpreting titles or user-provided text as templates.
 fn resolve(value: &Value, refs: &BTreeMap<String, Value>) -> Result<Value> {
     match value {
@@ -257,12 +307,14 @@ async fn write(
             }
             let mut value = resolve(&operation.command, &refs)?;
             generate(&mut value)?;
+            resolve_claim_next(&mut value, &state, actor)?;
             let command: Command = serde_json::from_value(value)?;
             if let Command::Revise { consumers, .. } = &command {
                 ensure!(!consumers.is_empty(), "REQ requires at least one consumer");
             }
-            if let Command::Task { acs, .. } = &command {
+            if let Command::Task { acs, contract, .. } = &command {
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
+                commands::nonempty(contract)?;
             }
             ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
             ensure!(

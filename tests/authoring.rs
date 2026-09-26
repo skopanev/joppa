@@ -308,13 +308,14 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
     ] {
         store::execute_input(&pool, &ws, actor, id, &command).await?;
     }
-    let multi = json!({"op":"task","req":"req","revision":1,"id":"bad","title":"Bad","acs":["ac","ac"],"projects":[],"purpose":"decision","assignee":"agent"});
+    let multi = json!({"op":"task","req":"req","revision":1,"id":"bad","title":"Bad","acs":["ac","ac"],"projects":[],"purpose":"decision","assignee":"agent","contract":"Record the specialist decision"});
     assert!(
         store::execute_input(&pool, &ws, "agent", "multi", &multi)
             .await
             .is_err()
     );
-    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent"});
+    assert!(store::execute_input(&pool,&ws,"agent","no-contract",&json!({"op":"task","req":"req","revision":1,"id":"no-contract","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent"})).await.is_err());
+    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent","contract":"Record the specialist decision"});
     store::execute_input(&pool, &ws, "agent", "task", &task).await?;
     let revise = json!({"op":"revise","req":"req","expected_revision":1,"capability":"cap","consumers":["buyer"],"title":"Requirement revised","body":"Scope","owner":"owner","reason":"Clarified","acs":[{"id":"ac","text":"Works better"}]});
     let written = store::execute_input(&pool, &ws, "agent", "revise-2", &revise).await?;
@@ -335,6 +336,108 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
     assert_eq!(
         store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
         after
+    );
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "wrong-project",
+        &json!({"op":"project","id":"wrong","repository":"https://example.test/wrong"}),
+    )
+    .await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "right-project",
+        &json!({"op":"project","id":"mobileapps","repository":"https://example.test/mobileapps"}),
+    )
+    .await?;
+    let open = json!({"op":"task","req":"req","revision":2,"id":"open-task","title":"Build access flow","acs":["ac"],"projects":["wrong"],"purpose":"implementation","contract":"Implement the revised access flow and attach merged build evidence"});
+    store::execute_input(&pool, &ws, "agent", "open-task", &open).await?;
+    store::execute_input(&pool,&ws,"agent","amend-project",&json!({"op":"amend_task","req":"req","revision":2,"id":"open-task","title":"Build access flow","contract":"Implement the revised mobile access flow and attach merged build evidence","projects":["mobileapps"],"reason":"Correct project identifier before claim"})).await?;
+    assert_eq!(
+        store::task_queue(&pool, &ws, "agent", "waiting", 50, None).await?["total"],
+        1
+    );
+    assert_eq!(
+        store::task_queue(&pool, &ws, "agent", "available", 50, None).await?["total"],
+        0
+    );
+    store::execute_input(&pool,&ws,"agent","ready",&json!({"op":"assess","req":"req","revision":2,"ac":"ac","assessment":{"ready":true,"reason":"Contract is clear","owner":null,"decision":null}})).await?;
+    let queue = store::task_queue(&pool, &ws, "agent", "available", 1, None).await?;
+    assert_eq!(queue["tasks"][0]["id"], "open-task");
+    assert_eq!(queue["tasks"][0]["ac"], "ac");
+    assert_eq!(queue["tasks"][0]["projects"], json!(["mobileapps"]));
+    let page = store::task_queue(&pool, &ws, "agent", "all", 1, None).await?;
+    let cursor = page["next_cursor"]
+        .as_str()
+        .expect("second Task page")
+        .to_owned();
+    assert!(
+        store::task_queue(&pool, &ws, "outsider", "all", 1, None)
+            .await
+            .is_err()
+    );
+    let next = json!({"op":"claim_next_task"});
+    let (owner_result, agent_result) = tokio::join!(
+        store::execute_input(&pool, &ws, "owner", "claim-owner", &next),
+        store::execute_input(&pool, &ws, "agent", "claim-agent", &next)
+    );
+    assert_ne!(owner_result.is_ok(), agent_result.is_ok());
+    let (winner, winner_request, loser, success) = if let Ok(result) = owner_result {
+        ("owner", "claim-owner", "agent", result)
+    } else {
+        ("agent", "claim-agent", "owner", agent_result?)
+    };
+    assert_eq!(success["command"]["op"], "claim_task");
+    assert_eq!(success["command"]["id"], "open-task");
+    assert!(
+        store::task_queue(&pool, &ws, "agent", "all", 1, Some(&cursor))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store::execute_input(&pool, &ws, winner, winner_request, &next).await?["replayed"],
+        true
+    );
+    assert_eq!(
+        store::task_queue(&pool, &ws, loser, "available", 50, None).await?["total"],
+        0
+    );
+    assert_eq!(
+        store::task_queue(&pool, &ws, winner, "mine", 50, None).await?["tasks"][0]["status"],
+        "in_progress"
+    );
+    store::execute_input(
+        &pool,
+        &ws,
+        winner,
+        "release",
+        &json!({"op":"release_task","req":"req","revision":2,"id":"open-task","reason":"Handoff"}),
+    )
+    .await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        loser,
+        "claim-explicit",
+        &json!({"op":"claim_task","req":"req","revision":2,"id":"open-task"}),
+    )
+    .await?;
+    store::execute_input(&pool,&ws,loser,"complete",&json!({"op":"complete_task","req":"req","revision":2,"id":"open-task","evidence":"merged build abc"})).await?;
+    assert_eq!(
+        store::task_queue(&pool, &ws, loser, "mine", 50, None).await?["total"],
+        0
+    );
+    assert_eq!(
+        store::task_queue(&pool, &ws, loser, "all", 50, None).await?["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|task| task["id"] == "open-task")
+            .unwrap()["status"],
+        "done"
     );
     Ok(())
 }

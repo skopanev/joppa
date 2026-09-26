@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Small Bash-friendly client for Joppa Tasks over the public MCP endpoint."""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+import uuid
+
+
+class JoppaError(Exception):
+    pass
+
+
+def mcp(args, name, arguments):
+    token = os.getenv("JOPPA_TOKEN")
+    token_file = args.token_file or os.getenv("JOPPA_TOKEN_FILE")
+    if not token and token_file:
+        try:
+            with open(token_file, encoding="utf-8") as source:
+                token = source.read().strip()
+        except OSError as error:
+            raise JoppaError(f"cannot read token file: {error.strerror}") from error
+    if not token:
+        raise JoppaError("set JOPPA_TOKEN or JOPPA_TOKEN_FILE")
+    url = args.url or os.getenv("JOPPA_MCP_URL")
+    if not url or not url.endswith("/mcp"):
+        raise JoppaError("set JOPPA_MCP_URL to the HTTPS /mcp endpoint")
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            reply = json.load(response)
+    except urllib.error.HTTPError as error:
+        raise JoppaError(f"MCP HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+        raise JoppaError(f"MCP connection failed: {error.reason}") from error
+    result = reply.get("result", {})
+    if result.get("isError"):
+        message = " ".join(part.get("text", "") for part in result.get("content", []))
+        raise JoppaError(message or "Joppa rejected the request")
+    if "error" in reply:
+        raise JoppaError(reply["error"].get("message", "MCP error"))
+    try:
+        return json.loads(result["content"][0]["text"])
+    except (KeyError, IndexError, ValueError) as error:
+        raise JoppaError("invalid MCP response") from error
+
+
+def workspace(args):
+    value = args.workspace or os.getenv("JOPPA_WORKSPACE")
+    if not value:
+        raise JoppaError("set --workspace or JOPPA_WORKSPACE")
+    return value
+
+
+def task_address(args, space):
+    if args.req and args.revision:
+        return {"req": args.req, "revision": args.revision, "id": args.id}
+    if args.req or args.revision:
+        raise JoppaError("supply --req and --revision together")
+    matches = []
+    cursor = None
+    while True:
+        query = {"workspace": space, "view": "all", "limit": 100}
+        if cursor:
+            query["cursor"] = cursor
+        page = mcp(args, "joppa_tasks", query)
+        matches.extend(task for task in page["tasks"] if task["id"] == args.id)
+        cursor = page.get("next_cursor")
+        if not cursor:
+            break
+    if len(matches) != 1:
+        raise JoppaError("Task ID is absent or ambiguous; supply --req and --revision")
+    task = matches[0]
+    return {"req": task["req"], "revision": task["revision"], "id": task["id"]}
+
+
+def command(args, space, value):
+    return mcp(args, "joppa_command", {
+        "workspace": space,
+        "request_id": args.request_id or str(uuid.uuid4()),
+        "command": value,
+    })
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="joppa", description="Joppa MCP Task client")
+    group = parser.add_subparsers(dest="resource", required=True)
+    task = group.add_parser("task")
+    actions = task.add_subparsers(dest="action", required=True)
+
+    def common(action, write=False, address=False):
+        action.add_argument("--workspace")
+        action.add_argument("--url", help="MCP endpoint; defaults to JOPPA_MCP_URL")
+        action.add_argument("--token-file", help="private bearer token file; defaults to JOPPA_TOKEN_FILE")
+        action.add_argument("--json", action="store_true", help="JSON is the default output format")
+        if write:
+            action.add_argument("--request-id", help="reuse on an identical retry")
+        if address:
+            action.add_argument("id")
+            action.add_argument("--req")
+            action.add_argument("--revision", type=int)
+
+    listing = actions.add_parser("list", help="read one page of the Task queue")
+    common(listing)
+    listing.add_argument("--view", choices=["available", "mine", "waiting", "all"], default="available")
+    listing.add_argument("--limit", type=int, default=50)
+    listing.add_argument("--cursor")
+    claim = actions.add_parser("claim", help="atomically claim a Task by ID")
+    common(claim, write=True, address=True)
+    next_task = actions.add_parser("next", help="atomically take the oldest claimable Task")
+    common(next_task, write=True)
+    next_task.add_argument("--project")
+    next_task.add_argument("--purpose", choices=["implementation", "manual", "decision"])
+    release = actions.add_parser("release", help="return unfinished work to the queue")
+    common(release, write=True, address=True)
+    release.add_argument("--reason", required=True)
+    complete = actions.add_parser("complete", help="record Task completion evidence")
+    common(complete, write=True, address=True)
+    complete.add_argument("--evidence", required=True)
+
+    args = parser.parse_args()
+    space = workspace(args)
+    if args.action == "list":
+        query = {"workspace": space, "view": args.view, "limit": args.limit}
+        if args.cursor:
+            query["cursor"] = args.cursor
+        output = mcp(args, "joppa_tasks", query)
+    elif args.action == "next":
+        value = {"op": "claim_next_task"}
+        if args.project:
+            value["project"] = args.project
+        if args.purpose:
+            value["purpose"] = args.purpose
+        output = command(args, space, value)
+    else:
+        value = {"op": {"claim": "claim_task", "release": "release_task", "complete": "complete_task"}[args.action]}
+        value.update(task_address(args, space))
+        if args.action == "release":
+            value["reason"] = args.reason
+        if args.action == "complete":
+            value["evidence"] = args.evidence
+        output = command(args, space, value)
+    print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except JoppaError as error:
+        print(f"joppa: {error}", file=sys.stderr)
+        sys.exit(3 if "already claimed" in str(error) or "no available Task" in str(error) else 1)

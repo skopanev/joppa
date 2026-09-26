@@ -210,8 +210,15 @@ pub struct Task {
     pub acs: Vec<String>,
     pub projects: Vec<String>,
     pub purpose: String,
-    pub assignee: String,
+    /// An unassigned task becomes in progress only after an atomic claim.
+    pub assignee: Option<String>,
     pub done: Option<String>,
+    #[serde(default)]
+    pub contract: String,
+    #[serde(default)]
+    pub created_at: u64,
+    #[serde(default)]
+    pub created_by: String,
     /// A copied task stays visible after REQ revision, but its fit to the new
     /// wording must be confirmed before unfinished work can be completed.
     #[serde(default)]

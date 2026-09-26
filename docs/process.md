@@ -23,6 +23,14 @@ applicable decision rather than repeatedly asking for it. A material change
 requires a new decision. Platforms come from the agreed AC and context; see
 [AC scope](model.md#ac-scope).
 
+Each implementation Task belongs to exactly one AC and states a technical
+contract. Triage may create unassigned Tasks before the AC becomes ready. The
+MCP Task queue lists work the authenticated actor can claim; `claim_task` and
+`claim_next_task` assign it atomically once the AC is ready. `release_task`
+returns unfinished work with a reason. An AC blocked by a decision stays open
+but ineligible for claim; there is no separate Task-level blocked status. Task
+completion is implementation evidence, never a passing check.
+
 ## Discussion and corrections
 
 Found a gap? Comment in the REQ card. The owner answers there and, when needed,

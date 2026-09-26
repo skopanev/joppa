@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # Remote MCP notifications return 202 without a JSON-RPC response.
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search'}
+        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search'}
         def mcp(name, arguments, token=agent_token):
             status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':name,'arguments':arguments}}, token)
@@ -157,6 +157,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert not result.get('isError'), result
             return json.loads(result['content'][0]['text'])
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
+        assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
         # Agents can still add both object notes and revision discussion through MCP.
         for request_id, value in [
             ('agent-note', {'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}),
@@ -224,6 +225,30 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         public_id = next(iter(created['results'][1]['system_ids']['requirement'].values()))
         resolved = mcp('joppa_read',{'item_id':public_id})
         assert resolved['selection']['id'] == created['results'][1]['command']['req']
+        task_req = created['results'][1]['command']['req']
+        task_ac = created['results'][1]['command']['acs'][0]['id']
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-open-task','command':{
+            'op':'task','req':task_req,'revision':1,'id':'mcp-open-task','title':'Restore access',
+            'acs':[task_ac],'projects':[],'purpose':'implementation',
+            'contract':'Implement the access recovery flow and attach merged build evidence'}})
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['tasks'][0]['id'] == 'mcp-open-task'
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
+            'op':'assess','req':task_req,'revision':1,'ac':task_ac,
+            'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == 'mcp-open-task'
+        claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
+            'command':{'op':'claim_next_task'}})
+        assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == 'mcp-open-task'
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['tasks'][0]['status'] == 'in_progress'
+        client_env={**env,'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
+        def client(*arguments):
+            result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),'task',*arguments],
+                                  env=client_env,capture_output=True,text=True,check=True)
+            return json.loads(result.stdout)
+        assert client('list','--view','mine')['tasks'][0]['id'] == 'mcp-open-task'
+        client('release','mcp-open-task','--reason','Handoff to another process')
+        assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == 'mcp-open-task'
+        assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
         found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
         assert found['mode'] == 'full_text' and found['semantic_status'] == 'not_configured'
         assert found['items'][0]['system_id'] == public_id
@@ -246,6 +271,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'confirm', 'req': 'auto', 'revision': 1})
         ok({'op': 'assess', 'req': 'auto', 'revision': 1, 'ac': 'auto-ac',
             'assessment': {'ready': True, 'reason': 'Known contract'}})
+        ok({'op':'define_verification_scope','req':'auto','revision':1,
+            'subject_keys':['code'],'scope':'One declared command','reason':'Owner-approved test boundary'})
         manifest = {'req': 'auto', 'revision': 1, 'subject': {'code': 'test-v1'},
                     'scope': 'One declared command', 'discovery_complete': True,
                     'checks': [{'id': '[auto-ac] succeeds', 'ac': 'auto-ac', 'method': 'automated',
@@ -263,6 +290,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'confirm','req':'key','revision':1})
         ok({'op':'assess','req':'key','revision':1,'ac':'key-rights',
             'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
+        ok({'op':'define_verification_scope','req':'key','revision':1,
+            'subject_keys':['environment'],'scope':'Key permissions before launch',
+            'reason':'Owner-approved provider configuration boundary'})
         ok({'op':'plan','req':'key','revision':1,'run':'manual1',
             'subject':{'environment':'config-v1'},'scope':'Key permissions before launch',
             'discovery_complete':True,'checks':[{'id':'manual-key-rights','ac':'key-rights',
@@ -277,7 +307,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert gate.returncode == 0, gate.stderr
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
         assert gate.returncode != 0
-        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'reviewer'})
+        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'reviewer','contract':'Implement command and attach merged build evidence'})
         # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','consumers':['customer'],'reason':'Clarify scope',

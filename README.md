@@ -177,11 +177,32 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 |---|---|
 | `joppa_list` | List accessible products |
 | `joppa_read` | Read a workspace or resolve a copied system ID |
+| `joppa_tasks` | List available, assigned or waiting Tasks without opening every REQ |
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_model_docs` | Read English model, process and evidence rules |
 | `joppa_help` | Read command shapes and API rules |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
+
+For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
+It needs Python 3 and a private service bearer for an enrolled agent member;
+the server's administrative executable is not installed on the client machine.
+
+```sh
+export JOPPA_MCP_URL=https://YOUR_JOPPA_DOMAIN/mcp
+export JOPPA_TOKEN_FILE=/private/path/to/agent-token
+export JOPPA_WORKSPACE=product
+python3 client/joppa task list --view available
+python3 client/joppa task next --purpose implementation --request-id "$NEXT_REQUEST_ID"
+python3 client/joppa task claim TASK_ID --request-id "$CLAIM_REQUEST_ID"
+python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
+```
+
+Commands print JSON. `next` selects and claims under one server lock. `claim`
+accepts the Task ID from the queue; use `--req REQ --revision N` when an ID is
+ambiguous. Reuse a `--request-id` only for an identical retry. Exit code 3 means
+the Task was already claimed or no matching Task is available; other errors
+return 1. Do not pass the bearer token on the command line.
 
 Each write needs a unique `request_id`. Retry identical input with the same ID
 for the same result, including generated IDs. Batches can reference earlier

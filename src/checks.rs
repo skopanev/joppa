@@ -58,6 +58,48 @@ pub fn summary(r: &Revision) -> Value {
         "coverage_change": r.coverage_change, "coverage_reviewed": coverage_reviewed})
 }
 
+/// The same predicate powers explicit claims, claim-next, and the MCP queue.
+pub fn claimable(w: &Workspace, actor: &str, r: &Revision, task: &Task) -> Result<()> {
+    ensure!(
+        w.members.contains_key(actor),
+        "claimant is not a workspace member"
+    );
+    ensure!(task.assignee.is_none(), "task is already claimed");
+    ensure!(task.done.is_none(), "task is already completed");
+    ensure!(task.retired.is_none(), "task is retired");
+    ensure!(
+        !task.review_required,
+        "task needs owner review after REQ revision"
+    );
+    ensure!(
+        !task.contract.trim().is_empty(),
+        "task needs a technical contract before claim"
+    );
+    ensure!(task.acs.len() == 1, "task must belong to exactly one AC");
+    let ac = r
+        .acs
+        .iter()
+        .find(|ac| ac.id == task.acs[0])
+        .ok_or_else(|| anyhow::anyhow!("task AC is absent from current REQ revision"))?;
+    if task.purpose == "decision" {
+        ensure!(
+            w.members[actor] == "human",
+            "a human must claim a decision task"
+        );
+        ensure!(
+            ac.owner.as_ref().unwrap_or(&r.owner) == actor,
+            "designated AC owner must claim the decision task"
+        );
+        ensure!(
+            ac.depends_on.iter().all(|id| ready(r, id)),
+            "dependent AC is not ready"
+        );
+    } else {
+        ensure!(ready(r, &ac.id), "AC is not ready for work");
+    }
+    Ok(())
+}
+
 pub fn apply(
     w: &mut Workspace,
     actor: &str,
@@ -75,10 +117,15 @@ pub fn apply(
             projects,
             purpose,
             assignee,
+            contract,
         } => {
             identifier(id)?;
             nonempty(title)?;
-            ensure!(w.members.contains_key(assignee), "unknown assignee");
+            if let Some(assignee) = assignee {
+                ensure!(w.members.contains_key(assignee), "unknown assignee");
+            } else {
+                nonempty(contract)?;
+            }
             ensure!(
                 ["implementation", "decision", "manual"].contains(&purpose.as_str()),
                 "unknown task purpose"
@@ -99,10 +146,9 @@ pub fn apply(
             ensure!(!acs.is_empty(), "task needs at least one AC");
             for ac in acs {
                 ensure!(r.acs.iter().any(|a| &a.id == ac), "unknown AC");
-                ensure!(
-                    purpose == "decision" || ready(r, ac),
-                    "AC awaits decision or dependent AC"
-                );
+                if assignee.is_some() && purpose != "decision" {
+                    ensure!(ready(r, ac), "AC awaits decision or dependent AC");
+                }
             }
             r.tasks.insert(
                 id.clone(),
@@ -113,11 +159,104 @@ pub fn apply(
                     purpose: purpose.clone(),
                     assignee: assignee.clone(),
                     done: None,
+                    contract: contract.clone(),
+                    created_at: position,
+                    created_by: actor.into(),
                     review_required: false,
                     origin_revision: *n,
                     retired: None,
                 },
             );
+        }
+        Command::ClaimTask {
+            req,
+            revision: n,
+            id,
+        } => {
+            let q = w
+                .requirements
+                .get(req)
+                .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
+            ensure!(
+                q.revisions.len() == *n as usize && *n > 0,
+                "stale revision; read the task again"
+            );
+            let r = q.revisions.last().unwrap();
+            let task = r
+                .tasks
+                .get(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
+            claimable(w, actor, r, task)?;
+            revision(w, req, *n, true)?
+                .tasks
+                .get_mut(id)
+                .unwrap()
+                .assignee = Some(actor.into());
+        }
+        Command::AmendTask {
+            req,
+            revision: n,
+            id,
+            title,
+            contract,
+            projects,
+            reason,
+        } => {
+            nonempty(title)?;
+            nonempty(contract)?;
+            nonempty(reason)?;
+            for project in projects {
+                ensure!(w.projects.contains_key(project), "unknown project");
+            }
+            let r = revision(w, req, *n, true)?;
+            let task = r
+                .tasks
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
+            ensure!(task.done.is_none(), "completed task cannot be amended");
+            ensure!(task.retired.is_none(), "retired task cannot be amended");
+            ensure!(
+                actor == r.owner
+                    || task.assignee.as_deref() == Some(actor)
+                    || (task.assignee.is_none() && task.created_by == actor),
+                "REQ owner, assignee or unclaimed task creator required"
+            );
+            if let Some(scope) = &r.verification_scope {
+                for project in projects {
+                    ensure!(
+                        scope.subject_keys.contains(project),
+                        "task project is outside the agreed verification subject"
+                    );
+                }
+            }
+            task.title = title.clone();
+            task.contract = contract.clone();
+            task.projects = projects.clone();
+        }
+        Command::ReleaseTask {
+            req,
+            revision: n,
+            id,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let r = revision(w, req, *n, true)?;
+            let task = r
+                .tasks
+                .get_mut(id)
+                .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
+            ensure!(
+                task.assignee.as_deref() == Some(actor) || r.owner == actor,
+                "assignee or REQ owner releases a task"
+            );
+            ensure!(task.assignee.is_some(), "task is already unassigned");
+            ensure!(task.done.is_none(), "completed task cannot be released");
+            ensure!(task.retired.is_none(), "retired task cannot be released");
+            ensure!(
+                !task.contract.trim().is_empty(),
+                "add a technical contract before releasing this legacy task"
+            );
+            task.assignee = None;
         }
         Command::ReviewTask {
             req,
@@ -165,10 +304,7 @@ pub fn apply(
                 .tasks
                 .get_mut(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
-            ensure!(
-                task.review_required,
-                "only a task pending revision review can be retired"
-            );
+            ensure!(task.retired.is_none(), "task is already retired");
             task.review_required = false;
             task.retired = Some(reason.clone());
         }
@@ -190,9 +326,10 @@ pub fn apply(
                 .get(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
             ensure!(
-                task.assignee == actor || r.owner == actor,
+                task.assignee.as_deref() == Some(actor) || r.owner == actor,
                 "assignee or owner required"
             );
+            ensure!(task.assignee.is_some(), "claim task before completing it");
             ensure!(task.done.is_none(), "task already completed");
             ensure!(
                 !task.review_required,

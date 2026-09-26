@@ -60,6 +60,9 @@ fn event_time(events: &[Event], req: &str, revision: u32) -> Option<String> {
                 | "assess"
                 | "confirm"
                 | "task"
+                | "amend_task"
+                | "claim_task"
+                | "release_task"
                 | "review_task"
                 | "retire_task"
                 | "complete_task"
@@ -111,7 +114,7 @@ fn requirement_signal(id: &str, q: &crate::model::Requirement, events: &[Event])
     } else if !r.runs.is_empty()
         || r.tasks
             .values()
-            .any(|t| t.retired.is_none() && t.purpose != "decision")
+            .any(|t| t.retired.is_none() && t.assignee.is_some() && t.done.is_none())
     {
         ("yellow", "In progress", "progress")
     } else {

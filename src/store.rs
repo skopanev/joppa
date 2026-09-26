@@ -14,6 +14,9 @@ pub use access::{AccessDenied, enroll};
 #[path = "store_board.rs"]
 mod board;
 pub use board::board_read;
+#[path = "store_tasks.rs"]
+mod tasks;
+pub use tasks::task_queue;
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 pub fn pool(url: &str) -> Result<Pool> {

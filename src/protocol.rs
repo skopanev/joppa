@@ -26,6 +26,7 @@ pub async fn handle(
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
             tool("joppa_search", "Find current domains, capabilities, requirements and ACs inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string","enum":["domain","capability","requirement","ac"]},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
             tool("joppa_read", "Read a workspace index or one requirement's current revision. Supply workspace OR item_id. Every requirement reports revision_count. history=true returns counts only, never events or revision bodies. To read an older revision, explicitly supply revision=N; the response contains exactly one revision and its discussion/evidence. Copied requirement and AC IDs obey the same rules.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement: current revision by default, including its ACs, tasks, runs, issues and revision comments"},"revision":{"type":"integer","minimum":1,"description":"Read exactly this revision of the selected requirement; omit for current. Works with req or a requirement/AC item_id."},"history":{"type":"boolean","default":false,"description":"Discover revision counts without revision bodies or events. Then request one revision by number."},"target":{"type":"string","description":"One object's notes: description, comments and attachments. Address as kind:id, e.g. requirement:r-xxx or ac:r-xxx/2. Cannot be combined with revision or history."}}), json!([])),
+            tool("joppa_tasks", "List current Tasks without reading every REQ. available shows tasks this actor can claim, mine shows claimed unfinished tasks, waiting shows unassigned tasks whose AC or contract is not ready, all shows every current Task. Results are paginated; a cursor expires when the workspace changes.", json!({"workspace":{"type":"string"},"view":{"type":"string","enum":["available","mine","waiting","all"],"default":"available"},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50},"cursor":{"type":"string"}}), json!(["workspace"])),
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the authenticated credential, never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help first. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":{"type":"object"}},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology in English: product levels, ownership, readiness, revision history, checks and acceptance. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green"]}}), json!([])),
@@ -94,6 +95,25 @@ async fn call(
             }
             _ => anyhow::bail!("supply workspace OR item_id"),
         },
+        "joppa_tasks" => {
+            let limit = a
+                .get("limit")
+                .map(|v| {
+                    v.as_u64()
+                        .ok_or_else(|| anyhow::anyhow!("limit must be an integer"))
+                })
+                .transpose()?
+                .unwrap_or(50);
+            store::task_queue(
+                pool,
+                field("workspace")?,
+                actor,
+                a["view"].as_str().unwrap_or("available"),
+                usize::try_from(limit)?,
+                a["cursor"].as_str(),
+            )
+            .await
+        }
         "joppa_command" => {
             store::execute_remote_input(
                 pool,

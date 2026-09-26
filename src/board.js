@@ -156,7 +156,7 @@ function requirementStatus(id) {
   if(s.ready_for_acceptance)return 'pass';
   if(!r.confirmed||!r.acs.length||Object.values(s.acs).some(a=>!a.ready))return 'waiting';
   if(Object.values(r.tasks).some(t=>t.review_required))return 'review';
-  if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.purpose!=='decision'))return 'progress';
+  if(Object.keys(r.runs).length||Object.values(r.tasks).some(t=>t.assignee&&t.done===null&&!t.retired))return 'progress';
   return 'available';
 }
 function requirementSignal(id){
@@ -211,7 +211,7 @@ function indexStatusEvents(){
   resultEventIndex=new Map();
   const revisions=new Map();
   for(const [req,q] of Object.entries(data.state.requirements))for(const r of q.revisions)revisions.set(req+'/'+r.number,r);
-  const relevant=new Set(['assess','confirm','task','review_task','retire_task','complete_task','define_verification_scope','plan','review_coverage','result','finish','issue','resolve','withdraw_decision','accept','revoke']);
+  const relevant=new Set(['assess','confirm','task','amend_task','claim_task','release_task','review_task','retire_task','complete_task','define_verification_scope','plan','review_coverage','result','finish','issue','resolve','withdraw_decision','accept','revoke']);
   for(const event of data.history||[]){
     const c=event.command;
     if(c.op==='result')resultEventIndex.set(JSON.stringify([c.req,c.revision,c.run,c.evidence.check]),event);
@@ -225,7 +225,7 @@ function indexStatusEvents(){
     if(c.op==='revise')acs=c.acs.map(a=>a.id);
     else if(c.ac)acs=[c.ac];
     else if(c.acs)acs=c.acs;
-    else if(c.op==='complete_task')acs=r?.tasks?.[c.id]?.acs||[];
+    else if(['amend_task','claim_task','release_task','complete_task'].includes(c.op))acs=r?.tasks?.[c.id]?.acs||[];
     else if(c.op==='retire_task')acs=r?.tasks?.[c.id]?.acs||[];
     else if(c.op==='plan')acs=c.checks.map(check=>check.ac);
     else if(c.op==='result')acs=r?.runs?.[c.run]?.plan.filter(check=>check.id===c.evidence.check).map(check=>check.ac)||[];
@@ -248,7 +248,7 @@ function acSignal(status,r,id,reqId){
   }
   if(!status.ready)return {tone:'yellow',label:'Waiting for decision',at};
   if(Object.values(r.tasks).some(t=>t.acs.includes(id)&&t.review_required))return {tone:'purple',label:'Task review required',at};
-  const working=Object.values(r.tasks).some(t=>!t.retired&&t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
+  const working=Object.values(r.tasks).some(t=>!t.retired&&t.assignee&&t.acs.includes(id)&&t.done===null)||Object.values(r.runs).some(run=>!run.finished&&run.plan.some(check=>check.ac===id));
   return {tone:working?'yellow':'grey',label:working?'In progress':'Ready to work · Not checked',at};
 }
 let statusHint=null;
@@ -633,9 +633,10 @@ function requirementDetails(root, selected, revisionNumber=null) {
       }
       item.append(checks);
     }
+    tasks(item,r,a.id);
     acList.append(item);
   }
-  tasks(root, r);
+  tasks(root,r,null);
   runs(root, r, base);
   comments(root, q, r, selected);
 }
@@ -663,7 +664,7 @@ function historyTitle(kind,id,position){
 }
 function historyEvent(parent,event,q){
   const c=event.command;
-  const names={set_domain_archived:c.archived?'Domain archived':'Domain restored',domain:'Domain created',capability:'Capability created',consumer:'Consumer created',edit_consumer:'Consumer updated',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',link_source:'Source linked',withdraw_source:'Source withdrawn',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
+  const names={set_domain_archived:c.archived?'Domain archived':'Domain restored',domain:'Domain created',capability:'Capability created',consumer:'Consumer created',edit_consumer:'Consumer updated',reorder_tree:'Order changed',edit_domain:'Domain updated',edit_capability:'Capability updated',confirm_tree:'Structure confirmed',revise:c.expected_revision?'Requirement updated':'Requirement created',link_source:'Source linked',withdraw_source:'Source withdrawn',comment:{decision:'Decision recorded',accept:'Suggestion accepted',change:'Changes requested',reject:'Suggestion declined',correction:'Reply corrected'}[c.kind]||'Comment added',assess:'Readiness reviewed',confirm:'Wording approved',task:'Task created',amend_task:'Task corrected',claim_task:'Task claimed',release_task:'Task released',review_task:'Task reviewed',retire_task:'Task retired',complete_task:'Task completed',plan:'Checks planned',result:'Check result recorded',finish:'Checks completed',accept:'Requirement accepted',revoke:'Acceptance withdrawn',issue:'Issue confirmed',resolve:'Issue resolved',withdraw_decision:'Decision withdrawn'};
   const entry=E('article',undefined,'history-entry');
   entry.append(E('time',eventDate(event.recorded_at),'history-time'),E('span',personLabel(event.actor),'history-author'));parent.append(entry);
   const body=E('div',undefined,'history-body');body.append(E('strong',names[c.op]||'Item updated','history-action'));entry.append(body);
@@ -729,17 +730,20 @@ function cardFact(root,label,value){
   line.append(E('span',label+': ','hint'),E('span',value));root.append(line);
 }
 function acTitle(r,id){return r.acs.find(a=>a.id===id)?.text||'Acceptance criterion';}
-function tasks(root, r) {
-  if(!Object.keys(r.tasks).length)return;
-  const d=details(root,'Tasks · '+Object.keys(r.tasks).length);
-  for(const t of Object.values(r.tasks)){
+function tasks(root, r, acId) {
+  const entries=Object.values(r.tasks).filter(t=>acId?t.acs.includes(acId):!t.acs.some(id=>r.acs.some(a=>a.id===id)));
+  if(!entries.length)return;
+  const d=details(root,(acId?'Tasks':'Historical tasks')+' · '+entries.length);
+  for(const t of entries){
     const item=E('article',undefined,'detail-entry');
-    const heading=E('h3',t.title);heading.prepend(statusCircle({tone:t.retired?'grey':t.review_required?'purple':t.done!==null?'green':'yellow',label:t.retired?'Task no longer applies':t.review_required?'Review task against current REQ revision':t.done!==null?'Task completed':'Open task'}));
-    item.append(heading,E('p',personLabel(t.assignee),'hint'));
+    const taskStatus=t.retired?'Task no longer applies':t.review_required?'Review task against current REQ revision':t.done!==null?'Task completed':t.assignee?'In progress':'Open task';
+    const heading=E('h3',t.title);heading.prepend(statusCircle({tone:t.retired?'grey':t.review_required?'purple':t.done!==null?'green':t.assignee?'yellow':'grey',label:taskStatus}));
+    item.append(heading,E('p',t.assignee?personLabel(t.assignee):'Unclaimed','hint'));
     if(t.review_required)item.append(E('p','The REQ changed. Its owner must review this task against the current AC before work can be completed.','hint'));
     if(t.retired)cardFact(item,'No longer applies',t.retired);
     if(t.origin_revision&&t.origin_revision!==r.number)cardFact(item,'Created in revision',String(t.origin_revision));
-    cardFact(item,'Acceptance criteria',t.acs.map(id=>acTitle(r,id)).join('; '));
+    if(!acId)cardFact(item,'Acceptance criteria',t.acs.map(id=>acTitle(r,id)).join('; '));
+    cardFact(item,'Contract',t.contract);
     cardFact(item,'Projects',t.projects.map(id=>data.state.projects[id]||id).join(', '));
     cardFact(item,'Work',({implementation:'Implementation',manual:'Manual action',decision:'Decision'})[t.purpose]);
     cardFact(item,'Result',t.done);d.append(item);

@@ -212,7 +212,30 @@ pub enum Command {
         acs: Vec<String>,
         projects: Vec<String>,
         purpose: String,
-        assignee: String,
+        #[serde(default)]
+        assignee: Option<String>,
+        #[serde(default)]
+        contract: String,
+    },
+    ClaimTask {
+        req: String,
+        revision: u32,
+        id: String,
+    },
+    AmendTask {
+        req: String,
+        revision: u32,
+        id: String,
+        title: String,
+        contract: String,
+        projects: Vec<String>,
+        reason: String,
+    },
+    ReleaseTask {
+        req: String,
+        revision: u32,
+        id: String,
+        reason: String,
     },
     CompleteTask {
         req: String,

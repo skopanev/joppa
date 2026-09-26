@@ -36,6 +36,54 @@ fn independent_acs_and_cross_repository_tasks_do_not_fake_green() {
     assert_eq!(w.state.requirements["r"].revisions[0].acs.len(), 2);
 }
 #[test]
+fn unassigned_task_can_be_claimed_only_when_its_ac_is_ready() {
+    let mut w = World::new();
+    let task = json!({"op":"task","req":"r","revision":1,"id":"free","title":"Implement iOS access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change app access flow and attach merged build evidence"});
+    w.ok("agent", task);
+    let claim = json!({"op":"claim_task","req":"r","revision":1,"id":"free"});
+    w.no("agent", claim.clone());
+    w.no(
+        "agent",
+        json!({"op":"complete_task","req":"r","revision":1,"id":"free","evidence":"merge"}),
+    );
+    w.ok("agent", assess("ios", true));
+    w.ok("agent", claim.clone());
+    assert_eq!(
+        w.state.requirements["r"].revisions[0].tasks["free"]
+            .assignee
+            .as_deref(),
+        Some("agent")
+    );
+    w.no("owner", claim);
+    w.ok("agent", json!({"op":"release_task","req":"r","revision":1,"id":"free","reason":"Handing work back to the queue"}));
+    w.ok(
+        "owner",
+        json!({"op":"claim_task","req":"r","revision":1,"id":"free"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"complete_task","req":"r","revision":1,"id":"free","evidence":"merge abc"}),
+    );
+    assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "n/a");
+}
+#[test]
+fn creator_can_correct_unclaimed_task_without_revising_req() {
+    let mut w = World::new();
+    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"wrong","title":"Build flow","acs":["ios"],"projects":["infra"],"purpose":"implementation","contract":"Build the iOS flow"}));
+    let amend = json!({"op":"amend_task","req":"r","revision":1,"id":"wrong","title":"Build mobile flow","contract":"Build the iOS flow in app and attach build evidence","projects":["app"],"reason":"Correct project before claim"});
+    w.no("runner", amend.clone());
+    w.ok("agent", amend);
+    assert_eq!(
+        w.state.requirements["r"].revisions[0].tasks["wrong"].projects,
+        vec!["app"]
+    );
+    w.ok("owner",json!({"op":"retire_task","req":"r","revision":1,"id":"wrong","reason":"Superseded by another implementation"}));
+    w.no(
+        "agent",
+        json!({"op":"claim_task","req":"r","revision":1,"id":"wrong"}),
+    );
+}
+#[test]
 fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
     let mut w = World::new();
     w.ok("agent", assess("ios", true));

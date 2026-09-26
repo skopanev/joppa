@@ -31,10 +31,20 @@ withdraw_decision: req, revision, comment, reason; only the decision author
 assess: req, revision, ac,
         assessment:{ready,reason,owner:null,decision:null}
 task: req, revision, id, title, acs:[id], projects:[id],
-      purpose (implementation|manual|decision), assignee
+      purpose (implementation|manual|decision), contract, assignee:null (optional)
+      Every new task needs a nonempty technical contract. Existing assigned
+      tasks without contract remain readable for journal compatibility.
+claim_task: req, revision, id; atomically assign an open task to the authenticated actor
+amend_task: req, revision, id, title, contract, projects:[id], reason; correct an
+      unfinished Task in the current revision. REQ owner, assignee, or creator
+      of an unclaimed Task may amend it. The AC and completion history stay put.
+claim_next_task: project (optional), purpose (optional); under the same
+      workspace lock, select the oldest claimable task and journal a concrete
+      claim_task. The response command contains req, revision and id.
+release_task: req, revision, id, reason; assignee or REQ owner returns unfinished work to the queue
 complete_task: req, revision, id, evidence (decision comment ID for decision tasks)
 review_task: req, revision, id, ac, reason; REQ owner confirms that a retained task still belongs to this AC after a revision
-retire_task: req, revision, id, reason; REQ owner marks a carried task as no longer applicable while keeping its history and completion result
+retire_task: req, revision, id, reason; REQ owner marks any current active task as no longer applicable while keeping its history and completion result
 review_coverage: req, revision, run, reason; REQ owner acknowledges checks removed or changed since the latest earlier plan
 define_verification_scope: req, revision, subject_keys:[component-id,...], scope, reason; REQ owner agrees the complete component set and check boundary before the first plan
 plan: req, revision, run, subject:{component:immutable-build-or-config-id},
@@ -83,7 +93,7 @@ Manual evidence is submitted by a human member; automated evidence and finish by
 Expected tests cannot disappear between runs of one revision. To replace the verification contract, save a new revision with a reason.
 For new revisions, the first sealed plan is compared with the latest plan from any earlier revision. The card and read summary list checks whose identity, AC, method or expected evidence disappeared or changed. The REQ owner must call `review_coverage` with a reason before accepting that revision. Old journal revisions predate this rule and remain replayable.
 Before the first plan on a new revision, its REQ owner must call `define_verification_scope`. A plan's `subject` must contain exactly those component keys, its `scope` must match the agreed boundary, and it must include every project named by active tasks. Build/configuration values cannot be bare environment names such as `staging`. The first plan seals this scope contract; changing it requires another REQ revision. Older journal revisions remain readable under their historical rules. This validates the declared contract, not the semantic completeness of the owner's component list.
-Tasks remain in the current card across REQ revisions, including completed tasks and tasks from older revisions that an earlier edit omitted. Each active carried task needs an explicit `review_task` by the REQ owner before unfinished work can be completed. The review binds it to exactly one AC in the new revision. If the task no longer applies, the owner uses `retire_task` with a reason; its earlier revisions, completion result, and original AC remain in history. New tasks belong to exactly one AC.
+Tasks remain in the current card across REQ revisions, including completed tasks and tasks from older revisions that an earlier edit omitted. Each active carried task needs an explicit `review_task` by the REQ owner before unfinished work can be completed or claimed again. The review binds it to exactly one AC in the new revision. If the task no longer applies, the owner uses `retire_task` with a reason; its earlier revisions, completion result, and original AC remain in history. New tasks belong to exactly one AC. `joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection without reading every requirement. `available` uses the same eligibility rules as `claim_task`: one current AC, an explicit contract, no owner-review hold, no prior assignee/completion/retirement, and a ready AC. Decision-purpose tasks can be claimed by the designated human owner before that AC is ready, because making its decision is the work. An unconfirmed REQ can have provisional work, but cannot pass verification. Task status is derived as open, in_progress or done; an unready AC makes an open task ineligible to claim rather than creating a Task-level blocked status. Claim and release do not make an AC green; only checks do.
 The latest **started** run among completed runs is current. A delayed older run cannot replace a newer verdict.
 Read responses include the entire journal with authenticated actor and database timestamp.
 Corrections use new comments with reply_to; historical snapshots and decisions are never rewritten.
