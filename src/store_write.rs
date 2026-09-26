@@ -164,7 +164,6 @@ fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Resu
         .transpose()?;
     let mut priorities_parsed = Vec::new();
     if let Some(priorities) = priorities {
-        ensure!(priorities.len() <= 100, "too many priorities");
         for value in priorities {
             let selector = value.as_str().context("priority must be kind:id")?;
             let (kind, id) = selector

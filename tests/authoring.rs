@@ -326,8 +326,9 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
                 "title":suffix,"acs":[format!("ac-{suffix}")],"projects":[],
                 "purpose":"implementation","contract":"Implement and provide evidence"})).await?;
     }
-    let request =
-        json!({"op":"claim_next_task","priorities":["domain:urgent","requirement:req-old"]});
+    let mut priorities = vec!["domain:urgent"; 101];
+    priorities.push("requirement:req-old");
+    let request = json!({"op":"claim_next_task","priorities":priorities});
     let first = store::execute_input(&pool, &ws, "owner", "next-1", &request).await?;
     assert_eq!(first["command"]["id"], "task-new");
     let second = store::execute_input(&pool, &ws, "owner", "next-2", &request).await?;
