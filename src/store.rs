@@ -16,7 +16,7 @@ mod board;
 pub use board::board_read;
 #[path = "store_tasks.rs"]
 mod tasks;
-pub use tasks::task_queue;
+pub use tasks::{task_queue, task_queue_filtered};
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 pub fn pool(url: &str) -> Result<Pool> {

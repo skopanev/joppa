@@ -45,6 +45,9 @@ claim_next_task: project (optional), purpose (optional), priorities (optional
       match, select the oldest claimable task overall. project and purpose are
       hard filters. Unknown priority targets are errors. Journal a concrete
       claim_task; the response command contains req, revision and id.
+      For a read-only preview use joppa_tasks with view=available, limit=1 and
+      the same project, purpose and priorities. It applies the same ordering and
+      returns no Task when none is available; a later claim_task may lose a race.
 release_task: req, revision, id, reason; assignee or REQ owner returns unfinished work to the queue
 complete_task: req, revision, id, evidence (decision comment ID for decision tasks)
 review_task: req, revision, id, ac, reason; REQ owner confirms that a retained task still belongs to this AC after a revision

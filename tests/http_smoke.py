@@ -247,6 +247,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             return json.loads(result.stdout)
         assert client('list','--view','mine')['tasks'][0]['id'] == 'mcp-open-task'
         client('release','mcp-open-task','--reason','Handoff to another process')
+        preview = client('next','--dry-run','--priority','domain:'+draft_id)
+        assert preview['task']['id'] == 'mcp-open-task'
+        assert client('list','--view','available')['tasks'][0]['id'] == 'mcp-open-task'
         assert client('next','--priority','requirement:'+task_req,
                       '--request-id','cli-priority-next')['command']['id'] == 'mcp-open-task'
         client('release','mcp-open-task','--reason','Return to explicit claim')

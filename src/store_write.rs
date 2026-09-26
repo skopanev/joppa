@@ -149,79 +149,21 @@ fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Resu
         .get("purpose")
         .map(|v| v.as_str().context("purpose must be a string"))
         .transpose()?;
-    if let Some(project) = project {
-        ensure!(state.projects.contains_key(project), "unknown project");
-    }
-    if let Some(purpose) = purpose {
-        ensure!(
-            ["implementation", "manual", "decision"].contains(&purpose),
-            "unknown task purpose"
-        );
-    }
-    let priorities = object
+    let priorities: Option<Vec<String>> = object
         .get("priorities")
-        .map(|v| v.as_array().context("priorities must be an array"))
+        .map(|v| {
+            serde_json::from_value(v.clone())
+                .context("priorities must be an array of kind:id strings")
+        })
         .transpose()?;
-    let mut priorities_parsed = Vec::new();
-    if let Some(priorities) = priorities {
-        for value in priorities {
-            let selector = value.as_str().context("priority must be kind:id")?;
-            let (kind, id) = selector
-                .split_once(':')
-                .context("priority must be kind:id")?;
-            ensure!(!id.is_empty(), "priority ID is empty");
-            let exists = match kind {
-                "domain" => state.domains.contains_key(id),
-                "capability" => state.capabilities.contains_key(id),
-                "requirement" => state.requirements.contains_key(id),
-                "ac" => state.requirements.values().any(|q| {
-                    q.revisions
-                        .last()
-                        .is_some_and(|r| r.acs.iter().any(|ac| ac.id == id))
-                }),
-                "task" => state
-                    .requirements
-                    .values()
-                    .any(|q| q.revisions.last().is_some_and(|r| r.tasks.contains_key(id))),
-                "project" => state.projects.contains_key(id),
-                "consumer" => state.consumers.contains_key(id),
-                _ => anyhow::bail!("unknown priority kind: {kind}"),
-            };
-            ensure!(exists, "unknown priority target: {selector}");
-            priorities_parsed.push((kind, id));
-        }
-    }
-    let chosen = state
-        .requirements
-        .iter()
-        .filter_map(|(req, q)| q.revisions.last().map(|r| (req, q, r)))
-        .flat_map(|(req, q, r)| r.tasks.iter().map(move |(id, task)| (req, q, r, id, task)))
-        .filter(|(_, _, _, _, task)| {
-            project.is_none_or(|p| task.projects.iter().any(|id| id == p))
-                && purpose.is_none_or(|p| task.purpose == p)
-        })
-        .filter(|(_, _, r, _, task)| checks::claimable(state, actor, r, task).is_ok())
-        .min_by_key(|(req, q, r, id, task)| {
-            let rank = priorities_parsed
-                .iter()
-                .position(|(kind, target)| match *kind {
-                    "domain" => state
-                        .capabilities
-                        .get(&q.capability)
-                        .is_some_and(|c| c.domain == *target),
-                    "capability" => q.capability == *target,
-                    "requirement" => *req == target,
-                    "ac" => task.acs.iter().any(|ac| ac == target),
-                    "task" => *id == target,
-                    "project" => task.projects.iter().any(|project| project == target),
-                    "consumer" => r.consumers.iter().any(|consumer| consumer == target),
-                    _ => false,
-                })
-                .unwrap_or(priorities_parsed.len());
-            (rank, task.created_at, (*req).clone(), (*id).clone())
-        })
-        .map(|(req, _, r, id, _)| (req.clone(), r.number, id.clone()))
-        .context("no available Task matches this claim")?;
+    let chosen = super::tasks::select_next(
+        state,
+        actor,
+        project,
+        purpose,
+        &priorities.unwrap_or_default(),
+    )?
+    .context("no available Task matches this claim")?;
     *value = json!({"op":"claim_task","req":chosen.0,"revision":chosen.1,"id":chosen.2});
     Ok(())
 }

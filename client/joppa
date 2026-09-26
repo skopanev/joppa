@@ -117,6 +117,7 @@ def main():
     common(claim, write=True, address=True)
     next_task = actions.add_parser("next", help="atomically take the oldest claimable Task")
     common(next_task, write=True)
+    next_task.add_argument("--dry-run", action="store_true", help="preview the next Task without claiming it")
     next_task.add_argument("--project")
     next_task.add_argument("--purpose", choices=["implementation", "manual", "decision"])
     next_task.add_argument("--priority", action="append", default=[], metavar="KIND:ID",
@@ -143,7 +144,17 @@ def main():
             value["purpose"] = args.purpose
         if args.priority:
             value["priorities"] = args.priority
-        output = command(args, space, value)
+        if args.dry_run:
+            page = mcp(args, "joppa_tasks", {
+                "workspace": space, "view": "available", "limit": 1,
+                **({"project": args.project} if args.project else {}),
+                **({"purpose": args.purpose} if args.purpose else {}),
+                **({"priorities": args.priority} if args.priority else {}),
+            })
+            output = {"task": page["tasks"][0] if page["tasks"] else None,
+                      "position": page["position"]}
+        else:
+            output = command(args, space, value)
     else:
         value = {"op": {"claim": "claim_task", "release": "release_task", "complete": "complete_task"}[args.action]}
         value.update(task_address(args, space))

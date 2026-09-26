@@ -328,6 +328,23 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
     }
     let mut priorities = vec!["domain:urgent"; 101];
     priorities.push("requirement:req-old");
+    let preview = store::task_queue_filtered(
+        &pool,
+        &ws,
+        "owner",
+        "available",
+        1,
+        None,
+        None,
+        None,
+        &priorities.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+    )
+    .await?;
+    assert_eq!(preview["tasks"][0]["id"], "task-new");
+    assert_eq!(
+        store::task_queue(&pool, &ws, "owner", "available", 50, None).await?["total"],
+        2
+    );
     let request = json!({"op":"claim_next_task","priorities":priorities});
     let first = store::execute_input(&pool, &ws, "owner", "next-1", &request).await?;
     assert_eq!(first["command"]["id"], "task-new");
