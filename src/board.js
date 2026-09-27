@@ -843,6 +843,7 @@ function intake(root) {
   const count=data.lazy?data.counts.intake:entries.length;
   if(!count)return;
   const section=details(root,'Intake · '+count);
+  section.classList.add('intake-section');
   section.open=intakeOpen;
   if(data.lazy&&!entries.length){
     section.append(E('p','Loading intake…','hint'));

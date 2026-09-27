@@ -42,7 +42,10 @@ const responses={
     await domain.locator(':scope > summary').click();
     const cap=page.locator('[data-capability="c"]');await cap.waitFor();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
+    assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'branch-arrive');
+    await page.emulateMedia({reducedMotion:'reduce'});
     assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'none');
+    await page.emulateMedia({reducedMotion:'no-preference'});
     await cap.locator(':scope > summary').click();
     const req=page.locator('[data-requirement="r"]');await req.waitFor();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
