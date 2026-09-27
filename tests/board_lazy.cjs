@@ -43,6 +43,17 @@ const responses={
     const cap=page.locator('[data-capability="c"]');await cap.waitFor();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
     assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'branch-arrive');
+    assert.equal(await domain.evaluate(e=>getComputedStyle(e,'::details-content').transitionProperty.includes('block-size')),true);
+    await page.waitForTimeout(450);
+    await domain.locator(':scope > summary').click();
+    await page.waitForTimeout(450);
+    await domain.locator(':scope > summary').click();
+    const openingHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
+    await page.waitForTimeout(120);
+    const middleHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
+    await page.waitForTimeout(450);
+    const finalHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
+    assert(openingHeight<middleHeight&&middleHeight<finalHeight,`Expected smooth expansion: ${openingHeight} < ${middleHeight} < ${finalHeight}`);
     await page.emulateMedia({reducedMotion:'reduce'});
     assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'none');
     await page.emulateMedia({reducedMotion:'no-preference'});

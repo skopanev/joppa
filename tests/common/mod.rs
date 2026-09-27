@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use joppa::{
     commands::{self, Command},
     model::Workspace,
@@ -23,7 +25,13 @@ impl World {
         let mut copy = self.state.clone();
         // Время в тестах предсказуемое: иначе проверки на содержимое
         // комментария зависели бы от часов машины.
-        commands::apply(&mut copy, actor, &cmd, self.position + 1, "2026-01-01T00:00:00Z")?;
+        commands::apply(
+            &mut copy,
+            actor,
+            &cmd,
+            self.position + 1,
+            "2026-01-01T00:00:00Z",
+        )?;
         self.state = copy;
         self.position += 1;
         Ok(())

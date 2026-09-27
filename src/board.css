@@ -94,6 +94,13 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 .consumer-title{display:flex;align-items:center;gap:12px}.consumer-title>span{min-width:0;overflow-wrap:anywhere}
 .consumer-section{margin:30px 0 20px;padding:0;border:1px solid #a9d7e9;border-radius:11px;overflow:hidden;background:#f5fbfe}.consumer-section>summary{padding:17px 22px;background:#dceffa;color:#165a7d;font-size:19px;font-weight:620;list-style:none;cursor:pointer}.consumer-section>summary::-webkit-details-marker{display:none}.consumer-section>summary:before{content:'›';display:inline-block;margin-right:12px;transition:transform .18s}.consumer-section[open]>summary:before{transform:rotate(90deg)}.consumer-section[open]>summary{border-bottom:1px solid #b9ddeb}.consumer-card{margin:0 20px;padding:15px 4px;border-color:#c8e4ef}.consumer-card:first-of-type{border-top:0}.consumer-title{color:#165a7d}.consumer-card .node-actions{margin-left:auto}@media(max-width:760px){.consumer-section>summary{padding:15px 16px;font-size:17px}.consumer-card{margin:0 14px}}
 /* Animate only the branch being opened; lazy loads never restart motion elsewhere. */
+/* Native details can interpolate its content height, so each branch expands smoothly. */
+@supports (interpolate-size:allow-keywords) and selector(details::details-content){
+  .tree-domain,.tree-capability,.tree-requirement,.consumer-section,.intake-section{interpolate-size:allow-keywords}
+  .tree-domain::details-content,.tree-capability::details-content,.tree-requirement::details-content,.consumer-section::details-content,.intake-section::details-content{block-size:0;overflow:clip;transition:block-size .42s cubic-bezier(.2,.8,.2,1),content-visibility .42s allow-discrete}
+  .tree-domain[open]::details-content,.tree-capability[open]::details-content,.tree-requirement[open]::details-content,.consumer-section[open]::details-content,.intake-section[open]::details-content{block-size:auto}
+  @media(prefers-reduced-motion:reduce){.tree-domain::details-content,.tree-capability::details-content,.tree-requirement::details-content,.consumer-section::details-content,.intake-section::details-content{transition:none}}
+}
 .tree-domain[open]>.domain-body,.tree-capability[open]>.tree-requirement,.tree-requirement[open]>.requirement-detail,.consumer-section[open]>.consumer-card,.intake-section[open]>details{animation:branch-arrive .32s cubic-bezier(.2,.75,.25,1) both}
 @keyframes branch-arrive{from{opacity:.76;transform:translateY(-7px) scale(.995)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(prefers-reduced-motion:reduce){.tree-domain[open]>.domain-body,.tree-capability[open]>.tree-requirement,.tree-requirement[open]>.requirement-detail,.consumer-section[open]>.consumer-card,.intake-section[open]>details{animation:none}}

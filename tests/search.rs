@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod common;
 use anyhow::Result;
 use axum::{Json, Router, extract::State, routing::post};
@@ -166,7 +165,10 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         .await?["items"],
         text["items"]
     );
-    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, before);
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        before
+    );
     let provider = Provider::default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -272,7 +274,10 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     );
     let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, after);
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        after
+    );
     assert_eq!(
         store::search::find(
             &pool,

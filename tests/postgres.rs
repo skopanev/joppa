@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod common;
 use common::*;
 use joppa::{commands::Command, store};
@@ -40,7 +39,11 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     }
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(before["launch"]["ready"], false);
-    assert!(store::read(&pool, &ws, "outsider", &store::Scope::full()).await.is_err());
+    assert!(
+        store::read(&pool, &ws, "outsider", &store::Scope::full())
+            .await
+            .is_err()
+    );
     let other = format!("{ws}-other");
     execute(
         &pool,
@@ -60,7 +63,8 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     .await?;
     assert_ne!(
         before["system_ids"]["domain"]["d"],
-        store::read(&pool, &other, "outsider", &store::Scope::full()).await?["system_ids"]["domain"]["d"]
+        store::read(&pool, &other, "outsider", &store::Scope::full()).await?["system_ids"]["domain"]
+            ["d"]
     );
     let visible = store::list(&pool, "outsider").await?;
     assert!(visible.as_array().unwrap().iter().any(|w| w["id"] == other));
@@ -101,6 +105,14 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         v["revision"] = json!(2);
         execute(&pool, &ws, "agent", ac, v).await?;
     }
+    execute(
+        &pool,
+        &ws,
+        "owner",
+        "scope",
+        json!({"op":"define_verification_scope","req":"r","revision":2,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Full access and key scope"}),
+    )
+    .await?;
     let mut p = plan("run");
     p["revision"] = json!(2);
     execute(&pool, &ws, "runner", "plan", p).await?;

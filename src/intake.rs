@@ -7,7 +7,12 @@ use std::collections::BTreeMap;
 
 pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::Intake { id, said, author, owner } => {
+        Command::Intake {
+            id,
+            said,
+            author,
+            owner,
+        } => {
             identifier(id)?;
             nonempty(author)?;
             if let Some(owner) = owner {

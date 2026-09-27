@@ -31,14 +31,11 @@ fn stale_requirement(
     events: &[Event],
 ) -> Option<DateTime<Utc>> {
     let r = q.revisions.last().expect("requirement has a revision");
-    let Some((run_id, run)) = r
+    let (run_id, run) = r
         .runs
         .iter()
         .filter(|(_, run)| run.finished.is_some())
-        .max_by_key(|(_, run)| run.started)
-    else {
-        return None;
-    };
+        .max_by_key(|(_, run)| run.started)?;
     r.acs
         .iter()
         .filter(|ac| summary["acs"][&ac.id]["verification"] == "pass")
@@ -139,15 +136,15 @@ fn aggregate(children: impl Iterator<Item = Value>, noun: &str) -> Value {
             _ => "grey",
         };
         *counts.entry(tone).or_default() += 1;
-        if let Some(at) = child["at"].as_str() {
-            if latest.as_deref().is_none_or(|old| at > old) {
-                latest = Some(at.to_owned());
-            }
+        if let Some(at) = child["at"].as_str()
+            && latest.as_deref().is_none_or(|old| at > old)
+        {
+            latest = Some(at.to_owned());
         }
-        if let Some(deadline) = child["stale_after"].as_str() {
-            if stale_after.as_deref().is_none_or(|old| deadline < old) {
-                stale_after = Some(deadline.to_owned());
-            }
+        if let Some(deadline) = child["stale_after"].as_str()
+            && stale_after.as_deref().is_none_or(|old| deadline < old)
+        {
+            stale_after = Some(deadline.to_owned());
         }
     }
     if count == 0 {
@@ -188,7 +185,7 @@ pub(super) async fn project(
     for (id, q) in &state.requirements {
         reqs.insert(id.clone(), requirement_signal(id, q, events));
     }
-    for (id, _) in &state.capabilities {
+    for id in state.capabilities.keys() {
         caps.insert(
             id.clone(),
             aggregate(
@@ -201,7 +198,7 @@ pub(super) async fn project(
             ),
         );
     }
-    for (id, _) in &state.domains {
+    for id in state.domains.keys() {
         domains.insert(
             id.clone(),
             aggregate(

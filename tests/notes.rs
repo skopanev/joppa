@@ -1,6 +1,5 @@
 //! Пояснения, обсуждение и вложения — на любом объекте.
 // Этому набору нужна только подготовка мира; проверки зелёного живут в model.rs.
-#[allow(dead_code)]
 mod common;
 use common::*;
 use serde_json::json;
@@ -12,16 +11,16 @@ use serde_json::json;
 fn an_address_must_name_something_that_exists() {
     let mut w = World::new();
     for bad in [
-        "domain",               // нет двоеточия
-        "domain:missing",       // нет такого домена
+        "domain",         // нет двоеточия
+        "domain:missing", // нет такого домена
         "capability:missing",
         "requirement:missing",
-        "ac:r",                 // нет косой черты
-        "ac:r/missing",         // нет такого условия
+        "ac:r",         // нет косой черты
+        "ac:r/missing", // нет такого условия
         "ac:missing/ios",
         "intake:missing",
         "point:missing/1",
-        "workspace:x",          // неизвестный вид
+        "workspace:x", // неизвестный вид
     ] {
         w.no(
             "owner",
@@ -88,12 +87,17 @@ fn a_description_lands_where_the_object_keeps_it() {
     assert_eq!(w.state.domains["d"].description, "Payments are elsewhere");
     assert!(!w.state.notes.contains_key("domain:d"));
 
-    let before = w.state.requirements["r"].revisions[0].acs[0].description.clone();
+    let before = w.state.requirements["r"].revisions[0].acs[0]
+        .description
+        .clone();
     w.ok(
         "owner",
         json!({"op":"describe","target":"ac:r/ios","text":"Reinstall is out of scope","reason":"clarify"}),
     );
-    assert_eq!(w.state.notes["ac:r/ios"].description, "Reinstall is out of scope");
+    assert_eq!(
+        w.state.notes["ac:r/ios"].description,
+        "Reinstall is out of scope"
+    );
     assert_eq!(
         w.state.requirements["r"].revisions[0].acs[0].description, before,
         "a confirmed revision is never rewritten in place"
@@ -120,9 +124,7 @@ fn a_description_lands_where_the_object_keeps_it() {
 fn an_attachment_records_the_file_and_detaching_keeps_it() {
     let mut w = World::new();
     let hash = "a".repeat(64);
-    let attach = |id: &str, hash: &str| {
-        json!({"op":"attach","target":"requirement:r","id":id,"name":"spec.pdf","content_type":"application/pdf","size":1024,"hash":hash})
-    };
+    let attach = |id: &str, hash: &str| json!({"op":"attach","target":"requirement:r","id":id,"name":"spec.pdf","content_type":"application/pdf","size":1024,"hash":hash});
     w.no("owner", attach("f1", "not-a-digest"));
     w.no("owner", attach("f1", &"A".repeat(64)));
     w.no(
@@ -158,7 +160,12 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
     use joppa::{commands::Command, store};
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     store::migrate(&pool).await?;
-    let ws = format!("notes{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos());
+    let ws = format!(
+        "notes{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos()
+    );
     let mut n = 0;
     let mut run = |v: serde_json::Value| {
         n += 1;
@@ -166,7 +173,14 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
         let pool = pool.clone();
         let ws = ws.clone();
         async move {
-            store::execute(&pool, &ws, "prober", &id, &serde_json::from_value::<Command>(v)?).await
+            store::execute(
+                &pool,
+                &ws,
+                "prober",
+                &id,
+                &serde_json::from_value::<Command>(v)?,
+            )
+            .await
         }
     };
     run(json!({"op":"workspace","title":"Notes probe"})).await?;
@@ -174,7 +188,8 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
     run(json!({"op":"capability","id":"invoice","title":"Invoices","domain":"billing"})).await?;
     run(json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"prober"})).await?;
     run(json!({"op":"revise","req":"r1","expected_revision":0,"capability":"invoice","consumers":["buyer"],"title":"Invoice is delivered","body":"","owner":"prober","reason":"first","acs":[{"id":"pdf","text":"A PDF is produced"}]})).await?;
-    run(json!({"op":"note","target":"domain:billing","id":"n1","text":"Who owns refunds?"})).await?;
+    run(json!({"op":"note","target":"domain:billing","id":"n1","text":"Who owns refunds?"}))
+        .await?;
     run(json!({"op":"note","target":"domain:billing","id":"n2","text":"Not us."})).await?;
     run(json!({"op":"attach","target":"domain:billing","id":"f1","name":"chart.png","content_type":"image/png","size":10,"hash":"b".repeat(64)})).await?;
     run(json!({"op":"withdraw_note","target":"domain:billing","id":"n2","reason":"wrong"})).await?;
@@ -188,12 +203,17 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
     assert_eq!(notes["attachments"], json!(1));
     assert_eq!(notes["described"], json!(false));
     assert!(
-        index["index"]["domains"]["billing"].get("comments").is_none(),
+        index["index"]["domains"]["billing"]
+            .get("comments")
+            .is_none(),
         "the index must not carry the text of the discussion: {index}"
     );
     // Капабилити без заметок не несёт пустышку — она весила бы столько же,
     // сколько настоящий счётчик, и её пришлось бы читать на каждом объекте.
-    assert_eq!(index["index"]["capabilities"]["invoice"]["notes"], json!(null));
+    assert_eq!(
+        index["index"]["capabilities"]["invoice"]["notes"],
+        json!(null)
+    );
 
     let one = store::read(
         &pool,
@@ -202,9 +222,18 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
         &store::Scope::from_args(&json!({"target":"domain:billing"}))?,
     )
     .await?;
-    assert_eq!(one["notes"]["comments"]["n1"]["text"], json!("Who owns refunds?"));
-    assert_eq!(one["notes"]["attachments"]["f1"]["name"], json!("chart.png"));
-    assert!(one.get("index").is_none(), "one object is not the whole tree");
+    assert_eq!(
+        one["notes"]["comments"]["n1"]["text"],
+        json!("Who owns refunds?")
+    );
+    assert_eq!(
+        one["notes"]["attachments"]["f1"]["name"],
+        json!("chart.png")
+    );
+    assert!(
+        one.get("index").is_none(),
+        "one object is not the whole tree"
+    );
 
     let bad = store::read(
         &pool,
@@ -213,6 +242,9 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
         &store::Scope::from_args(&json!({"target":"domain:missing"}))?,
     )
     .await;
-    assert!(bad.is_err(), "an unknown address is refused, not answered with emptiness");
+    assert!(
+        bad.is_err(),
+        "an unknown address is refused, not answered with emptiness"
+    );
     Ok(())
 }

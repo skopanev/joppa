@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod common;
 use anyhow::Result;
 use joppa::store;
@@ -70,12 +69,16 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
         }
     }
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &ws, "owner", &store::Scope::full()).await?, after);
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        after
+    );
     let added: Value =
         json!({"op":"capability","id":"new","title":"Added after rename","domain":"d"});
     store::execute(&pool, &ws, "owner", "add", &serde_json::from_value(added)?).await?;
     assert!(
-        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["system_ids"]["capability"]["new"]
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["system_ids"]["capability"]
+            ["new"]
             .as_str()
             .unwrap()
             .starts_with(&prefix)
@@ -128,7 +131,10 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     );
     let after = store::read(&pool, &new, &owner, &store::Scope::full()).await?;
     assert_eq!(after["workspace"], new);
-    assert_eq!(store::read(&pool, &old, &owner, &store::Scope::full()).await?, after);
+    assert_eq!(
+        store::read(&pool, &old, &owner, &store::Scope::full()).await?,
+        after
+    );
     assert_eq!(
         store::list(&pool, &owner).await?,
         json!([{"id":new,"title":"Current product"}])
@@ -144,7 +150,11 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
         new
     );
     for name in [&old, &new] {
-        assert!(store::read(&pool, name, "outsider", &store::Scope::full()).await.is_err());
+        assert!(
+            store::read(&pool, name, "outsider", &store::Scope::full())
+                .await
+                .is_err()
+        );
         assert!(
             store::execute(
                 &pool,
@@ -181,6 +191,9 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     assert!(a.is_ok() && b.is_ok());
     assert_ne!(a?["replayed"], b?["replayed"]);
     store::migrate(&pool).await?;
-    assert_eq!(store::read(&pool, &old, &owner, &store::Scope::full()).await?["workspace"], new);
+    assert_eq!(
+        store::read(&pool, &old, &owner, &store::Scope::full()).await?["workspace"],
+        new
+    );
     Ok(())
 }

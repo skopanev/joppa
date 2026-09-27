@@ -114,6 +114,7 @@ pub async fn task_queue(
     task_queue_filtered(pool, workspace, actor, view, limit, cursor, None, None, &[]).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn task_queue_filtered(
     pool: &Pool,
     workspace: &str,
@@ -144,12 +145,14 @@ pub async fn task_queue_filtered(
         .await?;
     let position = row.get::<_, i64>(0) as u64;
     let public_workspace: &str = row.get(1);
-    let mut state = Workspace::default();
-    state.members = serde_json::from_str(row.get::<_, &str>(2))?;
-    state.domains = serde_json::from_str(row.get::<_, &str>(3))?;
-    state.capabilities = serde_json::from_str(row.get::<_, &str>(4))?;
-    state.consumers = serde_json::from_str(row.get::<_, &str>(5))?;
-    state.projects = serde_json::from_str(row.get::<_, &str>(6))?;
+    let mut state = Workspace {
+        members: serde_json::from_str(row.get::<_, &str>(2))?,
+        domains: serde_json::from_str(row.get::<_, &str>(3))?,
+        capabilities: serde_json::from_str(row.get::<_, &str>(4))?,
+        consumers: serde_json::from_str(row.get::<_, &str>(5))?,
+        projects: serde_json::from_str(row.get::<_, &str>(6))?,
+        ..Default::default()
+    };
     let requirements: std::collections::BTreeMap<String, Value> =
         serde_json::from_str(row.get::<_, &str>(7))?;
     for (req, value) in requirements {
@@ -181,7 +184,7 @@ pub async fn task_queue_filtered(
         let revision = requirement.revisions.last().unwrap();
         for (id, task) in &revision.tasks {
             if !project.is_none_or(|p| task.projects.iter().any(|id| id == p))
-                || !purpose.is_none_or(|p| task.purpose == p)
+                || purpose.is_some_and(|p| task.purpose != p)
             {
                 continue;
             }
