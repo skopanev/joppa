@@ -404,92 +404,104 @@ function render() {
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers.length),'hint'));
   t.append(intro);
   filterControls(t);
-  for (const [did,d] of orderedEntries('domain')) {
-    const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
-    const heading=E('summary',undefined,'title-row');
-    heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
-    const body=E('div',undefined,'domain-body');body.append(E('p','Owner: '+personLabel(d.owner),'node-meta'));
-    // Описание видно сразу: граница домена — то, о чём спорят чаще всего,
-    // и держать её за кнопкой значит не показывать вовсе.
-    if(d.description?.trim())body.append(E('p',d.description,'node-description'));
-    group.append(body);
-    if(data.lazy&&!loadedDomains.has(did))body.append(E('p','Open to load capabilities','empty-state'));
-    if(data.lazy)group.addEventListener('toggle',async()=>{
-      if(!group.open||loadedDomains.has(did))return;
-      const request=loadNumber;
-      try{
-        const part=await boardPart('domain',did);
-        if(request!==loadNumber)return;
-        Object.assign(data.state.capabilities,part.capabilities);
-        data.state.tree_order['capability:'+did]=part.order;
-        Object.assign(data.signals.capabilities,part.signals);
-        Object.assign(data.system_ids.capability,part.system_ids);
-        loadedDomains.add(did);render();
-      }catch(e){notify(e);}
-    });
-    for(const [cid,c] of orderedEntries('capability',did)){
-      const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
-      const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
-      if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
-      if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
-      if(data.lazy&&!loadedCapabilities.has(cid))cap.append(E('p','Open to load requirements','empty-state'));
-      if(data.lazy)cap.addEventListener('toggle',async()=>{
-        if(!cap.open||loadedCapabilities.has(cid))return;
-        const request=loadNumber;
-        try{
-          const part=await boardPart('capability',cid);
-          if(request!==loadNumber)return;
-          Object.assign(data.state.requirements,part.requirements);
-          data.state.tree_order['requirement:'+cid]=part.order;
-          Object.assign(data.signals.requirements,part.signals);
-          Object.assign(data.system_ids.requirement,part.system_ids);
-          loadedCapabilities.add(cid);render();
-        }catch(e){notify(e);}
-      });
-      const reqs=orderedEntries('requirement',cid);
-      if(!reqs.length&&(!data.lazy||loadedCapabilities.has(cid)))cap.append(E('p','No requirements yet.','empty-state'));
-      for(const [id,q] of reqs){
-        const r=q.revisions.at(-1),tone=requirementStatus(id);
-        const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
-        const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
-        const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
-        const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
-        req.addEventListener('toggle',async()=>{
-          if(!req.open||content.childNodes.length)return;
-          if(data.lazy&&!loadedRequirements.has(id)){
-            content.append(E('p','Loading requirement…','hint'));
-            const request=loadNumber;
-            try{
-              const part=await boardPart('requirement',id);
-              if(request!==loadNumber)return;
-              const old=data.state.requirements[id];
-              data.state.requirements[id]=fullHistoryRequirements.has(id)&&old?.revisions.length>1
-                ?{...old,...part.requirement,revisions:old.revisions.map(r=>r.number===part.requirement.revisions[0].number?part.requirement.revisions[0]:r)}
-                :part.requirement;
-              data.summary[id]=part.summary;
-              Object.assign(data.state.notes,part.notes);
-              Object.assign(data.state.consumers,part.consumers);
-              Object.assign(data.state.projects,part.projects);
-              Object.assign(data.system_ids.ac,part.system_ids?.ac||{});
-              data.history.push(...part.status_events);
-              indexStatusEvents();
-              loadedRequirements.add(id);
-              requirementDetails(content,id);
-            }catch(e){content.replaceChildren();notify(e);}
-          }else requirementDetails(content,id);
-        });
-        if(req.open&&(!data.lazy||loadedRequirements.has(id)))requirementDetails(content,id);
-        cap.append(req);
-      }
-      body.append(cap);
-    }
-    t.append(group);
-  }
+  for (const [did,d] of orderedEntries('domain'))t.append(buildDomain(did,d,signals,opened));
   if(!orderedEntries('domain').length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
   const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   consumers(t);
   intake(t);
+}
+function buildDomain(did,d,signals,opened){
+  const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
+  const heading=E('summary',undefined,'title-row');
+  heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
+  const body=E('div',undefined,'domain-body');group.append(body);
+  fillDomain(body,did,d,signals,opened);
+  if(data.lazy)group.addEventListener('toggle',async()=>{
+    if(!group.open||loadedDomains.has(did))return;
+    const request=loadNumber;
+    try{
+      const part=await boardPart('domain',did);
+      if(request!==loadNumber||!group.isConnected)return;
+      Object.assign(data.state.capabilities,part.capabilities);
+      data.state.tree_order['capability:'+did]=part.order;
+      Object.assign(data.signals.capabilities,part.signals);
+      Object.assign(data.system_ids.capability,part.system_ids);
+      loadedDomains.add(did);
+      fillDomain(body,did,d,treeSignals(),new Set());
+      applyFilters(false);
+    }catch(e){notify(e);}
+  });
+  return group;
+}
+function fillDomain(body,did,d,signals,opened){
+  body.replaceChildren(E('p','Owner: '+personLabel(d.owner),'node-meta'));
+  if(d.description?.trim())body.append(E('p',d.description,'node-description'));
+  if(data.lazy&&!loadedDomains.has(did))body.append(E('p','Open to load capabilities','empty-state'));
+  for(const [cid,c] of orderedEntries('capability',did))body.append(buildCapability(cid,c,signals,opened));
+}
+function buildCapability(cid,c,signals,opened){
+  const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
+  const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
+  if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
+  if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
+  fillCapability(cap,cid,signals,opened);
+  if(data.lazy)cap.addEventListener('toggle',async()=>{
+    if(!cap.open||loadedCapabilities.has(cid))return;
+    const request=loadNumber;
+    try{
+      const part=await boardPart('capability',cid);
+      if(request!==loadNumber||!cap.isConnected)return;
+      Object.assign(data.state.requirements,part.requirements);
+      data.state.tree_order['requirement:'+cid]=part.order;
+      Object.assign(data.signals.requirements,part.signals);
+      Object.assign(data.system_ids.requirement,part.system_ids);
+      loadedCapabilities.add(cid);
+      fillCapability(cap,cid,treeSignals(),new Set());
+      applyFilters(false);
+    }catch(e){notify(e);}
+  });
+  return cap;
+}
+function fillCapability(cap,cid,signals,opened){
+  cap.querySelectorAll(':scope > .tree-requirement, :scope > .empty-state').forEach(node=>node.remove());
+  if(data.lazy&&!loadedCapabilities.has(cid))cap.append(E('p','Open to load requirements','empty-state'));
+  const reqs=orderedEntries('requirement',cid);
+  if(!reqs.length&&(!data.lazy||loadedCapabilities.has(cid)))cap.append(E('p','No requirements yet.','empty-state'));
+  for(const [id,q] of reqs)cap.append(buildRequirement(id,q,signals,opened));
+}
+function buildRequirement(id,q,signals,opened){
+  const r=q.revisions.at(-1),tone=requirementStatus(id);
+  const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
+  const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
+  const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
+  const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
+  req.addEventListener('toggle',async()=>{
+    if(!req.open||content.childNodes.length)return;
+    if(data.lazy&&!loadedRequirements.has(id)){
+      content.append(E('p','Loading requirement…','hint'));
+      const request=loadNumber;
+      try{
+        const part=await boardPart('requirement',id);
+        if(request!==loadNumber||!req.isConnected)return;
+        const old=data.state.requirements[id];
+        data.state.requirements[id]=fullHistoryRequirements.has(id)&&old?.revisions.length>1
+          ?{...old,...part.requirement,revisions:old.revisions.map(r=>r.number===part.requirement.revisions[0].number?part.requirement.revisions[0]:r)}
+          :part.requirement;
+        data.summary[id]=part.summary;
+        Object.assign(data.state.notes,part.notes);
+        Object.assign(data.state.consumers,part.consumers);
+        Object.assign(data.state.projects,part.projects);
+        Object.assign(data.system_ids.ac,part.system_ids?.ac||{});
+        data.history.push(...part.status_events);
+        indexStatusEvents();
+        loadedRequirements.add(id);
+        requirementDetails(content,id);
+      }catch(e){content.replaceChildren();notify(e);}
+    }else requirementDetails(content,id);
+  });
+  if(req.open&&(!data.lazy||loadedRequirements.has(id)))requirementDetails(content,id);
+  return req;
 }
 function consumers(root){
   const entries=Object.entries(data.state.consumers||{});
@@ -508,13 +520,17 @@ function consumers(root){
         Object.assign(data.state.consumers,part.consumers);
         Object.assign(data.system_ids.consumer,part.system_ids||{});
         consumersLoaded=true;
-        render();
+        if(section.isConnected)fillConsumers(section);
       }catch(e){notify(e);}
     });
     return;
   }
   section.addEventListener('toggle',()=>{consumerOpen=section.open;});
-  for(const [id,consumer] of entries){
+  fillConsumers(section);
+}
+function fillConsumers(section){
+  section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
+  for(const [id,consumer] of Object.entries(data.state.consumers||{})){
     const item=E('article',undefined,'detail-entry consumer-card');
     const heading=E('h3',undefined,'consumer-title');
     heading.append(E('span',consumer.title),itemActions('consumer',id,consumer.title));
@@ -835,13 +851,18 @@ function intake(root) {
       if(!section.open||Object.keys(data.state.intake).length)return;
       const request=loadNumber;
       try{const part=await boardPart('intake');if(request!==loadNumber)return;
-        Object.assign(data.state.intake,part.intake);render();
+        Object.assign(data.state.intake,part.intake);
+        if(section.isConnected)fillIntake(section);
       }catch(e){notify(e);}
     });
     return;
   }
   section.addEventListener('toggle',()=>{intakeOpen=section.open;});
-  for(const [id,item] of entries){
+  fillIntake(section);
+}
+function fillIntake(section){
+  section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
+  for(const [id,item] of Object.entries(data.state.intake)){
     const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
     if(item.owner)entry.append(E('p','Owner: '+personLabel(item.owner),'node-meta'));
     const intakeActions=E('span',undefined,'intake-actions');
