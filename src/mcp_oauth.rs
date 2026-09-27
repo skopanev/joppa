@@ -1,4 +1,6 @@
 //! Browser consent and OAuth authorization-code/PKCE for direct HTTPS MCP clients.
+#![allow(clippy::result_large_err)] // OAuth handlers return HTTP responses for both outcomes.
+
 use super::*;
 use axum::{
     Form,

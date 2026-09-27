@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)] // Axum handlers return HTTP responses for both outcomes.
+
 use super::*;
 use axum::response::{IntoResponse, Response};
 pub(super) fn routes() -> Router<App> {
