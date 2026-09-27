@@ -11,7 +11,7 @@ const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
   '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},counts:{consumers:1,intake:1}},
-  '/api/workspaces/w/board?level=domain&id=d':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true}},signals:{c:{tone:'grey',label:'No requirements'}},order:['c'],system_ids:{}},
+  '/api/workspaces/w/board?level=domain&id=d':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true},c2:{title:'Manage account',domain:'d',owner:'owner',description:'',confirmed:true},c3:{title:'Recover access',domain:'d',owner:'owner',description:'',confirmed:true}},signals:{c:{tone:'grey',label:'No requirements'},c2:{tone:'grey',label:'No requirements'},c3:{tone:'grey',label:'No requirements'}},order:['c','c2','c3'],system_ids:{}},
   '/api/workspaces/w/board?level=capability&id=c':{requirements:{r:{capability:'c',revisions:[{number:1,title:revision.title,body:revision.body}],revision_count:1}},signals:{r:{tone:'yellow',label:'Waiting for decision',status:'waiting'}},order:['r'],system_ids:{}},
   '/api/workspaces/w/board?level=requirement&id=r':{requirement:{capability:'c',revisions:[revision],comments:{}},summary:{acs:{a:{ready:false,verification:'n/a'}},ready_for_acceptance:false,accepted:false},consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},notes:{},projects:{},status_events:[{position:4,actor:'owner',recorded_at:'2026-09-25 12:00:00+00',command:{op:'revise',req:'r',expected_revision:0,acs:[{id:'a',text:'Sign-in works'}]}}],system_ids:{ac:{}}},
   '/api/workspaces/w/board?level=consumers':{consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},system_ids:{}},
@@ -25,11 +25,12 @@ const responses={
     const page=await browser.newPage();
     const seen=[],errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.route('http://joppa.test/**',route=>{
+    await page.route('http://joppa.test/**',async route=>{
       const pathname=new URL(route.request().url()).pathname+new URL(route.request().url()).search;
       if(pathname==='/')return route.fulfill({contentType:'text/html',body:html});
       if(pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg"/>'});
       seen.push(pathname);
+      if(pathname.includes('level=domain'))await new Promise(resolve=>setTimeout(resolve,180));
       return route.fulfill({status:responses[pathname]===undefined?404:200,json:responses[pathname]||{error:'Unknown path'}});
     });
     await page.goto('http://joppa.test/');
@@ -42,20 +43,30 @@ const responses={
     await domain.locator(':scope > summary').click();
     const cap=page.locator('[data-capability="c"]');await cap.waitFor();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
-    assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'branch-arrive');
-    assert.equal(await domain.evaluate(e=>getComputedStyle(e,'::details-content').transitionProperty.includes('block-size')),true);
-    await page.waitForTimeout(450);
+    assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'none');
+    const loadedStart=await domain.evaluate(e=>e.getBoundingClientRect().height);
+    await page.waitForTimeout(90);
+    const loadedMiddle=await domain.evaluate(e=>e.getBoundingClientRect().height);
+    assert(loadedMiddle>loadedStart,`Lazy content should grow smoothly: ${loadedStart} < ${loadedMiddle}`);
+    await page.waitForTimeout(400);
     await domain.locator(':scope > summary').click();
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(400);
     await domain.locator(':scope > summary').click();
     const openingHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
     await page.waitForTimeout(120);
     const middleHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(400);
     const finalHeight=await domain.evaluate(e=>e.getBoundingClientRect().height);
     assert(openingHeight<middleHeight&&middleHeight<finalHeight,`Expected smooth expansion: ${openingHeight} < ${middleHeight} < ${finalHeight}`);
+    await domain.locator(':scope > summary').click();
+    await page.waitForTimeout(70);
+    await domain.locator(':scope > summary').click();
+    await page.waitForTimeout(400);
+    assert.equal(await domain.evaluate(e=>e.open&&!e.style.height),true);
     await page.emulateMedia({reducedMotion:'reduce'});
-    assert.equal(await domain.locator('.domain-body').evaluate(e=>getComputedStyle(e).animationName),'none');
+    await domain.locator(':scope > summary').click();
+    assert.equal(await domain.evaluate(e=>e.open),false);
+    await domain.locator(':scope > summary').click();
     await page.emulateMedia({reducedMotion:'no-preference'});
     await cap.locator(':scope > summary').click();
     const req=page.locator('[data-requirement="r"]');await req.waitFor();

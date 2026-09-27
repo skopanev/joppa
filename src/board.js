@@ -58,6 +58,60 @@ let loadNumber = 0;
 const loadedDomains=new Set(),loadedCapabilities=new Set(),loadedRequirements=new Set();
 let consumerOpen=false,consumersLoaded=false,intakeOpen=false,filterLoaded=false,filterLoading=null;
 const fullHistoryRequirements=new Set();
+const branchAnimations=new WeakMap();
+const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function stopBranchAnimation(node){
+  branchAnimations.get(node)?.cancel();
+  branchAnimations.delete(node);
+  node.style.height='';node.style.overflow='';
+}
+function animateBranchHeight(node,from,to,closing=false){
+  if(reducedMotion()||Math.abs(to-from)<2){
+    stopBranchAnimation(node);
+    if(closing){node.open=false;node.classList.remove('branch-closing');}
+    return;
+  }
+  node.style.height=from+'px';node.style.overflow='clip';
+  const animation=node.animate([{height:from+'px'},{height:to+'px'}],{
+    duration:Math.min(380,240+Math.abs(to-from)*.15),easing:'cubic-bezier(.22,.8,.24,1)'
+  });
+  branchAnimations.set(node,animation);
+  animation.onfinish=()=>{
+    if(branchAnimations.get(node)!==animation)return;
+    stopBranchAnimation(node);
+    if(closing){node.open=false;node.classList.remove('branch-closing');}
+  };
+}
+function closedBranchHeight(node){
+  const style=getComputedStyle(node),summary=node.querySelector(':scope > summary');
+  return summary.getBoundingClientRect().height+
+    parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+
+    parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth);
+}
+function enableBranchMotion(node){
+  node.querySelector(':scope > summary').addEventListener('click',event=>{
+    if(event.defaultPrevented||event.target.closest('button,a,input,select,textarea'))return;
+    event.preventDefault();
+    const opening=!node.open||node.classList.contains('branch-closing');
+    const from=node.getBoundingClientRect().height;
+    stopBranchAnimation(node);
+    node.classList.toggle('branch-closing',!opening);
+    if(opening)node.open=true;
+    const to=opening?node.getBoundingClientRect().height:closedBranchHeight(node);
+    animateBranchHeight(node,from,to,!opening);
+  });
+}
+function resizeBranch(node,update){
+  const branches=[];
+  for(let current=node;current;current=current.parentElement?.closest('details')){
+    if(current.open&&!current.classList.contains('branch-closing'))branches.push(current);
+  }
+  const before=branches.map(branch=>branch.getBoundingClientRect().height);
+  branches.forEach(stopBranchAnimation);
+  update();
+  const after=branches.map(branch=>branch.getBoundingClientRect().height);
+  branches.forEach((branch,i)=>animateBranchHeight(branch,before[i],after[i]));
+}
 async function load() {
   const request = ++loadNumber;
   const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));
@@ -415,6 +469,7 @@ function buildDomain(did,d,signals,opened){
   const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
   const heading=E('summary',undefined,'title-row');
   heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
+  enableBranchMotion(group);
   const body=E('div',undefined,'domain-body');group.append(body);
   fillDomain(body,did,d,signals,opened);
   if(data.lazy)group.addEventListener('toggle',async()=>{
@@ -428,8 +483,7 @@ function buildDomain(did,d,signals,opened){
       Object.assign(data.signals.capabilities,part.signals);
       Object.assign(data.system_ids.capability,part.system_ids);
       loadedDomains.add(did);
-      fillDomain(body,did,d,treeSignals(),new Set());
-      applyFilters(false);
+      resizeBranch(group,()=>{fillDomain(body,did,d,treeSignals(),new Set());applyFilters(false);});
     }catch(e){notify(e);}
   });
   return group;
@@ -437,12 +491,12 @@ function buildDomain(did,d,signals,opened){
 function fillDomain(body,did,d,signals,opened){
   body.replaceChildren(E('p','Owner: '+personLabel(d.owner),'node-meta'));
   if(d.description?.trim())body.append(E('p',d.description,'node-description'));
-  if(data.lazy&&!loadedDomains.has(did))body.append(E('p','Open to load capabilities','empty-state'));
   for(const [cid,c] of orderedEntries('capability',did))body.append(buildCapability(cid,c,signals,opened));
 }
 function buildCapability(cid,c,signals,opened){
   const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
   const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
+  enableBranchMotion(cap);
   if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
   if(c.description?.trim())cap.append(E('p',c.description,'node-description'));
   fillCapability(cap,cid,signals,opened);
@@ -457,15 +511,13 @@ function buildCapability(cid,c,signals,opened){
       Object.assign(data.signals.requirements,part.signals);
       Object.assign(data.system_ids.requirement,part.system_ids);
       loadedCapabilities.add(cid);
-      fillCapability(cap,cid,treeSignals(),new Set());
-      applyFilters(false);
+      resizeBranch(cap,()=>{fillCapability(cap,cid,treeSignals(),new Set());applyFilters(false);});
     }catch(e){notify(e);}
   });
   return cap;
 }
 function fillCapability(cap,cid,signals,opened){
   cap.querySelectorAll(':scope > .tree-requirement, :scope > .empty-state').forEach(node=>node.remove());
-  if(data.lazy&&!loadedCapabilities.has(cid))cap.append(E('p','Open to load requirements','empty-state'));
   const reqs=orderedEntries('requirement',cid);
   if(!reqs.length&&(!data.lazy||loadedCapabilities.has(cid)))cap.append(E('p','No requirements yet.','empty-state'));
   for(const [id,q] of reqs)cap.append(buildRequirement(id,q,signals,opened));
@@ -476,6 +528,7 @@ function buildRequirement(id,q,signals,opened){
   const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
   const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
   const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
+  enableBranchMotion(req);
   req.addEventListener('toggle',async()=>{
     if(!req.open||content.childNodes.length)return;
     if(data.lazy&&!loadedRequirements.has(id)){
@@ -496,7 +549,7 @@ function buildRequirement(id,q,signals,opened){
         data.history.push(...part.status_events);
         indexStatusEvents();
         loadedRequirements.add(id);
-        requirementDetails(content,id);
+        resizeBranch(req,()=>requirementDetails(content,id));
       }catch(e){content.replaceChildren();notify(e);}
     }else requirementDetails(content,id);
   });
@@ -510,6 +563,7 @@ function consumers(root){
   const section=details(root,'Consumers · '+count);
   section.classList.add('consumer-section');
   section.open=consumerOpen;
+  enableBranchMotion(section);
   if(data.lazy&&!consumersLoaded){
     section.append(E('p','Loading consumers…','consumer-loading'));
     section.addEventListener('toggle',async()=>{
@@ -520,7 +574,7 @@ function consumers(root){
         Object.assign(data.state.consumers,part.consumers);
         Object.assign(data.system_ids.consumer,part.system_ids||{});
         consumersLoaded=true;
-        if(section.isConnected)fillConsumers(section);
+        if(section.isConnected)resizeBranch(section,()=>fillConsumers(section));
       }catch(e){notify(e);}
     });
     return;
@@ -845,6 +899,7 @@ function intake(root) {
   const section=details(root,'Intake · '+count);
   section.classList.add('intake-section');
   section.open=intakeOpen;
+  enableBranchMotion(section);
   if(data.lazy&&!entries.length){
     section.append(E('p','Loading intake…','hint'));
     section.addEventListener('toggle',async()=>{
@@ -853,7 +908,7 @@ function intake(root) {
       const request=loadNumber;
       try{const part=await boardPart('intake');if(request!==loadNumber)return;
         Object.assign(data.state.intake,part.intake);
-        if(section.isConnected)fillIntake(section);
+        if(section.isConnected)resizeBranch(section,()=>fillIntake(section));
       }catch(e){notify(e);}
     });
     return;
