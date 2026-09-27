@@ -6,7 +6,7 @@ const root=path.join(__dirname,'..');
 const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
   .replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
-const revision={number:1,title:'Account access',body:'Customers can sign in',owner:'owner',reason:'Scope',consumers:['buyer'],acs:[{id:'a',text:'Sign-in works',description:'',depends_on:[],owner:null,before_launch:false,assessment:null}],confirmed:false,tasks:{},runs:{},issues:{},acceptance:null,sources:{}};
+const revision={number:1,title:'Account access',body:'Customers can sign in and keep access across devices. The session remains active after switching accounts, refreshing the page, and returning later. Every change should preserve the access contract for paying customers without requiring another purchase.',owner:'owner',reason:'Scope',consumers:['buyer'],acs:[{id:'a',text:'Sign-in works',description:'',depends_on:[],owner:null,before_launch:false,assessment:null}],confirmed:false,tasks:{},runs:{},issues:{},acceptance:null,sources:{}};
 const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
@@ -70,11 +70,17 @@ const responses={
     await page.emulateMedia({reducedMotion:'no-preference'});
     await cap.locator(':scope > summary').click();
     const req=page.locator('[data-requirement="r"]');await req.waitFor();
+    await page.waitForTimeout(400);
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
     assert.equal(await req.locator('.ac-item').count(),0);
+    const bodyPreview=req.locator(':scope > summary > .requirement-preview');
+    const bodyTop=await bodyPreview.evaluate(e=>e.getBoundingClientRect().top+scrollY);
     await req.locator(':scope > summary').click();
+    assert.equal(await bodyPreview.evaluate((e,top)=>Math.abs(e.getBoundingClientRect().top+scrollY-top)<2,bodyTop),true);
+    assert.equal(await req.evaluate(e=>e.getAnimations().some(a=>a.effect?.getTiming().duration===320&&a.effect.getKeyframes()[0].filter==='brightness(1.12)')),true);
     await req.getByText('Sign-in works').waitFor();
     assert.equal(await req.locator('.ac-item').count(),1);
+    assert.equal(await req.locator('.requirement-body').count(),0);
     const consumers=page.locator('.consumer-section');
     assert.equal(await consumers.evaluate(e=>getComputedStyle(e.querySelector('summary')).backgroundColor),'rgb(220, 239, 250)');
     await consumers.locator('summary').click();
@@ -94,6 +100,16 @@ const responses={
     await page.getByRole('option',{name:'Waiting for decision'}).click();
     await page.locator('[data-requirement="r"]').waitFor();
     assert(seen.includes('/api/workspaces/w/board?level=filter'));
+    await page.setViewportSize({width:390,height:844});
+    const mobileReq=page.locator('[data-requirement="r"]');
+    if(await mobileReq.evaluate(e=>e.open)){
+      await mobileReq.locator(':scope > summary').click();
+      await page.waitForTimeout(350);
+    }
+    const mobileBody=mobileReq.locator(':scope > summary > .requirement-preview');
+    const mobileTop=await mobileBody.evaluate(e=>e.getBoundingClientRect().top+scrollY);
+    await mobileReq.locator(':scope > summary').click();
+    assert.equal(await mobileBody.evaluate((e,top)=>Math.abs(e.getBoundingClientRect().top+scrollY-top)<2,mobileTop),true);
     assert.deepEqual(errors,[]);
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

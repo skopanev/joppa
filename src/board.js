@@ -65,15 +65,18 @@ function stopBranchAnimation(node){
   branchAnimations.delete(node);
   node.style.height='';node.style.overflow='';
 }
-function animateBranchHeight(node,from,to,closing=false){
+function animateBranchHeight(node,from,to,closing=false,brighten=true){
   if(reducedMotion()||Math.abs(to-from)<2){
     stopBranchAnimation(node);
     if(closing){node.open=false;node.classList.remove('branch-closing');}
     return;
   }
   node.style.height=from+'px';node.style.overflow='clip';
-  const animation=node.animate([{height:from+'px'},{height:to+'px'}],{
-    duration:Math.min(380,240+Math.abs(to-from)*.15),easing:'cubic-bezier(.22,.8,.24,1)'
+  const animation=node.animate([
+    {height:from+'px',...(brighten&&!closing?{filter:'brightness(1.12)'}:{})},
+    {height:to+'px',...(brighten&&!closing?{filter:'brightness(1)'}:{})}
+  ],{
+    duration:320,easing:'cubic-bezier(.22,.8,.24,1)'
   });
   branchAnimations.set(node,animation);
   animation.onfinish=()=>{
@@ -110,7 +113,7 @@ function resizeBranch(node,update){
   branches.forEach(stopBranchAnimation);
   update();
   const after=branches.map(branch=>branch.getBoundingClientRect().height);
-  branches.forEach((branch,i)=>animateBranchHeight(branch,before[i],after[i]));
+  branches.forEach((branch,i)=>animateBranchHeight(branch,before[i],after[i],false,i===0));
 }
 async function load() {
   const request = ++loadNumber;
@@ -617,7 +620,6 @@ function requirementDetails(root, selected, revisionNumber=null) {
   }
   const preview=root.parentElement?.querySelector(':scope > summary > .requirement-preview');
   if(preview){preview.textContent=r.body||'';preview.hidden=!r.body?.trim();}
-  if(r.body?.trim())root.append(E('p',r.body,'requirement-body'));
   if(r.verification_scope){
     cardFact(root,'Verification scope',r.verification_scope.scope);
     cardFact(root,'Required subject components',r.verification_scope.subject_keys.join(', '));
