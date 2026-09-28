@@ -65,18 +65,15 @@ function stopBranchAnimation(node){
   branchAnimations.delete(node);
   node.style.height='';node.style.overflow='';
 }
-function animateBranchHeight(node,from,to,closing=false,brighten=true){
+function animateBranchHeight(node,from,to,closing=false){
   if(reducedMotion()||Math.abs(to-from)<2){
     stopBranchAnimation(node);
     if(closing){node.open=false;node.classList.remove('branch-closing');}
     return;
   }
   node.style.height=from+'px';node.style.overflow='clip';
-  const animation=node.animate([
-    {height:from+'px',...(brighten&&!closing?{filter:'brightness(1.12)'}:{})},
-    {height:to+'px',...(brighten&&!closing?{filter:'brightness(1)'}:{})}
-  ],{
-    duration:320,easing:'cubic-bezier(.22,.8,.24,1)'
+  const animation=node.animate([{height:from+'px'},{height:to+'px'}],{
+    duration:220,easing:'cubic-bezier(.2,.75,.25,1)'
   });
   branchAnimations.set(node,animation);
   animation.onfinish=()=>{
@@ -100,20 +97,18 @@ function enableBranchMotion(node){
     stopBranchAnimation(node);
     node.classList.toggle('branch-closing',!opening);
     if(opening)node.open=true;
+    if(opening&&node.dataset.pending==='true')return;
     const to=opening?node.getBoundingClientRect().height:closedBranchHeight(node);
     animateBranchHeight(node,from,to,!opening);
   });
 }
 function resizeBranch(node,update){
-  const branches=[];
+  const before=node.getBoundingClientRect().height;
   for(let current=node;current;current=current.parentElement?.closest('details')){
-    if(current.open&&!current.classList.contains('branch-closing'))branches.push(current);
+    if(!current.classList.contains('branch-closing'))stopBranchAnimation(current);
   }
-  const before=branches.map(branch=>branch.getBoundingClientRect().height);
-  branches.forEach(stopBranchAnimation);
   update();
-  const after=branches.map(branch=>branch.getBoundingClientRect().height);
-  branches.forEach((branch,i)=>animateBranchHeight(branch,before[i],after[i],false,i===0));
+  if(node.open&&!node.classList.contains('branch-closing'))animateBranchHeight(node,before,node.getBoundingClientRect().height);
 }
 async function load() {
   const request = ++loadNumber;
@@ -470,6 +465,7 @@ function render() {
 }
 function buildDomain(did,d,signals,opened){
   const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
+  if(data.lazy&&!loadedDomains.has(did))group.dataset.pending='true';
   const heading=E('summary',undefined,'title-row');
   heading.append(nodeTitle(d.title,signals.domains[did]),E('small','DOMAIN','type-label'),itemActions('domain',did,d.title));group.append(heading);
   enableBranchMotion(group);
@@ -486,6 +482,7 @@ function buildDomain(did,d,signals,opened){
       Object.assign(data.signals.capabilities,part.signals);
       Object.assign(data.system_ids.capability,part.system_ids);
       loadedDomains.add(did);
+      delete group.dataset.pending;
       resizeBranch(group,()=>{fillDomain(body,did,d,treeSignals(),new Set());applyFilters(false);});
     }catch(e){notify(e);}
   });
@@ -498,6 +495,7 @@ function fillDomain(body,did,d,signals,opened){
 }
 function buildCapability(cid,c,signals,opened){
   const cap=E('details',undefined,'tree-capability');cap.dataset.capability=cid;cap.dataset.treeNode='capability:'+cid;cap.open=opened.has(cap.dataset.treeNode);
+  if(data.lazy&&!loadedCapabilities.has(cid))cap.dataset.pending='true';
   const head=E('summary',undefined,'title-row');head.append(nodeTitle(c.title,signals.capabilities[cid]),E('small','CAPABILITY','type-label'),itemActions('capability',cid,c.title));cap.append(head);
   enableBranchMotion(cap);
   if(c.owner)cap.append(E('p','Owner: '+personLabel(c.owner),'node-meta'));
@@ -514,6 +512,7 @@ function buildCapability(cid,c,signals,opened){
       Object.assign(data.signals.requirements,part.signals);
       Object.assign(data.system_ids.requirement,part.system_ids);
       loadedCapabilities.add(cid);
+      delete cap.dataset.pending;
       resizeBranch(cap,()=>{fillCapability(cap,cid,treeSignals(),new Set());applyFilters(false);});
     }catch(e){notify(e);}
   });
@@ -528,6 +527,7 @@ function fillCapability(cap,cid,signals,opened){
 function buildRequirement(id,q,signals,opened){
   const r=q.revisions.at(-1),tone=requirementStatus(id);
   const req=E('details',undefined,'tree-requirement '+tone);req.dataset.requirement=id;req.dataset.treeNode='requirement:'+id;req.open=opened.has(req.dataset.treeNode);
+  if(data.lazy&&!loadedRequirements.has(id))req.dataset.pending='true';
   const reqHead=E('summary',undefined,'title-row');reqHead.append(nodeTitle(r.title,signals.requirements[id]),E('small','REQ','type-label'),itemActions('requirement',id,r.title,null,r.number));
   const preview=E('span',r.body||'','requirement-preview');preview.hidden=!r.body?.trim();reqHead.append(preview);
   const content=E('div',undefined,'requirement-detail');req.append(reqHead,content);
@@ -552,6 +552,7 @@ function buildRequirement(id,q,signals,opened){
         data.history.push(...part.status_events);
         indexStatusEvents();
         loadedRequirements.add(id);
+        delete req.dataset.pending;
         resizeBranch(req,()=>requirementDetails(content,id));
       }catch(e){content.replaceChildren();notify(e);}
     }else requirementDetails(content,id);
@@ -566,6 +567,7 @@ function consumers(root){
   const section=details(root,'Consumers · '+count);
   section.classList.add('consumer-section');
   section.open=consumerOpen;
+  if(data.lazy&&!consumersLoaded)section.dataset.pending='true';
   enableBranchMotion(section);
   if(data.lazy&&!consumersLoaded){
     section.append(E('p','Loading consumers…','consumer-loading'));
@@ -577,6 +579,7 @@ function consumers(root){
         Object.assign(data.state.consumers,part.consumers);
         Object.assign(data.system_ids.consumer,part.system_ids||{});
         consumersLoaded=true;
+        delete section.dataset.pending;
         if(section.isConnected)resizeBranch(section,()=>fillConsumers(section));
       }catch(e){notify(e);}
     });
@@ -901,6 +904,7 @@ function intake(root) {
   const section=details(root,'Intake · '+count);
   section.classList.add('intake-section');
   section.open=intakeOpen;
+  if(data.lazy&&!entries.length)section.dataset.pending='true';
   enableBranchMotion(section);
   if(data.lazy&&!entries.length){
     section.append(E('p','Loading intake…','hint'));
@@ -910,6 +914,7 @@ function intake(root) {
       const request=loadNumber;
       try{const part=await boardPart('intake');if(request!==loadNumber)return;
         Object.assign(data.state.intake,part.intake);
+        delete section.dataset.pending;
         if(section.isConnected)resizeBranch(section,()=>fillIntake(section));
       }catch(e){notify(e);}
     });

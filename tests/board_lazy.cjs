@@ -7,6 +7,8 @@ const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
   .replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
 const revision={number:1,title:'Account access',body:'Customers can sign in and keep access across devices. The session remains active after switching accounts, refreshing the page, and returning later. Every change should preserve the access contract for paying customers without requiring another purchase.',owner:'owner',reason:'Scope',consumers:['buyer'],acs:[{id:'a',text:'Sign-in works',description:'',depends_on:[],owner:null,before_launch:false,assessment:null}],confirmed:false,tasks:{},runs:{},issues:{},acceptance:null,sources:{}};
+revision.acs.push({id:'b',text:'The customer remains signed in after a page refresh',description:'',depends_on:[],owner:null,before_launch:false,assessment:null});
+revision.acs.push({id:'c',text:'A returning customer can use an existing purchase without paying twice',description:'',depends_on:[],owner:null,before_launch:false,assessment:null});
 const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
@@ -77,9 +79,9 @@ const responses={
     const bodyTop=await bodyPreview.evaluate(e=>e.getBoundingClientRect().top+scrollY);
     await req.locator(':scope > summary').click();
     assert.equal(await bodyPreview.evaluate((e,top)=>Math.abs(e.getBoundingClientRect().top+scrollY-top)<2,bodyTop),true);
-    assert.equal(await req.evaluate(e=>e.getAnimations().some(a=>a.effect?.getTiming().duration===320&&a.effect.getKeyframes()[0].filter==='brightness(1.12)')),true);
     await req.getByText('Sign-in works').waitFor();
-    assert.equal(await req.locator('.ac-item').count(),1);
+    assert.equal(await req.evaluate(e=>getComputedStyle(e).filter),'none');
+    assert.equal(await req.locator('.ac-item').count(),3);
     assert.equal(await req.locator('.requirement-body').count(),0);
     const consumers=page.locator('.consumer-section');
     assert.equal(await consumers.evaluate(e=>getComputedStyle(e.querySelector('summary')).backgroundColor),'rgb(220, 239, 250)');
@@ -89,7 +91,7 @@ const responses={
     const intake=page.getByText('Intake · 1');await intake.click();
     await page.getByText('Users need access').waitFor({state:'attached'});
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
-    if(process.env.JOPPA_SCREENSHOT){await page.waitForTimeout(260);await page.screenshot({path:process.env.JOPPA_SCREENSHOT,fullPage:true});}
+    if(process.env.JOPPA_SCREENSHOT){await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(260);await page.screenshot({path:process.env.JOPPA_SCREENSHOT,fullPage:true});}
     assert(seen.includes('/api/workspaces/w/board?level=consumers'));
     assert(!seen.some(path=>path.includes('level=history')));
     await req.locator(':scope > summary .history-button').click();
@@ -103,13 +105,24 @@ const responses={
     await page.setViewportSize({width:390,height:844});
     const mobileReq=page.locator('[data-requirement="r"]');
     if(await mobileReq.evaluate(e=>e.open)){
-      await mobileReq.locator(':scope > summary').click();
+      await mobileReq.locator(':scope > summary > .node-title').click();
       await page.waitForTimeout(350);
     }
     const mobileBody=mobileReq.locator(':scope > summary > .requirement-preview');
     const mobileTop=await mobileBody.evaluate(e=>e.getBoundingClientRect().top+scrollY);
-    await mobileReq.locator(':scope > summary').click();
+    await mobileReq.locator(':scope > summary > .node-title').click();
     assert.equal(await mobileBody.evaluate((e,top)=>Math.abs(e.getBoundingClientRect().top+scrollY-top)<2,mobileTop),true);
+    assert.equal(await mobileReq.evaluate(e=>e.open),true);
+    await mobileReq.getByText('Sign-in works').waitFor();
+    if(process.env.JOPPA_MOBILE_SCREENSHOT){await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(260);await page.screenshot({path:process.env.JOPPA_MOBILE_SCREENSHOT,fullPage:true});}
     assert.deepEqual(errors,[]);
+    await page.evaluate(()=>sessionStorage.clear());
+    await page.reload();
+    const quickDomain=page.locator('[data-domain="d"]');await quickDomain.waitFor();
+    await quickDomain.locator(':scope > summary > .node-title').click();
+    await page.waitForTimeout(30);
+    await quickDomain.locator(':scope > summary > .node-title').click();
+    await page.waitForTimeout(300);
+    assert.equal(await quickDomain.evaluate(e=>e.open||e.classList.contains('branch-closing')),false);
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
