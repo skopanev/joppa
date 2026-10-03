@@ -99,7 +99,21 @@ fn requirement_signal(id: &str, q: &crate::model::Requirement, events: &[Event])
     let (tone, label, status) = if r.acs.is_empty() {
         ("grey", "No acceptance criteria", "waiting")
     } else if failed {
-        ("red", "Checks failed", "fail")
+        (
+            "red",
+            if s["pending_run"].is_string() {
+                "Checks failed · newer run in progress"
+            } else {
+                "Checks failed"
+            },
+            "fail",
+        )
+    } else if s["pending_run"].is_string() {
+        (
+            "yellow",
+            "Newer checks running · previous result is historical",
+            "progress",
+        )
     } else if stale {
         ("orange", "Checks stale", "pass")
     } else if s["ready_for_acceptance"] == true {

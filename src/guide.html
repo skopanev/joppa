@@ -48,7 +48,7 @@
 </tbody></table></div>
 <p>For a product spanning repositories, “version” means the relevant combination, not whichever repository changed last. A name such as “staging” identifies a place; it does not identify its build or configuration. Include the versions that can affect the condition.</p>
 <div class="example"><strong>A manual check needs concrete evidence too.</strong><p>For a key that must have exactly <code>read, verify</code>, record that expected list and the actual list. An extra <code>delete</code> permission means failure. “Checked manually” is insufficient. Only a human submits manual results; an agent records a human decision only on explicit instruction.</p></div>
-<p class="evidence-note"><strong>Read green as “verified on these versions”.</strong> The portal currently summarizes the latest-started completed run. It does not automatically compare that run with the deployed release. Inspect the versions in Checks before treating a green card as evidence about production. While a newer run is still running, the previous completed result remains visible.</p>
+<p class="evidence-note"><strong>Read green as “verified on these versions”.</strong> The portal summarizes the latest-started completed run. It does not automatically compare that run with the deployed release. Inspect the versions in Checks before treating a green card as evidence about production. A newer unfinished run turns the status yellow; the previous completed result remains visible in Checks as historical evidence.</p>
 </section>
 <section id="worked-example"><h2>One requirement, from work to a new release</h2>
 <p>Illustrative build labels below stand for immutable versions. The agreed scope is iOS; Android and web require their own scope decision.</p>

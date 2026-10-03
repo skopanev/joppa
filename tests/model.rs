@@ -424,6 +424,40 @@ fn late_failure_from_older_started_run_does_not_replace_newer_pass() {
     assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "pass");
 }
 #[test]
+fn newer_pending_run_is_visible_without_erasing_historical_pass() {
+    let mut w = World::new();
+    w.ready();
+    w.run("verified", "pass");
+    w.ok("runner", plan("checking-new-build"));
+    assert_eq!(w.summary(1)["run"], "verified");
+    assert_eq!(w.summary(1)["pending_run"], "checking-new-build");
+    assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "pass");
+    w.ok(
+        "runner",
+        result(
+            "checking-new-build",
+            "[ios] paid access",
+            "pass",
+            vec!["access retained"],
+        ),
+    );
+    w.ok(
+        "owner",
+        result(
+            "checking-new-build",
+            "key-permissions",
+            "pass",
+            vec!["read", "verify"],
+        ),
+    );
+    w.ok(
+        "runner",
+        json!({"op":"finish","req":"r","revision":1,"run":"checking-new-build"}),
+    );
+    assert_eq!(w.summary(1)["pending_run"], serde_json::Value::Null);
+    assert_eq!(w.summary(1)["run"], "checking-new-build");
+}
+#[test]
 fn specialist_decision_cannot_be_impersonated() {
     let mut w = World::new();
     let mut rev = revision(1);

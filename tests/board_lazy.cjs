@@ -82,6 +82,18 @@ const responses={
     await req.getByText('Sign-in works').waitFor();
     assert.equal(await req.evaluate(e=>getComputedStyle(e).filter),'none');
     assert.equal(await req.locator('.ac-item').count(),3);
+    assert.deepEqual(await page.evaluate(()=>{
+      const before=data.summary.r.pending_run;
+      data.summary.r.pending_run='newer-run';
+      const wasLazy=data.lazy;data.lazy=false;
+      const result={requirement:requirementSignal('r').tone,ac:acSignal(data.summary.r.acs.a,data.state.requirements.r.revisions.at(-1),'a','r').tone};
+      data.summary.r.acs.a.verification='fail';
+      result.failedLabel=requirementSignal('r').label;
+      data.summary.r.acs.a.verification='n/a';
+      data.lazy=wasLazy;
+      if(before===undefined)delete data.summary.r.pending_run;else data.summary.r.pending_run=before;
+      return result;
+    }),{requirement:'yellow',ac:'yellow',failedLabel:'Checks failed · newer run in progress'});
     assert.equal(await req.locator('.requirement-body').count(),0);
     const consumers=page.locator('.consumer-section');
     assert.equal(await consumers.evaluate(e=>getComputedStyle(e.querySelector('summary')).backgroundColor),'rgb(220, 239, 250)');

@@ -6,7 +6,9 @@ belongs in Joppa Tasks. They are not implemented features.
 
 ## 1. Show whether evidence applies to the current release
 
-Priority: high. Status: planned. Start here.
+Priority: high. Status: partly implemented. A newer unfinished run now appears
+as in progress while the prior completed result remains historical. The current
+release record and version comparison below remain open. Start there.
 
 Problem: the portal summarizes the latest-started completed run for a REQ
 revision. It does not compare the checked component versions with a currently

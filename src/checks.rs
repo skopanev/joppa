@@ -42,6 +42,15 @@ pub fn verdict(r: &Revision, run: &Run, ac: &str) -> &'static str {
 }
 pub fn summary(r: &Revision) -> Value {
     let run = latest(r);
+    let pending_run = r
+        .runs
+        .iter()
+        .filter(|(_, candidate)| {
+            candidate.finished.is_none()
+                && run.is_none_or(|(_, completed)| candidate.started > completed.started)
+        })
+        .max_by_key(|(_, candidate)| candidate.started)
+        .map(|(id, _)| id);
     let statuses: BTreeMap<_, _> = r.acs.iter().map(|a| (a.id.clone(), json!({"ready": ready(r, &a.id), "verification": run.map_or("n/a", |(_, run)| verdict(r, run, &a.id))}))).collect();
     let green = !r.acs.is_empty()
         && run.is_some_and(|(_, run)| r.acs.iter().all(|a| verdict(r, run, &a.id) == "pass"));
@@ -54,7 +63,7 @@ pub fn summary(r: &Revision) -> Value {
         && r.acceptance
             .as_ref()
             .is_some_and(|a| run.is_some_and(|(id, _)| id == &a.run));
-    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "ready_for_acceptance": green && coverage_reviewed, "accepted": accepted,
+    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "pending_run": pending_run, "ready_for_acceptance": green && coverage_reviewed, "accepted": accepted,
         "coverage_change": r.coverage_change, "coverage_reviewed": coverage_reviewed})
 }
 

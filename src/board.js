@@ -205,6 +205,7 @@ function requirementStatus(id) {
   if(data.lazy)return data.signals.requirements[id]?.status||'waiting';
   const r=data.state.requirements[id].revisions.at(-1),s=data.summary[id];
   if(Object.values(s.acs).some(a=>a.verification==='fail'))return 'fail';
+  if(s.pending_run)return 'progress';
   if(s.ready_for_acceptance)return 'pass';
   if(!r.confirmed||!r.acs.length||Object.values(s.acs).some(a=>!a.ready))return 'waiting';
   if(Object.values(r.tasks).some(t=>t.review_required))return 'review';
@@ -217,7 +218,8 @@ function requirementSignal(id){
   const at=statusEventDate(id,r.number);
   if(!r.acs.length)return {tone:'grey',label:'No acceptance criteria',at};
   const acSignals=r.acs.map(a=>acSignal(s.acs[a.id],r,a.id,id));
-  if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:'Checks failed',at};
+  if(acSignals.some(signal=>signal.tone==='red'))return {tone:'red',label:s.pending_run?'Checks failed · newer run in progress':'Checks failed',at};
+  if(s.pending_run)return {tone:'yellow',label:'Newer checks running · previous result is historical',at};
   if(acSignals.some(signal=>signal.tone==='orange'))return {tone:'orange',label:'Checks stale',at};
   const status=requirementStatus(id);
   return {tone:status==='fail'?'red':status==='pass'?'green':status==='review'?'purple':status==='available'?'grey':'yellow',label:statusLabels[status],at};
@@ -293,7 +295,8 @@ function statusEventDate(reqId,revision,acId){
 function acSignal(status,r,id,reqId){
   const at=statusEventDate(reqId,r.number,id);
   if(!status)return {tone:'grey',label:'Historical revision',at};
-  if(status.verification==='fail')return {tone:'red',label:'Checks failed',at};
+  if(status.verification==='fail')return {tone:'red',label:data.summary[reqId]?.pending_run?'Checks failed · newer run in progress':'Checks failed',at};
+  if(data.summary[reqId]?.pending_run)return {tone:'yellow',label:'Newer checks running · previous result is historical',at};
   if(status.verification==='pass'){
     const run=latestCheckRun(r),stale=(checkRecordedAt(r,run,id,reqId)||[]).some(staleCheck);
     return stale?{tone:'orange',label:'Checks passed · older than 7 days',at}:{tone:'green',label:'Checks passed',at};
@@ -830,8 +833,8 @@ function runs(root, r, base) {
   for(const [id,run] of Object.entries(r.runs)){
     const block=details(d,run.scope+' · '+(run.finished?'Finished':'Running'));
     const failed=Object.values(run.results).some(result=>result.outcome==='fail');
-    const passed=run.finished&&run.discovery_complete&&run.plan.length&&run.plan.every(check=>run.results[check.id]?.outcome==='pass');
-    block.querySelector('summary').prepend(statusCircle({tone:failed?'red':passed?'green':!run.finished?'yellow':'grey',label:failed?'Checks failed':passed?'Checks passed':!run.finished?'Checks running':'Checks incomplete'}));
+    const allReportedPassed=run.finished&&run.discovery_complete&&run.plan.length&&run.plan.every(check=>run.results[check.id]?.outcome==='pass');
+    block.querySelector('summary').prepend(statusCircle({tone:failed?'red':!run.finished?'yellow':'grey',label:failed?'Checks failed':!run.finished?'Checks running':allReportedPassed?'All reported checks passed · see AC verdict':'Checks incomplete'}));
     for(const [component,version] of Object.entries(run.subject))cardFact(block,data.state.projects[component]||component,version);
     if(!run.discovery_complete)block.append(E('p','Check discovery is incomplete.','hint'));
     for(const c of run.plan){
