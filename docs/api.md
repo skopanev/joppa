@@ -1,5 +1,16 @@
 # Journal API
 
+## Technical writing
+
+PREFER ENGLISH. Write new technical text according to ASD-STE100, Issue 9.
+At least 80% of sentences in each text must comply. Russian is permitted under the same rules.
+Apply this requirement to REQs, ACs, tasks, comments, decisions, descriptions, reasons, scope, and expected and observed results.
+Preserve intake and verbatim user text in their original language. Do not translate existing text or rewrite history and evidence.
+New REQ and AC wording still requires owner confirmation.
+Read the complete [technical writing rules](writing.md), also returned by `joppa_help` under `writing`.
+
+## Commands
+
 POST /api/workspaces/{workspace}/commands: {"request_id":"unique-id","command":{...}}.
 GET /api/workspaces; GET /api/workspaces/{workspace}. Authorization: Bearer <token>.
 MCP: POST /mcp over HTTPS; actor comes from OAuth or a private service credential.
@@ -274,10 +285,12 @@ interactive agents should use the HTTPS MCP tools.
 ## Methodology through MCP
 
 Call `joppa_model_docs` before authoring a product tree. Optional `section` is
-`model`, `process`, `green` or `all` (default). The response contains the English
+`model`, `process`, `green`, `writing` or `all` (default). The response contains the English
 source documentation compiled into the running server; no local checkout is
 needed. `joppa_help` supplies command shapes and this API contract. Initialization
 instructions provide the short rules and direct agents to both tools.
+The `writing` section supplies the ASD-STE100 rules, language preference, and preservation requirements.
+`joppa_help` returns the same section under `writing`. Command field descriptions identify text covered by this requirement.
 
 ## Search
 

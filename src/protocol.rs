@@ -2,6 +2,9 @@ use deadpool_postgres::Pool;
 use joppa::store;
 use serde_json::{Value, json};
 
+const WRITING_RULES: &str = include_str!("../docs/writing.md");
+const AUTHORING_TEXT: &str = "Prefer English. Follow ASD-STE100 Issue 9 in at least 80% of sentences in each text. Russian is permitted under the same rules. Preserve verbatim user text. Read joppa_help.writing.";
+
 pub async fn handle(
     pool: &Pool,
     actor: &str,
@@ -18,7 +21,7 @@ pub async fn handle(
                 _ => "2025-06-18",
             };
             Ok(
-                json!({"protocolVersion":version,"capabilities":{"tools":{}},"serverInfo":{"name":"joppa","version":env!("CARGO_PKG_VERSION")},"instructions":include_str!("../docs/agent-instructions.txt")}),
+                json!({"protocolVersion":version,"capabilities":{"tools":{}},"serverInfo":{"name":"joppa","version":env!("CARGO_PKG_VERSION")},"instructions":format!("{}\n{}", include_str!("../docs/agent-instructions.txt"), WRITING_RULES)}),
             )
         }
         "ping" => Ok(json!({})),
@@ -27,10 +30,10 @@ pub async fn handle(
             tool("joppa_search", "Find current domains, capabilities, requirements and ACs inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string","enum":["domain","capability","requirement","ac"]},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
             tool("joppa_read", "Read a workspace index or one requirement's current revision. Supply workspace OR item_id. Every requirement reports revision_count. history=true returns counts only, never events or revision bodies. To read an older revision, explicitly supply revision=N; the response contains exactly one revision and its discussion/evidence. Copied requirement and AC IDs obey the same rules.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement: current revision by default, including its ACs, tasks, runs, issues and revision comments"},"revision":{"type":"integer","minimum":1,"description":"Read exactly this revision of the selected requirement; omit for current. Works with req or a requirement/AC item_id."},"history":{"type":"boolean","default":false,"description":"Discover revision counts without revision bodies or events. Then request one revision by number."},"target":{"type":"string","description":"One object's notes: description, comments and attachments. Address as kind:id, e.g. requirement:r-xxx or ac:r-xxx/2. Cannot be combined with revision or history."}}), json!([])),
             tool("joppa_tasks", "List current Tasks without reading every REQ. available shows tasks this actor can claim, mine shows claimed unfinished tasks, waiting shows unassigned tasks whose AC or contract is not ready, all shows every current Task. Optional filters and ordered priorities use the same selection as claim_next_task. Results are paginated; a cursor expires when the workspace changes.", json!({"workspace":{"type":"string"},"view":{"type":"string","enum":["available","mine","waiting","all"],"default":"available"},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50},"cursor":{"type":"string"},"project":{"type":"string"},"purpose":{"type":"string","enum":["implementation","manual","decision"]},"priorities":{"type":"array","items":{"type":"string"}}}), json!(["workspace"])),
-            tool("joppa_command", "Append an operation. Read joppa_help for operation schemas. Actor comes from the authenticated credential, never arguments. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":{"type":"object"}}), json!(["workspace","request_id","command"])),
-            tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help first. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":{"type":"object"}},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
-            tool("joppa_model_docs", "Read Joppa methodology in English: product levels, ownership, readiness, revision history, checks and acceptance. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green"]}}), json!([])),
-            tool("joppa_help", "Get all operation shapes and workflow rules before authoring commands", json!({}), json!([]))
+            tool("joppa_command", "Append an operation. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
+            tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
+            tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing"]}}), json!([])),
+            tool("joppa_help", "Get operation shapes, workflow rules, and ASD-STE100 technical writing rules. Read before authoring commands.", json!({}), json!([]))
         ]})),
         "tools/call" => call(pool, actor, msg, embedder)
             .await
@@ -50,6 +53,24 @@ pub async fn handle(
 }
 fn tool(name: &str, description: &str, properties: Value, required: Value) -> Value {
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
+}
+fn authoring_command_schema() -> Value {
+    let text = || json!({"description":AUTHORING_TEXT});
+    json!({
+        "type":"object",
+        "additionalProperties":true,
+        "description":"Operation fields depend on op. Read joppa_help.operations. Apply joppa_help.writing to new technical text.",
+        "properties":{
+            "title":text(), "body":text(), "text":text(), "description":text(),
+            "reason":text(), "contract":text(), "scope":text(), "value":text(),
+            "said":{"description":"Verbatim intake. Preserve the original language and wording. ASD-STE100 does not apply."},
+            "points":{"description":"Verbatim intake points. Preserve source language and wording. ASD-STE100 does not apply."},
+            "acs":{"description":"For revise, AC objects contain text and description governed by the writing rules. For task, entries are AC identifiers.","items":{"properties":{"text":text(),"description":text()}}},
+            "assessment":{"properties":{"reason":text()}},
+            "checks":{"items":{"properties":{"expected":{"description":AUTHORING_TEXT,"items":text()}}}},
+            "evidence":{"description":"For complete_task, use technical text or the required decision comment identifier. For result, observed and note follow the writing rules. Preserve exact facts, logs, code, identifiers, and quotations.","properties":{"observed":{"description":AUTHORING_TEXT,"items":text()},"note":text()}}
+        }
+    })
 }
 async fn call(
     pool: &Pool,
@@ -150,6 +171,7 @@ async fn call(
                 ("model", include_str!("../docs/model.md")),
                 ("process", include_str!("../docs/process.md")),
                 ("green", include_str!("../docs/green.md")),
+                ("writing", WRITING_RULES),
             ];
             anyhow::ensure!(
                 section == "all" || docs.iter().any(|(name, _)| *name == section),
@@ -163,7 +185,7 @@ async fn call(
                 .into())
         }
         "joppa_help" => Ok(
-            json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md")}),
+            json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES}),
         ),
         _ => anyhow::bail!("unknown tool"),
     }

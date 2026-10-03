@@ -149,6 +149,14 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
         assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search'}
+        tools = {tool['name']: tool for tool in reply['result']['tools']}
+        writing = (ROOT/'docs/writing.md').read_text()
+        initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
+        assert writing in initialized['instructions']
+        for schema in (tools['joppa_command']['inputSchema']['properties']['command'],
+                       tools['joppa_batch']['inputSchema']['properties']['operations']['items']['properties']['command']):
+            assert 'ASD-STE100' in schema['properties']['contract']['description']
+            assert 'does not apply' in schema['properties']['said']['description']
         def mcp(name, arguments, token=agent_token):
             status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':name,'arguments':arguments}}, token)
@@ -157,6 +165,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert not result.get('isError'), result
             return json.loads(result['content'][0]['text'])
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
+        assert mcp('joppa_help', {})['writing'] == writing
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
         # Agents can still add both object notes and revision discussion through MCP.
         for request_id, value in [
@@ -183,7 +192,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
 
 
         docs = mcp('joppa_model_docs', {})
-        assert set(docs) == {'model','process','green'}
+        assert set(docs) == {'model','process','green','writing'}
+        assert docs['writing'] == writing
+        assert mcp('joppa_model_docs', {'section':'writing'}) == {'writing':writing}
         assert docs['model'] == (ROOT/'docs/model.md').read_text()
         assert docs['process'] == (ROOT/'docs/process.md').read_text()
         assert docs['green'] == (ROOT/'docs/green.md').read_text()

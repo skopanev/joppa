@@ -1,5 +1,9 @@
 # Four levels of the product tree
 
+Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.
+Russian is permitted under the same rules. Preserve intake, verbatim user text, existing wording, history, and evidence.
+Read the [technical writing rules](writing.md). New REQ and AC wording still requires owner confirmation.
+
 One workspace represents one product, even when several repositories deliver it.
 Use the question each level answers to decide where an item belongs.
 
