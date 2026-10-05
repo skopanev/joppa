@@ -6,6 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    /// Internal migration event. Public authoring rejects this operation.
+    MigrateNotes {},
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
@@ -377,6 +379,7 @@ pub const DESCRIPTION_MAX: usize = 2000;
 /// комментарий уезжал бы в никуда и находился бы только тем, кто угадал ту же
 /// опечатку: заметка на несуществующем домене не видна нигде.
 pub fn target(w: &Workspace, address: &str) -> Result<()> {
+    let address = crate::objects::resolve_address(w, address);
     if let Some(object) = w.objects.get(address) {
         ensure!(
             object.current().present,
@@ -517,6 +520,10 @@ pub(crate) fn apply_inner(
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
     match command {
+        Command::MigrateNotes {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            crate::objects::migrate_notes(w, actor, position, recorded_at)?;
+        }
         Command::SetTreeSchema {
             revision,
             types,

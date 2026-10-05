@@ -66,8 +66,6 @@ fn authoring_command_schema() -> Value {
             "revision":{"description":"For save_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
             "title":text(), "body":text(), "text":text(), "description":text(),
             "reason":text(), "contract":text(), "scope":text(), "value":text(),
-            "said":{"description":"Verbatim intake. Preserve the original language and wording. ASD-STE100 does not apply."},
-            "points":{"description":"Verbatim intake points. Preserve source language and wording. ASD-STE100 does not apply."},
             "acs":{"description":"For revise, AC objects contain text and description governed by the writing rules. For task, entries are AC identifiers.","items":{"properties":{"text":text(),"description":text()}}},
             "assessment":{"properties":{"reason":text()}},
             "checks":{"items":{"properties":{"expected":{"description":AUTHORING_TEXT,"items":text()}}}},

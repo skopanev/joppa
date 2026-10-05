@@ -250,7 +250,7 @@ pub(super) async fn project(
     let first_view = json!({"custom_tree":crate::objects::schema(state).types != crate::objects::defaults(),"title":&state.title,"members":&state.members,"domains":&state.domains,
         "order":state.tree_order.get("domain").cloned().unwrap_or_default(),"signals":&domains,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),
-        "counts":{"consumers":state.consumers.len(),"intake":state.intake.len()}});
+        "counts":{"consumers":state.consumers.len()}});
     super::objects::project(client, workspace, state, events).await?;
     client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,launch,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb,$7::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,launch=EXCLUDED.launch,first_view=EXCLUDED.first_view",
         &[&workspace,&(events.len() as i64),&serde_json::to_string(state)?,&summary.to_string(),&json!({"requirements":reqs,"capabilities":caps,"domains":domains}).to_string(),&launch.to_string(),&first_view.to_string()]).await?;
@@ -398,15 +398,6 @@ pub async fn board_read(
             Ok(
                 json!({"consumers":consumers,"system_ids":ids(&**conn,&workspace,"consumer",&keys).await?}),
             )
-        }
-        Some("intake") => {
-            let row = conn
-                .query_one(
-                    "SELECT (state->'intake')::text FROM joppa.board_cache WHERE workspace=$1",
-                    &[&workspace],
-                )
-                .await?;
-            Ok(json!({"intake":parsed(&row,0)?}))
         }
         Some("filter") => {
             let row=conn.query_one("SELECT (state->'capabilities')::text, COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revisions',jsonb_build_array(value->'revisions'->-1),'revision_count',jsonb_array_length(value->'revisions'))) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text,summary::text,signals::text,(state->'tree_order')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;

@@ -85,8 +85,6 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         ("consumer", "Consumer", "document", true, vec![]),
         ("note", "Note", "document", true, vec!["*"]),
         ("project", "Project", "document", true, vec![]),
-        ("intake", "Source note", "document", true, vec![]),
-        ("point", "Source point", "document", false, vec!["intake"]),
     ]
     .into_iter()
     .map(|(kind, title, role, root, parents)| {
@@ -102,13 +100,31 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
     })
     .collect()
 }
+pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
+    let mut types = defaults();
+    for (kind, title, root, parents) in [
+        ("intake", "Source note", true, vec![]),
+        ("point", "Source point", false, vec!["intake".into()]),
+    ] {
+        types.insert(
+            kind.into(),
+            TreeType {
+                title: title.into(),
+                role: "document".into(),
+                root,
+                parents,
+            },
+        );
+    }
+    types
+}
 pub fn schema(w: &Workspace) -> SchemaRevision {
     w.tree_schema
         .last()
         .cloned()
         .unwrap_or_else(|| SchemaRevision {
             revision: 0,
-            types: defaults(),
+            types: legacy_defaults(),
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -117,6 +133,131 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
 }
 fn address(kind: &str, id: &str) -> String {
     format!("{kind}:{id}")
+}
+pub fn resolve_address<'a>(w: &'a Workspace, key: &'a str) -> &'a str {
+    w.object_aliases.get(key).map(String::as_str).unwrap_or(key)
+}
+
+pub fn original_identity<'a>(w: &'a Workspace, kind: &'a str, id: &'a str) -> (&'a str, &'a str) {
+    let key = address(kind, id);
+    w.object_aliases
+        .iter()
+        .find(|(_, target)| *target == &key)
+        .and_then(|(source, _)| source.split_once(':'))
+        .unwrap_or((kind, id))
+}
+
+pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    if w.notes_migrated {
+        return Ok(());
+    }
+    let mut candidate = w.clone();
+    let previous_schema = schema(w);
+    let reason = "Replace incoming source types with Note";
+    let sources: Vec<_> = w
+        .objects
+        .iter()
+        .filter(|(_, o)| o.current().present && ["intake", "point"].contains(&o.kind.as_str()))
+        .map(|(key, o)| (key.clone(), o.clone()))
+        .collect();
+    for (key, _) in &sources {
+        let target = format!("note:source-{:x}", Sha256::digest(key.as_bytes()));
+        ensure!(
+            !w.objects.contains_key(&target),
+            "Note migration address collision"
+        );
+        candidate.object_aliases.insert(key.clone(), target);
+    }
+    let mut types = previous_schema.types;
+    types.remove("intake");
+    types.remove("point");
+    for t in types.values_mut() {
+        for parent in &mut t.parents {
+            if ["intake", "point"].contains(&parent.as_str()) {
+                *parent = "note".into();
+            }
+        }
+        let mut seen = BTreeSet::new();
+        t.parents.retain(|parent| seen.insert(parent.clone()));
+    }
+    let schema_revision = previous_schema.revision + 1;
+    candidate.tree_schema.push(SchemaRevision {
+        revision: schema_revision,
+        types,
+        actor: actor.into(),
+        at: at.into(),
+        position,
+        reason: reason.into(),
+    });
+    for (key, old) in sources {
+        let target = candidate.object_aliases[&key].clone();
+        let mut current = old.current().clone();
+        current.revision += 1;
+        current.schema_revision = schema_revision;
+        current.actor = actor.into();
+        current.at = at.into();
+        current.position = position;
+        current.reason = reason.into();
+        current.parent = current
+            .parent
+            .as_deref()
+            .map(|parent| resolve_address(&candidate, parent).to_owned());
+        if old.kind == "point" {
+            current.data["body"] = current.data["title"].clone();
+            let source = old.id.split_once('/').context("invalid source point")?.0;
+            if let Some(intake) = w.intake.get(source) {
+                current.data["author"] = json!(intake.author);
+            }
+            let kind = current.data["kind"].as_str().unwrap_or("");
+            current.data["review_policy"] = json!(w.questions.get(kind));
+            if let Some(req) = current.data["requirement"].as_str() {
+                let link = ObjectLink {
+                    target: address("requirement", req),
+                    relation: "related".into(),
+                    revision: None,
+                    blocking: false,
+                };
+                if !current
+                    .links
+                    .iter()
+                    .any(|l| l.target == link.target && l.relation == link.relation)
+                {
+                    current.links.push(link);
+                }
+            }
+        } else {
+            current.data["review_policy"] = json!(w.questions);
+        }
+        let mut note = old.clone();
+        note.kind = "note".into();
+        note.id = target.strip_prefix("note:").unwrap().into();
+        note.parent_override = true;
+        note.revisions.push(current);
+        candidate.objects.insert(target.clone(), note);
+        let mut retired = old.current().clone();
+        retired.revision += 1;
+        retired.present = false;
+        retired.actor = actor.into();
+        retired.at = at.into();
+        retired.position = position;
+        retired.reason = reason.into();
+        candidate
+            .objects
+            .get_mut(&key)
+            .unwrap()
+            .revisions
+            .push(retired);
+        if let Some(notes) = candidate.notes.remove(&key) {
+            candidate.notes.insert(target, notes);
+        }
+    }
+    candidate.intake.clear();
+    candidate.questions.clear();
+    candidate.notes_migrated = true;
+    validate_tree(&candidate)?;
+    *w = candidate;
+    Ok(())
 }
 fn parent_valid(
     types: &BTreeMap<String, TreeType>,
@@ -130,7 +271,10 @@ fn parent_valid(
     match parent {
         None => ensure!(t.root, "this type requires a parent"),
         Some(p) => {
-            let obj = w.objects.get(p).context("unknown parent")?;
+            let obj = w
+                .objects
+                .get(resolve_address(w, p))
+                .context("unknown parent")?;
             ensure!(
                 obj.current().present || kind == "task" && obj.kind == "ac",
                 "parent is absent from the current tree"
@@ -172,7 +316,7 @@ pub fn set_schema(
             ["group", "document", "requirement", "ac", "task"].contains(&t.role.as_str()),
             "unknown semantic role"
         );
-        if let Some(original) = defaults().get(kind) {
+        if let Some(original) = legacy_defaults().get(kind) {
             ensure!(
                 t.role == original.role,
                 "built-in semantic roles cannot change"
@@ -360,7 +504,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         }
     }
     for (key, obj) in &mut w.objects {
-        if defaults().contains_key(&obj.kind)
+        if legacy_defaults().contains_key(&obj.kind)
             && obj.kind != "note"
             && !rows.contains_key(key)
             && obj.current().present
@@ -390,7 +534,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         );
         let target = w
             .objects
-            .get(&link.target)
+            .get(resolve_address(w, &link.target))
             .context("unknown linked object in this workspace")?;
         ensure!(
             target.current().present,
@@ -424,6 +568,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         stack: &mut BTreeSet<String>,
         done: &mut BTreeSet<String>,
     ) -> Result<()> {
+        let key = resolve_address(w, key);
         if done.contains(key) {
             return Ok(());
         }
@@ -465,10 +610,11 @@ fn parent_cycle(w: &Workspace, key: &str, parent: Option<&str>) -> Result<()> {
     seen.insert(key.to_string());
     let mut p = parent;
     while let Some(id) = p {
+        let id = resolve_address(w, id);
         ensure!(seen.insert(id.into()), "tree parent cycle");
         p = w
             .objects
-            .get(id)
+            .get(resolve_address(w, id))
             .and_then(|o| o.current().parent.as_deref());
     }
     Ok(())
@@ -753,7 +899,10 @@ fn ancestor(w: &Workspace, parent: Option<&str>, kind: &str) -> Result<String> {
     let mut seen = BTreeSet::new();
     while let Some(key) = p {
         ensure!(seen.insert(key), "tree parent cycle");
-        let o = w.objects.get(key).context("unknown ancestor")?;
+        let o = w
+            .objects
+            .get(resolve_address(w, key))
+            .context("unknown ancestor")?;
         if o.kind == kind {
             return Ok(o.id.clone());
         }
@@ -780,6 +929,9 @@ pub fn save(
     else {
         bail!("save_object required")
     };
+    let parent = &parent
+        .as_deref()
+        .map(|key| resolve_address(w, key).to_owned());
     commands::nonempty(reason)?;
     ensure!(
         !id.is_empty()
@@ -899,7 +1051,7 @@ pub fn save(
             parent_override: false,
         });
     object.revisions = old.map(|o| o.revisions).unwrap_or_default();
-    let saved_data = if defaults().contains_key(kind) && kind != "note" {
+    let saved_data = if legacy_defaults().contains_key(kind) && kind != "note" {
         projected
     } else {
         data.clone()
@@ -925,29 +1077,33 @@ pub fn save(
 }
 
 pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
-    w.objects.get(key).map(|o|o.current().links.iter().filter_map(|link| {
-        let current=w.objects.get(&link.target).filter(|o|o.current().present).map(|o|o.current().revision);
+    w.objects.get(resolve_address(w, key)).map(|o|o.current().links.iter().filter_map(|link| {
+        let current=w.objects.get(resolve_address(w, &link.target)).filter(|o|o.current().present).map(|o|o.current().revision);
         (link.relation=="depends_on" && current!=link.revision).then(||json!({"target":link.target,"revision":link.revision,"current_revision":current}))
     }).collect()).unwrap_or_default()
 }
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
     fn visit(w: &Workspace, key: &str, stack: &mut BTreeSet<String>) -> bool {
-        let Some(o) = w.objects.get(key) else {
+        let key = resolve_address(w, key);
+        let Some(o) = w.objects.get(resolve_address(w, key)) else {
             return false;
         };
         if !o.current().present
             || o.current().links.iter().any(|l| {
                 l.blocking
-                    && w.objects.get(&l.target).is_none_or(|target| {
-                        !target.current().present || Some(target.current().revision) != l.revision
-                    })
+                    && w.objects
+                        .get(resolve_address(w, &l.target))
+                        .is_none_or(|target| {
+                            !target.current().present
+                                || Some(target.current().revision) != l.revision
+                        })
             })
             || !stack.insert(key.into())
         {
             return false;
         }
         let links_ready = o.current().links.iter().filter(|l| l.blocking).all(|l| {
-            let Some(target) = w.objects.get(&l.target) else {
+            let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
             let evidence = match target.kind.as_str() {
@@ -986,7 +1142,7 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             .current()
             .parent
             .as_deref()
-            .is_none_or(|p| stack.contains(p) || visit(w, p, stack));
+            .is_none_or(|p| stack.contains(resolve_address(w, p)) || visit(w, p, stack));
         stack.remove(key);
         links_ready && parent_ready
     }
@@ -1043,9 +1199,11 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
 }
 
 pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
+    let target = resolve_address(w, target);
     let mut current = Some(key);
     let mut seen = BTreeSet::new();
     while let Some(id) = current {
+        let id = resolve_address(w, id);
         if id == target {
             return true;
         }
@@ -1054,7 +1212,7 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
         }
         current = w
             .objects
-            .get(id)
+            .get(resolve_address(w, id))
             .and_then(|o| o.current().parent.as_deref());
     }
     false
@@ -1062,6 +1220,31 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
 
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     match cmd {
+        Command::MigrateNotes {} => bail!("internal migration operation"),
+        Command::Intake { .. }
+        | Command::Split { .. }
+        | Command::Questions { .. }
+        | Command::Sort { .. }
+        | Command::Answer { .. }
+        | Command::Route { .. } => {
+            bail!("use save_object kind=note; incoming source types are removed")
+        }
+        Command::SaveObject {
+            kind, id, revision, ..
+        } => {
+            ensure!(
+                !["intake", "point"].contains(&kind.as_str()),
+                "use kind=note"
+            );
+            ensure!(
+                kind != "note" || *revision != 0 || !id.starts_with("source-"),
+                "Note migration identifiers are reserved"
+            );
+        }
+        Command::SetTreeSchema { types, .. } => ensure!(
+            !types.contains_key("intake") && !types.contains_key("point"),
+            "incoming source types are removed; use Note"
+        ),
         Command::Task { acs, .. } => ensure!(acs.len() == 1, "Task must belong to exactly one AC"),
         Command::CompleteTask { req, id, .. } => ensure!(
             work_ready(w, &format!("task:{req}/{id}")),
@@ -1103,6 +1286,7 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     Ok(())
 }
 pub fn annotation_address(w: &Workspace, key: &str) -> String {
+    let key = resolve_address(w, key);
     if let Some(id) = key.strip_prefix("ac:")
         && !id.contains('/')
         && let Some(req) = w
@@ -1117,7 +1301,7 @@ pub fn annotation_address(w: &Workspace, key: &str) -> String {
 }
 
 pub fn process(w: &Workspace, key: &str) -> Value {
-    let Some(o) = w.objects.get(key) else {
+    let Some(o) = w.objects.get(resolve_address(w, key)) else {
         return json!({});
     };
     match o.kind.as_str() {
@@ -1128,7 +1312,7 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     }
 }
 pub fn signal(w: &Workspace, key: &str) -> Value {
-    let Some(o) = w.objects.get(key) else {
+    let Some(o) = w.objects.get(resolve_address(w, key)) else {
         return json!({});
     };
     let p = process(w, key);

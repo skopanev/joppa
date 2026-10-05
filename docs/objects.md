@@ -114,7 +114,12 @@ Preserve source text in its original language.
 A corrected Note creates a new revision. Earlier text remains readable.
 Use the same comment and attachment commands as for other objects.
 The legacy `note` operation adds a comment. It does not create a Note document.
-Legacy intake and point addresses remain readable with their original history.
+Note replaces Intake and Point. The current schema has no separate source types.
+The server converts existing sources in one migration transaction before it serves requests.
+It preserves source text, authors, review context, comments, attachments and numbered history.
+Existing public IDs and source addresses resolve to the corresponding Note.
+A converted point links to its REQ with `related`.
+Old journal operations remain readable. New source operations and source types are rejected.
 
 Link a REQ to a Note with `depends_on` and the Note revision that informed the wording.
 A later Note change then produces a review hint.

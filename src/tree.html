@@ -14,14 +14,15 @@
   <nav class="header-actions" aria-label="Navigation"><a class="help-link" href="/" id="board-link">Back to board ↗</a><select id="revision" aria-label="Schema revision"></select></nav>
 </header>
 <main class="layout">
-  <div class="tree-intro"><h1>Workspace tree</h1><p class="hint">Follow the lines from parent to child. Each workspace defines its own types.</p></div>
+  <div class="tree-intro"><h1>Workspace tree</h1><p class="hint">Object types, allowed parents and references. Follow the arrows to read their relationships.</p></div>
   <div class="schema-caption"><p id="meta" class="hint"></p><span class="schema-readonly">Read only</span></div>
   <p id="error" role="status"></p>
   <section class="schema-map" aria-label="Type relationships">
-    <div class="schema-legend"><span><i></i>Parent → child</span><span id="any-legend"><i class="any-line"></i>Any type → child</span><span class="hint">Focus a type to highlight its connections.</span></div>
+    <div class="schema-legend"><span><i></i>Parent → child</span><span id="reference-legend"><i class="reference-line"></i>Reference</span><span id="any-legend"><i class="any-line"></i>Any type → child</span><span class="hint">Focus a type to highlight its connections.</span></div>
     <div class="schema-scroll" tabindex="0" aria-label="Workspace type diagram"><div id="types"><svg id="connections" aria-hidden="true"></svg></div></div>
+    <div id="reference-help" class="schema-reference-help"></div>
   </section>
-  <p class="hint schema-footer">Agents configure this tree through MCP. Object links and dependencies appear in the object details on the board.</p>
+  <p class="hint schema-footer">Note holds new information, with revisions, comments, files and links. Any two objects can have context links or dependencies.</p>
 </main>
 <script>/* TREE_SCRIPT */</script>
 </body>

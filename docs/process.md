@@ -46,24 +46,17 @@ not itself authorize a business decision. Confirm wording, accept results,
 record specialist decisions or submit manual evidence only on explicit user
 instruction. Unattended automation uses a separate agent or runner identity.
 
-## Intake
+## Incoming Notes
 
-Save the original message **verbatim**, without trimming or paraphrasing. It is
-the reference for checking that later analysis preserved the author's meaning.
+Save new incoming information as a Note. Keep the original text, language and whitespace.
+Notes use the same revisions, comments, attachments and links as other objects.
+Ask for facts needed to formulate or verify the affected requirement.
+Missing facts can prevent work. They do not prevent someone from recording a Note.
 
-Classify each point as a bug, policy, question or idea, then ask only the fields
-missing for that kind. Required questions live in workspace policy, not solely
-in an agent prompt. The owner changes policy with `questions`; unfinished points
-of that kind collect answers again while older answers remain in history.
-
-Raw intake is valid. Reject readiness when information is missing, not the fact
-that someone reported a problem.
-
-### Split a message into points
-
-A request for four things may lead to two implementations, one refusal and one
-alternative solution. Each point gets its own outcome. Record the reason for a
-refusal next to the point so it is not recreated without that context later.
+A message can produce several Notes. Link them to the original Note.
+Record the result and its reason in the Note. Link the affected objects.
+When a REQ depends on a Note's wording, link its specific revision with `depends_on`.
+A later change to that Note then asks the agent to review the requirement.
 
 ## Three routes
 

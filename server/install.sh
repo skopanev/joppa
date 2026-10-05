@@ -119,6 +119,13 @@ for attempt in {1..15}; do
     sleep 2
 done
 if [[ "$healthy" != true ]]; then
+    migrated=$(runuser -u postgres -- psql -X -At -d joppa -c "SELECT EXISTS (SELECT 1 FROM joppa.events WHERE command->>'op'='migrate_notes')")
+    if [[ "$migrated" == t && -f /opt/joppa/bin/joppa.previous ]]; then
+        if ! (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous check-journal) >/dev/null 2>&1; then
+            echo 'Health check failed. The previous binary cannot read the migrated journal. Kept the current binary. Inspect journalctl -u joppa.' >&2
+            exit 1
+        fi
+    fi
     if [[ -f /opt/joppa/bin/joppa.previous ]]; then
         mv /opt/joppa/bin/joppa.previous /opt/joppa/bin/joppa
         systemctl restart joppa

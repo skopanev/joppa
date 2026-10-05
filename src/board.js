@@ -56,7 +56,7 @@ async function list() {
 }
 let loadNumber = 0;
 const loadedDomains=new Set(),loadedCapabilities=new Set(),loadedRequirements=new Set();
-let consumerOpen=false,consumersLoaded=false,intakeOpen=false,filterLoaded=false,filterLoading=null;
+let consumerOpen=false,consumersLoaded=false,filterLoaded=false,filterLoading=null;
 const fullHistoryRequirements=new Set();
 const branchAnimations=new WeakMap();
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -118,7 +118,7 @@ async function load() {
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
   fullHistoryRequirements.clear();
-  consumerOpen=false;consumersLoaded=false;intakeOpen=false;filterLoaded=false;filterLoading=null;
+  consumerOpen=false;consumersLoaded=false;filterLoaded=false;filterLoading=null;
   if(data.custom_tree){await renderObjectTree();return;}
   if(!data.lazy)indexStatusEvents();
   render();
@@ -466,7 +466,6 @@ function render() {
   const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
   applyFilters(false);
   consumers(t);
-  intake(t);
   commonNotes(t);
 }
 function buildDomain(did,d,signals,opened){
@@ -903,58 +902,7 @@ async function openRequirement(id) {
   for(let node=req;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
   req.scrollIntoView({block:'start'});
 }
-function intake(root) {
-  const entries=Object.entries(data.state.intake);
-  const count=data.lazy?data.counts.intake:entries.length;
-  if(!count)return;
-  const section=details(root,'Intake · '+count);
-  section.classList.add('intake-section');
-  section.open=intakeOpen;
-  if(data.lazy&&!entries.length)section.dataset.pending='true';
-  enableBranchMotion(section);
-  if(data.lazy&&!entries.length){
-    section.append(E('p','Loading intake…','hint'));
-    section.addEventListener('toggle',async()=>{
-      intakeOpen=section.open;
-      if(!section.open||Object.keys(data.state.intake).length)return;
-      const request=loadNumber;
-      try{const part=await boardPart('intake');if(request!==loadNumber)return;
-        Object.assign(data.state.intake,part.intake);
-        delete section.dataset.pending;
-        if(section.isConnected)resizeBranch(section,()=>fillIntake(section));
-      }catch(e){notify(e);}
-    });
-    return;
-  }
-  section.addEventListener('toggle',()=>{intakeOpen=section.open;});
-  fillIntake(section);
-}
-function fillIntake(section){
-  section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
-  for(const [id,item] of Object.entries(data.state.intake)){
-    const entry=details(section,id+' · '+item.author);entry.append(E('p',item.said));
-    if(item.owner)entry.append(E('p','Owner: '+personLabel(item.owner),'node-meta'));
-    const intakeActions=E('span',undefined,'intake-actions');
-    intakeActions.append(notesButton('intake',id,item.said));
-    const intakeFiles=filesButton('intake',id,item.said);
-    if(intakeFiles)intakeActions.append(intakeFiles);
-    entry.querySelector('summary').append(intakeActions);
 
-    for(const [pid,point] of Object.entries(item.points)){
-      const block=details(entry,pid+' · '+(point.outcome||'Unreviewed'));
-      block.append(E('p',point.said));
-      const pointActions=E('span',undefined,'intake-actions');
-      pointActions.append(notesButton('point',pid,point.said,id));
-      const pointFiles=filesButton('point',pid,point.said,id);
-      if(pointFiles)pointActions.append(pointFiles);
-      block.querySelector('summary').append(pointActions);
-
-      for(const [key,value] of Object.entries(point.answers||{}))block.append(E('p',key+': '+value));
-      if(point.reason)block.append(E('p',point.reason));
-      if(point.requirement)block.append(button(point.requirement,()=>openRequirement(point.requirement),'node-link'));
-    }
-  }
-}
 function copyButton(kind,id,title) {
   const b=E('button','', 'copy-context');b.type='button';
   b.onclick=async()=>{
@@ -1291,7 +1239,8 @@ function commonObjectCard(item){
   const card=E('details',undefined,'common-object'+(item.kind==='consumer'?' consumer-object':''));card.dataset.objectAddress=item.address;
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
-  summary.append(nodeTitle(item.title,item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at}),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
+  const signal=item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
+  summary.append(nodeTitle(item.title,signal),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
   const actions=E('span',undefined,'item-actions');
   const copy=button('COPY',async()=>{const text=item.item_id||item.address;try{if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');await navigator.clipboard.writeText(text);}catch{const field=E('textarea',text);field.style.position='fixed';field.style.opacity='0';document.body.append(field);field.select();const copied=document.execCommand('copy');field.remove();if(!copied)notify(Error('Could not copy the ID.'));}},'copy');copy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
   const history=button('Revisions',()=>showCommonObject(item.address,true),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);

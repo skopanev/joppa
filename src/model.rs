@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
     #[serde(default)]
+    pub notes_migrated: bool,
+    #[serde(default)]
+    pub object_aliases: BTreeMap<String, String>,
+    #[serde(default)]
     pub objects: BTreeMap<String, crate::objects::Object>,
     #[serde(default)]
     pub tree_schema: Vec<crate::objects::SchemaRevision>,

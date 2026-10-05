@@ -22,6 +22,10 @@ async fn main() -> Result<()> {
         &std::env::var("JOPPA_DATABASE_URL").unwrap_or_else(|_| store::DEFAULT_URL.into()),
     )?;
     match args.first().map(String::as_str) {
+        Some("check-journal") => {
+            store::check_journal(&pool).await?;
+            println!("journal is compatible");
+        }
         Some("migrate") => {
             store::migrate(&pool).await?;
             println!("journal schema ready; legacy tables untouched");
@@ -35,6 +39,7 @@ async fn main() -> Result<()> {
         Some("serve") => {
             let port = args.get(1).map(|s| s.parse()).transpose()?.unwrap_or(6212);
             let host = args.get(2).map(String::as_str).unwrap_or("127.0.0.1");
+            store::migrate_notes(&pool).await?;
             store::backfill_board(&pool).await?;
             web::serve(pool, host, port).await?;
         }

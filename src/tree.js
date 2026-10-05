@@ -29,6 +29,13 @@ function renderTree(schema){
       parents.set(kind,parent);break;
     }
   }
+  const references=[
+    {source:'requirement',target:'consumer',reference:'consumers',text:'REQ → Consumer: who uses the requirement.'},
+    {source:'task',target:'project',reference:'projects',text:'Task → Project: which repository the work affects.'}
+  ].filter(edge=>definitions[edge.source]&&definitions[edge.target]);
+  edges.push(...references);
+  document.querySelector('#reference-legend').hidden=!references.length;
+  document.querySelector('#reference-help').replaceChildren(...references.map(edge=>element('p',edge.text,'hint')));
   const children=new Map();for(const [child,parent] of parents){if(!children.has(parent))children.set(parent,[]);children.get(parent).push(child);}
   let row=0;const placed=new Set();
   const place=(id,depth)=>{
@@ -42,13 +49,15 @@ function renderTree(schema){
   const connections=svgElement('svg',{id:'connections','aria-hidden':'true'});
   const defs=svgElement('defs',{}),marker=svgElement('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
   marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#82a394'}));defs.append(marker);connections.append(defs);types.replaceChildren(connections);
+  const referenceMarker=marker.cloneNode(true);referenceMarker.id='reference-arrow';referenceMarker.querySelector('path').setAttribute('fill','#5593b4');defs.append(referenceMarker);
   let hovered;
   const highlight=id=>{for(const edge of connections.querySelectorAll('.schema-edge')){const selected=edge.dataset.source===id||edge.dataset.target===id;edge.classList.toggle('selected',Boolean(id)&&selected);edge.classList.toggle('dimmed',Boolean(id)&&!selected);}};
   for(const [id,node] of nodes){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
     card.append(element('h2',node.title),element('small',node.label));
     if(definitions[id]){
-      const t=definitions[id];card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object':definitions[p]?.title||p)].join(', '));
+      const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);
+      card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object':definitions[p]?.title||p)].join(', ')+(related.length?'. '+related.join(' '):''));
     }
     card.addEventListener('mouseenter',()=>{hovered=id;highlight(id);});card.addEventListener('mouseleave',()=>{hovered=undefined;highlight(document.activeElement?.dataset.kind);});
     card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight(hovered));node.card=card;types.append(card);
@@ -56,7 +65,7 @@ function renderTree(schema){
   const rails=new Map();
   for(const edge of edges){const a=nodes.get(edge.source),b=nodes.get(edge.target);if(a&&b&&a!==b&&b.depth!==a.depth+1)rails.set(edge,rails.size);}
   layout=()=>{
-    const depth=Math.max(...[...nodes.values()].map(node=>node.depth)),gap=32,padding=24;
+    const depth=Math.max(...[...nodes.values()].map(node=>node.depth)),gap=48,padding=24;
     const topPadding=padding+rails.size*8;
     const width=Math.max(148,Math.min(188,(types.parentElement.clientWidth-padding*2-gap*depth)/(depth+1)));
     let height=78;for(const node of nodes.values()){node.card.style.width=width+'px';node.card.style.height='auto';height=Math.max(height,node.card.offsetHeight);}
@@ -76,7 +85,9 @@ function renderTree(schema){
         const railY=12+rails.get(edge)*8;
         d=`M ${startX} ${startY} H ${startX+12} V ${railY} H ${beforeTarget} V ${endY} H ${endX}`;
       }
-      const path=svgElement('path',{d,class:'schema-edge'+(edge.any?' any-edge':''),'marker-end':'url(#arrow)'});path.dataset.source=edge.source;path.dataset.target=edge.target;connections.append(path);
+      const path=svgElement('path',{d,class:'schema-edge'+(edge.any?' any-edge':'')+(edge.reference?' reference-edge':''),'marker-end':edge.reference?'url(#reference-arrow)':'url(#arrow)'});
+      if(edge.reference)path.dataset.reference=edge.reference;
+      path.dataset.source=edge.source;path.dataset.target=edge.target;connections.append(path);
     }
     highlight(hovered||document.activeElement?.dataset.kind);
   };

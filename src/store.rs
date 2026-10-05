@@ -59,13 +59,79 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/012_objects.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/013_object_aliases.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects')", &[]).await? {
         let id: String = row.get(0);
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
     }
+    migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
+}
+pub async fn migrate_notes(pool: &Pool) -> Result<()> {
+    let mut conn = pool.get().await?;
+    let tx = conn.transaction().await?;
+    tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
+        .await?;
+    migrate_notes_in(&*tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+pub async fn check_journal(pool: &Pool) -> Result<()> {
+    let conn = pool.get().await?;
+    for row in conn
+        .query("SELECT id FROM joppa.workspaces ORDER BY id", &[])
+        .await?
+    {
+        let _: (Workspace, Vec<Event>) = load(&**conn, row.get(0)).await?;
+    }
+    Ok(())
+}
+async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
+    for row in client
+        .query("SELECT id FROM joppa.workspaces ORDER BY id", &[])
+        .await?
+    {
+        let workspace: String = row.get(0);
+        client
+            .execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+                &[&workspace],
+            )
+            .await?;
+        let (mut state, mut events) = load(client, &workspace).await?;
+        if ensure_notes(client, &workspace, &mut state, &mut events).await? {
+            search::project(client, &workspace, &state, events.len() as u64).await?;
+            board::project(client, &workspace, &state, &events).await?;
+        }
+    }
+    Ok(())
+}
+async fn ensure_notes(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &mut Workspace,
+    events: &mut Vec<Event>,
+) -> Result<bool> {
+    if state.notes_migrated {
+        return Ok(false);
+    }
+    ensure!(!state.admin.is_empty(), "workspace has no owner");
+    let position = events.last().map_or(1, |event| event.position + 1);
+    let command = Command::MigrateNotes {};
+    let actor = state.admin.clone();
+    let payload = serde_json::to_string(&command)?;
+    let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
+    commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+    events.push(Event {
+        position,
+        actor,
+        recorded_at,
+        command,
+    });
+    Ok(true)
 }
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
@@ -381,7 +447,13 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
     if let Some(address) = &scope.target {
         commands::target(&state, address)?;
         out["target"] = json!(address);
-        out["notes"] = json!(state.notes.get(address).cloned().unwrap_or_default());
+        out["notes"] = json!(
+            state
+                .notes
+                .get(&crate::objects::annotation_address(&state, address))
+                .cloned()
+                .unwrap_or_default()
+        );
         return Ok(out);
     }
 
@@ -526,7 +598,7 @@ pub async fn read_item_scoped(
             },
         )
         .await?;
-        result["selection"] = json!({"kind":kind,"id":local_id,"system_id":id});
+        result["selection"] = json!({"kind":result["kind"],"id":result["id"],"system_id":id});
         return Ok(result);
     }
     // Скопированный номер разрешается В САМ ПРЕДМЕТ, а не в весь воркспейс.

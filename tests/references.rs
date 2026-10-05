@@ -141,7 +141,7 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     );
     assert_eq!(after["system_ids"], before["system_ids"]);
     assert_eq!(
-        &after["history"].as_array().unwrap()[..2],
+        &after["history"].as_array().unwrap()[..before["history"].as_array().unwrap().len()],
         before["history"].as_array().unwrap()
     );
     let item = before["system_ids"]["domain"]["domain"].as_str().unwrap();

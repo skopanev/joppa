@@ -12,12 +12,11 @@ revision.acs.push({id:'c',text:'A returning customer can use an existing purchas
 const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
-  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},counts:{consumers:1,intake:1}},
+  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},counts:{consumers:1}},
   '/api/workspaces/w/board?level=domain&id=d':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true},c2:{title:'Manage account',domain:'d',owner:'owner',description:'',confirmed:true},c3:{title:'Recover access',domain:'d',owner:'owner',description:'',confirmed:true}},signals:{c:{tone:'grey',label:'No requirements'},c2:{tone:'grey',label:'No requirements'},c3:{tone:'grey',label:'No requirements'}},order:['c','c2','c3'],system_ids:{}},
   '/api/workspaces/w/board?level=capability&id=c':{requirements:{r:{capability:'c',revisions:[{number:1,title:revision.title,body:revision.body}],revision_count:1}},signals:{r:{tone:'yellow',label:'Waiting for decision',status:'waiting'}},order:['r'],system_ids:{}},
   '/api/workspaces/w/board?level=requirement&id=r':{requirement:{capability:'c',revisions:[revision],comments:{}},summary:{acs:{a:{ready:false,verification:'n/a'}},ready_for_acceptance:false,accepted:false},consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},notes:{},projects:{},status_events:[{position:4,actor:'owner',recorded_at:'2026-09-25 12:00:00+00',command:{op:'revise',req:'r',expected_revision:0,acs:[{id:'a',text:'Sign-in works'}]}}],system_ids:{ac:{}}},
   '/api/workspaces/w/board?level=consumers':{consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},system_ids:{}},
-  '/api/workspaces/w/board?level=intake':{intake:{i:{said:'Users need access',author:'owner',owner:'owner',points:{}}}},
   '/api/workspaces/w/board?level=history&id=r':{history:[{position:4,actor:'owner',recorded_at:'2026-09-25 12:00:00+00',command:{op:'revise',req:'r',expected_revision:0,title:revision.title,body:revision.body,owner:'owner',consumers:['buyer'],capability:'c',acs:revision.acs}}],requirement:{capability:'c',revisions:[revision],comments:{}}},
   '/api/workspaces/w/board?level=filter':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true}},requirements:{r:{capability:'c',revisions:[revision],revision_count:1}},summary:{r:{acs:{a:{ready:false,verification:'n/a'}},ready_for_acceptance:false,accepted:false}},signals:{domains:{d:{tone:'yellow',label:'Current capabilities: 1 pending'}},capabilities:{c:{tone:'yellow',label:'Current requirements: 1 pending'}},requirements:{r:{tone:'yellow',label:'Waiting for decision',status:'waiting'}}},tree_order:{domain:['d'],'capability:d':['c'],'requirement:c':['r']},system_ids:{capability:{},requirement:{}}},
 };
@@ -100,9 +99,8 @@ const responses={
     await consumers.locator('summary').click();
     await consumers.getByText('Buyer').waitFor();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
-    const intake=page.getByText('Intake · 1');await intake.click();
-    await page.getByText('Users need access').waitFor({state:'attached'});
-    assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
+    assert.equal(await page.locator('.intake-section').count(),0);
+    assert(!seen.some(path=>path.includes('level=intake')));
     if(process.env.JOPPA_SCREENSHOT){await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(260);await page.screenshot({path:process.env.JOPPA_SCREENSHOT,fullPage:true});}
     assert(seen.includes('/api/workspaces/w/board?level=consumers'));
     assert(!seen.some(path=>path.includes('level=history')));

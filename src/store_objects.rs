@@ -71,7 +71,12 @@ pub(super) async fn project(
                 links.push(json!({"source":address,"target":link.target,"relation":link.relation,"revision":link.revision,"blocking":link.blocking}));
             }
         }
-        if !registered.contains(&(obj.kind.clone(), obj.id.clone())) {
+        if !state
+            .object_aliases
+            .values()
+            .any(|target| target == address)
+            && !registered.contains(&(obj.kind.clone(), obj.id.clone()))
+        {
             ids.push(json!({"kind":obj.kind,"local_id":obj.id}));
         }
     }
@@ -99,6 +104,20 @@ pub(super) async fn project(
     if !ids.is_empty() {
         client.execute("SELECT joppa.register_item($1,x.kind,x.local_id,$3) FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text)",&[&workspace,&json!(ids).to_string(),&prefix]).await?;
     }
+    if !state.object_aliases.is_empty() {
+        let aliases: Vec<Value> = state
+            .object_aliases
+            .iter()
+            .map(|(address, target)| json!({"address":address,"target":target}))
+            .collect();
+        let body = json!(aliases).to_string();
+        client.execute("INSERT INTO joppa.object_aliases(workspace,address,target) SELECT $1,x.address,x.target FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,target text) ON CONFLICT DO NOTHING", &[&workspace,&body]).await?;
+        let conflict=client.query_one("SELECT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,target text) LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=x.address WHERE a.target IS DISTINCT FROM x.target)", &[&workspace,&body]).await?;
+        ensure!(
+            !conflict.get::<_, bool>(0),
+            "object alias differs from the journal"
+        );
+    }
     Ok(())
 }
 async fn authorized(
@@ -125,7 +144,7 @@ pub async fn tree_schema(
     let selected = if n == 0 {
         objects::SchemaRevision {
             revision: 0,
-            types: objects::defaults(),
+            types: objects::legacy_defaults(),
             actor: row.get(0),
             at: String::new(),
             position: 0,
@@ -170,11 +189,19 @@ pub async fn read_objects(
     let public: String = row.get(1);
     let prefix: String = row.get(2);
     if let Some(key) = scope.address {
+        let key = conn
+            .query_opt(
+                "SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2",
+                &[&workspace, &key],
+            )
+            .await?
+            .map(|row| row.get::<_, String>(0))
+            .unwrap_or_else(|| key.to_owned());
         ensure!(
             scope.parent.is_none() && scope.kind.is_none() && scope.cursor.is_none(),
             "address cannot be combined with list filters"
         );
-        let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=o.kind AND local_id=o.local_id AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o WHERE workspace=$1 AND address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
+        let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
         let current: i32 = row.get(2);
         if scope.history {
             ensure!(
@@ -182,7 +209,7 @@ pub async fn read_objects(
                 "history reports counts; read one revision separately"
             );
             return Ok(
-                json!({"workspace":public,"address":key,"current_revision":current,"revision_count":current,"position":position}),
+                json!({"workspace":public,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"current_revision":current,"revision_count":current,"position":position}),
             );
         }
         let n = scope.revision.unwrap_or(current as u32);
@@ -198,7 +225,7 @@ pub async fn read_objects(
             .flatten()
             .filter_map(|l| l["target"].as_str().map(str::to_owned))
             .collect();
-        let found:std::collections::BTreeMap<String,Value>=conn.query("SELECT address,title,kind,revision,present FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",&[&workspace,&targets]).await?.iter().map(|r|(r.get(0),json!({"title":r.get::<_,String>(1),"kind":r.get::<_,String>(2),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)}))).collect();
+        let found:std::collections::BTreeMap<String,Value>=conn.query("SELECT t.address,o.title,o.kind,o.revision,o.present FROM unnest($2::text[]) t(address) LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=t.address JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,t.address)",&[&workspace,&targets]).await?.iter().map(|r|(r.get(0),json!({"title":r.get::<_,String>(1),"kind":r.get::<_,String>(2),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)}))).collect();
         let outgoing: Vec<Value> = document["links"]
             .as_array()
             .into_iter()
@@ -213,15 +240,15 @@ pub async fn read_objects(
                 item
             })
             .collect();
-        let incoming:Vec<Value>=conn.query("SELECT l.source,o.title,l.relation,l.revision,l.blocking FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source WHERE l.workspace=$1 AND l.target=$2 ORDER BY l.source", &[&workspace,&key]).await?.iter().map(|r|json!({"source":r.get::<_,String>(0),"title":r.get::<_,String>(1),"relation":r.get::<_,String>(2),"revision":r.get::<_,Option<i32>>(3),"blocking":r.get::<_,bool>(4)})).collect();
+        let incoming:Vec<Value>=conn.query("SELECT l.source,o.title,l.relation,l.revision,l.blocking FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present ORDER BY l.source", &[&workspace,&key]).await?.iter().map(|r|json!({"source":r.get::<_,String>(0),"title":r.get::<_,String>(1),"relation":r.get::<_,String>(2),"revision":r.get::<_,Option<i32>>(3),"blocking":r.get::<_,bool>(4)})).collect();
         let annotation = if row.get::<_, String>(0) == "ac" {
             document["parent"]
                 .as_str()
                 .and_then(|p| p.strip_prefix("requirement:"))
                 .map(|req| format!("ac:{req}/{}", row.get::<_, String>(1)))
-                .unwrap_or_else(|| key.into())
+                .unwrap_or_else(|| key.clone())
         } else {
-            key.into()
+            key.clone()
         };
         let annotations:Value=serde_json::from_str(conn.query_one("SELECT COALESCE(state->'notes'->$2,'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace,&annotation]).await?.get(0))?;
         return Ok(
@@ -244,9 +271,22 @@ pub async fn read_objects(
     } else {
         ""
     };
-    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=o.kind AND local_id=o.local_id AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text FROM joppa.objects o WHERE o.workspace=$1 AND (o.present OR o.kind='ac' AND EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND o.parent IS NULL) OR o.parent=$4 OR $4='*') ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&scope.parent,&((limit+1) as i64),&prefix]).await?;
+    let parent = if let Some(parent) = scope.parent {
+        Some(
+            conn.query_opt(
+                "SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2",
+                &[&workspace, &parent],
+            )
+            .await?
+            .map(|row| row.get::<_, String>(0))
+            .unwrap_or_else(|| parent.to_owned()),
+        )
+    } else {
+        None
+    };
+    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text,o.present FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR o.kind='ac' AND EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND o.parent IS NULL) OR o.parent=$4 OR $4='*') ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix]).await?;
     let more = rows.len() > limit;
-    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({}))})).collect();
+    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13)})).collect();
     let next = more.then(|| {
         format!(
             "{position}:{}",

@@ -104,16 +104,10 @@ attach: target, id, name, content_type, size, hash; the bytes are uploaded first
 detach: target, id, reason; the file itself stays — it may be attached elsewhere
 
 target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
-ac:<req>/<ac>, intake:<id>, point:<intake>/<point>.
+ac:<req>/<ac>, note:<id>, task:<req>/<task>, project:<id>.
 joppa_read returns only COUNTS of notes in the index; ask target=<address> for one
 object's description, comments and attachments in full.
 
-intake: id, said (verbatim), author (source attribution, not authenticated identity), owner:null (defaults to actor)
-split: id, points:["verbatim point"]
-questions: kind (bug|policy|question|idea), fields:["field-id"]; workspace owner only
-sort: id, point, kind
-answer: id, point, field, value
-route: id, point, outcome (work|refused|elsewhere), reason, req:null
 ```
 
 A run covers all ACs of one revision on one subject (map of component builds/configurations).
@@ -240,7 +234,7 @@ return to their registered callback automatically.
 ## Automatic IDs and batches
 
 Through `joppa_command`, omit `id` when creating a domain, capability, consumer, project,
-intake, comment, task or issue. Omit `run` for a new check plan. For `revise`,
+Note, comment, task or issue. Omit `run` for a new check plan. For `revise`,
 omit `req` only when `expected_revision` is 0; omit `id` on newly added ACs.
 The server assigns UUIDs and returns the resolved `command` and `system_ids`
 for domains, capabilities, REQs and ACs. Explicit local IDs remain supported.

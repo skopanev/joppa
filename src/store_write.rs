@@ -211,12 +211,17 @@ async fn item_ids(
     let mut keys = BTreeMap::<&str, Vec<String>>::new();
     match command {
         Command::SaveObject { kind, id, .. } => {
+            let (original_kind, original_id) = crate::objects::original_identity(state, kind, id);
             client
                 .execute(
                     "SELECT joppa.register_item($1,$2,$3)",
-                    &[&workspace, kind, id],
+                    &[&workspace, &original_kind, &original_id],
                 )
                 .await?;
+            if original_kind != kind || original_id != id {
+                let row = client.query_one("SELECT id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2 AND kind=$3 AND local_id=$4", &[&workspace,&state.reference_prefix.as_deref().unwrap_or(workspace),&original_kind,&original_id]).await?;
+                return Ok(json!({kind: {id: row.get::<_,String>(0)}}));
+            }
             keys.entry(kind).or_default().push(id.clone());
         }
         Command::Domain { id, .. } => {
@@ -329,7 +334,7 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. }), "internal enrollment operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
@@ -362,6 +367,7 @@ async fn write(
         }.await.with_context(|| format!("operation {}", index + 1))?;
         results.push(apply);
     }
+    ensure_notes(&*tx, &workspace, &mut recorded_state, &mut events).await?;
     super::search::project(&*tx, &workspace, &recorded_state, events.len() as u64).await?;
     super::board::project(&*tx, &workspace, &recorded_state, &events).await?;
     let mut result = if batch {

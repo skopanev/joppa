@@ -224,8 +224,8 @@ pub async fn find(
       SELECT d.kind,d.local_id,false AS exact,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
       WHERE d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3) AND d.terms @@ q.terms
       UNION ALL
-      SELECT d.kind,d.local_id,true,0::real FROM joppa.item_ids i JOIN joppa.search_documents d
-      ON d.workspace=i.workspace AND d.kind=i.kind AND d.local_id=i.local_id
+      SELECT d.kind,d.local_id,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
+      ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
       WHERE i.id=$2 AND d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3))
       SELECT kind,local_id,bool_or(exact) AS exact FROM matches GROUP BY kind,local_id
       ORDER BY exact DESC,max(rank) DESC,kind,local_id LIMIT 100", &[&workspace,&query,&kind]).await?;
@@ -265,7 +265,8 @@ pub async fn find(
     let rows = tx.query("SELECT d.kind,d.local_id,d.title,left(d.content,600),d.req,d.revision,i.id,k.score,k.exact
       FROM jsonb_to_recordset($3::text::jsonb) AS k(kind text,id text,score double precision,exact boolean)
       JOIN joppa.search_documents d ON d.workspace=$1 AND d.kind=k.kind AND d.local_id=k.id
-      JOIN joppa.item_ids i ON i.workspace=d.workspace AND i.kind=d.kind AND i.local_id=d.local_id AND i.namespace=$2
+      LEFT JOIN joppa.object_aliases a ON a.workspace=d.workspace AND a.target=d.kind||':'||d.local_id
+      JOIN joppa.item_ids i ON i.workspace=d.workspace AND i.kind=COALESCE(split_part(a.address,':',1),d.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),d.local_id) AND i.namespace=$2
       ORDER BY k.score DESC,d.kind,d.local_id", &[&workspace,&prefix,&serde_json::to_string(&selected)?]).await?;
     let items = rows.iter().map(|row|json!({"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"system_id":row.get::<_,String>(6),"title":row.get::<_,String>(2),"excerpt":row.get::<_,String>(3),"req":row.get::<_,Option<String>>(4),"revision":row.get::<_,Option<i32>>(5),"score":row.get::<_,f64>(7),"exact_id":row.get::<_,bool>(8)})).collect::<Vec<_>>();
     tx.commit().await?;
