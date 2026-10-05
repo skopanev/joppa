@@ -5,6 +5,7 @@ const svgElement=(tag,attributes)=>{const el=document.createElementNS('http://ww
 async function api(path){const response=await fetch('/api/'+path);const value=await response.json();if(!response.ok)throw Error(value.error||'Could not read the schema.');return value;}
 
 function renderTree(schema){
+  layout=undefined;
   const definitions=schema.types,root='@workspace',any='@any';
   const nodes=new Map(),parents=new Map(),edges=[];
   nodes.set(root,{title:workspace.selectedOptions[0].textContent,label:'Workspace',className:'workspace-node'});
@@ -12,7 +13,9 @@ function renderTree(schema){
     const weight={group:0,requirement:1,ac:2,task:3,document:4};
     return (weight[definitions[a].role]??4)-(weight[definitions[b].role]??4)||a.localeCompare(b);
   });
-  if(order.some(kind=>definitions[kind].parents.includes('*')))nodes.set(any,{title:'Any object',label:'Any type can be a parent',className:'any-node'});
+  const hasAny=order.some(kind=>definitions[kind].parents.includes('*'));
+  document.querySelector('#any-legend').hidden=!hasAny;
+  if(hasAny)nodes.set(any,{title:'Any object',label:'Any type can be a parent',className:'any-node'});
   for(const kind of order){
     const type=definitions[kind];nodes.set(kind,{title:type.title,label:kind,className:''});
     if(type.root)edges.push({source:root,target:kind});
@@ -39,6 +42,7 @@ function renderTree(schema){
   const connections=svgElement('svg',{id:'connections','aria-hidden':'true'});
   const defs=svgElement('defs',{}),marker=svgElement('marker',{id:'arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});
   marker.append(svgElement('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#82a394'}));defs.append(marker);connections.append(defs);types.replaceChildren(connections);
+  let hovered;
   const highlight=id=>{for(const edge of connections.querySelectorAll('.schema-edge')){const selected=edge.dataset.source===id||edge.dataset.target===id;edge.classList.toggle('selected',Boolean(id)&&selected);edge.classList.toggle('dimmed',Boolean(id)&&!selected);}};
   for(const [id,node] of nodes){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
@@ -46,16 +50,19 @@ function renderTree(schema){
     if(definitions[id]){
       const t=definitions[id];card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object':definitions[p]?.title||p)].join(', '));
     }
-    card.addEventListener('mouseenter',()=>highlight(id));card.addEventListener('mouseleave',()=>highlight(document.activeElement?.dataset.kind));
-    card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight());node.card=card;types.append(card);
+    card.addEventListener('mouseenter',()=>{hovered=id;highlight(id);});card.addEventListener('mouseleave',()=>{hovered=undefined;highlight(document.activeElement?.dataset.kind);});
+    card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight(hovered));node.card=card;types.append(card);
   }
+  const rails=new Map();
+  for(const edge of edges){const a=nodes.get(edge.source),b=nodes.get(edge.target);if(a&&b&&a!==b&&b.depth!==a.depth+1)rails.set(edge,rails.size);}
   layout=()=>{
     const depth=Math.max(...[...nodes.values()].map(node=>node.depth)),gap=32,padding=24;
+    const topPadding=padding+rails.size*8;
     const width=Math.max(148,Math.min(188,(types.parentElement.clientWidth-padding*2-gap*depth)/(depth+1)));
     let height=78;for(const node of nodes.values()){node.card.style.width=width+'px';node.card.style.height='auto';height=Math.max(height,node.card.offsetHeight);}
     const step=height+26;
-    types.style.width=(padding*2+(depth+1)*width+depth*gap)+'px';types.style.height=(padding*2+Math.max(1,row)*step-26)+'px';
-    for(const node of nodes.values()){node.x=padding+node.depth*(width+gap);node.y=padding+node.row*step;node.card.style.left=node.x+'px';node.card.style.top=node.y+'px';node.card.style.height=height+'px';}
+    types.style.width=(padding*2+(depth+1)*width+depth*gap)+'px';types.style.height=(topPadding+padding+Math.max(1,row)*step-26)+'px';
+    for(const node of nodes.values()){node.x=padding+node.depth*(width+gap);node.y=topPadding+node.row*step;node.card.style.left=node.x+'px';node.card.style.top=node.y+'px';node.card.style.height=height+'px';}
     connections.querySelectorAll('.schema-edge').forEach(edge=>edge.remove());
     for(const edge of edges){
       const a=nodes.get(edge.source),b=nodes.get(edge.target);if(!a||!b)continue;
@@ -66,11 +73,12 @@ function renderTree(schema){
         // Extra parents use the gaps between columns and the top rail.
         const startX=a.x+width,forward=b.depth>a.depth,endX=forward?b.x-3:b.x+width+3;
         const beforeTarget=forward?b.x-12:b.x+width+12;
-        d=`M ${startX} ${startY} H ${startX+12} V 10 H ${beforeTarget} V ${endY} H ${endX}`;
+        const railY=12+rails.get(edge)*8;
+        d=`M ${startX} ${startY} H ${startX+12} V ${railY} H ${beforeTarget} V ${endY} H ${endX}`;
       }
       const path=svgElement('path',{d,class:'schema-edge'+(edge.any?' any-edge':''),'marker-end':'url(#arrow)'});path.dataset.source=edge.source;path.dataset.target=edge.target;connections.append(path);
     }
-    highlight(document.activeElement?.dataset.kind);
+    highlight(hovered||document.activeElement?.dataset.kind);
   };
   layout();types.parentElement.scrollLeft=0;
 }

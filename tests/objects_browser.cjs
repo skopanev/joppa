@@ -41,9 +41,15 @@ assert.equal(await page.locator('.type[data-kind="initiative"]').count(),0,'revi
 const defaultPositions=await page.locator('.type').evaluateAll(cards=>Object.fromEntries(cards.map(card=>[card.dataset.kind,card.offsetLeft])));
 for(const [parent,child] of [['domain','capability'],['capability','requirement'],['requirement','ac'],['ac','task']])assert(defaultPositions[parent]<defaultPositions[child]);
 await page.screenshot({path:'/tmp/joppa-schema-default.png',fullPage:true});
+await page.evaluate(definitions=>renderTree({types:{...definitions,initiative:{title:'Initiative',role:'group',root:true,parents:[]},requirement:{...definitions.requirement,parents:['capability','initiative']},consumer:{...definitions.consumer,parents:['domain']}}}),defaults);
+const rails=await page.locator('.schema-edge').evaluateAll(paths=>paths.map(path=>path.getAttribute('d').match(/ V (\d+) H /)?.[1]).filter(Boolean).map(Number));
+assert.equal(rails.length,2,'two additional parents need separate routes');
+assert.equal(new Set(rails).size,2,'additional parent routes do not share a horizontal rail');
+assert(await page.locator('.type').evaluateAll((cards,top)=>cards.every(card=>card.offsetTop>top),Math.max(...rails)),'reserve space above the cards for all rails');
 await page.evaluate(()=>renderTree({types:{a:{title:'A',role:'group',root:false,parents:['b']},b:{title:'B',role:'group',root:false,parents:['a']}}}));
 assert.equal(await page.locator('.type').count(),3,'type cycles render once per type');
 assert.equal(await page.locator('.schema-edge').count(),2,'type cycles preserve both allowed parents');
 assert.equal(await page.locator('.schema-edge[data-source="@workspace"]').count(),0,'layout does not invent root permissions');
+assert.equal(await page.locator('#any-legend').isVisible(),false,'no wildcard legend without wildcard parent rules');
 assert.deepEqual(errors,[]);
 console.log('Common object browser checks passed');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
