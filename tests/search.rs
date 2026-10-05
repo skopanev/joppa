@@ -293,7 +293,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     );
     // The actual runtime grants support cache refresh without granting journal mutation.
     let role = format!("search_runtime_{}", uuid::Uuid::new_v4().simple());
-    pool.get().await?.batch_execute(&format!("CREATE ROLE {role} NOLOGIN; GRANT USAGE ON SCHEMA joppa TO {role}; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO {role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO {role}; GRANT UPDATE,DELETE ON joppa.search_documents,joppa.search_state TO {role}; GRANT UPDATE ON joppa.board_cache TO {role};")).await?;
+    pool.get().await?.batch_execute(&format!("CREATE ROLE {role} NOLOGIN; GRANT USAGE ON SCHEMA joppa TO {role}; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO {role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO {role}; GRANT UPDATE,DELETE ON joppa.search_documents,joppa.search_state TO {role}; GRANT UPDATE ON joppa.board_cache,joppa.objects TO {role}; GRANT DELETE ON joppa.object_links TO {role};")).await?;
     let mut url = reqwest::Url::parse(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     url.query_pairs_mut()
         .append_pair("options", &format!("-c role={role}"));

@@ -82,7 +82,8 @@ GRANT CONNECT ON DATABASE joppa TO joppa_app;
 GRANT USAGE ON SCHEMA joppa TO joppa_app;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
 GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
-GRANT UPDATE ON joppa.board_cache TO joppa_app;
+GRANT UPDATE ON joppa.board_cache, joppa.objects TO joppa_app;
+GRANT DELETE ON joppa.object_links TO joppa_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
 SQL
 for name in tokens.json login-users.json google-client.json access-rules.json; do

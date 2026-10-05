@@ -219,6 +219,50 @@ async fn board(
         .await,
     )
 }
+#[derive(Deserialize)]
+struct ObjectQuery {
+    address: Option<String>,
+    parent: Option<String>,
+    kind: Option<String>,
+    revision: Option<u32>,
+    history: Option<bool>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+}
+async fn objects(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<ObjectQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(
+        store::read_objects(
+            &app.pool,
+            &workspace,
+            &actor,
+            &store::ObjectScope {
+                address: q.address.as_deref(),
+                parent: q.parent.as_deref(),
+                kind: q.kind.as_deref(),
+                revision: q.revision,
+                history: q.history.unwrap_or(false),
+                limit: q.limit.unwrap_or(50),
+                cursor: q.cursor.as_deref(),
+            },
+        )
+        .await,
+    )
+}
+async fn tree_schema(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<ObjectQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::tree_schema(&app.pool, &workspace, &actor, q.revision).await)
+}
 /// Browser sessions can read product data; writes require agent/service credentials.
 fn require_write_credential(
     headers: &HeaderMap,
@@ -445,6 +489,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
                 )
             }),
         )
+        .route("/tree", get(|| async { Html(include_str!("tree.html")) }))
         .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
         .route("/health", get(health))
         .route("/auth/login", post(login_user))
@@ -455,6 +500,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces", get(list))
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/board", get(board))
+        .route("/api/workspaces/{workspace}/objects", get(objects))
+        .route("/api/workspaces/{workspace}/tree", get(tree_schema))
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с

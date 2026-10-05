@@ -1,3 +1,10 @@
+# Common object API
+
+Read [Objects and workspace trees](objects.md) before new document edits.
+Use `joppa_objects`, `joppa_tree`, `save_object` and `set_tree_schema`.
+Pass the current `revision` with each document or schema write.
+The following operations retain their original verification and compatibility rules.
+
 # Journal API
 
 ## Technical writing

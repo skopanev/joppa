@@ -97,8 +97,8 @@ fn generate(command: &mut Value) -> Result<()> {
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("command must be an object"))?;
     let key = match op.as_str() {
-        "domain" | "capability" | "consumer" | "project" | "intake" | "comment" | "task"
-        | "issue" | "link_source" => Some("id"),
+        "save_object" | "domain" | "capability" | "consumer" | "project" | "intake" | "comment"
+        | "task" | "issue" | "link_source" => Some("id"),
         "plan" => Some("run"),
         "revise" if c.get("expected_revision").and_then(Value::as_u64) == Some(0) => Some("req"),
         _ => None,
@@ -116,6 +116,9 @@ fn generate(command: &mut Value) -> Result<()> {
                     .or_insert_with(|| json!(Uuid::new_v4().to_string()));
             }
         }
+    }
+    if op == "plan" {
+        c.insert("enforce_coverage".into(), json!(true));
     }
     if op == "revise" {
         // New writes get the new policy; historical Revise events have no flag.
@@ -207,6 +210,15 @@ async fn item_ids(
 ) -> Result<Value> {
     let mut keys = BTreeMap::<&str, Vec<String>>::new();
     match command {
+        Command::SaveObject { kind, id, .. } => {
+            client
+                .execute(
+                    "SELECT joppa.register_item($1,$2,$3)",
+                    &[&workspace, kind, id],
+                )
+                .await?;
+            keys.entry(kind).or_default().push(id.clone());
+        }
         Command::Domain { id, .. } => {
             keys.insert("domain", vec![id.clone()]);
         }
@@ -299,10 +311,18 @@ async fn write(
                 ensure!(!refs.contains_key(name), "duplicate batch reference");
             }
             let mut value = resolve(&operation.command, &refs)?;
+            let generated_task=value["op"]=="save_object" && value["kind"]=="task" && value.get("id").is_none();
             generate(&mut value)?;
+            if generated_task {
+                let parent=value["parent"].as_str().context("Task needs an AC parent")?;
+                let ac=state.objects.get(parent).context("unknown Task AC")?;
+                let req=ac.current().parent.as_deref().and_then(|p|p.strip_prefix("requirement:")).context("AC needs a REQ parent")?;
+                value["id"]=json!(format!("{req}/{}",value["id"].as_str().unwrap()));
+            }
             resolve_claim_next(&mut value, &state, actor)?;
             let command: Command = serde_json::from_value(value)?;
-            if let Command::Revise { consumers, .. } = &command {
+            if let Command::Revise { consumers, capability, .. } = &command {
+                ensure!(capability.is_some(), "legacy revise requires a Capability; use save_object for a custom tree");
                 ensure!(!consumers.is_empty(), "REQ requires at least one consumer");
             }
             if let Command::Task { acs, contract, .. } = &command {
@@ -318,6 +338,7 @@ async fn write(
             // Validate against the in-memory state, then apply the recorded DB time
             // to the projection so notes and status dates need no second replay.
             commands::apply(&mut state, actor, &command, position, "")?;
+        crate::objects::validate_tree(&state)?;
             if position == 1 {
                 tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
                 reserve_name(&*tx, &workspace, &workspace).await?;
@@ -330,8 +351,14 @@ async fn write(
             let recorded_at:String=tx.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload]).await?.get(0);
             commands::apply(&mut recorded_state, actor, &command, position, &recorded_at)?;
             events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
-            if let Some(name) = &operation.reference { refs.insert(name.clone(), serde_json::to_value(&command)?); }
-            Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))
+            let mut resolved=serde_json::to_value(&command)?;
+            let saved=if let Command::SaveObject {id,kind,..}=&command {
+                let address=format!("{kind}:{id}");let revision=state.objects[&address].current().revision;
+                resolved["address"]=json!(address);resolved["saved_revision"]=json!(revision);
+                Some(json!({"address":address,"revision":revision}))
+            }else{None};
+            if let Some(name) = &operation.reference { refs.insert(name.clone(), resolved); }
+            Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"object":saved,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))
         }.await.with_context(|| format!("operation {}", index + 1))?;
         results.push(apply);
     }

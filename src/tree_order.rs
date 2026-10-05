@@ -20,7 +20,7 @@ pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Ve
             ensure!(w.domains.contains_key(domain), "unknown parent domain");
             w.capabilities
                 .iter()
-                .filter(|(_, c)| c.domain == domain)
+                .filter(|(_, c)| c.domain.as_deref() == Some(domain))
                 .map(|(id, _)| id.clone())
                 .collect()
         }
@@ -31,7 +31,7 @@ pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Ve
             );
             w.requirements
                 .iter()
-                .filter(|(_, r)| r.capability == capability)
+                .filter(|(_, r)| r.capability.as_deref() == Some(capability))
                 .map(|(id, _)| id.clone())
                 .collect()
         }

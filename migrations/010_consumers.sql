@@ -1,7 +1,11 @@
 -- Consumers are permanent workspace objects with public references.
 ALTER TABLE joppa.item_ids DROP CONSTRAINT IF EXISTS item_ids_kind_check;
-ALTER TABLE joppa.item_ids ADD CONSTRAINT item_ids_kind_check
-    CHECK (kind IN ('domain','capability','consumer','requirement','ac'));
+DO $$ BEGIN
+    IF to_regclass('joppa.objects') IS NULL THEN
+        ALTER TABLE joppa.item_ids ADD CONSTRAINT item_ids_kind_check
+            CHECK (kind IN ('domain','capability','consumer','requirement','ac'));
+    END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION joppa.register_item(w text, k text, local_key text)
 RETURNS void LANGUAGE plpgsql AS $$

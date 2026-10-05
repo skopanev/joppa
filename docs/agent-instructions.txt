@@ -1,6 +1,9 @@
 Resolve copied system IDs with joppa_read({"item_id":"..."}); use selection and workspace for commands. Never guess local IDs.
 New workspaces are provisioned by server administration; MCP cannot create one.
-One workspace is one product, possibly many repositories. Domain -> capability -> REQ -> AC.
+One workspace is one product, possibly many repositories. Read joppa_tree for its configured types and parents. The default tree uses Domain -> Capability -> REQ -> AC -> Task.
+Read joppa_model_docs section objects. Use joppa_objects for common documents, revisions, children and links. Use save_object with the revision you read. Agents configure each workspace through set_tree_schema with its current revision. The browser tree page is read-only.
+Create incoming source data as a Note document with save_object kind=note. Preserve earlier text through revisions. Link Notes to the objects they inform. Comments remain discussion.
+Links connect any object types in the workspace. Ordinary links can have cycles. Blocking dependencies pin a target revision and cannot have cycles. A changed pin requires review. Keep AC -> one REQ and Task -> one AC.
 Read joppa_model_docs for methodology and joppa_help before commands. Preserve intake verbatim. Ask only missing intake policy fields.
 PREFER ENGLISH. Write new technical text according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply. Russian is permitted under the same rules. Preserve intake and verbatim user text in their original language. Do not translate existing text. Read the technical writing rules below before authoring.
 REQ and ACs are authored jointly. People decide policy; the agent checks readiness, never invents authority.

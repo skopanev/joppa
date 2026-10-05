@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # Remote MCP notifications return 202 without a JSON-RPC response.
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search'}
+        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search','joppa_tree','joppa_objects'}
         tools = {tool['name']: tool for tool in reply['result']['tools']}
         writing = (ROOT/'docs/writing.md').read_text()
         initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
@@ -167,6 +167,22 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         assert mcp('joppa_help', {})['writing'] == writing
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 0
+        common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
+                  'data':{'title':'Source note','owner':'owner','body':'Original text'},
+                  'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
+        created = mcp('joppa_command', {'workspace':ws,'request_id':'common-note','command':common})
+        common.update(revision=1, data={**common['data'],'body':'Updated text'})
+        mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})
+        old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1})
+        assert old['document']['data']['body'] == 'Original text'
+        assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
+        assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 0
+        assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
+        with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
+            assert response.status == 200 and 'Schema revision' in response.read().decode()
+
         # Agents can still add both object notes and revision discussion through MCP.
         for request_id, value in [
             ('agent-note', {'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}),
@@ -192,7 +208,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
 
 
         docs = mcp('joppa_model_docs', {})
-        assert set(docs) == {'model','process','green','writing'}
+        assert set(docs) == {'model','process','green','writing','objects'}
         assert docs['writing'] == writing
         assert mcp('joppa_model_docs', {'section':'writing'}) == {'writing':writing}
         assert docs['model'] == (ROOT/'docs/model.md').read_text()
@@ -391,7 +407,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         all_refs=[ref for items in refs.values() for ref in items.values()]
         assert len(all_refs)==len(set(all_refs))
         for kind,items in refs.items():
-            tag={'domain':'D','capability':'C','consumer':'U','requirement':'R','ac':'A'}[kind]
+            tag={'domain':'D','capability':'C','consumer':'U','requirement':'R','ac':'A','task':'T','note':'N'}.get(kind,'O')
             for local_id,ref in items.items():
                 assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
                 msg={'jsonrpc':'2.0','id':9,'method':'tools/call','params':{'name':'joppa_read','arguments':{'item_id':ref}}}

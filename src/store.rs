@@ -14,6 +14,9 @@ pub use access::{AccessDenied, enroll};
 #[path = "store_board.rs"]
 mod board;
 pub use board::board_read;
+#[path = "store_objects.rs"]
+mod objects;
+pub use objects::{ObjectScope, read_objects, tree_schema};
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
@@ -54,7 +57,9 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/011_board_cache.sql"))
         .await?;
-    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb", &[]).await? {
+    tx.batch_execute(include_str!("../migrations/012_objects.sql"))
+        .await?;
+    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects')", &[]).await? {
         let id: String = row.get(0);
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
@@ -64,7 +69,7 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
 }
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);
@@ -89,7 +94,7 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         let position = row.get::<_, i64>(0) as u64;
         let actor: String = row.get(1);
         let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
-        commands::apply(&mut state, &actor, &command, position, row.get(2))
+        commands::apply_replay(&mut state, &actor, &command, position, row.get(2))
             .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
         events.push(Event {
             position,
@@ -128,7 +133,12 @@ fn summaries(state: &Workspace) -> Value {
     let summaries: serde_json::Map<String, Value> = state
         .requirements
         .iter()
-        .map(|(id, q)| (id.clone(), checks::summary(q.revisions.last().unwrap())))
+        .map(|(id, q)| {
+            (
+                id.clone(),
+                crate::objects::requirement_summary(state, id, q.revisions.last().unwrap()),
+            )
+        })
         .collect();
     Value::Object(summaries)
 }
@@ -338,7 +348,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             None => current,
         };
         out["requirement"]["capability"] =
-            json!(revision.capability.as_deref().unwrap_or(&q.capability));
+            json!(revision.capability.as_deref().or(q.capability.as_deref()));
         let comments: serde_json::Map<String, Value> = q
             .comments
             .iter()
@@ -359,7 +369,11 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         out["requirement"]["revisions"] = json!([revision]);
         out["requirement"]["comments"] = json!(comments);
         out["notes"] = notes;
-        out["summary"] = checks::summary(revision);
+        out["summary"] = if revision.number == current.number {
+            crate::objects::requirement_summary(&state, req, revision)
+        } else {
+            checks::summary(revision)
+        };
         return Ok(out);
     }
 
@@ -499,6 +513,22 @@ pub async fn read_item_scoped(
     let local_id: String = row.get(2);
     access::check(&**conn, &workspace, actor, false).await?;
     drop(conn);
+    if !["domain", "capability", "consumer", "requirement", "ac"].contains(&kind.as_str()) {
+        let mut result = read_objects(
+            pool,
+            &workspace,
+            actor,
+            &ObjectScope {
+                address: Some(&format!("{kind}:{local_id}")),
+                revision: scope.revision,
+                history: scope.history,
+                ..Default::default()
+            },
+        )
+        .await?;
+        result["selection"] = json!({"kind":kind,"id":local_id,"system_id":id});
+        return Ok(result);
+    }
     // Скопированный номер разрешается В САМ ПРЕДМЕТ, а не в весь воркспейс.
     // Раньше запрос «что это за идентификатор» возвращал всё содержимое —
     // ответ в сотню тысяч знаков на вопрос про одну строку.

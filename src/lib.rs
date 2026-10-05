@@ -4,6 +4,7 @@ pub mod commands;
 pub mod embeddings;
 mod intake;
 pub mod model;
+pub mod objects;
 pub mod sessions;
 pub mod store;
 pub mod tree_order;

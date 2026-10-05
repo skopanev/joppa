@@ -6,6 +6,21 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    SetTreeSchema {
+        revision: u32,
+        types: BTreeMap<String, crate::objects::TreeType>,
+        reason: String,
+    },
+    SaveObject {
+        id: String,
+        kind: String,
+        revision: u32,
+        parent: Option<String>,
+        data: serde_json::Value,
+        #[serde(default)]
+        links: Vec<crate::objects::ObjectLink>,
+        reason: String,
+    },
     Workspace {
         title: String,
     },
@@ -56,7 +71,7 @@ pub enum Command {
     Capability {
         id: String,
         title: String,
-        domain: String,
+        domain: Option<String>,
         #[serde(default)]
         owner: Option<String>,
         #[serde(default)]
@@ -99,7 +114,7 @@ pub enum Command {
     Revise {
         req: String,
         expected_revision: u32,
-        capability: String,
+        capability: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         consumers: Vec<String>,
         title: String,
@@ -264,6 +279,8 @@ pub enum Command {
         scope: String,
         discovery_complete: bool,
         checks: Vec<Check>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        enforce_coverage: bool,
     },
     Result {
         req: String,
@@ -360,6 +377,13 @@ pub const DESCRIPTION_MAX: usize = 2000;
 /// комментарий уезжал бы в никуда и находился бы только тем, кто угадал ту же
 /// опечатку: заметка на несуществующем домене не видна нигде.
 pub fn target(w: &Workspace, address: &str) -> Result<()> {
+    if let Some(object) = w.objects.get(address) {
+        ensure!(
+            object.current().present,
+            "object is absent from the current tree"
+        );
+        return Ok(());
+    }
     let (kind, rest) = address
         .split_once(':')
         .ok_or_else(|| anyhow::anyhow!("address looks like kind:id, for example domain:billing"))?;
@@ -437,6 +461,29 @@ pub fn apply(
     position: u64,
     recorded_at: &str,
 ) -> Result<()> {
+    crate::objects::validate_current(w, command)?;
+    apply_replay(w, actor, command, position, recorded_at)
+}
+
+pub fn apply_replay(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
+    apply_inner(w, actor, command, position, recorded_at)?;
+    crate::objects::sync(w, actor, command, position, recorded_at);
+    Ok(())
+}
+
+pub(crate) fn apply_inner(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
     identifier(actor)?;
     if let Command::EnrollMember { id } = command {
         ensure!(
@@ -470,6 +517,16 @@ pub fn apply(
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
     match command {
+        Command::SetTreeSchema {
+            revision,
+            types,
+            reason,
+        } => {
+            crate::objects::set_schema(w, actor, *revision, types, reason, position, recorded_at)?;
+        }
+        Command::SaveObject { .. } => {
+            crate::objects::save(w, actor, command, position, recorded_at)?;
+        }
         Command::RenameWorkspace {
             workspace_id,
             title,
@@ -581,10 +638,17 @@ pub fn apply(
         } => {
             identifier(id)?;
             nonempty(title)?;
-            ensure!(w.domains.contains_key(domain), "unknown domain");
-            ensure!(!w.domains[domain].archived, "domain is archived");
+            if let Some(domain) = domain {
+                ensure!(w.domains.contains_key(domain), "unknown domain");
+                ensure!(!w.domains[domain].archived, "domain is archived");
+            }
             ensure!(!w.capabilities.contains_key(id), "capability exists");
-            let assigned = owner.as_deref().unwrap_or(&w.domains[domain].owner);
+            let assigned = owner.as_deref().unwrap_or_else(|| {
+                domain
+                    .as_ref()
+                    .and_then(|id| w.domains.get(id))
+                    .map_or(w.admin.as_str(), |d| d.owner.as_str())
+            });
             human(w, assigned)?;
             w.capabilities.insert(
                 id.clone(),
@@ -611,9 +675,11 @@ pub fn apply(
             ensure!(domain.archived != *archived, "archive state is unchanged");
             if *archived {
                 ensure!(
-                    !w.requirements
-                        .values()
-                        .any(|r| w.capabilities[&r.capability].domain == *id),
+                    !w.requirements.values().any(|r| r
+                        .capability
+                        .as_ref()
+                        .and_then(|cap| w.capabilities.get(cap))
+                        .is_some_and(|c| c.domain.as_deref() == Some(id))),
                     "only domains without requirements can be archived"
                 );
             }
@@ -673,7 +739,11 @@ pub fn apply(
                 actor == w.admin
                     || (w.members[actor] == "agent"
                         && !capability.confirmed
-                        && !w.domains[&capability.domain].archived
+                        && capability
+                            .domain
+                            .as_ref()
+                            .and_then(|id| w.domains.get(id))
+                            .is_none_or(|d| !d.archived)
                         && owner
                             .as_ref()
                             .is_none_or(|requested| capability.owner.as_ref() == Some(requested))),
@@ -755,11 +825,17 @@ pub fn apply(
             nonempty(reason)?;
             human(w, owner)?;
             ensure!(
-                w.capabilities.contains_key(capability),
+                capability
+                    .as_ref()
+                    .is_none_or(|id| w.capabilities.contains_key(id)),
                 "unknown capability"
             );
             ensure!(
-                !w.domains[&w.capabilities[capability].domain].archived,
+                capability
+                    .as_ref()
+                    .and_then(|id| w.capabilities.get(id))
+                    .and_then(|c| c.domain.as_ref().and_then(|id| w.domains.get(id)))
+                    .is_none_or(|d| !d.archived),
                 "domain is archived"
             );
             ensure!(
@@ -828,7 +904,7 @@ pub fn apply(
                 .collect();
             r.revisions.push(Revision {
                 number: expected_revision + 1,
-                capability: Some(capability.clone()),
+                capability: capability.clone(),
                 consumers: consumers.clone(),
                 title: title.clone(),
                 body: body.clone(),
@@ -905,9 +981,15 @@ pub fn apply(
                 .requirements
                 .get(req)
                 .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
-            let c = &w.capabilities[&q.capability];
             ensure!(
-                c.confirmed && w.domains[&c.domain].confirmed,
+                q.capability
+                    .as_ref()
+                    .and_then(|id| w.capabilities.get(id))
+                    .is_none_or(|c| c.confirmed
+                        && c.domain
+                            .as_ref()
+                            .and_then(|id| w.domains.get(id))
+                            .is_none_or(|d| d.confirmed)),
                 "workspace owner must confirm the business tree first"
             );
             let r = revision(w, req, *n, true)?;
@@ -935,7 +1017,10 @@ pub fn apply(
             } else if let Some(id) = t.strip_prefix("capability:") {
                 w.capabilities.get_mut(id).unwrap().description = text.clone();
             } else {
-                w.notes.entry(t.clone()).or_default().description = text.clone();
+                w.notes
+                    .entry(crate::objects::annotation_address(w, t))
+                    .or_default()
+                    .description = text.clone();
             }
         }
         Command::Note {
@@ -947,7 +1032,10 @@ pub fn apply(
             target(w, t)?;
             identifier(id)?;
             nonempty(text)?;
-            let notes = w.notes.entry(t.clone()).or_default();
+            let notes = w
+                .notes
+                .entry(crate::objects::annotation_address(w, t))
+                .or_default();
             ensure!(!notes.comments.contains_key(id), "comment {id} exists");
             if let Some(parent) = reply_to {
                 ensure!(
@@ -973,9 +1061,10 @@ pub fn apply(
         } => {
             target(w, t)?;
             nonempty(reason)?;
+            let annotation = crate::objects::annotation_address(w, t);
             let note = w
                 .notes
-                .get_mut(t)
+                .get_mut(&annotation)
                 .and_then(|n| n.comments.get_mut(id))
                 .ok_or_else(|| anyhow::anyhow!("no such comment: {id}"))?;
             ensure!(note.actor == actor, "a comment is withdrawn by its author");
@@ -1004,7 +1093,10 @@ pub fn apply(
                         .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
                 "the attachment digest is a sha256 in lowercase hex"
             );
-            let notes = w.notes.entry(t.clone()).or_default();
+            let notes = w
+                .notes
+                .entry(crate::objects::annotation_address(w, t))
+                .or_default();
             ensure!(
                 !notes.attachments.contains_key(id),
                 "attachment {id} exists"
@@ -1033,9 +1125,10 @@ pub fn apply(
         } => {
             target(w, t)?;
             nonempty(reason)?;
+            let annotation = crate::objects::annotation_address(w, t);
             let a = w
                 .notes
-                .get_mut(t)
+                .get_mut(&annotation)
                 .and_then(|n| n.attachments.get_mut(id))
                 .ok_or_else(|| anyhow::anyhow!("no such attachment: {id}"))?;
             a.removed = true;

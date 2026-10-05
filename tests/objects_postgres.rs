@@ -1,0 +1,239 @@
+mod common;
+use common::*;
+use joppa::store::{self, ObjectScope};
+use serde_json::{Value, json};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let conn = pool.get().await?;
+    let name: String = conn
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(
+        name.starts_with("joppa_test"),
+        "isolated test database required"
+    );
+    drop(conn);
+    store::migrate(&pool).await?;
+    let ws = format!(
+        "objects-{}",
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    );
+    for (n, cmd) in setup().into_iter().enumerate() {
+        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
+    }
+    // Projection writes must work with the production role's restricted grants.
+    let conn = pool.get().await?;
+    conn.batch_execute("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='joppa_test_projection_guard') THEN CREATE ROLE joppa_test_projection_guard; END IF; END $$; GRANT USAGE ON SCHEMA joppa TO joppa_test_projection_guard; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_test_projection_guard; GRANT UPDATE ON joppa.objects,joppa.board_cache,joppa.search_documents,joppa.search_state TO joppa_test_projection_guard; GRANT DELETE ON joppa.object_links,joppa.search_documents,joppa.search_state TO joppa_test_projection_guard; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_test_projection_guard;").await?;
+    conn.batch_execute("CREATE OR REPLACE FUNCTION joppa.test_projection_no_rewrite() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'projection updated an unchanged row'; END $$;").await?;
+    let statement = format!(
+        "CREATE TRIGGER test_projection_no_rewrite BEFORE UPDATE ON joppa.objects FOR EACH ROW WHEN (OLD.workspace='{}' AND OLD.address='domain:d') EXECUTE FUNCTION joppa.test_projection_no_rewrite()",
+        ws
+    );
+    conn.batch_execute(&statement).await?;
+    drop(conn);
+    let restricted_url = format!(
+        "{}{}options=-c%20role%3Djoppa_test_projection_guard",
+        std::env::var("JOPPA_TEST_DATABASE_URL")?,
+        if std::env::var("JOPPA_TEST_DATABASE_URL")?.contains('?') {
+            "&"
+        } else {
+            "?"
+        }
+    );
+    let restricted = store::pool(&restricted_url)?;
+    assert_eq!(
+        restricted
+            .get()
+            .await?
+            .query_one("SELECT current_user", &[])
+            .await?
+            .get::<_, String>(0),
+        "joppa_test_projection_guard"
+    );
+    let make = |body: &str, n: u32| json!({"op":"save_object","kind":"note","id":"source","revision":n,"parent":null,"data":{"title":"Source","owner":"owner","body":body},"links":[{"target":"domain:d","relation":"related"}],"reason":"Update source text"});
+    let first = store::execute_remote_input(
+        &restricted,
+        &ws,
+        "agent",
+        "note-create",
+        &make("Original", 0),
+    )
+    .await?;
+    assert!(first["system_ids"]["note"]["source"].as_str().is_some());
+    pool.get()
+        .await?
+        .batch_execute("DROP TRIGGER test_projection_no_rewrite ON joppa.objects")
+        .await?;
+
+    let edit_a = make("A", 1);
+    let edit_b = make("B", 1);
+    let (a, b) = tokio::join!(
+        store::execute_remote_input(&restricted, &ws, "agent", "edit-a", &edit_a),
+        store::execute_remote_input(&restricted, &ws, "agent", "edit-b", &edit_b)
+    );
+    assert_ne!(a.is_ok(), b.is_ok(), "one stale writer must lose");
+    let (id, body, result) = if a.is_ok() {
+        ("edit-a", "A", a?)
+    } else {
+        ("edit-b", "B", b?)
+    };
+    let retry = store::execute_remote_input(&pool, &ws, "agent", id, &make(body, 1)).await?;
+    assert_eq!(retry["position"], result["position"]);
+    assert_eq!(retry["replayed"], true);
+    assert!(
+        store::execute_remote_input(&pool, &ws, "agent", id, &make("Changed retry", 1))
+            .await
+            .is_err()
+    );
+    let old = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:source"),
+            revision: Some(1),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(old["document"]["data"]["body"], "Original");
+    assert_eq!(old["current_revision"], 2);
+    assert_eq!(old["historical"], true);
+    assert!(old["process"].is_null() && old["signal"].is_null());
+    assert!(old["annotations"].as_object().unwrap().is_empty());
+    assert!(old["incoming"].as_array().unwrap().is_empty());
+    assert_eq!(old["links"][0]["metadata_scope"], "current");
+
+    assert!(
+        old["document"]["at"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty())
+    );
+    let public = first["system_ids"]["note"]["source"].as_str().unwrap();
+    assert_eq!(
+        store::read_item(&pool, public, "agent").await?["address"],
+        "note:source"
+    );
+    assert!(
+        store::read_objects(&pool, &ws, "outsider", &ObjectScope::default())
+            .await
+            .is_err()
+    );
+    assert!(
+        store::tree_schema(&pool, &ws, "outsider", None)
+            .await
+            .is_err()
+    );
+    let parent = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("domain:d"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert!(
+        parent["incoming"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["source"] == "note:source")
+    );
+    let ops: Vec<store::BatchOperation> = serde_json::from_value(json!([
+        {"ref":"one","command":{"op":"save_object","kind":"note","revision":0,"parent":null,"data":{"title":"Generated note","owner":"owner","body":"First"},"reason":"Create source"}},
+        {"command":{"op":"save_object","kind":"note","id":{"$ref":"one/id"},"revision":{"$ref":"one/saved_revision"},"parent":null,"data":{"title":"Generated note","owner":"owner","body":"Second"},"reason":"Update source"}}
+    ]))?;
+    let batch = store::execute_remote_batch(&pool, &ws, "agent", "note-batch", &ops).await?;
+    assert_eq!(batch["results"][1]["object"]["revision"], 2);
+    let replay = store::execute_remote_batch(&pool, &ws, "agent", "note-batch", &ops).await?;
+    assert_eq!(batch["results"], replay["results"]);
+    store::execute_remote_input(&pool,&ws,"agent","default-schema",&json!({"op":"set_tree_schema","revision":0,"types":joppa::objects::defaults(),"reason":"Record the default schema"})).await?;
+    let first_view: String = pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT first_view::text FROM joppa.board_cache WHERE workspace=$1",
+            &[&ws],
+        )
+        .await?
+        .get(0);
+    assert_eq!(
+        serde_json::from_str::<Value>(&first_view)?["custom_tree"],
+        false
+    );
+    let mut types = joppa::objects::defaults();
+    types.insert(
+        "initiative".into(),
+        joppa::objects::TreeType {
+            title: "Initiative".into(),
+            role: "group".into(),
+            root: true,
+            parents: vec![],
+        },
+    );
+    types
+        .get_mut("requirement")
+        .unwrap()
+        .parents
+        .push("initiative".into());
+    store::execute_remote_input(
+        &pool,
+        &ws,
+        "agent",
+        "schema",
+        &json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Use an initiative"}),
+    )
+    .await?;
+    store::execute_remote_input(&pool,&ws,"agent","group",&json!({"op":"save_object","kind":"initiative","id":"release","revision":0,"parent":null,"data":{"title":"Release","owner":"owner"},"reason":"Group release work"})).await?;
+    store::execute_remote_input(&pool,&ws,"agent","req",&json!({"op":"save_object","kind":"requirement","id":"custom","revision":0,"parent":"initiative:release","data":{"title":"Open the release","body":"Show the current release","owner":"owner","consumers":["customer"]},"reason":"Define the release"})).await?;
+    let children = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            parent: Some("initiative:release"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(children["items"][0]["address"], "requirement:custom");
+    let state = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
+    assert_eq!(
+        state["state"]["objects"]["requirement:custom"]["revisions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let count: Value = state["state"]["objects"].clone();
+    store::migrate(&pool).await?;
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["state"]["objects"],
+        count
+    );
+    assert_eq!(
+        store::tree_schema(&pool, &ws, "agent", None).await?["current_revision"],
+        2
+    );
+    assert_eq!(
+        store::tree_schema(&pool, &ws, "agent", Some(0)).await?["schema"]["revision"],
+        0
+    );
+    let found =
+        store::search::find(&pool, "agent", &ws, "Generated", Some("note"), 10, None).await?;
+    assert!(
+        found["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["kind"] == "note")
+    );
+    Ok(())
+}

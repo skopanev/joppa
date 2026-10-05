@@ -68,7 +68,14 @@ pub fn summary(r: &Revision) -> Value {
 }
 
 /// The same predicate powers explicit claims, claim-next, and the MCP queue.
-pub fn claimable(w: &Workspace, actor: &str, r: &Revision, task: &Task) -> Result<()> {
+pub fn claimable(
+    w: &Workspace,
+    actor: &str,
+    req: &str,
+    id: &str,
+    r: &Revision,
+    task: &Task,
+) -> Result<()> {
     ensure!(
         w.members.contains_key(actor),
         "claimant is not a workspace member"
@@ -90,6 +97,16 @@ pub fn claimable(w: &Workspace, actor: &str, r: &Revision, task: &Task) -> Resul
         .iter()
         .find(|ac| ac.id == task.acs[0])
         .ok_or_else(|| anyhow::anyhow!("task AC is absent from current REQ revision"))?;
+    if !w.objects.is_empty() {
+        ensure!(
+            crate::objects::work_ready(w, &format!("ac:{}", ac.id)),
+            "AC has an unmet dependency or a changed dependency revision"
+        );
+        ensure!(
+            crate::objects::work_ready(w, &format!("task:{req}/{id}")),
+            "Task has an unmet dependency or a changed dependency revision"
+        );
+    }
     if task.purpose == "decision" {
         ensure!(
             w.members[actor] == "human",
@@ -195,7 +212,7 @@ pub fn apply(
                 .tasks
                 .get(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
-            claimable(w, actor, r, task)?;
+            claimable(w, actor, req, id, r, task)?;
             revision(w, req, *n, true)?
                 .tasks
                 .get_mut(id)
@@ -412,6 +429,7 @@ pub fn apply(
             scope,
             discovery_complete,
             checks,
+            enforce_coverage,
         } => {
             identifier(run)?;
             nonempty(scope)?;
@@ -522,7 +540,7 @@ pub fn apply(
                     );
                 }
             }
-            if r.coverage_policy {
+            if r.coverage_policy || *enforce_coverage {
                 let changes: Vec<Check> = old_checks
                     .into_iter()
                     .filter(|old| !checks.iter().any(|new| new == old))
@@ -559,7 +577,7 @@ pub fn apply(
             let r = revision(w, req, *n, true)?;
             ensure!(r.owner == actor, "REQ owner reviews verification coverage");
             ensure!(
-                r.coverage_policy && !r.coverage_change.is_empty(),
+                !r.coverage_change.is_empty(),
                 "no coverage change to review"
             );
             let latest = r

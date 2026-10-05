@@ -50,7 +50,10 @@ fn moving_requirement_and_linking_versioned_source_preserve_history() {
     moved["capability"] = json!("c2");
     moved["consumers"] = json!(["customer"]);
     world.ok("owner", moved);
-    assert_eq!(world.state.requirements["r"].capability, "c2");
+    assert_eq!(
+        world.state.requirements["r"].capability.as_deref(),
+        Some("c2")
+    );
     assert_eq!(
         world.state.requirements["r"].revisions[0]
             .capability

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 #[derive(Serialize)]
 struct Document {
-    kind: &'static str,
+    kind: String,
     local_id: String,
     req: Option<String>,
     revision: Option<i32>,
@@ -20,7 +20,7 @@ fn embedding_input(title: &str, content: &str) -> String {
     format!("{title}\n{content}").chars().take(8000).collect()
 }
 fn document(
-    kind: &'static str,
+    kind: &str,
     id: &str,
     req: Option<&str>,
     revision: Option<u32>,
@@ -30,7 +30,7 @@ fn document(
     let content: String = content.chars().take(60_000).collect();
     let content_hash = format!("{:x}", Sha256::digest(embedding_input(title, &content)));
     Document {
-        kind,
+        kind: kind.into(),
         local_id: id.into(),
         req: req.map(str::to_owned),
         revision: revision.map(|n| n as i32),
@@ -59,28 +59,38 @@ pub(super) async fn project(
         }
     }
     for (id, c) in &state.capabilities {
-        let d = &state.domains[&c.domain];
-        if !d.archived {
+        let d = c.domain.as_ref().and_then(|id| state.domains.get(id));
+        if d.is_none_or(|d| !d.archived) {
             documents.push(document(
                 "capability",
                 id,
                 None,
                 None,
                 &c.title,
-                format!("Domain: {}\nCapability: {}", d.title, c.title),
+                format!(
+                    "Domain: {}\nCapability: {}",
+                    d.map_or("", |d| d.title.as_str()),
+                    c.title
+                ),
             ));
         }
     }
     for (id, q) in &state.requirements {
-        let c = &state.capabilities[&q.capability];
-        let d = &state.domains[&c.domain];
-        if d.archived {
+        let c = q
+            .capability
+            .as_ref()
+            .and_then(|id| state.capabilities.get(id));
+        let d = c.and_then(|c| c.domain.as_ref().and_then(|id| state.domains.get(id)));
+        if d.is_some_and(|d| d.archived) {
             continue;
         }
         let r = q.revisions.last().context("requirement has no revision")?;
         let context = format!(
             "Domain: {}\nCapability: {}\nRequirement: {}\n{}",
-            d.title, c.title, r.title, r.body
+            d.map_or("", |d| d.title.as_str()),
+            c.map_or("", |c| c.title.as_str()),
+            r.title,
+            r.body
         );
         let comments = q
             .comments
@@ -113,6 +123,20 @@ pub(super) async fn project(
                 format!("{context}\nAcceptance criterion: {}", ac.text),
             ));
         }
+    }
+    for obj in state.objects.values().filter(|o| {
+        o.current().present
+            && !["domain", "capability", "requirement", "ac"].contains(&o.kind.as_str())
+    }) {
+        let r = obj.current();
+        documents.push(document(
+            &obj.kind,
+            &obj.id,
+            None,
+            Some(r.revision),
+            r.data["title"].as_str().unwrap_or(&obj.id),
+            serde_json::to_string(&r.data)?,
+        ));
     }
     let payload = serde_json::to_string(&documents)?;
     client.execute("INSERT INTO joppa.search_documents(workspace,kind,local_id,req,revision,title,content,content_hash)
@@ -163,7 +187,7 @@ pub async fn find(
     );
     ensure!((1..=50).contains(&limit), "limit must be 1–50");
     ensure!(
-        kind.is_none_or(|v| ["domain", "capability", "requirement", "ac"].contains(&v)),
+        kind.is_none_or(|v| !v.is_empty() && v.len() <= 100),
         "unknown search kind"
     );
     // Authorization precedes any query embedding or provider traffic.

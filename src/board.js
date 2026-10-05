@@ -115,9 +115,11 @@ async function load() {
   const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));
   if (request !== loadNumber) return;
   data = next;
+  $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
   fullHistoryRequirements.clear();
   consumerOpen=false;consumersLoaded=false;intakeOpen=false;filterLoaded=false;filterLoading=null;
+  if(data.custom_tree){await renderObjectTree();return;}
   if(!data.lazy)indexStatusEvents();
   render();
   if(data.lazy&&(filters.status||filters.person))await ensureFilterIndex();
@@ -465,6 +467,7 @@ function render() {
   applyFilters(false);
   consumers(t);
   intake(t);
+  commonNotes(t);
 }
 function buildDomain(did,d,signals,opened){
   const group=E('details',undefined,'tree-domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
@@ -948,7 +951,7 @@ function fillIntake(section){
 
       for(const [key,value] of Object.entries(point.answers||{}))block.append(E('p',key+': '+value));
       if(point.reason)block.append(E('p',point.reason));
-      if(point.req)block.append(button(point.req,()=>openRequirement(point.req),'node-link'));
+      if(point.requirement)block.append(button(point.requirement,()=>openRequirement(point.requirement),'node-link'));
     }
   }
 }
@@ -1013,6 +1016,7 @@ function itemActions(kind,id,title,reqId=null,revision=null){
   // как свойство требования, хотя на деле это отметка версии.
   actions.append(copyButton(kind,id,title));
   actions.append(notesButton(kind,id,title,reqId));
+  const object=button('Links',()=>showCommonObject(kind+':'+id),'object-button');object.title='Read document revisions and links';object.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});actions.append(object);
   const files=filesButton(kind,id,title,reqId);
   if(files)actions.append(files);
   if(revision!==null)actions.append(E('span','rev. '+revision,'rev-chip'));
@@ -1229,4 +1233,94 @@ function showNotes(kind,id,title,reqId){
 }
 function currentAc(reqId,acId){
   return data.state.requirements[reqId]?.revisions.at(-1)?.acs.find(a=>a.id===acId);
+}
+
+/* Common objects use the same cards for every configured type. */
+async function objectPart(params){return api('workspaces/'+encodeURIComponent(ws)+'/objects?'+new URLSearchParams(params));}
+async function appendObjectChildren(root,parent,kind){
+  const generation=loadNumber;
+  const params={limit:'50'};if(parent)params.parent=parent;if(kind)params.kind=kind;
+  const part=await objectPart(params);if(generation!==loadNumber||!root.isConnected)return;
+  root.querySelector(':scope > .object-loading')?.remove();
+  for(const item of part.items)root.append(commonObjectCard(item));
+  if(!part.items.length)root.append(E('p','No objects here yet.','hint'));
+  if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
+}
+function appendObjectPage(root,part,params,generation){
+  for(const item of part.items)root.append(commonObjectCard(item));
+  if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
+}
+async function renderObjectTree(){
+  const root=$('tree');root.replaceChildren();
+  const generation=loadNumber;
+  const configuration=await api('workspaces/'+encodeURIComponent(ws)+'/tree');if(generation!==loadNumber)return;
+  data.objectTypes=configuration.schema.types;
+  const intro=E('div',undefined,'tree-intro');intro.append(E('h1',data.state.title),E('p','Open an object to read its details and children.','hint'));
+  if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
+  root.append(intro);
+  const contents=E('div');
+  const controls=commonObjectFilters(root,contents);root.append(contents);
+  for(const select of controls.querySelectorAll('select'))select.disabled=true;
+  contents.append(E('p','Loading objects…','object-loading hint'));
+  await appendObjectChildren(contents);
+  if(generation!==loadNumber)return;
+  for(const select of controls.querySelectorAll('select'))select.disabled=false;
+  commonNotes(root);
+}
+function commonObjectFilters(root,contents){
+  const controls=E('div',undefined,'filter-fields');let request=0;
+  const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
+  const kind=picker('Object type',[['','All types'],...Object.entries(data.objectTypes||{}).map(([id,type])=>[id,type.title])]);
+  const owner=picker('Object owner',[['','All owners'],...Object.keys(data.state.members).map(id=>[id,personLabel(id)])]);
+  const status=picker('Object status',[['','All statuses'],['green','Checks passed'],['red','Checks failed'],['purple','Dependency review'],['yellow','Waiting or in progress'],['grey','Unchecked or completed']]);
+  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:kind.value,owner:owner.value,status:status.value};const holder=E('div');contents.replaceChildren(holder);holder.append(E('p','Loading objects…','object-loading hint'));try{
+    if(!selected.kind&&!selected.owner&&!selected.status){await appendObjectChildren(holder);return;}
+    const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;let cursor;const items=[];
+    do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
+    const rows=items.filter(item=>(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
+    holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
+  }catch(e){if(mine===request)notify(e);}};
+  for(const select of [kind,owner,status])select.onchange=update;root.append(controls);return controls;
+}
+function commonNotes(root){
+  const section=details(root,'Notes');section.classList.add('note-section');enableBranchMotion(section);
+  const body=E('div');section.append(body);let loaded=false;
+  section.addEventListener('toggle',async()=>{if(!section.open||loaded)return;loaded=true;body.append(E('p','Loading notes…','object-loading hint'));try{await appendObjectChildren(body,'*','note');}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+}
+function commonObjectCard(item){
+  const card=E('details',undefined,'common-object'+(item.kind==='consumer'?' consumer-object':''));card.dataset.objectAddress=item.address;
+  const summary=E('summary',undefined,'title-row');
+  const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
+  summary.append(nodeTitle(item.title,item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at}),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
+  const actions=E('span',undefined,'item-actions');
+  const copy=button('COPY',async()=>{const text=item.item_id||item.address;try{if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');await navigator.clipboard.writeText(text);}catch{const field=E('textarea',text);field.style.position='fixed';field.style.opacity='0';document.body.append(field);field.select();const copied=document.execCommand('copy');field.remove();if(!copied)notify(Error('Could not copy the ID.'));}},'copy');copy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
+  const history=button('Revisions',()=>showCommonObject(item.address,true),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
+  const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
+  card.addEventListener('toggle',async()=>{if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.append(children);await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+  return card;
+}
+function fillCommonObject(body,detail){
+  const r=detail.document,d=r.data;
+  const historical=detail.historical??r.revision!==detail.current_revision;
+  if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
+  if(r.present===false)body.append(E('p','Historical object. This object is absent from the current verification revision.','dependency-review'));
+  body.append(E('p','Revision '+r.revision+' · Owner: '+personLabel(d.owner||'Unassigned'),'node-meta'));
+  if(detail.process?.status)body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
+  if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
+  for(const [key,value] of Object.entries(d)){if(['title','owner'].includes(key)||value===null||value==='')continue;const field=E('div',undefined,'object-field');field.append(E('small',key.replaceAll('_',' '),'type-label'),E('p',typeof value==='string'?value:JSON.stringify(value),'node-description'));body.append(field);}
+  if(detail.links?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Links'));for(const {link,title,current_revision,present} of detail.links){const row=button((title||link.target)+' · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':''),()=>showCommonObject(link.target,false,link.revision),'object-link');group.append(row);}body.append(group);}
+  if(detail.incoming?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Linked from'));for(const link of detail.incoming)group.append(button(link.title+' · '+link.relation,()=>showCommonObject(link.source),'object-link'));body.append(group);}
+  const annotations=historical?{}:detail.annotations||{};
+  for(const comment of Object.values(annotations.comments||{})){if(comment.withdrawn)continue;const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));body.append(row);}
+  const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length)body.append(attachmentList(files));
+  if(detail.kind==='requirement'&&!historical){body.append(button('Checks and tasks',async()=>{const part=await boardPart('requirement',detail.id);data.state.requirements[detail.id]=part.requirement;data.summary[detail.id]=part.summary;Object.assign(data.state.notes,part.notes);Object.assign(data.state.consumers,part.consumers);Object.assign(data.state.projects,part.projects);Object.assign(data.system_ids.ac,part.system_ids?.ac||{});const content=E('div');body.append(content);requirementDetails(content,detail.id);},'text-button'));}
+}
+async function showCommonObject(address,history=false,revision){
+  const generation=loadNumber;
+  const detail=await objectPart(revision?{address,revision}:{address});if(generation!==loadNumber)return;
+  const dialog=E('dialog',undefined,'notes-dialog');dialog.setAttribute('aria-label',detail.document.data.title);
+  const header=E('div',undefined,'history-dialog-header');header.append(E('h2',detail.document.data.title));const close=button('Close',()=>dialog.close(),'history-close');header.append(close);dialog.append(header);
+  const body=E('div',undefined,'notes-body');dialog.append(body);fillCommonObject(body,detail);
+  if(history){const select=E('select');select.setAttribute('aria-label','Object revision');for(let n=detail.current_revision;n>0;n--){const option=E('option','Revision '+n);option.value=n;select.append(option);}header.append(select);let request=0;select.onchange=async()=>{const mine=++request;try{const old=await objectPart({address,revision:select.value});if(mine!==request||!dialog.isConnected)return;body.replaceChildren();fillCommonObject(body,old);}catch(e){notify(e);}};}
+  dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();
 }

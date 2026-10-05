@@ -86,9 +86,14 @@ fn event_time(events: &[Event], req: &str, revision: u32) -> Option<String> {
     })
 }
 
-fn requirement_signal(id: &str, q: &crate::model::Requirement, events: &[Event]) -> Value {
+fn requirement_signal(
+    state: &Workspace,
+    id: &str,
+    q: &crate::model::Requirement,
+    events: &[Event],
+) -> Value {
     let r = q.revisions.last().expect("requirement has a revision");
-    let s = checks::summary(r);
+    let s = crate::objects::requirement_summary(state, id, r);
     let acs = s["acs"].as_object();
     let failed = acs.is_some_and(|a| a.values().any(|v| v["verification"] == "fail"));
     let unready = acs.is_some_and(|a| a.values().any(|v| v["ready"] != true));
@@ -197,7 +202,7 @@ pub(super) async fn project(
     let mut caps = serde_json::Map::new();
     let mut domains = serde_json::Map::new();
     for (id, q) in &state.requirements {
-        reqs.insert(id.clone(), requirement_signal(id, q, events));
+        reqs.insert(id.clone(), requirement_signal(state, id, q, events));
     }
     for id in state.capabilities.keys() {
         caps.insert(
@@ -206,7 +211,7 @@ pub(super) async fn project(
                 state
                     .requirements
                     .iter()
-                    .filter(|(_, q)| q.capability == *id)
+                    .filter(|(_, q)| q.capability.as_deref() == Some(id))
                     .filter_map(|(rid, _)| reqs.get(rid).cloned()),
                 "requirements",
             ),
@@ -219,7 +224,7 @@ pub(super) async fn project(
                 state
                     .capabilities
                     .iter()
-                    .filter(|(_, c)| c.domain == *id)
+                    .filter(|(_, c)| c.domain.as_deref() == Some(id))
                     .filter_map(|(cid, _)| caps.get(cid).cloned()),
                 "capabilities",
             ),
@@ -242,10 +247,11 @@ pub(super) async fn project(
     }
     let blocker_count = blockers.len();
     let launch = json!({"ready":configured && blockers.is_empty(),"configured":configured,"blockers":blockers});
-    let first_view = json!({"title":&state.title,"members":&state.members,"domains":&state.domains,
+    let first_view = json!({"custom_tree":crate::objects::schema(state).types != crate::objects::defaults(),"title":&state.title,"members":&state.members,"domains":&state.domains,
         "order":state.tree_order.get("domain").cloned().unwrap_or_default(),"signals":&domains,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),
         "counts":{"consumers":state.consumers.len(),"intake":state.intake.len()}});
+    super::objects::project(client, workspace, state, events).await?;
     client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,launch,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb,$7::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,launch=EXCLUDED.launch,first_view=EXCLUDED.first_view",
         &[&workspace,&(events.len() as i64),&serde_json::to_string(state)?,&summary.to_string(),&json!({"requirements":reqs,"capabilities":caps,"domains":domains}).to_string(),&launch.to_string(),&first_view.to_string()]).await?;
     Ok(())
@@ -312,7 +318,7 @@ pub async fn board_read(
                 "state":{"title":first["title"],"members":members,"domains":domains,"tree_order":{"domain":first["order"]},"capabilities":{},"requirements":{},"consumers":{},"intake":{},"notes":{},"projects":{}},
                 "signals":{"domains":first["signals"],"capabilities":{},"requirements":{}},"summary":{},"history":[],"member_labels":labels,
                 "launch":first["launch"],"system_ids":{"domain":ids(&**conn,&workspace,"domain",&domain_keys).await?,"capability":{},"requirement":{},"ac":{},"consumer":{}},
-                "counts":first["counts"]}),
+                "counts":first["counts"],"custom_tree":first["custom_tree"]}),
             )
         }
         Some("domain") => {

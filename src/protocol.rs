@@ -27,12 +27,14 @@ pub async fn handle(
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": [
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
-            tool("joppa_search", "Find current domains, capabilities, requirements and ACs inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string","enum":["domain","capability","requirement","ac"]},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
+            tool("joppa_search", "Find current domains, capabilities, requirements and ACs inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
             tool("joppa_read", "Read a workspace index or one requirement's current revision. Supply workspace OR item_id. Every requirement reports revision_count. history=true returns counts only, never events or revision bodies. To read an older revision, explicitly supply revision=N; the response contains exactly one revision and its discussion/evidence. Copied requirement and AC IDs obey the same rules.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement: current revision by default, including its ACs, tasks, runs, issues and revision comments"},"revision":{"type":"integer","minimum":1,"description":"Read exactly this revision of the selected requirement; omit for current. Works with req or a requirement/AC item_id."},"history":{"type":"boolean","default":false,"description":"Discover revision counts without revision bodies or events. Then request one revision by number."},"target":{"type":"string","description":"One object's notes: description, comments and attachments. Address as kind:id, e.g. requirement:r-xxx or ac:r-xxx/2. Cannot be combined with revision or history."}}), json!([])),
+            tool("joppa_tree", "Read the versioned workspace tree schema. Agents change it with set_tree_schema. The browser page is read-only.", json!({"workspace":{"type":"string"},"revision":{"type":"integer","minimum":0}}), json!(["workspace"])),
+            tool("joppa_objects", "Read one common object or list its children. Every object has revisions, links, comments and attachments. Address uses kind:id. No address means root objects. parent=* lists all objects. Lists are paginated. history=true returns counts. revision=N reads exactly one document revision. Process evidence remains available through joppa_read.", json!({"workspace":{"type":"string"},"address":{"type":"string"},"parent":{"type":"string"},"kind":{"type":"string"},"revision":{"type":"integer","minimum":1},"history":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":100},"cursor":{"type":"string"}}), json!(["workspace"])),
             tool("joppa_tasks", "List current Tasks without reading every REQ. available shows tasks this actor can claim, mine shows claimed unfinished tasks, waiting shows unassigned tasks whose AC or contract is not ready, all shows every current Task. Optional filters and ordered priorities use the same selection as claim_next_task. Results are paginated; a cursor expires when the workspace changes.", json!({"workspace":{"type":"string"},"view":{"type":"string","enum":["available","mine","waiting","all"],"default":"available"},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50},"cursor":{"type":"string"},"project":{"type":"string"},"purpose":{"type":"string","enum":["implementation","manual","decision"]},"priorities":{"type":"array","items":{"type":"string"}}}), json!(["workspace"])),
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
-            tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing"]}}), json!([])),
+            tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
             tool("joppa_help", "Get operation shapes, workflow rules, and ASD-STE100 technical writing rules. Read before authoring commands.", json!({}), json!([]))
         ]})),
         "tools/call" => call(pool, actor, msg, embedder)
@@ -61,6 +63,7 @@ fn authoring_command_schema() -> Value {
         "additionalProperties":true,
         "description":"Operation fields depend on op. Read joppa_help.operations. Apply joppa_help.writing to new technical text.",
         "properties":{
+            "revision":{"description":"For save_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
             "title":text(), "body":text(), "text":text(), "description":text(),
             "reason":text(), "contract":text(), "scope":text(), "value":text(),
             "said":{"description":"Verbatim intake. Preserve the original language and wording. ASD-STE100 does not apply."},
@@ -116,6 +119,51 @@ async fn call(
             }
             _ => anyhow::bail!("supply workspace OR item_id"),
         },
+        "joppa_tree" => {
+            store::tree_schema(
+                pool,
+                field("workspace")?,
+                actor,
+                a.get("revision")
+                    .map(|v| {
+                        v.as_u64()
+                            .and_then(|n| u32::try_from(n).ok())
+                            .ok_or_else(|| anyhow::anyhow!("invalid schema revision"))
+                    })
+                    .transpose()?,
+            )
+            .await
+        }
+        "joppa_objects" => {
+            let revision = a
+                .get("revision")
+                .map(|v| {
+                    v.as_u64()
+                        .and_then(|n| u32::try_from(n).ok())
+                        .ok_or_else(|| anyhow::anyhow!("invalid object revision"))
+                })
+                .transpose()?;
+            let limit = a
+                .get("limit")
+                .map(|v| v.as_u64().ok_or_else(|| anyhow::anyhow!("invalid limit")))
+                .transpose()?
+                .unwrap_or(50);
+            store::read_objects(
+                pool,
+                field("workspace")?,
+                actor,
+                &store::ObjectScope {
+                    address: a["address"].as_str(),
+                    parent: a["parent"].as_str(),
+                    kind: a["kind"].as_str(),
+                    revision,
+                    history: a["history"].as_bool().unwrap_or(false),
+                    limit: usize::try_from(limit)?,
+                    cursor: a["cursor"].as_str(),
+                },
+            )
+            .await
+        }
         "joppa_tasks" => {
             let limit = a
                 .get("limit")
@@ -172,6 +220,7 @@ async fn call(
                 ("process", include_str!("../docs/process.md")),
                 ("green", include_str!("../docs/green.md")),
                 ("writing", WRITING_RULES),
+                ("objects", include_str!("../docs/objects.md")),
             ];
             anyhow::ensure!(
                 section == "all" || docs.iter().any(|(name, _)| *name == section),
@@ -185,7 +234,7 @@ async fn call(
                 .into())
         }
         "joppa_help" => Ok(
-            json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES}),
+            json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES,"objects":include_str!("../docs/objects.md")}),
         ),
         _ => anyhow::bail!("unknown tool"),
     }

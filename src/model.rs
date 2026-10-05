@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
     #[serde(default)]
+    pub objects: BTreeMap<String, crate::objects::Object>,
+    #[serde(default)]
+    pub tree_schema: Vec<crate::objects::SchemaRevision>,
+    #[serde(default)]
     pub workspace_id: Option<String>,
     pub title: String,
     #[serde(default)]
@@ -85,7 +89,8 @@ pub struct Domain {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Capability {
     pub title: String,
-    pub domain: String,
+    #[serde(default)]
+    pub domain: Option<String>,
     #[serde(default)]
     pub owner: Option<String>,
     #[serde(default)]
@@ -100,7 +105,8 @@ pub struct Consumer {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Requirement {
-    pub capability: String,
+    #[serde(default)]
+    pub capability: Option<String>,
     pub revisions: Vec<Revision>,
     pub comments: BTreeMap<String, Comment>,
 }

@@ -1,3 +1,10 @@
+# Configurable workspace model
+
+Each workspace defines its own tree schema.
+All objects have common document revisions, comments, attachments and links.
+Read [Objects and workspace trees](objects.md) for the current contract.
+The model below describes the default tree and its verification roles.
+
 # Four levels of the product tree
 
 Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.

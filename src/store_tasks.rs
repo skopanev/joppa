@@ -37,7 +37,10 @@ pub(super) fn validate_selection<'a>(
                     .any(|q| q.revisions.last().is_some_and(|r| r.tasks.contains_key(id))),
                 "project" => state.projects.contains_key(id),
                 "consumer" => state.consumers.contains_key(id),
-                _ => anyhow::bail!("unknown priority kind: {kind}"),
+                _ => state
+                    .objects
+                    .get(selector)
+                    .is_some_and(|o| o.current().present),
             };
             ensure!(exists, "unknown priority target: {selector}");
             Ok((kind, id))
@@ -56,18 +59,25 @@ fn rank(
 ) -> usize {
     priorities
         .iter()
-        .position(|(kind, target)| match *kind {
-            "domain" => state
-                .capabilities
-                .get(&q.capability)
-                .is_some_and(|c| c.domain == *target),
-            "capability" => q.capability == *target,
-            "requirement" => req == *target,
-            "ac" => task.acs.iter().any(|ac| ac == target),
-            "task" => id == *target,
-            "project" => task.projects.iter().any(|project| project == target),
-            "consumer" => revision.consumers.iter().any(|consumer| consumer == target),
-            _ => false,
+        .position(|(kind, target)| {
+            crate::objects::within(
+                state,
+                &format!("task:{req}/{id}"),
+                &format!("{kind}:{target}"),
+            ) || match *kind {
+                "domain" => q
+                    .capability
+                    .as_ref()
+                    .and_then(|id| state.capabilities.get(id))
+                    .is_some_and(|c| c.domain.as_deref() == Some(target)),
+                "capability" => q.capability.as_deref() == Some(target),
+                "requirement" => req == *target,
+                "ac" => task.acs.iter().any(|ac| ac == target),
+                "task" => id == *target || format!("{req}/{id}") == *target,
+                "project" => task.projects.iter().any(|project| project == target),
+                "consumer" => revision.consumers.iter().any(|consumer| consumer == target),
+                _ => false,
+            }
         })
         .unwrap_or(priorities.len())
 }
@@ -89,7 +99,7 @@ pub(super) fn select_next(
             project.is_none_or(|p| task.projects.iter().any(|id| id == p))
                 && purpose.is_none_or(|p| task.purpose == p)
         })
-        .filter(|(_, _, r, _, task)| checks::claimable(state, actor, r, task).is_ok())
+        .filter(|(req, _, r, id, task)| checks::claimable(state, actor, req, id, r, task).is_ok())
         .min_by_key(|(req, q, r, id, task)| {
             (
                 rank(state, req, q, r, id, task, &priorities),
@@ -139,7 +149,7 @@ pub async fn task_queue_filtered(
     access::check(&**conn, &workspace, actor, false).await?;
     let row = conn
         .query_one(
-            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
+            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
             &[&workspace],
         )
         .await?;
@@ -151,6 +161,7 @@ pub async fn task_queue_filtered(
         capabilities: serde_json::from_str(row.get::<_, &str>(4))?,
         consumers: serde_json::from_str(row.get::<_, &str>(5))?,
         projects: serde_json::from_str(row.get::<_, &str>(6))?,
+        objects: serde_json::from_str(row.get::<_, &str>(8))?,
         ..Default::default()
     };
     let requirements: std::collections::BTreeMap<String, Value> =
@@ -159,10 +170,7 @@ pub async fn task_queue_filtered(
         state.requirements.insert(
             req,
             crate::model::Requirement {
-                capability: value["capability"]
-                    .as_str()
-                    .context("requirement lacks capability")?
-                    .into(),
+                capability: value["capability"].as_str().map(str::to_owned),
                 revisions: vec![serde_json::from_value(value["revision"].clone())?],
                 comments: Default::default(),
             },
@@ -188,7 +196,7 @@ pub async fn task_queue_filtered(
             {
                 continue;
             }
-            let claim_error = checks::claimable(&state, actor, revision, task)
+            let claim_error = checks::claimable(&state, actor, req, id, revision, task)
                 .err()
                 .map(|e| e.to_string());
             let status = if task.retired.is_some() {
