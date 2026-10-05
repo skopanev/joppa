@@ -48,20 +48,22 @@ comment: req, revision, id, text, kind (comment|decision|accept|change|reject|co
 withdraw_decision: req, revision, comment, reason; only the decision author
 assess: req, revision, ac,
         assessment:{ready,reason,owner:null,decision:null}
-task: req, revision, id, title, acs:[id], projects:[id],
+task (legacy creation): req, revision, id, title, acs:[id], projects:[id],
       purpose (implementation|manual|decision), contract, assignee:null (optional)
       Every new task needs a nonempty technical contract. Existing assigned
       tasks without contract remain readable for journal compatibility.
-claim_task: revision, id, req (legacy optional); atomically assign an open task to the authenticated actor
-amend_task: req, revision, id, title, contract, projects:[id], reason; correct an
-      unfinished Task in the current revision. REQ owner, assignee, or creator
-      of an unclaimed Task may amend it. The AC and completion history stay put.
+      Prefer save_object with a type whose role is task and a schema-permitted parent.
+      Process commands below use the full Task address and its own revision.
+      Old req arguments remain compatible and use the REQ revision.
+claim_task: revision, id; atomically assign an open Task to the authenticated actor
+amend_task: revision, id, title, contract, projects:[id], reason; correct an
+      unfinished Task. The Task owner, assignee or unclaimed creator may amend it.
+      Completion history remains readable.
 claim_next_task: project (optional), purpose (optional), priorities (optional
       ordered list of kind:id selectors: domain, capability, requirement, ac,
-      task, project, consumer or a configured group). Use task:<REQ>/<Task>
-      for a common Task address. Short task:<Task> selectors remain compatible.
-      A short selector can match Tasks in different REQs. Use the full address
-      to select one Task.
+      task, project, consumer or any configured type). Use the returned object address.
+      Old task:<REQ>/<Task> addresses remain valid. A short selector can match
+      several Tasks. Use the full address to select one Task.
       Under the same workspace lock, select the
       oldest claimable task matching the first priority that has one. If none
       match, select the oldest claimable task overall. project and purpose are
@@ -70,10 +72,11 @@ claim_next_task: project (optional), purpose (optional), priorities (optional
       For a read-only preview use joppa_tasks with view=available, limit=1 and
       the same project, purpose and priorities. It applies the same ordering and
       returns no Task when none is available; a later claim_task may lose a race.
-release_task: req, revision, id, reason; assignee or REQ owner returns unfinished work to the queue
-complete_task: req, revision, id, evidence (decision comment ID for decision tasks)
-review_task: req, revision, id, ac, reason; REQ owner confirms that a retained task still belongs to this AC after a revision
-retire_task: req, revision, id, reason; REQ owner marks any current active task as no longer applicable while keeping its history and completion result
+release_task: revision, id, reason; assignee, Task owner or workspace owner returns unfinished work to the queue
+complete_task: revision, id, evidence; assignee, Task owner or workspace owner completes claimed work
+      A decision Task under the default AC gate needs the actual specialist decision comment ID.
+review_task: revision, id, reason; Task owner or workspace owner confirms the current parent contract
+retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
 review_coverage: req, revision, run, reason; REQ owner acknowledges checks removed or changed since the latest earlier plan
 define_verification_scope: req, revision, subject_keys:[component-id,...], scope, reason; REQ owner agrees the complete component set and check boundary before the first plan
 plan: req, revision, run, subject:{component:immutable-build-or-config-id},
@@ -116,7 +119,18 @@ Manual evidence is submitted by a human member; automated evidence and finish by
 Expected tests cannot disappear between runs of one revision. To replace the verification contract, save a new revision with a reason.
 For new revisions, the first sealed plan is compared with the latest plan from any earlier revision. The card and read summary list checks whose identity, AC, method or expected evidence disappeared or changed. The REQ owner must call `review_coverage` with a reason before accepting that revision. Old journal revisions predate this rule and remain replayable.
 Before the first plan on a new revision, its REQ owner must call `define_verification_scope`. A plan's `subject` must contain exactly those component keys, its `scope` must match the agreed boundary, and it must include every project named by active tasks. Build/configuration values cannot be bare environment names such as `staging`. The first plan seals this scope contract; changing it requires another REQ revision. Older journal revisions remain readable under their historical rules. This validates the declared contract, not the semantic completeness of the owner's component list.
-Tasks remain in the current card across REQ revisions, including completed tasks and tasks from older revisions that an earlier edit omitted. Each active carried task needs an explicit `review_task` by the REQ owner before unfinished work can be completed or claimed again. The review binds it to exactly one AC in the new revision. If the task no longer applies, the owner uses `retire_task` with a reason; its earlier revisions, completion result, and original AC remain in history. The default tree places Tasks under AC. The workspace schema can select any parent type. `joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection without reading every requirement. `available` uses the same eligibility rules as `claim_task`: one current AC, an explicit contract, no owner-review hold, no prior assignee/completion/retirement, and a ready AC. Decision-purpose tasks can be claimed by the designated human owner before that AC is ready, because making its decision is the work. An unconfirmed REQ can have provisional work, but cannot pass verification. Task status is derived as open, in_progress or done; an unready AC makes an open task ineligible to claim rather than creating a Task-level blocked status. Claim and release do not make an AC green; only checks do.
+Tasks are independent objects. Their parent follows the workspace schema. A Task can also be a root when its type permits it.
+The default tree places Tasks under AC with `parent_gate: "ready"`. Other schemas can select different parents, nesting and gates.
+Tasks retain their history and completion results when a parent changes. A changed parent contract requires `review_task` before claim or completion.
+The Task owner or workspace owner confirms that contract. Use `save_object` to move a Task to another permitted parent.
+Completed Tasks retain their original contract. Use `retire_task` when work no longer applies.
+
+`joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection.
+`available` uses the same eligibility rules as `claim_task`: an explicit contract, reviewed parent context, satisfied dependencies and the configured parent gate.
+The Task must have no assignee, completion or retirement. A decision Task requires its designated human owner to claim it.
+Under the default AC gate, that owner can claim decision work before the AC becomes ready.
+Task status is `open`, `in_progress` or `done`. Unmet dependencies prevent claim and appear in readiness hints.
+Task completion does not verify an AC or specification. Only verification evidence can make an AC pass.
 The queue response uses the public workspace ID shown by `joppa_list`; historical storage aliases remain valid inputs. `created_at` is the Task creation journal position, not a wall-clock timestamp.
 The latest **started** run among completed runs is current. A delayed older run cannot replace a newer verdict.
 Read responses include the entire journal with authenticated actor and database timestamp.
