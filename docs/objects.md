@@ -58,16 +58,17 @@ Read the current schema before you replace it.
 Agents and the workspace owner can configure the schema.
 The separate `/tree?workspace=...` page only reads it.
 
-Use custom types with `group` or `document` roles.
+Use custom types with any supported role. A `task` role supplies claim, release, completion and queue operations.
 Rename their display titles and set their allowed parents.
 `root: true` permits an object without a parent.
 `parents: ["*"]` permits any parent type.
 The server rejects parent cycles.
 
-REQ, AC and Task keep their semantic roles.
-One AC has one REQ parent. Each new Task has one AC parent.
+The default schema uses REQ → AC → Task. These parent rules are configuration.
+Schemas can omit these types. Task parents can name any configured type, including Task itself.
+Objects have one parent or no parent when their type allows roots.
 Old Tasks with multiple bindings remain under their REQ with `legacy_acs`.
-They cannot be claimed until the owner selects one AC. Completed Tasks keep their original bindings.
+Their original bindings remain in history. Move active Tasks only to parents permitted by the current schema.
 Grouping above REQ can use custom types without Domain or Capability.
 Each document revision records its schema revision.
 Historical schema reads return one selected revision.
@@ -145,9 +146,10 @@ The custom tree supports filters by type, owner and status. Filters read summari
 The database indexes workspace, parent, type and incoming links.
 
 `joppa_read` retains its REQ verification interface.
-Its `revision` selects the parent REQ verification revision for AC and Task process commands.
+Its `revision` selects the REQ verification revision for AC evidence commands.
+Task process commands use the Task object address and its own revision.
 `joppa_objects.revision` always selects the addressed document's revision.
-Read the parent REQ before you send a process command.
+Read the current Task before you claim, release, review, retire or complete it.
 
 Old authoring commands remain compatible.
 Domain and Consumer edits through those commands do not supply a stale-write token.
@@ -155,3 +157,28 @@ Use `save_object` for new document edits.
 Future changes to historical document formats need an explicit compatible migration.
 The projection rejects a different document with an existing revision number.
 The immutable event journal is the source for all projections.
+
+## Independent Tasks
+
+Create Tasks with `save_object` and a type whose role is `task`.
+The document needs `title`, `owner`, `contract`, `purpose` and optional `projects`.
+Use the returned object address as the process command `id`. Omit `req`.
+Use the current Task object `revision` for every process command.
+Task status changes append object revisions. Claim is atomic.
+Queue previews and `claim_next_task` use the same eligibility rule.
+Priorities accept any configured object address and apply to its descendants.
+
+A Task type can configure `parent_gate`: `ready`, `verified` or `completed`.
+Omit it when parent evidence is not a claim condition.
+The default Task type uses `ready`. Its default AC parent must have a clear assessment.
+A Task parent does not need completion unless the schema selects `completed`.
+A changed parent document requires Task owner review. Parent Task status changes do not change its contract.
+Use `review_task` with a reason to confirm the current parent contract.
+Use `save_object` to change the parent when the schema permits it.
+Only the Task owner can move it. Completed Tasks retain their original contract and evidence.
+Task completion never verifies a specification or an AC.
+
+The server migrates old Tasks to independent process records once.
+Their addresses, public IDs, completion results and original revisions remain readable.
+The server resolves old `req` process addresses to the same Task record.
+Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the current queue.

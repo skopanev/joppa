@@ -334,13 +334,13 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         .as_array()
         .unwrap()
         .iter()
-        .find(|task| task["id"] == "task-old")
+        .find(|task| task["id"] == "task:req-old/task-old")
         .unwrap()["created_at"]
         .as_u64()
         .unwrap();
     assert!(created_at > 0);
     pool.get().await?.execute(
-        "UPDATE joppa.board_cache SET state=jsonb_set(state,ARRAY['requirements','req-old','revisions','0','tasks','task-old','created_at'],'0'::jsonb) WHERE workspace=$1",
+        "UPDATE joppa.board_cache SET state=jsonb_set(state,ARRAY['task_process','task:req-old/task-old','created_at'],'0'::jsonb) WHERE workspace=$1",
         &[&ws],
     ).await?;
     assert_eq!(
@@ -355,7 +355,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             .as_array()
             .unwrap()
             .iter()
-            .find(|task| task["id"] == "task-old")
+            .find(|task| task["id"] == "task:req-old/task-old")
             .unwrap()["created_at"],
         created_at
     );
@@ -372,7 +372,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &canonical_priorities,
     )
     .await?;
-    assert_eq!(canonical_preview["tasks"][0]["id"], "task-new");
+    assert_eq!(canonical_preview["tasks"][0]["id"], "task:req-new/task-new");
     let canonical_claim = store::execute_input(
         &pool,
         &ws,
@@ -381,8 +381,8 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &json!({"op":"claim_next_task","priorities":canonical_priorities}),
     )
     .await?;
-    assert_eq!(canonical_claim["command"]["req"], "req-new");
-    assert_eq!(canonical_claim["command"]["id"], "task-new");
+    assert_eq!(canonical_claim["command"]["req"], Value::Null);
+    assert_eq!(canonical_claim["command"]["id"], "task:req-new/task-new");
     store::execute_input(&pool,&ws,"owner","release-canonical",&json!({"op":"release_task","req":"req-new","revision":1,"id":"task-new","reason":"Return the canonical priority task"})).await?;
     let mut priorities = vec!["domain:urgent"; 101];
     priorities.push("requirement:req-old");
@@ -398,16 +398,16 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &priorities.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
     )
     .await?;
-    assert_eq!(preview["tasks"][0]["id"], "task-new");
+    assert_eq!(preview["tasks"][0]["id"], "task:req-new/task-new");
     assert_eq!(
         store::task_queue(&pool, &ws, "owner", "available", 50, None).await?["total"],
         2
     );
     let request = json!({"op":"claim_next_task","priorities":priorities});
     let first = store::execute_input(&pool, &ws, "owner", "next-1", &request).await?;
-    assert_eq!(first["command"]["id"], "task-new");
+    assert_eq!(first["command"]["id"], "task:req-new/task-new");
     let second = store::execute_input(&pool, &ws, "owner", "next-2", &request).await?;
-    assert_eq!(second["command"]["id"], "task-old");
+    assert_eq!(second["command"]["id"], "task:req-old/task-old");
     store::execute_input(&pool, &ws, "owner", "release-old",
         &json!({"op":"release_task","req":"req-old","revision":1,"id":"task-old","reason":"Return"})).await?;
     let fallback = store::execute_input(
@@ -418,7 +418,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &json!({"op":"claim_next_task","priorities":["domain:urgent"]}),
     )
     .await?;
-    assert_eq!(fallback["command"]["id"], "task-old");
+    assert_eq!(fallback["command"]["id"], "task:req-old/task-old");
     assert!(
         store::execute_input(
             &pool,
@@ -487,21 +487,29 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
             .is_err()
     );
     assert!(store::execute_input(&pool,&ws,"agent","no-contract",&json!({"op":"task","req":"req","revision":1,"id":"no-contract","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent"})).await.is_err());
-    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent","contract":"Record the specialist decision"});
+    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","contract":"Record the specialist decision"});
     store::execute_input(&pool, &ws, "agent", "task", &task).await?;
     let revise = json!({"op":"revise","req":"req","expected_revision":1,"capability":"cap","consumers":["buyer"],"title":"Requirement revised","body":"Scope","owner":"owner","reason":"Clarified","acs":[{"id":"ac","text":"Works better"}]});
     let written = store::execute_input(&pool, &ws, "agent", "revise-2", &revise).await?;
     assert_eq!(written["command"]["carry_tasks"], true);
     assert_eq!(written["command"]["coverage_policy"], true);
-    let state = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(
-        state["state"]["requirements"]["req"]["revisions"][1]["tasks"]["task"]["review_required"],
+        store::read_objects(
+            &pool,
+            &ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some("task:req/task"),
+                ..Default::default()
+            }
+        )
+        .await?["process"]["review_required"],
         true
     );
     store::execute_input(&pool, &ws, "owner", "retire", &json!({"op":"retire_task","req":"req","revision":2,"id":"task","reason":"Decision changed"})).await?;
     let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(
-        after["state"]["requirements"]["req"]["revisions"][1]["tasks"]["task"]["retired"],
+        after["state"]["task_process"]["task:req/task"]["retired"],
         "Decision changed"
     );
     store::migrate(&pool).await?;
@@ -538,7 +546,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
     );
     store::execute_input(&pool,&ws,"agent","ready",&json!({"op":"assess","req":"req","revision":2,"ac":"ac","assessment":{"ready":true,"reason":"Contract is clear","owner":null,"decision":null}})).await?;
     let queue = store::task_queue(&pool, &ws, "agent", "available", 1, None).await?;
-    assert_eq!(queue["tasks"][0]["id"], "open-task");
+    assert_eq!(queue["tasks"][0]["id"], "task:req/open-task");
     assert_eq!(queue["tasks"][0]["ac"], "ac");
     assert_eq!(queue["tasks"][0]["projects"], json!(["mobileapps"]));
     let page = store::task_queue(&pool, &ws, "agent", "all", 1, None).await?;
@@ -563,7 +571,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         ("agent", "claim-agent", "owner", agent_result?)
     };
     assert_eq!(success["command"]["op"], "claim_task");
-    assert_eq!(success["command"]["id"], "open-task");
+    assert_eq!(success["command"]["id"], "task:req/open-task");
     assert!(
         store::task_queue(&pool, &ws, "agent", "all", 1, Some(&cursor))
             .await
@@ -607,7 +615,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
             .as_array()
             .unwrap()
             .iter()
-            .find(|task| task["id"] == "open-task")
+            .find(|task| task["id"] == "task:req/open-task")
             .unwrap()["status"],
         "done"
     );

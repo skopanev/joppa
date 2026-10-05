@@ -7,4 +7,5 @@ pub mod model;
 pub mod objects;
 pub mod sessions;
 pub mod store;
+pub mod tasks;
 pub mod tree_order;

@@ -167,7 +167,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         assert mcp('joppa_help', {})['writing'] == writing
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
-        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 1
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 2
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
                   'data':{'title':'Source note','owner':'owner','body':'Original text'},
                   'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['document']['data']['body'] == 'Original text'
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 1
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 2
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
         with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
             assert response.status == 200 and 'Schema revision' in response.read().decode()
@@ -255,29 +255,29 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'op':'task','req':task_req,'revision':1,'id':'mcp-open-task','title':'Restore access',
             'acs':[task_ac],'projects':[],'purpose':'implementation',
             'contract':'Implement the access recovery flow and attach merged build evidence'}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['tasks'][0]['id'] == 'mcp-open-task'
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['tasks'][0]['id'] == 'task:'+task_req+'/mcp-open-task'
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
             'op':'assess','req':task_req,'revision':1,'ac':task_ac,
             'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == 'mcp-open-task'
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == 'task:'+task_req+'/mcp-open-task'
         claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
             'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
-        assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == 'mcp-open-task'
+        assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == 'task:'+task_req+'/mcp-open-task'
         assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['tasks'][0]['status'] == 'in_progress'
-        client_env={**env,'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
+        client_env={**env,'XDG_CACHE_HOME':str(Path(temp)/'client-cache'),'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
         def client(*arguments):
             result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),'task',*arguments],
                                   env=client_env,capture_output=True,text=True,check=True)
             return json.loads(result.stdout)
-        assert client('list','--view','mine')['tasks'][0]['id'] == 'mcp-open-task'
+        assert client('list','--view','mine')['tasks'][0]['id'] == 'task:'+task_req+'/mcp-open-task'
         client('release','mcp-open-task','--reason','Handoff to another process')
         preview = client('next','--dry-run','--priority','domain:'+draft_id)
-        assert preview['task']['id'] == 'mcp-open-task'
-        assert client('list','--view','available')['tasks'][0]['id'] == 'mcp-open-task'
+        assert preview['task']['id'] == 'task:'+task_req+'/mcp-open-task'
+        assert client('list','--view','available')['tasks'][0]['id'] == 'task:'+task_req+'/mcp-open-task'
         assert client('next','--priority','requirement:'+task_req,
-                      '--request-id','cli-priority-next')['command']['id'] == 'mcp-open-task'
+                      '--request-id','cli-priority-next')['command']['id'] == 'task:'+task_req+'/mcp-open-task'
         client('release','mcp-open-task','--reason','Return to explicit claim')
-        assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == 'mcp-open-task'
+        assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == 'task:'+task_req+'/mcp-open-task'
         assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
         found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
         assert found['mode'] == 'full_text' and found['semantic_status'] == 'not_configured'
@@ -337,7 +337,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert gate.returncode == 0, gate.stderr
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
         assert gate.returncode != 0
-        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','assignee':'reviewer','contract':'Implement command and attach merged build evidence'})
+        ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','contract':'Implement command and attach merged build evidence'})
         # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','consumers':['customer'],'reason':'Clarify scope',

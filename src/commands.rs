@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum Command {
     /// Internal migration event. Public authoring rejects this operation.
     MigrateNotes {},
+    MigrateTasks {},
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
@@ -235,11 +236,13 @@ pub enum Command {
         contract: String,
     },
     ClaimTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
     },
     AmendTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
@@ -249,25 +252,30 @@ pub enum Command {
         reason: String,
     },
     ReleaseTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
         reason: String,
     },
     CompleteTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
         evidence: String,
     },
     ReviewTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         ac: String,
         reason: String,
     },
     RetireTask {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
         revision: u32,
         id: String,
@@ -519,10 +527,17 @@ pub(crate) fn apply_inner(
         return Ok(());
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
+    if crate::tasks::apply(w, actor, command, position, recorded_at)? {
+        return Ok(());
+    }
     match command {
         Command::MigrateNotes {} => {
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;
+        }
+        Command::MigrateTasks {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            crate::tasks::migrate(w, actor, position, recorded_at)?;
         }
         Command::SetTreeSchema {
             revision,

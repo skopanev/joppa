@@ -456,6 +456,27 @@ pub fn apply(
             } else {
                 Vec::new()
             };
+            let task_projects: Vec<String> = w
+                .task_process
+                .iter()
+                .filter(|(key, t)| {
+                    t.retired.is_none()
+                        && crate::objects::within(w, key, &format!("requirement:{req}"))
+                })
+                .flat_map(|(_, t)| t.projects.clone())
+                .chain(
+                    w.requirements
+                        .get(req)
+                        .and_then(|q| q.revisions.last())
+                        .into_iter()
+                        .flat_map(|r| r.tasks.iter())
+                        .filter(|(id, t)| {
+                            t.retired.is_none()
+                                && !w.task_process.contains_key(&format!("task:{req}/{id}"))
+                        })
+                        .flat_map(|(_, t)| t.projects.clone()),
+                )
+                .collect();
             let r = revision(w, req, *n, true)?;
             if r.coverage_policy {
                 let contract = r.verification_scope.as_ref().ok_or_else(|| {
@@ -468,17 +489,13 @@ pub fn apply(
                 let actual: BTreeSet<_> = subject.keys().collect();
                 let required: BTreeSet<_> = contract.subject_keys.iter().collect();
                 ensure!(
+                    task_projects.iter().all(|p| required.contains(p)),
+                    "subject omits a project used by a Task"
+                );
+                ensure!(
                     actual == required,
                     "subject must contain exactly the owner-approved component keys"
                 );
-                for task in r.tasks.values().filter(|task| task.retired.is_none()) {
-                    for project in &task.projects {
-                        ensure!(
-                            required.contains(project),
-                            "subject omits a project used by a task"
-                        );
-                    }
-                }
                 for (component, version) in subject {
                     ensure!(
                         component == "environment"

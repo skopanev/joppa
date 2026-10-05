@@ -131,6 +131,86 @@ fn generate(command: &mut Value) -> Result<()> {
 /// Resolve an atomic "take next" request under the workspace write lock.
 /// Only the concrete claim is journaled; the receipt preserves the original
 /// request for idempotent retries.
+fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
+    let op = value["op"].as_str().unwrap_or("").to_owned();
+    let req = value["req"].as_str().unwrap_or("").to_owned();
+    if req.is_empty()
+        || ![
+            "task",
+            "claim_task",
+            "amend_task",
+            "release_task",
+            "complete_task",
+            "review_task",
+            "retire_task",
+        ]
+        .contains(&op.as_str())
+    {
+        return Ok(());
+    }
+    let r = state
+        .requirements
+        .get(&req)
+        .and_then(|q| q.revisions.last())
+        .context("unknown REQ")?;
+    ensure!(
+        value["revision"].as_u64() == Some(r.number as u64),
+        "stale REQ revision"
+    );
+    let id = value["id"].as_str().context("Task needs an id")?;
+    let key = format!("task:{req}/{id}");
+    if op == "task" {
+        let acs: Vec<String> = serde_json::from_value(value["acs"].clone())?;
+        ensure!(
+            acs.len() == 1,
+            "legacy task needs one AC; use save_object for the configured tree"
+        );
+        ensure!(r.acs.iter().any(|a| a.id == acs[0]), "unknown AC");
+        ensure!(
+            value.get("assignee").is_none_or(Value::is_null),
+            "create an open Task, then claim it"
+        );
+        let owner = state
+            .objects
+            .get(&format!("ac:{}", acs[0]))
+            .context("unknown Task parent")?
+            .current()
+            .data["owner"]
+            .clone();
+        *value = json!({"op":"save_object","kind":"task","id":format!("{req}/{id}"),"revision":0,
+            "parent":format!("ac:{}",acs[0]),"data":{"title":value["title"],"owner":owner,"contract":value["contract"],"projects":value["projects"],"purpose":value["purpose"]},"reason":"Create a Task"});
+    } else if state.task_process.contains_key(&key) {
+        if op == "review_task" {
+            let ac = value["ac"]
+                .as_str()
+                .context("legacy review_task needs an AC")?;
+            ensure!(
+                state
+                    .objects
+                    .get(&key)
+                    .context("unknown Task document")?
+                    .current()
+                    .parent
+                    .as_deref()
+                    == Some(&format!("ac:{ac}")),
+                "change the Task parent with save_object"
+            );
+            value.as_object_mut().unwrap().remove("ac");
+        }
+        value.as_object_mut().unwrap().remove("req");
+        value["id"] = json!(key);
+        value["revision"] = json!(
+            state
+                .objects
+                .get(value["id"].as_str().unwrap())
+                .context("unknown Task document")?
+                .current()
+                .revision
+        );
+    }
+    Ok(())
+}
+
 fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Result<()> {
     if value["op"] != "claim_next_task" {
         return Ok(());
@@ -167,7 +247,10 @@ fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Resu
         &priorities.unwrap_or_default(),
     )?
     .context("no available Task matches this claim")?;
-    *value = json!({"op":"claim_task","req":chosen.0,"revision":chosen.1,"id":chosen.2});
+    *value = json!({"op":"claim_task","revision":chosen.1,"id":chosen.2});
+    if !chosen.0.is_empty() {
+        value["req"] = json!(chosen.0);
+    }
     Ok(())
 }
 
@@ -316,14 +399,8 @@ async fn write(
                 ensure!(!refs.contains_key(name), "duplicate batch reference");
             }
             let mut value = resolve(&operation.command, &refs)?;
-            let generated_task=value["op"]=="save_object" && value["kind"]=="task" && value.get("id").is_none();
             generate(&mut value)?;
-            if generated_task {
-                let parent=value["parent"].as_str().context("Task needs an AC parent")?;
-                let ac=state.objects.get(parent).context("unknown Task AC")?;
-                let req=ac.current().parent.as_deref().and_then(|p|p.strip_prefix("requirement:")).context("AC needs a REQ parent")?;
-                value["id"]=json!(format!("{req}/{}",value["id"].as_str().unwrap()));
-            }
+            resolve_task(&mut value, &state)?;
             resolve_claim_next(&mut value, &state, actor)?;
             let command: Command = serde_json::from_value(value)?;
             if let Command::Revise { consumers, capability, .. } = &command {
@@ -334,7 +411,7 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

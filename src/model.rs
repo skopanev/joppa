@@ -9,6 +9,14 @@ pub struct Workspace {
     pub object_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub objects: BTreeMap<String, crate::objects::Object>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub task_process: BTreeMap<String, Task>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub task_context: BTreeMap<String, Option<(String, u32)>>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tasks_migrated: bool,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub document_overrides: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub tree_schema: Vec<crate::objects::SchemaRevision>,
     #[serde(default)]

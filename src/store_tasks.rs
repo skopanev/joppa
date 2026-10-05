@@ -1,5 +1,21 @@
 use super::*;
 
+pub(super) async fn projected_requirement_tasks(
+    client: &impl GenericClient,
+    workspace: &str,
+    req: &str,
+) -> Result<Value> {
+    let mut tasks = json!({});
+    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address='requirement:'||$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,o.parent,o.process::text FROM joppa.objects o JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string'", &[&workspace,&req]).await? {
+        let address:String=row.get(0);
+        let parent:Option<String>=row.get(1);
+        let mut t:Value=serde_json::from_str(row.get::<_,&str>(2))?;
+        t["acs"]=json!(parent.as_deref().and_then(|p|p.strip_prefix("ac:")).map(|id|vec![id]).unwrap_or_default());
+        tasks[address.strip_prefix(&format!("task:{req}/")).unwrap_or(&address)]=t;
+    }
+    Ok(tasks)
+}
+
 pub(super) fn validate_selection<'a>(
     state: &Workspace,
     project: Option<&str>,
@@ -36,6 +52,10 @@ pub(super) fn validate_selection<'a>(
                         .objects
                         .get(selector)
                         .is_some_and(|o| o.current().present)
+                        || state.task_process.keys().any(|key| {
+                            key.strip_prefix("task:")
+                                .is_some_and(|key| key.rsplit('/').next() == Some(id))
+                        })
                         || state
                             .requirements
                             .values()
@@ -88,6 +108,31 @@ fn rank(
         .unwrap_or(priorities.len())
 }
 
+fn object_rank(
+    state: &Workspace,
+    key: &str,
+    t: &crate::model::Task,
+    priorities: &[(&str, &str)],
+) -> usize {
+    priorities
+        .iter()
+        .position(|(kind, id)| {
+            crate::objects::within(state, key, &format!("{kind}:{id}"))
+                || *kind == "project" && t.projects.iter().any(|p| p == id)
+                || *kind == "task"
+                    && (key == format!("task:{id}") || key.rsplit('/').next() == Some(id))
+                || *kind == "consumer"
+                    && state.objects.iter().any(|(address, o)| {
+                        o.kind == "requirement"
+                            && crate::objects::within(state, key, address)
+                            && o.current().data["consumers"]
+                                .as_array()
+                                .is_some_and(|ids| ids.iter().any(|v| v == id))
+                    })
+        })
+        .unwrap_or(priorities.len())
+}
+
 pub(super) fn select_next(
     state: &Workspace,
     actor: &str,
@@ -96,25 +141,47 @@ pub(super) fn select_next(
     priorities: &[String],
 ) -> Result<Option<(String, u32, String)>> {
     let priorities = validate_selection(state, project, purpose, priorities)?;
-    Ok(state
+    let mut choices: Vec<(usize, u64, String, String, u32)> = state
         .requirements
         .iter()
         .filter_map(|(req, q)| q.revisions.last().map(|r| (req, q, r)))
-        .flat_map(|(req, q, r)| r.tasks.iter().map(move |(id, task)| (req, q, r, id, task)))
-        .filter(|(_, _, _, _, task)| {
-            project.is_none_or(|p| task.projects.iter().any(|id| id == p))
-                && purpose.is_none_or(|p| task.purpose == p)
+        .flat_map(|(req, q, r)| r.tasks.iter().map(move |(id, t)| (req, q, r, id, t)))
+        .filter(|(req, _, _, id, _)| !state.task_process.contains_key(&format!("task:{req}/{id}")))
+        .filter(|(_, _, _, _, t)| {
+            project.is_none_or(|p| t.projects.iter().any(|id| id == p))
+                && purpose.is_none_or(|p| t.purpose == p)
         })
-        .filter(|(req, _, r, id, task)| checks::claimable(state, actor, req, id, r, task).is_ok())
-        .min_by_key(|(req, q, r, id, task)| {
+        .filter(|(req, _, r, id, t)| checks::claimable(state, actor, req, id, r, t).is_ok())
+        .map(|(req, q, r, id, t)| {
             (
-                rank(state, req, q, r, id, task, &priorities),
-                task.created_at,
-                (*req).clone(),
-                (*id).clone(),
+                rank(state, req, q, r, id, t, &priorities),
+                t.created_at,
+                req.clone(),
+                id.clone(),
+                r.number,
             )
         })
-        .map(|(req, _, r, id, _)| (req.clone(), r.number, id.clone())))
+        .collect();
+    for (key, t) in &state.task_process {
+        if project.is_some_and(|p| !t.projects.iter().any(|id| id == p))
+            || purpose.is_some_and(|p| t.purpose != p)
+            || crate::tasks::claimable(state, actor, key, t).is_err()
+        {
+            continue;
+        }
+        choices.push((
+            object_rank(state, key, t, &priorities),
+            t.created_at,
+            String::new(),
+            key.clone(),
+            state.objects[key].current().revision,
+        ));
+    }
+    choices.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
+    Ok(choices
+        .into_iter()
+        .next()
+        .map(|(_, _, req, id, revision)| (req, revision, id)))
 }
 
 /// Current Task queue, sourced from just the latest revision of each REQ in the
@@ -155,7 +222,7 @@ pub async fn task_queue_filtered(
     access::check(&**conn, &workspace, actor, false).await?;
     let row = conn
         .query_one(
-            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
+            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text ,COALESCE(state->'task_process','{}'::jsonb)::text,COALESCE(state->'task_context','{}'::jsonb)::text,(state->'tree_schema')::text,state->>'admin',COALESCE(state->'object_aliases','{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
             &[&workspace],
         )
         .await?;
@@ -168,6 +235,11 @@ pub async fn task_queue_filtered(
         consumers: serde_json::from_str(row.get::<_, &str>(5))?,
         projects: serde_json::from_str(row.get::<_, &str>(6))?,
         objects: serde_json::from_str(row.get::<_, &str>(8))?,
+        task_process: serde_json::from_str(row.get::<_, &str>(9))?,
+        task_context: serde_json::from_str(row.get::<_, &str>(10))?,
+        tree_schema: serde_json::from_str(row.get::<_, &str>(11))?,
+        admin: row.get(12),
+        object_aliases: serde_json::from_str(row.get::<_, &str>(13))?,
         ..Default::default()
     };
     let requirements: std::collections::BTreeMap<String, Value> =
@@ -197,6 +269,9 @@ pub async fn task_queue_filtered(
     for (req, requirement) in &state.requirements {
         let revision = requirement.revisions.last().unwrap();
         for (id, task) in &revision.tasks {
+            if state.task_process.contains_key(&format!("task:{req}/{id}")) {
+                continue;
+            }
             if !project.is_none_or(|p| task.projects.iter().any(|id| id == p))
                 || purpose.is_some_and(|p| task.purpose != p)
             {
@@ -245,6 +320,36 @@ pub async fn task_queue_filtered(
                 }),
             ));
         }
+    }
+    for (key, t) in &state.task_process {
+        if project.is_some_and(|p| !t.projects.iter().any(|id| id == p))
+            || purpose.is_some_and(|p| t.purpose != p)
+        {
+            continue;
+        }
+        let claim_error = crate::tasks::claimable(&state, actor, key, t)
+            .err()
+            .map(|e| e.to_string());
+        let status = crate::tasks::status(t);
+        let include = match view {
+            "available" => claim_error.is_none(),
+            "mine" => {
+                t.assignee.as_deref() == Some(actor) && t.done.is_none() && t.retired.is_none()
+            }
+            "waiting" => status == "open" && claim_error.is_some(),
+            _ => true,
+        };
+        if !include {
+            continue;
+        }
+        let o = &state.objects[key];
+        entries.push((object_rank(&state,key,t,&priorities),t.created_at,String::new(),key.clone(),json!({
+            "id":key,"address":key,"req":null,"revision":o.current().revision,"parent":o.current().parent,
+            "ac":o.current().parent.as_deref().and_then(|p|p.strip_prefix("ac:")),
+            "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
+            "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
+            "review_required":crate::tasks::review_required(&state,key,t),"created_at":t.created_at
+        })));
     }
     entries.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
     ensure!(offset <= entries.len(), "invalid task cursor offset");

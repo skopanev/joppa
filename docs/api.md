@@ -52,7 +52,7 @@ task: req, revision, id, title, acs:[id], projects:[id],
       purpose (implementation|manual|decision), contract, assignee:null (optional)
       Every new task needs a nonempty technical contract. Existing assigned
       tasks without contract remain readable for journal compatibility.
-claim_task: req, revision, id; atomically assign an open task to the authenticated actor
+claim_task: revision, id, req (legacy optional); atomically assign an open task to the authenticated actor
 amend_task: req, revision, id, title, contract, projects:[id], reason; correct an
       unfinished Task in the current revision. REQ owner, assignee, or creator
       of an unclaimed Task may amend it. The AC and completion history stay put.
@@ -66,7 +66,7 @@ claim_next_task: project (optional), purpose (optional), priorities (optional
       oldest claimable task matching the first priority that has one. If none
       match, select the oldest claimable task overall. project and purpose are
       hard filters. Unknown priority targets are errors. Journal a concrete
-      claim_task; the response command contains req, revision and id.
+      claim_task; the response command contains the Task address and its object revision.
       For a read-only preview use joppa_tasks with view=available, limit=1 and
       the same project, purpose and priorities. It applies the same ordering and
       returns no Task when none is available; a later claim_task may lose a race.
@@ -116,7 +116,7 @@ Manual evidence is submitted by a human member; automated evidence and finish by
 Expected tests cannot disappear between runs of one revision. To replace the verification contract, save a new revision with a reason.
 For new revisions, the first sealed plan is compared with the latest plan from any earlier revision. The card and read summary list checks whose identity, AC, method or expected evidence disappeared or changed. The REQ owner must call `review_coverage` with a reason before accepting that revision. Old journal revisions predate this rule and remain replayable.
 Before the first plan on a new revision, its REQ owner must call `define_verification_scope`. A plan's `subject` must contain exactly those component keys, its `scope` must match the agreed boundary, and it must include every project named by active tasks. Build/configuration values cannot be bare environment names such as `staging`. The first plan seals this scope contract; changing it requires another REQ revision. Older journal revisions remain readable under their historical rules. This validates the declared contract, not the semantic completeness of the owner's component list.
-Tasks remain in the current card across REQ revisions, including completed tasks and tasks from older revisions that an earlier edit omitted. Each active carried task needs an explicit `review_task` by the REQ owner before unfinished work can be completed or claimed again. The review binds it to exactly one AC in the new revision. If the task no longer applies, the owner uses `retire_task` with a reason; its earlier revisions, completion result, and original AC remain in history. New tasks belong to exactly one AC. `joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection without reading every requirement. `available` uses the same eligibility rules as `claim_task`: one current AC, an explicit contract, no owner-review hold, no prior assignee/completion/retirement, and a ready AC. Decision-purpose tasks can be claimed by the designated human owner before that AC is ready, because making its decision is the work. An unconfirmed REQ can have provisional work, but cannot pass verification. Task status is derived as open, in_progress or done; an unready AC makes an open task ineligible to claim rather than creating a Task-level blocked status. Claim and release do not make an AC green; only checks do.
+Tasks remain in the current card across REQ revisions, including completed tasks and tasks from older revisions that an earlier edit omitted. Each active carried task needs an explicit `review_task` by the REQ owner before unfinished work can be completed or claimed again. The review binds it to exactly one AC in the new revision. If the task no longer applies, the owner uses `retire_task` with a reason; its earlier revisions, completion result, and original AC remain in history. The default tree places Tasks under AC. The workspace schema can select any parent type. `joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection without reading every requirement. `available` uses the same eligibility rules as `claim_task`: one current AC, an explicit contract, no owner-review hold, no prior assignee/completion/retirement, and a ready AC. Decision-purpose tasks can be claimed by the designated human owner before that AC is ready, because making its decision is the work. An unconfirmed REQ can have provisional work, but cannot pass verification. Task status is derived as open, in_progress or done; an unready AC makes an open task ineligible to claim rather than creating a Task-level blocked status. Claim and release do not make an AC green; only checks do.
 The queue response uses the public workspace ID shown by `joppa_list`; historical storage aliases remain valid inputs. `created_at` is the Task creation journal position, not a wall-clock timestamp.
 The latest **started** run among completed runs is current. A delayed older run cannot replace a newer verdict.
 Read responses include the entire journal with authenticated actor and database timestamp.
@@ -330,3 +330,16 @@ precedence over count-only discovery. Invalid or missing revision numbers produc
 an error, never a fallback to current. `cursor` and `limit` from older history
 clients are rejected with instructions to select a revision. The portal and
 administrative snapshots retain full history.
+
+### Task object commands
+
+Create a Task with `save_object` under any parent permitted by the workspace schema.
+Its type must have role `task`. The default type name is `task`.
+Use `id: "task:<local-id>"` or the returned custom type address for process commands.
+Omit `req`. Supply the current Task object `revision`.
+`claim_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
+Generic `review_task` takes `reason` and does not take `ac`.
+Queue items report their object `address`, `parent`, `revision` and current status.
+Historical `req` addresses remain accepted and resolve to this same process record.
+The Task type configures parent evidence through optional `parent_gate`.
+See `docs/objects.md` for the gate values and migration contract.

@@ -115,27 +115,43 @@ async fn ensure_notes(
     state: &mut Workspace,
     events: &mut Vec<Event>,
 ) -> Result<bool> {
-    if state.notes_migrated {
-        return Ok(false);
+    let mut changed = false;
+    if !state.notes_migrated {
+        ensure!(!state.admin.is_empty(), "workspace has no owner");
+        let position = events.last().map_or(1, |event| event.position + 1);
+        let command = Command::MigrateNotes {};
+        let actor = state.admin.clone();
+        let payload = serde_json::to_string(&command)?;
+        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
+        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+        events.push(Event {
+            position,
+            actor,
+            recorded_at,
+            command,
+        });
+        changed = true;
     }
-    ensure!(!state.admin.is_empty(), "workspace has no owner");
-    let position = events.last().map_or(1, |event| event.position + 1);
-    let command = Command::MigrateNotes {};
-    let actor = state.admin.clone();
-    let payload = serde_json::to_string(&command)?;
-    let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
-    commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
-    events.push(Event {
-        position,
-        actor,
-        recorded_at,
-        command,
-    });
-    Ok(true)
+    if !state.tasks_migrated {
+        let position = events.last().map_or(1, |event| event.position + 1);
+        let command = Command::MigrateTasks {};
+        let actor = state.admin.clone();
+        let payload = serde_json::to_string(&command)?;
+        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
+        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+        events.push(Event {
+            position,
+            actor,
+            recorded_at,
+            command,
+        });
+        changed = true;
+    }
+    Ok(changed)
 }
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);
@@ -433,6 +449,10 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             }
         }
         out["requirement"]["revisions"] = json!([revision]);
+        if scope.revision.is_none() && state.tasks_migrated {
+            out["requirement"]["revisions"][0]["tasks"] =
+                json!(crate::tasks::display_tasks(&state, req));
+        }
         out["requirement"]["comments"] = json!(comments);
         out["notes"] = notes;
         out["summary"] = if revision.number == current.number {
@@ -611,6 +631,22 @@ pub async fn read_item_scoped(
             let conn = pool.get().await?;
             let (state, _) = load(&**conn, &workspace).await?;
             drop(conn);
+            if state.document_overrides.contains(&format!("ac:{local_id}")) {
+                let mut result = read_objects(
+                    pool,
+                    &workspace,
+                    actor,
+                    &ObjectScope {
+                        address: Some(&format!("ac:{local_id}")),
+                        revision: scope.revision,
+                        history: scope.history,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+                result["selection"] = selection;
+                return Ok(result);
+            }
             for (req, q) in &state.requirements {
                 if q.revisions
                     .iter()

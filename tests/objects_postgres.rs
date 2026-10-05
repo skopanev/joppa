@@ -154,7 +154,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     assert_eq!(batch["results"][1]["object"]["revision"], 2);
     let replay = store::execute_remote_batch(&pool, &ws, "agent", "note-batch", &ops).await?;
     assert_eq!(batch["results"], replay["results"]);
-    store::execute_remote_input(&pool,&ws,"agent","default-schema",&json!({"op":"set_tree_schema","revision":1,"types":joppa::objects::defaults(),"reason":"Record the default schema"})).await?;
+    store::execute_remote_input(&pool,&ws,"agent","default-schema",&json!({"op":"set_tree_schema","revision":2,"types":joppa::objects::defaults(),"reason":"Record the default schema"})).await?;
     let first_view: String = pool
         .get()
         .await?
@@ -172,6 +172,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     types.insert(
         "initiative".into(),
         joppa::objects::TreeType {
+            parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
             root: true,
@@ -188,7 +189,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         &ws,
         "agent",
         "schema",
-        &json!({"op":"set_tree_schema","revision":2,"types":types,"reason":"Use an initiative"}),
+        &json!({"op":"set_tree_schema","revision":3,"types":types,"reason":"Use an initiative"}),
     )
     .await?;
     store::execute_remote_input(&pool,&ws,"agent","group",&json!({"op":"save_object","kind":"initiative","id":"release","revision":0,"parent":null,"data":{"title":"Release","owner":"owner"},"reason":"Group release work"})).await?;
@@ -220,7 +221,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", None).await?["current_revision"],
-        3
+        4
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", Some(0)).await?["schema"]["revision"],

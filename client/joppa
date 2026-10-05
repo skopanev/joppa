@@ -2,12 +2,15 @@
 """Small Bash-friendly client for Joppa Tasks over the public MCP endpoint."""
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 
 class JoppaError(Exception):
@@ -61,10 +64,10 @@ def workspace(args):
 
 
 def task_address(args, space):
-    if args.req and args.revision:
-        return {"req": args.req, "revision": args.revision, "id": args.id}
-    if args.req or args.revision:
-        raise JoppaError("supply --req and --revision together")
+    if args.revision:
+        return {"revision": args.revision, "id": args.id, **({"req": args.req} if args.req else {})}
+    if args.req:
+        raise JoppaError("supply --revision with --req")
     matches = []
     cursor = None
     while True:
@@ -72,17 +75,38 @@ def task_address(args, space):
         if cursor:
             query["cursor"] = cursor
         page = mcp(args, "joppa_tasks", query)
-        matches.extend(task for task in page["tasks"] if task["id"] == args.id)
+        matches.extend(task for task in page["tasks"] if task["id"] == args.id or task["id"].split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
         cursor = page.get("next_cursor")
         if not cursor:
             break
     if len(matches) != 1:
-        raise JoppaError("Task ID is absent or ambiguous; supply --req and --revision")
+        raise JoppaError("Task ID is absent or ambiguous; supply the common Task address and --revision")
     task = matches[0]
-    return {"req": task["req"], "revision": task["revision"], "id": task["id"]}
+    return {"revision": task["revision"], "id": task["id"], **({"req": task["req"]} if task.get("req") else {})}
 
 
 def command(args, space, value):
+    if args.request_id:
+        intent = {key: val for key, val in vars(args).items()
+                  if key not in {"url", "workspace", "token_file", "json"}}
+        endpoint = args.url or os.getenv("JOPPA_MCP_URL", "")
+        key = hashlib.sha256(json.dumps([endpoint, space, args.request_id]).encode()).hexdigest()
+        directory = Path(os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "joppa" / "requests"
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        filename = directory / (key + ".json")
+        descriptor, pending = tempfile.mkstemp(dir=directory)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+                json.dump({"intent": intent, "command": value}, target)
+            try:
+                os.link(pending, filename)
+            except FileExistsError:
+                stored = json.loads(filename.read_text(encoding="utf-8"))
+                if stored["intent"] != intent:
+                    raise JoppaError("request-id was used with different arguments")
+                value = stored["command"]
+        finally:
+            os.unlink(pending)
     return mcp(args, "joppa_command", {
         "workspace": space,
         "request_id": args.request_id or str(uuid.uuid4()),

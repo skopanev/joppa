@@ -92,7 +92,15 @@ fn requirement_signal(
     q: &crate::model::Requirement,
     events: &[Event],
 ) -> Value {
-    let r = q.revisions.last().expect("requirement has a revision");
+    let mut current = q
+        .revisions
+        .last()
+        .expect("requirement has a revision")
+        .clone();
+    if state.tasks_migrated {
+        current.tasks = crate::tasks::display_tasks(state, id);
+    }
+    let r = &current;
     let s = crate::objects::requirement_summary(state, id, r);
     let acs = s["acs"].as_object();
     let failed = acs.is_some_and(|a| a.values().any(|v| v["verification"] == "fail"));
@@ -360,7 +368,11 @@ pub async fn board_read(
         Some("requirement") => {
             let id = id.context("requirement id required")?;
             let row=conn.query_one("SELECT jsonb_build_object('capability',state->'requirements'->$2->'capability','revisions',jsonb_build_array(state->'requirements'->$2->'revisions'->COALESCE($3::integer-1,-1)),'comments',state->'requirements'->$2->'comments')::text, (summary->$2)::text, (state->'consumers')::text, COALESCE((SELECT jsonb_object_agg(key,value) FROM jsonb_each(state->'notes') WHERE key='requirement:'||$2 OR key LIKE 'ac:'||$2||'/%'),'{}'::jsonb)::text, (state->'projects')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace,&id,&revision.map(|v|v as i32)]).await?;
-            let q = parsed(&row, 0)?;
+            let mut q = parsed(&row, 0)?;
+            if revision.is_none() {
+                q["revisions"][0]["tasks"] =
+                    super::tasks::projected_requirement_tasks(&**conn, &workspace, id).await?;
+            }
             ensure!(
                 !q["revisions"][0].is_null(),
                 "unknown requirement or revision"

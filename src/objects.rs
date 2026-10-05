@@ -17,6 +17,8 @@ pub struct TreeType {
     #[serde(default)]
     pub root: bool,
     pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_gate: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SchemaRevision {
@@ -91,6 +93,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         (
             kind.into(),
             TreeType {
+                parent_gate: (kind == "task").then(|| "ready".into()),
                 title: title.into(),
                 role: role.into(),
                 root,
@@ -102,6 +105,9 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
 }
 pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
     let mut types = defaults();
+    for t in types.values_mut() {
+        t.parent_gate = None;
+    }
     for (kind, title, root, parents) in [
         ("intake", "Source note", true, vec![]),
         ("point", "Source point", false, vec!["intake".into()]),
@@ -109,6 +115,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         types.insert(
             kind.into(),
             TreeType {
+                parent_gate: None,
                 title: title.into(),
                 role: "document".into(),
                 root,
@@ -313,6 +320,16 @@ pub fn set_schema(
         commands::identifier(kind)?;
         commands::nonempty(&t.title)?;
         ensure!(
+            t.parent_gate
+                .as_deref()
+                .is_none_or(|g| ["ready", "verified", "completed"].contains(&g)),
+            "unknown parent gate"
+        );
+        ensure!(
+            t.parent_gate.is_none() || t.role == "task",
+            "parent gates apply to Task roles"
+        );
+        ensure!(
             ["group", "document", "requirement", "ac", "task"].contains(&t.role.as_str()),
             "unknown semantic role"
         );
@@ -321,32 +338,22 @@ pub fn set_schema(
                 t.role == original.role,
                 "built-in semantic roles cannot change"
             );
-        } else {
-            ensure!(
-                ["group", "document"].contains(&t.role.as_str()),
-                "REQ, AC and Task roles use their built-in types"
-            );
         }
         for p in &t.parents {
             ensure!(p == "*" || types.contains_key(p), "unknown parent type");
         }
     }
-    for (kind, parent) in [("ac", "requirement"), ("task", "ac")] {
-        let t = types.get(kind).context("AC and Task types are required")?;
-        ensure!(
-            !t.root && t.parents == vec![parent.to_string()],
-            "AC has one REQ parent; Task has one AC parent"
-        );
-    }
-    ensure!(
-        types.contains_key("requirement") && types.contains_key("note"),
-        "REQ and Note types are required"
-    );
     for obj in w.objects.values().filter(|o| o.current().present) {
         ensure!(
             types.contains_key(&obj.kind),
             "object type is absent from the tree schema"
         );
+        if w.task_process.contains_key(&address(&obj.kind, &obj.id)) {
+            ensure!(
+                types[&obj.kind].role == "task",
+                "a type with existing Tasks must retain its Task role"
+            );
+        }
         if !legacy_task_binding(w, obj) {
             parent_valid(types, w, &obj.kind, obj.current().parent.as_deref())?;
         }
@@ -459,6 +466,9 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         _ => None,
     };
     for (key, (kind, parent, data)) in &rows {
+        if w.task_process.contains_key(key) || w.document_overrides.contains(key) {
+            continue;
+        }
         let obj = w.objects.entry(key.clone()).or_insert_with(|| Object {
             kind: kind.clone(),
             id: key.split_once(':').unwrap().1.into(),
@@ -506,6 +516,8 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
     for (key, obj) in &mut w.objects {
         if legacy_defaults().contains_key(&obj.kind)
             && obj.kind != "note"
+            && !w.task_process.contains_key(key)
+            && !w.document_overrides.contains(key)
             && !rows.contains_key(key)
             && obj.current().present
         {
@@ -555,7 +567,13 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         if link.blocking {
             ensure!(
                 link.relation == "depends_on"
-                    && ["ac", "requirement", "task"].contains(&target.kind.as_str()),
+                    && (["ac", "requirement", "task"].contains(&target.kind.as_str())
+                        || schema(w).types.get(&target.kind).is_some_and(|t| [
+                            "ac",
+                            "requirement",
+                            "task"
+                        ]
+                        .contains(&t.role.as_str()))),
                 "blocking dependencies require an AC, REQ or Task target"
             );
         }
@@ -799,6 +817,9 @@ fn typed_command(
             }
         }
         "ac" => {
+            if !parent.is_some_and(|p| p.starts_with("requirement:")) {
+                return Ok(None);
+            }
             let req = local(parent, "requirement")?;
             let q = w.requirements.get(&req).context("unknown parent REQ")?;
             let r = q.revisions.last().unwrap();
@@ -962,11 +983,25 @@ pub fn save(
         .as_ref()
         .is_some_and(|o| o.current().data == *data && o.current().parent == *parent);
     let mut candidate = w.clone();
-    if !unchanged || kind == "requirement" {
+    let generic_task = schema(w).types[kind].role == "task" && w.tasks_migrated;
+    let task_data = if generic_task {
+        Some(crate::tasks::save(
+            &mut candidate,
+            actor,
+            &key,
+            data,
+            parent.as_deref(),
+            position,
+        )?)
+    } else {
+        None
+    };
+    if (!unchanged || kind == "requirement") && !generic_task {
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
             sync(&mut candidate, actor, &cmd, position, at);
         } else {
+            candidate.document_overrides.insert(key.clone());
             let owner = string(data, "owner")?;
             commands::human(w, &owner)?;
             if let Some(o) = &old {
@@ -1051,7 +1086,12 @@ pub fn save(
             parent_override: false,
         });
     object.revisions = old.map(|o| o.revisions).unwrap_or_default();
-    let saved_data = if legacy_defaults().contains_key(kind) && kind != "note" {
+    let saved_data = if let Some(data) = task_data {
+        data
+    } else if legacy_defaults().contains_key(kind)
+        && kind != "note"
+        && !candidate.document_overrides.contains(&key)
+    {
         projected
     } else {
         data.clone()
@@ -1071,7 +1111,8 @@ pub fn save(
         reason: reason.clone(),
         present: true,
     });
-    candidate.objects.insert(key, object);
+    candidate.objects.insert(key.clone(), object);
+    validate_links(&candidate, &key, links)?;
     *w = candidate;
     Ok(())
 }
@@ -1124,15 +1165,7 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
                     .get(&target.id)
                     .and_then(|q| q.revisions.last())
                     .is_some_and(|r| crate::checks::summary(r)["accepted"] == true),
-                "task" => target
-                    .id
-                    .split_once('/')
-                    .and_then(|(req, id)| {
-                        w.requirements
-                            .get(req)
-                            .and_then(|q| q.revisions.last())
-                            .and_then(|r| r.tasks.get(id))
-                    })
+                _ if crate::tasks::task(w, &l.target).is_some() => crate::tasks::task(w, &l.target)
                     .is_some_and(|t| t.done.is_some() && t.retired.is_none()),
                 _ => false,
             };
@@ -1142,7 +1175,7 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             .current()
             .parent
             .as_deref()
-            .is_none_or(|p| stack.contains(resolve_address(w, p)) || visit(w, p, stack));
+            .is_none_or(|p| visit(w, p, stack));
         stack.remove(key);
         links_ready && parent_ready
     }
@@ -1220,7 +1253,9 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
 
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::MigrateNotes {} => bail!("internal migration operation"),
+        Command::MigrateNotes {} | Command::MigrateTasks {} => {
+            bail!("internal migration operation")
+        }
         Command::Intake { .. }
         | Command::Split { .. }
         | Command::Questions { .. }
@@ -1247,7 +1282,7 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         ),
         Command::Task { acs, .. } => ensure!(acs.len() == 1, "Task must belong to exactly one AC"),
         Command::CompleteTask { req, id, .. } => ensure!(
-            work_ready(w, &format!("task:{req}/{id}")),
+            work_ready(w, &crate::tasks::address(req, id)),
             "Task has an unmet dependency or a changed dependency revision"
         ),
         Command::ReviewTask {
@@ -1257,6 +1292,9 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
             ac,
             ..
         } => {
+            if req.is_empty() {
+                return Ok(());
+            }
             let r = w
                 .requirements
                 .get(req)
@@ -1301,6 +1339,9 @@ pub fn annotation_address(w: &Workspace, key: &str) -> String {
 }
 
 pub fn process(w: &Workspace, key: &str) -> Value {
+    if let Some(p) = crate::tasks::process(w, resolve_address(w, key)) {
+        return p;
+    }
     let Some(o) = w.objects.get(resolve_address(w, key)) else {
         return json!({});
     };
@@ -1321,6 +1362,8 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             "grey",
             "Object is absent from the current verification revision",
         )
+    } else if p["review_required"] == true {
+        ("purple", "Task contract needs owner review")
     } else if !review_links(w, key).is_empty() {
         ("purple", "Dependency revision changed")
     } else if !work_ready(w, key) {
@@ -1354,7 +1397,7 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         } else {
             ("grey", "REQ awaits checks")
         }
-    } else if o.kind == "task" {
+    } else if o.kind == "task" || w.task_process.contains_key(key) {
         match p["status"].as_str() {
             Some("done") => ("grey", "Task completed"),
             Some("retired") => ("grey", "Task retired"),
