@@ -2,20 +2,27 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f2f3f0">
 <title>Workspace tree · Joppa</title>
 <link rel="icon" href="/favicon.svg">
-<style>
-:root{font:16px/1.55 system-ui,sans-serif;color:#272b32;background:#f5f5f0}*{box-sizing:border-box}body{margin:0}header{display:flex;gap:24px;align-items:center;padding:24px 5vw;border-bottom:1px solid #ddd}a{color:inherit;text-decoration:none}header a{font-weight:700}select,button{font:inherit;padding:8px 12px;border:1px solid #cbd0d5;border-radius:8px;background:transparent}main{max-width:960px;margin:48px auto;padding:0 24px}h1{font-size:36px;letter-spacing:-1px;margin-bottom:8px}.hint{color:#68717d}.type{background:#fff;border:1px solid #e0e3e6;border-radius:12px;padding:22px;margin:12px 0}.type h2{margin:0;font-size:20px}.tag{display:inline-block;font-size:12px;color:#376590;background:#e9f2fc;border-radius:5px;padding:3px 8px;margin:8px 8px 0 0}.flow{margin:12px 0 0;color:#68717d}#error{color:#a23d35}details{margin-top:24px}pre{white-space:pre-wrap;font-size:12px}#revision{margin-left:auto}@media(max-width:600px){header{flex-wrap:wrap;gap:12px}main{margin-top:24px}h1{font-size:28px}} 
-</style>
-<header><a href="/">joppa.</a><select id="workspace" aria-label="Workspace"></select><select id="revision" aria-label="Schema revision"></select></header>
-<main><h1>Workspace tree</h1><p class="hint">Each workspace defines its own types and parents. Agents update this schema through MCP.</p><p id="meta" class="hint"></p><p id="error" role="status"></p><div id="types"></div></main>
-<script>
-const workspace=document.querySelector('#workspace'),revision=document.querySelector('#revision'),types=document.querySelector('#types');
-let request=0;
-const element=(tag,text,cls)=>{const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;};
-async function api(path){const response=await fetch('/api/'+path);const value=await response.json();if(!response.ok)throw Error(value.error||'Could not read the schema.');return value;}
-async function load(selected){const mine=++request;document.querySelector('#error').textContent='';const path='workspaces/'+encodeURIComponent(workspace.value)+'/tree'+(selected===undefined?'':'?revision='+selected);try{const data=await api(path);if(mine!==request)return;revision.replaceChildren();for(let n=data.current_revision;n>=0;n--){const option=element('option','Revision '+n+(n===data.current_revision?' · Current':''));option.value=n;revision.append(option);}revision.value=data.schema.revision;types.replaceChildren();document.querySelector('#meta').textContent=data.schema.reason+' · '+data.schema.actor+(data.schema.at?' · '+new Date(data.schema.at).toLocaleString():'');for(const [kind,t] of Object.entries(data.schema.types)){const card=element('article','','type');card.append(element('h2',t.title),element('span',kind,'tag'),element('span',t.role,'tag'));const parents=t.parents.map(id=>id==='*'?'Any type':data.schema.types[id]?.title||id);card.append(element('p',[(t.root?'Root allowed':null),parents.length?'Parents: '+parents.join(', '):null].filter(Boolean).join(' · '),'flow'));types.append(card);}}catch(e){if(mine===request)document.querySelector('#error').textContent=e.message;}}
-workspace.onchange=()=>{sessionStorage.setItem('joppa-workspace',workspace.value);history.replaceState(null,'','/tree?workspace='+encodeURIComponent(workspace.value));load();};revision.onchange=()=>load(Number(revision.value));
-(async()=>{try{const list=await api('workspaces');for(const w of list){const option=element('option',w.title);option.value=w.id;workspace.append(option);}const selected=new URLSearchParams(location.search).get('workspace')||sessionStorage.getItem('joppa-workspace');if(list.some(w=>w.id===selected))workspace.value=selected;if(list.length)await load();else document.querySelector('#error').textContent='No workspace access. Ask the workspace owner for access.';}catch(e){document.querySelector('#error').textContent=e.message+' Sign in on the main page.';}})();
-</script>
+<style>/* BOARD_STYLE */
+/* TREE_STYLE */</style>
+<body class="authenticated schema-page">
+<header class="app-header">
+  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong></a>
+  <label class="workspace-label"><span class="sr-only">Workspace</span><select id="workspace" aria-label="Workspace"></select></label>
+  <nav class="header-actions" aria-label="Navigation"><a class="help-link" href="/" id="board-link">Back to board ↗</a><select id="revision" aria-label="Schema revision"></select></nav>
+</header>
+<main class="layout">
+  <div class="tree-intro"><h1>Workspace tree</h1><p class="hint">Follow the lines from parent to child. Each workspace defines its own types.</p></div>
+  <div class="schema-caption"><p id="meta" class="hint"></p><span class="schema-readonly">Read only</span></div>
+  <p id="error" role="status"></p>
+  <section class="schema-map" aria-label="Type relationships">
+    <div class="schema-legend"><span><i></i>Parent → child</span><span><i class="any-line"></i>Any type → child</span><span class="hint">Focus a type to highlight its connections.</span></div>
+    <div class="schema-scroll" tabindex="0" aria-label="Workspace type diagram"><div id="types"><svg id="connections" aria-hidden="true"></svg></div></div>
+  </section>
+  <p class="hint schema-footer">Agents configure this tree through MCP. Object links and dependencies appear in the object details on the board.</p>
+</main>
+<script>/* TREE_SCRIPT */</script>
+</body>
 </html>

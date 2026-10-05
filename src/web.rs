@@ -489,7 +489,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
                 )
             }),
         )
-        .route("/tree", get(|| async { Html(include_str!("tree.html")) }))
+        .route("/tree", get(|| async { Html(tree_page()) }))
         .route("/guide", get(|| async { Html(include_str!("guide.html")) }))
         .route("/health", get(health))
         .route("/auth/login", post(login_user))
@@ -548,4 +548,11 @@ fn page() -> String {
     include_str!("board.html")
         .replace("/* BOARD_STYLE */", include_str!("board.css"))
         .replace("/* BOARD_SCRIPT */", include_str!("board.js"))
+}
+
+fn tree_page() -> String {
+    include_str!("tree.html")
+        .replace("/* BOARD_STYLE */", include_str!("board.css"))
+        .replace("/* TREE_STYLE */", include_str!("tree.css"))
+        .replace("/* TREE_SCRIPT */", include_str!("tree.js"))
 }
