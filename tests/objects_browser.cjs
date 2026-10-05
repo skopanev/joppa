@@ -18,9 +18,9 @@ await source.locator(':scope > summary').click();await source.locator(':scope > 
 await source.getByRole('button',{name:'Release · related · historical object'}).click();await page.getByRole('dialog').getByRole('heading',{name:'Release'}).waitFor();await page.getByRole('dialog').getByRole('button',{name:'Close'}).click();
 const documentReads=seen.filter(url=>url.includes('address=')).length;await page.getByLabel('Object type',{exact:true}).selectOption('note');await page.locator('[data-object-address="initiative:release"]').waitFor({state:'detached'});await page.locator('[data-object-address="note:source"]').waitFor();assert.equal(seen.filter(url=>url.includes('address=')).length,documentReads,'filter reads summaries only');
 await page.getByRole('link',{name:'Workspace tree'}).click();await page.getByRole('heading',{name:'Initiative',exact:true}).waitFor();assert.equal(await page.locator('button').count(),0,'schema page has no write control');assert.equal(await page.getByLabel('Workspace',{exact:true}).inputValue(),'w');assert.equal(await page.getByLabel('Schema revision').inputValue(),'1');
-assert.equal(await page.locator('.type').count(),Object.keys(schema.schema.types).length+2,'each type appears once, with Workspace and Any object');
-assert.equal(await page.locator('.schema-edge').count(),9,'all root, parent, wildcard and self relations have lines');
-for(const [source,target] of [['initiative','requirement'],['workstream','requirement'],['requirement','ac'],['ac','task'],['@any','note'],['note','note']]){
+assert.equal(await page.locator('.type').count(),Object.keys(schema.schema.types).length+1,'each type appears once, with Workspace');
+assert.equal(await page.locator('.schema-edge').count(),8,'all explicit root, parent and self relations have lines');
+for(const [source,target] of [['initiative','requirement'],['workstream','requirement'],['requirement','ac'],['ac','task'],['note','note']]){
   assert.equal(await page.locator(`.schema-edge[data-source="${source}"][data-target="${target}"]`).count(),1);
 }
 const requirement=page.locator('.type[data-kind="requirement"]');
@@ -37,7 +37,7 @@ await page.screenshot({path:'/tmp/joppa-schema-mobile.png',fullPage:true});
 await page.setViewportSize({width:1280,height:900});
 await page.getByLabel('Schema revision').selectOption('0');
 await page.getByRole('heading',{name:'Domain',exact:true}).waitFor();
-assert.equal(await page.locator('.schema-edge').count(),11,'main diagram draws parent rules and the two built-in references');
+assert.equal(await page.locator('.schema-edge').count(),10,'main diagram draws explicit parent rules and the two built-in references');
 assert.equal(await page.locator('.type[data-kind="intake"],.type[data-kind="point"]').count(),0,'legacy types stay outside the main tree');
 assert.equal(await page.locator('#legacy-types').count(),0,'page has no separate legacy section');
 for(const [source,target,field] of [['requirement','consumer','consumers'],['task','project','projects']]){
@@ -47,16 +47,28 @@ assert.equal(await page.locator('#reference-help').getByText('REQ → Consumer: 
 assert.equal(await page.locator('.type[data-kind="initiative"]').count(),0,'revision change removes the previous diagram');
 const defaultPositions=await page.locator('.type').evaluateAll(cards=>Object.fromEntries(cards.map(card=>[card.dataset.kind,card.offsetLeft])));
 for(const [parent,child] of [['domain','capability'],['capability','requirement'],['requirement','ac'],['ac','task']])assert(defaultPositions[parent]<defaultPositions[child]);
+assert.equal(await page.locator('.type[data-kind="@any"]').count(),0,'wildcard parent is a rule, not an object type');
+assert.equal(await page.locator('.type[data-kind="note"] .schema-parent-rule').textContent(),'Inside any type');
+assert.equal(await page.locator('#reference-help').getByText('Note can be placed inside any object type.').count(),1);
+const routes=await page.locator('.reference-edge').evaluateAll(paths=>paths.map(path=>({d:path.getAttribute('d'),endY:path.getPointAtLength(path.getTotalLength()).y})));
+assert.equal(routes.length,2);assert.notEqual(routes[0].endY,routes[1].endY,'references use separate rows');
+assert(await page.locator('.schema-edge').evaluateAll(paths=>{const cards=[...document.querySelectorAll('.type')];return paths.every(path=>{const length=path.getTotalLength();return cards.filter(card=>![path.dataset.source,path.dataset.target].includes(card.dataset.kind)).every(card=>{for(let at=0;at<=length;at+=2){const p=path.getPointAtLength(at);if(p.x>card.offsetLeft+1&&p.x<card.offsetLeft+card.offsetWidth-1&&p.y>card.offsetTop+1&&p.y<card.offsetTop+card.offsetHeight-1)return false;}return true;});});}),'connections do not pass through another card');
 await page.screenshot({path:'/tmp/joppa-schema-default.png',fullPage:true});
 await page.evaluate(definitions=>renderTree({types:{...definitions,initiative:{title:'Initiative',role:'group',root:true,parents:[]},requirement:{...definitions.requirement,parents:['capability','initiative']},consumer:{...definitions.consumer,parents:['domain']}}}),defaults);
-const rails=await page.locator('.schema-edge:not(.reference-edge)').evaluateAll(paths=>paths.map(path=>path.getAttribute('d').match(/ V (\d+) H /)?.[1]).filter(Boolean).map(Number));
+await page.evaluate(()=>new Promise(requestAnimationFrame));
+const rails=await page.locator('.schema-edge:not(.reference-edge)').evaluateAll(paths=>paths.map(path=>path.getBBox()).filter(box=>box.y<Math.min(...[...document.querySelectorAll('.type')].map(card=>card.offsetTop))).map(box=>box.y));
 assert.equal(rails.length,2,'two additional parents need separate routes');
 assert.equal(new Set(rails).size,2,'additional parent routes do not share a horizontal rail');
 assert(await page.locator('.type').evaluateAll((cards,top)=>cards.every(card=>card.offsetTop>top),Math.max(...rails)),'reserve space above the cards for all rails');
+await page.evaluate(definitions=>renderTree({types:{...definitions,note:{...definitions.note,root:false,parents:['*']},consumer:{...definitions.consumer,root:false,parents:['requirement']}}}),defaults);
+await page.evaluate(()=>new Promise(requestAnimationFrame));
+assert.equal(await page.locator('.schema-edge[data-source="@workspace"][data-target="note"]').count(),0,'wildcard-only types do not imply workspace parent permission');
+assert.equal(await page.locator('.type[data-kind="note"]').evaluate(card=>card.offsetLeft),await page.locator('.workspace-node').evaluate(card=>card.offsetLeft),'wildcard-only types are separate from workspace children');
+assert(await page.locator('.schema-edge-label').evaluateAll(labels=>labels.every(label=>label.getBBox().y>=0)),'reference labels stay inside the canvas');
 await page.evaluate(()=>renderTree({types:{a:{title:'A',role:'group',root:false,parents:['b']},b:{title:'B',role:'group',root:false,parents:['a']}}}));
 assert.equal(await page.locator('.type').count(),3,'type cycles render once per type');
 assert.equal(await page.locator('.schema-edge').count(),2,'type cycles preserve both allowed parents');
 assert.equal(await page.locator('.schema-edge[data-source="@workspace"]').count(),0,'layout does not invent root permissions');
-assert.equal(await page.locator('#any-legend').isVisible(),false,'no wildcard legend without wildcard parent rules');
+assert.equal(await page.locator('.schema-parent-rule').count(),0,'no wildcard rule badge without wildcard parent rules');
 assert.deepEqual(errors,[]);
 console.log('Common object browser checks passed');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
