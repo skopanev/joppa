@@ -359,6 +359,31 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             .unwrap()["created_at"],
         created_at
     );
+    let canonical_priorities = vec!["task:req-new/task-new".to_owned()];
+    let canonical_preview = store::task_queue_filtered(
+        &pool,
+        &ws,
+        "owner",
+        "available",
+        1,
+        None,
+        None,
+        None,
+        &canonical_priorities,
+    )
+    .await?;
+    assert_eq!(canonical_preview["tasks"][0]["id"], "task-new");
+    let canonical_claim = store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "canonical-next",
+        &json!({"op":"claim_next_task","priorities":canonical_priorities}),
+    )
+    .await?;
+    assert_eq!(canonical_claim["command"]["req"], "req-new");
+    assert_eq!(canonical_claim["command"]["id"], "task-new");
+    store::execute_input(&pool,&ws,"owner","release-canonical",&json!({"op":"release_task","req":"req-new","revision":1,"id":"task-new","reason":"Return the canonical priority task"})).await?;
     let mut priorities = vec!["domain:urgent"; 101];
     priorities.push("requirement:req-old");
     let preview = store::task_queue_filtered(

@@ -31,10 +31,16 @@ pub(super) fn validate_selection<'a>(
                         .last()
                         .is_some_and(|r| r.acs.iter().any(|ac| ac.id == id))
                 }),
-                "task" => state
-                    .requirements
-                    .values()
-                    .any(|q| q.revisions.last().is_some_and(|r| r.tasks.contains_key(id))),
+                "task" => {
+                    state
+                        .objects
+                        .get(selector)
+                        .is_some_and(|o| o.current().present)
+                        || state
+                            .requirements
+                            .values()
+                            .any(|q| q.revisions.last().is_some_and(|r| r.tasks.contains_key(id)))
+                }
                 "project" => state.projects.contains_key(id),
                 "consumer" => state.consumers.contains_key(id),
                 _ => state

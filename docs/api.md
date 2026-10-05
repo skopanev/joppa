@@ -58,7 +58,11 @@ amend_task: req, revision, id, title, contract, projects:[id], reason; correct a
       of an unclaimed Task may amend it. The AC and completion history stay put.
 claim_next_task: project (optional), purpose (optional), priorities (optional
       ordered list of kind:id selectors: domain, capability, requirement, ac,
-      task, project, consumer). Under the same workspace lock, select the
+      task, project, consumer or a configured group). Use task:<REQ>/<Task>
+      for a common Task address. Short task:<Task> selectors remain compatible.
+      A short selector can match Tasks in different REQs. Use the full address
+      to select one Task.
+      Under the same workspace lock, select the
       oldest claimable task matching the first priority that has one. If none
       match, select the oldest claimable task overall. project and purpose are
       hard filters. Unknown priority targets are errors. Journal a concrete
