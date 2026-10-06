@@ -114,6 +114,8 @@ The **Workspace** menu lists only accessible products. Root tabs come from each
 workspace schema. Type titles, colors and order follow that schema.
 All object types use the same card. Open a card to read its document and direct
 children. Owner and status filters apply within the selected root tab.
+User labels prefer the verified Google profile name. If it is absent, labels
+use the email name or the actor name. Sign in again to save a profile name.
 The initial page contains metadata. It loads documents and earlier revisions
 only when requested. Closing and opening a loaded card uses its cached content.
 

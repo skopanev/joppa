@@ -224,6 +224,9 @@ impl Login {
             )
             .await?;
         }
+        if let Some(name) = identity.display_name() {
+            joppa::store::update_identity_name(pool, &actor, &identity.sub, &name).await?;
+        }
         Ok(actor)
     }
     pub async fn poll(&self, id: &str) -> Result<Option<(String, String)>> {

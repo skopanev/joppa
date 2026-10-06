@@ -40,6 +40,15 @@ async fn labels_use_email_names_without_changing_ids_or_exposing_other_members()
     }
     let full = store::read(&pool, &ws, &owner, &store::Scope::full()).await?;
     assert_eq!(full["member_labels"], json!({&actor: "rita.petrov"}));
+    store::update_identity_name(&pool, &actor, "another-google-account", "Wrong Person").await?;
+    let unchanged = store::board_read(&pool, &ws, &owner, None, None, None).await?;
+    assert_eq!(unchanged["member_labels"], json!({&actor: "rita.petrov"}));
+    store::update_identity_name(&pool, &actor, &actor, "Rita Petrov").await?;
+    let named = store::board_read(&pool, &ws, &owner, None, None, None).await?;
+    assert_eq!(named["member_labels"], json!({&actor: "Rita Petrov"}));
+    let full_name = store::read(&pool, &ws, &owner, &store::Scope::full()).await?;
+    assert_eq!(full_name["member_labels"], named["member_labels"]);
+    assert!(named["member_labels"].get(&outsider).is_none());
     assert_eq!(full["state"]["members"][&actor], "human");
     assert!(full["state"]["members"].get("rita.petrov").is_none());
     assert!(

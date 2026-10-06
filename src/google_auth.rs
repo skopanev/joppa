@@ -26,7 +26,31 @@ pub struct Identity {
     pub email_verified: bool,
     #[serde(default)]
     pub hd: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub given_name: Option<String>,
+    #[serde(default)]
+    pub family_name: Option<String>,
     nonce: String,
+}
+impl Identity {
+    pub fn display_name(&self) -> Option<String> {
+        let name = self.name.as_deref().unwrap_or("").trim();
+        let name = if name.is_empty() {
+            [self.given_name.as_deref(), self.family_name.as_deref()]
+                .into_iter()
+                .flatten()
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        } else {
+            name.to_owned()
+        };
+        (!name.is_empty() && name.chars().count() <= 200 && !name.chars().any(char::is_control))
+            .then_some(name)
+    }
 }
 #[derive(Deserialize)]
 struct Keys {
@@ -81,7 +105,7 @@ impl Google {
             ("client_id", self.config.client_id.as_str()),
             ("redirect_uri", &self.config.redirect_uri),
             ("response_type", "code"),
-            ("scope", "openid email"),
+            ("scope", "openid email profile"),
             ("prompt", "select_account"),
             ("state", state),
             ("nonce", nonce),

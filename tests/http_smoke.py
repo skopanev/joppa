@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         with urllib.request.urlopen(urllib.request.Request(base+'/api/me',headers={'Authorization':'Bearer '+owner_token})) as response:
             assert response.headers.get('Cache-Control') == 'no-store'
         assert request('/api/workspaces', token='invalid')[0] == 401
-        assert request('/api/me')[1] == {'actor':'owner','email':None}
+        assert request('/api/me')[1] == {'actor':'owner','email':None,'name':None}
         # Cookie/no-credential commands are rejected before authentication or DB access.
         payload=json.dumps({'request_id':'portal-write','command':{'op':'workspace','title':'Forbidden'}}).encode()
         for cookie in ('', 'joppa_session=browser-session'):

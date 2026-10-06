@@ -82,7 +82,7 @@ pub async fn board_read(
                 .map(|(id, _)| id.clone())
                 .collect();
             let mut labels = json!({});
-            for label in conn.query("SELECT actor,split_part(email,'@',1) FROM joppa.google_identities WHERE actor=ANY($1)",&[&humans]).await? {
+            for label in conn.query("SELECT actor,COALESCE(NULLIF(btrim(display_name),''),split_part(email,'@',1)) FROM joppa.google_identities WHERE actor=ANY($1)",&[&humans]).await? {
                 let actor:String=label.get(0); labels[&actor]=json!(label.get::<_,String>(1));
             }
             Ok(

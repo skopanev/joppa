@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use tokio_postgres::GenericClient;
 #[path = "store_access.rs"]
 mod access;
-pub use access::{AccessDenied, enroll};
+pub use access::{AccessDenied, enroll, update_identity_name};
 #[path = "store_board.rs"]
 mod board;
 pub use board::board_read;
@@ -60,6 +60,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
     tx.batch_execute(include_str!("../migrations/012_objects.sql"))
         .await?;
     tx.batch_execute(include_str!("../migrations/013_object_aliases.sql"))
+        .await?;
+    tx.batch_execute(include_str!("../migrations/014_identity_names.sql"))
         .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
@@ -365,7 +367,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             .collect();
         let mut labels = serde_json::Map::new();
         for row in conn.query(
-            "SELECT actor, split_part(email, '@', 1) FROM joppa.google_identities WHERE actor = ANY($1)",
+            "SELECT actor, COALESCE(NULLIF(btrim(display_name),''),split_part(email,'@',1)) FROM joppa.google_identities WHERE actor = ANY($1)",
             &[&humans],
         ).await? {
             let actor: String = row.get(0);

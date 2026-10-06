@@ -22,7 +22,7 @@ const schema={workspace:'w',current_revision:3,schema:{revision:3,actor:'owner',
 
 const address=i=>`${chain[i][0]}:${chain[i][0]}-1`;
 const row=(i,links=[])=>({address:address(i),kind:chain[i][0],id:`${chain[i][0]}-1`,
-  title:`${chain[i][1]} one`,revision:1,present:true,owner:'owner',at:'2026-10-06T09:00:00Z',
+  title:`${chain[i][1]} one`+(i===4?' — A long acceptance condition stays readable on a narrow screen':''),revision:1,present:true,owner:'owner',at:'2026-10-06T09:00:00Z',
   work_ready:true,review_required:false,item_id:`W-${chain[i][0].toUpperCase()}-1`,
   parent:i===0?null:address(i-1),links});
 // The deepest action points at a root-level intake: a link across two roots.
@@ -33,7 +33,7 @@ const find=a=>rows.find(r=>r.address===a);
 const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item_id:find(a).item_id,
   current_revision:1,revision_count:1,work_ready:true,review_required:false,
   document:{revision:1,parent:find(a).parent,present:true,links:find(a).links,
-    data:{title:find(a).title,owner:'owner'},actor:'owner',at:'2026-10-06T09:00:00Z',reason:'Create'},
+    data:{title:find(a).title,owner:a===address(1)?'rita':a===address(5)?'build-runner':'owner',body:'Read the current contract before work. Keep the source and its saved revisions.'},actor:'owner',at:'2026-10-06T09:00:00Z',reason:'Create'},
   links:find(a).links.map(l=>({link:l,title:find(l.target).title,kind:find(l.target).kind,
     current_revision:1,present:true})),incoming:[],annotations:{}});
 
@@ -49,10 +49,10 @@ try{
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
     if(url.pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg/>'});
     let value;
-    if(url.pathname==='/api/me')value={actor:'owner',email:'owner@example.test'};
+    if(url.pathname==='/api/me')value={actor:'owner',email:'sergey.kopanev@example.test'};
     else if(url.pathname==='/api/workspaces')value=[{id:'w',title:'Example product'}];
     else if(url.pathname.endsWith('/board'))value={workspace:'w',custom_tree:false,lazy:true,
-      object_types:types,state:{title:'Example product',members:{owner:'human'},domains:{},
+      object_types:types,member_labels:{owner:'sergey.kopanev',rita:'Rita Petrov'},state:{title:'Example product',members:{owner:'human',rita:'human','build-runner':'agent'},domains:{},
       capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
       launch:{configured:false,ready:false,blockers:[]},counts:{},system_ids:{}};
     else if(url.pathname.endsWith('/tree'))value=schema;
@@ -85,8 +85,36 @@ try{
     await card.waitFor();
     assert.match(await card.locator(':scope > summary').innerText(),new RegExp(chain[i][1],'i'),
       `[ac:uniform-object-cards-ac1] level ${i+1} takes its title from the schema`);
-    if(i<chain.length-1)await card.locator(':scope > summary').click();
+    await card.locator(':scope > summary').click();
+    await card.locator(':scope > .object-body > .object-meta').waitFor();
   }
+
+  assert.equal(await page.locator('#identity').innerText(),'Sergey Kopanev');
+  assert.match(await page.locator(`[data-object-address="${address(0)}"] > .object-body > .object-meta`).innerText(),/Owner: Sergey Kopanev/);
+  assert.match(await page.locator(`[data-object-address="${address(1)}"] > .object-body > .object-meta`).innerText(),/Owner: Rita Petrov/);
+  assert.match(await page.locator(`[data-object-address="${address(5)}"] > .object-body > .object-meta`).innerText(),/Owner: build-runner/);
+  const rootSummary=page.locator(`[data-object-address="${address(0)}"] > summary`);
+  await rootSummary.focus();
+  assert.equal(await rootSummary.evaluate(e=>getComputedStyle(e).outlineStyle),'none','Card focus does not outline the whole block');
+  assert.equal(await page.getByRole('tabpanel').getAttribute('tabindex'),'-1','Collection panels do not add an invisible keyboard stop');
+  assert.equal(await page.locator(`[data-object-address="${address(5)}"] > .object-body > .object-children`).innerText(),'','A leaf shows no empty child section');
+  for(const width of [390,320]){
+    await page.setViewportSize({width,height:844});
+    await page.waitForFunction(()=>document.getAnimations().length===0);
+    await page.screenshot({path:'/tmp/joppa-depth-mobile-'+width+'.png',fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The six-level tree fits a mobile viewport');
+    for(let i=0;i<chain.length;i++){
+      const card=page.locator(`[data-object-address="${address(i)}"]`);
+      const bounds=await card.boundingBox();
+      assert.ok(bounds.width>220,`Deep cards keep space for text: viewport=${width}, level=${i+1}, width=${bounds.width}`);
+      const title=await card.locator(':scope > summary > .node-title').boundingBox();
+      const actions=await card.locator(':scope > summary > .item-actions').boundingBox();
+      assert.ok(title.y+title.height<=actions.y+1,'Mobile actions stay below the title');
+    }
+  }
+  await page.screenshot({path:'/tmp/joppa-depth-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1280,height:900});
+  await page.screenshot({path:'/tmp/joppa-depth-desktop.png',fullPage:true});
 
   // 3. A link crosses two roots and keeps its own title.
   // Root collections come from the schema, in its order.

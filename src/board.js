@@ -170,7 +170,8 @@ async function boardPart(level,id,revision){
 async function showApp(identity) {
   if(identity.email===undefined)identity={...identity,...await api('me')};
   viewerActor=identity.actor;
-  $('identity').textContent=identity.email||'Account';
+  $('identity').textContent=displayPersonName(identity.name||identity.email||identity.actor||'Account');
+  $('identity').title=identity.email||'';
   document.body.classList.add('authenticated');
   $('logout').hidden=false;
   await list();
@@ -290,7 +291,7 @@ function rootCollectionTabs(root){
   };
   for(const panel of panels){
     const kind=panel.dataset.collectionKind,type=data.objectTypes[kind];
-    panel.id='collection-'+kind;panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','tab-'+kind);panel.tabIndex=0;
+    panel.id='collection-'+kind;panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','tab-'+kind);panel.tabIndex=-1;
     const tab=button(type.title,()=>activate(kind),'collection-tab');applyObjectColor(tab,kind);tab.id='tab-'+kind;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);nav.append(tab);
   }
   nav.onkeydown=event=>{
@@ -309,9 +310,15 @@ function collectionHeading(section,title,description,label){
   summary.replaceChildren(caption);
   if(label)summary.append(E('span',label,'collection-label'));
 }
+function displayPersonName(value){
+  const name=String(value||'').trim();
+  if(!name)return 'Not assigned';
+  const local=name.includes('@')?name.split('@')[0].split('+')[0]:name;
+  if(!/^[\p{L}]+(?:[._][\p{L}]+)+$/u.test(local))return local;
+  return local.split(/[._]/).map(part=>part[0].toLocaleUpperCase()+part.slice(1)).join(' ');
+}
 function personLabel(actor){
-  if(actor===viewerActor)return 'You';
-  return data.member_labels?.[actor]||{agent:'Agent',runner:'Test runner'}[data.state.members[actor]]||actor?.split('@')[0]||'Not assigned';
+  return displayPersonName(data.member_labels?.[actor]||actor);
 }
 function eventDate(value){
   const date=new Date(value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
@@ -419,7 +426,7 @@ function appendObjectPage(root,part,params,generation){
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
   }
-  if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object')){
+  if(!items.length&&!part.next_cursor&&!params.parent&&!root.querySelector('.common-object')){
     const type=params.kind&&data.objectTypes[params.kind];
     root.append(E('p',type?'No '+type.title.toLowerCase()+' here.':'No objects here yet.','hint collection-empty'));
   }
@@ -521,7 +528,8 @@ function fillCommonObject(body,detail){
   const historical=detail.historical??r.revision!==detail.current_revision;
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current verification revision.','dependency-review'));
-  body.append(E('p','Revision '+r.revision+' · Owner: '+personLabel(d.owner||'Unassigned'),'node-meta'));
+  const meta=E('div',undefined,'object-meta');
+  meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));body.append(meta);
   if(detail.process?.verification&&(detail.process.req||data.objectTypes?.[detail.kind]?.role==='task'))body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
   if(detail.process?.status&&!inputQueue(detail.kind))body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));

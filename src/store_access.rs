@@ -139,3 +139,24 @@ pub async fn enroll(
     tx.commit().await?;
     Ok(())
 }
+
+/// Save the name from a verified profile without changing the bound identity.
+pub async fn update_identity_name(
+    pool: &Pool,
+    actor: &str,
+    google_sub: &str,
+    name: &str,
+) -> Result<()> {
+    let name = name.trim();
+    ensure!(
+        !name.is_empty() && name.chars().count() <= 200 && !name.chars().any(char::is_control),
+        "Invalid profile name"
+    );
+    let conn = pool.get().await?;
+    conn.execute(
+        "UPDATE joppa.google_identities SET display_name=$3 WHERE actor=$1 AND google_sub=$2",
+        &[&actor, &google_sub, &name],
+    )
+    .await?;
+    Ok(())
+}

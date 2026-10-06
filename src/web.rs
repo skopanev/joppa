@@ -330,14 +330,15 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     result(
         async {
             let conn = app.pool.get().await?;
-            let email: Option<String> = conn
+            let identity = conn
                 .query_opt(
-                    "SELECT email FROM joppa.google_identities WHERE actor=$1",
+                    "SELECT email,display_name FROM joppa.google_identities WHERE actor=$1",
                     &[&actor],
                 )
-                .await?
-                .map(|row| row.get(0));
-            Ok(json!({"actor":actor,"email":email}))
+                .await?;
+            let email: Option<String> = identity.as_ref().map(|row| row.get(0));
+            let name: Option<String> = identity.as_ref().and_then(|row| row.get(1));
+            Ok(json!({"actor":actor,"email":email,"name":name}))
         }
         .await,
     )

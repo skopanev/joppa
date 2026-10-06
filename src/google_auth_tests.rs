@@ -59,6 +59,23 @@ fn google_identity_requires_signature_audience_issuer_expiry_nonce_and_verified_
     .unwrap();
     assert!(verify(&hmac, "joppa-test-client", "browser-nonce", &keys()).is_err());
 }
+
+#[test]
+fn verified_profile_names_are_optional_and_do_not_replace_identity_keys() {
+    let read = |value: &serde_json::Value| {
+        verify(&token(value), "joppa-test-client", "browser-nonce", &keys()).unwrap()
+    };
+    let mut value = claims();
+    assert_eq!(read(&value).display_name(), None);
+    value["given_name"] = json!("Rita");
+    value["family_name"] = json!("Petrov");
+    assert_eq!(read(&value).display_name().as_deref(), Some("Rita Petrov"));
+    value["name"] = json!(" Rita Ivanova ");
+    assert_eq!(read(&value).display_name().as_deref(), Some("Rita Ivanova"));
+    assert_eq!(read(&value).sub, "google-user-1");
+    value["name"] = json!("Bad\nName");
+    assert_eq!(read(&value).display_name(), None);
+}
 #[test]
 fn authorization_goes_directly_to_google_and_uses_pkce() {
     let g = Google::new(Config {
