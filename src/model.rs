@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
+    #[serde(skip)]
+    pub unloaded_objects: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub notes_migrated: bool,
     #[serde(default)]

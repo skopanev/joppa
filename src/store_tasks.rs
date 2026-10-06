@@ -280,61 +280,39 @@ pub async fn task_queue_filtered(
         (1..=100).contains(&limit),
         "limit must be between 1 and 100"
     );
-    let conn = pool.get().await?;
-    let workspace = resolve_workspace(&**conn, workspace).await?;
-    access::check(&**conn, &workspace, actor, false).await?;
-    let row = conn
-        .query_one(
-            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text ,COALESCE(state->'task_process','{}'::jsonb)::text,COALESCE(state->'task_context','{}'::jsonb)::text,(state->'tree_schema')::text,state->>'admin',COALESCE(state->'object_aliases','{}'::jsonb)::text,COALESCE((state->>'schema_migrated')::boolean,false),COALESCE((state->>'tasks_migrated')::boolean,false),COALESCE(state->'document_overrides','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
-            &[&workspace],
-        )
+    let mut client = pool.get().await?;
+    let conn = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
         .await?;
-    let position = row.get::<_, i64>(0) as u64;
-    let public_workspace: &str = row.get(1);
-    let mut state = Workspace {
-        members: serde_json::from_str(row.get::<_, &str>(2))?,
-        domains: serde_json::from_str(row.get::<_, &str>(3))?,
-        capabilities: serde_json::from_str(row.get::<_, &str>(4))?,
-        consumers: serde_json::from_str(row.get::<_, &str>(5))?,
-        projects: serde_json::from_str(row.get::<_, &str>(6))?,
-        objects: serde_json::from_str(row.get::<_, &str>(8))?,
-        task_process: serde_json::from_str(row.get::<_, &str>(9))?,
-        task_context: serde_json::from_str(row.get::<_, &str>(10))?,
-        tree_schema: serde_json::from_str(row.get::<_, &str>(11))?,
-        admin: row.get(12),
-        object_aliases: serde_json::from_str(row.get::<_, &str>(13))?,
-        schema_migrated: row.get(14),
-        tasks_migrated: row.get(15),
-        document_overrides: serde_json::from_str(row.get::<_, &str>(16))?,
-        ..Default::default()
-    };
-    let requirements: std::collections::BTreeMap<String, Value> =
-        serde_json::from_str(row.get::<_, &str>(7))?;
-    for (req, value) in requirements {
-        state.requirements.insert(
-            req,
-            crate::model::Requirement {
-                capability: value["capability"].as_str().map(str::to_owned),
-                revisions: vec![serde_json::from_value(value["revision"].clone())?],
-                comments: Default::default(),
-            },
-        );
-    }
-    let priorities = validate_selection(&state, project, purpose, priorities)?;
-    let offset = if let Some(cursor) = cursor {
-        let (snapshot, offset) = cursor.split_once(':').context("invalid task cursor")?;
-        ensure!(
-            snapshot.parse::<u64>()? == position,
-            "task queue changed; start again without cursor"
-        );
-        offset.parse::<usize>()?
-    } else {
-        0
-    };
+    let workspace = resolve_workspace(&*conn, workspace).await?;
+    access::check(&*conn, &workspace, actor, false).await?;
+    super::queue_rows::read(
+        &*conn, &workspace, actor, view, limit, cursor, project, purpose, priorities,
+    )
+    .await
+}
+
+type QueueEntry = (usize, u64, String, String, Value);
+
+pub(super) fn queue_entries(
+    state: &Workspace,
+    actor: &str,
+    selected: Option<&std::collections::BTreeSet<String>>,
+) -> Result<Vec<QueueEntry>> {
+    let project: Option<&str> = None;
+    let purpose: Option<&str> = None;
+    let priorities = vec![];
+    let view = "all";
     let mut entries = vec![];
     for (req, requirement) in &state.requirements {
         let revision = requirement.revisions.last().unwrap();
         for (id, task) in &revision.tasks {
+            if selected.is_some_and(|s| !s.contains(&format!("task:{req}/{id}"))) {
+                continue;
+            }
             if state.task_process.contains_key(&format!("task:{req}/{id}")) {
                 continue;
             }
@@ -343,7 +321,7 @@ pub async fn task_queue_filtered(
             {
                 continue;
             }
-            let claim_error = checks::claimable(&state, actor, req, id, revision, task)
+            let claim_error = checks::claimable(state, actor, req, id, revision, task)
                 .err()
                 .map(|e| e.to_string());
             let status = if task.retired.is_some() {
@@ -373,7 +351,7 @@ pub async fn task_queue_filtered(
                 .first()
                 .and_then(|id| revision.acs.iter().find(|a| &a.id == id));
             entries.push((
-                rank(&state, req, requirement, revision, id, task, &priorities),
+                rank(state, req, requirement, revision, id, task, &priorities),
                 task.created_at,
                 req.clone(),
                 id.clone(),
@@ -388,12 +366,16 @@ pub async fn task_queue_filtered(
         }
     }
     for (key, t) in &state.task_process {
-        if project.is_some_and(|p| !task_in_project(&state, key, t, p))
+        if selected.is_some_and(|s| !s.contains(key)) {
+            continue;
+        }
+
+        if project.is_some_and(|p| !task_in_project(state, key, t, p))
             || purpose.is_some_and(|p| t.purpose != p)
         {
             continue;
         }
-        let claim_error = crate::tasks::claimable(&state, actor, key, t)
+        let claim_error = crate::tasks::claimable(state, actor, key, t)
             .err()
             .map(|e| e.to_string());
         let status = crate::tasks::status(t);
@@ -409,26 +391,13 @@ pub async fn task_queue_filtered(
             continue;
         }
         let o = &state.objects[key];
-        entries.push((object_rank(&state,key,t,&priorities),t.created_at,String::new(),key.clone(),json!({
+        entries.push((object_rank(state,key,t,&priorities),t.created_at,String::new(),key.clone(),json!({
             "id":key,"address":key,"req":null,"revision":o.current().revision,"parent":o.current().parent,
-            "ac":o.current().parent.as_deref().and_then(|p|crate::objects::criterion_context(&state,p).map(|(_,_,ac)|ac.id.as_str())),
+            "ac":o.current().parent.as_deref().and_then(|p|crate::objects::criterion_context(state,p).map(|(_,_,ac)|ac.id.as_str())),
             "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
-            "review_required":crate::tasks::review_required(&state,key,t),"created_at":t.created_at
+            "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at
         })));
     }
-    entries.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
-    ensure!(offset <= entries.len(), "invalid task cursor offset");
-    let total = entries.len();
-    let items: Vec<Value> = entries
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .map(|(_, _, _, _, item)| item)
-        .collect();
-    let next =
-        (offset + items.len() < total).then(|| format!("{position}:{}", offset + items.len()));
-    Ok(
-        json!({"workspace":public_workspace,"position":position,"view":view,"total":total,"tasks":items,"next_cursor":next}),
-    )
+    Ok(entries)
 }

@@ -386,9 +386,9 @@ async fn write(
         ensure!(row.get::<_, String>(0) == actor && serde_json::to_value(&previous)? == serde_json::to_value(&command)?, "request_id reused with different content/actor");
         return Ok(json!({"position":row.get::<_, i64>(2), "command":command, "replayed":true}));
     }
-    let (mut state, mut events) = load(&*tx, &workspace).await?;
-    let mut recorded_state = state.clone();
-    let base_position = events.len();
+    let (mut state, base_position) = state_rows::current(&*tx, &workspace).await?;
+    let mut previous = state.clone();
+    let mut events = Vec::new();
     let mut refs = BTreeMap::new();
     let mut results = vec![];
     let batch_id = Uuid::new_v4();
@@ -402,6 +402,8 @@ async fn write(
             generate(&mut value)?;
             resolve_task(&mut value, &state)?;
             resolve_claim_next(&mut value, &state, actor)?;
+            state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
+            state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let command: Command = serde_json::from_value(value)?;
             if let Command::Revise { req, consumers, capability, .. } = &command {
                 ensure!(capability.is_some() || req.contains(':'), "legacy revise requires a Capability; use save_object for a custom tree");
@@ -422,11 +424,7 @@ async fn write(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
             );
-            let position = (base_position + index + 1) as u64;
-            // Validate against the in-memory state, then apply the recorded DB time
-            // to the projection so notes and status dates need no second replay.
-            commands::apply(&mut state, actor, &command, position, "")?;
-        crate::objects::validate_tree(&state)?;
+            let position = base_position + index as u64 + 1;
             if position == 1 {
                 tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
                 reserve_name(&*tx, &workspace, &workspace).await?;
@@ -437,7 +435,8 @@ async fn write(
             let event_request = if batch { format!("batch-{batch_id}-{index}") } else { request_id.to_owned() };
             let payload = serde_json::to_string(&command)?;
             let recorded_at:String=tx.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload]).await?.get(0);
-            commands::apply(&mut recorded_state, actor, &command, position, &recorded_at)?;
+            commands::apply(&mut state, actor, &command, position, &recorded_at)?;
+            crate::objects::validate_tree(&state)?;
             events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
             let mut resolved=serde_json::to_value(&command)?;
             let saved_address = match &command {
@@ -455,16 +454,32 @@ async fn write(
         }.await.with_context(|| format!("operation {}", index + 1))?;
         results.push(apply);
     }
-    ensure_notes(&*tx, &workspace, &mut recorded_state, &mut events).await?;
-    super::search::project(&*tx, &workspace, &recorded_state, events.len() as u64).await?;
-    super::board::project(&*tx, &workspace, &recorded_state, &events).await?;
+    ensure_notes(&*tx, &workspace, &mut state, &mut events, base_position).await?;
+    let selected = state_rows::affected(&state, Some(&previous))?;
+    super::search::project(
+        &*tx,
+        &workspace,
+        &state,
+        base_position + events.len() as u64,
+        selected.as_ref(),
+    )
+    .await?;
+    super::board::project_current(
+        &*tx,
+        &workspace,
+        &state,
+        &events,
+        base_position + events.len() as u64,
+        Some(&previous),
+    )
+    .await?;
     let mut result = if batch {
         json!({"results":results})
     } else {
         results.remove(0)
     };
     result["replayed"] = json!(false);
-    result["summary"] = summaries(&recorded_state);
+    result["summary"] = state_rows::changed_summaries(&state, selected.as_ref());
     tx.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result) VALUES($1,$2,$3,$4::text::jsonb,$5::text::jsonb)", &[&workspace,&request_id,&actor,&input.to_string(),&result.to_string()]).await?;
     tx.commit().await?;
     Ok(result)

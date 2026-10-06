@@ -221,9 +221,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             ('agent-comment', {'op':'comment','req':'key','revision':1,'id':'agent-comment','text':'Agent discussion','kind':'comment'}),
         ]:
             mcp('joppa_command', {'workspace':ws,'request_id':request_id,'command':value})
-        readback = request('/api/workspaces/'+ws)[1]['state']
+        readback = mcp('joppa_read', {'workspace':ws,'req':'key'})
         assert readback['notes']['requirement:key']['comments']['agent-note']['text'] == 'Agent note'
-        assert readback['requirements']['key']['comments']['agent-comment']['text'] == 'Agent discussion'
+        assert readback['requirement']['comments']['agent-comment']['text'] == 'Agent discussion'
         upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Attachment evidence',
             headers={'Authorization':'Bearer '+agent_token,'Content-Type':'application/octet-stream'})
         with urllib.request.urlopen(upload) as response:
@@ -346,8 +346,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/run_checks.py'), ws,
                                      str(manifest_path), '--joppa', BIN], env=env, capture_output=True, text=True)
             assert result.returncode == code, result.stderr
-            card = request('/api/workspaces/' + ws)[1]
-            assert card['summary']['auto']['ready_for_acceptance'] is (code == 0)
+            card = mcp('joppa_read', {'workspace':ws,'req':'auto'})
+            assert card['summary']['ready_for_acceptance'] is (code == 0)
         # Changes are made by an integration; the portal only reads the result.
         ok({'op':'confirm','req':'key','revision':1})
         ok({'op':'assess','req':'key','revision':1,'ac':'key-rights',
@@ -364,7 +364,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
                 'note':'Compared the provider permission list'}})
         ok({'op':'finish','req':'key','revision':1,'run':'manual1'})
         ok({'op':'accept','req':'key','revision':1,'run':'manual1'})
-        assert request('/api/workspaces/'+ws)[1]['summary']['key']['accepted'] is True
+        assert mcp('joppa_read', {'workspace':ws,'req':'key'})['summary']['accepted'] is True
         # [ac:mcp-schema-objects-ac3] Read only the selected current verification record.
         process = request('/api/workspaces/'+ws+'/board?level=process&id=ac:key-rights')[1]
         assert process['req'] == 'key' and process['revision'] == 1
@@ -381,7 +381,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',
             'title':'Ключ до запуска','body':'Updated wording','owner':'owner','consumers':['customer'],'reason':'Clarify scope',
             'acs':[{'id':'key-rights','text':'Before launch the key has exactly read and verify','before_launch':True,'decider':'legal'}]})
-        refs=request('/api/workspaces/'+ws)[1]['system_ids']
+        refs=mcp('joppa_read', {'workspace':ws,'req':'key'})['system_ids']
         # MCP discovers revision counts, then reads exactly one chosen revision.
         tools_reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
         schema=next(t for t in tools_reply['result']['tools'] if t['name']=='joppa_read')['inputSchema']['properties']
@@ -511,13 +511,15 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert restored['selection']['present'] is True and restored['summary']['accepted'] is True
 
         subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
-        assert request('/api/workspaces/'+ws)[1]['system_ids']==refs
+        assert mcp('joppa_read', {'workspace':ws,'req':'key'})['system_ids']==refs
         before=request('/api/workspaces/'+ws)[1]
         ok({'op':'rename_workspace','title':'Review workspace','reason':'Name clarified'})
         after=request('/api/workspaces/'+ws)[1]
         assert after['workspace']==before['workspace']
-        assert after['history'][:-1]==before['history']
-        assert after['state']=={**before['state'],'title':'Review workspace'}
+        assert after['position']==before['position']+1
+        assert after['index']==before['index']
+        assert 'state' not in after and 'history' not in after
+        assert request('/api/workspaces/'+ws+'/board')[1]['state']['title']=='Review workspace'
         if '--browser' in sys.argv:
             browser_env = {**env, 'JOPPA_TEST_URL': base, 'JOPPA_TEST_TOKEN': owner_token,
                            'JOPPA_TEST_WORKSPACE': ws, 'JOPPA_TEST_SNAPSHOT': str(snapshot)}

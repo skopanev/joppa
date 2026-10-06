@@ -47,5 +47,6 @@ product onboarding work. Joppa does not assume access or decisions on their beha
 Search uses a synchronous current-state full-text projection and asynchronous
 DeepInfra embeddings in pgvector. Provider configuration is required for semantic
 results; coverage and fallback are explicit. Attachment upload endpoints remain
-outside the implemented workflow; their storage configuration is preparatory. The journal is replayed per workspace;
-large datasets will need projections and paginated history.
+outside the implemented workflow; their storage configuration is preparatory.
+Current state uses separate rows. Lists read card fields, and document history reads one selected revision.
+Writes update affected projections without journal replay. Administrative recovery replays the journal.

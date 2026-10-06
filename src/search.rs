@@ -44,10 +44,45 @@ pub(super) async fn project(
     workspace: &str,
     state: &Workspace,
     position: u64,
+    selected: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<()> {
+    let mut hydrated = state.clone();
+    let mut addresses = std::collections::BTreeSet::new();
+    for key in state
+        .objects
+        .keys()
+        .filter(|key| selected.is_none_or(|s| s.contains(*key)))
+    {
+        let mut current = Some(key.as_str());
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(key) = current {
+            if !seen.insert(key) {
+                break;
+            }
+            if state.unloaded_objects.contains(key) {
+                addresses.insert(key.to_owned());
+            }
+            current = state
+                .objects
+                .get(key)
+                .and_then(|o| o.current().parent.as_deref());
+        }
+    }
+    state_rows::hydrate_objects(
+        client,
+        workspace,
+        &mut hydrated,
+        &addresses.into_iter().collect::<Vec<_>>(),
+    )
+    .await?;
+    let state = &hydrated;
     let configured = crate::objects::schema(state);
     let mut documents = vec![];
-    for (key, obj) in state.objects.iter().filter(|(_, o)| o.current().present) {
+    for (key, obj) in state
+        .objects
+        .iter()
+        .filter(|(key, o)| o.current().present && selected.is_none_or(|s| s.contains(*key)))
+    {
         let mut context = vec![];
         let mut current = Some(key.as_str());
         let mut seen = std::collections::BTreeSet::new();
@@ -116,7 +151,7 @@ pub(super) async fn project(
         embedding=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding ELSE NULL END,
         embedding_profile=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding_profile ELSE NULL END
       WHERE (search_documents.req,search_documents.revision,search_documents.title,search_documents.content) IS DISTINCT FROM (EXCLUDED.req,EXCLUDED.revision,EXCLUDED.title,EXCLUDED.content)", &[&workspace,&payload]).await?;
-    client.execute("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text) WHERE x.kind=d.kind AND x.local_id=d.local_id)", &[&workspace,&payload]).await?;
+    client.execute("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND ($3::text[] IS NULL OR d.kind||':'||d.local_id=ANY($3)) AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text) WHERE x.kind=d.kind AND x.local_id=d.local_id)", &[&workspace,&payload,&selected.map(|s|s.iter().cloned().collect::<Vec<_>>())]).await?;
     client.execute("INSERT INTO joppa.search_state(workspace,position,canonical_id,reference_prefix) VALUES($1,$2,$3,$4)
       ON CONFLICT(workspace) DO UPDATE SET position=EXCLUDED.position,canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
     Ok(())
@@ -135,8 +170,8 @@ async fn current(pool: &Pool, workspace: &str, actor: Option<&str>) -> Result<St
             &[&workspace],
         )
         .await?;
-        let (state, events) = load(&*tx, &workspace).await?;
-        project(&*tx, &workspace, &state, events.len() as u64).await?;
+        let (state, position) = state_rows::current(&*tx, &workspace).await?;
+        project(&*tx, &workspace, &state, position, None).await?;
     }
     tx.commit().await?;
     Ok(workspace)

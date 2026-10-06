@@ -373,7 +373,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         .unwrap();
     assert!(created_at > 0);
     pool.get().await?.execute(
-        "UPDATE joppa.board_cache SET state=jsonb_set(state,ARRAY['task_process','task:req-old/task-old','created_at'],'0'::jsonb) WHERE workspace=$1",
+        "UPDATE joppa.task_queue SET created_at=0,data=jsonb_set(data,'{created_at}','0'::jsonb) WHERE workspace=$1 AND address='task:req-old/task-old'",
         &[&ws],
     ).await?;
     assert_eq!(

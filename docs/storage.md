@@ -28,6 +28,21 @@ revision number. Evidence author and time come from authentication and the
 server event, not caller-supplied labels. `intake.author` attributes the source
 message; the authenticated writer remains separately visible in history.
 
+## Current projections
+
+`state_entries` stores one current entry per row. `state_revisions` stores verification records and schema revisions.
+`object_revisions` stores immutable document revisions. `board_cache` stores workspace metadata and launch counts.
+The task queue uses indexed rows for each member. Card lists read separate columns without loading document bodies.
+Document and history requests read only the selected object or revision.
+
+Writes read the current validation graph. They exclude past revisions and large Input bodies from that graph.
+An addressed Input command loads its body before validation. Search loads bodies only for affected documents and their ancestors.
+The transaction stores changed rows, affected search documents and affected queue entries.
+The journal remains the source for administrative recovery.
+
+`backfill-board` rebuilds projections under a workspace lock. It commits all projections, including search, in one transaction.
+Deployment stops the application before projection migration. Rollback rebuilds the previous cache format before restarting the previous binary.
+
 ## PostgreSQL roles
 
 Run migrations as the schema owner. Run the application with another role:
@@ -39,6 +54,10 @@ GRANT CONNECT ON DATABASE joppa TO joppa_runtime;
 GRANT USAGE ON SCHEMA joppa TO joppa_runtime;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_runtime;
 GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_runtime;
+GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_runtime;
+GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_runtime;
+GRANT DELETE ON joppa.object_links, joppa.task_queue TO joppa_runtime;
+GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;
 ```
 
@@ -64,5 +83,6 @@ format requires a version or read-time conversion, never an UPDATE to history.
 Do not silently change the meaning of already-recorded commands.
 
 Search documents and their checkpoint are derived caches, rebuilt from events.
-They alone permit update/delete. Their mutability never changes business history
+Current projections permit updates. A trigger rejects changes to stored revision contracts.
+Their mutability never changes business history
 or evidence. See [search freshness and recovery](search.md).

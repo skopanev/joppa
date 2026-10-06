@@ -488,11 +488,12 @@ pub fn revision<'a>(
         .get_mut(req)
         .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
     ensure!(
-        n > 0 && (!current || n as usize == r.revisions.len()),
+        n > 0 && (!current || r.revisions.last().is_some_and(|r| r.number == n)),
         "stale revision; read the card again"
     );
     r.revisions
-        .get_mut((n - 1) as usize)
+        .iter_mut()
+        .find(|r| r.number == n)
         .ok_or_else(|| anyhow::anyhow!("unknown revision"))
 }
 pub fn apply(
@@ -961,7 +962,7 @@ pub(crate) fn apply_inner(
                     comments: BTreeMap::new(),
                 });
             ensure!(
-                r.revisions.len() == *expected_revision as usize,
+                r.revisions.last().map_or(0, |r| r.number) == *expected_revision,
                 "stale revision; read the card again"
             );
             if let Some(old) = r.revisions.last() {
@@ -1325,7 +1326,8 @@ pub(crate) fn apply_inner(
                     .ok_or_else(|| anyhow::anyhow!("specialist decision must be linked"))?;
                 let same_formulation = q
                     .revisions
-                    .get((decision.revision - 1) as usize)
+                    .iter()
+                    .find(|source| source.number == decision.revision)
                     .is_some_and(|source| {
                         source.title == r.title
                             && source.body == r.body

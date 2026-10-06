@@ -201,7 +201,7 @@ pub fn apply(
                 .get(req)
                 .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
             ensure!(
-                q.revisions.len() == *n as usize && *n > 0,
+                q.revisions.last().is_some_and(|r| r.number == *n) && *n > 0,
                 "stale revision; read the task again"
             );
             let r = q.revisions.last().unwrap();

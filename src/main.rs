@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
                 .get(2)
                 .ok_or_else(|| anyhow::anyhow!("output path required"))?;
             let data = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
-            std::fs::write(path, web::snapshot(&data))?;
+            std::fs::write(path, web::snapshot(&data)?)?;
             println!("{path}");
         }
         _ => bail!(

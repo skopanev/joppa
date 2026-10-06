@@ -884,7 +884,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
                 .map(|v| v.links.clone())
                 .unwrap_or_default();
             obj.revisions.push(ObjectRevision {
-                revision: obj.revisions.len() as u32 + 1,
+                revision: obj.revisions.last().map_or(1, |r| r.revision + 1),
                 schema_revision,
                 parent,
                 data: data.clone(),
@@ -942,7 +942,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         );
         if let Some(r) = link.revision {
             ensure!(
-                r > 0 && r as usize <= target.revisions.len(),
+                r > 0 && r <= target.current().revision,
                 "unknown linked revision"
             );
         }

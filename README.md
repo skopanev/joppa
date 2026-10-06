@@ -264,7 +264,7 @@ meaning and sufficiency of tests.
 
 `migrations/*.sql` is the schema source; `schema.sql` invokes the same files for
 psql. Migrations are repeatable. `joppa.events` stores immutable typed commands,
-authenticated actors and server time. State is replayed from the journal. Writes
+authenticated actors and server time. Current state uses separate object rows. Writes
 serialize within a workspace, and REQ changes also check `expected_revision`.
 
 Triggers reject journal UPDATE, DELETE and TRUNCATE. Run the service with
@@ -302,8 +302,9 @@ legal-policy interpretation or proof that an AC set is complete.
 Agent search combines PostgreSQL full-text and pgvector results when the private
 DeepInfra key is configured; otherwise it reports full-text mode. See [search](docs/search.md).
 Attachment upload endpoints are not yet implemented; their storage configuration
-is preparatory. Current object lists and board reads use database projections. Full journal
-reads and writes still replay workspace history. The portal is read-only; authoring and decisions
+is preparatory. Object lists, selected documents and task queues use database projections.
+Writes update changed rows in the same transaction as their events.
+Administrative recovery replays the journal. The portal is read-only; authoring and decisions
 use MCP.
 
 See the [model](docs/model.md), [process](docs/process.md), [green rule](docs/green.md),

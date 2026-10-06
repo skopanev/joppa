@@ -190,9 +190,14 @@ async fn read(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    // Доске — полный ответ: браузер не ограничен контекстом, и деление на
-    // страницы там только мешало бы. Ограничение нужно агенту, а не человеку.
-    result(store::read(&app.pool, &workspace, &actor, &store::Scope::full()).await)
+    let scope = store::Scope {
+        full: false,
+        req: None,
+        revision: None,
+        history: false,
+        target: None,
+    };
+    result(store::read(&app.pool, &workspace, &actor, &scope).await)
 }
 #[derive(Deserialize)]
 struct BoardQuery {
@@ -538,15 +543,16 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
-pub fn snapshot(data: &Value) -> String {
+pub fn snapshot(data: &Value) -> anyhow::Result<String> {
     let mut data = data.clone();
-    if let Ok(state) = serde_json::from_value::<joppa::model::Workspace>(data["state"].clone()) {
+    let state = serde_json::from_value::<joppa::model::Workspace>(data["state"].clone())?;
+    {
         data["snapshot_schema"] = serde_json::json!(joppa::objects::schema(&state));
         let mut objects = serde_json::Map::new();
         for (key, object) in &state.objects {
             objects.insert(key.clone(), serde_json::json!({
                 "address":key,"kind":object.kind,"id":object.id,
-                "current_revision":object.current().revision,"revision_count":object.revisions.len(),
+                "current_revision":object.current().revision,"revision_count":object.current().revision,
                 "revisions":object.revisions,"signal":joppa::objects::signal(&state,key),
                 "process":joppa::objects::process(&state,key),
                 "work_ready":joppa::objects::work_ready(&state,key),
@@ -562,7 +568,7 @@ pub fn snapshot(data: &Value) -> String {
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
-    page()
+    Ok(page()
         .replace("/* SNAPSHOT */", &format!("window.SNAPSHOT={escaped};"))
         .replace(
             "/favicon.svg",
@@ -573,7 +579,7 @@ pub fn snapshot(data: &Value) -> String {
                     include_str!("favicon.svg")
                 )
             ),
-        )
+        ))
 }
 
 fn page() -> String {

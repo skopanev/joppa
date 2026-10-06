@@ -6,12 +6,37 @@ pub(super) async fn project(
     state: &Workspace,
     events: &[Event],
 ) -> Result<()> {
-    let signals: BTreeMap<_, _> = state
-        .objects
-        .keys()
-        .map(|key| (key, crate::objects::signal(state, key)))
-        .collect();
-    let summary = summaries(state);
+    project_current(
+        client,
+        workspace,
+        state,
+        events,
+        events.last().map_or(0, |e| e.position),
+        None,
+    )
+    .await
+}
+
+pub(super) async fn project_current(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    events: &[Event],
+    position: u64,
+    previous: Option<&Workspace>,
+) -> Result<()> {
+    super::state_rows::project(client, workspace, state, previous).await?;
+    let selected = super::state_rows::affected(state, previous)?;
+    let summary = super::state_rows::changed_summaries(state, selected.as_ref());
+    if let Some(summaries) = summary.as_object() {
+        let rows: Vec<Value> = summaries
+            .iter()
+            .map(|(key, value)| json!({"key":key,"value":value}))
+            .collect();
+        if !rows.is_empty() {
+            client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value) SELECT $1,'summaries',x.key,x.value FROM jsonb_to_recordset($2::text::jsonb) x(key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value WHERE state_entries.value IS DISTINCT FROM EXCLUDED.value", &[&workspace,&json!(rows).to_string()]).await?;
+        }
+    }
     let launch = crate::objects::launch_summary(state);
     let configured = &launch["configured"];
     let blocker_count = &launch["blocker_count"];
@@ -43,9 +68,10 @@ pub(super) async fn project(
     }
     let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
-    super::objects::project(client, workspace, state, events).await?;
+    super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
+    super::queue_rows::project(client, workspace, state, selected.as_ref()).await?;
     client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,launch,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb,$7::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,launch=EXCLUDED.launch,first_view=EXCLUDED.first_view",
-        &[&workspace,&(events.len() as i64),&serde_json::to_string(state)?,&summary.to_string(),&json!(signals).to_string(),&launch.to_string(),&first_view.to_string()]).await?;
+        &[&workspace,&(position as i64),&super::state_rows::metadata(state)?,&"{}",&"{}",&launch.to_string(),&first_view.to_string()]).await?;
     Ok(())
 }
 
@@ -102,7 +128,7 @@ pub async fn board_read(
             let context: String = row.get(0);
             let req: String = row.get(1);
             let row = conn.query_one(
-                "SELECT (state->'requirements'->$2->'revisions'->-1)::text,(summary->$2)::text FROM joppa.board_cache WHERE workspace=$1",
+                "SELECT (s.value->'revisions'->-1)::text,(SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='summaries' AND key=$2) FROM joppa.state_entries s JOIN joppa.board_cache b ON b.workspace=s.workspace WHERE s.workspace=$1 AND s.section='requirements' AND s.key=$2",
                 &[&workspace,&req],
             ).await?;
             let current = parsed(&row, 0)?;

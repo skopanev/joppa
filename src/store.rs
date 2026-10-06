@@ -17,6 +17,8 @@ pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
 pub use objects::{ObjectScope, read_objects, tree_schema};
+#[path = "store_queue.rs"]
+mod queue_rows;
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
@@ -63,10 +65,14 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/014_identity_names.sql"))
         .await?;
-    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
+    tx.batch_execute(include_str!("../migrations/015_current_state.sql"))
+        .await?;
+    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
+        tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
+        search::project(&*tx, &id, &state, events.last().map_or(0, |e| e.position), None).await?;
     }
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
@@ -93,7 +99,7 @@ pub async fn check_journal(pool: &Pool) -> Result<()> {
 }
 async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
     for row in client
-        .query("SELECT id FROM joppa.workspaces ORDER BY id", &[])
+        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) ORDER BY w.id", &[])
         .await?
     {
         let workspace: String = row.get(0);
@@ -103,10 +109,28 @@ async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
                 &[&workspace],
             )
             .await?;
-        let (mut state, mut events) = load(client, &workspace).await?;
-        if ensure_notes(client, &workspace, &mut state, &mut events).await? {
-            search::project(client, &workspace, &state, events.len() as u64).await?;
-            board::project(client, &workspace, &state, &events).await?;
+        let (mut state, old_events) = state_rows::full(client, &workspace).await?;
+        let position = old_events.last().map_or(0, |e|e.position);
+        let previous = state.clone();
+        let mut events = Vec::new();
+        if ensure_notes(client, &workspace, &mut state, &mut events, position).await? {
+            search::project(
+                client,
+                &workspace,
+                &state,
+                position + events.len() as u64,
+                None,
+            )
+            .await?;
+            board::project_current(
+                client,
+                &workspace,
+                &state,
+                &events,
+                position + events.len() as u64,
+                Some(&previous),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -116,6 +140,7 @@ async fn ensure_notes(
     workspace: &str,
     state: &mut Workspace,
     events: &mut Vec<Event>,
+    base_position: u64,
 ) -> Result<bool> {
     let mut changed = false;
     for (needed, command) in [
@@ -128,7 +153,9 @@ async fn ensure_notes(
             continue;
         }
         ensure!(!state.admin.is_empty(), "workspace has no owner");
-        let position = events.last().map_or(1, |event| event.position + 1);
+        let position = events
+            .last()
+            .map_or(base_position + 1, |event| event.position + 1);
         let actor = state.admin.clone();
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
@@ -143,16 +170,31 @@ async fn ensure_notes(
     }
     Ok(changed)
 }
-pub(super) const BOARD_PROJECTION_VERSION: &str = "3";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "5";
 
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
-    let conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1 OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[&BOARD_PROJECTION_VERSION]).await?;
+    let mut conn = pool.get().await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1 OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS(SELECT 1 FROM joppa.task_queue q WHERE q.workspace=w.id AND q.created_at=0) ORDER BY w.id", &[&BOARD_PROJECTION_VERSION]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);
-        let (state, events) = load(&**conn, &id).await?;
-        board::project(&**conn, &id, &state, &events).await?;
+        let tx = conn.transaction().await?;
+        tx.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+            &[&id],
+        )
+        .await?;
+        let (state, events) = load(&*tx, &id).await?;
+        board::project(&*tx, &id, &state, &events).await?;
+        search::project(
+            &*tx,
+            &id,
+            &state,
+            events.last().map_or(0, |e| e.position),
+            None,
+        )
+        .await?;
+        tx.commit().await?;
         done += 1;
     }
     Ok(done)
@@ -201,6 +243,8 @@ async fn reserve_name(client: &impl GenericClient, name: &str, workspace: &str) 
     );
     Ok(())
 }
+#[path = "store_state.rs"]
+mod state_rows;
 #[path = "store_write.rs"]
 mod write;
 pub use write::{
@@ -305,10 +349,16 @@ impl Scope {
 }
 
 pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> Result<Value> {
-    let conn = pool.get().await?;
-    let resolved = resolve_workspace(&**conn, workspace).await?;
+    let mut client = pool.get().await?;
+    let conn = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await?;
+    let resolved = resolve_workspace(&*conn, workspace).await?;
     let workspace = resolved.as_str();
-    access::check(&**conn, workspace, actor, false).await?;
+    access::check(&*conn, workspace, actor, false).await?;
     if !scope.full && scope.req.is_none() && scope.target.is_none() {
         ensure!(
             scope.revision.is_none(),
@@ -322,12 +372,39 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             .await?;
         let first: Value = serde_json::from_str(row.get(0))?;
         drop(conn);
+        drop(client);
         let roots = read_objects(pool, workspace, actor, &ObjectScope::default()).await?;
         return Ok(
             json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"launch":first["launch"],"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
         );
     }
-    let (state, events) = load(&**conn, workspace).await?;
+    if !scope.full {
+        if let Some(req) = &scope.req {
+            return state_rows::read_requirement(&*conn, workspace, req, scope).await;
+        }
+        if let Some(target) = &scope.target {
+            ensure!(
+                scope.revision.is_none(),
+                "revision requires req or a requirement/AC item_id"
+            );
+            drop(conn);
+            drop(client);
+            let object = read_objects(
+                pool,
+                workspace,
+                actor,
+                &ObjectScope {
+                    address: Some(target),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            return Ok(
+                json!({"workspace":object["workspace"],"position":object["position"],"target":target,"notes":object["annotations"]}),
+            );
+        }
+    }
+    let (state, events) = state_rows::full(&*conn, workspace).await?;
     ensure!(
         state.members.contains_key(actor),
         "workspace not found or access denied"
@@ -380,83 +457,6 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         out["state"] = json!(state);
         out["summary"] = json!(summaries);
         out["history"] = json!(events);
-        return Ok(out);
-    }
-
-    ensure!(
-        scope.revision.is_none() || scope.req.is_some(),
-        "revision requires req or a requirement/AC item_id"
-    );
-
-    // Return only the requested revision; history is discovery by count.
-    if let Some(req) = &scope.req {
-        let q = state
-            .requirements
-            .get(req)
-            .with_context(|| format!("unknown requirement {req}"))?;
-        let current = q.revisions.last().context("requirement has no revisions")?;
-        out["requirement"] = json!({"id": req, "capability": q.capability,
-            "revision_count": q.revisions.len(), "current_revision": current.number});
-        if scope.history && scope.revision.is_none() {
-            return Ok(out);
-        }
-        let revision = match scope.revision {
-            Some(number) => q
-                .revisions
-                .iter()
-                .find(|r| r.number == number)
-                .with_context(|| format!("unknown revision {number} for requirement {req}"))?,
-            None => current,
-        };
-        out["requirement"]["capability"] =
-            json!(revision.capability.as_deref().or(q.capability.as_deref()));
-        let comments: serde_json::Map<String, Value> = q
-            .comments
-            .iter()
-            .filter(|(_, c)| c.revision == revision.number)
-            .map(|(id, c)| (id.clone(), json!(c)))
-            .collect();
-        let mut notes = json!({});
-        for (address, n) in &state.notes {
-            let mine = address == &crate::objects::requirement_address(req)
-                || revision.acs.iter().any(|ac| {
-                    address
-                        == &if ac.id.contains(':') {
-                            ac.id.clone()
-                        } else {
-                            format!("ac:{req}/{}", ac.id)
-                        }
-                });
-            if mine {
-                notes[address] = json!(n);
-            }
-        }
-        out["requirement"]["revisions"] = json!([revision]);
-        if scope.revision.is_none() && state.tasks_migrated {
-            out["requirement"]["revisions"][0]["tasks"] =
-                json!(crate::tasks::display_tasks(&state, req));
-        }
-        out["requirement"]["comments"] = json!(comments);
-        out["notes"] = notes;
-        out["summary"] = if revision.number == current.number {
-            crate::objects::requirement_summary(&state, req, revision)
-        } else {
-            checks::summary(revision)
-        };
-        return Ok(out);
-    }
-
-    // Один объект: всё, что на него навешано.
-    if let Some(address) = &scope.target {
-        commands::target(&state, address)?;
-        out["target"] = json!(address);
-        out["notes"] = json!(
-            state
-                .notes
-                .get(&crate::objects::annotation_address(&state, address))
-                .cloned()
-                .unwrap_or_default()
-        );
         return Ok(out);
     }
 
@@ -632,20 +632,10 @@ pub async fn get_blob(
     let conn = pool.get().await?;
     let resolved = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &resolved, actor, false).await?;
-    let (state, _) = load(&**conn, &resolved).await?;
-    ensure!(
-        state.members.contains_key(actor),
-        "workspace not found or access denied"
-    );
-    let found = state
-        .notes
-        .values()
-        .flat_map(|n| n.attachments.values())
-        .find(|a| a.hash == hash)
-        .ok_or(AccessDenied)?;
+    let found = conn.query_opt("SELECT a.value->>'name',a.value->>'content_type' FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'attachments') a WHERE n.workspace=$1 AND n.section='notes' AND a.value->>'hash'=$2 LIMIT 1", &[&resolved,&hash]).await?.ok_or(AccessDenied)?;
     let row = conn
         .query_opt("SELECT bytes FROM joppa.blobs WHERE hash=$1", &[&hash])
         .await?
         .ok_or(AccessDenied)?;
-    Ok((found.name.clone(), found.content_type.clone(), row.get(0)))
+    Ok((found.get(0), found.get(1), row.get(0)))
 }

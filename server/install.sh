@@ -82,7 +82,9 @@ GRANT CONNECT ON DATABASE joppa TO joppa_app;
 GRANT USAGE ON SCHEMA joppa TO joppa_app;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
 GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
-GRANT UPDATE ON joppa.board_cache, joppa.objects TO joppa_app;
+GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_app;
+GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_app;
+GRANT DELETE ON joppa.task_queue TO joppa_app;
 GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_app;
 GRANT DELETE ON joppa.object_links TO joppa_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
@@ -108,9 +110,30 @@ if [[ -f /opt/joppa/bin/joppa ]]; then
     cp -p /opt/joppa/bin/joppa /opt/joppa/bin/joppa.previous
 fi
 install -m 755 target/release/joppa /opt/joppa/bin/joppa.next
+if systemctl is-active --quiet joppa; then
+    systemctl stop joppa
+fi
 mv /opt/joppa/bin/joppa.next /opt/joppa/bin/joppa
 systemctl daemon-reload
 systemctl enable joppa
+restore_previous() {
+    [[ -f /opt/joppa/bin/joppa.previous ]] || return 1
+    if ! (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous check-journal) >/dev/null 2>&1; then
+        echo 'The previous binary cannot read the current journal. Inspect journalctl -u joppa.' >&2
+        return 1
+    fi
+    # Rebuild the cache for the previous binary before it accepts requests.
+    (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous backfill-board) || return 1
+    mv /opt/joppa/bin/joppa.previous /opt/joppa/bin/joppa
+    systemctl restart joppa
+}
+# Build the new projections once while both application versions are stopped.
+# Keep this operation outside the service memory limit and health timeout.
+if ! runuser -u postgres -- env 'JOPPA_DATABASE_URL=postgresql:///joppa?host=/var/run/postgresql' /opt/joppa/bin/joppa migrate; then
+    restore_previous || true
+    echo 'Projection migration failed. Restored the previous version if compatible.' >&2
+    exit 1
+fi
 systemctl restart joppa
 healthy=false
 for attempt in {1..15}; do
@@ -120,17 +143,8 @@ for attempt in {1..15}; do
     sleep 2
 done
 if [[ "$healthy" != true ]]; then
-    migrated=$(runuser -u postgres -- psql -X -At -d joppa -c "SELECT EXISTS (SELECT 1 FROM joppa.events WHERE command->>'op'='migrate_notes')")
-    if [[ "$migrated" == t && -f /opt/joppa/bin/joppa.previous ]]; then
-        if ! (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous check-journal) >/dev/null 2>&1; then
-            echo 'Health check failed. The previous binary cannot read the migrated journal. Kept the current binary. Inspect journalctl -u joppa.' >&2
-            exit 1
-        fi
-    fi
-    if [[ -f /opt/joppa/bin/joppa.previous ]]; then
-        mv /opt/joppa/bin/joppa.previous /opt/joppa/bin/joppa
-        systemctl restart joppa
-    fi
+    systemctl stop joppa
+    restore_previous || true
     echo 'Health check failed; previous binary restored if available. Inspect journalctl -u joppa.' >&2
     exit 1
 fi

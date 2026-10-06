@@ -10,9 +10,8 @@ impl std::fmt::Display for AccessDenied {
 }
 impl std::error::Error for AccessDenied {}
 
-pub const MEMBERSHIP: &str = "SELECT DISTINCT workspace FROM joppa.events WHERE
-    (command->>'op'='workspace' AND actor=$1)
-    OR (command->>'op' IN ('member','enroll_member') AND command->>'id'=$1)";
+pub const MEMBERSHIP: &str =
+    "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
 
 pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BTreeSet<String>>> {
     let identity = client
@@ -65,9 +64,7 @@ pub async fn check(
     let row = client
         .query_one(
             "SELECT EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$1), EXISTS(
-         SELECT 1 FROM joppa.events WHERE workspace=$1 AND (
-         (command->>'op'='workspace' AND actor=$2) OR
-         (command->>'op' IN ('member','enroll_member') AND command->>'id'=$2)))",
+         SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2)",
             &[&workspace, &actor],
         )
         .await?;
@@ -120,7 +117,8 @@ pub async fn enroll(
             &[workspace],
         )
         .await?;
-        let (mut state, events) = load(&*tx, workspace).await?;
+        let (mut state, base_position) = state_rows::current(&*tx, workspace).await?;
+        let previous = state.clone();
         ensure!(
             !state.admin.is_empty(),
             "Access rule refers to an unknown workspace"
@@ -130,11 +128,24 @@ pub async fn enroll(
             continue;
         }
         let command = Command::EnrollMember { id: actor.into() };
-        let position = events.len() as i64 + 1;
+        let position = base_position as i64 + 1;
         commands::apply(&mut state, "joppa-access", &command, position as u64, "")?;
-        tx.execute("INSERT INTO joppa.events(workspace,position,request_id,actor,command) VALUES($1,$2,$3,'joppa-access',$4::text::jsonb)", &[workspace,&position,&format!("enroll-{actor}"),&serde_json::to_string(&command)?]).await?;
-        let (recorded_state, recorded_events) = load(&*tx, workspace).await?;
-        super::board::project(&*tx, workspace, &recorded_state, &recorded_events).await?;
+        let at: String = tx.query_one("INSERT INTO joppa.events(workspace,position,request_id,actor,command) VALUES($1,$2,$3,'joppa-access',$4::text::jsonb) RETURNING recorded_at::text", &[workspace,&position,&format!("enroll-{actor}"),&serde_json::to_string(&command)?]).await?.get(0);
+        let events = [Event {
+            position: position as u64,
+            actor: "joppa-access".into(),
+            recorded_at: at,
+            command,
+        }];
+        super::board::project_current(
+            &*tx,
+            workspace,
+            &state,
+            &events,
+            position as u64,
+            Some(&previous),
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(())
