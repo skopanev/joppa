@@ -1301,8 +1301,14 @@ async function renderObjectTree(){
   await appendObjectChildren(contents);
   if(generation!==loadNumber)return;
   for(const select of controls.querySelectorAll('select'))select.disabled=false;
-  commonNotes(root);
+  for(const kind of inboxKinds())commonNotes(root,undefined,kind);
   rootCollectionTabs(root);
+}
+/// Every configured inbox type gets its own collection, in schema order.
+function inboxKinds(){
+  return Object.entries(data.objectTypes||{}).filter(([,t])=>t.inbox===true)
+    .sort((a,b)=>(a[1].index??Infinity)-(b[1].index??Infinity)||a[0].localeCompare(b[0]))
+    .map(([kind])=>kind);
 }
 /// An input queue shows unprocessed entries first. The schema declares it.
 function inputQueue(kind){
@@ -1318,29 +1324,31 @@ function commonObjectFilters(root,contents){
     if(!selected.kind&&!selected.owner&&!selected.status){await appendObjectChildren(holder);return;}
     const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(inputQueue(selected.kind))params.note_status='unprocessed';let cursor;const items=[];
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
-    const rows=items.filter(item=>(selected.kind||item.kind!=='note')&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
+    const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
     holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
   }catch(e){if(mine===request)notify(e);}};
   for(const select of [kind,owner,status])select.onchange=update;root.append(controls);return controls;
 }
-function commonNotes(root,relatedTo){
-  const title=relatedTo?'Related notes':data.objectTypes?.note?.title||'Notes';
-  const section=E('section');section.append(E('header',undefined,'collection-heading'));root.append(section);section.classList.add('note-section');applyObjectColor(section,'note');
-  collectionHeading(section,title,relatedTo?'Read only.':'Unprocessed information to review and apply. Read only.',relatedTo?undefined:'Inputs');
-  if(!relatedTo){section.classList.add('root-collection');section.dataset.collectionKind='note';}
+function commonNotes(root,relatedTo,kind='note'){
+  const label=data.objectTypes?.[kind]?.title||kind;
+  const title=relatedTo?'Related '+label.toLowerCase():label;
+  const queue=inputQueue(kind);
+  const section=E('section');section.append(E('header',undefined,'collection-heading'));root.append(section);section.classList.add('note-section');applyObjectColor(section,kind);
+  collectionHeading(section,title,relatedTo?'Read only.':data.objectTypes?.[kind]?.description||(queue?'Unprocessed information to review and apply. Read only.':'Read only.'),relatedTo?undefined:label);
+  if(!relatedTo){section.classList.add('root-collection');section.dataset.collectionKind=kind;}
   const summary=section.querySelector(':scope > header');
   const body=E('div',undefined,'note-section-body');section.append(body);
   let loaded=false,loading=false,request=0;
   let all;
-  if(!relatedTo){
+  if(!relatedTo&&queue){
     const controls=E('div',undefined,'note-controls');
-    const label=E('label',undefined,'note-all');all=E('input');all.type='checkbox';all.setAttribute('aria-label','All notes');label.append(all,E('span','All'));controls.append(label);summary.append(controls);
+    const label=E('label',undefined,'note-all');all=E('input');all.type='checkbox';all.setAttribute('aria-label','All '+label.toLowerCase());label.append(all,E('span','All'));controls.append(label);summary.append(controls);
   }
   const rows=E('div',undefined,'note-items');body.append(rows);
   const loadNotes=async()=>{
     const mine=++request;loaded=false;loading=true;
-    const holder=E('div');holder.append(E('p','Loading notes…','object-loading hint'));rows.replaceChildren(holder);
-    try{await appendObjectChildren(holder,'*','note',relatedTo?{related_to:relatedTo}:all.checked?{}:{note_status:'unprocessed'});if(mine===request&&section.isConnected){
+    const holder=E('div');holder.append(E('p','Loading '+label.toLowerCase()+'…','object-loading hint'));rows.replaceChildren(holder);
+    try{await appendObjectChildren(holder,'*',kind,relatedTo?{related_to:relatedTo}:queue&&!all?.checked?{note_status:'unprocessed'}:{});if(mine===request&&section.isConnected){
       loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);
       summary.title=empty?(relatedTo?'No related notes.':all.checked?'No notes.':'No unprocessed notes.'):'Read notes';
     }}
@@ -1402,7 +1410,7 @@ function fillCommonObject(body,detail){
   const annotations=historical?{}:detail.annotations||{};
   for(const comment of Object.values(annotations.comments||{})){if(comment.withdrawn)continue;const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));body.append(row);}
   const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length)body.append(attachmentList(files));
-  if(!historical)commonNotes(body,detail.address);
+  if(!historical)for(const kind of inboxKinds())commonNotes(body,detail.address,kind);
   if(detail.kind==='requirement'&&!historical){body.append(button('Checks and tasks',async()=>{const part=await boardPart('requirement',detail.id);data.state.requirements[detail.id]=part.requirement;data.summary[detail.id]=part.summary;Object.assign(data.state.notes,part.notes);Object.assign(data.state.consumers,part.consumers);Object.assign(data.state.projects,part.projects);Object.assign(data.system_ids.ac,part.system_ids?.ac||{});const content=E('div');body.append(content);requirementDetails(content,detail.id);},'text-button'));}
 }
 async function showCommonObject(address,history=false,revision){

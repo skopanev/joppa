@@ -15,7 +15,8 @@ const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epi
 const types={};
 chain.forEach(([kind,title,role],i)=>{types[kind]={title,role,index:i*10,root:i===0,
   parents:i===0?[]:[chain[i-1][0]]};});
-types.intake={title:'Intake',role:'document',index:70,root:true,parents:[],inbox:true};
+types.intake={title:'Intake',role:'document',index:70,root:true,parents:[],inbox:true,
+  description:'Customer input to review.'};
 const schema={workspace:'w',current_revision:3,schema:{revision:3,actor:'owner',
   at:'2026-10-06T09:00:00Z',reason:'Six configured levels',types}};
 
@@ -83,13 +84,19 @@ try{
   }
 
   // 3. A link crosses two roots and keeps its own title.
+  await page.locator('#tab-intake').click();
   const intake=page.locator('[data-object-address="intake:in-1"]');
+  await intake.waitFor();
   await intake.locator(':scope > summary').click();
   await intake.getByText('Action one',{exact:false}).waitFor();
 
   // 4. One copy action: same control on every card, success only after the
   //    clipboard resolves, and one toast that leaves on its own.
-  await page.evaluate(()=>{navigator.clipboard.writeText=t=>{window.__copied=t;return Promise.resolve();};});
+  await page.locator('#tab-portfolio').click();
+  await page.locator(`[data-object-address="${address(5)}"]`).waitFor();
+  // navigator.clipboard is undefined on plain http, so define it outright.
+  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,
+    value:{writeText:t=>{window.__copied=t;return Promise.resolve();}}});});
   const deep=page.locator(`[data-object-address="${address(5)}"] .copy`).first();
   const before=await deep.boundingBox();
   await deep.click();
@@ -103,8 +110,8 @@ try{
   await toast.waitFor({state:'visible'});
 
   // 5. A clipboard failure says so instead of claiming success.
-  await page.evaluate(()=>{navigator.clipboard.writeText=()=>Promise.reject(Error('denied'));
-    document.execCommand=()=>false;});
+  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,
+    value:{writeText:()=>Promise.reject(Error('denied'))}});document.execCommand=()=>false;});
   const other=page.locator(`[data-object-address="${address(0)}"] .copy`).first();
   await other.click();
   assert.match(await toast.innerText(),/Could not copy/,'a failed copy is visible');
