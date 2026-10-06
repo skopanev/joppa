@@ -56,7 +56,7 @@ async function list() {
 }
 let loadNumber = 0;
 const loadedDomains=new Set(),loadedCapabilities=new Set(),loadedRequirements=new Set();
-let consumerOpen=false,consumersLoaded=false,filterLoaded=false,filterLoading=null;
+let consumerOpen=false,consumersLoaded=false,consumerPage=null,filterLoaded=false,filterLoading=null;
 const fullHistoryRequirements=new Set();
 const branchAnimations=new WeakMap();
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -119,7 +119,7 @@ async function load() {
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
   fullHistoryRequirements.clear();
-  consumerOpen=false;consumersLoaded=false;filterLoaded=false;filterLoading=null;
+  consumerOpen=false;consumersLoaded=false;consumerPage=null;filterLoaded=false;filterLoading=null;
   if(data.custom_tree){await renderObjectTree();return;}
   if(!data.lazy)indexStatusEvents();
   render();
@@ -462,13 +462,65 @@ function render() {
   intro.append(E('h1',data.state.title));
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers.length),'hint'));
   t.append(intro);
-  filterControls(t);
-  for (const [did,d] of orderedEntries('domain'))t.append(buildDomain(did,d,signals,opened));
-  if(!orderedEntries('domain').length)t.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
-  const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;t.append(empty);
+  const domains=E('section',undefined,'root-collection');domains.dataset.collectionKind='domain';t.append(domains);
+  filterControls(domains);
+  for (const [did,d] of orderedEntries('domain'))domains.append(buildDomain(did,d,signals,opened));
+  if(!orderedEntries('domain').length)domains.append(E('p','No domains yet. Add the product structure through MCP.','empty-state'));
+  const empty=E('p','No requirements match these filters.','filter-empty');empty.id='filter-empty';empty.hidden=true;domains.append(empty);
   applyFilters(false);
   consumers(t);
   commonNotes(t);
+  rootCollectionTabs(t);
+}
+function rootCollectionTabs(root){
+  if(!Object.keys(data.objectTypes||{}).length)return;
+  const types=Object.entries(data.objectTypes||{}).filter(([,type])=>type.root);
+  const existing=[...root.querySelectorAll('.root-collection')];
+  for(const panel of existing)panel.hidden=true;
+  if(!types.length){root.querySelector(':scope > .collection-tabs')?.remove();return;}
+  const panels=types.map(([kind])=>{
+    let panel=existing.find(node=>node.dataset.collectionKind===kind);
+    if(!panel){
+      panel=E('section',undefined,'root-collection');panel.dataset.collectionKind=kind;panel.dataset.collectionLazy='true';root.append(panel);
+    }
+    return panel;
+  });
+  let nav=root.querySelector(':scope > .collection-tabs');
+  if(!nav){nav=E('div',undefined,'collection-tabs');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Root collections');root.querySelector('.tree-intro').after(nav);}
+  nav.replaceChildren();nav.hidden=false;
+  const key='joppa-collection:'+ws;
+  let selected;
+  try{selected=sessionStorage.getItem(key);}catch{}
+  if(!panels.some(panel=>panel.dataset.collectionKind===selected))selected=panels[0]?.dataset.collectionKind;
+  const activate=(kind,focus=false)=>{
+    selected=kind;try{sessionStorage.setItem(key,kind);}catch{}
+    for(const panel of panels){
+      const active=panel.dataset.collectionKind===kind;panel.hidden=!active;
+      const tab=nav.querySelector('[aria-controls="'+panel.id+'"]');tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
+      if(active){
+        if(focus)tab.focus();
+        if(panel.matches('details')&&!panel.open&&!panel.classList.contains('empty-notes'))panel.querySelector(':scope > summary').click();
+        if(panel.dataset.collectionLazy==='true'){
+          delete panel.dataset.collectionLazy;
+          panel.append(E('p','Loading objects…','object-loading hint'));
+          appendObjectChildren(panel,undefined,kind).catch(error=>{panel.dataset.collectionLazy='true';panel.replaceChildren();notify(error);});
+        }
+      }
+    }
+  };
+  for(const panel of panels){
+    const kind=panel.dataset.collectionKind,type=data.objectTypes[kind];
+    panel.id='collection-'+kind;panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','tab-'+kind);panel.tabIndex=0;
+    const tab=button(type.title,()=>activate(kind),'collection-tab');applyObjectColor(tab,kind);tab.id='tab-'+kind;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);nav.append(tab);
+  }
+  nav.onkeydown=event=>{
+    const tabs=[...nav.children],current=tabs.indexOf(document.activeElement);let next;
+    if(event.key==='ArrowRight')next=(current+1)%tabs.length;
+    if(event.key==='ArrowLeft')next=(current+tabs.length-1)%tabs.length;
+    if(event.key==='Home')next=0;if(event.key==='End')next=tabs.length-1;
+    if(next!==undefined){event.preventDefault();activate(panels[next].dataset.collectionKind,true);}
+  };
+  activate(selected);
 }
 function buildDomain(did,d,signals,opened){
   const group=E('details',undefined,'tree-domain');applyObjectColor(group,'domain');group.dataset.domain=did;group.dataset.treeNode='domain:'+did;group.open=opened.has(group.dataset.treeNode);
@@ -582,7 +634,7 @@ function consumers(root){
   const title=data.objectTypes?.consumer?.title||'Consumer';
   const section=details(root,(title==='Consumer'?'Consumers':title)+' · '+count);
   collectionHeading(section,(title==='Consumer'?'Consumers':title)+' · '+count,'People and roles that use the product.','Audience');
-  section.classList.add('consumer-section');applyObjectColor(section,'consumer');
+  section.classList.add('consumer-section','root-collection');section.dataset.collectionKind='consumer';applyObjectColor(section,'consumer');
   section.open=consumerOpen;
   if(data.lazy&&!consumersLoaded)section.dataset.pending='true';
   enableBranchMotion(section);
@@ -590,15 +642,15 @@ function consumers(root){
     section.append(E('p','Loading consumers…','consumer-loading'));
     section.addEventListener('toggle',async()=>{
       consumerOpen=section.open;
-      if(!section.open||consumersLoaded)return;
+      if(!section.open||consumersLoaded||section.dataset.loading==='true')return;
+      section.dataset.loading='true';
       const request=loadNumber;
-      try{const part=await boardPart('consumers');if(request!==loadNumber)return;
-        Object.assign(data.state.consumers,part.consumers);
-        Object.assign(data.system_ids.consumer,part.system_ids||{});
+      try{const part=await objectPart({kind:'consumer',limit:'50'});if(request!==loadNumber)return;
+        consumerPage=part;
         consumersLoaded=true;
         delete section.dataset.pending;
         if(section.isConnected)resizeBranch(section,()=>fillConsumers(section));
-      }catch(e){notify(e);}
+      }catch(e){notify(e);}finally{delete section.dataset.loading;}
     });
     return;
   }
@@ -607,6 +659,7 @@ function consumers(root){
 }
 function fillConsumers(section){
   section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
+  if(consumerPage){appendObjectPage(section,consumerPage,{kind:'consumer',limit:'50'},loadNumber);return;}
   for(const [id,consumer] of Object.entries(data.state.consumers||{})){
     section.append(commonObjectCard({address:'consumer:'+id,kind:'consumer',title:consumer.title,
       item_id:data.system_ids.consumer?.[id],work_ready:true}));
@@ -1210,17 +1263,18 @@ function appendObjectPage(root,part,params,generation){
   const items=part.items.filter(item=>params.kind||(params.parent&&params.parent!=='*')||item.kind!=='note');
   for(const item of items){
     let holder=root;
-    if(!params.parent&&!params.kind&&data.objectTypes?.[item.kind]?.role==='document'){
+    if(!params.parent&&!params.kind){
       holder=[...root.querySelectorAll(':scope > .object-collection')].find(group=>group.dataset.kind===item.kind);
       if(!holder){
-        holder=E('section',undefined,'object-collection');holder.dataset.kind=item.kind;applyObjectColor(holder,item.kind);
+        holder=E('section',undefined,'object-collection root-collection');holder.dataset.kind=item.kind;holder.dataset.collectionKind=item.kind;applyObjectColor(holder,item.kind);
         holder.append(E('h2',data.objectTypes[item.kind].title,'object-collection-title'));root.append(holder);
       }
     }
-    holder.append(commonObjectCard(item));
+    if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
   }
   if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object'))root.append(E('p',params.kind==='note'?'No notes here.':'No objects here yet.','hint'));
   if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
+  if(!params.parent&&!params.kind&&$('tree').querySelector('.collection-tabs'))rootCollectionTabs($('tree'));
 }
 async function renderObjectTree(){
   const root=$('tree');root.replaceChildren();
@@ -1238,6 +1292,7 @@ async function renderObjectTree(){
   if(generation!==loadNumber)return;
   for(const select of controls.querySelectorAll('select'))select.disabled=false;
   commonNotes(root);
+  rootCollectionTabs(root);
 }
 function commonObjectFilters(root,contents){
   const controls=E('div',undefined,'filter-fields');let request=0;
@@ -1245,7 +1300,7 @@ function commonObjectFilters(root,contents){
   const kind=picker('Object type',[['','All types'],...Object.entries(data.objectTypes||{}).map(([id,type])=>[id,type.title])]);
   const owner=picker('Object owner',[['','All owners'],...Object.keys(data.state.members).map(id=>[id,personLabel(id)])]);
   const status=picker('Object status',[['','All statuses'],['green','Checks passed'],['red','Checks failed'],['purple','Dependency review'],['yellow','Waiting or in progress'],['grey','Unchecked or completed']]);
-  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:kind.value,owner:owner.value,status:status.value};const holder=E('div');contents.replaceChildren(holder);holder.append(E('p','Loading objects…','object-loading hint'));try{
+  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:kind.value,owner:owner.value,status:status.value};const tabs=root.querySelector('.collection-tabs');if(tabs)tabs.hidden=Boolean(selected.kind||selected.owner||selected.status);const holder=E('div');contents.replaceChildren(holder);holder.append(E('p','Loading objects…','object-loading hint'));try{
     if(!selected.kind&&!selected.owner&&!selected.status){await appendObjectChildren(holder);return;}
     const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(selected.kind==='note')params.note_status='unprocessed';let cursor;const items=[];
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
@@ -1255,9 +1310,10 @@ function commonObjectFilters(root,contents){
   for(const select of [kind,owner,status])select.onchange=update;root.append(controls);return controls;
 }
 function commonNotes(root,relatedTo){
-  const title=relatedTo?'Related notes':data.objectTypes?.note?.title&&data.objectTypes.note.title!=='Note'?data.objectTypes.note.title:'Notes';
+  const title=relatedTo?'Related notes':data.objectTypes?.note?.title||'Notes';
   const section=details(root,title);section.classList.add('note-section');applyObjectColor(section,'note');
   if(!relatedTo)collectionHeading(section,title,'Information to review and apply.','Inputs');
+  if(!relatedTo){section.classList.add('root-collection');section.dataset.collectionKind='note';}
   const summary=section.querySelector(':scope > summary');
   if(!relatedTo)section.querySelector('.collection-description').textContent='Unprocessed information to review and apply. Read only.';
   else summary.append(E('small','Read only','note-readonly'));

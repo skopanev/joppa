@@ -12,7 +12,7 @@ revision.acs.push({id:'c',text:'A returning customer can use an existing purchas
 const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
-  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},object_types:{consumer:{title:'Consumer',role:'document',color:'#247eab'},note:{title:'Note',role:'document',color:'#7664aa'}},counts:{consumers:1}},
+  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},object_types:{domain:{title:'Domains',role:'group',root:true,color:'#17685f'},consumer:{title:'Consumers',role:'document',root:true,color:'#247eab'},note:{title:'Inputs',role:'document',root:true,color:'#7664aa'}},counts:{consumers:1}},
   '/api/workspaces/w/board?level=domain&id=d':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true},c2:{title:'Manage account',domain:'d',owner:'owner',description:'',confirmed:true},c3:{title:'Recover access',domain:'d',owner:'owner',description:'',confirmed:true}},signals:{c:{tone:'grey',label:'No requirements'},c2:{tone:'grey',label:'No requirements'},c3:{tone:'grey',label:'No requirements'}},order:['c','c2','c3'],system_ids:{}},
   '/api/workspaces/w/board?level=capability&id=c':{requirements:{r:{capability:'c',revisions:[{number:1,title:revision.title,body:revision.body}],revision_count:1}},signals:{r:{tone:'yellow',label:'Waiting for decision',status:'waiting'}},order:['r'],system_ids:{}},
   '/api/workspaces/w/board?level=requirement&id=r':{requirement:{capability:'c',revisions:[revision],comments:{}},summary:{acs:{a:{ready:false,verification:'n/a'}},ready_for_acceptance:false,accepted:false},consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},notes:{},projects:{},status_events:[{position:4,actor:'owner',recorded_at:'2026-09-25 12:00:00+00',command:{op:'revise',req:'r',expected_revision:0,acs:[{id:'a',text:'Sign-in works'}]}}],system_ids:{ac:{}}},
@@ -35,7 +35,7 @@ const responses={
       if(pathname.startsWith('/api/workspaces/w/objects?')){
         const query=new URL(route.request().url()).searchParams;
         const value=query.has('address')?{address:'consumer:buyer',kind:'consumer',id:'buyer',current_revision:1,
-          document:{revision:1,data:{title:'Buyer',owner:'owner',description:'Pays for access'}},links:[],incoming:[],annotations:{}}:{items:[],next_cursor:null};
+          document:{revision:1,data:{title:'Buyer',owner:'owner',description:'Pays for access'}},links:[],incoming:[],annotations:{}}:{items:query.get('kind')==='consumer'?[{address:'consumer:buyer',kind:'consumer',title:'Buyer',owner:'owner',work_ready:true}]:[],next_cursor:null};
         return route.fulfill({json:value});
       }
       if(pathname.includes('level=domain'))await new Promise(resolve=>setTimeout(resolve,180));
@@ -105,7 +105,7 @@ const responses={
     assert.equal(await req.locator('.requirement-body').count(),0);
     const consumers=page.locator('.consumer-section');
     assert.equal(await consumers.evaluate(e=>e.style.getPropertyValue('--object-color')),'#247eab');
-    await consumers.locator('summary').click();
+    await page.getByRole('tab',{name:'Consumers',exact:true}).click();
     await consumers.getByText('Buyer').waitFor();
     const buyer=consumers.locator('[data-object-address="consumer:buyer"]');
     assert.equal(await buyer.evaluate(e=>e.open),false,'a consumer starts closed like a domain');
@@ -124,17 +124,18 @@ const responses={
     await related.locator(':scope > summary').click();
     assert.equal(await related.evaluate(e=>e.open),false);
     const inputs=page.locator('#tree > .note-section');
-    await inputs.locator(':scope > summary').click();
+    await page.getByRole('tab',{name:'Inputs',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('#tree > .note-section').classList.contains('empty-notes'));
     assert.equal(await inputs.evaluate(e=>e.open),false,'an empty Notes queue stays closed');
     await inputs.getByLabel('All notes').check();
     await page.waitForFunction(()=>document.querySelector('#tree > .note-section').classList.contains('empty-notes')&&!document.querySelector('#tree > .note-section .object-loading'));
     assert.equal(await inputs.evaluate(e=>e.open),false);
+    await page.getByRole('tab',{name:'Domains',exact:true}).click();
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
     assert.equal(await page.locator('.intake-section').count(),0);
     assert(!seen.some(path=>path.includes('level=intake')));
     if(process.env.JOPPA_SCREENSHOT){await page.evaluate(()=>scrollTo(0,0));await page.waitForTimeout(260);await page.screenshot({path:process.env.JOPPA_SCREENSHOT,fullPage:true});}
-    assert(seen.includes('/api/workspaces/w/board?level=consumers'));
+    assert(seen.some(url=>url.includes('/objects?')&&new URL('http://joppa.test'+url).searchParams.get('kind')==='consumer'));
     assert(!seen.some(path=>path.includes('level=history')));
     await req.locator(':scope > summary .history-button').click();
     await page.locator('.history-dialog').waitFor();
