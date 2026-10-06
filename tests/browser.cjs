@@ -1,323 +1,186 @@
+// Board behaviour that is not about the tree shape: read-only access, sign in,
+// escaping, the verification inspector, attachments, mobile and the offline
+// snapshot. Each check names the criterion it proves where one exists.
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const {readFileSync}=require('node:fs');
+const path=require('node:path');
 const assert=require('node:assert/strict');
-(async()=>{
- const browser=await chromium.launch({headless:true,ignoreDefaultArgs:['--hide-scrollbars'],...(process.env.PLAYWRIGHT_CHROMIUM?{executablePath:process.env.PLAYWRIGHT_CHROMIUM}:{})});
- try{
-  const page=await browser.newPage({viewport:{width:1280,height:900}});
-  let signedIn=false;
-  await page.route('**/api/**',async route=>{
-   assert.equal(route.request().method(),'GET','portal must only read product data');
-   if(!signedIn)return route.fulfill({status:401,json:{error:'Please sign in'}});
-   const headers={...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN};
-   if(new URL(route.request().url()).pathname==='/api/workspaces/'+process.env.JOPPA_TEST_WORKSPACE){
-    const response=await route.fetch({headers});const json=await response.json();
-    json.member_labels={...json.member_labels,reviewer:'rita.petrov'};
-    return route.fulfill({response,json});
-   }
-   await route.continue({headers});
-  });
-  await page.route('**/auth/login',route=>route.fulfill({json:{verification_url:process.env.JOPPA_TEST_URL+'/guide',expires_in:300}}));
-  await page.route('**/auth/poll',route=>{signedIn=true;return route.fulfill({json:{status:'ready',actor:'owner'}});});
-  await page.route('**/auth/logout',route=>{signedIn=false;return route.fulfill({json:{ok:true}});});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const domain=page.locator('[data-domain="security"]');
-  const cap=page.locator('[data-capability="restrict"]');
-  const req=page.locator('[data-requirement="key"]');
-  const title=node=>node.locator(':scope > summary > .node-title');
-  const isOpen=node=>node.evaluate(e=>e.open);
-  async function chooseFilter(name,title){await page.getByRole('combobox',{name}).click();await page.getByRole('option',{name:title,exact:true}).click();}
-  async function resetFilters(){await chooseFilter('Filter by domain','All domains');await chooseFilter('Filter by person','Everyone');await chooseFilter('Filter by status','All statuses');}
-  const geometry=()=>page.evaluate(()=>['.layout','.app-header'].map(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,width:r.width};}));
-  await page.goto(process.env.JOPPA_TEST_URL);
-  await page.getByRole('heading',{name:'Authorization.'}).waitFor();
-  assert.equal(await page.locator('.app-header').isVisible(),false);
-  assert.equal(await page.locator('.layout').isVisible(),false);
-  await page.getByRole('button',{name:'Continue with Google',exact:true}).click();
-  await page.locator('#workspaces option').first().waitFor({state:'attached'});
-  await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);
-  await domain.waitFor();
-  assert.equal(await page.title(),'joppa');
-  assert.equal(await page.locator('.brand-mark').count(),1);
-  assert.equal(await page.locator('link[rel=icon]').getAttribute('href'),'/favicon.svg');
-  const favicon=await page.request.get(process.env.JOPPA_TEST_URL+'/favicon.svg');
-  assert.equal(favicon.status(),200);assert(favicon.headers()['content-type'].includes('image/svg+xml'));
-  assert.equal(await page.locator('#tree details[open]').count(),0);
-  assert.equal(await page.locator('#card,#mobile-tree').count(),0);
-  assert.equal(await page.getByRole('button',{name:/Expand all|Collapse all|Product tree/}).count(),0);
-  await page.addStyleTag({content:'html::-webkit-scrollbar{width:16px}'});
-  const collapsedGeometry=await geometry();
-  await title(domain).click();assert(await isOpen(domain));
-  assert.equal(await isOpen(cap),false);
-  await cap.locator(':scope > summary').focus();await page.keyboard.press('Enter');
-  assert(await isOpen(cap));assert.equal(await isOpen(req),false);
-  const bodyPreview=req.locator(':scope > summary > .requirement-preview');
-  await bodyPreview.waitFor();assert.equal(await bodyPreview.textContent(),'Updated wording');
-  assert.equal(await bodyPreview.evaluate(e=>getComputedStyle(e).webkitLineClamp),'2');
-  await title(req).click();assert(await isOpen(req));
-  await req.getByText('Before launch the key has exactly read and verify',{exact:true}).waitFor();
-  assert.equal(await bodyPreview.isVisible(),false);
-  await req.locator('.requirement-body').filter({hasText:'Updated wording'}).waitFor();
-  const acList=req.getByRole('list',{name:'Acceptance criteria',exact:true});
-  assert.equal(await acList.evaluate(e=>e.tagName),'OL');
-  assert.equal(await acList.getByRole('listitem').count(),1);
-  const signal=node=>node.locator(':scope > summary > .node-title > .status-circle');
-  assert.equal(await signal(domain).getAttribute('data-tone'),'red');
-  assert.equal(await signal(cap).getAttribute('data-tone'),'red');
-  assert.equal(await signal(req).getAttribute('data-tone'),'yellow');
-  assert.equal(await acList.locator('.ac-status').first().getAttribute('data-tone'),'yellow');
-  assert.equal(await page.locator('[data-domain="operations"] > summary .status-circle').getAttribute('data-tone'),'grey');
-  assert.equal(await req.locator(':scope > summary > .badge,.ac-heading > .badge').count(),0);
-  assert.equal(await req.getByText('Not ready',{exact:true}).count(),0);
-  const rollups=await page.evaluate(()=>{
-   const original=data;data=structuredClone(data);
-   try{
-    data.state.capabilities=Object.fromEntries(Object.entries(data.state.capabilities).filter(([id])=>id==='restrict'));
-    data.state.requirements=Object.fromEntries(Object.entries(data.state.requirements).filter(([id])=>['key','auto'].includes(id)));
-    for(const [id,q] of Object.entries(data.state.requirements)){
-     const r=q.revisions.at(-1);r.confirmed=true;r.tasks={};r.runs={};
-     data.summary[id]={accepted:true,ready_for_acceptance:true,acs:Object.fromEntries(r.acs.map(a=>[a.id,{ready:true,verification:'pass'}]))};
-    }
-    const result={allGreen:treeSignals().domains.security.tone};
-    data.summary.key.accepted=false;result.ownerNotAccepted=treeSignals().domains.security.tone;
-    data.summary.key.accepted=true;
-    for(const id of ['key','auto']){
-     data.summary[id].accepted=false;data.summary[id].ready_for_acceptance=false;
-     for(const ac of Object.values(data.summary[id].acs))ac.verification='n/a';
-    }
-    result.unchecked=treeSignals().domains.security.tone;
-    data.summary.key.accepted=true;data.summary.key.ready_for_acceptance=true;
-    for(const ac of Object.values(data.summary.key.acs))ac.verification='pass';
-    result.mixed=treeSignals().domains.security.tone;
-    result.orangePriority=aggregateSignal([{tone:'orange'},{tone:'yellow'}],'requirements').tone;
-    result.greyPriority=aggregateSignal([{tone:'grey'},{tone:'green'}],'requirements').tone;
-    result.greenOnly=aggregateSignal([{tone:'green'},{tone:'green'}],'requirements').tone;
-    Object.values(data.summary.auto.acs)[0].verification='fail';result.failed=treeSignals().domains.security.tone;
-    delete data.state.requirements.auto;
-    data.state.capabilities.empty={domain:'security',title:'Empty'};
-    result.emptyChild=treeSignals().domains.security.tone;
-    data.state.requirements={};result.emptyTree=treeSignals().domains.security.tone;
-    return result;
-   }finally{data=original;}
-  });
-  assert.deepEqual(rollups,{allGreen:'green',ownerNotAccepted:'green',unchecked:'grey',mixed:'yellow',orangePriority:'orange',greyPriority:'grey',greenOnly:'green',failed:'red',emptyChild:'yellow',emptyTree:'grey'});
+const root=path.join(__dirname,'..');
+const source=readFileSync(path.join(root,'src/board.js'),'utf8');
+const style=readFileSync(path.join(root,'src/board.css'),'utf8');
+const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
+  .replace('/* BOARD_STYLE */',style)
+  .replace('/* BOARD_SCRIPT */',source)
+  .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot)+';':'');
 
-  assert.equal(await page.locator('#sidebar').isVisible(),true);
-  assert.deepEqual(await geometry(),collapsedGeometry,'expansion must not shift the layout');
-  await page.context().grantPermissions(['clipboard-read','clipboard-write']);
-  async function copied(node,kind,id){
-   const before=await isOpen(node);
-   await node.locator(':scope > summary').getByRole('button',{name:'Copy '+kind+' ID: '+id,exact:true}).click();
-   await page.getByText('Copied ID for your agent.',{exact:true}).waitFor();
-   assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),await page.evaluate(({kind,id})=>data.system_ids[kind][id],{kind,id}));
-   assert.equal(await isOpen(node),before,'copy must not toggle the branch');
-  }
-  assert.equal(await page.locator('.tree-domain > summary > .badge').count(),0);
-  await domain.getByRole('button',{name:'View domain history: security',exact:true}).click();
-  const domainHistory=page.getByRole('dialog',{name:'History: Доступ к данным'});await domainHistory.waitFor();
-  await domainHistory.getByText('Domain created',{exact:true}).waitFor();
-  await domainHistory.locator('.history-body').getByText('Доступ к данным',{exact:true}).waitFor();
-  assert.equal(await domainHistory.locator('pre,details').count(),0);
-  assert(!String(await domainHistory.locator('.history-time').first().textContent()).includes('+00'));
-  assert.equal(await page.getByText('Event data',{exact:true}).count(),0);
-  await domainHistory.getByRole('button',{name:'Close history'}).click();
-  await copied(domain,'domain','security');assert.equal(await domain.locator(':scope > summary .agent-face').count(),1);await copied(cap,'capability','restrict');await copied(req,'requirement','key');
-  const acCopy=req.getByRole('button',{name:'Copy ac ID: key-rights',exact:true});
-  await acCopy.click();
-  const acId=await page.evaluate(()=>data.system_ids.ac['key-rights']);
-  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),acId);
-  assert(acId.startsWith(process.env.JOPPA_TEST_WORKSPACE+'-A-'));
-  await req.getByRole('button',{name:'View ac history: key-rights',exact:true}).click();
-  const acHistory=page.getByRole('dialog',{name:'History: Before launch the key has exactly read and verify'});
-  await acHistory.getByText('Requirement updated',{exact:true}).waitFor();
-  assert.equal(await acHistory.locator('pre,details').count(),0);
-  await acHistory.getByRole('button',{name:'Close history'}).click();
-  assert.equal(await req.getByRole('combobox',{name:'Requirement revision'}).count(),0);
-  for(const empty of ['Tasks · 0','Checks · 0','Discussion','n/a','Required before launch'])assert.equal(await req.getByText(empty,{exact:true}).count(),0);
-  assert.equal(await req.locator('.ac-item').getByText('AC · key-rights',{exact:true}).count(),0);
-  assert(!(await req.locator('.requirement-detail').innerText()).includes('owner owner'));
-  await req.getByRole('button',{name:'View requirement history: key',exact:true}).click();
-  const reqHistory=page.getByRole('dialog',{name:'History: Ключ до запуска'});
-  assert.equal(await reqHistory.getByRole('combobox',{name:'Requirement revision'}).inputValue(),'2');
-  await reqHistory.getByRole('combobox',{name:'Requirement revision'}).selectOption('1');
-  await reqHistory.waitFor({state:'detached'});
-  await req.locator(':scope > summary .rev-chip.past').filter({hasText:'rev. 1'}).waitFor();
-  assert.equal(await signal(req).getAttribute('data-tone'),'grey');
-  assert.equal(await req.locator('.ac-status').first().getAttribute('data-tone'),'grey');
-  const oldBody=await req.locator('.requirement-body').textContent();
-  await title(req).click();await bodyPreview.waitFor();
-  assert.equal(await bodyPreview.textContent(),oldBody);
-  assert.equal(await page.evaluate(()=>window.attacked),undefined);
-  await bodyPreview.click();assert(await isOpen(req));
-  await req.getByRole('button',{name:'View requirement history: key',exact:true}).click();
-  assert.equal(await reqHistory.getByRole('combobox',{name:'Requirement revision'}).inputValue(),'1');
-  await reqHistory.getByRole('combobox',{name:'Requirement revision'}).selectOption('2');
-  await req.locator(':scope > summary .rev-chip').filter({hasText:'rev. 2'}).waitFor();
-  await req.getByRole('button',{name:'View requirement history: key',exact:true}).click();
-  await reqHistory.getByRole('combobox',{name:'Requirement revision'}).selectOption('1');
-  await req.getByText('Checks · 1',{exact:true}).click();
-  await req.getByText('Key permissions before launch · Finished',{exact:true}).click();
-  await req.getByText('Manual check · Passed',{exact:true}).waitFor();
-  assert.equal(await req.getByText('manual-key-rights',{exact:true}).count(),0);
-  assert.equal(await req.getByText('Subject: {"environment":"config-v1"}',{exact:true}).count(),0);
-  await req.getByText('Discussion · 2',{exact:true}).click();
-  await req.getByText('Hello',{exact:true}).waitFor();
-  assert(!(await req.locator('.requirement-detail').innerText()).includes('hello · owner'));
-  await req.getByText('Expected: read, verify',{exact:true}).waitFor();
-  await req.getByText(/Observed: read, verify/).waitFor();
-  assert.equal(await page.evaluate(()=>window.attacked),undefined);
-  await copied(req,'requirement','key');
-  const auto=page.locator('[data-requirement="auto"]');
-  await title(auto).click();
-  await auto.getByText('Tasks · 1',{exact:true}).click();
-  await auto.getByRole('heading',{name:/Implement command/}).waitFor();
-  await auto.getByText('rita.petrov',{exact:true}).waitFor();
-  assert(!(await auto.locator('.requirement-detail').innerText()).includes('agent-task'));
-  await title(auto).click();
-  assert.equal(await page.locator('form').count(),0);
-  assert.equal(await page.getByRole('button',{name:/Edit |Confirm |Accept |Save |Create |Post reply|Finish run|Record check/}).count(),0);
-  await page.screenshot({path:'/tmp/joppa-browser-check.png',fullPage:true});
-  assert.equal(await page.getByRole('searchbox').count(),0);
-  assert.equal(await page.getByRole('button',{name:'Clear filters',exact:true}).count(),0);
-  await chooseFilter('Filter by status','Checks failed');
-  assert.equal(await page.locator('.tree-requirement:visible').count(),1);
-  await chooseFilter('Filter by domain','Operations');
-  await chooseFilter('Filter by status','Waiting for decision');
-  await page.getByText('No requirements match these filters.',{exact:true}).waitFor();
-  assert.deepEqual(await geometry(),collapsedGeometry,'filters must not shift the layout');
-  await resetFilters();
-  await chooseFilter('Filter by status','Checks failed');
-  await page.reload();await domain.waitFor();
-  assert.equal(await page.locator('#status-filter .picker-value').textContent(),'Checks failed');
-  assert.equal(await page.locator('#tree details[open]').count(),0,'reload collapses all levels even with a saved filter');
-  await resetFilters();
-  await chooseFilter('Filter by domain','Operations');
-  assert.equal(await page.locator('.tree-domain:visible').count(),1);
-  await page.locator('[data-domain="operations"]').getByText('No requirements yet.',{exact:true}).waitFor();
-  await resetFilters();
-  await chooseFilter('Filter by status','Waiting for decision');
-  await req.locator(':scope > summary .rev-chip').filter({hasText:'rev. 2'}).waitFor();
-  assert.equal(await page.locator('[data-requirement="auto"]').isVisible(),false);
-  assert.equal(await signal(domain).getAttribute('data-tone'),'red','hidden failures remain in the parent status');
-  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}}));
-  await req.getByRole('button',{name:'Copy requirement ID: key',exact:true}).click();
-  const fallback=page.getByRole('dialog',{name:'Copy for your agent'});await fallback.waitFor();
-  assert(await fallback.getByRole('textbox').evaluate(e=>e.readOnly));
-  assert.equal(await fallback.getByRole('textbox').inputValue(),await page.evaluate(()=>data.system_ids.requirement.key));
-  await page.evaluate(()=>{document.execCommand=command=>{window.fallbackCopyUsed=command==='copy';return true;};});
-  await fallback.getByRole('button',{name:'Copy ID',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.fallbackCopyUsed),true);
-  await fallback.waitFor({state:'detached'});
-  await resetFilters();
-  await chooseFilter('Filter by person','Assigned to me');
-  assert.equal(await page.locator('.tree-requirement:visible').count(),2);
-  await page.getByRole('combobox',{name:'Filter by person'}).click();
-  for(const hidden of ['agent','Me','owner'])assert.equal(await page.getByRole('option',{name:hidden,exact:true}).count(),0);
-  await page.getByRole('option',{name:'rita.petrov',exact:true}).click();
-  assert.equal(await page.evaluate(()=>filters.person),'reviewer','filter keeps the actor ID behind the email label');
-  assert.deepEqual(await page.locator('.tree-requirement:visible').evaluateAll(nodes=>nodes.map(n=>n.dataset.requirement)),['auto']);
-  await chooseFilter('Filter by person','legal');
-  assert.deepEqual(await page.locator('.tree-requirement:visible').evaluateAll(nodes=>nodes.map(n=>n.dataset.requirement)),['key']);
-  await chooseFilter('Filter by domain','Доступ к данным');
-  await chooseFilter('Filter by status','Checks failed');
-  assert.equal(await page.locator('.tree-requirement:visible').count(),0);
-  await chooseFilter('Filter by status','Waiting for decision');
-  assert.equal(await page.locator('.tree-requirement:visible').count(),1);
-  await page.reload();await domain.waitFor();
-  assert.equal(await page.locator('#person-filter .picker-value').textContent(),'legal');
-  assert.equal(await page.locator('#tree details[open]').count(),0);
-  await resetFilters();
-  await page.getByRole('combobox',{name:'Filter by domain'}).focus();await page.keyboard.press('ArrowDown');
-  await page.getByRole('listbox',{name:'Filter by domain'}).waitFor();await page.keyboard.press('Escape');
-  assert.equal(await page.getByRole('combobox',{name:'Filter by domain'}).getAttribute('aria-expanded'),'false');
-  await page.screenshot({path:'/tmp/joppa-tree-desktop.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  const immediateCopy=await page.evaluate(()=>{
-    let called=false;
-    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>{called=true;return Promise.resolve();}}});
-    document.querySelector('[data-domain="security"] > summary .copy-context').click();
-    return called;
+const ATTACK='</script><script>window.attacked=true</script>';
+const types={
+  area:{title:'Area',index:10,role:'group',root:true,parents:[]},
+  spec:{title:'Spec',index:20,role:'requirement',root:false,parents:['area']},
+  measure:{title:'Measure',index:30,role:'ac',root:false,parents:['spec']},
+};
+const schema={workspace:'w',current_revision:2,schema:{revision:2,actor:'owner',
+  at:'2026-10-06T09:00:00Z',reason:'Configured tree',types}};
+
+const object=(address,extra={})=>({address,kind:address.split(':')[0],id:address.split(':')[1],
+  title:extra.title||'Object',revision:1,present:true,owner:'owner',at:'2026-10-06T09:00:00Z',
+  work_ready:true,review_required:false,item_id:'w-O-ABCDEFGHIJ',links:[],
+  parent:extra.parent??null,...extra});
+const rows=[
+  object('area:core',{title:'Core area'}),
+  object('spec:access',{title:'Access spec',parent:'area:core',process:{req:'access',revision:3}}),
+];
+const old=new Date(Date.now()-14*24*60*60*1000).toISOString();
+const record={revision:3,confirmed:true,
+  verification_scope:{scope:'One build of the web client'},
+  criteria:[
+    {id:'m1',address:'measure:m1',title:'Sign in works',signal:{tone:'green',label:'Checks passed'}},
+    {id:'m2',address:'measure:m2',title:'Session survives a refresh',signal:{tone:'red',label:'Checks failed'}},
+    {id:'m3',address:'measure:m3',title:'Nothing linked yet',signal:{tone:'grey',label:'Not checked'}},
+  ],
+  runs:{r1:{scope:'One build of the web client',plan:[
+    {id:'t-pass[m1]',ac:'m1',method:'automated',expected:['a session cookie']},
+    {id:'t-stale[m1]',ac:'m1',method:'automated',expected:['an older pass']},
+    {id:'t-fail[m2]',ac:'m2',method:'automated',expected:['a kept session']},
+    {id:'t-skip[m2]',ac:'m2',method:'manual',expected:['a manual look']},
+  ],results:{
+    't-pass[m1]':{outcome:'pass',observed:['a session cookie'],note:'Recorded by the suite'},
+    't-stale[m1]':{outcome:'pass',observed:['an older pass'],note:'Recorded two weeks ago'},
+    't-fail[m2]':{outcome:'fail',observed:['the session was dropped'],note:'Reproduced twice'},
+    't-skip[m2]':{outcome:'skip',observed:[],note:''},
+  }}},
+  result_dates:{r1:{'t-pass[m1]':new Date().toISOString(),'t-stale[m1]':old}}};
+
+const detail=address=>({workspace:'w',address,kind:address.split(':')[0],id:address.split(':')[1],
+  item_id:'w-O-ABCDEFGHIJ',current_revision:1,revision_count:1,work_ready:true,review_required:false,
+  process:rows.find(r=>r.address===address)?.process||null,
+  document:{revision:1,parent:rows.find(r=>r.address===address)?.parent||null,present:true,links:[],
+    data:{title:rows.find(r=>r.address===address)?.title||'Object',owner:'owner',body:ATTACK},
+    actor:'owner',at:'2026-10-06T09:00:00Z',reason:'Create'},
+  links:[],incoming:[],
+  annotations:{comments:{},attachments:{f1:{name:'evidence.png',content_type:'image/png',
+    size:2048,hash:'abc',actor:'owner',at:'2026-10-06T09:00:00Z',removed:false}}}});
+
+(async()=>{
+const browser=await chromium.launch({headless:true});
+try{
+  const page=await browser.newPage();
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  let signedIn=false;const methods=new Set();
+  await page.route('http://joppa.test/**',async route=>{
+    const url=new URL(route.request().url());
+    methods.add(route.request().method());
+    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:page_html()});
+    if(url.pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg/>'});
+    if(url.pathname==='/auth/login')return route.fulfill({json:{verification_url:'http://joppa.test/guide',expires_in:300}});
+    if(url.pathname==='/auth/poll')return route.fulfill({json:{status:'pending'}});
+    if(url.pathname==='/guide')return route.fulfill({contentType:'text/html',body:'<p>guide</p>'});
+    if(!signedIn&&url.pathname.startsWith('/api/'))return route.fulfill({status:401,json:{error:'Please sign in'}});
+    let value;
+    if(url.pathname==='/api/me')value={actor:'owner',email:'owner@example.test'};
+    else if(url.pathname==='/api/workspaces')value=[{id:'w',title:'Example product'}];
+    else if(url.pathname.endsWith('/board')&&url.searchParams.get('level')==='process')value=record;
+    else if(url.pathname.endsWith('/board'))value={workspace:'w',custom_tree:true,lazy:true,
+      object_types:types,state:{title:'Example product',members:{owner:'human'},domains:{},
+      capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
+      launch:{configured:false,ready:false,blockers:[]},counts:{},system_ids:{}};
+    else if(url.pathname.endsWith('/tree'))value=schema;
+    else if(url.pathname.endsWith('/objects')){
+      const a=url.searchParams.get('address');
+      value=a?detail(a):{items:rows.filter(r=>{
+        const parent=url.searchParams.get('parent'),kind=url.searchParams.get('kind');
+        if(url.searchParams.get('related_to'))return false;
+        if(kind&&r.kind!==kind)return false;
+        return parent==='*'?true:(parent||null)===r.parent;
+      }),next_cursor:null};
+    }
+    return route.fulfill({status:value?200:404,json:value||{error:'Unknown route'}});
   });
-  assert(immediateCopy,'mobile COPY must invoke clipboard write during the click');
-  await page.screenshot({path:'/tmp/joppa-tree-mobile.png',fullPage:true});
-  if(!await isOpen(domain))await title(domain).click();
-  if(!await isOpen(cap))await title(cap).click();
-  if(await isOpen(req))await title(req).click();
-  await bodyPreview.waitFor();
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.screenshot({path:'/tmp/joppa-body-preview-mobile.png',fullPage:true});
-  // Read-only for the owner too; notes remain readable and filters still work.
-  await page.setViewportSize({width:1280,height:900});
-  await page.reload();await domain.waitFor();
-  await title(domain).click();await title(cap).click();await title(req).click();
-  assert.equal(await page.locator('.reorder-handle,.reorder-menu').count(),0);
-  assert.equal(await req.locator(':scope > summary .rev-chip + .history-button').count(),1);
-  await req.locator('.ac-list').waitFor();
-  const filesButtons=page.locator('.files-button:enabled');
-  const attachmentTargets=await filesButtons.evaluateAll(nodes=>nodes.map(n=>n.dataset.target));
-  for(const target of ['domain:security','capability:restrict','requirement:key','ac:key/key-rights','intake:request']) {
-   assert(attachmentTargets.includes(target),'file icon missing: '+target);
-  }
-  assert(attachmentTargets.some(t=>t.startsWith('point:request/')));
-  assert.equal(await filesButtons.count(),6,'file icons are enabled only for objects with attachments');
-  assert.equal(await page.locator('.object-attachments,.files-list').count(),0,'no inline lists or empty sections');
-  const emptyFiles=page.locator('[data-domain="operations"] > summary .files-button');
-  assert(await emptyFiles.isDisabled(),'empty file icon is visible and disabled');
-  assert(await emptyFiles.isVisible());
-  assert.equal(await emptyFiles.locator('.files-count').count(),0);
-  assert(await page.locator('[data-domain="operations"] > summary .notes-button').isDisabled());
-  assert.equal(await page.locator('.files-button:enabled:not(.has-files),.notes-button:enabled:not(.has-notes)').count(),0,'active icons are highlighted');
-  await req.getByRole('button',{name:'Files on requirement key: 1',exact:true}).click();
-  assert(await isOpen(req),'opening files must not collapse the requirement');
-  const files=page.getByRole('dialog',{name:'Files: Ключ до запуска'});
-  await files.getByRole('link',{name:/evidence.txt/}).waitFor();
-  assert.equal(await files.locator('textarea,input,[contenteditable=true]').count(),0);
-  assert.equal(await files.getByRole('button').count(),1,'only Close remains in files');
-  const attachmentHref=await files.getByRole('link',{name:/evidence.txt/}).getAttribute('href');
-  const download=await page.evaluate(async href=>{const r=await fetch(href);return {status:r.status,text:await r.text()};},attachmentHref);
-  assert.deepEqual(download,{status:200,text:'Attachment evidence'});
-  await page.screenshot({path:'/tmp/joppa-files-desktop.png'});
-  await page.setViewportSize({width:390,height:844});
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.screenshot({path:'/tmp/joppa-files-mobile.png'});
-  await page.keyboard.press('Escape');
-  await files.waitFor({state:'detached'});
-  await page.setViewportSize({width:1280,height:900});
-  await req.getByRole('button',{name:'Notes on requirement key: 1',exact:true}).click();
-  const notes=page.getByRole('dialog',{name:'Notes: Ключ до запуска'});
-  await notes.getByText('Agent note',{exact:true}).waitFor();
-  assert.equal(await notes.locator('textarea,input,[contenteditable=true]').count(),0);
-  assert.equal(await notes.getByRole('button').count(),1,'only Close remains in notes');
-  await notes.getByRole('button',{name:'Close notes'}).click();
-  await page.setViewportSize({width:390,height:844});
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.goto('file://'+process.env.JOPPA_TEST_SNAPSHOT);
-  await title(domain).click();await title(cap).click();await title(req).click();
-  await req.locator('.requirement-body').filter({hasText:'</script><script>window.attacked=true</script>'}).waitFor();
-  assert.equal(await page.evaluate(()=>window.attacked),undefined);
-  await page.goto(process.env.JOPPA_TEST_URL+'/guide');
-  await page.getByRole('heading',{name:'The product tree and its tasks'}).waitFor();
-  await page.goto(process.env.JOPPA_TEST_URL+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
-  await page.locator('#identity').filter({hasText:'Account'}).waitFor({state:'attached'});
-  assert.equal(await page.evaluate(()=>location.hash),'');
-  await page.locator('#workspaces').selectOption(process.env.JOPPA_TEST_WORKSPACE);await domain.waitFor();
-  assert.equal(await page.locator('#tree details[open]').count(),0);
-  await title(domain).click();await title(cap).click();await title(req).click();
-  await req.locator(':scope > summary .rev-chip').filter({hasText:'rev. 2'}).waitFor();
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  const acText=await req.locator('.ac-heading .ac-text').first().boundingBox();
-  const acActions=await req.locator('.ac-heading .node-actions').first().boundingBox();
-  assert(acActions.y>=acText.y+acText.height,'mobile AC actions stay below the text');
-  await page.screenshot({path:'/tmp/joppa-ac-list-mobile.png',fullPage:true});
-  await page.setViewportSize({width:1280,height:900});
-  await page.screenshot({path:'/tmp/joppa-ac-list-desktop.png',fullPage:true});
-  await page.locator('#logout').click();
-  await page.getByRole('heading',{name:'Authorization.'}).waitFor();
-  assert.equal(await page.locator('.layout').isVisible(),false);
-  const popupPromise=page.waitForEvent('popup');await page.locator('#login-button').click();
-  await (await popupPromise).close();await page.locator('#login-cancel').click();
-  assert(await page.locator('#login-button').isEnabled());
-  assert.deepEqual(errors,[]);
-  console.log('Browser: inline expansion, reload collapse, no scrollbar shift, ID-only copy, historical evidence, filters, mobile, read-only and auth passed');
- }finally{await browser.close();}
+
+  // Signing in: the gate holds until the popup flow completes.
+  await page.goto('http://joppa.test/');
+  await page.locator('#login-button').waitFor();
+  const popup=page.waitForEvent('popup');
+  await page.locator('#login-button').click();
+  await (await popup).close();
+  await page.locator('#login-cancel').click();
+  assert.ok(await page.locator('#login-button').isEnabled(),
+    'cancelling the sign-in flow leaves the button usable');
+
+  signedIn=true;
+  await page.goto('http://joppa.test/');
+  await page.locator('[data-object-address="area:core"]').waitFor();
+  assert.equal(await page.locator('link[rel=icon]').getAttribute('href'),'/favicon.svg',
+    'the board declares its icon');
+  assert.deepEqual([...methods],['GET'],
+    '[owner-governs-workspace-ac2] the board only reads, it never writes');
+
+  // Escaping: a document body that looks like a script stays text.
+  const spec=page.locator('[data-object-address="spec:access"]');
+  await page.locator('[data-object-address="area:core"] > summary').click();
+  await spec.waitFor();
+  await spec.locator(':scope > summary').click();
+  await spec.getByText(ATTACK,{exact:false}).waitFor();
+  assert.equal(await page.evaluate(()=>window.attacked),undefined,
+    'a script inside a document body never runs');
+
+  // Attachments recorded on the object are listed with it.
+  await spec.getByText('evidence.png',{exact:false}).waitFor();
+
+  // The verification inspector: one record, one section per criterion, and a
+  // tone for every recorded outcome.
+  await spec.getByRole('button',{name:'Checks'}).click();
+  const inspector=spec.locator('.verification-record');
+  await inspector.waitFor();
+  assert.equal(await inspector.locator('.ac-checks').count(),3,
+    'every criterion of the revision gets its own section');
+  const criterion=i=>inspector.locator('.ac-checks').nth(i);
+  assert.equal(await criterion(0).locator('.ac-check').count(),2,
+    'a criterion lists each check planned against it');
+  const tone=locator=>locator.locator('.ac-check-heading .status-circle').getAttribute('data-tone');
+  assert.equal(await tone(criterion(0).locator('.ac-check').nth(0)),'green','a pass reads green');
+  assert.equal(await tone(criterion(0).locator('.ac-check').nth(1)),'orange',
+    'a pass older than seven days reads orange');
+  assert.equal(await tone(criterion(1).locator('.ac-check').nth(0)),'red','a failure reads red');
+  await criterion(0).locator('.ac-check').nth(1).getByText('older than 7 days',{exact:false}).waitFor();
+  await criterion(1).locator('.ac-check').nth(1).getByText('Skipped',{exact:false}).waitFor();
+  await criterion(2).getByText('No tests linked yet.',{exact:true}).waitFor();
+  assert.match(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('aria-label'),
+    /^Status: Checks passed/,'a criterion keeps its own status label');
+  await criterion(0).getByText('Recorded by the suite',{exact:false}).waitFor();
+
+  // Mobile: the same card and inspector fit a narrow screen without a
+  // horizontal page scrollbar.
+  await page.setViewportSize({width:390,height:780});
+  await page.waitForFunction(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1);
+  await inspector.waitFor();
+
+  // The offline snapshot renders the same card with no network at all.
+  const snapshot={workspace:'w',lazy:false,custom_tree:true,object_types:types,
+    snapshot_schema:schema.schema,
+    state:{title:'Example product',members:{owner:'human'},domains:{},capabilities:{},
+      requirements:{},consumers:{},notes:{},projects:{}},
+    summary:{},signals:{},launch:{configured:false,ready:false,blockers:[]},counts:{},system_ids:{},
+    snapshot_objects:{'area:core':{...object('area:core',{title:'Core area'}),current_revision:1,
+      revisions:[{revision:1,parent:null,present:true,links:[],
+        data:{title:'Core area',owner:'owner',body:ATTACK},actor:'owner',at:'2026-10-06T09:00:00Z',
+        reason:'Create'}],annotations:{},process:null}}};
+  const offline=await browser.newPage();
+  const offlineErrors=[];offline.on('pageerror',e=>offlineErrors.push(e.message));
+  let offlineRequests=0;
+  await offline.route('**/api/**',route=>{offlineRequests++;return route.abort();});
+  await offline.route('http://joppa.test/',route=>route.fulfill({contentType:'text/html',body:page_html(snapshot)}));
+  await offline.goto('http://joppa.test/');
+  const area=offline.locator('[data-object-address="area:core"]');
+  await area.waitFor();
+  await area.locator(':scope > summary').click();
+  await area.getByText(ATTACK,{exact:false}).waitFor();
+  assert.equal(await offline.evaluate(()=>window.attacked),undefined,
+    'the snapshot escapes a document body as well');
+  assert.equal(offlineRequests,0,'the snapshot reads nothing from the network');
+  assert.deepEqual(offlineErrors,[],'the snapshot renders without errors');
+
+  assert.deepEqual(errors,[],'no page errors');
+  console.log('Browser: sign in, read-only access, escaping, verification tones, attachments, mobile and snapshot');
+}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
