@@ -56,7 +56,7 @@ async function list() {
 }
 let loadNumber = 0;
 const loadedDomains=new Set(),loadedCapabilities=new Set(),loadedRequirements=new Set();
-let consumerOpen=false,consumersLoaded=false,consumerPage=null,filterLoaded=false,filterLoading=null;
+let filterLoaded=false,filterLoading=null;
 const fullHistoryRequirements=new Set();
 const branchAnimations=new WeakMap();
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -119,7 +119,7 @@ async function load() {
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
   fullHistoryRequirements.clear();
-  consumerOpen=false;consumersLoaded=false;consumerPage=null;filterLoaded=false;filterLoading=null;
+  filterLoaded=false;filterLoading=null;
   if(data.custom_tree){await renderObjectTree();return;}
   if(!data.lazy)indexStatusEvents();
   render();
@@ -500,11 +500,13 @@ function rootCollectionTabs(root){
       const tab=nav.querySelector('[aria-controls="'+panel.id+'"]');tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
       if(active){
         if(focus)tab.focus();
+        panel.collectionLoad?.();
         if(panel.matches('details')&&!panel.open&&!panel.classList.contains('empty-notes'))panel.querySelector(':scope > summary').click();
         if(panel.dataset.collectionLazy==='true'){
           delete panel.dataset.collectionLazy;
-          panel.append(E('p','Loading objects…','object-loading hint'));
-          appendObjectChildren(panel,undefined,kind).catch(error=>{panel.dataset.collectionLazy='true';panel.replaceChildren();notify(error);});
+          const contents=panel.querySelector(':scope > .collection-items')||panel;
+          contents.append(E('p','Loading objects…','object-loading hint'));
+          appendObjectChildren(contents,undefined,kind).catch(error=>{panel.dataset.collectionLazy='true';contents.replaceChildren();notify(error);});
         }
       }
     }
@@ -623,7 +625,7 @@ function buildRequirement(id,q,signals,opened){
   return req;
 }
 function collectionHeading(section,title,description,label){
-  const summary=section.querySelector(':scope > summary');
+  const summary=section.querySelector(':scope > summary,:scope > header');
   const caption=E('span',undefined,'collection-caption');
   caption.append(E('span',title,'collection-title'),E('span',description,'collection-description'));
   summary.replaceChildren(caption);
@@ -633,36 +635,13 @@ function consumers(root){
   const entries=Object.entries(data.state.consumers||{});
   const count=data.lazy?(data.counts?.consumers??entries.length):entries.length;
   const title=data.objectTypes?.consumer?.title||'Consumer';
-  const section=details(root,(title==='Consumer'?'Consumers':title)+' · '+count);
+  const section=E('section');section.append(E('header',undefined,'collection-heading'));root.append(section);
   collectionHeading(section,(title==='Consumer'?'Consumers':title)+' · '+count,'People and roles that use the product.','Audience');
   section.classList.add('consumer-section','root-collection');section.dataset.collectionKind='consumer';applyObjectColor(section,'consumer');
-  section.open=consumerOpen;
-  if(data.lazy&&!consumersLoaded)section.dataset.pending='true';
-  enableBranchMotion(section);
-  if(data.lazy&&!consumersLoaded){
-    section.append(E('p','Loading consumers…','consumer-loading'));
-    section.addEventListener('toggle',async()=>{
-      consumerOpen=section.open;
-      if(!section.open||consumersLoaded||section.dataset.loading==='true')return;
-      section.dataset.loading='true';
-      const request=loadNumber;
-      try{const part=await objectPart({kind:'consumer',limit:'50'});if(request!==loadNumber)return;
-        consumerPage=part;
-        consumersLoaded=true;
-        delete section.dataset.pending;
-        if(section.isConnected)resizeBranch(section,()=>fillConsumers(section));
-      }catch(e){notify(e);}finally{delete section.dataset.loading;}
-    });
-    return;
-  }
-  section.addEventListener('toggle',()=>{consumerOpen=section.open;});
-  fillConsumers(section);
-}
-function fillConsumers(section){
-  section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
-  if(consumerPage){appendObjectPage(section,consumerPage,{kind:'consumer',limit:'50'},loadNumber);return;}
+  const contents=E('div',undefined,'collection-items');section.append(contents);
+  if(data.lazy){section.dataset.collectionLazy='true';return;}
   for(const [id,consumer] of Object.entries(data.state.consumers||{})){
-    section.append(commonObjectCard({address:'consumer:'+id,kind:'consumer',title:consumer.title,
+    contents.append(commonObjectCard({address:'consumer:'+id,kind:'consumer',title:consumer.title,
       item_id:data.system_ids.consumer?.[id],work_ready:true}));
   }
 }
@@ -1312,12 +1291,10 @@ function commonObjectFilters(root,contents){
 }
 function commonNotes(root,relatedTo){
   const title=relatedTo?'Related notes':data.objectTypes?.note?.title||'Notes';
-  const section=details(root,title);section.classList.add('note-section');applyObjectColor(section,'note');
-  if(!relatedTo)collectionHeading(section,title,'Information to review and apply.','Inputs');
+  const section=E('section');section.append(E('header',undefined,'collection-heading'));root.append(section);section.classList.add('note-section');applyObjectColor(section,'note');
+  collectionHeading(section,title,relatedTo?'Read only.':'Unprocessed information to review and apply. Read only.',relatedTo?undefined:'Inputs');
   if(!relatedTo){section.classList.add('root-collection');section.dataset.collectionKind='note';}
-  const summary=section.querySelector(':scope > summary');
-  if(!relatedTo)section.querySelector('.collection-description').textContent='Unprocessed information to review and apply. Read only.';
-  else summary.append(E('small','Read only','note-readonly'));
+  const summary=section.querySelector(':scope > header');
   const body=E('div',undefined,'note-section-body');section.append(body);
   let loaded=false,loading=false,request=0;
   let all;
@@ -1328,24 +1305,21 @@ function commonNotes(root,relatedTo){
   const rows=E('div',undefined,'note-items');body.append(rows);
   const loadNotes=async()=>{
     const mine=++request;loaded=false;loading=true;
-    const holder=E('div');holder.append(E('p','Loading notes…','object-loading hint'));resizeBranch(section,()=>rows.replaceChildren(holder));
+    const holder=E('div');holder.append(E('p','Loading notes…','object-loading hint'));rows.replaceChildren(holder);
     try{await appendObjectChildren(holder,'*','note',relatedTo?{related_to:relatedTo}:all.checked?{}:{note_status:'unprocessed'});if(mine===request&&section.isConnected){
       loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);
       summary.title=empty?(relatedTo?'No related notes.':all.checked?'No notes.':'No unprocessed notes.'):'Read notes';
-      resizeBranch(section,()=>{section.open=!empty;});
     }}
     catch(e){if(mine===request){loaded=false;holder.replaceChildren();notify(e);}}
     finally{if(mine===request)loading=false;}
   };
   if(all)all.onchange=loadNotes;
-  summary.addEventListener('click',event=>{
-    if(event.target.closest('input,label,button,a'))return;
-    if(!loaded||section.classList.contains('empty-notes')){
-      event.preventDefault();event.stopImmediatePropagation();if(!loaded&&!loading)loadNotes();
-    }
-  });
-  enableBranchMotion(section);
-  section.addEventListener('toggle',()=>{if(section.open&&!loaded&&!loading)loadNotes();});
+  section.collectionLoad=()=>{if(!loaded&&!loading)loadNotes();};
+  if(relatedTo){
+    const parent=section.parentElement.closest('details');
+    if(!parent||parent.open)section.collectionLoad();
+    else parent.addEventListener('toggle',()=>{if(parent.open)section.collectionLoad();});
+  }
   return section;
 }
 function commonObjectCard(item){

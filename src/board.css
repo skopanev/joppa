@@ -239,6 +239,10 @@ select:disabled{opacity:1;color:#203c2d;background-color:#f4f6f2;border-color:#d
 .collection-tab:hover{background:#ffffffb3}
 .collection-tab[aria-selected=true]{background:#fff;border-color:color-mix(in srgb,var(--object-color,#63756b) 35%,white);color:color-mix(in srgb,var(--object-color,#63756b) 80%,#15251e);box-shadow:0 1px 2px #233b2110}
 .root-collection.consumer-section,.root-collection.note-section{margin-top:0!important}
+#tree>.consumer-section,.note-section:has(>.collection-heading){border:0;background:transparent;overflow:visible}
+.note-section:has(>.collection-heading)>.note-section-body{padding:0}
+.collection-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;color:color-mix(in srgb,var(--object-color,#63756b) 75%,#15251e)}
+.collection-items>.common-object{margin:16px 0}
 .root-collection.object-collection{margin-top:0;padding-top:0;border-top:0}
 .root-collection.object-collection>.object-collection-title{display:none}
 .root-collection:focus-visible{outline:2px solid #8aaf99;outline-offset:4px}
