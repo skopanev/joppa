@@ -800,7 +800,10 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         _ => None,
     };
     for (key, (kind, parent, data)) in &rows {
-        if w.task_process.contains_key(key) || w.document_overrides.contains(key) || w.archived_objects.contains(key) {
+        if w.task_process.contains_key(key)
+            || w.document_overrides.contains(key)
+            || w.archived_objects.contains(key)
+        {
             continue;
         }
         let obj = w.objects.entry(key.clone()).or_insert_with(|| Object {
@@ -1837,6 +1840,14 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 "REQ has unverified ACs or an unmet dependency"
             );
         }
+        Command::EditDomain { id, .. } | Command::SetDomainArchived { id, .. } => ensure!(
+            !w.archived_objects.contains(&address("domain", id)),
+            "restore the archived object before editing it"
+        ),
+        Command::EditCapability { id, .. } => ensure!(
+            !w.archived_objects.contains(&address("capability", id)),
+            "restore the archived object before editing it"
+        ),
         _ => {}
     }
     Ok(())
@@ -2152,7 +2163,6 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
     json!({"tone":tone,"label":label,"at":o.current().at})
 }
 
-
 pub fn archive(
     w: &mut Workspace,
     actor: &str,
@@ -2189,9 +2199,10 @@ pub fn archive(
         "archive_object requires a group"
     );
 
-    let has_live_children = w.objects.values().any(|o| {
-        o.current().parent.as_ref() == Some(&target) && o.current().present
-    });
+    let has_live_children = w
+        .objects
+        .values()
+        .any(|o| o.current().parent.as_ref() == Some(&target) && o.current().present);
     ensure!(
         !has_live_children,
         "cannot archive a group with active children"
@@ -2199,12 +2210,13 @@ pub fn archive(
 
     let mut next = old.current().clone();
     next.present = false;
+    next.schema_revision = schema(w).revision;
     next.revision += 1;
     next.position = position;
     next.actor = actor.to_owned();
     next.reason = reason.clone();
     next.at = at.to_owned();
-    
+
     w.objects.get_mut(&target).unwrap().revisions.push(next);
     w.archived_objects.insert(target.clone());
     Ok(())
@@ -2240,6 +2252,10 @@ pub fn restore(
         !old.current().present,
         "object is already present in the current tree"
     );
+    ensure!(
+        w.archived_objects.contains(&target),
+        "object was not archived with archive_object"
+    );
 
     let kind = &old.kind;
     ensure!(
@@ -2247,18 +2263,24 @@ pub fn restore(
         "restore_object requires a group"
     );
 
-    // restore validates active schema/parent
-    parent_valid(&schema(w).types, w, kind, old.current().parent.as_deref(), Some(&target))?;
+    parent_valid(
+        &schema(w).types,
+        w,
+        kind,
+        old.current().parent.as_deref(),
+        Some(&target),
+    )?;
     parent_cycle(w, &target, old.current().parent.as_deref())?;
-    
+
     let mut next = old.current().clone();
     next.present = true;
+    next.schema_revision = schema(w).revision;
     next.revision += 1;
     next.position = position;
     next.actor = actor.to_owned();
     next.reason = reason.clone();
     next.at = at.to_owned();
-    
+
     w.objects.get_mut(&target).unwrap().revisions.push(next);
     w.archived_objects.remove(&target);
     Ok(())

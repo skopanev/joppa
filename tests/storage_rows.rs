@@ -127,3 +127,99 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     assert_eq!(detail["document"]["data"]["status"], "processed");
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn archived_groups_survive_current_state_reads_and_keep_their_history() -> Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(db.starts_with("joppa_test"), "requires a test database");
+    store::migrate(&pool).await?;
+    let ws = format!("archive-{}", uuid::Uuid::new_v4().simple());
+    for (i, command) in setup().into_iter().enumerate() {
+        store::execute_input(&pool, &ws, "owner", &format!("setup-{i}"), &command).await?;
+    }
+    let create = json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"});
+    let created = store::execute_remote_input(&pool, &ws, "owner", "create", &create).await?;
+    let system_id = created["system_ids"]["domain"]["unused"].clone();
+    assert!(system_id.is_string());
+    store::execute_input(
+        &pool,
+        &ws,
+        "agent",
+        "context",
+        &json!({"op":"note","target":"domain:unused","id":"context","text":"Retain this comment"}),
+    )
+    .await?;
+    store::execute_input(&pool, &ws, "agent", "source", &json!({"op":"save_object","kind":"note","id":"source","revision":0,"parent":null,"data":{"title":"Source","owner":"owner","body":"Original source"},"links":[{"target":"domain:unused","relation":"related"}],"reason":"Link the source"})).await?;
+    let scope = store::ObjectScope {
+        address: Some("domain:unused"),
+        ..Default::default()
+    };
+    let original = store::read_objects(&pool, &ws, "owner", &scope).await?;
+    let archive = json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive the group"});
+    let archived = store::execute_remote_input(&pool, &ws, "agent", "archive", &archive).await?;
+    let retry = store::execute_remote_input(&pool, &ws, "agent", "archive", &archive).await?;
+    assert_eq!(retry["position"], archived["position"]);
+    assert_eq!(retry["replayed"], true);
+    let edit = json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit the group"});
+    assert!(
+        store::execute_input(&pool, &ws, "owner", "hidden-edit", &edit)
+            .await
+            .is_err()
+    );
+    store::execute_input(
+        &pool,
+        &ws,
+        "agent",
+        "unrelated",
+        &json!({"op":"note","target":"domain:d","id":"unrelated","text":"Unrelated comment"}),
+    )
+    .await?;
+    let current = store::read_objects(&pool, &ws, "owner", &scope).await?;
+    assert_eq!(current["document"]["present"], false);
+    assert_eq!(current["current_revision"], 2);
+    assert_eq!(current["annotations"], original["annotations"]);
+    assert_eq!(current["incoming"], original["incoming"]);
+    let list = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            kind: Some("domain"),
+            parent: Some("*"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert!(!list.to_string().contains("domain:unused"));
+    let old = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("domain:unused"),
+            revision: Some(1),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(old["document"], original["document"]);
+    store::execute_remote_input(&pool, &ws, "agent", "restore", &json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore the group"})).await?;
+    let current = store::read_objects(&pool, &ws, "owner", &scope).await?;
+    assert_eq!(current["item_id"], system_id);
+    assert_eq!(current["document"]["present"], true);
+    assert_eq!(current["current_revision"], 3);
+    assert_eq!(current["annotations"], original["annotations"]);
+    assert_eq!(current["incoming"], original["incoming"]);
+    store::execute_input(&pool, &ws, "owner", "edit", &json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit the restored group"})).await?;
+    let current = store::read_objects(&pool, &ws, "owner", &scope).await?;
+    assert_eq!(current["document"]["data"]["title"], "Changed");
+    assert_eq!(current["current_revision"], 4);
+    Ok(())
+}

@@ -5,9 +5,10 @@ Use `joppa_objects`, `joppa_tree`, `save_object` and `set_tree_schema`.
 Pass the current `revision` with each document or schema write.
 The following operations retain their original verification and compatibility rules.
 
-archive_object: target, revision; archives an empty group object
-restore_object: target, revision; restores an archived group object
-
+`archive_object` requires `target`, `revision` and `reason`. It archives an empty object whose configured role is `group`.
+`restore_object` uses the same fields. It restores an object archived with `archive_object` if the current schema permits its parent.
+Both commands require an agent or the workspace owner. They append a revision and preserve IDs, links, fields and annotations.
+Archive a group only after moving or archiving its active children. Restore its parent before restoring a child.
 
 # Journal API
 

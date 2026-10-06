@@ -708,128 +708,142 @@ fn common_document_fields_survive_process_commands_and_full_replacement_removes_
     );
 }
 
-#[test]
-fn archive_and_restore_group_objects() {
-    let mut w = crate::workspace();
-    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"}},"reason":"Setup"}));
-    
-    // Create an initiative
-    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner"},"reason":"Create group"}));
-    
-    // Try to archive with an invalid revision
-    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive it"}));
-    
-    // Archive it
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive it"}));
-    
-    // Check it's no longer present
-    let obj = w.state.objects.get("initiative:i").unwrap();
-    assert!(!obj.current().present);
-    assert_eq!(obj.current().revision, 2);
-    
-    // Try to archive again (fails because already archived / not present)
-    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));
-    
-    // Restore it
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore it"}));
-    
-    // Check it's present again
-    let obj = w.state.objects.get("initiative:i").unwrap();
-    assert!(obj.current().present);
-    assert_eq!(obj.current().revision, 3);
+fn archive_world() -> World {
+    let mut w = World::new();
+    let mut types = objects::defaults();
+    let mut group = types["domain"].clone();
+    group.title = "Initiative".into();
+    group.parents = vec!["initiative".into()];
+    types.insert("initiative".into(), group);
+    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure group nesting"}));
+    w
 }
 
 #[test]
-fn cannot_archive_with_live_children() {
-    let mut w = crate::workspace();
-    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"},"note":{"role":"requirement"}},"reason":"Setup"}));
-    
-    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner"},"reason":"Create group"}));
-    w.ok("agent", json!({"op":"save_object","kind":"note","id":"n","revision":0,"parent":"initiative:i","data":{"title":"Note","owner":"owner"},"reason":"Create child"}));
-    
-    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive with children"}));
-    
+fn archive_and_restore_group_objects() {
+    let mut w = archive_world();
+    save(
+        &mut w,
+        "initiative:i",
+        None,
+        json!({"title":"Initiative","owner":"owner"}),
+        vec![link("domain:d", None, false)],
+    );
+    w.ok(
+        "agent",
+        json!({"op":"note","target":"initiative:i","id":"source","text":"Keep this context"}),
+    );
+    let original = serde_json::to_value(&w.state.objects["initiative:i"].revisions[0]).unwrap();
+    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive group"}));
+    w.no("legal", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    assert!(!w.state.objects["initiative:i"].current().present);
+    assert_eq!(w.state.objects["initiative:i"].current().revision, 2);
+    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));
+    w.no("agent", json!({"op":"restore_object","target":"initiative:i","revision":1,"reason":"Stale restore"}));
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
+    let object = &w.state.objects["initiative:i"];
+    assert!(object.current().present);
+    assert_eq!(object.current().revision, 3);
+    assert_eq!(
+        serde_json::to_value(&object.revisions[0]).unwrap(),
+        original
+    );
+    assert_eq!(object.current().links.len(), 1);
+    assert_eq!(
+        w.state.notes["initiative:i"].comments["source"].text,
+        "Keep this context"
+    );
+}
+
+#[test]
+fn archive_requires_an_empty_group_and_restore_requires_a_present_parent() {
+    let mut w = archive_world();
+    save(
+        &mut w,
+        "initiative:parent",
+        None,
+        json!({"title":"Parent","owner":"owner"}),
+        vec![],
+    );
+    save(
+        &mut w,
+        "initiative:child",
+        Some("initiative:parent"),
+        json!({"title":"Child","owner":"owner"}),
+        vec![],
+    );
+    w.no("agent", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive parent"}));
+    w.no("agent", json!({"op":"archive_object","target":"requirement:r","revision":1,"reason":"Archive a specification"}));
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:child","revision":1,"reason":"Archive child"}));
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive empty parent"}));
+    w.no("agent", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore before parent"}));
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:parent","revision":2,"reason":"Restore parent"}));
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore child"}));
 }
 
 #[test]
 fn archive_legacy_group_does_not_resync() {
-    let mut w = crate::workspace();
-    w.ok("owner", json!({"op":"domain","id":"legacy","title":"Legacy","description":"D","reason":"Create"}));
-    
-    // It should be present and synced
-    assert!(w.state.objects.get("domain:legacy").unwrap().current().present);
-    
-    // Archive it
-    let rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
-    w.ok("agent", json!({"op":"archive_object","target":"domain:legacy","revision":rev,"reason":"Archive it"}));
-    
-    let archived_rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
-    assert!(!w.state.objects.get("domain:legacy").unwrap().current().present);
-    
-    // Perform an unrelated command to trigger sync
-    w.ok("owner", json!({"op":"domain","id":"other","title":"Other","description":"D","reason":"Unrelated"}));
-    
-    // Legacy should still be absent and revision unchanged!
-    let current = w.state.objects.get("domain:legacy").unwrap().current();
-    assert!(!current.present);
-    assert_eq!(current.revision, archived_rev);
-    
-    // Restore it
-    w.ok("agent", json!({"op":"restore_object","target":"domain:legacy","revision":archived_rev,"reason":"Restore it"}));
-    
-    // Unrelated command
-    w.ok("owner", json!({"op":"domain","id":"another","title":"A","description":"D","reason":"Unrelated"}));
-    
-    let current = w.state.objects.get("domain:legacy").unwrap().current();
-    assert!(current.present);
+    let mut w = World::new();
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
+    );
+    w.ok("agent", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive empty group"}));
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"other","title":"Other","owner":"owner"}),
+    );
+    assert!(!w.state.objects["domain:unused"].current().present);
+    assert_eq!(w.state.objects["domain:unused"].current().revision, 2);
+    w.ok("agent", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"another","title":"Another","owner":"owner"}),
+    );
+    assert!(w.state.objects["domain:unused"].current().present);
+    assert_eq!(w.state.objects["domain:unused"].current().revision, 3);
 }
 
 #[test]
 fn restore_legacy_group_reflects_edits() {
-    let mut w = crate::workspace();
-    w.ok("owner", json!({"op":"domain","id":"legacy","title":"Legacy","description":"D","reason":"Create"}));
-    
-    // Archive
-    let rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
-    w.ok("agent", json!({"op":"archive_object","target":"domain:legacy","revision":rev,"reason":"Archive it"}));
-    
-    // Unrelated command
-    w.ok("owner", json!({"op":"domain","id":"other","title":"Other","description":"D","reason":"Unrelated"}));
-    
-    // Restore
-    let archived_rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
-    w.ok("agent", json!({"op":"restore_object","target":"domain:legacy","revision":archived_rev,"reason":"Restore it"}));
-    
-    // Unrelated command, unchanged revision
-    w.ok("owner", json!({"op":"domain","id":"another","title":"A","description":"D","reason":"Unrelated"}));
-    
-    // Now edit the legacy domain!
-    w.ok("owner", json!({"op":"edit_domain","id":"legacy","title":"Changed","reason":"Edit"}));
-    
-    // Ensure the edit is reflected!
-    let current = w.state.objects.get("domain:legacy").unwrap().current();
-    assert!(current.present);
-    assert_eq!(current.data["title"], "Changed");
+    let mut w = World::new();
+    w.ok(
+        "owner",
+        json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
+    );
+    w.ok("agent", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive group"}));
+    w.no("owner", json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit an archived group"}));
+    w.ok("agent", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
+    w.ok("owner", json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit restored group"}));
+    assert!(w.state.objects["domain:unused"].current().present);
+    assert_eq!(
+        w.state.objects["domain:unused"].current().data["title"],
+        "Changed"
+    );
+    assert_eq!(w.state.objects["domain:unused"].current().revision, 4);
 }
 
 #[test]
 fn custom_group_fields_survive_archive() {
-    let mut w = crate::workspace();
-    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"}},"reason":"Setup"}));
-    
-    // Save object with custom fields
-    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner","custom":"PreserveMe"},"reason":"Create group"}));
-    
-    let rev = w.state.objects.get("initiative:i").unwrap().current().revision;
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":rev,"reason":"Archive"}));
-    
-    let rev = w.state.objects.get("initiative:i").unwrap().current().revision;
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":rev,"reason":"Restore"}));
-    
-    // Check that custom fields are preserved
-    let current = w.state.objects.get("initiative:i").unwrap().current();
-    assert_eq!(current.data["custom"], "PreserveMe");
-    
-    // And ensure document_overrides survived because save_object created it initially!
-    assert!(w.state.document_overrides.contains("initiative:i"));
+    let mut w = archive_world();
+    save(
+        &mut w,
+        "initiative:i",
+        None,
+        json!({"title":"Initiative","owner":"owner","custom":"Preserve this field"}),
+        vec![],
+    );
+    let data = w.state.objects["initiative:i"].current().data.clone();
+    let overrides = w.state.document_overrides.clone();
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
+    w.ok(
+        "agent",
+        json!({"op":"note","target":"domain:d","id":"unrelated","text":"Unrelated context"}),
+    );
+    assert_eq!(w.state.objects["initiative:i"].current().data, data);
+    assert_eq!(w.state.objects["initiative:i"].current().revision, 3);
+    assert_eq!(w.state.document_overrides, overrides);
+    assert!(w.state.archived_objects.is_empty());
 }

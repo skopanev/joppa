@@ -63,7 +63,7 @@ fn authoring_command_schema() -> Value {
         "additionalProperties":true,
         "description":"Operation fields depend on op. Read joppa_help.operations. Apply joppa_help.writing to new technical text.",
         "properties":{
-            "revision":{"description":"For save_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
+            "revision":{"description":"For save_object, archive_object, restore_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
             "title":text(), "body":text(), "text":text(), "description":text(),
             "reason":text(), "contract":text(), "scope":text(), "value":text(),
             "acs":{"description":"For revise, AC objects contain text and description governed by the writing rules. For task, entries are AC identifiers.","items":{"properties":{"text":text(),"description":text()}}},

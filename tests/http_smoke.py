@@ -196,6 +196,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             return json.loads(result['content'][0]['text'])
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         assert mcp('joppa_help', {})['writing'] == writing
+        operations = mcp('joppa_help', {})['operations']
+        assert 'archive_object' in operations and 'restore_object' in operations
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
         assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 4
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
@@ -209,6 +211,19 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
         assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 4
+        empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
+            'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
+                'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
+        archive = {'op':'archive_object','target':'domain:unused','revision':1,'reason':'Archive an empty group'}
+        mcp('joppa_command', {'workspace':ws,'request_id':'archive-group','command':archive})
+        assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})['document']['present'] is False
+        assert all(item['address']!='domain:unused' for item in mcp('joppa_objects', {'workspace':ws,'kind':'domain','parent':'*'})['items'])
+        mcp('joppa_command', {'workspace':ws,'request_id':'restore-group',
+            'command':{'op':'restore_object','target':'domain:unused','revision':2,'reason':'Restore the group'}})
+        current_group = mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})
+        assert current_group['document']['present'] is True and current_group['current_revision']==3
+        assert current_group['item_id']==empty['system_ids']['domain']['unused']
+        assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['document']['present'] is False
         # [ac:mcp-schema-objects-ac2] Process reads retain workspace authorization.
         assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404

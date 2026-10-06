@@ -176,6 +176,26 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
     }
     steps.extend(vec![
         (
+            "empty group",
+            json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
+        ),
+        (
+            "archive group",
+            json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive the empty group"}),
+        ),
+        (
+            "write while archived",
+            json!({"op":"note","target":"domain:d","id":"archive-context","text":"Keep the group archived"}),
+        ),
+        (
+            "restore group",
+            json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore the group"}),
+        ),
+        (
+            "edit restored group",
+            json!({"op":"edit_domain","id":"unused","title":"Restored","owner":"owner","reason":"Edit the restored group"}),
+        ),
+        (
             "verification scope",
             json!({"op":"define_verification_scope","req":"r","revision":1,
                 "subject_keys":["app","backend","infra","environment"],"scope":scope,
