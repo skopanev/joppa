@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TreeType {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
     pub title: String,
     #[serde(default)]
     pub parents: Vec<String>,
@@ -107,10 +109,12 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         ("project", "Project", "document", true, vec![]),
     ]
     .into_iter()
-    .map(|(kind, title, role, root, parents)| {
+    .enumerate()
+    .map(|(index, (kind, title, role, root, parents))| {
         (
             kind.into(),
             TreeType {
+                index: Some(index as u32),
                 references: BTreeMap::new(),
                 parent_decision: false,
                 color: None,
@@ -165,6 +169,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
 pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
     let mut types = defaults();
     for t in types.values_mut() {
+        t.index = None;
         t.parent_gate = None;
         t.color = None;
         t.references.clear();
@@ -177,6 +182,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         types.insert(
             kind.into(),
             TreeType {
+                index: None,
                 references: BTreeMap::new(),
                 parent_decision: false,
                 color: None,
@@ -212,6 +218,9 @@ pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -
     let kinds: BTreeSet<_> = current.types.keys().cloned().collect();
     for (kind, t) in &mut current.types {
         if let Some(default) = preset.get(kind) {
+            if t.index.is_none() {
+                t.index = default.index;
+            }
             if t.references.is_empty() {
                 t.references = default
                     .references

@@ -4,6 +4,7 @@ JOPPA_TEST_DATABASE_URL=... python3 tests/http_smoke.py [--browser]
 Browser needs Playwright (PLAYWRIGHT_MODULE may specify an installed module).
 """
 import json
+from html.parser import HTMLParser
 import os
 from pathlib import Path
 import secrets
@@ -84,6 +85,29 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         else:
             raise AssertionError('HTTP server did not become ready')
         assert request('/health', token='')[1] == {'ok': True}
+        class Preview(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.meta = {}
+            def handle_starttag(self, tag, attrs):
+                values = dict(attrs)
+                if tag == 'meta':
+                    self.meta[values.get('property', values.get('name'))] = values.get('content')
+        with urllib.request.urlopen(urllib.request.Request(base+'/', headers={'User-Agent':'TelegramBot'})) as response:
+            preview = Preview()
+            preview.feed(response.read().decode())
+            assert response.status == 200
+        assert preview.meta['og:title'].startswith('Joppa')
+        assert preview.meta['og:description'] == 'A versioned product tree with connected tasks.'
+        assert preview.meta['twitter:card'] == 'summary_large_image'
+        assert urllib.parse.urlparse(preview.meta['og:image']).scheme in ('https', 'http')
+        image_path = urllib.parse.urlparse(preview.meta['og:image']).path
+        with urllib.request.urlopen(urllib.request.Request(base+image_path, headers={'User-Agent':'TelegramBot'})) as response:
+            image = response.read()
+            assert response.status == 200 and response.headers['Content-Type'] == 'image/png'
+            assert image[:8] == b'\x89PNG\r\n\x1a\n'
+            assert int.from_bytes(image[16:20], 'big') == 1200
+            assert int.from_bytes(image[20:24], 'big') == 630
         with urllib.request.urlopen(urllib.request.Request(base+'/api/me',headers={'Authorization':'Bearer '+owner_token})) as response:
             assert response.headers.get('Cache-Control') == 'no-store'
         assert request('/api/workspaces', token='invalid')[0] == 401

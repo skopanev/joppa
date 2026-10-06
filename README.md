@@ -1,8 +1,13 @@
 # joppa
 
-**Product commitments: domain → capability → requirement → AC.**
+**A versioned product tree with connected tasks.**
+
+Each workspace defines its object types, parents, links, colors and order.
+The default recipe is Domain → Capability → Requirement → AC → Task.
+Tasks belong to the parents that the workspace schema permits.
+The queue selects the next eligible task from priorities and dependencies.
 One workspace is one product, even when several repositories deliver it.
-Repositories belong on tasks; the business tree describes product behavior.
+Repository references follow the workspace schema.
 
 People and agents formulate REQ and ACs together. The REQ owner confirms wording
 and accepts the checked result. Agents assess each AC: independent ready
@@ -13,11 +18,11 @@ An iOS condition means iOS; other clients are never added by assumption.
 
 - Workspaces, members, decision authorities, capabilities and owned REQs/ACs.
   Agents propose the tree; the product owner confirms it.
-- Verbatim intake, separate points, questions by kind and individual outcomes:
-  work, refusal with a reason, or an alternative route. Bugs link existing REQs.
+- Incoming Notes with revisions, comments, attachments and links to affected objects.
+  The default queue shows unprocessed Notes. Processed Notes stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history. Every AC in a new revision starts at **n/a**.
-- AC-linked work across repositories, manual work and decision tasks. A completed
+- Tasks under configured object parents, manual work and decision tasks. A completed
   task is not a verified AC. Manual checks store exact expected/observed lists.
 - Sealed check plans, evidence, owner acceptance, withdrawn decisions, confirmed
   defects and launch conditions. Records append; history is never rewritten.

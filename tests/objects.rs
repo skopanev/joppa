@@ -63,6 +63,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
     types.insert(
         "initiative".into(),
         TreeType {
+            index: None,
             references: Default::default(),
             parent_decision: false,
             color: None,
@@ -324,6 +325,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
     types.insert(
         "initiative".into(),
         TreeType {
+            index: None,
             references: Default::default(),
             parent_decision: false,
             color: None,
@@ -473,4 +475,33 @@ fn schema_colors_reject_css_values_and_keep_old_schema() {
         w.no("agent", json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Reject invalid color"}));
     }
     assert_eq!(objects::schema(&w.state).revision, 1);
+}
+
+#[test]
+fn type_order_changes_schema_without_changing_documents() {
+    let mut w = World::new();
+    save(
+        &mut w,
+        "note:order",
+        None,
+        json!({"title":"Saved input","owner":"owner","body":"Preserve this text"}),
+        vec![],
+    );
+    let before = serde_json::to_value(&w.state.objects).unwrap();
+    let old = objects::schema(&w.state);
+    assert!(old.types.values().all(|t| t.index.is_none()));
+    let mut types = old.types.clone();
+    types.remove("intake");
+    types.remove("point");
+    types.get_mut("domain").unwrap().index = Some(0);
+    types.get_mut("consumer").unwrap().index = Some(10);
+    w.ok("agent", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Order root collections"}));
+    let current = objects::schema(&w.state);
+    assert_eq!(current.revision, old.revision + 1);
+    assert_eq!(current.types["domain"].index, Some(0));
+    assert_eq!(before, serde_json::to_value(&w.state.objects).unwrap());
+    w.no("agent", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Reject a stale schema edit"}));
+    let mut invalid = serde_json::to_value(&types).unwrap();
+    invalid["domain"]["index"] = json!(-1);
+    w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":invalid,"reason":"Reject an invalid index"}));
 }

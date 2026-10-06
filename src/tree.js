@@ -11,7 +11,7 @@ function renderTree(schema){
   nodes.set(root,{title:workspace.selectedOptions[0].textContent,label:'Workspace',className:'workspace-node'});
   const order=Object.keys(definitions).sort((a,b)=>{
     const weight={group:0,requirement:1,ac:2,task:3,document:4};
-    return (weight[definitions[a].role]??4)-(weight[definitions[b].role]??4)||a.localeCompare(b);
+    return (definitions[a].index??Infinity)-(definitions[b].index??Infinity)||(weight[definitions[a].role]??4)-(weight[definitions[b].role]??4)||a.localeCompare(b);
   });
   const anyParents=order.filter(kind=>definitions[kind].parents.includes('*'));
   for(const kind of order){

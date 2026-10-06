@@ -39,6 +39,7 @@ fn configured() -> World {
         types.insert(
             kind.into(),
             TreeType {
+                index: None,
                 references: Default::default(),
                 parent_decision: false,
                 color: None,

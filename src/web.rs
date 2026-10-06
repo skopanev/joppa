@@ -483,7 +483,16 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     let app = Router::new()
         .merge(oauth::routes())
         .merge(mcp::routes())
-        .route("/", get(|| async { Html(page()) }))
+        .route("/", get(public_page))
+        .route(
+            "/social-preview.png",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "image/png")],
+                    include_bytes!("social-preview.png").as_slice(),
+                )
+            }),
+        )
         .route(
             "/favicon.svg",
             get(|| async {
@@ -549,7 +558,24 @@ pub fn snapshot(data: &Value) -> String {
 }
 
 fn page() -> String {
+    page_at("https://joppa.otion.us")
+}
+
+async fn public_page(State(app): State<App>) -> Html<String> {
+    Html(page_at(
+        app.oauth_origin
+            .as_deref()
+            .unwrap_or("https://joppa.otion.us"),
+    ))
+}
+
+fn page_at(origin: &str) -> String {
+    let escaped = origin
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;");
     include_str!("board.html")
+        .replace("/* PUBLIC_ORIGIN */", &escaped)
         .replace("/* BOARD_STYLE */", include_str!("board.css"))
         .replace("/* BOARD_SCRIPT */", include_str!("board.js"))
 }

@@ -172,6 +172,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     types.insert(
         "initiative".into(),
         joppa::objects::TreeType {
+            index: None,
             references: Default::default(),
             parent_decision: false,
             color: None,
@@ -257,10 +258,12 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     let mut types = schema["schema"]["types"].clone();
     types["note"]["color"] = json!("#7655a2");
     types["note"]["title"] = json!("Incoming note");
+    types["domain"]["index"] = json!(200);
     store::execute_remote_input(&pool, &ws, "agent", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
     let board = store::board_read(&pool, &ws, "agent", None, None, None).await?;
     assert_eq!(board["custom_tree"], false);
     assert_eq!(board["object_types"]["note"]["color"], "#7655a2");
+    assert_eq!(board["object_types"]["domain"]["index"], 200);
     for (id, parent, links) in [
         (
             "a",

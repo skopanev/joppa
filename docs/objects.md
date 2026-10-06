@@ -209,6 +209,17 @@ Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presenta
 Colors apply to the board and schema diagram. Status circles retain their verification colors.
 Color changes create a schema revision. They do not change object parents or select a different board layout.
 
+## Type order
+
+Each type can set `index`, a nonnegative integer. Smaller values appear first.
+Root tabs and the schema diagram read this value from the workspace schema.
+Types without an index appear after types with an index.
+Root tabs use the type ID to order equal or missing values.
+The diagram keeps its role order when index values match.
+Set the value with `set_tree_schema`. Send the schema revision you read.
+Changing an index creates a schema revision. It does not change object revisions or the board layout.
+The default recipe places Domain before Consumer, Note and Project.
+
 ## Configured references
 
 Each type can define `references`, a map from document fields to reference rules.

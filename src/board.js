@@ -474,7 +474,8 @@ function render() {
 }
 function rootCollectionTabs(root){
   if(!Object.keys(data.objectTypes||{}).length)return;
-  const types=Object.entries(data.objectTypes||{}).filter(([,type])=>type.root);
+  const types=Object.entries(data.objectTypes||{}).filter(([,type])=>type.root)
+    .sort(([a,left],[b,right])=>(left.index??Infinity)-(right.index??Infinity)||a.localeCompare(b));
   const existing=[...root.querySelectorAll('.root-collection')];
   for(const panel of existing)panel.hidden=true;
   if(!types.length){root.querySelector(':scope > .collection-tabs')?.remove();return;}
