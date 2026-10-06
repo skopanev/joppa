@@ -298,4 +298,5 @@ select:disabled{opacity:1;color:#203c2d;background-color:#f4f6f2;border-color:#d
   .common-object>summary>.type-label{grid-column:2;grid-row:2;align-self:center;font-size:10px}
   .common-object>summary>.item-actions{grid-column:3;grid-row:2;margin:0;justify-self:end;gap:2px}
   .common-object>summary>.note-state{grid-column:2;grid-row:3;justify-self:start;margin:0}
+  .note-section>.collection-heading>.note-controls{flex-basis:auto;margin-left:auto}
 }

@@ -43,6 +43,8 @@ try{
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   let clipboardWorks=true;
+  let holdInputReload=false,releaseInputReload,inputRequestStarted;
+  const inputRequest=new Promise(resolve=>{inputRequestStarted=resolve;});
   await page.addInitScript(()=>{window.__copied=null;});
   await page.route('http://joppa.test/**',async route=>{
     const url=new URL(route.request().url());
@@ -59,6 +61,10 @@ try{
     else if(url.pathname.endsWith('/objects')){
       const a=url.searchParams.get('address');
       const related=url.searchParams.get('related_to');
+      if(holdInputReload&&url.searchParams.get('kind')==='intake'&&!related&&!url.searchParams.has('note_status')){
+        holdInputReload=false;
+        await new Promise(resolve=>{releaseInputReload=resolve;inputRequestStarted();});
+      }
       value=a?document(a):{items:rows.filter(r=>{
         const parent=url.searchParams.get('parent');
         const kind=url.searchParams.get('kind');
@@ -136,6 +142,19 @@ try{
   await intake.waitFor();
   await intake.locator(':scope > summary').click();
   await intake.getByText('Action one',{exact:false}).waitFor();
+
+  holdInputReload=true;
+  await page.getByLabel('All intake',{exact:true}).check();
+  await inputRequest;
+  await page.locator('#tab-portfolio').click();
+  releaseInputReload();
+  await page.waitForFunction(()=>!document.querySelector('#collection-intake .object-loading'));
+  assert.equal(await page.locator('#collection-intake').isVisible(),false,'A late input response keeps its inactive tab hidden');
+  assert.equal(await page.getByRole('tabpanel').count(),1);
+  await page.locator('#tab-intake').click();
+  await page.setViewportSize({width:320,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The input queue switch fits a narrow viewport');
+  await page.setViewportSize({width:1280,height:900});
 
   // 4. One copy action: same control on every card, success only after the
   //    clipboard resolves, and one toast that leaves on its own.

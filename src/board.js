@@ -494,7 +494,7 @@ function commonNotes(root,relatedTo,kind){
     const mine=++request;loaded=false;loading=true;
     const holder=E('div');holder.append(E('p','Loading '+label.toLowerCase()+'…','object-loading hint'));rows.replaceChildren(holder);
     try{await appendObjectChildren(holder,'*',kind,relatedTo?{related_to:relatedTo}:queue&&!all?.checked?{note_status:'unprocessed'}:{});if(mine===request&&section.isConnected){
-      loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);section.hidden=Boolean(relatedTo)&&empty;
+      loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);if(relatedTo)section.hidden=empty;
       summary.title=empty?'No '+label.toLowerCase()+' here.':'Read '+label.toLowerCase();
     }}
     catch(e){if(mine===request){loaded=false;holder.replaceChildren();notify(e);}}
