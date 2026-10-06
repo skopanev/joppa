@@ -162,7 +162,7 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 
 .note-section>summary{background:#eef1fb;border-radius:8px;padding:14px}.object-button{font:inherit;font-size:11px;border:0;background:transparent;color:#567590;cursor:pointer;padding:4px}.common-object .node-actions{display:flex;gap:8px}.common-object .item-actions{display:flex;gap:8px}
 
-.common-object.consumer-object{border-color:#a9d7e9;background:#f5fbfe}.consumer-object>summary{background:#dceffa;color:#165a7d}
+
 
 /* Type colors identify documents. Status circles keep their evidence colors. */
 .common-object{padding:0;margin:0 0 18px;border-color:color-mix(in srgb,var(--object-color,#63756b) 26%,white);background:#fff}
@@ -172,9 +172,9 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 .common-object[open]>summary:before,.note-section[open]>summary:before{transform:rotate(90deg)}
 .common-object[open]>summary{margin-bottom:0;border-bottom:1px solid color-mix(in srgb,var(--object-color,#63756b) 18%,white)}
 .common-object>summary>.node-title{font-size:20px;font-weight:600;min-width:0;flex:1;overflow-wrap:anywhere}
-.common-object.note-object>summary,.common-object.consumer-object>summary{min-height:82px;background:color-mix(in srgb,var(--object-color) 13%,white)}
-.common-object.note-object>summary>.node-title,.common-object.consumer-object>summary>.node-title{font-size:25px;letter-spacing:-.025em;font-weight:650}
-.common-object.consumer-object{border-color:color-mix(in srgb,var(--object-color) 28%,white);background:#fff}
+.common-object>summary{min-height:82px;background:color-mix(in srgb,var(--object-color) 13%,white)}
+.common-object>summary>.node-title{font-size:25px;letter-spacing:-.025em;font-weight:650}
+
 .note-state{font-size:11px;font-weight:500;white-space:nowrap;padding:4px 8px;border-radius:5px;background:color-mix(in srgb,var(--object-color) 9%,white);color:#526159}
 .note-section{padding:0;border:1px solid color-mix(in srgb,var(--object-color,#7664aa) 25%,white);border-radius:11px;overflow:hidden;margin:30px 0 24px;background:#fff}
 .note-section>summary{display:flex;align-items:center;gap:12px;min-height:76px;padding:18px 22px;list-style:none;border-radius:0;font-size:25px;font-weight:650;color:color-mix(in srgb,var(--object-color,#7664aa) 72%,#15251e);background:color-mix(in srgb,var(--object-color,#7664aa) 14%,white)}
@@ -187,7 +187,7 @@ body:not(.authenticated){background:#f5f5f0;color:#202922}
 .consumer-section>summary{min-height:76px;background:color-mix(in srgb,var(--object-color,#247eab) 15%,white);color:color-mix(in srgb,var(--object-color,#247eab) 75%,#15251e);font-size:25px}
 .consumer-title{font-size:25px;color:color-mix(in srgb,var(--object-color,#247eab) 75%,#15251e)}
 .common-object.branch-closing>summary:before,.note-section.branch-closing>summary:before{transform:rotate(0)}
-@media(max-width:760px){.common-object>summary{padding:16px;gap:8px;flex-wrap:wrap}.common-object.note-object>summary>.node-title,.common-object.consumer-object>summary>.node-title{font-size:23px;flex-basis:65%}.common-object .item-actions{margin-left:auto}.note-section>summary,.consumer-section>summary{font-size:23px;padding:16px}.note-section-body{padding:0 14px 4px}.consumer-title{font-size:23px}.common-object .note-state{margin-left:25px}}
+@media(max-width:760px){.common-object>summary{padding:16px;gap:8px;flex-wrap:wrap}.common-object>summary>.node-title{font-size:23px;flex-basis:65%}.common-object .item-actions{margin-left:auto}.note-section>summary,.consumer-section>summary{font-size:23px;padding:16px}.note-section-body{padding:0 14px 4px}.consumer-title{font-size:23px}.common-object .note-state{margin-left:25px}}
 @media(prefers-reduced-motion:reduce){.common-object>summary:before,.note-section>summary:before{transition:none}}
 
 .tree-domain>summary .type-label,.tree-capability>summary .type-label{color:inherit}.ac-item .ac-heading>.ac-text,.task-entry>h3{color:color-mix(in srgb,var(--object-color,#63756b) 65%,#15251e)}

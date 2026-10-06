@@ -120,10 +120,7 @@ async function load() {
   loadedDomains.clear();loadedCapabilities.clear();loadedRequirements.clear();
   fullHistoryRequirements.clear();
   filterLoaded=false;filterLoading=null;
-  if(data.custom_tree){await renderObjectTree();return;}
-  if(!data.lazy)indexStatusEvents();
-  render();
-  if(data.lazy&&(filters.status||filters.person))await ensureFilterIndex();
+  await renderObjectTree();
 }
 async function boardPart(level,id,revision){
   const params=new URLSearchParams({level});
@@ -1252,7 +1249,7 @@ function appendObjectPage(root,part,params,generation){
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
   }
-  if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object'))root.append(E('p',params.kind==='note'?'No notes here.':'No objects here yet.','hint'));
+  if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object'))root.append(E('p',params.kind&&data.objectTypes[params.kind]?'No '+data.objectTypes[params.kind].title.toLowerCase()+' here.':'No objects here yet.','hint'));
   if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
   if(!params.parent&&!params.kind&&$('tree').querySelector('.collection-tabs'))rootCollectionTabs($('tree'));
 }
@@ -1274,6 +1271,12 @@ async function renderObjectTree(){
   commonNotes(root);
   rootCollectionTabs(root);
 }
+/// An input queue shows unprocessed entries first. The schema has no flag for
+/// it yet, so the preset Note type keeps the default until r2 confirms one.
+function inputQueue(kind){
+  const type=kind&&data.objectTypes[kind];
+  return type?type.flags?.input_queue===true||kind==='note'&&type.flags===undefined:false;
+}
 function commonObjectFilters(root,contents){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
@@ -1282,7 +1285,7 @@ function commonObjectFilters(root,contents){
   const status=picker('Object status',[['','All statuses'],['green','Checks passed'],['red','Checks failed'],['purple','Dependency review'],['yellow','Waiting or in progress'],['grey','Unchecked or completed']]);
   const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:kind.value,owner:owner.value,status:status.value};const tabs=root.querySelector('.collection-tabs');if(tabs)tabs.hidden=Boolean(selected.kind||selected.owner||selected.status);const holder=E('div');contents.replaceChildren(holder);holder.append(E('p','Loading objects…','object-loading hint'));try{
     if(!selected.kind&&!selected.owner&&!selected.status){await appendObjectChildren(holder);return;}
-    const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(selected.kind==='note')params.note_status='unprocessed';let cursor;const items=[];
+    const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(inputQueue(selected.kind))params.note_status='unprocessed';let cursor;const items=[];
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
     const rows=items.filter(item=>(selected.kind||item.kind!=='note')&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
     holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
@@ -1323,7 +1326,7 @@ function commonNotes(root,relatedTo){
   return section;
 }
 function commonObjectCard(item){
-  const card=E('details',undefined,'common-object'+(item.kind==='consumer'?' consumer-object':item.kind==='note'?' note-object':''));card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;applyObjectColor(card,item.kind);
+  const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
   const signal=item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
