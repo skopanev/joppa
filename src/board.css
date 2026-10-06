@@ -250,3 +250,12 @@ select:disabled{opacity:1;color:#203c2d;background-color:#f4f6f2;border-color:#d
 
 .common-object .item-actions{align-items:center;gap:4px}
 .common-object .item-actions>button{width:auto;min-height:32px;height:32px;padding:4px 7px;font-size:11px;line-height:1.2;white-space:nowrap}
+
+/* One toast for every message: bottom right, three seconds, then away. */
+#toast{position:fixed;right:18px;bottom:18px;z-index:40;max-width:min(360px,calc(100vw - 36px));padding:11px 15px;border-radius:10px;border:1px solid var(--line);background:#273c2f;color:#f3f7f2;font-size:13px;line-height:1.4;box-shadow:0 6px 22px #1c2b1f2e;opacity:0;transform:translateX(24px);transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+#toast.toast-visible{opacity:1;transform:translateX(0)}
+#toast.toast-leaving{opacity:0;transform:translateX(24px)}
+#toast.toast-failed{background:#6d2f2a}
+/* Copied must not resize or move the card. */
+.copy{min-width:72px;text-align:center}
+@media(prefers-reduced-motion:reduce){#toast{transition:none;transform:none}#toast.toast-leaving{transform:none}}

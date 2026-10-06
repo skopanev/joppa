@@ -10,11 +10,44 @@ const $ = id => document.getElementById(id),
     return e;
   };
 let noticeTimer;
+let toastTimer;
+function toast(message,failed=false){
+  let host=document.querySelector('#toast');
+  if(!host){host=E('div',undefined,'toast');host.id='toast';host.setAttribute('role','status');host.setAttribute('aria-live','polite');document.body.append(host);}
+  host.textContent=message;
+  host.classList.toggle('toast-failed',failed);
+  host.classList.remove('toast-leaving');
+  // Restart the clock so the newest message always gets its full three seconds.
+  void host.offsetWidth;host.classList.add('toast-visible');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{host.classList.remove('toast-visible');host.classList.add('toast-leaving');},3000);
+  return host;
+}
+/// One copy action for every card. The label changes only after the clipboard
+/// actually accepted the text, and the button keeps its size so the card never
+/// moves.
+async function copyAction(trigger,text){
+  if(!text){toast('Nothing to copy yet. Reload the page.',true);return false;}
+  let copied=false;
+  try{
+    if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+    await navigator.clipboard.writeText(text);
+    copied=true;
+  }catch{
+    const field=E('textarea',text);field.style.position='fixed';field.style.opacity='0';field.style.top='0';
+    document.body.append(field);field.select();
+    try{copied=document.execCommand('copy');}catch{copied=false;}
+    field.remove();
+  }
+  if(!copied){toast('Could not copy the ID. Select it by hand.',true);return false;}
+  const label=trigger.dataset.label||trigger.textContent;
+  trigger.dataset.label=label;trigger.textContent='Copied';
+  setTimeout(()=>{if(trigger.isConnected)trigger.textContent=label;},3000);
+  toast('Copied '+text);
+  return true;
+}
 function notify(e) {
-  clearTimeout(noticeTimer);
-  $('notice').textContent=e?.message||String(e||'');
-  $('notice').dataset.kind=e instanceof Error?'error':'success';
-  if(e && !(e instanceof Error))noticeTimer=setTimeout(()=>{$('notice').textContent='';},4500);
+  toast(e?.message||String(e||''),e instanceof Error);
 }
 async function api(path) {
   const r = await fetch('/api/' + path);
@@ -1271,11 +1304,9 @@ async function renderObjectTree(){
   commonNotes(root);
   rootCollectionTabs(root);
 }
-/// An input queue shows unprocessed entries first. The schema has no flag for
-/// it yet, so the preset Note type keeps the default until r2 confirms one.
+/// An input queue shows unprocessed entries first. The schema declares it.
 function inputQueue(kind){
-  const type=kind&&data.objectTypes[kind];
-  return type?type.flags?.input_queue===true||kind==='note'&&type.flags===undefined:false;
+  return kind?data.objectTypes[kind]?.inbox===true:false;
 }
 function commonObjectFilters(root,contents){
   const controls=E('div',undefined,'filter-fields');let request=0;
@@ -1333,7 +1364,7 @@ function commonObjectCard(item){
   summary.append(nodeTitle(item.title,signal),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
   if(item.kind==='note')summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
-  const copy=button('COPY',async()=>{const text=item.item_id||item.address;try{if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');await navigator.clipboard.writeText(text);}catch{const field=E('textarea',text);field.style.position='fixed';field.style.opacity='0';document.body.append(field);field.select();const copied=document.execCommand('copy');field.remove();if(!copied)notify(Error('Could not copy the ID.'));}},'copy');copy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
+  const copy=button('COPY',async()=>{await copyAction(copy,item.item_id||item.address);},'copy');copy.type='button';copy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
   const history=button('Revisions',()=>showCommonObject(item.address,true),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   card.addEventListener('toggle',async()=>{if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.append(children);await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
