@@ -218,9 +218,6 @@ pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -
     let kinds: BTreeSet<_> = current.types.keys().cloned().collect();
     for (kind, t) in &mut current.types {
         if let Some(default) = preset.get(kind) {
-            if t.index.is_none() {
-                t.index = default.index;
-            }
             if t.references.is_empty() {
                 t.references = default
                     .references

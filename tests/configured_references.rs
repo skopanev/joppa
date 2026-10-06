@@ -121,6 +121,12 @@ fn schema_migration_preserves_document_history_and_runs_once() {
     assert_eq!(before, serde_json::to_value(&w.state.objects).unwrap());
     assert_eq!(objects::schema(&w.state).revision, revision + 1);
     assert!(objects::schema(&w.state).types["requirement"].references["consumers"].required);
+    assert!(
+        objects::schema(&w.state)
+            .types
+            .values()
+            .all(|t| t.index.is_none())
+    );
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
     w.position += 1;
     assert_eq!(objects::schema(&w.state).revision, revision + 1);
