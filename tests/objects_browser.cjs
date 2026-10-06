@@ -14,7 +14,7 @@ const defaults={domain:{title:'Domain',role:'group',root:true,parents:[]},capabi
 await page.goto('http://joppa.test/');await page.getByRole('tab',{name:'Initiative',exact:true}).waitFor();
 assert.deepEqual(await page.getByRole('tab').allTextContents(),['Workstream','Initiative','Inputs','Consumer'],'root tabs use the schema index, titles and permissions');
 assert.equal(await page.getByRole('tab',{name:'Workstream',exact:true}).getAttribute('aria-selected'),'true','the first configured collection opens initially');
-await page.getByRole('tab',{name:'Workstream',exact:true}).click();await page.locator('#collection-workstream').getByText('No objects here yet.').waitFor();
+await page.getByRole('tab',{name:'Workstream',exact:true}).click();await page.locator('#collection-workstream .collection-empty').waitFor();
 await page.getByRole('tab',{name:'Consumer',exact:true}).click();await page.locator('[data-object-address="consumer:person"]').waitFor();
 await page.getByRole('tab',{name:'Inputs',exact:true}).click();const queue=page.locator('#tree > .note-section');await queue.locator('[data-object-address="note:source"]').waitFor();assert.equal(seen.filter(url=>url.includes('address=')).length,0,'initial load does not read object bodies');assert.equal(await page.locator('.object-body p').count(),0);
 assert.match(await page.locator('[data-object-address="initiative:release"] .status-circle').getAttribute('aria-label'),/^Status: Historical object/);

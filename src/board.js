@@ -1282,7 +1282,10 @@ function appendObjectPage(root,part,params,generation){
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
   }
-  if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object'))root.append(E('p',params.kind&&data.objectTypes[params.kind]?'No '+data.objectTypes[params.kind].title.toLowerCase()+' here.':'No objects here yet.','hint'));
+  if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object')){
+    const type=params.kind&&data.objectTypes[params.kind];
+    root.append(E('p',type?'No '+type.title.toLowerCase()+' here.':'No objects here yet.','hint collection-empty'));
+  }
   if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
   if(!params.parent&&!params.kind&&$('tree').querySelector('.collection-tabs'))rootCollectionTabs($('tree'));
 }
