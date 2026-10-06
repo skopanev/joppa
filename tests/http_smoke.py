@@ -422,7 +422,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert 'revisions' not in row and 'history' not in index and 'state' not in index
             assert all('document' not in item and 'data' not in item for item in index['index']['objects'])
         assert 'revision requires' in rejected_read({'workspace':ws,'revision':1})
-        assert mcp('joppa_read', {'item_id': refs['domain']['security'], 'revision': 1})['document']['revision'] == 1
+        domain_ref=mcp('joppa_objects', {'workspace':ws,'address':'domain:security'})['item_id']
+        assert mcp('joppa_read', {'item_id':domain_ref,'revision':1})['document']['revision'] == 1
         # A copied AC removed from current wording must not silently return the old revision.
         generated_req=created['results'][1]['command']['req']
         generated_ac=created['results'][1]['command']['acs'][0]['id']
