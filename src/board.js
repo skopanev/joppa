@@ -568,11 +568,19 @@ function buildRequirement(id,q,signals,opened){
   if(req.open&&(!data.lazy||loadedRequirements.has(id)))requirementDetails(content,id);
   return req;
 }
+function collectionHeading(section,title,description,label){
+  const summary=section.querySelector(':scope > summary');
+  const caption=E('span',undefined,'collection-caption');
+  caption.append(E('span',title,'collection-title'),E('span',description,'collection-description'));
+  summary.replaceChildren(caption);
+  if(label)summary.append(E('span',label,'collection-label'));
+}
 function consumers(root){
   const entries=Object.entries(data.state.consumers||{});
-  const count=data.lazy?data.counts.consumers:entries.length;
-  if(!count)return;
-  const section=details(root,'Consumers · '+count);
+  const count=data.lazy?(data.counts?.consumers??entries.length):entries.length;
+  const title=data.objectTypes?.consumer?.title||'Consumer';
+  const section=details(root,(title==='Consumer'?'Consumers':title)+' · '+count);
+  collectionHeading(section,(title==='Consumer'?'Consumers':title)+' · '+count,'People and roles that use the product.','Audience');
   section.classList.add('consumer-section');applyObjectColor(section,'consumer');
   section.open=consumerOpen;
   if(data.lazy&&!consumersLoaded)section.dataset.pending='true';
@@ -1204,7 +1212,17 @@ async function appendObjectChildren(root,parent,kind,extra={}){
 }
 function appendObjectPage(root,part,params,generation){
   const items=part.items.filter(item=>params.kind||(params.parent&&params.parent!=='*')||item.kind!=='note');
-  for(const item of items)root.append(commonObjectCard(item));
+  for(const item of items){
+    let holder=root;
+    if(!params.parent&&!params.kind&&data.objectTypes?.[item.kind]?.role==='document'){
+      holder=[...root.querySelectorAll(':scope > .object-collection')].find(group=>group.dataset.kind===item.kind);
+      if(!holder){
+        holder=E('section',undefined,'object-collection');holder.dataset.kind=item.kind;applyObjectColor(holder,item.kind);
+        holder.append(E('h2',data.objectTypes[item.kind].title,'object-collection-title'));root.append(holder);
+      }
+    }
+    holder.append(commonObjectCard(item));
+  }
   if(!items.length&&!part.next_cursor&&!root.querySelector('.common-object'))root.append(E('p',params.kind==='note'?'No notes here.':'No objects here yet.','hint'));
   if(part.next_cursor){const more=button('Load more',async()=>{more.disabled=true;try{const next=await objectPart({...params,cursor:part.next_cursor});if(generation!==loadNumber||!root.isConnected)return;more.remove();appendObjectPage(root,next,params,generation);}catch(e){more.disabled=false;notify(e);}},'text-button');root.append(more);}
 }
@@ -1241,13 +1259,16 @@ function commonObjectFilters(root,contents){
   for(const select of [kind,owner,status])select.onchange=update;root.append(controls);return controls;
 }
 function commonNotes(root,relatedTo){
-  const section=details(root,relatedTo?'Related notes':data.objectTypes?.note?.title&&data.objectTypes.note.title!=='Note'?data.objectTypes.note.title:'Notes');section.classList.add('note-section');applyObjectColor(section,'note');enableBranchMotion(section);
+  const title=relatedTo?'Related notes':data.objectTypes?.note?.title&&data.objectTypes.note.title!=='Note'?data.objectTypes.note.title:'Notes';
+  const section=details(root,title);section.classList.add('note-section');applyObjectColor(section,'note');
+  if(!relatedTo)collectionHeading(section,title,'Information to review and apply.','Inputs');
+  enableBranchMotion(section);
   const body=E('div',undefined,'note-section-body');section.append(body);
   let loaded=false,request=0;
   let all;
   if(!relatedTo){
     const controls=E('div',undefined,'note-controls');
-    controls.append(E('p','Incoming information to process.','hint'));
+    controls.append(E('p','Unprocessed by default.','hint'));
     const label=E('label',undefined,'note-all');all=E('input');all.type='checkbox';all.setAttribute('aria-label','All notes');label.append(all,E('span','All'));controls.append(label);body.append(controls);
   }
   const rows=E('div',undefined,'note-items');body.append(rows);
