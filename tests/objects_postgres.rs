@@ -175,6 +175,8 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             index: None,
             references: Default::default(),
             parent_decision: false,
+            inbox: None,
+            launch_blocker: None,
             color: None,
             parent_gate: None,
             title: "Initiative".into(),

@@ -152,10 +152,7 @@ pub fn apply(
             } else {
                 nonempty(contract)?;
             }
-            ensure!(
-                ["implementation", "decision", "manual"].contains(&purpose.as_str()),
-                "unknown task purpose"
-            );
+            ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
             for project in projects {
                 ensure!(w.projects.contains_key(project), "unknown project");
             }

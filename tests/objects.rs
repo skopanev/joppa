@@ -66,6 +66,8 @@ fn schema_supports_custom_grouping_without_a_capability() {
             index: None,
             references: Default::default(),
             parent_decision: false,
+            inbox: None,
+            launch_blocker: None,
             color: None,
             parent_gate: None,
             title: "Initiative".into(),
@@ -328,6 +330,8 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
             index: None,
             references: Default::default(),
             parent_decision: false,
+            inbox: None,
+            launch_blocker: None,
             color: None,
             parent_gate: None,
             title: "Initiative".into(),
@@ -504,4 +508,195 @@ fn type_order_changes_schema_without_changing_documents() {
     let mut invalid = serde_json::to_value(&types).unwrap();
     invalid["domain"]["index"] = json!(-1);
     w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":invalid,"reason":"Reject an invalid index"}));
+}
+
+#[test]
+fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
+    let mut w = World::new();
+    let mut types = objects::defaults();
+    types.insert(
+        "incoming".into(),
+        serde_json::from_value(
+            json!({"title":"Incoming","role":"document","root":true,"parents":["*"],"inbox":true}),
+        )
+        .unwrap(),
+    );
+    types.get_mut("note").unwrap().inbox = Some(false);
+    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Select the input queue"}));
+    save(
+        &mut w,
+        "incoming:n",
+        None,
+        json!({"title":"Provider change","owner":"owner","source":"New permission rules"}),
+        vec![],
+    );
+    w.ok("agent",json!({"op":"set_note_status","target":"incoming:n","revision":1,"status":"processed","reason":"Reviewed source"}));
+    assert_eq!(
+        objects::process(&w.state, "incoming:n")["status"],
+        "processed"
+    );
+    save(
+        &mut w,
+        "incoming:n",
+        None,
+        json!({"title":"Provider change","owner":"owner","source":"Changed permission rules","status":"processed"}),
+        vec![],
+    );
+    assert_eq!(
+        objects::process(&w.state, "incoming:n")["status"],
+        "unprocessed"
+    );
+    assert_eq!(
+        w.state.objects["incoming:n"].revisions[0].data["source"],
+        "New permission rules"
+    );
+    save(
+        &mut w,
+        "note:ordinary",
+        None,
+        json!({"title":"Ordinary document","owner":"owner"}),
+        vec![],
+    );
+    w.no("agent",json!({"op":"set_note_status","target":"note:ordinary","revision":1,"status":"processed","reason":"This type is not an inbox"}));
+}
+
+#[test]
+fn launch_configuration_preserves_owner_acceptance_and_can_disable_the_preset() {
+    let mut w = World::new();
+    let baseline = objects::launch_summary(&w.state);
+    assert_eq!(baseline["blocker_count"], 1);
+    w.ready();
+    w.run("pass", "pass");
+    assert_eq!(objects::launch_summary(&w.state)["ready"], false);
+    w.ok(
+        "owner",
+        json!({"op":"accept","req":"r","revision":1,"run":"pass"}),
+    );
+    assert_eq!(objects::launch_summary(&w.state)["ready"], true);
+    let mut types = objects::defaults();
+    types.get_mut("ac").unwrap().launch_blocker = Some(false);
+    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Remove launch conditions from this type"}));
+    assert_eq!(objects::launch_summary(&w.state)["configured"], false);
+}
+
+#[test]
+fn requirement_dependencies_follow_tests_and_completed_work_loses_verification() {
+    let mut w = World::new();
+    w.ready();
+    joppa::tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    let pin = w.state.objects["requirement:r"].current().revision;
+    save(
+        &mut w,
+        "task:dependent",
+        Some("ac:ios"),
+        json!({"title":"Implement access","owner":"owner","contract":"Implement access and record the result","purpose":"implementation","projects":[]}),
+        vec![link("requirement:r", Some(pin), true)],
+    );
+    w.no(
+        "agent",
+        json!({"op":"claim_task","id":"task:dependent","revision":1}),
+    );
+    w.run("first", "pass");
+    assert_eq!(w.summary(1)["accepted"], false);
+    assert!(objects::work_ready(&w.state, "task:dependent"));
+    w.ok(
+        "agent",
+        json!({"op":"claim_task","id":"task:dependent","revision":1}),
+    );
+    w.ok("agent",json!({"op":"complete_task","id":"task:dependent","revision":2,"evidence":"Access implementation delivered"}));
+    let completion = w.state.task_process["task:dependent"].done.clone();
+    assert_eq!(
+        objects::process(&w.state, "task:dependent")["verification"],
+        "pass"
+    );
+    w.run("second", "fail");
+    assert!(!objects::work_ready(&w.state, "task:dependent"));
+    let process = objects::process(&w.state, "task:dependent");
+    assert_eq!(process["status"], "done");
+    assert_eq!(process["verification"], "unverified");
+    assert_eq!(w.state.task_process["task:dependent"].done, completion);
+}
+
+#[test]
+fn common_document_fields_survive_process_commands_and_full_replacement_removes_them() {
+    let mut w = World::new();
+    objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    let baseline = w.state.objects["requirement:r"].revisions.clone();
+    let mut data = w.state.objects["requirement:r"].current().data.clone();
+    data["rationale"] = json!({"source":"customer interview","priority":3});
+    data["labels"] = json!(["mobile", "access"]);
+    save(
+        &mut w,
+        "requirement:r",
+        Some("capability:c"),
+        data.clone(),
+        vec![],
+    );
+    let rev = w.state.requirements["r"].revisions.last().unwrap().number;
+    w.ok("owner", json!({"op":"confirm","req":"r","revision":rev}));
+    for ac in ["ios", "key"] {
+        let mut cmd = assess(ac, true);
+        cmd["revision"] = json!(rev);
+        w.ok("agent", cmd);
+    }
+    w.ok("owner", json!({"op":"define_verification_scope","req":"r","revision":rev,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Define the tested components"}));
+    let mut cmd = plan("custom-fields");
+    cmd["revision"] = json!(rev);
+    w.ok("runner", cmd);
+    let mut cmd = result(
+        "custom-fields",
+        "[ios] paid access",
+        "pass",
+        vec!["access retained"],
+    );
+    cmd["revision"] = json!(rev);
+    w.ok("runner", cmd);
+    let mut cmd = result(
+        "custom-fields",
+        "key-permissions",
+        "pass",
+        vec!["read", "verify"],
+    );
+    cmd["revision"] = json!(rev);
+    w.ok("owner", cmd);
+    w.ok(
+        "runner",
+        json!({"op":"finish","req":"r","revision":rev,"run":"custom-fields"}),
+    );
+    let current = w.state.objects["requirement:r"].current();
+    assert_eq!(current.data["rationale"], data["rationale"]);
+    assert_eq!(current.data["labels"], data["labels"]);
+    assert!(joppa::checks::summary(w.state.requirements["r"].revisions.last().unwrap())["ready_for_acceptance"].as_bool().unwrap());
+    assert_eq!(
+        serde_json::to_value(&w.state.objects["requirement:r"].revisions[..baseline.len()])
+            .unwrap(),
+        serde_json::to_value(baseline).unwrap()
+    );
+    let mut forged = data.clone();
+    forged["confirmed"] = json!(true);
+    let current_revision = w.state.objects["requirement:r"].current().revision;
+    w.no("agent",json!({"op":"save_object","kind":"requirement","id":"r","revision":current_revision,"parent":"capability:c","data":forged,"reason":"Inject process evidence"}));
+    data.as_object_mut().unwrap().remove("rationale");
+    data.as_object_mut().unwrap().remove("labels");
+    save(&mut w, "requirement:r", Some("capability:c"), data, vec![]);
+    assert!(
+        w.state.objects["requirement:r"]
+            .current()
+            .data
+            .get("rationale")
+            .is_none()
+    );
+    assert!(
+        w.state.objects["requirement:r"]
+            .current()
+            .data
+            .get("labels")
+            .is_none()
+    );
+    assert_eq!(
+        w.state.requirements["r"].revisions[(rev - 1) as usize].runs["custom-fields"]
+            .results
+            .len(),
+        2
+    );
 }

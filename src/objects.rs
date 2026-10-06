@@ -21,10 +21,10 @@ pub struct TreeType {
     pub role: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_gate: Option<String>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub launch_blocker: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub inbox: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_blocker: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -123,8 +123,8 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 color: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
-                launch_blocker: kind == "ac",
-                inbox: kind == "note",
+                launch_blocker: (kind == "ac").then_some(true),
+                inbox: (kind == "note").then_some(true),
                 title: title.into(),
                 role: role.into(),
                 root,
@@ -180,6 +180,8 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         t.color = None;
         t.references.clear();
         t.parent_decision = false;
+        t.inbox = None;
+        t.launch_blocker = None;
     }
     for (kind, title, root, parents) in [
         ("intake", "Source note", true, vec![]),
@@ -191,6 +193,8 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
                 index: None,
                 references: BTreeMap::new(),
                 parent_decision: false,
+                inbox: None,
+                launch_blocker: None,
                 color: None,
                 parent_gate: None,
                 title: title.into(),
@@ -730,6 +734,13 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             && let Some(previous) = obj.revisions.last()
             && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
         {
+            for (field, value) in previous.data.as_object().unwrap() {
+                if native_document_fields(kind)
+                    .is_none_or(|fields| !fields.contains(&field.as_str()))
+                {
+                    data[field] = value.clone();
+                }
+            }
             for field in t.references.keys() {
                 let native_update = field == "consumers"
                     && matches!(command, Command::Revise { req, .. } if key == &address("requirement", req));
@@ -958,6 +969,44 @@ fn revise(
         carry_tasks: true,
     })
 }
+fn native_document_fields(kind: &str) -> Option<&'static [&'static str]> {
+    match kind {
+        "domain" => Some(&["title", "owner", "description", "archived"]),
+        "capability" | "consumer" => Some(&["title", "owner", "description"]),
+        "requirement" => Some(&["title", "body", "owner", "consumers"]),
+        "ac" => Some(&[
+            "title",
+            "description",
+            "owner",
+            "decision_required",
+            "depends_on",
+            "before_launch",
+        ]),
+        "task" => Some(&["title", "owner", "contract", "projects", "purpose"]),
+        _ => None,
+    }
+}
+
+pub(crate) fn process_field(field: &str) -> bool {
+    matches!(
+        field,
+        "confirmed"
+            | "assessment"
+            | "acceptance"
+            | "accepted"
+            | "runs"
+            | "acs"
+            | "tasks"
+            | "assignee"
+            | "done"
+            | "retired"
+            | "review_required"
+            | "verification"
+            | "work_ready"
+            | "evidence"
+    )
+}
+
 fn typed_command(
     w: &Workspace,
     kind: &str,
@@ -975,30 +1024,11 @@ fn typed_command(
     }
     let data = &native_data;
     let exists = w.objects.contains_key(&address(kind, id));
-    let allowed: Option<&[&str]> = match kind {
-        "domain" => Some(&["title", "owner", "description", "archived"]),
-        "capability" | "consumer" => Some(&["title", "owner", "description"]),
-        "requirement" => Some(&["title", "body", "owner", "consumers"]),
-        "ac" => Some(&[
-            "title",
-            "description",
-            "owner",
-            "decision_required",
-            "depends_on",
-            "before_launch",
-        ]),
-        "task" => Some(&["title", "owner", "contract", "projects", "purpose"]),
-        _ => None,
-    };
+    let allowed = native_document_fields(kind);
     if let Some(allowed) = allowed {
         for field in data.as_object().context("data must be an object")?.keys() {
             ensure!(
-                allowed.contains(&field.as_str())
-                    || w.schema_migrated
-                        && schema(w)
-                            .types
-                            .get(kind)
-                            .is_some_and(|t| t.references.contains_key(field)),
+                allowed.contains(&field.as_str()) || w.schema_migrated && !process_field(field),
                 "unknown document field {field}; use process commands for evidence"
             );
         }
@@ -1264,7 +1294,7 @@ pub fn save(
         );
     }
     ensure!(data.is_object(), "data must be an object");
-    if kind == "note" {
+    if input_type(w, kind) {
         ensure!(
             data.get("status")
                 .is_none_or(|v| matches!(v.as_str(), Some("unprocessed" | "processed"))),
@@ -1396,6 +1426,11 @@ pub fn save(
     {
         if w.schema_migrated {
             let mut normalized = projected;
+            normalized.as_object_mut().unwrap().retain(|field, _| {
+                data.get(field).is_some()
+                    || native_document_fields(kind)
+                        .is_some_and(|fields| fields.contains(&field.as_str()))
+            });
             for (field, value) in data.as_object().unwrap() {
                 normalized[field] = value.clone();
             }
@@ -1417,7 +1452,7 @@ pub fn save(
     } else {
         data.clone()
     };
-    if kind == "note"
+    if input_type(w, kind)
         && let Some(old) = &old
     {
         let source = |value: &Value| {
@@ -1699,27 +1734,145 @@ fn verified(w: &Workspace, key: &str) -> bool {
         && w.requirements
             .get(&o.id)
             .and_then(|q| q.revisions.last())
-            .is_some_and(|r| crate::checks::summary(r)["accepted"] == true)
+            .is_some_and(|r| crate::checks::summary(r)["ready_for_acceptance"] == true)
+}
+
+pub fn launch_objects(w: &Workspace) -> Vec<&str> {
+    let configured = schema(w);
+    w.objects
+        .iter()
+        .filter(|(_, o)| {
+            o.current().present
+                && configured
+                    .types
+                    .get(&o.kind)
+                    .is_some_and(|t| t.launch_blocker.unwrap_or(o.kind == "ac"))
+                && o.current().data["before_launch"] == true
+        })
+        .map(|(key, _)| key.as_str())
+        .collect()
+}
+
+pub fn launch_summary(w: &Workspace) -> Value {
+    let selected = launch_objects(w);
+    let blockers: Vec<Value> = selected
+        .iter()
+        .filter_map(|key| {
+            let context = verification_context(w, key);
+            if context.is_some_and(|(req, r)| requirement_summary(w, req, r)["accepted"] == true) {
+                return None;
+            }
+            let mut item = json!({"address":key});
+            if let Some((req, r)) = context {
+                item["req"] = json!(req);
+                item["revision"] = json!(r.number);
+                if let Some((_, _, ac)) = criterion_context(w, key) {
+                    item["ac"] = json!(ac.id);
+                }
+            }
+            Some(item)
+        })
+        .collect();
+    json!({"configured":!selected.is_empty(),"ready":!selected.is_empty()&&blockers.is_empty(),"blocker_count":blockers.len(),"blockers":blockers,"meaning":"Configured launch conditions require owner acceptance of current check evidence."})
+}
+
+pub fn input_type(w: &Workspace, kind: &str) -> bool {
+    schema(w)
+        .types
+        .get(kind)
+        .is_some_and(|t| t.inbox.unwrap_or(kind == "note"))
+}
+
+pub fn verification(w: &Workspace, key: &str) -> &'static str {
+    let key = resolve_address(w, key);
+    if !work_ready(w, key) {
+        return "unverified";
+    }
+    if let Some(t) = crate::tasks::task(w, key) {
+        if t.done.is_none()
+            || t.retired.is_some()
+            || crate::tasks::process(w, key).is_some_and(|p| p["review_required"] == true)
+        {
+            return "unverified";
+        }
+        let mut parent = w
+            .objects
+            .get(key)
+            .and_then(|o| o.current().parent.as_deref());
+        let mut seen = BTreeSet::new();
+        while let Some(key) = parent {
+            if !seen.insert(key) {
+                return "unverified";
+            }
+            if criterion_context(w, key).is_some()
+                || schema(w)
+                    .types
+                    .get(&w.objects[key].kind)
+                    .is_some_and(|t| t.role == "requirement")
+            {
+                return if verification(w, key) == "pass" {
+                    "pass"
+                } else {
+                    "unverified"
+                };
+            }
+            parent = w
+                .objects
+                .get(key)
+                .and_then(|o| o.current().parent.as_deref());
+        }
+        return "unverified";
+    }
+    if let Some((req, r, ac)) = criterion_context(w, key) {
+        let summary = requirement_summary(w, req, r);
+        return match summary["acs"][&ac.id]["verification"].as_str() {
+            Some("pass") => "pass",
+            Some("fail") => "fail",
+            _ => "unverified",
+        };
+    }
+    if let Some(o) = w.objects.get(key)
+        && schema(w)
+            .types
+            .get(&o.kind)
+            .is_some_and(|t| t.role == "requirement")
+        && let Some((req, r)) = verification_context(w, key)
+    {
+        let summary = requirement_summary(w, req, r);
+        if summary["ready_for_acceptance"] == true {
+            return "pass";
+        }
+        if summary["acs"]
+            .as_object()
+            .is_some_and(|acs| acs.values().any(|a| a["verification"] == "fail"))
+        {
+            return "fail";
+        }
+    }
+    "unverified"
 }
 
 pub fn process(w: &Workspace, key: &str) -> Value {
     let key = resolve_address(w, key);
-    if let Some(p) = crate::tasks::process(w, key) {
+    if let Some(mut p) = crate::tasks::process(w, key) {
+        p["verification"] = json!(verification(w, key));
         return p;
     }
     let Some(o) = w.objects.get(key) else {
         return json!({});
     };
-    if schema(w).types.get(&o.kind).is_some_and(|t| t.inbox) {
-        return json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed")});
+    if input_type(w, &o.kind) {
+        return json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed"),"verification":"unverified"});
     }
     let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
-    match role.as_deref() {
+    let mut result=match role.as_deref() {
         Some("requirement") if !w.document_overrides.contains(key) => w.requirements.get(&o.id).and_then(|q|q.revisions.last()).map(|r|json!({"req":o.id,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,&o.id,r)})).unwrap_or_else(||json!({})),
         Some("ac") => criterion_context(w, key).map(|(req,r,ac)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"status":requirement_summary(w,req,r)["acs"][&ac.id]})).unwrap_or_else(||json!({})),
         Some("task") => o.id.split_once('/').and_then(|(req,id)|w.requirements.get(req).and_then(|q|q.revisions.last()).and_then(|r|r.tasks.get(id).map(|t|(req,r,t)))).map(|(req,r,t)|json!({"req":req,"revision":r.number,"assignee":t.assignee,"done":t.done,"retired":t.retired,"review_required":t.review_required,"status":if t.retired.is_some(){"retired"}else if t.done.is_some(){"done"}else if t.assignee.is_some(){"in_progress"}else{"open"}})).unwrap_or_else(||json!({})),
         _ => json!({}),
-    }
+    };
+    result["verification"] = json!(verification(w, key));
+    result
 }
 
 pub fn signal(w: &Workspace, key: &str) -> Value {
@@ -1738,15 +1891,17 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         ("purple", "Dependency revision changed")
     } else if !work_ready(w, key) {
         ("purple", "Dependency is not ready")
-    } else if o.kind == "note" {
+    } else if input_type(w, &o.kind) {
         if p["status"] == "processed" {
-            ("grey", "Note processed")
+            ("grey", "Input processed")
         } else {
-            ("yellow", "Note awaits processing")
+            ("yellow", "Input awaits processing")
         }
-    } else if o.kind == "ac" && p["pending_run"].is_string() {
+    } else if schema(w).types.get(&o.kind).is_some_and(|t| t.role == "ac")
+        && p["pending_run"].is_string()
+    {
         ("yellow", "New checks are running")
-    } else if o.kind == "ac" {
+    } else if schema(w).types.get(&o.kind).is_some_and(|t| t.role == "ac") {
         match (
             p["status"]["ready"].as_bool(),
             p["status"]["verification"].as_str(),
@@ -1756,7 +1911,11 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             (Some(false), _) => ("yellow", "AC is not ready"),
             _ => ("grey", "AC awaits checks"),
         }
-    } else if o.kind == "requirement" {
+    } else if schema(w)
+        .types
+        .get(&o.kind)
+        .is_some_and(|t| t.role == "requirement")
+    {
         if p["summary"]["acs"]
             .as_object()
             .is_some_and(|acs| acs.values().any(|a| a["verification"] == "fail"))
@@ -1773,9 +1932,16 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         } else {
             ("grey", "REQ awaits checks")
         }
-    } else if o.kind == "task" || w.task_process.contains_key(key) {
+    } else if schema(w)
+        .types
+        .get(&o.kind)
+        .is_some_and(|t| t.role == "task")
+    {
         match p["status"].as_str() {
-            Some("done") => ("grey", "Task completed"),
+            Some("done") if p["verification"] == "pass" => {
+                ("green", "Work complete · Checks passed")
+            }
+            Some("done") => ("grey", "Work complete · Unverified"),
             Some("retired") => ("grey", "Task retired"),
             Some("in_progress") => ("yellow", "Task in progress"),
             _ => ("grey", "Task open"),

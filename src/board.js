@@ -417,7 +417,7 @@ async function renderObjectTree(){
   const intro=E('div',undefined,'tree-intro');intro.append(E('h1',data.state.title),E('p','Open an object to read its details and children.','hint'));
   if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
   root.append(intro);
-  const contents=E('div');contents.hidden=true;
+  const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
   commonObjectFilters(root,contents);root.append(contents);
   for(const kind of inboxKinds().filter(kind=>data.objectTypes[kind].root))commonNotes(root,undefined,kind);
   rootCollectionTabs(root);
@@ -504,6 +504,7 @@ function fillCommonObject(body,detail){
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current verification revision.','dependency-review'));
   body.append(E('p','Revision '+r.revision+' · Owner: '+personLabel(d.owner||'Unassigned'),'node-meta'));
+  if(detail.process?.verification)body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
   if(detail.process?.status)body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   for(const [key,value] of Object.entries(d)){

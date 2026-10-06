@@ -239,10 +239,7 @@ pub fn save(
     commands::nonempty(string("title")?)?;
     commands::nonempty(string("contract")?)?;
     let purpose = string("purpose")?.to_owned();
-    ensure!(
-        ["implementation", "manual", "decision"].contains(&purpose.as_str()),
-        "unknown task purpose"
-    );
+    ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
     let kind = key.split_once(':').context("Task address needs a type")?.0;
     let rules = objects::schema(w)
         .types
@@ -275,7 +272,10 @@ pub fn save(
     for field in data.as_object().context("data must be an object")?.keys() {
         ensure!(
             ["title", "owner", "contract", "purpose"].contains(&field.as_str())
-                || w.schema_migrated && rules.references.contains_key(field)
+                || w.schema_migrated && !objects::process_field(field) && field != "projects"
+                || w.schema_migrated
+                    && rules.references.contains_key(field)
+                    && !objects::process_field(field)
                 || field == "projects"
                     && (!w.schema_migrated || data[field].as_array().is_some_and(Vec::is_empty)),
             "unknown Task document field {field}; use process commands for evidence"

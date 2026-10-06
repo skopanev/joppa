@@ -203,6 +203,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
         assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 3
+        # [mcp-schema-objects-ac2] Process reads retain workspace authorization.
+        assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
         with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
             assert response.status == 200 and 'Schema revision' in response.read().decode()
@@ -357,6 +359,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'finish','req':'key','revision':1,'run':'manual1'})
         ok({'op':'accept','req':'key','revision':1,'run':'manual1'})
         assert request('/api/workspaces/'+ws)[1]['summary']['key']['accepted'] is True
+        # [mcp-schema-objects-ac3] Read only the selected current verification record.
+        process = request('/api/workspaces/'+ws+'/board?level=process&id=ac:key-rights')[1]
+        assert process['req'] == 'key' and process['revision'] == 1
+        assert set(process['runs']) == {'manual1'}
+        assert process['criteria'][0]['address'] == 'ac:key-rights'
+        assert process['result_dates']['manual1']['manual-key-rights']
+        assert 'state' not in process and 'history' not in process
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v1"}', text=True, capture_output=True)
         assert gate.returncode == 0, gate.stderr
         gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)

@@ -42,6 +42,8 @@ fn configured() -> World {
                 index: None,
                 references: Default::default(),
                 parent_decision: false,
+                inbox: None,
+                launch_blocker: None,
                 color: None,
                 title: kind.into(),
                 role: role.into(),
@@ -395,4 +397,18 @@ fn schema_selects_completion_or_test_evidence_as_the_parent_gate() {
     );
     w.run("verified-parent", "pass");
     action(&mut w, "agent", "task:verified", "claim_task", json!({}));
+}
+
+#[test]
+fn custom_purpose_can_be_saved_and_claimed_without_changing_completion_rules() {
+    let mut w = configured();
+    let mut data = contract("Document the release");
+    data["purpose"] = json!("documentation");
+    save(&mut w, "work:custom", Some("spec:root"), data);
+    action(&mut w, "agent", "work:custom", "claim_task", json!({}));
+    assert_eq!(
+        objects::process(&w.state, "work:custom")["status"],
+        "in_progress"
+    );
+    assert_eq!(w.state.task_process["work:custom"].purpose, "documentation");
 }

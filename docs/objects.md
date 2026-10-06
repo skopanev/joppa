@@ -17,6 +17,10 @@ A stale write fails. Identical retries use the same `request_id` and return the 
 
 `data`, `parent` and `links` replace the current document fields.
 Read the document before you change them. Keep fields that you do not change.
+Ordinary document fields can contain additional text, numbers, lists or maps after the schema migration.
+Process commands preserve those fields. A document replacement removes additional fields that you omit.
+Process evidence stays separate. Use process commands to claim work, record results or accept a requirement.
+
 Comments and attachments remain on the object's address.
 They do not replace the document or its test evidence.
 
@@ -84,7 +88,7 @@ A link does not change tree parentage.
 - `blocking: true` requires that dependency before work can start.
 
 A blocking target can have any configured type.
-It needs completion evidence from its semantic role: a verified criterion, accepted requirement or completed active Task.
+It needs completion evidence from its semantic role: a verified criterion, a requirement whose current checks pass, or a completed active Task.
 Document text and input processing do not supply verification evidence.
 Blocking cycles include inherited parent dependencies and are rejected.
 Dependencies can cross REQ and Domain boundaries inside the workspace.
@@ -188,21 +192,21 @@ Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the c
 
 ## Note processing and type colors
 
-Notes hold incoming information. Missing `data.status` means `unprocessed`.
-Use `set_note_status` with `target`, the Note `revision`, `status` and `reason`.
+Set `inbox: true` on any schema type to hold incoming information. Missing `data.status` means `unprocessed`.
+Use `set_note_status` with `target`, the object `revision`, `status` and `reason`.
 The status is `unprocessed` or `processed`. The server creates the next object revision.
 This command preserves the complete source data, parent and links.
-A change to source fields reopens a processed Note, even when a client sends `processed`.
+A change to source fields reopens a processed input, even when a client sends `processed`.
 Owner changes and link changes do not reopen it. Comments and files remain separate annotations.
 Use `save_object` for a complete document replacement. Read and preserve its existing fields first.
 
-The Notes section shows unprocessed Notes by default. Select All to include processed Notes.
+Each input collection shows unprocessed objects by default. Select All to include processed Notes.
 Related notes appear under linked objects. Links can originate from either object.
 Processing does not create links or imply that a requirement passes verification.
 Use a reason to record a review that needs no product change.
 
-Use `joppa_objects` with `kind: "note"`, `parent: "*"` and `note_status: "unprocessed"` to read incoming work.
-Omit `note_status` to read all Notes. Use `related_to: "kind:id"` to read objects linked to that object.
+Use `joppa_objects` with the configured input `kind`, `parent: "*"` and `note_status: "unprocessed"` to read incoming work.
+Omit `note_status` to read all input objects. Use `related_to: "kind:id"` to read objects linked to that object.
 Lists return `note_status` without source bodies or revision history.
 
 Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presentation.
@@ -266,3 +270,17 @@ The default recipe enables it for Tasks under acceptance criteria.
 Existing workspaces receive these settings once through a server migration.
 That migration creates a schema revision. It does not rewrite object history.
 Type titles and colors remain workspace settings. For example, the `note` type can display the title `Input`.
+
+Set `launch_blocker: true` on a type to use its `before_launch` entries as launch conditions.
+Current check evidence and owner acceptance must cover each selected entry.
+Use `launch_blocker: false` to disable this behavior. Earlier schemas preserve their previous launch rules.
+
+A task purpose can be any nonempty label. The `decision` label retains its configured decision behavior.
+
+## Work and verification status
+
+Work status and verification status are separate. Completed work remains `done` when its evidence becomes invalid.
+Verification uses `pass`, `fail` and `unverified`. A completed Task passes only when its current parent evidence passes.
+A blocking dependency on a requirement waits for its current checks to pass. Owner acceptance remains separate.
+If that requirement loses its passing checks, dependent Tasks cannot start. Completed dependent Tasks show `unverified`.
+The system preserves completion results and earlier evidence. Ordinary `related` links do not block work.

@@ -50,6 +50,8 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
                 index: None,
                 references: Default::default(),
                 parent_decision: false,
+                inbox: None,
+                launch_blocker: None,
                 color: None,
                 title: kind.into(),
                 role: role.into(),

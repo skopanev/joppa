@@ -105,10 +105,7 @@ pub(super) fn validate_selection<'a>(
         );
     }
     if let Some(purpose) = purpose {
-        ensure!(
-            ["implementation", "manual", "decision"].contains(&purpose),
-            "unknown task purpose"
-        );
+        ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
     }
     priorities
         .iter()

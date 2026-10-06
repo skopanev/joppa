@@ -571,7 +571,10 @@ pub(crate) fn apply_inner(
                 .objects
                 .get(key)
                 .ok_or_else(|| anyhow::anyhow!("unknown Note"))?;
-            ensure!(crate::objects::schema(w).types.get(&note.kind).is_some_and(|t| t.inbox), "set_note_status requires an inbox type");
+            ensure!(
+                crate::objects::input_type(w, &note.kind),
+                "set_note_status requires an inbox type"
+            );
             ensure!(
                 ["unprocessed", "processed"].contains(&status.as_str()),
                 "unknown Note status"

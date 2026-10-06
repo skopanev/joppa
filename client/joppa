@@ -143,7 +143,7 @@ def main():
     common(next_task, write=True)
     next_task.add_argument("--dry-run", action="store_true", help="preview the next Task without claiming it")
     next_task.add_argument("--project")
-    next_task.add_argument("--purpose", choices=["implementation", "manual", "decision"])
+    next_task.add_argument("--purpose")
     next_task.add_argument("--priority", action="append", default=[], metavar="KIND:ID",
                            help="ordered preferred domain, capability, requirement, ac, task, project or consumer; repeat")
     release = actions.add_parser("release", help="return unfinished work to the queue")

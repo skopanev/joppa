@@ -239,22 +239,9 @@ pub(super) async fn project(
         );
     }
     let summary = summaries(state);
-    let configured = state.requirements.values().any(|q| {
-        q.revisions
-            .last()
-            .is_some_and(|r| r.acs.iter().any(|a| a.before_launch))
-    });
-    let mut blockers = vec![];
-    for (id, q) in &state.requirements {
-        let r = q.revisions.last().expect("requirement has a revision");
-        if summary[id]["accepted"] != true {
-            for a in r.acs.iter().filter(|a| a.before_launch) {
-                blockers.push(json!({"req":id,"revision":r.number,"ac":a.id}));
-            }
-        }
-    }
-    let blocker_count = blockers.len();
-    let launch = json!({"ready":configured && blockers.is_empty(),"configured":configured,"blockers":blockers});
+    let launch = crate::objects::launch_summary(state);
+    let configured = &launch["configured"];
+    let blocker_count = &launch["blocker_count"];
     let object_types = crate::objects::schema(state).types;
     let defaults = crate::objects::defaults();
     let custom_tree = object_types.len() != defaults.len()
@@ -420,7 +407,7 @@ pub async fn board_read(
             let key = id.context("process object address required")?;
             ensure!(revision.is_none(), "read document history through objects");
             let row = conn.query_opt(
-                "WITH RECURSIVE chain AS (SELECT o.address,o.parent,o.process,ARRAY[o.address] AS seen FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2) UNION ALL SELECT o.address,o.parent,o.process,c.seen||o.address FROM chain c JOIN joppa.objects o ON o.workspace=$1 AND o.address=c.parent WHERE NOT o.address=ANY(c.seen)) SELECT address,process->>'req' FROM chain WHERE process->>'req' IS NOT NULL ORDER BY cardinality(seen) DESC LIMIT 1",
+                "WITH RECURSIVE chain AS (SELECT o.address,o.parent,o.process,ARRAY[o.address] AS seen FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2) UNION ALL SELECT o.address,o.parent,o.process,c.seen||o.address FROM chain c JOIN joppa.objects o ON o.workspace=$1 AND o.address=c.parent WHERE NOT o.address=ANY(c.seen)) SELECT address,process->>'req' FROM chain WHERE process->>'req' IS NOT NULL ORDER BY cardinality(seen) ASC LIMIT 1",
                 &[&workspace,&key],
             ).await?.context("no verification context")?;
             let context: String = row.get(0);
@@ -438,8 +425,12 @@ pub async fn board_read(
             ).await? {
                 criteria.push(json!({"address":row.get::<_,String>(0),"id":row.get::<_,String>(1),"title":row.get::<_,String>(2),"signal":parsed(&row,3)?}));
             }
+            let number = current["number"]
+                .as_u64()
+                .context("verification record has no revision")?
+                .to_string();
             let mut result_dates = json!({});
-            for event in conn.query("SELECT command->>'run',command->'evidence'->>'check',recorded_at::text FROM joppa.events WHERE workspace=$1 AND command->>'req'=$2 AND command->>'revision'=$3 AND command->>'op'='result' ORDER BY position", &[&workspace,&req,&current["number"].to_string()]).await? {
+            for event in conn.query("SELECT command->>'run',command->'evidence'->>'check',recorded_at::text FROM joppa.events WHERE workspace=$1 AND command->>'req'=$2 AND command->>'revision'=$3 AND command->>'op'='result' ORDER BY position", &[&workspace,&req,&number]).await? {
                 let run: String = event.get(0);
                 let check: String = event.get(1);
                 result_dates[&run][&check] = json!(event.get::<_,String>(2));

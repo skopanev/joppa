@@ -365,27 +365,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             }
         }
     };
-    let configured = state.requirements.values().any(|q| {
-        q.revisions
-            .last()
-            .unwrap()
-            .acs
-            .iter()
-            .any(|a| a.before_launch)
-    });
-    let launch_blockers: Vec<_> = state
-        .requirements
-        .iter()
-        .flat_map(|(id, q)| {
-            let r = q.revisions.last().unwrap();
-            let accepted = summaries[id]["accepted"] == true;
-            r.acs
-                .iter()
-                .filter(move |a| a.before_launch && !accepted)
-                .map(move |a| json!({"req": id, "revision": r.number, "ac": a.id}))
-        })
-        .collect();
-    let launch = json!({"ready": configured && launch_blockers.is_empty(), "configured": configured, "blockers": launch_blockers, "meaning": "Only explicitly marked before_launch ACs are evaluated; this is not a deployment command."});
+    let launch = crate::objects::launch_summary(&state);
     let mut out = json!({
         "workspace": state.workspace_id.as_deref().unwrap_or(workspace),
         "system_ids": system_ids,
@@ -575,11 +555,9 @@ pub fn gate(card: &Value, subject: &std::collections::BTreeMap<String, String>) 
         "launch conditions are absent or not accepted"
     );
     let state: Workspace = serde_json::from_value(card["state"].clone())?;
-    for q in state.requirements.values() {
-        let r = q.revisions.last().unwrap();
-        if !r.acs.iter().any(|a| a.before_launch) {
-            continue;
-        }
+    for key in crate::objects::launch_objects(&state) {
+        let (_, r) = crate::objects::verification_context(&state, key)
+            .context("launch condition has no verification context")?;
         let (_, run) = checks::latest(r).ok_or_else(|| anyhow::anyhow!("no verified subject"))?;
         ensure!(
             run.subject

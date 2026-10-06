@@ -11,7 +11,7 @@ const style=readFileSync(path.join(root,'src/board.css'),'utf8');
 const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',style)
   .replace('/* BOARD_SCRIPT */',source)
-  .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot)+';':'');
+  .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
 
 const ATTACK='</script><script>window.attacked=true</script>';
 const types={
@@ -69,7 +69,7 @@ try{
   let signedIn=false;const methods=new Set();
   await page.route('http://joppa.test/**',async route=>{
     const url=new URL(route.request().url());
-    methods.add(route.request().method());
+    if(url.pathname.startsWith('/api/workspaces/'))methods.add(route.request().method());
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:page_html()});
     if(url.pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg/>'});
     if(url.pathname==='/auth/login')return route.fulfill({json:{verification_url:'http://joppa.test/guide',expires_in:300}});
@@ -181,6 +181,62 @@ try{
   assert.deepEqual(offlineErrors,[],'the snapshot renders without errors');
 
   assert.deepEqual(errors,[],'no page errors');
+  if(process.env.JOPPA_TEST_URL)await verifyRealServer(browser);
   console.log('Browser: sign in, read-only access, escaping, verification tones, attachments, mobile and snapshot');
 }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+async function verifyRealServer(browser){
+  const base=process.env.JOPPA_TEST_URL, workspace=process.env.JOPPA_TEST_WORKSPACE;
+  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const requests=[];
+  await page.route('**/api/**',async route=>{
+    assert.equal(route.request().method(),'GET','the real portal only reads product data');
+    requests.push(new URL(route.request().url()));
+    await route.continue({headers:{...route.request().headers(),authorization:'Bearer '+process.env.JOPPA_TEST_TOKEN}});
+  });
+  await page.goto(base+'/#token='+encodeURIComponent(process.env.JOPPA_TEST_TOKEN));
+  await page.locator('#workspaces option[value="'+workspace+'"]').waitFor({state:'attached'});
+  await page.locator('#workspaces').selectOption(workspace);
+  await page.getByRole('tab',{name:'Domain',exact:true}).click();
+  const card=address=>page.locator('[data-object-address="'+address+'"]');
+  async function open(address){const item=card(address);await item.waitFor();await item.locator(':scope > summary').click();await item.locator(':scope > .object-body > .object-children').waitFor();return item;}
+  const domain=await open('domain:security');
+  await open('capability:restrict');
+  const req=await open('requirement:key');
+  await req.getByText('Updated wording',{exact:true}).waitFor();
+  await req.getByText('Agent note',{exact:true}).waitFor();
+  assert(!requests.some(url=>url.searchParams.has('revision')),'expansion does not read history');
+  await req.getByRole('button',{name:'Checks',exact:true}).first().click();
+  await req.locator(':scope > .object-body > .verification-record').waitFor();
+  assert(requests.some(url=>url.searchParams.get('level')==='process'&&url.searchParams.get('id')==='requirement:key'));
+  await req.locator(':scope > summary .history-button').click();
+  const history=page.getByRole('dialog',{name:'Ключ до запуска',exact:true});
+  await history.getByRole('combobox',{name:'Object revision'}).selectOption('1');
+  await history.getByText(ATTACK,{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.attacked),undefined);
+  await history.getByRole('button',{name:'Close',exact:true}).click();
+  const before=requests.filter(url=>url.searchParams.get('address')==='domain:security').length;
+  await domain.locator(':scope > summary').click();
+  await domain.locator(':scope > summary').click();
+  assert.equal(requests.filter(url=>url.searchParams.get('address')==='domain:security').length,before,'reopening uses the loaded card');
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'the real cards fit the mobile screen');
+  const offline=await browser.newPage();
+  const offlineErrors=[];offline.on('pageerror',error=>offlineErrors.push(error.message));
+  let network=0;
+  await offline.route('**/api/**',route=>{network++;return route.abort();});
+  await offline.goto('file://'+process.env.JOPPA_TEST_SNAPSHOT);
+  await offline.getByRole('tab',{name:'Domain',exact:true}).click();
+  for(const address of ['domain:security','capability:restrict','requirement:key']){
+    const item=offline.locator('[data-object-address="'+address+'"]');
+    await item.waitFor();await item.locator(':scope > summary').click();
+    await item.locator(':scope > .object-body > .object-children').waitFor();
+  }
+  await offline.getByText(ATTACK,{exact:true}).waitFor();
+  assert.equal(await offline.evaluate(()=>window.attacked),undefined);
+  assert.equal(network,0,'the real CLI snapshot uses no API requests');
+  assert.deepEqual(errors,[]);assert.deepEqual(offlineErrors,[]);
+  await offline.close();await page.close();
+}
