@@ -12,7 +12,7 @@ revision.acs.push({id:'c',text:'A returning customer can use an existing purchas
 const responses={
   '/api/me':{actor:'owner',email:'owner@example.test'},
   '/api/workspaces':[{id:'w',title:'Demo'}],
-  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},counts:{consumers:1}},
+  '/api/workspaces/w/board':{workspace:'w',position:4,lazy:true,state:{title:'Demo',members:{owner:'human'},domains:{d:{title:'Accounts',owner:'owner',description:'',confirmed:true,archived:false}},tree_order:{domain:['d']},capabilities:{},requirements:{},consumers:{},intake:{},notes:{},projects:{}},signals:{domains:{d:{tone:'grey',label:'No capabilities'}},capabilities:{},requirements:{}},summary:{},history:[],launch:{configured:false,ready:false,blockers:[]},system_ids:{domain:{},capability:{},requirement:{},ac:{},consumer:{}},member_labels:{},object_types:{consumer:{title:'Consumer',role:'document',color:'#247eab'},note:{title:'Note',role:'document',color:'#7664aa'}},counts:{consumers:1}},
   '/api/workspaces/w/board?level=domain&id=d':{capabilities:{c:{title:'Sign in',domain:'d',owner:'owner',description:'',confirmed:true},c2:{title:'Manage account',domain:'d',owner:'owner',description:'',confirmed:true},c3:{title:'Recover access',domain:'d',owner:'owner',description:'',confirmed:true}},signals:{c:{tone:'grey',label:'No requirements'},c2:{tone:'grey',label:'No requirements'},c3:{tone:'grey',label:'No requirements'}},order:['c','c2','c3'],system_ids:{}},
   '/api/workspaces/w/board?level=capability&id=c':{requirements:{r:{capability:'c',revisions:[{number:1,title:revision.title,body:revision.body}],revision_count:1}},signals:{r:{tone:'yellow',label:'Waiting for decision',status:'waiting'}},order:['r'],system_ids:{}},
   '/api/workspaces/w/board?level=requirement&id=r':{requirement:{capability:'c',revisions:[revision],comments:{}},summary:{acs:{a:{ready:false,verification:'n/a'}},ready_for_acceptance:false,accepted:false},consumers:{buyer:{title:'Buyer',description:'Pays for access',owner:'owner'}},notes:{},projects:{},status_events:[{position:4,actor:'owner',recorded_at:'2026-09-25 12:00:00+00',command:{op:'revise',req:'r',expected_revision:0,acs:[{id:'a',text:'Sign-in works'}]}}],system_ids:{ac:{}}},
@@ -31,12 +31,21 @@ const responses={
       if(pathname==='/')return route.fulfill({contentType:'text/html',body:html});
       if(pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg"/>'});
       seen.push(pathname);
+      assert.equal(route.request().method(),'GET','the board reads data without changing objects');
+      if(pathname.startsWith('/api/workspaces/w/objects?')){
+        const query=new URL(route.request().url()).searchParams;
+        const value=query.has('address')?{address:'consumer:buyer',kind:'consumer',id:'buyer',current_revision:1,
+          document:{revision:1,data:{title:'Buyer',owner:'owner',description:'Pays for access'}},links:[],incoming:[],annotations:{}}:{items:[],next_cursor:null};
+        return route.fulfill({json:value});
+      }
       if(pathname.includes('level=domain'))await new Promise(resolve=>setTimeout(resolve,180));
       return route.fulfill({status:responses[pathname]===undefined?404:200,json:responses[pathname]||{error:'Unknown path'}});
     });
     await page.goto('http://joppa.test/');
     const domain=page.locator('[data-domain="d"]');await domain.waitFor();
     await page.evaluate(()=>window.initialIntro=document.querySelector('.tree-intro'));
+    const style=await page.locator('#workspaces').evaluate(e=>{const s=getComputedStyle(e);return [s.height,s.fontSize,s.fontWeight,s.borderRadius];});
+    for(const trigger of await page.locator('.filter-select').all())assert.deepEqual(await trigger.evaluate(e=>{const s=getComputedStyle(e);return [s.height,s.fontSize,s.fontWeight,s.borderRadius];}),style,'filters use the workspace selection style');
     assert.equal(await page.locator('[data-capability]').count(),0);
     assert.equal(await page.locator('[data-requirement]').count(),0);
     assert.deepEqual(seen,['/api/me','/api/workspaces','/api/workspaces/w/board']);
@@ -95,9 +104,32 @@ const responses={
     }),{requirement:'yellow',ac:'yellow',failedLabel:'Checks failed · newer run in progress'});
     assert.equal(await req.locator('.requirement-body').count(),0);
     const consumers=page.locator('.consumer-section');
-    assert.equal(await consumers.evaluate(e=>getComputedStyle(e.querySelector('summary')).backgroundColor),'rgb(220, 239, 250)');
+    assert.equal(await consumers.evaluate(e=>e.style.getPropertyValue('--object-color')),'#247eab');
     await consumers.locator('summary').click();
     await consumers.getByText('Buyer').waitFor();
+    const buyer=consumers.locator('[data-object-address="consumer:buyer"]');
+    assert.equal(await buyer.evaluate(e=>e.open),false,'a consumer starts closed like a domain');
+    assert(!seen.some(url=>url.includes('address=consumer')),'the collection reads only summaries');
+    await buyer.locator(':scope > summary').click();
+    await buyer.getByText('Pays for access').waitFor();
+    await page.waitForFunction(()=>document.getAnimations().length===0);
+    await buyer.locator(':scope > summary').click();
+    await page.waitForFunction(()=>document.getAnimations().length===0);
+    await buyer.locator(':scope > summary').click();
+    assert.equal(seen.filter(url=>url.includes('address=consumer')).length,1,'a consumer reuses its loaded details');
+    const related=buyer.locator('.note-section');
+    await related.locator(':scope > summary').click();
+    await page.waitForFunction(()=>document.querySelector('[data-object-address="consumer:buyer"] .note-section').classList.contains('empty-notes'));
+    assert.equal(await related.evaluate(e=>e.open),false,'an empty related Notes section stays closed');
+    await related.locator(':scope > summary').click();
+    assert.equal(await related.evaluate(e=>e.open),false);
+    const inputs=page.locator('#tree > .note-section');
+    await inputs.locator(':scope > summary').click();
+    await page.waitForFunction(()=>document.querySelector('#tree > .note-section').classList.contains('empty-notes'));
+    assert.equal(await inputs.evaluate(e=>e.open),false,'an empty Notes queue stays closed');
+    await inputs.getByLabel('All notes').check();
+    await page.waitForFunction(()=>document.querySelector('#tree > .note-section').classList.contains('empty-notes')&&!document.querySelector('#tree > .note-section .object-loading'));
+    assert.equal(await inputs.evaluate(e=>e.open),false);
     assert.equal(await page.evaluate(()=>document.querySelector('.tree-intro')===window.initialIntro),true);
     assert.equal(await page.locator('.intake-section').count(),0);
     assert(!seen.some(path=>path.includes('level=intake')));

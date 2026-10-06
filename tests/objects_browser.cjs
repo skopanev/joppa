@@ -27,6 +27,7 @@ const documentReads=seen.filter(url=>url.includes('address=')).length;await page
 await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Note and Consumer cards fit mobile');await page.screenshot({path:'/tmp/joppa-note-queue-mobile.png',fullPage:true});await page.setViewportSize({width:1280,height:900});
 await page.getByRole('link',{name:'Workspace tree'}).click();await page.getByRole('heading',{name:'Initiative',exact:true}).waitFor();assert.equal(await page.locator('.type[data-kind="note"]').evaluate(e=>e.style.getPropertyValue('--object-color')),'#ad5c27');
 assert.equal(await page.locator('button').count(),0,'schema page has no write control');assert.equal(await page.getByLabel('Workspace',{exact:true}).inputValue(),'w');assert.equal(await page.getByLabel('Schema revision').inputValue(),'1');
+for(const control of await page.locator('select').all())assert.deepEqual(await control.evaluate(e=>{const s=getComputedStyle(e);return [s.height,s.fontSize,s.fontWeight,s.borderRadius];}),['44px','16px','650','5px'],'the schema selectors share the workspace selection style');
 assert.equal(await page.locator('.type').count(),Object.keys(schema.schema.types).length+1,'each type appears once, with Workspace');
 assert.equal(await page.locator('.schema-edge').count(),8,'all explicit root, parent and self relations have lines');
 for(const [source,target] of [['initiative','requirement'],['workstream','requirement'],['requirement','ac'],['ac','task'],['note','note']]){

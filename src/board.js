@@ -90,7 +90,7 @@ function closedBranchHeight(node){
 }
 function enableBranchMotion(node){
   node.querySelector(':scope > summary').addEventListener('click',event=>{
-    if(event.defaultPrevented||event.target.closest('button,a,input,select,textarea'))return;
+    if(event.defaultPrevented||event.target.closest('button,a,input,label,select,textarea'))return;
     event.preventDefault();
     const opening=!node.open||node.classList.contains('branch-closing');
     const from=node.getBoundingClientRect().height;
@@ -360,8 +360,9 @@ function filterPicker(kind,label,caption,options,value,change){
   const mark=E('span',kind==='domain'?'◈':kind==='person'?'◎':'●','picker-mark');mark.setAttribute('aria-hidden','true');
   if(kind==='status')mark.className='picker-mark '+value;
   const text=E('span',undefined,'picker-text'),selected=E('span',options.find(o=>o.id===value)?.title,'picker-value');
-  text.append(E('small',caption),selected);
-  const chevron=E('span','⌄','picker-chevron');chevron.setAttribute('aria-hidden','true');trigger.append(mark,text,chevron);host.append(trigger);
+  text.append(selected);
+  const captionLabel=E('label',caption,'filter-caption');captionLabel.htmlFor=trigger.id;
+  const chevron=E('span','⌄','picker-chevron');chevron.setAttribute('aria-hidden','true');trigger.append(mark,text,chevron);host.append(captionLabel,trigger);
   function open(last=false){
     closeFilterMenu();
     const menu=E('div',undefined,'filter-menu');menu.id=kind+'-options';menu.setAttribute('role','listbox');menu.setAttribute('aria-label',label);
@@ -607,13 +608,8 @@ function consumers(root){
 function fillConsumers(section){
   section.querySelectorAll(':scope > :not(summary)').forEach(node=>node.remove());
   for(const [id,consumer] of Object.entries(data.state.consumers||{})){
-    const item=E('article',undefined,'detail-entry consumer-card');applyObjectColor(item,'consumer');
-    const heading=E('h3',undefined,'consumer-title');
-    heading.append(E('span',consumer.title),itemActions('consumer',id,consumer.title));
-    item.append(heading);
-    cardFact(item,'Owner',personLabel(consumer.owner));
-    if(consumer.description)item.append(E('p',consumer.description));commonNotes(item,'consumer:'+id);
-    section.append(item);
+    section.append(commonObjectCard({address:'consumer:'+id,kind:'consumer',title:consumer.title,
+      item_id:data.system_ids.consumer?.[id],work_ready:true}));
   }
 }
 function requirementDetails(root, selected, revisionNumber=null) {
@@ -1262,24 +1258,37 @@ function commonNotes(root,relatedTo){
   const title=relatedTo?'Related notes':data.objectTypes?.note?.title&&data.objectTypes.note.title!=='Note'?data.objectTypes.note.title:'Notes';
   const section=details(root,title);section.classList.add('note-section');applyObjectColor(section,'note');
   if(!relatedTo)collectionHeading(section,title,'Information to review and apply.','Inputs');
-  enableBranchMotion(section);
+  const summary=section.querySelector(':scope > summary');
+  if(!relatedTo)section.querySelector('.collection-description').textContent='Unprocessed information to review and apply. Read only.';
+  else summary.append(E('small','Read only','note-readonly'));
   const body=E('div',undefined,'note-section-body');section.append(body);
-  let loaded=false,request=0;
+  let loaded=false,loading=false,request=0;
   let all;
   if(!relatedTo){
     const controls=E('div',undefined,'note-controls');
-    controls.append(E('p','Unprocessed by default.','hint'));
-    const label=E('label',undefined,'note-all');all=E('input');all.type='checkbox';all.setAttribute('aria-label','All notes');label.append(all,E('span','All'));controls.append(label);body.append(controls);
+    const label=E('label',undefined,'note-all');all=E('input');all.type='checkbox';all.setAttribute('aria-label','All notes');label.append(all,E('span','All'));controls.append(label);summary.append(controls);
   }
   const rows=E('div',undefined,'note-items');body.append(rows);
   const loadNotes=async()=>{
-    const mine=++request;loaded=true;
+    const mine=++request;loaded=false;loading=true;
     const holder=E('div');holder.append(E('p','Loading notes…','object-loading hint'));resizeBranch(section,()=>rows.replaceChildren(holder));
-    try{await appendObjectChildren(holder,'*','note',relatedTo?{related_to:relatedTo}:all.checked?{}:{note_status:'unprocessed'});if(mine===request&&section.isConnected)resizeBranch(section,()=>{});}
+    try{await appendObjectChildren(holder,'*','note',relatedTo?{related_to:relatedTo}:all.checked?{}:{note_status:'unprocessed'});if(mine===request&&section.isConnected){
+      loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);
+      summary.title=empty?(relatedTo?'No related notes.':all.checked?'No notes.':'No unprocessed notes.'):'Read notes';
+      resizeBranch(section,()=>{section.open=!empty;});
+    }}
     catch(e){if(mine===request){loaded=false;holder.replaceChildren();notify(e);}}
+    finally{if(mine===request)loading=false;}
   };
   if(all)all.onchange=loadNotes;
-  section.addEventListener('toggle',()=>{if(section.open&&!loaded)loadNotes();});
+  summary.addEventListener('click',event=>{
+    if(event.target.closest('input,label,button,a'))return;
+    if(!loaded||section.classList.contains('empty-notes')){
+      event.preventDefault();event.stopImmediatePropagation();if(!loaded&&!loading)loadNotes();
+    }
+  });
+  enableBranchMotion(section);
+  section.addEventListener('toggle',()=>{if(section.open&&!loaded&&!loading)loadNotes();});
   return section;
 }
 function commonObjectCard(item){
