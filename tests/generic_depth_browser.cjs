@@ -72,19 +72,33 @@ try{
   // 1. The preset flag is gone: a schema with no built-in names still renders.
   await page.locator(`[data-object-address="${address(0)}"]`).waitFor();
   assert.equal(await page.locator('.tree-domain').count(),0,
-    'no native renderer leaks into a configured schema');
+    '[uniform-object-cards-ac1] one card component serves a schema with no built-in type name');
 
   // 2. Six configured levels open one inside the other.
   for(let i=0;i<chain.length;i++){
     const card=page.locator(`[data-object-address="${address(i)}"]`);
     await card.waitFor();
     assert.match(await card.locator(':scope > summary').innerText(),new RegExp(chain[i][1],'i'),
-      `level ${i+1} shows its schema title`);
+      `[uniform-object-cards-ac1] level ${i+1} takes its title from the schema`);
     if(i<chain.length-1)await card.locator(':scope > summary').click();
   }
 
   // 3. A link crosses two roots and keeps its own title.
+  // Root collections come from the schema, in its order.
+  assert.deepEqual(await page.getByRole('tab').allTextContents(),['Portfolio','Intake'],
+    '[uniform-object-cards-ac2] root collection tabs follow the schema order and titles');
   await page.locator('#tab-intake').click();
+  // A collection header is flat: only the cards inside it expand.
+  assert.equal(await page.locator('#collection-intake > summary').count(),0,
+    '[uniform-object-cards-ac3] the collection header adds no expansion control');
+  assert.equal(await page.locator('#collection-intake > header').count(),1,
+    '[uniform-object-cards-ac3] the collection keeps a plain header');
+  // An input list is read only: the All switch is its only control.
+  await page.locator('#collection-intake [data-object-address="intake:in-1"]').waitFor();
+  assert.equal(await page.locator('#collection-intake textarea, #collection-intake [contenteditable="true"]').count(),0,
+    '[uniform-object-cards-ac4] the input list offers no editing control');
+  assert.equal(await page.locator('#collection-intake input:not([type="checkbox"])').count(),0,
+    '[uniform-object-cards-ac4] the input list takes no typed input');
   const intake=page.locator('[data-object-address="intake:in-1"]');
   await intake.waitFor();
   await intake.locator(':scope > summary').click();
@@ -100,22 +114,42 @@ try{
   const deep=page.locator(`[data-object-address="${address(5)}"] .copy`).first();
   const before=await deep.boundingBox();
   await deep.click();
-  assert.equal(await deep.innerText(),'Copied','the label changes only after success');
-  assert.equal(await page.evaluate(()=>window.__copied),'W-ACTION-1','the common item_id is copied');
+  assert.equal(await deep.innerText(),'Copied',
+    '[copy-feedback-ac2] Copied appears only after the clipboard resolved');
+  assert.equal(await page.evaluate(()=>window.__copied),'W-ACTION-1',
+    '[copy-feedback-ac1] the shared action copies the public identifier');
   const after=await deep.boundingBox();
-  assert.equal(Math.round(before.width),Math.round(after.width),'Copied must not resize the card');
+  assert.equal(Math.round(before.width),Math.round(after.width),
+    '[copy-feedback-ac2] Copied does not move the card layout');
   const toast=page.locator('#toast');
-  assert.equal(await toast.getAttribute('role'),'status');
-  assert.equal(await toast.getAttribute('aria-live'),'polite');
   await toast.waitFor({state:'visible'});
+  assert.equal(await toast.getAttribute('role'),'status',
+    '[copy-feedback-ac3] the toast announces itself once as a status');
+  assert.equal(await toast.getAttribute('aria-live'),'polite',
+    '[copy-feedback-ac3] the toast announcement stays polite');
+  // Lower right: the box starts past the middle on both axes.
+  const view=page.viewportSize(),box=await toast.boundingBox();
+  assert.ok(box.x>view.width/2&&box.y>view.height/2,
+    '[copy-feedback-ac3] the toast sits in the lower right corner');
+  assert.equal(await toast.evaluate(e=>getComputedStyle(e).transform==='none'||getComputedStyle(e).transform.includes('matrix')),true,
+    '[copy-feedback-ac3] the toast arrives by moving, not by jumping');
+  // Three seconds of reading time, then it leaves on its own.
+  await new Promise(done=>setTimeout(done,2000));
+  assert.equal(await toast.evaluate(e=>e.classList.contains('toast-visible')),true,
+    '[copy-feedback-ac3] the toast is still readable two seconds in');
+  await page.waitForFunction(()=>!document.querySelector('#toast')?.classList.contains('toast-visible'),null,{timeout:4000});
+  assert.equal(await toast.evaluate(e=>e.classList.contains('toast-visible')),false,
+    '[copy-feedback-ac3] the toast leaves after about three seconds');
 
   // 5. A clipboard failure says so instead of claiming success.
   await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,
     value:{writeText:()=>Promise.reject(Error('denied'))}});document.execCommand=()=>false;});
   const other=page.locator(`[data-object-address="${address(0)}"] .copy`).first();
   await other.click();
-  assert.match(await toast.innerText(),/Could not copy/,'a failed copy is visible');
-  assert.notEqual(await other.innerText(),'Copied','a failed copy never claims success');
+  assert.match(await toast.innerText(),/Could not copy/,
+    '[copy-feedback-ac4] a refused clipboard reports the failure');
+  assert.notEqual(await other.innerText(),'Copied',
+    '[copy-feedback-ac4] a refused clipboard never claims success');
 
   assert.deepEqual(errors,[],'no page errors');
   console.log('generic_depth_browser: ok');

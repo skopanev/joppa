@@ -95,5 +95,40 @@ assert.equal(await page.locator('.type').count(),3,'type cycles render once per 
 assert.equal(await page.locator('.schema-edge').count(),2,'type cycles preserve both allowed parents');
 assert.equal(await page.locator('.schema-edge[data-source="@workspace"]').count(),0,'layout does not invent root permissions');
 assert.equal(await page.locator('.schema-parent-rule').count(),0,'no wildcard rule badge without wildcard parent rules');
+// Lazy object context. Each check names exactly one acceptance criterion.
+seen.length=0;
+await page.goto('http://joppa.test/');
+await page.getByRole('tab',{name:'Initiative',exact:true}).waitFor();
+const reads=()=>seen.filter(entry=>entry.includes('/objects?'));
+assert.equal(reads().filter(entry=>entry.includes('address=')).length,0,
+  '[lazy-object-context-ac1] the initial board reads no document body');
+assert.equal(seen.filter(entry=>entry.includes('history=true')).length,0,
+  '[lazy-object-context-ac1] the initial board reads no revision history');
+await page.getByRole('tab',{name:'Consumer',exact:true}).click();
+const person=page.locator('[data-object-address="consumer:person"]');
+await person.waitFor();
+seen.length=0;
+await person.locator(':scope > summary').click();
+await page.waitForFunction(()=>document.querySelector('[data-object-address="consumer:person"] .object-body')?.textContent.trim().length>0);
+assert.ok(reads().some(entry=>entry.includes('address=consumer%3Aperson')||entry.includes('address=consumer:person')),
+  '[lazy-object-context-ac2] opening an object reads its current document');
+assert.ok(reads().some(entry=>entry.includes('parent=consumer%3Aperson')||entry.includes('parent=consumer:person')),
+  '[lazy-object-context-ac2] opening an object reads its direct child metadata');
+await person.locator(':scope > summary').click();
+seen.length=0;
+await person.locator(':scope > summary').click();
+await page.waitForTimeout(250);
+assert.equal(reads().length,0,
+  '[lazy-object-context-ac3] reopening an unchanged object reuses the loaded document');
+seen.length=0;
+await person.locator(':scope > summary .history-button').click();
+const historyDialog=page.locator('.notes-dialog');
+await historyDialog.waitFor();
+assert.equal(reads().filter(entry=>entry.includes('revision=')).length,0,
+  '[lazy-object-context-ac4] the history dialog reads no earlier revision before a choice');
+await historyDialog.getByLabel('Object revision').selectOption('1');
+await page.waitForFunction(()=>true);
+assert.ok(reads().some(entry=>entry.includes('revision=1')),
+  '[lazy-object-context-ac4] an earlier revision is read only after the user selects it');
 assert.deepEqual(errors,[]);
 console.log('Common object browser checks passed');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
