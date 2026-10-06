@@ -21,6 +21,8 @@ repo=$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=normal) ]] || {
     echo 'Commit changes first: deployment ships only the clean HEAD commit.' >&2; exit 1;
 }
+commit=$(git -C "$repo" rev-parse HEAD)
+revision=$(git -C "$repo" rev-parse --short "$commit")
 for name in tokens.json login-users.json; do
     [[ -f "$config_dir/$name" ]] || { echo "Missing private config: $name" >&2; exit 1; }
 done
@@ -42,7 +44,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-git -C "$repo" archive HEAD > "$local_stage/source.tar"
+git -C "$repo" archive "$commit" > "$local_stage/source.tar"
 mkdir "$local_stage/private"
 for name in tokens.json login-users.json google-client.json access-rules.json backup.env storage.env search.env; do
     if [[ -f "$config_dir/$name" ]]; then
@@ -60,4 +62,4 @@ ssh "${ssh_args[@]}" "$target" \
     "mkdir '$remote_stage/source'; tar -xf '$remote_stage/source.tar' -C '$remote_stage/source'; bash '$remote_stage/source/server/install.sh' '$domain' '$remote_stage'"
 curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 \
     --connect-timeout 10 --max-time 15 "https://$domain/health"
-printf '\nDeployed %s at https://%s\n' "$(git -C "$repo" rev-parse --short HEAD)" "$domain"
+printf '\nDeployed %s at https://%s\n' "$revision" "$domain"

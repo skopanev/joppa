@@ -30,16 +30,23 @@ class Deployment(unittest.TestCase):
         self.log = self.root / "ssh.log"
         ssh = self.bin / "ssh"
         ssh.write_text('''#!/usr/bin/env python3
-import json, os, pathlib, sys, tarfile
+import io, json, os, pathlib, subprocess, sys, tarfile
 cmd = sys.argv[-1]
 with open(os.environ['TEST_LOG'], 'a') as f: f.write(json.dumps(cmd)+'\\n')
 if 'mktemp -d' in cmd:
     print('/root/joppa-deploy.TEST1234')
 elif cmd.startswith('tar -xzf -'):
     with tarfile.open(fileobj=sys.stdin.buffer, mode='r|gz') as archive:
-        names = [entry.name for entry in archive]
+        names = []
+        for entry in archive:
+            names.append(entry.name)
+            if entry.name == './source.tar' and os.environ.get('TEST_MOVE_HEAD'):
+                with tarfile.open(fileobj=io.BytesIO(archive.extractfile(entry).read())) as source:
+                    pathlib.Path(os.environ['TEST_PACKED_MARKER']).write_bytes(source.extractfile('commit-marker').read())
     pathlib.Path(os.environ['TEST_CONTENTS']).write_text(json.dumps(names))
 elif 'install.sh' in cmd:
+    if os.environ.get('TEST_MOVE_HEAD'):
+        subprocess.run(['git', '-C', os.environ['TEST_REPO'], 'checkout', '--detach', os.environ['TEST_MOVE_HEAD']], check=True, capture_output=True)
     sys.exit(int(os.environ.get('TEST_INSTALL_EXIT', '0')))
 ''')
         ssh.chmod(0o755)
@@ -76,10 +83,31 @@ elif 'install.sh' in cmd:
         self.assertIn("rm -rf -- '/root/joppa-deploy.TEST1234'", self.log.read_text())
 
     def test_dirty_checkout_is_rejected_before_connecting(self):
+        """[release-commit-integrity-ac1] Reject a dirty release checkout."""
         (self.repo / "private-data").write_text("must not ship")
         result = self.deploy()
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
+
+    def test_head_change_cannot_change_the_packaged_or_reported_commit(self):
+        """[release-commit-integrity-ac3] Keep the selected commit during concurrent work."""
+        marker = self.repo / 'commit-marker'
+        marker.write_text('selected commit')
+        self.git('add', '.')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'selected')
+        selected = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        short = self.git('rev-parse', '--short', selected).stdout.decode().strip()
+        marker.write_text('another commit')
+        self.git('add', '.')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'another')
+        changed = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('checkout', '--detach', selected)
+        packed = self.root / 'packed-marker'
+        result = self.deploy(TEST_MOVE_HEAD=changed, TEST_REPO=str(self.repo), TEST_PACKED_MARKER=str(packed))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(packed.read_text(), 'selected commit')
+        self.assertIn('Deployed ' + short + ' at ', result.stdout)
+        self.assertEqual(self.git('rev-parse', 'HEAD').stdout.decode().strip(), changed)
 
     def test_ssh_option_injection_is_rejected(self):
         result = self.deploy(target="-oProxyCommand=unexpected")

@@ -538,6 +538,24 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     Ok(())
 }
 pub fn snapshot(data: &Value) -> String {
+    let mut data = data.clone();
+    if let Ok(state) = serde_json::from_value::<joppa::model::Workspace>(data["state"].clone()) {
+        data["snapshot_schema"] = serde_json::json!(joppa::objects::schema(&state));
+        let mut objects = serde_json::Map::new();
+        for (key, object) in &state.objects {
+            objects.insert(key.clone(), serde_json::json!({
+                "address":key,"kind":object.kind,"id":object.id,
+                "current_revision":object.current().revision,"revision_count":object.revisions.len(),
+                "revisions":object.revisions,"signal":joppa::objects::signal(&state,key),
+                "process":joppa::objects::process(&state,key),
+                "work_ready":joppa::objects::work_ready(&state,key),
+                "review_required":!joppa::objects::review_links(&state,key).is_empty(),
+                "annotations":state.notes.get(&joppa::objects::annotation_address(&state,key)),
+                "item_id":data["system_ids"][&object.kind][&object.id],
+            }));
+        }
+        data["snapshot_objects"] = serde_json::json!(objects);
+    }
     let escaped = data
         .to_string()
         .replace('<', "\\u003c")

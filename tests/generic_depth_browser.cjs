@@ -157,7 +157,7 @@ try{
     '[copy-feedback-ac4] a refused clipboard never claims success');
   // The criterion asks for the identifier to stay available by hand, so it has
   // to be readable somewhere after the failure, not only inside the clipboard.
-  assert.ok(await page.getByText(find(address(0)).item_id,{exact:false}).count()>0,
+  assert.equal(await page.getByRole('dialog',{name:'Copy ID',exact:true}).getByLabel('ID',{exact:true}).inputValue(),find(address(0)).item_id,
     '[copy-feedback-ac4] a refused clipboard leaves the identifier readable for manual copying');
 
   assert.deepEqual(errors,[],'no page errors');

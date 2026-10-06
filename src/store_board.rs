@@ -416,6 +416,38 @@ pub async fn board_read(
                 json!({"requirement":q,"summary":parsed(&row,1)?,"consumers":parsed(&row,2)?,"notes":parsed(&row,3)?,"projects":parsed(&row,4)?,"status_events":events,"system_ids":{"ac":ids(&**conn,&workspace,"ac",&ac_ids).await?}}),
             )
         }
+        Some("process") => {
+            let key = id.context("process object address required")?;
+            ensure!(revision.is_none(), "read document history through objects");
+            let row = conn.query_opt(
+                "WITH RECURSIVE chain AS (SELECT o.address,o.parent,o.process,ARRAY[o.address] AS seen FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2) UNION ALL SELECT o.address,o.parent,o.process,c.seen||o.address FROM chain c JOIN joppa.objects o ON o.workspace=$1 AND o.address=c.parent WHERE NOT o.address=ANY(c.seen)) SELECT address,process->>'req' FROM chain WHERE process->>'req' IS NOT NULL ORDER BY cardinality(seen) DESC LIMIT 1",
+                &[&workspace,&key],
+            ).await?.context("no verification context")?;
+            let context: String = row.get(0);
+            let req: String = row.get(1);
+            let row = conn.query_one(
+                "SELECT (state->'requirements'->$2->'revisions'->-1)::text,(summary->$2)::text FROM joppa.board_cache WHERE workspace=$1",
+                &[&workspace,&req],
+            ).await?;
+            let current = parsed(&row, 0)?;
+            ensure!(!current.is_null(), "no verification record");
+            let mut criteria = Vec::new();
+            for row in conn.query(
+                "SELECT o.address,o.local_id,o.title,o.signal::text FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.present AND o.process->>'req'=$2 AND b.first_view->'object_types'->o.kind->>'role'='ac' ORDER BY o.address",
+                &[&workspace,&req],
+            ).await? {
+                criteria.push(json!({"address":row.get::<_,String>(0),"id":row.get::<_,String>(1),"title":row.get::<_,String>(2),"signal":parsed(&row,3)?}));
+            }
+            let mut result_dates = json!({});
+            for event in conn.query("SELECT command->>'run',command->'evidence'->>'check',recorded_at::text FROM joppa.events WHERE workspace=$1 AND command->>'req'=$2 AND command->>'revision'=$3 AND command->>'op'='result' ORDER BY position", &[&workspace,&req,&current["number"].to_string()]).await? {
+                let run: String = event.get(0);
+                let check: String = event.get(1);
+                result_dates[&run][&check] = json!(event.get::<_,String>(2));
+            }
+            Ok(
+                json!({"result_dates":result_dates,"address":context,"req":req,"revision":current["number"],"confirmed":current["confirmed"],"verification_scope":current["verification_scope"],"criteria":criteria,"runs":current["runs"],"issues":current["issues"],"acceptance":current["acceptance"],"summary":parsed(&row,1)?}),
+            )
+        }
         Some("consumers") => {
             let row = conn
                 .query_one(
