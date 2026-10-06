@@ -182,3 +182,26 @@ The server migrates old Tasks to independent process records once.
 Their addresses, public IDs, completion results and original revisions remain readable.
 The server resolves old `req` process addresses to the same Task record.
 Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the current queue.
+
+## Note processing and type colors
+
+Notes hold incoming information. Missing `data.status` means `unprocessed`.
+Use `set_note_status` with `target`, the Note `revision`, `status` and `reason`.
+The status is `unprocessed` or `processed`. The server creates the next object revision.
+This command preserves the complete source data, parent and links.
+A change to source fields reopens a processed Note, even when a client sends `processed`.
+Owner changes and link changes do not reopen it. Comments and files remain separate annotations.
+Use `save_object` for a complete document replacement. Read and preserve its existing fields first.
+
+The Notes section shows unprocessed Notes by default. Select All to include processed Notes.
+Related notes appear under linked objects. Links can originate from either object.
+Processing does not create links or imply that a requirement passes verification.
+Use a reason to record a review that needs no product change.
+
+Use `joppa_objects` with `kind: "note"`, `parent: "*"` and `note_status: "unprocessed"` to read incoming work.
+Omit `note_status` to read all Notes. Use `related_to: "kind:id"` to read objects linked to that object.
+Lists return `note_status` without source bodies or revision history.
+
+Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presentation.
+Colors apply to the board and schema diagram. Status circles retain their verification colors.
+Color changes create a schema revision. They do not change object parents or select a different board layout.

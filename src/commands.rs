@@ -24,6 +24,12 @@ pub enum Command {
         links: Vec<crate::objects::ObjectLink>,
         reason: String,
     },
+    SetNoteStatus {
+        target: String,
+        revision: u32,
+        status: String,
+        reason: String,
+    },
     Workspace {
         title: String,
     },
@@ -548,6 +554,36 @@ pub(crate) fn apply_inner(
         }
         Command::SaveObject { .. } => {
             crate::objects::save(w, actor, command, position, recorded_at)?;
+        }
+        Command::SetNoteStatus {
+            target,
+            revision,
+            status,
+            reason,
+        } => {
+            let key = crate::objects::resolve_address(w, target);
+            let note = w
+                .objects
+                .get(key)
+                .ok_or_else(|| anyhow::anyhow!("unknown Note"))?;
+            ensure!(note.kind == "note", "set_note_status requires a Note");
+            ensure!(
+                ["unprocessed", "processed"].contains(&status.as_str()),
+                "unknown Note status"
+            );
+            let r = note.current();
+            let mut data = r.data.clone();
+            data["status"] = serde_json::json!(status);
+            let command = Command::SaveObject {
+                kind: note.kind.clone(),
+                id: note.id.clone(),
+                revision: *revision,
+                parent: r.parent.clone(),
+                data,
+                links: r.links.clone(),
+                reason: reason.clone(),
+            };
+            crate::objects::save(w, actor, &command, position, recorded_at)?;
         }
         Command::RenameWorkspace {
             workspace_id,

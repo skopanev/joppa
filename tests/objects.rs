@@ -63,6 +63,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
     types.insert(
         "initiative".into(),
         TreeType {
+            color: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
@@ -321,6 +322,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
     types.insert(
         "initiative".into(),
         TreeType {
+            color: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
@@ -411,4 +413,60 @@ fn legacy_plans_allow_owner_review_without_a_new_scope_contract() {
     w.no("agent", review.clone());
     w.ok("owner", review);
     assert_eq!(w.summary(2)["coverage_reviewed"], true);
+}
+
+#[test]
+fn note_processing_keeps_source_and_reopens_changed_input() {
+    let mut w = World::new();
+    save(
+        &mut w,
+        "note:input",
+        None,
+        json!({"title":"Input","owner":"owner","body":"Original","custom":"Context"}),
+        vec![link("domain:d", None, false)],
+    );
+    w.ok("agent", json!({"op":"set_note_status","target":"note:input","revision":1,"status":"processed","reason":"Updated the linked domain"}));
+    let r = w.state.objects["note:input"].current();
+    assert_eq!(r.data["body"], "Original");
+    assert_eq!(r.data["custom"], "Context");
+    assert_eq!(r.links.len(), 1);
+    assert_eq!(r.data["status"], "processed");
+    w.no("agent", json!({"op":"set_note_status","target":"note:input","revision":1,"status":"unprocessed","reason":"Stale input"}));
+    save(
+        &mut w,
+        "note:input",
+        None,
+        json!({"title":"Input","owner":"owner","body":"Changed","custom":"Context","status":"processed"}),
+        vec![link("domain:d", None, false)],
+    );
+    assert_eq!(
+        w.state.objects["note:input"].current().data["status"],
+        "unprocessed"
+    );
+    assert_eq!(
+        w.state.objects["note:input"].revisions[1].data["status"],
+        "processed"
+    );
+    w.no("agent", json!({"op":"set_note_status","target":"domain:d","revision":1,"status":"processed","reason":"Wrong type"}));
+    w.no("agent", json!({"op":"set_note_status","target":"note:input","revision":3,"status":"done","reason":"Wrong status"}));
+}
+
+#[test]
+fn schema_colors_reject_css_values_and_keep_old_schema() {
+    let mut w = World::new();
+    let mut types = objects::defaults();
+    types.get_mut("note").unwrap().color = Some("#7254aB".into());
+    w.ok(
+        "agent",
+        json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Set Note color"}),
+    );
+    assert_eq!(
+        objects::schema(&w.state).types["note"].color.as_deref(),
+        Some("#7254aB")
+    );
+    for color in ["red", "#123", "#123456;display:none", "#12345z"] {
+        types.get_mut("note").unwrap().color = Some(color.into());
+        w.no("agent", json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Reject invalid color"}));
+    }
+    assert_eq!(objects::schema(&w.state).revision, 1);
 }

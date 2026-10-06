@@ -255,7 +255,21 @@ pub(super) async fn project(
     }
     let blocker_count = blockers.len();
     let launch = json!({"ready":configured && blockers.is_empty(),"configured":configured,"blockers":blockers});
-    let first_view = json!({"custom_tree":crate::objects::schema(state).types != crate::objects::defaults(),"title":&state.title,"members":&state.members,"domains":&state.domains,
+    let object_types = crate::objects::schema(state).types;
+    let defaults = crate::objects::defaults();
+    let custom_tree = object_types.len() != defaults.len()
+        || object_types.iter().any(|(kind, t)| {
+            defaults.get(kind).is_none_or(|default| {
+                (t.role.as_str(), &t.parents, t.root, &t.parent_gate)
+                    != (
+                        default.role.as_str(),
+                        &default.parents,
+                        default.root,
+                        &default.parent_gate,
+                    )
+            })
+        });
+    let first_view = json!({"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,"domains":&state.domains,
         "order":state.tree_order.get("domain").cloned().unwrap_or_default(),"signals":&domains,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),
         "counts":{"consumers":state.consumers.len()}});
@@ -326,7 +340,7 @@ pub async fn board_read(
                 "state":{"title":first["title"],"members":members,"domains":domains,"tree_order":{"domain":first["order"]},"capabilities":{},"requirements":{},"consumers":{},"intake":{},"notes":{},"projects":{}},
                 "signals":{"domains":first["signals"],"capabilities":{},"requirements":{}},"summary":{},"history":[],"member_labels":labels,
                 "launch":first["launch"],"system_ids":{"domain":ids(&**conn,&workspace,"domain",&domain_keys).await?,"capability":{},"requirement":{},"ac":{},"consumer":{}},
-                "counts":first["counts"],"custom_tree":first["custom_tree"]}),
+                "object_types":first["object_types"],"counts":first["counts"],"custom_tree":first["custom_tree"]}),
             )
         }
         Some("domain") => {

@@ -172,6 +172,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     types.insert(
         "initiative".into(),
         joppa::objects::TreeType {
+            color: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
@@ -236,5 +237,166 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             .iter()
             .any(|v| v["kind"] == "note")
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow::Result<()> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let ws = format!(
+        "note-queue-{}",
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    );
+    for (n, cmd) in setup().into_iter().enumerate() {
+        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
+    }
+    let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["note"]["color"] = json!("#7655a2");
+    types["note"]["title"] = json!("Incoming note");
+    store::execute_remote_input(&pool, &ws, "agent", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
+    let board = store::board_read(&pool, &ws, "agent", None, None, None).await?;
+    assert_eq!(board["custom_tree"], false);
+    assert_eq!(board["object_types"]["note"]["color"], "#7655a2");
+    for (id, parent, links) in [
+        (
+            "a",
+            None,
+            json!([{"target":"domain:d","relation":"related"}]),
+        ),
+        ("b", None, json!([])),
+        ("c", Some("domain:d"), json!([])),
+    ] {
+        store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","body":"Original source","custom":"Keep this"},"links":links,"reason":"Capture input"})).await?;
+    }
+    let domain = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("domain:d"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    store::execute_remote_input(&pool,&ws,"agent","domain-link",&json!({"op":"save_object","kind":"domain","id":"d","revision":domain["current_revision"],"parent":null,"data":domain["document"]["data"],"links":[{"target":"note:b","relation":"related"}],"reason":"Link the input"})).await?;
+    store::execute_remote_input(&pool,&ws,"agent","process-a",&json!({"op":"set_note_status","target":"note:a","revision":1,"status":"processed","reason":"Input reviewed"})).await?;
+    let incoming = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            parent: Some("*"),
+            note_status: Some("unprocessed"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(incoming["items"][0]["address"], "note:b");
+    assert_eq!(incoming["items"][0]["note_status"], "unprocessed");
+    let cursor = incoming["next_cursor"].as_str().unwrap();
+    let next = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            parent: Some("*"),
+            note_status: Some("unprocessed"),
+            limit: 1,
+            cursor: Some(cursor),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(next["items"][0]["address"], "note:c");
+    let related = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            related_to: Some("domain:d"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        related["items"].as_array().unwrap().len(),
+        3,
+        "both link directions and parent membership appear"
+    );
+    assert_eq!(related["items"][0]["note_status"], "processed");
+    let note = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:a"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(note["document"]["data"]["body"], "Original source");
+    assert_eq!(note["document"]["data"]["custom"], "Keep this");
+    assert_eq!(note["document"]["links"].as_array().unwrap().len(), 1);
+    let processed = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            parent: Some("*"),
+            note_status: Some("processed"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(processed["items"].as_array().unwrap().len(), 1);
+    let mut data = note["document"]["data"].clone();
+    data["body"] = json!("Changed input");
+    store::execute_remote_input(&pool,&ws,"agent","edit-a",&json!({"op":"save_object","kind":"note","id":"a","revision":2,"parent":null,"data":data,"links":note["document"]["links"],"reason":"Add source information"})).await?;
+    let incoming = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            parent: Some("*"),
+            note_status: Some("unprocessed"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(incoming["items"].as_array().unwrap().len(), 3);
+    assert!(
+        store::read_objects(
+            &pool,
+            &ws,
+            "outsider",
+            &ObjectScope {
+                kind: Some("note"),
+                parent: Some("*"),
+                related_to: Some("domain:d"),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err()
+    );
+    let note = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:a"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(note["document"]["data"]["status"], "unprocessed");
     Ok(())
 }

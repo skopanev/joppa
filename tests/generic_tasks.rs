@@ -39,6 +39,7 @@ fn configured() -> World {
         types.insert(
             kind.into(),
             TreeType {
+                color: None,
                 title: kind.into(),
                 role: role.into(),
                 root,

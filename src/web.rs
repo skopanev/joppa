@@ -228,6 +228,8 @@ struct ObjectQuery {
     history: Option<bool>,
     limit: Option<usize>,
     cursor: Option<String>,
+    note_status: Option<String>,
+    related_to: Option<String>,
 }
 async fn objects(
     State(app): State<App>,
@@ -249,6 +251,8 @@ async fn objects(
                 history: q.history.unwrap_or(false),
                 limit: q.limit.unwrap_or(50),
                 cursor: q.cursor.as_deref(),
+                note_status: q.note_status.as_deref(),
+                related_to: q.related_to.as_deref(),
             },
         )
         .await,

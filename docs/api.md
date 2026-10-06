@@ -141,6 +141,13 @@ and that AC's text, owner, dependencies and launch condition are exactly unchang
 The new revision still needs fresh checks and owner confirmation. The assessment cites
 the prior decision explicitly. Withdrawal blocks every AC assessment that cites it.
 
+## Note processing
+
+`set_note_status`: `target`, `revision`, `status` (`unprocessed` or `processed`), `reason`.
+Read the Note revision first. The command preserves its source data, parent and links.
+The server appends a document revision. Source changes return the Note to `unprocessed`.
+`joppa_objects` supports `note_status` with `kind=note`, and `related_to` for links in either direction.
+
 ## Browser authentication
 
 Joppa owns its Google OAuth client and invitation list; there is no dependency

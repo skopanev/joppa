@@ -19,6 +19,8 @@ pub struct TreeType {
     pub role: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_gate: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SchemaRevision {
@@ -93,6 +95,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         (
             kind.into(),
             TreeType {
+                color: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
                 title: title.into(),
                 role: role.into(),
@@ -115,6 +118,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         types.insert(
             kind.into(),
             TreeType {
+                color: None,
                 parent_gate: None,
                 title: title.into(),
                 role: "document".into(),
@@ -319,6 +323,12 @@ pub fn set_schema(
     for (kind, t) in types {
         commands::identifier(kind)?;
         commands::nonempty(&t.title)?;
+        ensure!(
+            t.color.as_deref().is_none_or(|color| color.len() == 7
+                && color.starts_with('#')
+                && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)),
+            "type color must use #RRGGBB"
+        );
         ensure!(
             t.parent_gate
                 .as_deref()
@@ -975,6 +985,13 @@ pub fn save(
         );
     }
     ensure!(data.is_object(), "data must be an object");
+    if kind == "note" {
+        ensure!(
+            data.get("status")
+                .is_none_or(|v| matches!(v.as_str(), Some("unprocessed" | "processed"))),
+            "Note status must be unprocessed or processed"
+        );
+    }
     commands::nonempty(&string(data, "title")?)?;
     parent_valid(&schema(w).types, w, kind, parent.as_deref())?;
     parent_cycle(w, &key, parent.as_deref())?;
@@ -1085,8 +1102,11 @@ pub fn save(
             revisions: vec![],
             parent_override: false,
         });
-    object.revisions = old.map(|o| o.revisions).unwrap_or_default();
-    let saved_data = if let Some(data) = task_data {
+    object.revisions = old
+        .as_ref()
+        .map(|o| o.revisions.clone())
+        .unwrap_or_default();
+    let mut saved_data = if let Some(data) = task_data {
         data
     } else if legacy_defaults().contains_key(kind)
         && kind != "note"
@@ -1096,6 +1116,22 @@ pub fn save(
     } else {
         data.clone()
     };
+    if kind == "note"
+        && let Some(old) = &old
+    {
+        let source = |value: &Value| {
+            let mut value = value.clone();
+            if let Some(fields) = value.as_object_mut() {
+                fields.remove("status");
+                fields.remove("owner");
+            }
+            value
+        };
+        if saved_data["status"] == "processed" && source(&old.current().data) != source(&saved_data)
+        {
+            saved_data["status"] = json!("unprocessed");
+        }
+    }
     object.parent_override = document_rows(&candidate)
         .get(&key)
         .is_none_or(|(_, p, _)| p != parent);
@@ -1346,6 +1382,7 @@ pub fn process(w: &Workspace, key: &str) -> Value {
         return json!({});
     };
     match o.kind.as_str() {
+        "note"=>json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed")}),
         "requirement"=>w.requirements.get(&o.id).and_then(|q|q.revisions.last()).map(|r|json!({"req":o.id,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,&o.id,r)})).unwrap_or_else(||json!({})),
         "ac"=>o.current().parent.as_deref().and_then(|p|p.strip_prefix("requirement:")).and_then(|req|w.requirements.get(req).and_then(|q|q.revisions.last()).map(|r|(req,r))).map(|(req,r)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"status":requirement_summary(w,req,r)["acs"][&o.id]})).unwrap_or_else(||json!({})),
         "task"=>o.id.split_once('/').and_then(|(req,id)|w.requirements.get(req).and_then(|q|q.revisions.last()).and_then(|r|r.tasks.get(id).map(|t|(req,r,t)))).map(|(req,r,t)|json!({"req":req,"revision":r.number,"assignee":t.assignee,"done":t.done,"retired":t.retired,"review_required":t.review_required,"status":if t.retired.is_some(){"retired"}else if t.done.is_some(){"done"}else if t.assignee.is_some(){"in_progress"}else{"open"}})).unwrap_or_else(||json!({})),
@@ -1368,6 +1405,12 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         ("purple", "Dependency revision changed")
     } else if !work_ready(w, key) {
         ("purple", "Dependency is not ready")
+    } else if o.kind == "note" {
+        if p["status"] == "processed" {
+            ("grey", "Note processed")
+        } else {
+            ("yellow", "Note awaits processing")
+        }
     } else if o.kind == "ac" && p["pending_run"].is_string() {
         ("yellow", "New checks are running")
     } else if o.kind == "ac" {

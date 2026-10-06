@@ -61,7 +61,7 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/013_object_aliases.sql"))
         .await?;
-    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects')", &[]).await? {
+    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types')", &[]).await? {
         let id: String = row.get(0);
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
@@ -151,7 +151,7 @@ async fn ensure_notes(
 }
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);

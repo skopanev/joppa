@@ -434,8 +434,13 @@ async fn write(
             commands::apply(&mut recorded_state, actor, &command, position, &recorded_at)?;
             events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
             let mut resolved=serde_json::to_value(&command)?;
-            let saved=if let Command::SaveObject {id,kind,..}=&command {
-                let address=format!("{kind}:{id}");let revision=state.objects[&address].current().revision;
+            let saved_address = match &command {
+                Command::SaveObject { id, kind, .. } => Some(format!("{kind}:{id}")),
+                Command::SetNoteStatus { target, .. } => Some(crate::objects::resolve_address(&state, target).to_owned()),
+                _ => None,
+            };
+            let saved=if let Some(address)=saved_address {
+                let revision=state.objects[&address].current().revision;
                 resolved["address"]=json!(address);resolved["saved_revision"]=json!(revision);
                 Some(json!({"address":address,"revision":revision}))
             }else{None};

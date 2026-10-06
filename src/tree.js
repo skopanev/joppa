@@ -53,6 +53,7 @@ function renderTree(schema){
   const highlight=id=>{for(const edge of connections.querySelectorAll('[data-source]')){const selected=edge.dataset.source===id||edge.dataset.target===id;edge.classList.toggle('selected',Boolean(id)&&selected);edge.classList.toggle('dimmed',Boolean(id)&&!selected);}};
   for(const [id,node] of nodes){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
+    const defaults={domain:'#17685f',capability:'#6551a1',note:'#7664aa',consumer:'#247eab'};const color=definitions[id]?.color||defaults[id];if(/^#[0-9a-f]{6}$/i.test(color||''))card.style.setProperty('--object-color',color);
     card.append(element('h2',node.title),element('small',node.label));
     if(definitions[id]){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);

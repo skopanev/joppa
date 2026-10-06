@@ -170,6 +170,8 @@ pub struct ObjectScope<'a> {
     pub history: bool,
     pub limit: usize,
     pub cursor: Option<&'a str>,
+    pub note_status: Option<&'a str>,
+    pub related_to: Option<&'a str>,
 }
 pub async fn read_objects(
     pool: &Pool,
@@ -198,7 +200,11 @@ pub async fn read_objects(
             .map(|row| row.get::<_, String>(0))
             .unwrap_or_else(|| key.to_owned());
         ensure!(
-            scope.parent.is_none() && scope.kind.is_none() && scope.cursor.is_none(),
+            scope.parent.is_none()
+                && scope.kind.is_none()
+                && scope.cursor.is_none()
+                && scope.note_status.is_none()
+                && scope.related_to.is_none(),
             "address cannot be combined with list filters"
         );
         let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
@@ -259,6 +265,22 @@ pub async fn read_objects(
         scope.revision.is_none() && !scope.history,
         "revision and history require an object address"
     );
+    ensure!(
+        scope
+            .note_status
+            .is_none_or(|status| ["unprocessed", "processed"].contains(&status)),
+        "unknown Note status"
+    );
+    ensure!(
+        scope.note_status.is_none() || scope.kind == Some("note"),
+        "note_status requires kind=note"
+    );
+    let related_to = if let Some(key) = scope.related_to {
+        let row = conn.query_opt("SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2)", &[&workspace,&key]).await?.context("unknown related object")?;
+        Some(row.get::<_, String>(0))
+    } else {
+        None
+    };
     let limit = if scope.limit == 0 { 50 } else { scope.limit };
     ensure!((1..=100).contains(&limit), "limit must be 1 to 100");
     let after = if let Some(cursor) = scope.cursor {
@@ -284,9 +306,9 @@ pub async fn read_objects(
     } else {
         None
     };
-    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text,o.present FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR o.kind='ac' AND EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND o.parent IS NULL) OR o.parent=$4 OR $4='*') ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix]).await?;
+    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text,o.present,COALESCE(o.document->'data'->>'status','unprocessed') FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR o.kind='ac' AND EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND ($8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*') AND ($7::text IS NULL OR COALESCE(o.document->'data'->>'status','unprocessed')=$7) AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8)))) ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to]).await?;
     let more = rows.len() > limit;
-    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13)})).collect();
+    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if r.get::<_,String>(1)=="note" {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     let next = more.then(|| {
         format!(
             "{position}:{}",
