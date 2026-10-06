@@ -99,7 +99,7 @@ pub fn claimable(
         .ok_or_else(|| anyhow::anyhow!("task AC is absent from current REQ revision"))?;
     if !w.objects.is_empty() {
         ensure!(
-            crate::objects::work_ready(w, &format!("ac:{}", ac.id)),
+            crate::objects::work_ready(w, &crate::objects::criterion_address(&ac.id)),
             "AC has an unmet dependency or a changed dependency revision"
         );
         ensure!(
@@ -458,7 +458,7 @@ pub fn apply(
                 .iter()
                 .filter(|(key, t)| {
                     t.retired.is_none()
-                        && crate::objects::within(w, key, &format!("requirement:{req}"))
+                        && crate::objects::within(w, key, &crate::objects::requirement_address(req))
                 })
                 .map(|(key, _)| crate::tasks::subjects(w, key))
                 .collect::<Result<Vec<_>>>()?

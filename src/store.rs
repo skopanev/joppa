@@ -61,7 +61,7 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/013_object_aliases.sql"))
         .await?;
-    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types')", &[]).await? {
+    for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
@@ -164,9 +164,11 @@ async fn ensure_notes(
     }
     Ok(changed)
 }
+pub(super) const BOARD_PROJECTION_VERSION: &str = "2";
+
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[]).await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT (b.state ? 'objects') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1 OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS (SELECT 1 FROM jsonb_each(COALESCE(b.state->'task_process','{}'::jsonb)) task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) OR EXISTS (SELECT 1 FROM jsonb_each(b.state->'requirements') q CROSS JOIN LATERAL jsonb_each(q.value->'revisions'->-1->'tasks') task WHERE COALESCE((task.value->>'created_at')::bigint,0)=0) ORDER BY w.id", &[&BOARD_PROJECTION_VERSION]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);
@@ -434,11 +436,15 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
             .collect();
         let mut notes = json!({});
         for (address, n) in &state.notes {
-            let mine = address == &format!("requirement:{req}")
-                || revision
-                    .acs
-                    .iter()
-                    .any(|ac| address == &format!("ac:{req}/{}", ac.id));
+            let mine = address == &crate::objects::requirement_address(req)
+                || revision.acs.iter().any(|ac| {
+                    address
+                        == &if ac.id.contains(':') {
+                            ac.id.clone()
+                        } else {
+                            format!("ac:{req}/{}", ac.id)
+                        }
+                });
             if mine {
                 notes[address] = json!(n);
             }
@@ -491,7 +497,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
                 "confirmed": r.confirmed,
                 "acs": r.acs.len(),
                 "comments": q.comments.len(),
-                "notes": counts(format!("requirement:{id}")),
+                "notes": counts(crate::objects::requirement_address(id)),
                 "summary": summaries.get(id).cloned().unwrap_or(Value::Null),
             })
         })
@@ -599,18 +605,39 @@ pub async fn read_item_scoped(
     access::check(&**conn, &workspace, actor, false).await?;
     drop(conn);
     if !["domain", "capability", "consumer", "requirement", "ac"].contains(&kind.as_str()) {
+        let address = format!("{kind}:{local_id}");
         let mut result = read_objects(
             pool,
             &workspace,
             actor,
             &ObjectScope {
-                address: Some(&format!("{kind}:{local_id}")),
-                revision: scope.revision,
-                history: scope.history,
+                address: Some(&address),
                 ..Default::default()
             },
         )
         .await?;
+        if let Some(req) = result["process"]["req"].as_str() {
+            scope.req = Some(req.into());
+            let mut evidence = read(pool, &workspace, actor, &scope).await?;
+            let r = &evidence["requirement"]["revisions"][0];
+            let criterion = result["process"]["criterion"].as_str();
+            evidence["selection"] = json!({"kind":kind,"id":local_id,"system_id":id,"req":req,"revision":r["number"],"present":criterion.is_none_or(|ac|r["acs"].as_array().is_some_and(|acs|acs.iter().any(|a|a["id"]==ac)))});
+            return Ok(evidence);
+        }
+        if scope.revision.is_some() || scope.history {
+            result = read_objects(
+                pool,
+                &workspace,
+                actor,
+                &ObjectScope {
+                    address: Some(&address),
+                    revision: scope.revision,
+                    history: scope.history,
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
         result["selection"] = json!({"kind":result["kind"],"id":result["id"],"system_id":id});
         return Ok(result);
     }

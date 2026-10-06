@@ -414,7 +414,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
             current.data["review_policy"] = json!(w.questions.get(kind));
             if let Some(req) = current.data["requirement"].as_str() {
                 let link = ObjectLink {
-                    target: address("requirement", req),
+                    target: requirement_address(req),
                     relation: "related".into(),
                     revision: None,
                     blocking: false,
@@ -539,12 +539,6 @@ pub fn set_schema(
             ["group", "document", "requirement", "ac", "task"].contains(&t.role.as_str()),
             "unknown semantic role"
         );
-        if let Some(original) = legacy_defaults().get(kind) {
-            ensure!(
-                t.role == original.role,
-                "built-in semantic roles cannot change"
-            );
-        }
         ensure!(
             !t.parent_decision || t.role == "task",
             "parent decisions apply to Task roles"
@@ -589,6 +583,13 @@ pub fn set_schema(
                 "a type with existing Tasks must retain its Task role"
             );
         }
+        let key = address(&obj.kind, &obj.id);
+        if requirement_key(w, &key).is_some() || criterion_context(w, &key).is_some() {
+            ensure!(
+                types[&obj.kind].role == schema(w).types[&obj.kind].role,
+                "a type with existing verification evidence must retain its role"
+            );
+        }
         if !legacy_task_binding(w, obj) {
             parent_valid(
                 types,
@@ -608,6 +609,50 @@ pub fn set_schema(
         reason: reason.into(),
     });
     Ok(())
+}
+
+/// Preserve local journal keys while new types use complete object addresses.
+pub fn requirement_address(key: &str) -> String {
+    if key.contains(':') {
+        key.into()
+    } else {
+        address("requirement", key)
+    }
+}
+pub fn criterion_address(key: &str) -> String {
+    if key.contains(':') {
+        key.into()
+    } else {
+        address("ac", key)
+    }
+}
+fn process_key(kind: &str, id: &str, legacy_kind: &str) -> String {
+    if kind == legacy_kind {
+        id.into()
+    } else {
+        address(kind, id)
+    }
+}
+fn requirement_key<'a>(w: &'a Workspace, key: &str) -> Option<&'a str> {
+    let key = resolve_address(w, key);
+    let obj = w.objects.get(key)?;
+    w.requirements
+        .get_key_value(key)
+        .or_else(|| {
+            (obj.kind == "requirement")
+                .then(|| w.requirements.get_key_value(&obj.id))
+                .flatten()
+        })
+        .map(|(key, _)| key.as_str())
+}
+
+fn document_adapter_fields(w: &Workspace, kind: &str) -> Option<&'static [&'static str]> {
+    let configured = schema(w);
+    let role = configured.types.get(kind).map(|t| t.role.as_str());
+    native_document_fields(match role {
+        Some(role @ ("requirement" | "ac")) => role,
+        _ => kind,
+    })
 }
 
 fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Value)> {
@@ -649,28 +694,32 @@ fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Val
     }
     for (id, q) in &w.requirements {
         if let Some(r) = q.revisions.last() {
+            let req_address = requirement_address(id);
+            let (req_kind, req_id) = req_address.split_once(':').unwrap();
             put(
-                "requirement",
-                id,
+                req_kind,
+                req_id,
                 q.capability.as_deref().map(|id| address("capability", id)),
                 json!({"title":r.title,"body":r.body,"owner":r.owner,"consumers":r.consumers}),
             );
             for ac in &r.acs {
+                let ac_address = criterion_address(&ac.id);
+                let (ac_kind, ac_id) = ac_address.split_once(':').unwrap();
                 put(
-                    "ac",
-                    &ac.id,
-                    Some(address("requirement", id)),
+                    ac_kind,
+                    ac_id,
+                    Some(req_address.clone()),
                     json!({"title":ac.text,"description":ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.owner.is_some(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
                 );
             }
             for (tid, t) in &r.tasks {
                 let mut data = json!({"title":t.title,"owner":r.owner,"contract":t.contract,"projects":t.projects,"purpose":t.purpose});
                 let parent = if t.acs.len() == 1 {
-                    address("ac", &t.acs[0])
+                    criterion_address(&t.acs[0])
                 } else {
                     // Preserve old bindings without permitting new Tasks with multiple ACs.
                     data["legacy_acs"] = json!(t.acs);
-                    address("requirement", id)
+                    requirement_address(id)
                 };
                 put("task", &format!("{id}/{tid}"), Some(parent), data);
             }
@@ -702,6 +751,11 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         .and_then(|v| v["reason"].as_str().map(str::to_owned))
         .unwrap_or_else(|| "Journal operation".into());
     let schema_revision = schema(w).revision;
+    let adapter_fields: BTreeMap<_, _> = schema(w)
+        .types
+        .keys()
+        .map(|kind| (kind.clone(), document_adapter_fields(w, kind)))
+        .collect();
     let forced_req = match command {
         Command::Revise { req, .. } => Some(req.as_str()),
         _ => None,
@@ -716,7 +770,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             revisions: vec![],
             parent_override: false,
         });
-        if matches!(command,Command::Revise {req,capability,..} if key==&address("requirement",req) && capability.as_ref().is_some_and(|cap|obj.revisions.last().is_some_and(|r|r.parent.as_deref()!=Some(&address("capability",cap)))))
+        if matches!(command,Command::Revise {req,capability,..} if key==&requirement_address(req) && capability.as_ref().is_some_and(|cap|obj.revisions.last().is_some_and(|r|r.parent.as_deref()!=Some(&address("capability",cap)))))
         {
             obj.parent_override = false;
         }
@@ -726,8 +780,11 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             parent.clone()
         };
         let forced = forced_req.is_some_and(|req| {
-            key == &address("requirement", req)
-                || kind == "ac" && parent.as_deref() == Some(&address("requirement", req))
+            key == &requirement_address(req)
+                || w.requirements
+                    .get(req)
+                    .and_then(|q| q.revisions.last())
+                    .is_some_and(|r| r.acs.iter().any(|ac| criterion_address(&ac.id) == *key))
         });
         let mut data = data.clone();
         if w.schema_migrated
@@ -735,7 +792,10 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
         {
             for (field, value) in previous.data.as_object().unwrap() {
-                if native_document_fields(kind)
+                if adapter_fields
+                    .get(kind)
+                    .copied()
+                    .flatten()
                     .is_none_or(|fields| !fields.contains(&field.as_str()))
                 {
                     data[field] = value.clone();
@@ -743,7 +803,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             }
             for field in t.references.keys() {
                 let native_update = field == "consumers"
-                    && matches!(command, Command::Revise { req, .. } if key == &address("requirement", req));
+                    && matches!(command, Command::Revise { req, .. } if key == &requirement_address(req));
                 if native_update && !t.references[field].multiple {
                     data[field] = data[field]
                         .as_array()
@@ -794,8 +854,12 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             });
         }
     }
+    let roles = schema(w).types;
     for (key, obj) in &mut w.objects {
-        if legacy_defaults().contains_key(&obj.kind)
+        if (legacy_defaults().contains_key(&obj.kind)
+            || roles
+                .get(&obj.kind)
+                .is_some_and(|t| t.role == "ac" || t.role == "requirement"))
             && obj.kind != "note"
             && !w.task_process.contains_key(key)
             && !w.document_overrides.contains(key)
@@ -1015,16 +1079,30 @@ fn typed_command(
     data: &Value,
     reason: &str,
 ) -> Result<Option<Command>> {
+    let configured = schema(w);
+    let role = configured
+        .types
+        .get(kind)
+        .context("unknown object type")?
+        .role
+        .as_str();
+    let workflow = if matches!(role, "requirement" | "ac") {
+        role
+    } else if matches!(kind, "requirement" | "ac") {
+        return Ok(None);
+    } else {
+        kind
+    };
     let mut native_data = data.clone();
     if w.schema_migrated
-        && kind == "requirement"
+        && workflow == "requirement"
         && let Some(value) = data.get("consumers").and_then(Value::as_str)
     {
         native_data["consumers"] = json!([value]);
     }
     let data = &native_data;
     let exists = w.objects.contains_key(&address(kind, id));
-    let allowed = native_document_fields(kind);
+    let allowed = native_document_fields(workflow);
     if let Some(allowed) = allowed {
         for field in data.as_object().context("data must be an object")?.keys() {
             ensure!(
@@ -1035,7 +1113,7 @@ fn typed_command(
     }
     let description =
         || Ok::<_, anyhow::Error>(optional_string(data, "description")?.unwrap_or_default());
-    let cmd = match kind {
+    let cmd = match workflow {
         "domain" => {
             ensure!(
                 data.get("archived").is_none_or(|v| Some(v)
@@ -1105,12 +1183,13 @@ fn typed_command(
                 ensure!(!consumers.is_empty(), "REQ needs at least one Consumer");
             }
             let capability = ancestor(w, parent, "capability").ok();
-            if let Some(q) = w.requirements.get(id) {
+            let req_key = process_key(kind, id, "requirement");
+            if let Some(q) = w.requirements.get(&req_key) {
                 let r = q.revisions.last().unwrap();
-                revise(id, r, capability, data, reason, fresh_acs(r))?
+                revise(&req_key, r, capability, data, reason, fresh_acs(r))?
             } else {
                 Command::Revise {
-                    req: id.into(),
+                    req: req_key,
                     expected_revision: 0,
                     capability,
                     consumers,
@@ -1125,16 +1204,17 @@ fn typed_command(
             }
         }
         "ac" => {
-            if !parent.is_some_and(|p| p.starts_with("requirement:")) {
+            let Some((req, _)) = parent.and_then(|p| verification_context(w, p)) else {
                 return Ok(None);
-            }
-            let req = local(parent, "requirement")?;
+            };
+            let req = req.to_owned();
             let q = w.requirements.get(&req).context("unknown parent REQ")?;
             let r = q.revisions.last().unwrap();
             if exists {
                 ensure!(
-                    w.objects[&address(kind, id)].current().parent == parent.map(str::to_owned),
-                    "AC cannot move to another REQ"
+                    criterion_context(w, &address(kind, id))
+                        .is_none_or(|(old_req, _, _)| old_req == req),
+                    "criterion cannot move to another verification contract"
                 );
             }
             let assigned = optional_string(data, "owner")?.unwrap_or_else(|| r.owner.clone());
@@ -1148,8 +1228,9 @@ fn typed_command(
                 decision || assigned == r.owner,
                 "an independent AC owner requires decision_required=true"
             );
+            let ac_key = process_key(kind, id, "ac");
             let ac = Ac {
-                id: id.into(),
+                id: ac_key.clone(),
                 text: string(data, "title")?,
                 description: description()?,
                 owner: decision.then_some(assigned),
@@ -1162,15 +1243,12 @@ fn typed_command(
                 assessment: None,
             };
             let mut acs = fresh_acs(r);
-            if let Some(old) = acs.iter_mut().find(|a| a.id == id) {
+            if let Some(old) = acs.iter_mut().find(|a| a.id == ac_key) {
                 *old = ac;
             } else {
                 acs.push(ac);
             }
-            let mut req_data = w.objects[&address("requirement", &req)]
-                .current()
-                .data
-                .clone();
+            let mut req_data = w.objects[&requirement_address(&req)].current().data.clone();
             if w.schema_migrated
                 && let Some(value) = req_data
                     .get("consumers")
@@ -1325,8 +1403,9 @@ pub fn save(
     } else {
         None
     };
-    if (!unchanged || kind == "requirement") && !generic_task {
+    if (!unchanged || schema(w).types[kind].role == "requirement") && !generic_task {
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
+            candidate.document_overrides.remove(&key);
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
             sync(&mut candidate, actor, &cmd, position, at);
         } else {
@@ -1485,6 +1564,17 @@ pub fn save(
     });
     candidate.objects.insert(key.clone(), object);
     validate_links(&candidate, &key, links)?;
+    for (address, obj) in &w.objects {
+        if !obj.current().present || !within(w, address, &key) {
+            continue;
+        }
+        if let Some((req, _, _)) = criterion_context(w, address) {
+            ensure!(
+                criterion_context(&candidate, address).is_some_and(|(next, _, _)| next == req),
+                "a parent change cannot move existing criterion evidence to another specification"
+            );
+        }
+    }
     *w = candidate;
     Ok(())
 }
@@ -1536,7 +1626,7 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
 fn legacy_task_binding(w: &Workspace, obj: &Object) -> bool {
     obj.kind == "task"
         && obj.id.split_once('/').is_some_and(|(req, id)| {
-            obj.current().parent.as_deref() == Some(&address("requirement", req))
+            obj.current().parent.as_deref() == Some(&requirement_address(req))
                 && w.requirements
                     .get(req)
                     .and_then(|q| q.revisions.last())
@@ -1567,7 +1657,7 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
     let mut summary = crate::checks::summary(r);
     let mut blocked = false;
     for ac in &r.acs {
-        let key = format!("ac:{}", ac.id);
+        let key = criterion_address(&ac.id);
         if !w.objects.is_empty() && !work_ready(w, &key) {
             summary["acs"][&ac.id]["ready"] = json!(false);
             summary["acs"][&ac.id]["verification"] = json!("n/a");
@@ -1575,7 +1665,7 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
             blocked = true;
         }
     }
-    if blocked || !w.objects.is_empty() && !work_ready(w, &format!("requirement:{req}")) {
+    if blocked || !w.objects.is_empty() && !work_ready(w, &requirement_address(req)) {
         summary["ready_for_acceptance"] = json!(false);
         summary["accepted"] = json!(false);
     }
@@ -1674,9 +1764,38 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     }
     Ok(())
 }
+fn criterion_record_context<'a>(
+    w: &'a Workspace,
+    key: &str,
+) -> Option<(&'a str, &'a Revision, &'a Ac)> {
+    let key = resolve_address(w, key);
+    if let Some(context) = criterion_context(w, key) {
+        return Some(context);
+    }
+    let obj = w.objects.get(key)?;
+    if obj.current().present {
+        return None;
+    }
+    for (req, q) in &w.requirements {
+        if let Some(ac) = q
+            .revisions
+            .iter()
+            .rev()
+            .flat_map(|r| r.acs.iter())
+            .find(|ac| criterion_address(&ac.id) == key)
+        {
+            return Some((req, q.revisions.last()?, ac));
+        }
+    }
+    None
+}
+
 pub fn annotation_address(w: &Workspace, key: &str) -> String {
     let key = resolve_address(w, key);
-    if let Some((req, _, ac)) = criterion_context(w, key) {
+    if let Some((req, _, ac)) = criterion_record_context(w, key)
+        && !ac.id.contains(':')
+        && !req.contains(':')
+    {
         return format!("ac:{req}/{}", ac.id);
     }
     key.into()
@@ -1694,9 +1813,10 @@ pub fn verification_context<'a>(w: &'a Workspace, key: &str) -> Option<(&'a str,
         let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
         if role.as_deref() == Some("requirement")
             && !w.document_overrides.contains(key)
-            && let Some(r) = w.requirements.get(&o.id).and_then(|q| q.revisions.last())
+            && let Some(req) = requirement_key(w, key)
+            && let Some(r) = w.requirements.get(req).and_then(|q| q.revisions.last())
         {
-            return Some((&o.id, r));
+            return Some((req, r));
         }
         current = o.current().parent.as_deref();
     }
@@ -1712,7 +1832,10 @@ pub fn criterion_context<'a>(
         return None;
     }
     let (req, revision) = verification_context(w, o.current().parent.as_deref()?)?;
-    let ac = revision.acs.iter().find(|ac| ac.id == o.id)?;
+    let ac = revision
+        .acs
+        .iter()
+        .find(|ac| criterion_address(&ac.id) == key)?;
     Some((req, revision, ac))
 }
 fn verified(w: &Workspace, key: &str) -> bool {
@@ -1731,9 +1854,8 @@ fn verified(w: &Workspace, key: &str) -> bool {
             .types
             .get(&o.kind)
             .is_some_and(|t| t.role == "requirement")
-        && w.requirements
-            .get(&o.id)
-            .and_then(|q| q.revisions.last())
+        && verification_context(w, key)
+            .map(|(_, r)| r)
             .is_some_and(|r| crate::checks::summary(r)["ready_for_acceptance"] == true)
 }
 
@@ -1866,12 +1988,13 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     }
     let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
     let mut result=match role.as_deref() {
-        Some("requirement") if !w.document_overrides.contains(key) => w.requirements.get(&o.id).and_then(|q|q.revisions.last()).map(|r|json!({"req":o.id,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,&o.id,r)})).unwrap_or_else(||json!({})),
-        Some("ac") => criterion_context(w, key).map(|(req,r,ac)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"status":requirement_summary(w,req,r)["acs"][&ac.id]})).unwrap_or_else(||json!({})),
+        Some("requirement") if !w.document_overrides.contains(key) => verification_context(w,key).map(|(req,r)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,req,r)})).unwrap_or_else(||json!({})),
+        Some("ac") => criterion_record_context(w, key).map(|(req,r,ac)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"criterion":ac.id,"status":requirement_summary(w,req,r)["acs"][&ac.id]})).unwrap_or_else(||json!({})),
         Some("task") => o.id.split_once('/').and_then(|(req,id)|w.requirements.get(req).and_then(|q|q.revisions.last()).and_then(|r|r.tasks.get(id).map(|t|(req,r,t)))).map(|(req,r,t)|json!({"req":req,"revision":r.number,"assignee":t.assignee,"done":t.done,"retired":t.retired,"review_required":t.review_required,"status":if t.retired.is_some(){"retired"}else if t.done.is_some(){"done"}else if t.assignee.is_some(){"in_progress"}else{"open"}})).unwrap_or_else(||json!({})),
         _ => json!({}),
     };
     result["verification"] = json!(verification(w, key));
+    result["annotation_address"] = json!(annotation_address(w, key));
     result
 }
 

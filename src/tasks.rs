@@ -39,7 +39,7 @@ pub fn status(t: &Task) -> &'static str {
 pub fn display_tasks(w: &Workspace, req: &str) -> std::collections::BTreeMap<String, Task> {
     let mut result = std::collections::BTreeMap::new();
     for (key, t) in &w.task_process {
-        if !objects::within(w, key, &format!("requirement:{req}")) {
+        if !objects::within(w, key, &objects::requirement_address(req)) {
             continue;
         }
         let mut t = t.clone();
@@ -48,8 +48,7 @@ pub fn display_tasks(w: &Workspace, req: &str) -> std::collections::BTreeMap<Str
             .current()
             .parent
             .as_deref()
-            .and_then(|p| p.strip_prefix("ac:"))
-            .map(|id| vec![id.into()])
+            .and_then(|p| objects::criterion_context(w, p).map(|(_, _, ac)| vec![ac.id.clone()]))
             .unwrap_or_default();
         let id = key.strip_prefix(&format!("task:{req}/")).unwrap_or(key);
         result.insert(id.into(), t);
@@ -93,9 +92,7 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
     let process = objects::process(w, parent);
     let ready = match gate {
         "completed" => task(w, parent).is_some_and(|t| t.done.is_some() && t.retired.is_none()),
-        "verified" => {
-            process["status"]["verification"] == "pass" || process["summary"]["accepted"] == true
-        }
+        "verified" => process["verification"] == "pass",
         "ready" => {
             if let Some((_, r, ac)) = objects::criterion_context(w, parent) {
                 if purpose == "decision"

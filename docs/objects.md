@@ -63,6 +63,15 @@ Agents and the workspace owner can configure the schema.
 The separate `/tree?workspace=...` page only reads it.
 
 Use custom types with any supported role. A `task` role supplies claim, release, completion and queue operations.
+A `requirement` role supplies specification revisions, test plans and acceptance.
+An `ac` role supplies a criterion in its nearest ancestor specification.
+These roles work with any configured type name, including `spec`, `epic`, `measure` and `rule`.
+Custom workflow commands use full object addresses in `req` and `ac`.
+The server keeps earlier local journal keys compatible.
+Two types can use the same local identifier without sharing test evidence.
+A criterion can have intermediate grouping objects above it.
+A parent change cannot move existing criterion evidence to another specification.
+
 Rename their display titles and set their allowed parents.
 `root: true` permits an object without a parent.
 `parents: ["*"]` permits any parent type.

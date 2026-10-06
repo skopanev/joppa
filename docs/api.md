@@ -364,3 +364,15 @@ Queue items report their object `address`, `parent`, `revision` and current stat
 Historical `req` addresses remain accepted and resolve to this same process record.
 The Task type configures parent evidence through optional `parent_gate`.
 See `docs/objects.md` for the gate values and migration contract.
+
+## Configured verification types
+
+Read the workspace schema before you create specification or criterion documents.
+Use `save_object` with the configured type name.
+A type with role `requirement` supports the verification workflow.
+A type with role `ac` supplies a criterion in its nearest ancestor specification.
+Use the returned `process.req`, `process.criterion` and verification revision in process commands.
+For custom types, these process keys are full addresses such as `spec:billing` and `measure:paid-access`.
+Use the same criterion key in `plan.checks[].ac` and in the automated test tag, such as `[measure:paid-access]`.
+Legacy process keys remain compatible.
+Public copied IDs are opaque. Read their type from the object response.

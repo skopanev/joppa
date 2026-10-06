@@ -448,6 +448,61 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         msg['params']['arguments']['item_id']=refs['requirement']['key']
         denied=request('/mcp',msg,other_token)[1]
         assert denied['result']['isError'] and denied['result']['content'][0]['text']=='Workspace not found'
+        # Custom names run the same workflow through the actual MCP endpoint.
+        configured = mcp('joppa_tree', {'workspace': mcp_ws})
+        types = configured['schema']['types']
+        types.update({
+            'spec': {'title':'Spec','role':'requirement','root':True,'parents':['*']},
+            'epic': {'title':'Epic','role':'requirement','root':True,'parents':['*']},
+            'section': {'title':'Section','role':'group','root':True,'parents':['*']},
+            'measure': {'title':'Measure','role':'ac','root':False,'parents':['*']},
+            'rule': {'title':'Rule','role':'ac','root':False,'parents':['*']},
+        })
+        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-schema','command':
+            {'op':'set_tree_schema','revision':configured['current_revision'],'types':types,'reason':'Configure workflow types'}})
+        for kind, ident, parent, text in [
+            ('spec','same',None,'Outer specification'),
+            ('epic','same','spec:same','Inner specification'),
+            ('section','middle','epic:same','Intermediate group'),
+            ('measure','same','section:middle','The first result'),
+            ('rule','same','section:middle','The second result'),
+        ]:
+            result = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-'+kind,'command':
+                {'op':'save_object','kind':kind,'id':ident,'revision':0,'parent':parent,
+                 'data':{'title':text,'body':text,'owner':'owner'},'reason':'Define the contract'}})
+            if kind=='measure': custom_criterion_id=result['system_ids'][kind][ident]
+        def custom(value):
+            return mcp('joppa_command', {'workspace':mcp_ws,'request_id':str(uuid.uuid4()),'command':value}, owner_token)
+        custom({'op':'confirm','req':'epic:same','revision':3})
+        custom({'op':'define_verification_scope','req':'epic:same','revision':3,'subject_keys':['build'],
+                'scope':'The exact custom build','reason':'Agree on the build'})
+        for ac in ('measure:same','rule:same'):
+            custom({'op':'assess','req':'epic:same','revision':3,'ac':ac,
+                    'assessment':{'ready':True,'reason':'The contract is clear'}})
+        custom({'op':'plan','req':'epic:same','revision':3,'run':'custom-green','subject':{'build':'sha-one'},
+                'scope':'The exact custom build','discovery_complete':True,
+                'checks':[{'id':'['+ac+'] check','ac':ac,'method':'automated','expected':['exact behavior']}
+                          for ac in ('measure:same','rule:same')]})
+        for ac in ('measure:same','rule:same'):
+            custom({'op':'result','req':'epic:same','revision':3,'run':'custom-green',
+                    'evidence':{'check':'['+ac+'] check','outcome':'pass','observed':['exact behavior'],'note':'Executed the exact test'}})
+        custom({'op':'finish','req':'epic:same','revision':3,'run':'custom-green'})
+        custom({'op':'accept','req':'epic:same','revision':3,'run':'custom-green'})
+        inspected = request('/api/workspaces/'+mcp_ws+'/board?level=process&id=measure:same')[1]
+        assert inspected['req']=='epic:same' and inspected['summary']['accepted'] is True
+        assert {c['id'] for c in inspected['criteria']} == {'measure:same','rule:same'}
+        assert len(inspected['result_dates']['custom-green'])==2
+        copied=mcp('joppa_read',{'item_id':custom_criterion_id,'revision':3})
+        assert copied['selection']['req']=='epic:same' and copied['selection']['present'] is True
+        assert copied['summary']['accepted'] is True
+        custom({'op':'revise','req':'epic:same','expected_revision':3,'capability':None,'consumers':[],
+                'title':'Inner specification','body':'A revised contract','owner':'owner','reason':'Remove the first criterion',
+                'acs':[{'id':'rule:same','text':'The second result'}]})
+        removed=mcp('joppa_read',{'item_id':custom_criterion_id})
+        assert removed['selection']['present'] is False and removed['selection']['revision']==4
+        restored=mcp('joppa_read',{'item_id':custom_criterion_id,'revision':3})
+        assert restored['selection']['present'] is True and restored['summary']['accepted'] is True
+
         subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
         assert request('/api/workspaces/'+ws)[1]['system_ids']==refs
         before=request('/api/workspaces/'+ws)[1]

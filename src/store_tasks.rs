@@ -6,11 +6,12 @@ pub(super) async fn projected_requirement_tasks(
     req: &str,
 ) -> Result<Value> {
     let mut tasks = json!({});
-    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address='requirement:'||$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,o.parent,o.process::text FROM joppa.objects o JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string' AND o.process ? 'assignee'", &[&workspace,&req]).await? {
+    let req_address = crate::objects::requirement_address(req);
+    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address=$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,p.process->>'criterion',o.process::text FROM joppa.objects o LEFT JOIN joppa.objects p ON p.workspace=o.workspace AND p.address=o.parent JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string' AND o.process ? 'assignee'", &[&workspace,&req_address]).await? {
         let address:String=row.get(0);
-        let parent:Option<String>=row.get(1);
+        let criterion:Option<String>=row.get(1);
         let mut t:Value=serde_json::from_str(row.get::<_,&str>(2))?;
-        t["acs"]=json!(parent.as_deref().and_then(|p|p.strip_prefix("ac:")).map(|id|vec![id]).unwrap_or_default());
+        t["acs"]=json!(criterion.map(|id|vec![id]).unwrap_or_default());
         tasks[address.strip_prefix(&format!("task:{req}/")).unwrap_or(&address)]=t;
     }
     Ok(tasks)
@@ -427,7 +428,7 @@ pub async fn task_queue_filtered(
         let o = &state.objects[key];
         entries.push((object_rank(&state,key,t,&priorities),t.created_at,String::new(),key.clone(),json!({
             "id":key,"address":key,"req":null,"revision":o.current().revision,"parent":o.current().parent,
-            "ac":o.current().parent.as_deref().and_then(|p|p.strip_prefix("ac:")),
+            "ac":o.current().parent.as_deref().and_then(|p|crate::objects::criterion_context(&state,p).map(|(_,_,ac)|ac.id.as_str())),
             "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
             "review_required":crate::tasks::review_required(&state,key,t),"created_at":t.created_at

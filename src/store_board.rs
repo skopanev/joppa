@@ -264,7 +264,7 @@ pub(super) async fn project(
                 )
             })
         });
-    let first_view = json!({"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,"domains":&state.domains,
+    let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,"domains":&state.domains,
         "order":state.tree_order.get("domain").cloned().unwrap_or_default(),"signals":&domains,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),
         "counts":{"consumers":state.consumers.len()}});
@@ -420,7 +420,7 @@ pub async fn board_read(
             ensure!(!current.is_null(), "no verification record");
             let mut criteria = Vec::new();
             for row in conn.query(
-                "SELECT o.address,o.local_id,o.title,o.signal::text FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.present AND o.process->>'req'=$2 AND b.first_view->'object_types'->o.kind->>'role'='ac' ORDER BY o.address",
+                "SELECT o.address,COALESCE(o.process->>'criterion',o.local_id),o.title,o.signal::text FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.present AND o.process->>'req'=$2 AND b.first_view->'object_types'->o.kind->>'role'='ac' ORDER BY o.address",
                 &[&workspace,&req],
             ).await? {
                 criteria.push(json!({"address":row.get::<_,String>(0),"id":row.get::<_,String>(1),"title":row.get::<_,String>(2),"signal":parsed(&row,3)?}));

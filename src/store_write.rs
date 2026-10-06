@@ -172,7 +172,7 @@ fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
         );
         let owner = state
             .objects
-            .get(&format!("ac:{}", acs[0]))
+            .get(&crate::objects::criterion_address(&acs[0]))
             .context("unknown Task parent")?
             .current()
             .data["owner"]
@@ -192,7 +192,7 @@ fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
                     .current()
                     .parent
                     .as_deref()
-                    == Some(&format!("ac:{ac}")),
+                    == Some(&crate::objects::criterion_address(ac)),
                 "change the Task parent with save_object"
             );
             value.as_object_mut().unwrap().remove("ac");
@@ -404,11 +404,13 @@ async fn write(
             resolve_claim_next(&mut value, &state, actor)?;
             let command: Command = serde_json::from_value(value)?;
             if let Command::Revise { req, consumers, capability, .. } = &command {
-                ensure!(capability.is_some(), "legacy revise requires a Capability; use save_object for a custom tree");
+                ensure!(capability.is_some() || req.contains(':'), "legacy revise requires a Capability; use save_object for a custom tree");
                 if state.schema_migrated {
-                    let mut data = state.objects.get(&format!("requirement:{req}")).map(|o| o.current().data.clone()).unwrap_or_else(|| json!({}));
+                    let mut data = state.objects.get(&crate::objects::requirement_address(req)).map(|o| o.current().data.clone()).unwrap_or_else(|| json!({}));
                     data["consumers"] = json!(consumers);
-                    crate::objects::reference_targets(&state, "requirement", &data)?;
+                    let req_address = crate::objects::requirement_address(req);
+                    let kind = req_address.split_once(':').unwrap().0;
+                    crate::objects::reference_targets(&state, kind, &data)?;
                 } else { ensure!(!consumers.is_empty(), "REQ requires at least one consumer"); }
             }
             if let Command::Task { acs, contract, .. } = &command {

@@ -368,6 +368,28 @@ pub enum Command {
     },
 }
 
+fn verification_identifier(w: &Workspace, id: &str, role: &str) -> Result<()> {
+    if let Some((kind, local)) = id.split_once(':') {
+        identifier(kind)?;
+        ensure!(
+            !local.is_empty()
+                && local.len() <= 200
+                && !local.contains(':')
+                && !local.chars().any(char::is_whitespace),
+            "invalid object address"
+        );
+        ensure!(
+            crate::objects::schema(w)
+                .types
+                .get(kind)
+                .is_some_and(|t| t.role == role),
+            "object type has no {role} role"
+        );
+        Ok(())
+    } else {
+        identifier(id)
+    }
+}
 pub fn nonempty(s: &str) -> Result<()> {
     ensure!(!s.trim().is_empty(), "text must not be empty");
     Ok(())
@@ -886,7 +908,7 @@ pub(crate) fn apply_inner(
             coverage_policy,
             carry_tasks,
         } => {
-            identifier(req)?;
+            verification_identifier(w, req, "requirement")?;
             nonempty(title)?;
             nonempty(reason)?;
             human(w, owner)?;
@@ -1334,7 +1356,7 @@ pub(crate) fn apply_inner(
 fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
     let mut ids = BTreeSet::new();
     for ac in acs {
-        identifier(&ac.id)?;
+        verification_identifier(w, &ac.id, "ac")?;
         nonempty(&ac.text)?;
         ensure!(ids.insert(&ac.id), "duplicate AC id");
         ensure!(

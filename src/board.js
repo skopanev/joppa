@@ -542,7 +542,7 @@ function fillCommonObject(body,detail){
 }
 function snapshotVerification(detail){
   const req=detail.process.req,r=data.state.requirements[req].revisions.at(-1);
-  const criteria=Object.values(data.snapshot_objects).filter(o=>o.process?.req===req&&data.objectTypes[o.kind]?.role==='ac'&&o.revisions.at(-1).present).map(o=>({address:o.address,id:o.id,title:o.revisions.at(-1).data.title}));
+  const criteria=Object.values(data.snapshot_objects).filter(o=>o.process?.req===req&&data.objectTypes[o.kind]?.role==='ac'&&o.revisions.at(-1).present).map(o=>({address:o.address,id:o.process.criterion||o.id,title:o.revisions.at(-1).data.title}));
   return {...r,revision:r.number,criteria};
 }
 function renderVerification(root,record){

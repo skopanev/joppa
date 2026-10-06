@@ -268,15 +268,10 @@ pub async fn read_objects(
             vec![]
         };
         let incoming:Vec<Value>=conn.query("SELECT l.source,o.title,l.relation,l.revision,l.blocking FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present ORDER BY l.source", &[&workspace,&key]).await?.iter().map(|r|json!({"source":r.get::<_,String>(0),"title":r.get::<_,String>(1),"relation":r.get::<_,String>(2),"revision":r.get::<_,Option<i32>>(3),"blocking":r.get::<_,bool>(4)})).collect();
-        let annotation = if row.get::<_, String>(0) == "ac" {
-            document["parent"]
-                .as_str()
-                .and_then(|p| p.strip_prefix("requirement:"))
-                .map(|req| format!("ac:{req}/{}", row.get::<_, String>(1)))
-                .unwrap_or_else(|| key.clone())
-        } else {
-            key.clone()
-        };
+        let projected_process: Value = serde_json::from_str(row.get(8))?;
+        let annotation = projected_process["annotation_address"]
+            .as_str()
+            .unwrap_or(&key);
         let annotations:Value=serde_json::from_str(conn.query_one("SELECT COALESCE(state->'notes'->$2,'{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace,&annotation]).await?.get(0))?;
         return Ok(
             json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}}),
