@@ -21,6 +21,10 @@ pub struct TreeType {
     pub role: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_gate: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub launch_blocker: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inbox: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -119,6 +123,8 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 color: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
+                launch_blocker: kind == "ac",
+                inbox: kind == "note",
                 title: title.into(),
                 role: role.into(),
                 root,
@@ -1704,7 +1710,7 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     let Some(o) = w.objects.get(key) else {
         return json!({});
     };
-    if o.kind == "note" {
+    if schema(w).types.get(&o.kind).is_some_and(|t| t.inbox) {
         return json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed")});
     }
     let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
