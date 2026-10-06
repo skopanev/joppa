@@ -191,7 +191,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         assert mcp('joppa_help', {})['writing'] == writing
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
-        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 3
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 4
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
                   'data':{'title':'Source note','owner':'owner','body':'Original text'},
                   'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -202,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['document']['data']['body'] == 'Original text'
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 3
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 4
         # [mcp-schema-objects-ac2] Process reads retain workspace authorization.
         assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
@@ -411,11 +411,12 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert 'revision' in rejected_read({**selector,'history':True,'cursor':'old-cursor'})
         for history in (False,True):
             index=mcp('joppa_read',{'workspace':ws,'history':history})
-            row=next(r for r in index['index']['requirements'] if r['id']=='key')
-            assert row['revision_count']==2 and row['revision']==2
+            row=mcp('joppa_read', {'workspace': ws, 'req': 'key', 'history': True})['requirement']
+            assert row['revision_count']==2 and row['current_revision']==2
             assert 'revisions' not in row and 'history' not in index and 'state' not in index
+            assert all('document' not in item and 'data' not in item for item in index['index']['objects'])
         assert 'revision requires' in rejected_read({'workspace':ws,'revision':1})
-        assert 'revision requires' in rejected_read({'item_id':refs['domain']['security'],'revision':1})
+        assert mcp('joppa_read', {'item_id': refs['domain']['security'], 'revision': 1})['document']['revision'] == 1
         # A copied AC removed from current wording must not silently return the old revision.
         generated_req=created['results'][1]['command']['req']
         generated_ac=created['results'][1]['command']['acs'][0]['id']

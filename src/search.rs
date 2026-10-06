@@ -45,97 +45,67 @@ pub(super) async fn project(
     state: &Workspace,
     position: u64,
 ) -> Result<()> {
+    let configured = crate::objects::schema(state);
     let mut documents = vec![];
-    for (id, d) in &state.domains {
-        if !d.archived {
-            documents.push(document(
-                "domain",
-                id,
-                None,
-                None,
-                &d.title,
-                format!("Domain: {}", d.title),
-            ));
+    for (key, obj) in state.objects.iter().filter(|(_, o)| o.current().present) {
+        let mut context = vec![];
+        let mut current = Some(key.as_str());
+        let mut seen = std::collections::BTreeSet::new();
+        let mut archived = false;
+        while let Some(address) = current {
+            if !seen.insert(address) {
+                archived = true;
+                break;
+            }
+            let Some(ancestor) = state.objects.get(address) else {
+                break;
+            };
+            let r = ancestor.current();
+            if r.data["archived"] == true {
+                archived = true;
+                break;
+            }
+            let title = configured
+                .types
+                .get(&ancestor.kind)
+                .map_or(ancestor.kind.as_str(), |t| t.title.as_str());
+            let mut searchable = r.data.clone();
+            if searchable["archived"].is_boolean() {
+                searchable.as_object_mut().unwrap().remove("archived");
+            }
+            context.push(format!("{title}: {}", serde_json::to_string(&searchable)?));
+            current = r.parent.as_deref();
         }
-    }
-    for (id, c) in &state.capabilities {
-        let d = c.domain.as_ref().and_then(|id| state.domains.get(id));
-        if d.is_none_or(|d| !d.archived) {
-            documents.push(document(
-                "capability",
-                id,
-                None,
-                None,
-                &c.title,
-                format!(
-                    "Domain: {}\nCapability: {}",
-                    d.map_or("", |d| d.title.as_str()),
-                    c.title
-                ),
-            ));
-        }
-    }
-    for (id, q) in &state.requirements {
-        let c = q
-            .capability
-            .as_ref()
-            .and_then(|id| state.capabilities.get(id));
-        let d = c.and_then(|c| c.domain.as_ref().and_then(|id| state.domains.get(id)));
-        if d.is_some_and(|d| d.archived) {
+        if archived {
             continue;
         }
-        let r = q.revisions.last().context("requirement has no revision")?;
-        let context = format!(
-            "Domain: {}\nCapability: {}\nRequirement: {}\n{}",
-            d.map_or("", |d| d.title.as_str()),
-            c.map_or("", |c| c.title.as_str()),
-            r.title,
-            r.body
-        );
-        let comments = q
-            .comments
-            .values()
-            .filter(|v| v.revision == r.number)
-            .map(|v| {
-                format!(
-                    "\n{}{}: {}",
-                    if v.withdrawn { "Withdrawn " } else { "" },
-                    v.kind,
-                    v.text
-                )
-            })
-            .collect::<String>();
-        documents.push(document(
-            "requirement",
-            id,
-            Some(id),
-            Some(r.number),
-            &r.title,
-            format!("{context}{comments}"),
-        ));
-        for ac in &r.acs {
-            documents.push(document(
-                "ac",
-                &ac.id,
-                Some(id),
-                Some(r.number),
-                &ac.text,
-                format!("{context}\nAcceptance criterion: {}", ac.text),
-            ));
+        context.reverse();
+        let process = crate::objects::verification_context(state, key);
+        if let Some((req, r)) = process {
+            for comment in state.requirements[req]
+                .comments
+                .values()
+                .filter(|c| c.revision == r.number)
+            {
+                context.push(format!(
+                    "{}{}: {}",
+                    if comment.withdrawn { "Withdrawn " } else { "" },
+                    comment.kind,
+                    comment.text
+                ));
+            }
         }
-    }
-    for obj in state.objects.values().filter(|o| {
-        o.current().present
-            && !["domain", "capability", "requirement", "ac"].contains(&o.kind.as_str())
-    }) {
-        let r = obj.current();
+        let annotation = crate::objects::annotation_address(state, key);
+        if let Some(notes) = state.notes.get(&annotation) {
+            context.push(serde_json::to_string(notes)?);
+        }
         documents.push(document(
             &obj.kind,
             &obj.id,
-            None,
-            Some(r.revision),
-            r.data["title"].as_str().unwrap_or(&obj.id),
-            serde_json::to_string(&r.data)?,
+            process.map(|(req, _)| req),
+            Some(process.map_or(obj.current().revision, |(_, r)| r.number)),
+            obj.current().data["title"].as_str().unwrap_or(&obj.id),
+            context.join("\n"),
         ));
     }
     let payload = serde_json::to_string(&documents)?;

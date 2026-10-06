@@ -417,7 +417,7 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

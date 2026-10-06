@@ -42,6 +42,7 @@ fn setup_custom() -> World {
     w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure all type names"}));
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    objects::migrate_documents(&mut w.state, "owner", w.position + 1, "now").unwrap();
     w
 }
 fn revision(w: &World, req: &str) -> u32 {

@@ -117,9 +117,10 @@ try{
   await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,
     value:{writeText:t=>{window.__copied=t;return Promise.resolve();}}});});
   const deep=page.locator(`[data-object-address="${address(5)}"] .copy`).first();
+  assert.equal(await deep.locator('.agent-face').count(),1);
   const before=await deep.boundingBox();
   await deep.click();
-  assert.equal(await deep.innerText(),'Copied',
+  assert.equal(await deep.getAttribute('data-copy-state'),'copied',
     '[copy-feedback-ac2] Copied appears only after the clipboard resolved');
   assert.equal(await page.evaluate(()=>window.__copied),'W-ACTION-1',
     '[copy-feedback-ac1] the shared action copies the public identifier');
@@ -153,7 +154,7 @@ try{
   await other.click();
   assert.match(await toast.innerText(),/Could not copy/,
     '[copy-feedback-ac4] a refused clipboard reports the failure');
-  assert.notEqual(await other.innerText(),'Copied',
+  assert.notEqual(await other.getAttribute('data-copy-state'),'copied',
     '[copy-feedback-ac4] a refused clipboard never claims success');
   // The criterion asks for the identifier to stay available by hand, so it has
   // to be readable somewhere after the failure, not only inside the clipboard.

@@ -30,7 +30,7 @@ rename_workspace: title, reason, reference_prefix:null, workspace_id:null; works
 member: id, role (human|agent|runner); workspace owner only
 consumer: id, title, description, owner (human member)
 edit_consumer: id, title, description, owner, reason; consumer owner or workspace owner
-reorder_tree: kind (domain|capability|requirement), parent (null for domains), expected:[id], ids:[id]; workspace owner only
+reorder_tree: kind (any configured type), parent (complete object address or null), expected:[id], ids:[id]; workspace owner only
 project: id, repository
 domain: id, title, owner (human member; legacy authority accepted)
 capability: id, title, domain, owner:null (defaults to domain owner)
@@ -146,7 +146,7 @@ the prior decision explicitly. Withdrawal blocks every AC assessment that cites 
 `set_note_status`: `target`, `revision`, `status` (`unprocessed` or `processed`), `reason`.
 Read the Note revision first. The command preserves its source data, parent and links.
 The server appends a document revision. Source changes return the Note to `unprocessed`.
-`joppa_objects` supports `note_status` with `kind=note`, and `related_to` for links in either direction.
+`joppa_objects` supports `note_status` for any type with `inbox: true`, and `related_to` for links in either direction.
 
 ## Browser authentication
 

@@ -256,6 +256,30 @@ pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -
     w.schema_migrated = true;
     Ok(())
 }
+/// Activate schema-driven writes without changing any saved document revision.
+pub fn migrate_documents(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
+    if w.documents_migrated {
+        return Ok(());
+    }
+    ensure!(
+        w.schema_migrated && w.tasks_migrated,
+        "migrate schema and tasks first"
+    );
+    let mut configured = schema(w);
+    for (kind, t) in &mut configured.types {
+        t.inbox = Some(t.inbox.unwrap_or(kind == "note"));
+        t.launch_blocker = Some(t.launch_blocker.unwrap_or(kind == "ac"));
+    }
+    configured.revision += 1;
+    configured.actor = actor.into();
+    configured.at = at.into();
+    configured.position = position;
+    configured.reason = "Use configured roles and flags for every object type".into();
+    w.tree_schema.push(configured);
+    w.documents_migrated = true;
+    Ok(())
+}
+
 pub fn reference_targets(
     w: &Workspace,
     kind: &str,
@@ -626,12 +650,19 @@ pub fn criterion_address(key: &str) -> String {
         address("ac", key)
     }
 }
-fn process_key(kind: &str, id: &str, legacy_kind: &str) -> String {
-    if kind == legacy_kind {
-        id.into()
-    } else {
-        address(kind, id)
+fn process_key(w: &Workspace, kind: &str, id: &str, legacy_kind: &str) -> String {
+    let key = address(kind, id);
+    if w.documents_migrated {
+        if legacy_kind == "requirement" {
+            if let Some(existing) = requirement_key(w, &key) {
+                return existing.into();
+            }
+        } else if let Some((_, _, criterion)) = criterion_record_context(w, &key) {
+            return criterion.id.clone();
+        }
+        return key;
     }
+    if kind == legacy_kind { id.into() } else { key }
 }
 fn requirement_key<'a>(w: &'a Workspace, key: &str) -> Option<&'a str> {
     let key = resolve_address(w, key);
@@ -649,6 +680,9 @@ fn requirement_key<'a>(w: &'a Workspace, key: &str) -> Option<&'a str> {
 fn document_adapter_fields(w: &Workspace, kind: &str) -> Option<&'static [&'static str]> {
     let configured = schema(w);
     let role = configured.types.get(kind).map(|t| t.role.as_str());
+    if w.documents_migrated && role == Some("requirement") {
+        return Some(&["title", "body", "owner"]);
+    }
     native_document_fields(match role {
         Some(role @ ("requirement" | "ac")) => role,
         _ => kind,
@@ -696,11 +730,16 @@ fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Val
         if let Some(r) = q.revisions.last() {
             let req_address = requirement_address(id);
             let (req_kind, req_id) = req_address.split_once(':').unwrap();
+            let mut data =
+                json!({"title":r.title,"body":r.body,"owner":r.owner,"consumers":r.consumers});
+            if w.documents_migrated && r.consumers.is_empty() {
+                data.as_object_mut().unwrap().remove("consumers");
+            }
             put(
                 req_kind,
                 req_id,
                 q.capability.as_deref().map(|id| address("capability", id)),
-                json!({"title":r.title,"body":r.body,"owner":r.owner,"consumers":r.consumers}),
+                data,
             );
             for ac in &r.acs {
                 let ac_address = criterion_address(&ac.id);
@@ -792,18 +831,21 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
         {
             for (field, value) in previous.data.as_object().unwrap() {
-                if adapter_fields
-                    .get(kind)
-                    .copied()
-                    .flatten()
-                    .is_none_or(|fields| !fields.contains(&field.as_str()))
+                let legacy_reference_update = field == "consumers"
+                    && matches!(command, Command::Revise { req, consumers, .. } if key == &requirement_address(req) && w.documents_migrated && !consumers.is_empty());
+                if !legacy_reference_update
+                    && adapter_fields
+                        .get(kind)
+                        .copied()
+                        .flatten()
+                        .is_none_or(|fields| !fields.contains(&field.as_str()))
                 {
                     data[field] = value.clone();
                 }
             }
             for field in t.references.keys() {
                 let native_update = field == "consumers"
-                    && matches!(command, Command::Revise { req, .. } if key == &requirement_address(req));
+                    && matches!(command, Command::Revise { req, consumers, .. } if key == &requirement_address(req) && (!w.documents_migrated || !consumers.is_empty()));
                 if native_update && !t.references[field].multiple {
                     data[field] = data[field]
                         .as_array()
@@ -816,6 +858,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             }
         }
         if w.schema_migrated
+            && !w.documents_migrated
             && let Some(previous) = obj.revisions.last()
             && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
         {
@@ -1086,7 +1129,12 @@ fn typed_command(
         .context("unknown object type")?
         .role
         .as_str();
-    let workflow = if matches!(role, "requirement" | "ac") {
+    let workflow = if w.documents_migrated {
+        if !matches!(role, "requirement" | "ac") {
+            return Ok(None);
+        }
+        role
+    } else if matches!(role, "requirement" | "ac") {
         role
     } else if matches!(kind, "requirement" | "ac") {
         return Ok(None);
@@ -1094,7 +1142,11 @@ fn typed_command(
         kind
     };
     let mut native_data = data.clone();
+    if w.documents_migrated && workflow == "requirement" {
+        native_data["consumers"] = json!([]);
+    }
     if w.schema_migrated
+        && !w.documents_migrated
         && workflow == "requirement"
         && let Some(value) = data.get("consumers").and_then(Value::as_str)
     {
@@ -1182,11 +1234,15 @@ fn typed_command(
             if !w.schema_migrated {
                 ensure!(!consumers.is_empty(), "REQ needs at least one Consumer");
             }
-            let capability = ancestor(w, parent, "capability").ok();
-            let req_key = process_key(kind, id, "requirement");
+            let capability = if w.documents_migrated {
+                None
+            } else {
+                ancestor(w, parent, "capability").ok()
+            };
+            let req_key = process_key(w, kind, id, "requirement");
             if let Some(q) = w.requirements.get(&req_key) {
                 let r = q.revisions.last().unwrap();
-                revise(&req_key, r, capability, data, reason, fresh_acs(r))?
+                revise(&req_key, r, capability, &native_data, reason, fresh_acs(r))?
             } else {
                 Command::Revise {
                     req: req_key,
@@ -1228,7 +1284,7 @@ fn typed_command(
                 decision || assigned == r.owner,
                 "an independent AC owner requires decision_required=true"
             );
-            let ac_key = process_key(kind, id, "ac");
+            let ac_key = process_key(w, kind, id, "ac");
             let ac = Ac {
                 id: ac_key.clone(),
                 text: string(data, "title")?,
@@ -1257,7 +1313,13 @@ fn typed_command(
             {
                 req_data["consumers"] = json!([value]);
             }
-            revise(&req, r, q.capability.clone(), &req_data, reason, acs)?
+            let capability = (!w.documents_migrated)
+                .then(|| q.capability.clone())
+                .flatten();
+            if w.documents_migrated {
+                req_data["consumers"] = json!([]);
+            }
+            revise(&req, r, capability, &req_data, reason, acs)?
         }
         "task" => {
             let ac_id = local(parent, "ac")?;
@@ -1360,6 +1422,10 @@ pub fn save(
     );
     commands::identifier(kind)?;
     let key = address(kind, id);
+    ensure!(
+        !w.documents_migrated || !w.object_aliases.contains_key(&key),
+        "object address is a historical alias"
+    );
     let old = w.objects.get(&key).cloned();
     ensure!(
         old.as_ref().map_or(0, |o| o.current().revision) == *revision,
@@ -1372,6 +1438,11 @@ pub fn save(
         );
     }
     ensure!(data.is_object(), "data must be an object");
+    if w.documents_migrated {
+        for field in data.as_object().unwrap().keys() {
+            ensure!(!process_field(field), "use process commands for {field}");
+        }
+    }
     if input_type(w, kind) {
         ensure!(
             data.get("status")
@@ -1499,29 +1570,32 @@ pub fn save(
         .unwrap_or_default();
     let mut saved_data = if let Some(data) = task_data {
         data
-    } else if legacy_defaults().contains_key(kind)
-        && kind != "note"
-        && !candidate.document_overrides.contains(&key)
+    } else if !candidate.document_overrides.contains(&key)
+        && (w.documents_migrated
+            && matches!(schema(w).types[kind].role.as_str(), "requirement" | "ac")
+            || !w.documents_migrated && legacy_defaults().contains_key(kind) && kind != "note")
     {
         if w.schema_migrated {
             let mut normalized = projected;
             normalized.as_object_mut().unwrap().retain(|field, _| {
                 data.get(field).is_some()
-                    || native_document_fields(kind)
+                    || document_adapter_fields(w, kind)
                         .is_some_and(|fields| fields.contains(&field.as_str()))
             });
             for (field, value) in data.as_object().unwrap() {
                 normalized[field] = value.clone();
             }
-            for field in defaults()
-                .get(kind)
-                .into_iter()
-                .flat_map(|t| t.references.keys())
-            {
-                if !schema(w).types[kind].references.contains_key(field)
-                    && data.get(field).is_none()
+            if !w.documents_migrated {
+                for field in defaults()
+                    .get(kind)
+                    .into_iter()
+                    .flat_map(|t| t.references.keys())
                 {
-                    normalized.as_object_mut().unwrap().remove(field);
+                    if !schema(w).types[kind].references.contains_key(field)
+                        && data.get(field).is_none()
+                    {
+                        normalized.as_object_mut().unwrap().remove(field);
+                    }
                 }
             }
             normalized
@@ -1694,7 +1768,10 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
 
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} => {
+        Command::MigrateNotes {}
+        | Command::MigrateTasks {}
+        | Command::MigrateSchema {}
+        | Command::MigrateDocuments {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }
@@ -1707,7 +1784,7 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         }
         Command::SaveObject {
             kind, id, revision, ..
-        } => {
+        } if !w.documents_migrated => {
             ensure!(
                 !["intake", "point"].contains(&kind.as_str()),
                 "use kind=note"
@@ -1717,7 +1794,7 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 "Note migration identifiers are reserved"
             );
         }
-        Command::SetTreeSchema { types, .. } => ensure!(
+        Command::SetTreeSchema { types, .. } if !w.documents_migrated => ensure!(
             !types.contains_key("intake") && !types.contains_key("point"),
             "incoming source types are removed; use Note"
         ),
@@ -1865,10 +1942,10 @@ pub fn launch_objects(w: &Workspace) -> Vec<&str> {
         .iter()
         .filter(|(_, o)| {
             o.current().present
-                && configured
-                    .types
-                    .get(&o.kind)
-                    .is_some_and(|t| t.launch_blocker.unwrap_or(o.kind == "ac"))
+                && configured.types.get(&o.kind).is_some_and(|t| {
+                    t.launch_blocker
+                        .unwrap_or(!w.documents_migrated && o.kind == "ac")
+                })
                 && o.current().data["before_launch"] == true
         })
         .map(|(key, _)| key.as_str())
@@ -1902,7 +1979,7 @@ pub fn input_type(w: &Workspace, kind: &str) -> bool {
     schema(w)
         .types
         .get(kind)
-        .is_some_and(|t| t.inbox.unwrap_or(kind == "note"))
+        .is_some_and(|t| t.inbox.unwrap_or(!w.documents_migrated && kind == "note"))
 }
 
 pub fn verification(w: &Workspace, key: &str) -> &'static str {

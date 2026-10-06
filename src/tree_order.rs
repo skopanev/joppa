@@ -9,33 +9,67 @@ pub fn key(kind: &str, parent: Option<&str>) -> String {
     }
 }
 pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Vec<String>> {
-    let members: BTreeSet<String> = match (kind, parent) {
-        ("domain", None) => w
-            .domains
-            .iter()
-            .filter(|(_, d)| !d.archived)
-            .map(|(id, _)| id.clone())
-            .collect(),
-        ("capability", Some(domain)) => {
-            ensure!(w.domains.contains_key(domain), "unknown parent domain");
-            w.capabilities
+    let members: BTreeSet<String> = if w.documents_migrated {
+        let schema = crate::objects::schema(w);
+        ensure!(schema.types.contains_key(kind), "unknown object type");
+        let parent = if let Some(parent) = parent {
+            let address = crate::objects::resolve_address(w, parent);
+            if w.objects.get(address).is_some_and(|o| o.current().present) {
+                Some(address.to_owned())
+            } else {
+                let mut found = w
+                    .objects
+                    .iter()
+                    .filter(|(_, o)| o.current().present && o.id == parent);
+                let first = found.next().map(|(key, _)| key.clone());
+                ensure!(
+                    first.is_some() && found.next().is_none(),
+                    "use a complete parent address"
+                );
+                first
+            }
+        } else {
+            None
+        };
+        w.objects
+            .values()
+            .filter(|o| {
+                o.kind == kind
+                    && o.current().present
+                    && o.current().data["archived"] != true
+                    && o.current().parent == parent
+            })
+            .map(|o| o.id.clone())
+            .collect()
+    } else {
+        match (kind, parent) {
+            ("domain", None) => w
+                .domains
                 .iter()
-                .filter(|(_, c)| c.domain.as_deref() == Some(domain))
+                .filter(|(_, d)| !d.archived)
                 .map(|(id, _)| id.clone())
-                .collect()
+                .collect(),
+            ("capability", Some(domain)) => {
+                ensure!(w.domains.contains_key(domain), "unknown parent domain");
+                w.capabilities
+                    .iter()
+                    .filter(|(_, c)| c.domain.as_deref() == Some(domain))
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            }
+            ("requirement", Some(capability)) => {
+                ensure!(
+                    w.capabilities.contains_key(capability),
+                    "unknown parent capability"
+                );
+                w.requirements
+                    .iter()
+                    .filter(|(_, r)| r.capability.as_deref() == Some(capability))
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            }
+            _ => bail!("order domains, capabilities or requirements within their parent"),
         }
-        ("requirement", Some(capability)) => {
-            ensure!(
-                w.capabilities.contains_key(capability),
-                "unknown parent capability"
-            );
-            w.requirements
-                .iter()
-                .filter(|(_, r)| r.capability.as_deref() == Some(capability))
-                .map(|(id, _)| id.clone())
-                .collect()
-        }
-        _ => bail!("order domains, capabilities or requirements within their parent"),
     };
     let mut ids: Vec<String> = w
         .tree_order

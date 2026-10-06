@@ -149,38 +149,61 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let domain = a["results"][0]["command"]["id"].as_str().unwrap();
     let capability = a["results"][1]["command"]["id"].as_str().unwrap();
     let first = store::board_read(&pool, &ws, "owner", None, None, None).await?;
-    assert!(first["state"]["domains"][domain].is_object());
-    assert_eq!(first["state"]["capabilities"], json!({}));
-    assert_eq!(first["state"]["requirements"], json!({}));
-    assert_eq!(first["history"], json!([]));
-    let branch = store::board_read(&pool, &ws, "owner", Some("domain"), Some(domain), None).await?;
-    assert!(branch["capabilities"][capability].is_object());
-    let branch = store::board_read(
+    assert!(first["state"].get("domains").is_none());
+    assert!(first.get("history").is_none());
+    assert!(first.get("system_ids").is_none());
+    let domain_key = format!("domain:{domain}");
+    let branch = store::read_objects(
         &pool,
         &ws,
         "owner",
-        Some("capability"),
-        Some(capability),
+        &store::ObjectScope {
+            parent: Some(&domain_key),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(branch["items"][0]["id"], capability);
+    let capability_key = format!("capability:{capability}");
+    let branch = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            parent: Some(&capability_key),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(branch["items"][0]["title"], "Paid access persists");
+    assert!(branch["items"][0].get("document").is_none());
+    assert!(branch["items"][0].get("acs").is_none());
+    let requirement_key = format!("requirement:{req}");
+    let detail = store::board_read(
+        &pool,
+        &ws,
+        "owner",
+        Some("process"),
+        Some(&requirement_key),
         None,
     )
     .await?;
-    assert_eq!(
-        branch["requirements"][req]["revisions"][0]["title"],
-        "Paid access persists"
-    );
+    assert_eq!(detail["criteria"][0]["id"], ac);
+    let consumers = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            kind: Some("consumer"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(consumers["items"][0]["title"], "Buyer");
     assert!(
-        branch["requirements"][req]["revisions"][0]
-            .get("acs")
-            .is_none()
-    );
-    let detail =
-        store::board_read(&pool, &ws, "owner", Some("requirement"), Some(req), None).await?;
-    assert_eq!(detail["requirement"]["revisions"][0]["acs"][0]["id"], ac);
-    assert!(!detail["status_events"].as_array().unwrap().is_empty());
-    assert_eq!(
-        store::board_read(&pool, &ws, "owner", Some("consumers"), None, None).await?["consumers"]["buyer"]
-            ["title"],
-        "Buyer"
+        store::board_read(&pool, &ws, "owner", Some("domain"), Some(domain), None)
+            .await
+            .is_err()
     );
     uuid::Uuid::parse_str(req)?;
     uuid::Uuid::parse_str(ac)?;
@@ -253,9 +276,19 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     conn.execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws])
         .await?;
     assert!(store::backfill_board(&pool).await? >= 1);
-    assert!(
-        store::board_read(&pool, &ws, "owner", None, None, None).await?["state"]["domains"][domain]
-            .is_object()
+    let domain_key = format!("domain:{domain}");
+    assert_eq!(
+        store::read_objects(
+            &pool,
+            &ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some(&domain_key),
+                ..Default::default()
+            }
+        )
+        .await?["document"]["data"]["title"],
+        "Second area"
     );
     Ok(())
 }

@@ -10,6 +10,7 @@ pub enum Command {
     MigrateNotes {},
     MigrateTasks {},
     MigrateSchema {},
+    MigrateDocuments {},
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
@@ -572,6 +573,10 @@ pub(crate) fn apply_inner(
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_schema(w, actor, position, recorded_at)?;
         }
+        Command::MigrateDocuments {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            crate::objects::migrate_documents(w, actor, position, recorded_at)?;
+        }
         Command::SetTreeSchema {
             revision,
             types,
@@ -1097,15 +1102,19 @@ pub(crate) fn apply_inner(
                 text.chars().count() <= DESCRIPTION_MAX,
                 "a description is at most {DESCRIPTION_MAX} characters"
             );
-            // Домен и капабилити НЕ версионируются — их пояснение живёт в
-            // них самих, и правка здесь ничего не переписывает задним числом.
-            // У условия приёмки описание — часть ревизии, а ревизию трогать
-            // нельзя: там оно остаётся как было, а это пояснение ложится
-            // рядом, отдельной заметкой.
-            if let Some(id) = t.strip_prefix("domain:") {
-                w.domains.get_mut(id).unwrap().description = text.clone();
-            } else if let Some(id) = t.strip_prefix("capability:") {
-                w.capabilities.get_mut(id).unwrap().description = text.clone();
+            // Old journal events keep embedded descriptions. Current objects use common annotations.
+            if !w.documents_migrated
+                && let Some(domain) = t
+                    .strip_prefix("domain:")
+                    .and_then(|id| w.domains.get_mut(id))
+            {
+                domain.description = text.clone();
+            } else if !w.documents_migrated
+                && let Some(capability) = t
+                    .strip_prefix("capability:")
+                    .and_then(|id| w.capabilities.get_mut(id))
+            {
+                capability.description = text.clone();
             } else {
                 w.notes
                     .entry(crate::objects::annotation_address(w, t))

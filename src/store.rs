@@ -116,40 +116,17 @@ async fn ensure_notes(
     events: &mut Vec<Event>,
 ) -> Result<bool> {
     let mut changed = false;
-    if !state.notes_migrated {
+    for (needed, command) in [
+        (!state.notes_migrated, Command::MigrateNotes {}),
+        (!state.tasks_migrated, Command::MigrateTasks {}),
+        (!state.schema_migrated, Command::MigrateSchema {}),
+        (!state.documents_migrated, Command::MigrateDocuments {}),
+    ] {
+        if !needed {
+            continue;
+        }
         ensure!(!state.admin.is_empty(), "workspace has no owner");
         let position = events.last().map_or(1, |event| event.position + 1);
-        let command = Command::MigrateNotes {};
-        let actor = state.admin.clone();
-        let payload = serde_json::to_string(&command)?;
-        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
-        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
-        events.push(Event {
-            position,
-            actor,
-            recorded_at,
-            command,
-        });
-        changed = true;
-    }
-    if !state.tasks_migrated {
-        let position = events.last().map_or(1, |event| event.position + 1);
-        let command = Command::MigrateTasks {};
-        let actor = state.admin.clone();
-        let payload = serde_json::to_string(&command)?;
-        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
-        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
-        events.push(Event {
-            position,
-            actor,
-            recorded_at,
-            command,
-        });
-        changed = true;
-    }
-    if !state.schema_migrated {
-        let position = events.last().map_or(1, |event| event.position + 1);
-        let command = Command::MigrateSchema {};
         let actor = state.admin.clone();
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
@@ -164,7 +141,7 @@ async fn ensure_notes(
     }
     Ok(changed)
 }
-pub(super) const BOARD_PROJECTION_VERSION: &str = "2";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "3";
 
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let conn = pool.get().await?;
@@ -330,13 +307,30 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
     let resolved = resolve_workspace(&**conn, workspace).await?;
     let workspace = resolved.as_str();
     access::check(&**conn, workspace, actor, false).await?;
+    if !scope.full && scope.req.is_none() && scope.target.is_none() {
+        ensure!(
+            scope.revision.is_none(),
+            "revision requires an object or verification context"
+        );
+        let row = conn
+            .query_one(
+                "SELECT first_view::text FROM joppa.board_cache WHERE workspace=$1",
+                &[&workspace],
+            )
+            .await?;
+        let first: Value = serde_json::from_str(row.get(0))?;
+        drop(conn);
+        let roots = read_objects(pool, workspace, actor, &ObjectScope::default()).await?;
+        return Ok(
+            json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"launch":first["launch"],"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
+        );
+    }
     let (state, events) = load(&**conn, workspace).await?;
     ensure!(
         state.members.contains_key(actor),
         "workspace not found or access denied"
     );
-    let mut system_ids =
-        json!({"domain":{},"capability":{},"consumer":{},"requirement":{},"ac":{}});
+    let mut system_ids = json!({});
     for row in conn
         .query(
             "SELECT kind,local_id,id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2",
@@ -353,20 +347,6 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         system_ids[&kind][&local] = json!(id);
     }
     let summaries = summaries(&state);
-    // Заметки в оглавлении — ЧИСЛАМИ. Иначе одно обсуждение на сто реплик
-    // весит больше, чем всё дерево, и попадает в каждый ответ.
-    let counts = |address: String| match state.notes.get(&address) {
-        None => Value::Null,
-        Some(n) => {
-            let comments = n.comments.values().filter(|c| !c.withdrawn).count();
-            let attachments = n.attachments.values().filter(|a| !a.removed).count();
-            if comments == 0 && attachments == 0 && n.description.is_empty() {
-                Value::Null
-            } else {
-                json!({"comments": comments, "attachments": attachments, "described": !n.description.is_empty()})
-            }
-        }
-    };
     let launch = crate::objects::launch_summary(&state);
     let mut out = json!({
         "workspace": state.workspace_id.as_deref().unwrap_or(workspace),
@@ -478,59 +458,9 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         return Ok(out);
     }
 
-    // По умолчанию — ОГЛАВЛЕНИЕ. Домены и капабилити целиком: их десятки, и
-    // без них не сориентироваться. Требования — заголовком и состоянием, без
-    // ревизий, AC, задач, прогонов и находок: их сотни, и каждое тянет за
-    // собой столько же, сколько весь остальной ответ.
-    let requirements: Vec<Value> = state
-        .requirements
-        .iter()
-        .map(|(id, q)| {
-            let r = q.revisions.last().unwrap();
-            json!({
-                "id": id,
-                "capability": q.capability,
-                "title": r.title,
-                "revision": r.number,
-                "revision_count": q.revisions.len(),
-                "consumers": r.consumers,
-                "confirmed": r.confirmed,
-                "acs": r.acs.len(),
-                "comments": q.comments.len(),
-                "notes": counts(crate::objects::requirement_address(id)),
-                "summary": summaries.get(id).cloned().unwrap_or(Value::Null),
-            })
-        })
-        .collect();
-    let domains: serde_json::Map<String, Value> = state
-        .domains
-        .iter()
-        .map(|(id, d)| {
-            let mut v = json!(d);
-            v["notes"] = counts(format!("domain:{id}"));
-            (id.clone(), v)
-        })
-        .collect();
-    let capabilities: serde_json::Map<String, Value> = state
-        .capabilities
-        .iter()
-        .map(|(id, c)| {
-            let mut v = json!(c);
-            v["notes"] = counts(format!("capability:{id}"));
-            (id.clone(), v)
-        })
-        .collect();
-    out["index"] = json!({
-        "domains": domains,
-        "capabilities": capabilities,
-        "consumers": state.consumers,
-        "requirements": requirements,
-        "members": state.members,
-        "reading": "Read one requirement with req: current revision only. revision_count gives the number available; request revision=N for exactly one older revision. history=true returns counts only, never events or revision bodies.",
-    });
-
     Ok(out)
 }
+
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
     let allowed = access::scope(&**conn, actor).await?;
@@ -604,98 +534,51 @@ pub async fn read_item_scoped(
     let local_id: String = row.get(2);
     access::check(&**conn, &workspace, actor, false).await?;
     drop(conn);
-    if !["domain", "capability", "consumer", "requirement", "ac"].contains(&kind.as_str()) {
-        let address = format!("{kind}:{local_id}");
-        let mut result = read_objects(
+    let address = format!("{kind}:{local_id}");
+    let mut result = read_objects(
+        pool,
+        &workspace,
+        actor,
+        &ObjectScope {
+            address: Some(&address),
+            ..Default::default()
+        },
+    )
+    .await?;
+    if let Some(req) = result["process"]["req"].as_str() {
+        scope.req = Some(req.into());
+        let mut evidence = read(pool, &workspace, actor, &scope).await?;
+        evidence["object"] = if scope.revision.is_some()
+            || scope.history
+            || result["document"]["present"] == false
+        {
+            json!({"address":result["address"],"kind":result["kind"],"id":result["id"],"item_id":result["item_id"],"current_revision":result["current_revision"],"revision_count":result["revision_count"],"metadata_scope":"current"})
+        } else {
+            result.clone()
+        };
+        if scope.revision.is_none() && !scope.history {
+            evidence["process"] = result["process"].clone();
+        }
+        let r = &evidence["requirement"]["revisions"][0];
+        let criterion = result["process"]["criterion"].as_str();
+        evidence["selection"] = json!({"kind":kind,"id":local_id,"system_id":id,"req":req,"revision":r["number"],"present":criterion.is_none_or(|ac|r["acs"].as_array().is_some_and(|acs|acs.iter().any(|a|a["id"]==ac)))});
+        return Ok(evidence);
+    }
+    if scope.revision.is_some() || scope.history {
+        result = read_objects(
             pool,
             &workspace,
             actor,
             &ObjectScope {
                 address: Some(&address),
+                revision: scope.revision,
+                history: scope.history,
                 ..Default::default()
             },
         )
         .await?;
-        if let Some(req) = result["process"]["req"].as_str() {
-            scope.req = Some(req.into());
-            let mut evidence = read(pool, &workspace, actor, &scope).await?;
-            let r = &evidence["requirement"]["revisions"][0];
-            let criterion = result["process"]["criterion"].as_str();
-            evidence["selection"] = json!({"kind":kind,"id":local_id,"system_id":id,"req":req,"revision":r["number"],"present":criterion.is_none_or(|ac|r["acs"].as_array().is_some_and(|acs|acs.iter().any(|a|a["id"]==ac)))});
-            return Ok(evidence);
-        }
-        if scope.revision.is_some() || scope.history {
-            result = read_objects(
-                pool,
-                &workspace,
-                actor,
-                &ObjectScope {
-                    address: Some(&address),
-                    revision: scope.revision,
-                    history: scope.history,
-                    ..Default::default()
-                },
-            )
-            .await?;
-        }
-        result["selection"] = json!({"kind":result["kind"],"id":result["id"],"system_id":id});
-        return Ok(result);
     }
-    // Скопированный номер разрешается В САМ ПРЕДМЕТ, а не в весь воркспейс.
-    // Раньше запрос «что это за идентификатор» возвращал всё содержимое —
-    // ответ в сотню тысяч знаков на вопрос про одну строку.
-    let mut selection = json!({"kind":kind,"id":local_id,"system_id":id});
-    match kind.as_str() {
-        "requirement" => scope.req = Some(local_id.clone()),
-        "ac" => {
-            let conn = pool.get().await?;
-            let (state, _) = load(&**conn, &workspace).await?;
-            drop(conn);
-            if state.document_overrides.contains(&format!("ac:{local_id}")) {
-                let mut result = read_objects(
-                    pool,
-                    &workspace,
-                    actor,
-                    &ObjectScope {
-                        address: Some(&format!("ac:{local_id}")),
-                        revision: scope.revision,
-                        history: scope.history,
-                        ..Default::default()
-                    },
-                )
-                .await?;
-                result["selection"] = selection;
-                return Ok(result);
-            }
-            for (req, q) in &state.requirements {
-                if q.revisions
-                    .iter()
-                    .any(|r| r.acs.iter().any(|ac| ac.id == local_id))
-                {
-                    let revision = match scope.revision {
-                        Some(number) => q
-                            .revisions
-                            .iter()
-                            .find(|r| r.number == number)
-                            .with_context(|| {
-                                format!("unknown revision {number} for requirement {req}")
-                            })?,
-                        None => q.revisions.last().context("requirement has no revisions")?,
-                    };
-                    selection["req"] = json!(req);
-                    selection["revision"] = json!(revision.number);
-                    selection["present"] = json!(revision.acs.iter().any(|ac| ac.id == local_id));
-                    scope.req = Some(req.clone());
-                    break;
-                }
-            }
-        }
-        // Домен и капабилити сами по себе малы, но их содержимое — нет.
-        // Оглавления довольно, чтобы увидеть, что внутри.
-        _ => {}
-    }
-    let mut result = read(pool, &workspace, actor, &scope).await?;
-    result["selection"] = selection;
+    result["selection"] = json!({"kind":result["kind"],"id":result["id"],"system_id":id});
     Ok(result)
 }
 

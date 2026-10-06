@@ -1,22 +1,5 @@
 use super::*;
 
-pub(super) async fn projected_requirement_tasks(
-    client: &impl GenericClient,
-    workspace: &str,
-    req: &str,
-) -> Result<Value> {
-    let mut tasks = json!({});
-    let req_address = crate::objects::requirement_address(req);
-    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address=$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,p.process->>'criterion',o.process::text FROM joppa.objects o LEFT JOIN joppa.objects p ON p.workspace=o.workspace AND p.address=o.parent JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string' AND o.process ? 'assignee'", &[&workspace,&req_address]).await? {
-        let address:String=row.get(0);
-        let criterion:Option<String>=row.get(1);
-        let mut t:Value=serde_json::from_str(row.get::<_,&str>(2))?;
-        t["acs"]=json!(criterion.map(|id|vec![id]).unwrap_or_default());
-        tasks[address.strip_prefix(&format!("task:{req}/")).unwrap_or(&address)]=t;
-    }
-    Ok(tasks)
-}
-
 /// A project selector is an ordinary object address once the schema owns
 /// relations. Its membership comes from the configured verification subject,
 /// declared on the Task itself or on any of its ancestors.

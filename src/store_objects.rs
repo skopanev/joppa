@@ -25,7 +25,9 @@ pub(super) async fn project(
     let schema_changed = events.last().is_some_and(|e| {
         matches!(
             e.command,
-            Command::SetTreeSchema { .. } | Command::MigrateSchema {}
+            Command::SetTreeSchema { .. }
+                | Command::MigrateSchema {}
+                | Command::MigrateDocuments {}
         )
     });
     let mut docs = vec![];
@@ -297,9 +299,9 @@ pub async fn read_objects(
     )?;
     ensure!(
         scope.note_status.is_none()
-            || scope.kind.is_some_and(|kind| selected
-                .get(kind)
-                .is_some_and(|t| t.inbox.unwrap_or(kind == "note"))),
+            || scope
+                .kind
+                .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false))),
         "note_status requires an inbox type"
     );
     let related_to = if let Some(key) = scope.related_to {
@@ -333,9 +335,9 @@ pub async fn read_objects(
     } else {
         None
     };
-    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text,o.present,COALESCE(o.document->'data'->>'status','unprocessed') FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR o.kind='ac' AND EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND ($8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*') AND ($7::text IS NULL OR COALESCE(o.document->'data'->>'status','unprocessed')=$7) AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8)))) ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to]).await?;
+    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.document->'data'->>'owner',o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document->>'at',o.document->'data'->>'description',o.signal::text,o.present,COALESCE(o.document->'data'->>'status','unprocessed') FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND ($8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*') AND ($7::text IS NULL OR COALESCE(o.document->'data'->>'status','unprocessed')=$7) AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8)))) ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to]).await?;
     let more = rows.len() > limit;
-    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(r.get::<_,String>(1)=="note")) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
+    let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     let next = more.then(|| {
         format!(
             "{position}:{}",

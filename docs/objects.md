@@ -66,6 +66,8 @@ Use custom types with any supported role. A `task` role supplies claim, release,
 A `requirement` role supplies specification revisions, test plans and acceptance.
 An `ac` role supplies a criterion in its nearest ancestor specification.
 These roles work with any configured type name, including `spec`, `epic`, `measure` and `rule`.
+A type name does not select its workflow. Former default names can also use ordinary document or group roles.
+All ordinary fields follow the same document rules. Reference fields come only from the active schema.
 Custom workflow commands use full object addresses in `req` and `ac`.
 The server keeps earlier local journal keys compatible.
 Two types can use the same local identifier without sharing test evidence.
@@ -201,7 +203,8 @@ Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the c
 
 ## Note processing and type colors
 
-Set `inbox: true` on any schema type to hold incoming information. Missing `data.status` means `unprocessed`.
+Set `inbox: true` on any schema type to hold incoming information.
+An omitted flag disables the queue. The type name does not supply a default. Missing `data.status` means `unprocessed`.
 Use `set_note_status` with `target`, the object `revision`, `status` and `reason`.
 The status is `unprocessed` or `processed`. The server creates the next object revision.
 This command preserves the complete source data, parent and links.
@@ -282,7 +285,8 @@ Type titles and colors remain workspace settings. For example, the `note` type c
 
 Set `launch_blocker: true` on a type to use its `before_launch` entries as launch conditions.
 Current check evidence and owner acceptance must cover each selected entry.
-Use `launch_blocker: false` to disable this behavior. Earlier schemas preserve their previous launch rules.
+Use `launch_blocker: false` to disable this behavior. An omitted flag also disables it.
+The internal document migration records previous flags once. It does not change any document revision.
 
 A task purpose can be any nonempty label. The `decision` label retains its configured decision behavior.
 
@@ -293,3 +297,14 @@ Verification uses `pass`, `fail` and `unverified`. A completed Task passes only 
 A blocking dependency on a requirement waits for its current checks to pass. Owner acceptance remains separate.
 If that requirement loses its passing checks, dependent Tasks cannot start. Completed dependent Tasks show `unverified`.
 The system preserves completion results and earlier evidence. Ordinary `related` links do not block work.
+
+## Current read paths
+
+The board bootstrap returns workspace metadata, type definitions, counts and launch state.
+Read each object list with `joppa_objects`. Read verification details with the board `process` level.
+The board no longer accepts native Domain, Capability, Requirement, Consumer, filter or history levels.
+Read document history by its address and revision. No list includes document bodies or revision history.
+A copied ID uses the same object reader for every type name.
+Verification objects also return their configured evidence context. Historical evidence reads omit current document bodies.
+Search indexes current objects and their ancestor context through the same document tree.
+It returns each configured type under its actual name.

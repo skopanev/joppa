@@ -150,13 +150,10 @@ fn an_attachment_records_the_file_and_detaching_keeps_it() {
     );
 }
 
-/// Оглавление несёт ЧИСЛА заметок, а не их содержимое; целиком объект
-/// отдаётся только по его адресу. Это и есть та экономия, ради которой
-/// читают оглавление: обсуждение на сто реплик не должно попадать в ответ
-/// на вопрос «что вообще есть в воркспейсе».
+/// The root index omits discussion text. One address returns its annotations.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL (database name must start with joppa_test)"]
-async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow::Result<()> {
+async fn the_index_carries_roots_and_one_object_carries_annotations() -> anyhow::Result<()> {
     use joppa::{commands::Command, store};
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     store::migrate(&pool).await?;
@@ -196,24 +193,14 @@ async fn the_index_carries_counts_and_one_object_carries_everything() -> anyhow:
 
     let scope = store::Scope::from_args(&json!({}))?;
     let index = store::read(&pool, &ws, "prober", &scope).await?;
-    let notes = &index["index"]["domains"]["billing"]["notes"];
-    // Отозванная реплика в счёт не идёт: счётчик обещает, сколько сообщений
-    // человек увидит, открыв объект.
-    assert_eq!(notes["comments"], json!(1), "{index}");
-    assert_eq!(notes["attachments"], json!(1));
-    assert_eq!(notes["described"], json!(false));
-    assert!(
-        index["index"]["domains"]["billing"]
-            .get("comments")
-            .is_none(),
-        "the index must not carry the text of the discussion: {index}"
-    );
-    // Капабилити без заметок не несёт пустышку — она весила бы столько же,
-    // сколько настоящий счётчик, и её пришлось бы читать на каждом объекте.
-    assert_eq!(
-        index["index"]["capabilities"]["invoice"]["notes"],
-        json!(null)
-    );
+    let roots = index["index"]["objects"].as_array().unwrap();
+    assert_eq!(roots.len(), 2);
+    assert!(roots.iter().all(|item| item["parent"].is_null()));
+    assert!(roots.iter().any(|item| item["address"] == "domain:billing"));
+    assert!(roots.iter().all(|item| item.get("data").is_none()
+        && item.get("annotations").is_none()
+        && item.get("comments").is_none()));
+    assert!(!index.to_string().contains("Who owns refunds?"));
 
     let one = store::read(
         &pool,

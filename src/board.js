@@ -45,11 +45,24 @@ async function copyAction(trigger,text){
     dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();field.focus();field.select();
     return false;
   }
-  const label=trigger.dataset.label||trigger.textContent;
-  trigger.dataset.label=label;trigger.textContent='Copied';
-  setTimeout(()=>{if(trigger.isConnected)trigger.textContent=label;},3000);
+  trigger.classList.add('copied');trigger.dataset.copyState='copied';
+  trigger.setAttribute('aria-label','Copied ID for agent');trigger.title='Copied ID for agent';
+  clearTimeout(trigger.copyTimer);
+  trigger.copyTimer=setTimeout(()=>{if(trigger.isConnected){trigger.classList.remove('copied');trigger.dataset.copyState='ready';trigger.setAttribute('aria-label','Copy ID for agent');trigger.title='Copy ID for agent';}},3000);
   toast('Copied '+text);
   return true;
+}
+function copyButton(text){
+  const control=button('',()=>copyAction(control,text),'copy');control.type='button';control.dataset.copyState='ready';
+  control.title='Copy ID for agent';control.setAttribute('aria-label','Copy ID for agent');
+  const ns='http://www.w3.org/2000/svg';
+  const icon=(className,width)=>{const svg=document.createElementNS(ns,'svg');for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width,height:width,fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);svg.classList.add(className);return svg;};
+  const part=(tag,attributes)=>{const node=document.createElementNS(ns,tag);for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);return node;};
+  const copy=icon('copy-symbol','14');copy.append(part('rect',{x:'8',y:'8',width:'12',height:'12',rx:'2'}),part('path',{d:'M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4'}));
+  const check=icon('copy-check','14');check.append(part('path',{d:'m5 12 4 4L19 6'}));
+  const face=icon('agent-face','18');
+  for(const [tag,attributes] of [['rect',{x:'4',y:'7',width:'16',height:'13',rx:'4'}],['path',{d:'M12 7V4m-2 0h4M1 12v4m22-4v4M9 16h6'}],['circle',{cx:'8.5',cy:'12',r:'1',fill:'currentColor',stroke:'none'}],['circle',{cx:'15.5',cy:'12',r:'1',fill:'currentColor',stroke:'none'}]])face.append(part(tag,attributes));
+  control.append(copy,check,face);control.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});return control;
 }
 function notify(e) {
   toast(e?.message||String(e||''),e instanceof Error);
@@ -258,10 +271,12 @@ function rootCollectionTabs(root){
   const activate=(kind,focus=false)=>{
     selected=kind;try{sessionStorage.setItem(key,kind);}catch{}
     for(const panel of panels){
-      const active=panel.dataset.collectionKind===kind;panel.hidden=!active;
+      const active=panel.dataset.collectionKind===kind;panel.hidden=!active||Boolean(data.filterActive);
       const tab=nav.querySelector('[aria-controls="'+panel.id+'"]');tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
       if(active){
+        data.activeRootKind=kind;
         if(focus)tab.focus();
+        if(data.filterActive)continue;
         panel.collectionLoad?.();
         if(panel.dataset.collectionLazy==='true'){
           delete panel.dataset.collectionLazy;
@@ -271,6 +286,7 @@ function rootCollectionTabs(root){
         }
       }
     }
+    if(data.filterActive)data.filterUpdate?.();
   };
   for(const panel of panels){
     const kind=panel.dataset.collectionKind,type=data.objectTypes[kind];
@@ -371,10 +387,11 @@ async function objectPart(params){
     const links=document.links.map(link=>({link,title:objects[link.target]?.revisions.at(-1).data.title,current_revision:objects[link.target]?.current_revision}));
     return {...object,document,historical,links,annotations:historical?{}:object.annotations,process:historical?null:object.process};
   }
+  const presentParents=new Set(Object.values(objects).filter(o=>o.revisions.at(-1).present).map(o=>o.revisions.at(-1).parent));
   const items=Object.values(objects).filter(o=>{
     const r=o.revisions.at(-1);
     const related=params.related_to&&(r.parent===params.related_to||r.links.some(l=>l.target===params.related_to)||objects[params.related_to]?.revisions.at(-1).links.some(l=>l.target===o.address));
-    return r.present&&(!params.kind||params.kind===o.kind)&&(params.related_to?related:params.parent==='*'||(params.parent||null)===r.parent)&&(!params.note_status||(r.data.status||'unprocessed')===params.note_status);
+    return (r.present||presentParents.has(o.address))&&(!params.kind||params.kind===o.kind)&&(params.related_to?related:params.parent==='*'||(params.parent||null)===r.parent)&&(!params.note_status||(r.data.status||'unprocessed')===params.note_status);
   }).map(o=>{const r=o.revisions.at(-1);return {...o,parent:r.parent,title:r.data.title,owner:r.data.owner,revision:r.revision,at:r.at,present:r.present,note_status:r.data.status};});
   return {items,next_cursor:null};
 }
@@ -435,10 +452,9 @@ function inputQueue(kind){
 function commonObjectFilters(root,contents){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
-  const kind=picker('Object type',[['','All types'],...Object.entries(data.objectTypes||{}).map(([id,type])=>[id,type.title])]);
   const owner=picker('Object owner',[['','All owners'],...Object.keys(data.state.members).map(id=>[id,personLabel(id)])]);
   const status=picker('Object status',[['','All statuses'],['green','Checks passed'],['red','Checks failed'],['purple','Dependency review'],['yellow','Waiting or in progress'],['grey','Unchecked or completed']]);
-  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:kind.value,owner:owner.value,status:status.value};const filtering=Boolean(selected.kind||selected.owner||selected.status);const tabs=root.querySelector('.collection-tabs');if(tabs)tabs.hidden=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
+  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:data.activeRootKind,owner:owner.value,status:status.value};const filtering=Boolean(selected.owner||selected.status);data.filterActive=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
     if(!filtering){rootCollectionTabs(root);return;}
     for(const panel of root.querySelectorAll('.root-collection'))panel.hidden=true;
     holder.append(E('p','Loading objects…','object-loading hint'));
@@ -447,14 +463,16 @@ function commonObjectFilters(root,contents){
     const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
     holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
   }catch(e){if(mine===request)notify(e);}};
-  for(const select of [kind,owner,status])select.onchange=update;root.append(controls);return controls;
+  data.filterActive=false;data.filterUpdate=update;
+  for(const select of [owner,status])select.onchange=update;root.append(controls);return controls;
 }
+
 function commonNotes(root,relatedTo,kind){
   const label=data.objectTypes?.[kind]?.title||kind;
   const title=relatedTo?'Related '+label.toLowerCase():label;
   const queue=inputQueue(kind);
   const section=E('section');section.append(E('header',undefined,'collection-heading'));root.append(section);section.classList.add('note-section');applyObjectColor(section,kind);
-  collectionHeading(section,title,relatedTo?'Read only.':data.objectTypes?.[kind]?.description||(queue?'Unprocessed information to review and apply. Read only.':'Read only.'),relatedTo?undefined:label);
+  collectionHeading(section,title,data.objectTypes?.[kind]?.description||(!relatedTo&&queue?'Incoming information to review.':''));
   if(!relatedTo){section.classList.add('root-collection');section.dataset.collectionKind=kind;}
   const summary=section.querySelector(':scope > header');
   const body=E('div',undefined,'note-section-body');section.append(body);
@@ -469,7 +487,7 @@ function commonNotes(root,relatedTo,kind){
     const mine=++request;loaded=false;loading=true;
     const holder=E('div');holder.append(E('p','Loading '+label.toLowerCase()+'…','object-loading hint'));rows.replaceChildren(holder);
     try{await appendObjectChildren(holder,'*',kind,relatedTo?{related_to:relatedTo}:queue&&!all?.checked?{note_status:'unprocessed'}:{});if(mine===request&&section.isConnected){
-      loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);
+      loaded=true;const empty=!holder.querySelector('.common-object');section.classList.toggle('empty-notes',empty);section.hidden=Boolean(relatedTo)&&empty;
       summary.title=empty?'No '+label.toLowerCase()+' here.':'Read '+label.toLowerCase();
     }}
     catch(e){if(mine===request){loaded=false;holder.replaceChildren();notify(e);}}
@@ -492,7 +510,7 @@ function commonObjectCard(item){
   summary.append(nodeTitle(item.title,signal),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
-  const copy=button('COPY',async()=>{await copyAction(copy,item.item_id||item.address);},'copy');copy.type='button';copy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();});
+  const copy=copyButton(item.item_id||item.address);
   const history=button('Revisions',()=>showCommonObject(item.address,true),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   card.addEventListener('toggle',async()=>{if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.append(children);await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
@@ -504,8 +522,8 @@ function fillCommonObject(body,detail){
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current verification revision.','dependency-review'));
   body.append(E('p','Revision '+r.revision+' · Owner: '+personLabel(d.owner||'Unassigned'),'node-meta'));
-  if(detail.process?.verification)body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
-  if(detail.process?.status)body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
+  if(detail.process?.verification&&(detail.process.req||data.objectTypes?.[detail.kind]?.role==='task'))body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
+  if(detail.process?.status&&!inputQueue(detail.kind))body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   for(const [key,value] of Object.entries(d)){
     if(['title','owner'].includes(key)||(inputQueue(detail.kind)&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
@@ -529,6 +547,7 @@ function fillCommonObject(body,detail){
   if(detail.links?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Links'));for(const {link,title,current_revision,present} of detail.links){const row=button((title||link.target)+' · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':''),()=>showCommonObject(link.target,false,link.revision),'object-link');group.append(row);}body.append(group);}
   if(detail.incoming?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Linked from'));for(const link of detail.incoming)group.append(button(link.title+' · '+link.relation,()=>showCommonObject(link.source),'object-link'));body.append(group);}
   const annotations=historical?{}:detail.annotations||{};
+  if(annotations.description){const context=E('div',undefined,'object-field');context.append(E('small','Context','type-label'),E('p',annotations.description,'node-description'));body.append(context);}
   for(const comment of Object.values(annotations.comments||{})){if(comment.withdrawn)continue;const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));body.append(row);}
   const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length)body.append(attachmentList(files));
   if(!historical)for(const kind of inboxKinds())commonNotes(body,detail.address,kind);

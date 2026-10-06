@@ -82,6 +82,15 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
     ] {
         apply(&pool,&ws,"agent",json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Define the specification"})).await?;
     }
+    for (kind, id, query) in [
+        ("spec", "same", "Outer"),
+        ("epic", "same", "Inner"),
+        ("measure", "same", "Measure"),
+    ] {
+        let found = store::search::find(&pool, "agent", &ws, query, Some(kind), 10, None).await?;
+        assert_eq!(found["items"][0]["kind"], kind);
+        assert_eq!(found["items"][0]["id"], id);
+    }
     let process = store::board_read(
         &pool,
         &ws,

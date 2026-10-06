@@ -269,7 +269,9 @@ pub fn save(
     for field in data.as_object().context("data must be an object")?.keys() {
         ensure!(
             ["title", "owner", "contract", "purpose"].contains(&field.as_str())
-                || w.schema_migrated && !objects::process_field(field) && field != "projects"
+                || w.schema_migrated
+                    && !objects::process_field(field)
+                    && (w.documents_migrated || field != "projects")
                 || w.schema_migrated
                     && rules.references.contains_key(field)
                     && !objects::process_field(field)
