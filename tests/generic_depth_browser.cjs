@@ -28,7 +28,9 @@ const row=(i,links=[])=>({address:address(i),kind:chain[i][0],id:`${chain[i][0]}
 // The deepest action points at a root-level intake: a link across two roots.
 const rows=[...chain.map((_,i)=>row(i)),
   {...row(0),address:'intake:in-1',kind:'intake',id:'in-1',title:'Customer input',
-   parent:null,item_id:'W-O-9',links:[{target:address(5),relation:'related'}]}];
+   parent:null,item_id:'W-O-9',links:[{target:address(5),relation:'related'},{target:'intake:in-2',relation:'related'}]},
+  {...row(0),address:'intake:in-2',kind:'intake',id:'in-2',title:'Second input',
+   parent:null,item_id:'W-O-10',links:[{target:'intake:in-1',relation:'related'}]}];
 const find=a=>rows.find(r=>r.address===a);
 const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item_id:find(a).item_id,
   current_revision:1,revision_count:1,work_ready:true,review_required:false,
@@ -122,6 +124,24 @@ try{
   await page.setViewportSize({width:1280,height:900});
   await page.screenshot({path:'/tmp/joppa-depth-desktop.png',fullPage:true});
 
+  // A long title, the close control and the revision selector never overlap.
+  for(const width of [1280,390,320]){
+    await page.setViewportSize({width,height:844});
+    await page.locator(`[data-object-address="${address(4)}"] > summary .history-button`).click();
+    const dialog=page.getByRole('dialog');
+    await dialog.getByLabel('Object revision').waitFor();
+    const title=await dialog.locator('h2').boundingBox();
+    const close=await dialog.getByRole('button',{name:'Close',exact:true}).boundingBox();
+    const revision=await dialog.getByLabel('Object revision').boundingBox();
+    assert.ok(title.x+title.width<=close.x-8,'The title keeps space before Close');
+    assert.ok(revision.y>=Math.max(title.y+title.height,close.y+close.height)+8,'The selector stays below the title and Close');
+    assert.ok(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth),'The dialog has no horizontal overflow');
+    assert.ok(await dialog.getByRole('button',{name:'Close',exact:true}).evaluate(e=>e.scrollWidth<=e.clientWidth),'The Close label fits');
+    await page.screenshot({path:`/tmp/joppa-revisions-${width}.png`});
+    await dialog.getByRole('button',{name:'Close',exact:true}).click();
+  }
+  await page.setViewportSize({width:1280,height:900});
+
   // 3. A link crosses two roots and keeps its own title.
   // Root collections come from the schema, in its order.
   assert.deepEqual(await page.getByRole('tab').allTextContents(),['Portfolio','Intake'],
@@ -138,10 +158,16 @@ try{
     '[ac:uniform-object-cards-ac4] the input list offers no editing control');
   assert.equal(await page.locator('#collection-intake input:not([type="checkbox"])').count(),0,
     '[ac:uniform-object-cards-ac4] the input list takes no typed input');
-  const intake=page.locator('#collection-intake [data-object-address="intake:in-1"]');
+  const intake=page.locator('#collection-intake [data-object-address="intake:in-1"]').first();
   await intake.waitFor();
   await intake.locator(':scope > summary').click();
   await intake.getByText('Action one',{exact:false}).waitFor();
+  const related=intake.locator('.note-items [data-object-address="intake:in-2"]');
+  await related.waitFor();await related.locator(':scope > summary').click();
+  await related.locator(':scope > .object-body > .object-meta').waitFor();
+  await page.waitForFunction(()=>!document.querySelector('#collection-intake .object-loading'));
+  assert.equal(await related.locator('[data-object-address="intake:in-1"]').count(),0,'Related cycles do not repeat an ancestor card');
+  assert.equal(await related.locator('.object-links button').filter({hasText:'Customer input'}).count(),1,'The source link remains available');
 
   holdInputReload=true;
   await page.getByLabel('All intake',{exact:true}).check();

@@ -415,7 +415,13 @@ async function appendObjectChildren(root,parent,kind,extra={}){
 }
 function appendObjectPage(root,part,params,generation){
   const items=part.items;
+  const ancestors=new Set();
+  for(let node=root;node;node=node.parentElement){
+    const address=node.dataset.objectAddress||node.dataset.objectContextAddress;
+    if(address)ancestors.add(address);
+  }
   for(const item of items){
+    if(ancestors.has(item.address))continue;
     let holder=root;
     if(!params.parent&&!params.kind){
       holder=[...root.querySelectorAll(':scope > .object-collection')].find(group=>group.dataset.kind===item.kind);
@@ -524,6 +530,7 @@ function commonObjectCard(item){
   return card;
 }
 function fillCommonObject(body,detail){
+  body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
   const historical=detail.historical??r.revision!==detail.current_revision;
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
@@ -604,8 +611,10 @@ async function showCommonObject(address,history=false,revision){
   const generation=loadNumber;
   const detail=await objectPart(revision?{address,revision}:{address});if(generation!==loadNumber)return;
   const dialog=E('dialog',undefined,'notes-dialog');dialog.setAttribute('aria-label',detail.document.data.title);
-  const header=E('div',undefined,'history-dialog-header');header.append(E('h2',detail.document.data.title));const close=button('Close',()=>dialog.close(),'history-close');header.append(close);dialog.append(header);
+  const header=E('div',undefined,'history-dialog-header');
+  const heading=E('div');heading.append(E('h2',detail.document.data.title));header.append(heading);
+  const close=button('Close',()=>dialog.close(),'history-close');header.append(close);dialog.append(header);
   const body=E('div',undefined,'notes-body');dialog.append(body);fillCommonObject(body,detail);
-  if(history){const select=E('select');select.setAttribute('aria-label','Object revision');for(let n=detail.current_revision;n>0;n--){const option=E('option','Revision '+n);option.value=n;select.append(option);}header.append(select);let request=0;select.onchange=async()=>{const mine=++request;try{const old=await objectPart({address,revision:select.value});if(mine!==request||!dialog.isConnected)return;body.replaceChildren();fillCommonObject(body,old);}catch(e){notify(e);}};}
+  if(history){const revisions=E('label',undefined,'dialog-revisions');revisions.append(E('span','Object revision'));const select=E('select');select.setAttribute('aria-label','Object revision');for(let n=detail.current_revision;n>0;n--){const option=E('option','Revision '+n);option.value=n;select.append(option);}revisions.append(select);header.append(revisions);let request=0;select.onchange=async()=>{const mine=++request;try{const old=await objectPart({address,revision:select.value});if(mine!==request||!dialog.isConnected)return;body.replaceChildren();fillCommonObject(body,old);}catch(e){notify(e);}};}
   dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();
 }

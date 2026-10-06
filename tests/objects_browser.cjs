@@ -116,7 +116,9 @@ const person=page.locator('[data-object-address="consumer:person"]');
 await person.waitFor();
 seen.length=0;
 await person.locator(':scope > summary').click();
-await person.locator(':scope > .object-body > .object-children .collection-empty').waitFor();
+await person.locator(':scope > .object-body > .object-meta').waitFor();
+await page.waitForFunction(()=>!document.querySelector('[data-object-address="consumer:person"] > .object-body > .object-children .object-loading'));
+assert.equal(await person.locator(':scope > .object-body > .object-children').innerText(),'','a leaf has no empty child section');
 assert.ok(reads().some(entry=>entry.includes('address=consumer%3Aperson')||entry.includes('address=consumer:person')),
   '[ac:lazy-object-context-ac2] opening an object reads its current document');
 assert.ok(reads().some(entry=>entry.includes('parent=consumer%3Aperson')||entry.includes('parent=consumer:person')),
