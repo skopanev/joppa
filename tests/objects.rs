@@ -749,8 +749,6 @@ fn cannot_archive_with_live_children() {
     
     w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive with children"}));
     
-    // Archive child first? Actually there is no archive_object for requirement, but we can delete or change parent?
-    // Let's just test that it fails.
 }
 
 #[test]
@@ -784,4 +782,54 @@ fn archive_legacy_group_does_not_resync() {
     
     let current = w.state.objects.get("domain:legacy").unwrap().current();
     assert!(current.present);
+}
+
+#[test]
+fn restore_legacy_group_reflects_edits() {
+    let mut w = crate::workspace();
+    w.ok("owner", json!({"op":"domain","id":"legacy","title":"Legacy","description":"D","reason":"Create"}));
+    
+    // Archive
+    let rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
+    w.ok("agent", json!({"op":"archive_object","target":"domain:legacy","revision":rev,"reason":"Archive it"}));
+    
+    // Unrelated command
+    w.ok("owner", json!({"op":"domain","id":"other","title":"Other","description":"D","reason":"Unrelated"}));
+    
+    // Restore
+    let archived_rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
+    w.ok("agent", json!({"op":"restore_object","target":"domain:legacy","revision":archived_rev,"reason":"Restore it"}));
+    
+    // Unrelated command, unchanged revision
+    w.ok("owner", json!({"op":"domain","id":"another","title":"A","description":"D","reason":"Unrelated"}));
+    
+    // Now edit the legacy domain!
+    w.ok("owner", json!({"op":"edit_domain","id":"legacy","title":"Changed","reason":"Edit"}));
+    
+    // Ensure the edit is reflected!
+    let current = w.state.objects.get("domain:legacy").unwrap().current();
+    assert!(current.present);
+    assert_eq!(current.data["title"], "Changed");
+}
+
+#[test]
+fn custom_group_fields_survive_archive() {
+    let mut w = crate::workspace();
+    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"}},"reason":"Setup"}));
+    
+    // Save object with custom fields
+    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner","custom":"PreserveMe"},"reason":"Create group"}));
+    
+    let rev = w.state.objects.get("initiative:i").unwrap().current().revision;
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":rev,"reason":"Archive"}));
+    
+    let rev = w.state.objects.get("initiative:i").unwrap().current().revision;
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":rev,"reason":"Restore"}));
+    
+    // Check that custom fields are preserved
+    let current = w.state.objects.get("initiative:i").unwrap().current();
+    assert_eq!(current.data["custom"], "PreserveMe");
+    
+    // And ensure document_overrides survived because save_object created it initially!
+    assert!(w.state.document_overrides.contains("initiative:i"));
 }

@@ -800,7 +800,7 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         _ => None,
     };
     for (key, (kind, parent, data)) in &rows {
-        if w.task_process.contains_key(key) || w.document_overrides.contains(key) {
+        if w.task_process.contains_key(key) || w.document_overrides.contains(key) || w.archived_objects.contains(key) {
             continue;
         }
         let obj = w.objects.entry(key.clone()).or_insert_with(|| Object {
@@ -2206,7 +2206,7 @@ pub fn archive(
     next.at = at.to_owned();
     
     w.objects.get_mut(&target).unwrap().revisions.push(next);
-    w.document_overrides.insert(target.clone());
+    w.archived_objects.insert(target.clone());
     Ok(())
 }
 
@@ -2260,6 +2260,6 @@ pub fn restore(
     next.at = at.to_owned();
     
     w.objects.get_mut(&target).unwrap().revisions.push(next);
-    w.document_overrides.insert(target.clone());
+    w.archived_objects.remove(&target);
     Ok(())
 }

@@ -23,6 +23,8 @@ pub struct Workspace {
     pub documents_migrated: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub document_overrides: std::collections::BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub archived_objects: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub tree_schema: Vec<crate::objects::SchemaRevision>,
     #[serde(default)]
