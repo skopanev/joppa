@@ -1192,8 +1192,7 @@ function currentAc(reqId,acId){
 /* Common objects use the same cards for every configured type. */
 async function objectPart(params){return api('workspaces/'+encodeURIComponent(ws)+'/objects?'+new URLSearchParams(params));}
 function applyObjectColor(node,kind){
-  const defaults={domain:'#17685f',capability:'#6551a1',note:'#7664aa',consumer:'#247eab'};
-  const color=data.objectTypes?.[kind]?.color||defaults[kind]||'#63756b';
+  const color=data.objectTypes?.[kind]?.color||'#63756b';
   if(/^#[0-9a-f]{6}$/i.test(color))node.style.setProperty('--object-color',color);
 }
 async function appendObjectChildren(root,parent,kind,extra={}){
@@ -1284,7 +1283,25 @@ function fillCommonObject(body,detail){
   body.append(E('p','Revision '+r.revision+' · Owner: '+personLabel(d.owner||'Unassigned'),'node-meta'));
   if(detail.process?.status)body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
-  for(const [key,value] of Object.entries(d)){if(['title','owner'].includes(key)||(detail.kind==='note'&&key==='status')||value===null||value==='')continue;const field=E('div',undefined,'object-field');field.append(E('small',key.replaceAll('_',' '),'type-label'),E('p',typeof value==='string'?value:JSON.stringify(value),'node-description'));body.append(field);}
+  for(const [key,value] of Object.entries(d)){
+    if(['title','owner'].includes(key)||(detail.kind==='note'&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
+    const field=E('div',undefined,'object-field');
+    const refRule=data.objectTypes?.[detail.kind]?.references?.[key];
+    field.append(E('small',refRule?refRule.title:key.replaceAll('_',' '),'type-label'));
+    if(refRule){
+      const vals=Array.isArray(value)?value:[value];
+      const refs=E('div',undefined,'object-links reference-links');
+      for(const v of vals){
+        const targetAddress=v.includes(':')?v:refRule.target+':'+v;
+        const title=detail.references?.find(l=>l.target===targetAddress)?.title||detail.links?.find(l=>l.link.target===targetAddress)?.title||v;
+        refs.append(button(String(title),()=>showCommonObject(targetAddress),'object-link'));
+      }
+      field.append(refs);
+    }else{
+      field.append(E('p',typeof value==='string'?value:JSON.stringify(value),'node-description'));
+    }
+    body.append(field);
+  }
   if(detail.links?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Links'));for(const {link,title,current_revision,present} of detail.links){const row=button((title||link.target)+' · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':''),()=>showCommonObject(link.target,false,link.revision),'object-link');group.append(row);}body.append(group);}
   if(detail.incoming?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Linked from'));for(const link of detail.incoming)group.append(button(link.title+' · '+link.relation,()=>showCommonObject(link.source),'object-link'));body.append(group);}
   const annotations=historical?{}:detail.annotations||{};

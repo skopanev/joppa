@@ -9,6 +9,7 @@ pub enum Command {
     /// Internal migration event. Public authoring rejects this operation.
     MigrateNotes {},
     MigrateTasks {},
+    MigrateSchema {},
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
@@ -545,6 +546,10 @@ pub(crate) fn apply_inner(
             ensure!(actor == w.admin, "workspace owner required");
             crate::tasks::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigrateSchema {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            crate::objects::migrate_schema(w, actor, position, recorded_at)?;
+        }
         Command::SetTreeSchema {
             revision,
             types,
@@ -900,8 +905,10 @@ pub(crate) fn apply_inner(
                 consumers.iter().collect::<BTreeSet<_>>().len() == consumers.len(),
                 "duplicate consumer"
             );
-            for consumer in consumers {
-                ensure!(w.consumers.contains_key(consumer), "unknown consumer");
+            if !w.schema_migrated {
+                for consumer in consumers {
+                    ensure!(w.consumers.contains_key(consumer), "unknown consumer");
+                }
             }
             validate_acs(w, acs)?;
             for (other_id, other) in &w.requirements {

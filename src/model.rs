@@ -15,6 +15,8 @@ pub struct Workspace {
     pub task_context: BTreeMap<String, Option<(String, u32)>>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub tasks_migrated: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub schema_migrated: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub document_overrides: std::collections::BTreeSet<String>,
     #[serde(default)]

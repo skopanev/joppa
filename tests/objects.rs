@@ -63,6 +63,8 @@ fn schema_supports_custom_grouping_without_a_capability() {
     types.insert(
         "initiative".into(),
         TreeType {
+            references: Default::default(),
+            parent_decision: false,
             color: None,
             parent_gate: None,
             title: "Initiative".into(),
@@ -322,6 +324,8 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
     types.insert(
         "initiative".into(),
         TreeType {
+            references: Default::default(),
+            parent_decision: false,
             color: None,
             parent_gate: None,
             title: "Initiative".into(),

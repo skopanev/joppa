@@ -260,13 +260,21 @@ pub(super) async fn project(
     let custom_tree = object_types.len() != defaults.len()
         || object_types.iter().any(|(kind, t)| {
             defaults.get(kind).is_none_or(|default| {
-                (t.role.as_str(), &t.parents, t.root, &t.parent_gate)
-                    != (
-                        default.role.as_str(),
-                        &default.parents,
-                        default.root,
-                        &default.parent_gate,
-                    )
+                (
+                    t.role.as_str(),
+                    &t.parents,
+                    t.root,
+                    &t.parent_gate,
+                    &t.references,
+                    t.parent_decision,
+                ) != (
+                    default.role.as_str(),
+                    &default.parents,
+                    default.root,
+                    &default.parent_gate,
+                    &default.references,
+                    default.parent_decision,
+                )
             })
         });
     let first_view = json!({"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,"domains":&state.domains,

@@ -403,15 +403,19 @@ async fn write(
             resolve_task(&mut value, &state)?;
             resolve_claim_next(&mut value, &state, actor)?;
             let command: Command = serde_json::from_value(value)?;
-            if let Command::Revise { consumers, capability, .. } = &command {
+            if let Command::Revise { req, consumers, capability, .. } = &command {
                 ensure!(capability.is_some(), "legacy revise requires a Capability; use save_object for a custom tree");
-                ensure!(!consumers.is_empty(), "REQ requires at least one consumer");
+                if state.schema_migrated {
+                    let mut data = state.objects.get(&format!("requirement:{req}")).map(|o| o.current().data.clone()).unwrap_or_else(|| json!({}));
+                    data["consumers"] = json!(consumers);
+                    crate::objects::reference_targets(&state, "requirement", &data)?;
+                } else { ensure!(!consumers.is_empty(), "REQ requires at least one consumer"); }
             }
             if let Command::Task { acs, contract, .. } = &command {
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

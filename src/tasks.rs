@@ -89,7 +89,7 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
     let Some(parent) = o.current().parent.as_deref() else {
         return Ok(());
     };
-    let p = w.objects.get(parent).context("unknown Task parent")?;
+    w.objects.get(parent).context("unknown Task parent")?;
     let process = objects::process(w, parent);
     let ready = match gate {
         "completed" => task(w, parent).is_some_and(|t| t.done.is_some() && t.retired.is_none()),
@@ -97,24 +97,14 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
             process["status"]["verification"] == "pass" || process["summary"]["accepted"] == true
         }
         "ready" => {
-            if p.kind == "ac"
-                && let Some(req) = p
-                    .current()
-                    .parent
-                    .as_deref()
-                    .and_then(|p| p.strip_prefix("requirement:"))
-                && let Some(r) = w.requirements.get(req).and_then(|q| q.revisions.last())
-            {
-                if purpose == "decision" {
-                    let ac = r
-                        .acs
-                        .iter()
-                        .find(|ac| ac.id == p.id)
-                        .context("unknown AC")?;
+            if let Some((_, r, ac)) = objects::criterion_context(w, parent) {
+                if purpose == "decision"
+                    && (!w.schema_migrated || schema.types[&o.kind].parent_decision)
+                {
                     commands::human(w, actor)?;
                     ac.depends_on.iter().all(|id| commands::ready(r, id))
                 } else {
-                    commands::ready(r, &p.id)
+                    commands::ready(r, &ac.id)
                 }
             } else {
                 objects::work_ready(w, parent)
@@ -146,6 +136,11 @@ pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> 
         objects::work_ready(w, key),
         "Task has an unmet dependency or a changed dependency revision"
     );
+    check_projects(
+        w,
+        w.objects[key].current().parent.as_deref(),
+        &subjects(w, key)?,
+    )?;
     parent_ready(w, actor, key, &t.purpose)?;
     if t.purpose == "decision" {
         commands::human(w, actor)?;
@@ -157,22 +152,42 @@ pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> 
     Ok(())
 }
 
+pub fn subjects(w: &Workspace, key: &str) -> Result<Vec<String>> {
+    if !w.schema_migrated {
+        return Ok(task(w, key).map(|t| t.projects.clone()).unwrap_or_default());
+    }
+    let mut current = Some(key);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut subjects = vec![];
+    while let Some(key) = current {
+        let key = objects::resolve_address(w, key);
+        ensure!(seen.insert(key), "tree parent cycle");
+        let o = w.objects.get(key).context("unknown subject context")?;
+        subjects.extend(
+            objects::reference_targets(w, &o.kind, &o.current().data)?
+                .into_iter()
+                .filter(|(_, _, subject)| *subject)
+                .map(|(_, target, _)| target.split_once(':').unwrap().1.to_owned()),
+        );
+        current = o.current().parent.as_deref();
+    }
+    subjects.sort();
+    subjects.dedup();
+    Ok(subjects)
+}
+
 fn check_projects(w: &Workspace, parent: Option<&str>, projects: &[String]) -> Result<()> {
     let mut parent = parent;
     let mut seen = std::collections::BTreeSet::new();
     while let Some(key) = parent {
         ensure!(seen.insert(key), "tree parent cycle");
         let o = w.objects.get(key).context("unknown Task ancestor")?;
-        if let Some(r) = w
-            .requirements
-            .get(&o.id)
-            .filter(|_| o.kind == "requirement")
-            .and_then(|q| q.revisions.last())
+        if let Some((_, r)) = objects::verification_context(w, key)
             && let Some(scope) = &r.verification_scope
         {
             ensure!(
                 projects.iter().all(|p| scope.subject_keys.contains(p)),
-                "Task project is outside the agreed verification subject"
+                "Task reference is outside the agreed verification subject"
             );
         }
         parent = o.current().parent.as_deref();
@@ -228,16 +243,41 @@ pub fn save(
         ["implementation", "manual", "decision"].contains(&purpose.as_str()),
         "unknown task purpose"
     );
-    let projects: Vec<String> =
-        serde_json::from_value(data.get("projects").cloned().unwrap_or_else(|| json!([])))?;
-    ensure!(
-        projects.iter().all(|p| w.projects.contains_key(p)),
-        "unknown Task project"
-    );
+    let kind = key.split_once(':').context("Task address needs a type")?.0;
+    let rules = objects::schema(w)
+        .types
+        .get(kind)
+        .cloned()
+        .context("unknown Task type")?;
+    let mut projects: Vec<String> = if w.schema_migrated {
+        objects::reference_targets(w, kind, &data)?
+            .into_iter()
+            .filter(|(_, _, subject)| *subject)
+            .map(|(_, target, _)| target.split_once(':').unwrap().1.to_owned())
+            .collect()
+    } else {
+        let projects: Vec<String> =
+            serde_json::from_value(data.get("projects").cloned().unwrap_or_else(|| json!([])))?;
+        ensure!(
+            projects.iter().all(|p| w.projects.contains_key(p)),
+            "unknown Task project"
+        );
+        projects
+    };
+    if w.schema_migrated
+        && let Some(parent) = parent
+    {
+        projects.extend(subjects(w, parent)?);
+        projects.sort();
+        projects.dedup();
+    }
     check_projects(w, parent, &projects)?;
     for field in data.as_object().context("data must be an object")?.keys() {
         ensure!(
-            ["title", "owner", "contract", "projects", "purpose"].contains(&field.as_str()),
+            ["title", "owner", "contract", "purpose"].contains(&field.as_str())
+                || w.schema_migrated && rules.references.contains_key(field)
+                || field == "projects"
+                    && (!w.schema_migrated || data[field].as_array().is_some_and(Vec::is_empty)),
             "unknown Task document field {field}; use process commands for evidence"
         );
     }
@@ -274,7 +314,9 @@ pub fn save(
     t.projects = projects.clone();
     t.acs.clear();
     data["owner"] = json!(owner);
-    data["projects"] = json!(projects);
+    if !w.schema_migrated {
+        data["projects"] = json!(projects);
+    }
     t.origin_revision = old.map_or(1, |o| o.current().revision + 1);
     if old.is_none() {
         let pin = parent.and_then(|p| {
@@ -385,23 +427,22 @@ pub fn apply(
                 objects::work_ready(w, &key),
                 "Task has an unmet dependency or a changed dependency revision"
             );
+            check_projects(w, o.current().parent.as_deref(), &subjects(w, &key)?)?;
             parent_ready(w, actor, &key, &t.purpose)?;
             if t.purpose == "decision"
-                && objects::schema(w).types[&o.kind].parent_gate.as_deref() == Some("ready")
-                && let Some(p) = o.current().parent.as_deref().and_then(|p| w.objects.get(p))
-                && p.kind == "ac"
-                && let Some(req) = p
+                && (!w.schema_migrated
+                    && objects::schema(w).types[&o.kind].parent_gate.as_deref() == Some("ready")
+                    || objects::schema(w).types[&o.kind].parent_decision)
+            {
+                let parent = o
                     .current()
                     .parent
                     .as_deref()
-                    .and_then(|p| p.strip_prefix("requirement:"))
-            {
-                let q = w
-                    .requirements
-                    .get(req)
-                    .context("unknown parent verification")?;
-                let r = q.revisions.last().unwrap();
-                let d = q
+                    .context("decision task requires a parent")?;
+                let (req, r, ac) = objects::criterion_context(w, parent).context(
+                    "configured parent decision requires a verification evidence provider",
+                )?;
+                let d = w.requirements[req]
                     .comments
                     .get(evidence)
                     .context("decision task evidence must be a comment id")?;
@@ -409,14 +450,9 @@ pub fn apply(
                     d.kind == "decision"
                         && !d.withdrawn
                         && d.revision == r.number
-                        && d.ac.as_deref() == Some(&p.id),
+                        && d.ac.as_deref() == Some(&ac.id),
                     "link the decision for this parent and revision"
                 );
-                let ac = r
-                    .acs
-                    .iter()
-                    .find(|ac| ac.id == p.id)
-                    .context("unknown parent AC")?;
                 ensure!(
                     ac.owner.as_ref().is_none_or(|owner| owner == &d.actor),
                     "designated specialist must decide"
@@ -433,7 +469,21 @@ pub fn apply(
             ..
         } => {
             commands::nonempty(reason)?;
-            let data = json!({"title":title,"contract":contract,"projects":projects,"purpose":t.purpose,"owner":owner});
+            let mut data = o.current().data.clone();
+            data["title"] = json!(title);
+            data["contract"] = json!(contract);
+            if !w.schema_migrated
+                || objects::schema(w).types[&o.kind]
+                    .references
+                    .contains_key("projects")
+            {
+                data["projects"] = json!(projects);
+            } else {
+                ensure!(
+                    projects.is_empty(),
+                    "configure a reference field before assigning projects"
+                );
+            }
             let parent = o.current().parent.clone();
             let data = save(w, actor, &key, &data, parent.as_deref(), position)?;
             let mut r = w.objects[&key].current().clone();
@@ -451,7 +501,7 @@ pub fn apply(
                 authority && t.retired.is_none(),
                 "active Task owner required"
             );
-            check_projects(w, o.current().parent.as_deref(), &t.projects)?;
+            check_projects(w, o.current().parent.as_deref(), &subjects(w, &key)?)?;
             t.review_required = false;
             let pin = context(w, &key);
             w.task_context.insert(key.clone(), pin);

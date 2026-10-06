@@ -167,7 +167,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert mcp('joppa_help', {})['search'] == (ROOT/'docs/search.md').read_text()
         assert mcp('joppa_help', {})['writing'] == writing
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
-        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 2
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 3
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
                   'data':{'title':'Source note','owner':'owner','body':'Original text'},
                   'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['document']['data']['body'] == 'Original text'
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 2
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 3
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
         with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
             assert response.status == 200 and 'Schema revision' in response.read().decode()

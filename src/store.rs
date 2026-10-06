@@ -147,6 +147,21 @@ async fn ensure_notes(
         });
         changed = true;
     }
+    if !state.schema_migrated {
+        let position = events.last().map_or(1, |event| event.position + 1);
+        let command = Command::MigrateSchema {};
+        let actor = state.admin.clone();
+        let payload = serde_json::to_string(&command)?;
+        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
+        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+        events.push(Event {
+            position,
+            actor,
+            recorded_at,
+            command,
+        });
+        changed = true;
+    }
     Ok(changed)
 }
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {

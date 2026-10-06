@@ -83,8 +83,9 @@ A link does not change tree parentage.
 - `depends_on` records a dependency and pins its target revision.
 - `blocking: true` requires that dependency before work can start.
 
-A blocking target must be an AC, REQ or Task.
-Its required result is a verified AC, accepted REQ or completed active Task.
+A blocking target can have any configured type.
+It needs completion evidence from its semantic role: a verified criterion, accepted requirement or completed active Task.
+Document text and input processing do not supply verification evidence.
 Blocking cycles include inherited parent dependencies and are rejected.
 Dependencies can cross REQ and Domain boundaries inside the workspace.
 
@@ -161,12 +162,14 @@ The immutable event journal is the source for all projections.
 ## Independent Tasks
 
 Create Tasks with `save_object` and a type whose role is `task`.
-The document needs `title`, `owner`, `contract`, `purpose` and optional `projects`.
+The document needs `title`, `owner`, `contract` and `purpose`.
+Its reference fields follow the workspace schema.
 Use the returned object address as the process command `id`. Omit `req`.
 Use the current Task object `revision` for every process command.
 Task status changes append object revisions. Claim is atomic.
 Queue previews and `claim_next_task` use the same eligibility rule.
-Priorities accept any configured object address and apply to its descendants.
+Priorities accept any configured object address.
+They match descendants and configured references on a Task or its ancestors.
 
 A Task type can configure `parent_gate`: `ready`, `verified` or `completed`.
 Omit it when parent evidence is not a claim condition.
@@ -205,3 +208,50 @@ Lists return `note_status` without source bodies or revision history.
 Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presentation.
 Colors apply to the board and schema diagram. Status circles retain their verification colors.
 Color changes create a schema revision. They do not change object parents or select a different board layout.
+
+## Configured references
+
+Each type can define `references`, a map from document fields to reference rules.
+The diagram, validation, related-object index and queue priorities use these rules.
+Type names do not create reference rules automatically.
+The default recipe defines `requirement.consumers` and `task.projects`. Each workspace can replace or remove them.
+
+```json
+{
+  "title": "Work",
+  "role": "task",
+  "root": false,
+  "parents": ["spec"],
+  "references": {
+    "affected": {
+      "target": "spec",
+      "title": "Affects",
+      "required": true,
+      "multiple": true,
+      "verification_subject": false
+    }
+  }
+}
+```
+
+`target` names a configured type. Use `"*"` to accept any configured type.
+`multiple: true` accepts an array of addresses. Otherwise, supply one address.
+`required: true` rejects a missing or empty reference.
+Duplicates and missing targets fail validation.
+A fixed target permits short local IDs. A wildcard target requires full addresses.
+References do not change parentage or create blocking dependencies.
+Removing a rule removes its diagram edge and queue meaning. Earlier document revisions remain unchanged.
+
+`verification_subject: true` includes that reference in the Task verification scope check and subject filter.
+The scope remains the contract of an ancestor with verification evidence.
+Without such an ancestor, the reference records context and queue selection.
+A subject filter accepts a full object address. A unique short ID remains compatible.
+
+`parent_decision: true` requires a decision comment for the configured Task parent when completing a decision Task.
+The parent must supply verification decision evidence. A free-text result cannot substitute for that evidence.
+Omit this option when parent decisions do not form part of the workflow.
+The default recipe enables it for Tasks under acceptance criteria.
+
+Existing workspaces receive these settings once through a server migration.
+That migration creates a schema revision. It does not rewrite object history.
+Type titles and colors remain workspace settings. For example, the `note` type can display the title `Input`.

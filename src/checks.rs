@@ -463,7 +463,10 @@ pub fn apply(
                     t.retired.is_none()
                         && crate::objects::within(w, key, &format!("requirement:{req}"))
                 })
-                .flat_map(|(_, t)| t.projects.clone())
+                .map(|(key, _)| crate::tasks::subjects(w, key))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
                 .chain(
                     w.requirements
                         .get(req)

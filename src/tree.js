@@ -28,11 +28,19 @@ function renderTree(schema){
       parents.set(kind,parent);break;
     }
   }
-  const references=[
-    {source:'requirement',target:'consumer',reference:'consumers',text:'REQ → Consumer: who uses the requirement.'},
-    {source:'task',target:'project',reference:'projects',text:'Task → Project: which repository the work affects.'}
-  ].filter(edge=>definitions[edge.source]&&definitions[edge.target]);
-  edges.push(...references);
+  const references=[];
+  for(const [kind,t] of Object.entries(definitions)){
+    for(const [field,rule] of Object.entries(t.references||{})){
+      references.push({
+        source:kind,
+        target:rule.target,
+        reference:field,
+        title:rule.title,
+        text:t.title+" → "+(rule.target==="*"?"Any object type":definitions[rule.target]?.title||rule.target)+": "+rule.title.toLowerCase()+"."
+      });
+    }
+  }
+  edges.push(...references.filter(edge=>definitions[edge.source]&&definitions[edge.target]));
   document.querySelector('#reference-legend').hidden=!references.length;
   document.querySelector('#reference-help').replaceChildren(...references.map(edge=>element('p',edge.text,'hint')),...anyParents.map(kind=>element('p',definitions[kind].title+' can be placed inside any object type.','hint')));
   const children=new Map();for(const [child,parent] of parents){if(!children.has(parent))children.set(parent,[]);children.get(parent).push(child);}
@@ -53,7 +61,7 @@ function renderTree(schema){
   const highlight=id=>{for(const edge of connections.querySelectorAll('[data-source]')){const selected=edge.dataset.source===id||edge.dataset.target===id;edge.classList.toggle('selected',Boolean(id)&&selected);edge.classList.toggle('dimmed',Boolean(id)&&!selected);}};
   for(const [id,node] of nodes){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
-    const defaults={domain:'#17685f',capability:'#6551a1',note:'#7664aa',consumer:'#247eab'};const color=definitions[id]?.color||defaults[id];if(/^#[0-9a-f]{6}$/i.test(color||''))card.style.setProperty('--object-color',color);
+    const color=definitions[id]?.color||"#63756b";if(/^#[0-9a-f]{6}$/i.test(color||''))card.style.setProperty('--object-color',color);
     card.append(element('h2',node.title),element('small',node.label));
     if(definitions[id]){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);
@@ -111,7 +119,7 @@ function renderTree(schema){
       if(direct.has(edge)){
         const x=a.x+width/2,y=b.y+height/2;
         d=roundedPath([[x,a.y+height],[x,y],[b.x+width+3,y]]);
-        label={x:(x+b.x+width)/2,y:y-9,text:edge.reference==='consumers'?'Used by':'Repository'};
+        label={x:(x+b.x+width)/2,y:y-9,text:edge.title};
       }
       else if(b.depth===a.depth+1&&!edge.reference){
         const siblings=edges.filter(e=>e.source===edge.source&&nodes.get(e.target)?.depth===b.depth&&!e.reference),index=siblings.indexOf(edge);
@@ -124,7 +132,7 @@ function renderTree(schema){
         const startX=a.x+width,forward=b.depth>a.depth,endX=forward?b.x-3:b.x+width+3;
         const afterSource=lane(edge,'source',a.depth),beforeTarget=lane(edge,'target',forward?b.depth-1:b.depth),railY=26+rails.get(edge)*18;
         d=roundedPath([[startX,startY],[afterSource,startY],[afterSource,railY],[beforeTarget,railY],[beforeTarget,endY],[endX,endY]]);
-        if(edge.reference)label={x:(afterSource+beforeTarget)/2,y:railY-5,text:edge.reference==='consumers'?'Used by':'Repository'};
+        if(edge.reference)label={x:(afterSource+beforeTarget)/2,y:railY-5,text:edge.title};
       }
       const path=svgElement('path',{d,class:'schema-edge'+(edge.reference?' reference-edge':''),'marker-end':edge.reference?'url(#reference-arrow)':'url(#arrow)'});
       if(edge.reference)path.dataset.reference=edge.reference;

@@ -6,7 +6,7 @@ pub(super) async fn projected_requirement_tasks(
     req: &str,
 ) -> Result<Value> {
     let mut tasks = json!({});
-    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address='requirement:'||$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,o.parent,o.process::text FROM joppa.objects o JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string'", &[&workspace,&req]).await? {
+    for row in client.query("WITH RECURSIVE branch AS (SELECT address FROM joppa.objects WHERE workspace=$1 AND address='requirement:'||$2 UNION ALL SELECT o.address FROM joppa.objects o JOIN branch b ON o.parent=b.address WHERE o.workspace=$1 AND o.present) SELECT o.address,o.parent,o.process::text FROM joppa.objects o JOIN branch b ON b.address=o.address WHERE o.workspace=$1 AND jsonb_typeof(o.process->'status')='string' AND o.process ? 'assignee'", &[&workspace,&req]).await? {
         let address:String=row.get(0);
         let parent:Option<String>=row.get(1);
         let mut t:Value=serde_json::from_str(row.get::<_,&str>(2))?;
@@ -16,6 +16,78 @@ pub(super) async fn projected_requirement_tasks(
     Ok(tasks)
 }
 
+/// A project selector is an ordinary object address once the schema owns
+/// relations. Its membership comes from the configured verification subject,
+/// declared on the Task itself or on any of its ancestors.
+fn subject_address(state: &Workspace, selector: &str) -> Option<String> {
+    if selector.contains(':') {
+        let address = crate::objects::resolve_address(state, selector);
+        return state
+            .objects
+            .get(address)
+            .filter(|o| o.current().present)
+            .map(|_| address.to_owned());
+    }
+    let schema = crate::objects::schema(state);
+    let mut candidates = state.objects.iter().filter(|(_, o)| {
+        o.current().present
+            && o.id == selector
+            && schema.types.values().any(|t| {
+                t.references
+                    .values()
+                    .any(|r| r.verification_subject && (r.target == "*" || r.target == o.kind))
+            })
+    });
+    let first = candidates.next()?.0.clone();
+    candidates.next().is_none().then_some(first)
+}
+fn priority_address(state: &Workspace, selector: &str) -> Option<String> {
+    let resolved = crate::objects::resolve_address(state, selector);
+    if state
+        .objects
+        .get(resolved)
+        .is_some_and(|o| o.current().present)
+    {
+        return Some(resolved.into());
+    }
+    let (kind, id) = selector.split_once(':')?;
+    let mut matches = state.objects.iter().filter(|(_, o)| {
+        o.current().present && o.kind == kind && o.id.rsplit('/').next() == Some(id)
+    });
+    let first = matches.next()?.0.clone();
+    matches.next().is_none().then_some(first)
+}
+fn task_in_project(state: &Workspace, key: &str, t: &crate::model::Task, project: &str) -> bool {
+    if state.schema_migrated {
+        subject_address(state, project).is_some_and(|target| subject_of(state, key, &target))
+    } else {
+        t.projects.iter().any(|id| id == project)
+    }
+}
+fn project_target(state: &Workspace, project: &str) -> bool {
+    subject_address(state, project).is_some()
+}
+fn subject_of(state: &Workspace, key: &str, target: &str) -> bool {
+    let mut current = Some(key.to_owned());
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(address) = current {
+        if !seen.insert(address.clone()) {
+            return false;
+        }
+        let Some(o) = state.objects.get(&address) else {
+            return false;
+        };
+        if crate::objects::reference_targets(state, &o.kind, &o.current().data).is_ok_and(|refs| {
+            refs.iter()
+                .any(|(_, resolved, subject)| *subject && resolved == target)
+        }) {
+            return true;
+        }
+        current = o.current().parent.clone();
+    }
+    false
+}
+
 pub(super) fn validate_selection<'a>(
     state: &Workspace,
     project: Option<&str>,
@@ -23,7 +95,14 @@ pub(super) fn validate_selection<'a>(
     priorities: &'a [String],
 ) -> Result<Vec<(&'a str, &'a str)>> {
     if let Some(project) = project {
-        ensure!(state.projects.contains_key(project), "unknown project");
+        ensure!(
+            if state.schema_migrated {
+                project_target(state, project)
+            } else {
+                state.projects.contains_key(project)
+            },
+            "unknown project"
+        );
     }
     if let Some(purpose) = purpose {
         ensure!(
@@ -38,6 +117,13 @@ pub(super) fn validate_selection<'a>(
                 .split_once(':')
                 .context("priority must be kind:id")?;
             ensure!(!id.is_empty(), "priority ID is empty");
+            if state.schema_migrated {
+                ensure!(
+                    priority_address(state, selector).is_some(),
+                    "unknown priority target: {selector}"
+                );
+                return Ok((kind, id));
+            }
             let exists = match kind {
                 "domain" => state.domains.contains_key(id),
                 "capability" => state.capabilities.contains_key(id),
@@ -117,18 +203,14 @@ fn object_rank(
     priorities
         .iter()
         .position(|(kind, id)| {
-            crate::objects::within(state, key, &format!("{kind}:{id}"))
-                || *kind == "project" && t.projects.iter().any(|p| p == id)
-                || *kind == "task"
-                    && (key == format!("task:{id}") || key.rsplit('/').next() == Some(id))
-                || *kind == "consumer"
-                    && state.objects.iter().any(|(address, o)| {
-                        o.kind == "requirement"
-                            && crate::objects::within(state, key, address)
-                            && o.current().data["consumers"]
-                                .as_array()
-                                .is_some_and(|ids| ids.iter().any(|v| v == id))
-                    })
+            let selector = format!("{kind}:{id}");
+            let target = priority_address(state, &selector).unwrap_or(selector);
+            crate::objects::within(state, key, &target)
+                || crate::objects::referenced(state, key, &target)
+                || !state.schema_migrated
+                    && (*kind == "project" && t.projects.iter().any(|p| p == id)
+                        || *kind == "task"
+                            && (key == format!("task:{id}") || key.rsplit('/').next() == Some(id)))
         })
         .unwrap_or(priorities.len())
 }
@@ -163,7 +245,7 @@ pub(super) fn select_next(
         })
         .collect();
     for (key, t) in &state.task_process {
-        if project.is_some_and(|p| !t.projects.iter().any(|id| id == p))
+        if project.is_some_and(|p| !task_in_project(state, key, t, p))
             || purpose.is_some_and(|p| t.purpose != p)
             || crate::tasks::claimable(state, actor, key, t).is_err()
         {
@@ -222,7 +304,7 @@ pub async fn task_queue_filtered(
     access::check(&**conn, &workspace, actor, false).await?;
     let row = conn
         .query_one(
-            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text ,COALESCE(state->'task_process','{}'::jsonb)::text,COALESCE(state->'task_context','{}'::jsonb)::text,(state->'tree_schema')::text,state->>'admin',COALESCE(state->'object_aliases','{}'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
+            "SELECT position,COALESCE(state->>'workspace_id',workspace),(state->'members')::text,(state->'domains')::text,(state->'capabilities')::text,(state->'consumers')::text,(state->'projects')::text,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('capability',value->'capability','revision',value->'revisions'->-1)) FROM jsonb_each(state->'requirements')),'{}'::jsonb)::text ,COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('kind',value->'kind','id',value->'id','revisions',jsonb_build_array(value->'revisions'->-1))) FROM jsonb_each(state->'objects')),'{}'::jsonb)::text ,COALESCE(state->'task_process','{}'::jsonb)::text,COALESCE(state->'task_context','{}'::jsonb)::text,(state->'tree_schema')::text,state->>'admin',COALESCE(state->'object_aliases','{}'::jsonb)::text,COALESCE((state->>'schema_migrated')::boolean,false),COALESCE((state->>'tasks_migrated')::boolean,false),COALESCE(state->'document_overrides','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1",
             &[&workspace],
         )
         .await?;
@@ -240,6 +322,9 @@ pub async fn task_queue_filtered(
         tree_schema: serde_json::from_str(row.get::<_, &str>(11))?,
         admin: row.get(12),
         object_aliases: serde_json::from_str(row.get::<_, &str>(13))?,
+        schema_migrated: row.get(14),
+        tasks_migrated: row.get(15),
+        document_overrides: serde_json::from_str(row.get::<_, &str>(16))?,
         ..Default::default()
     };
     let requirements: std::collections::BTreeMap<String, Value> =
@@ -322,7 +407,7 @@ pub async fn task_queue_filtered(
         }
     }
     for (key, t) in &state.task_process {
-        if project.is_some_and(|p| !t.projects.iter().any(|id| id == p))
+        if project.is_some_and(|p| !task_in_project(&state, key, t, p))
             || purpose.is_some_and(|p| t.purpose != p)
         {
             continue;

@@ -21,6 +21,22 @@ pub struct TreeType {
     pub parent_gate: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub references: BTreeMap<String, ReferenceRule>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parent_decision: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceRule {
+    pub target: String,
+    pub title: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub multiple: bool,
+    #[serde(default)]
+    pub verification_subject: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SchemaRevision {
@@ -95,6 +111,8 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         (
             kind.into(),
             TreeType {
+                references: BTreeMap::new(),
+                parent_decision: false,
                 color: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
                 title: title.into(),
@@ -104,12 +122,53 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
             },
         )
     })
+    .collect::<BTreeMap<String, TreeType>>()
+    .into_iter()
+    .map(|(kind, mut t)| {
+        let color = match kind.as_str() {
+            "domain" => "#17685f",
+            "capability" => "#6551a1",
+            "consumer" => "#247eab",
+            "note" => "#7664aa",
+            _ => "#63756b",
+        };
+        t.color = Some(color.into());
+        if kind == "requirement" {
+            t.references.insert(
+                "consumers".into(),
+                ReferenceRule {
+                    target: "consumer".into(),
+                    title: "Used by".into(),
+                    required: true,
+                    multiple: true,
+                    verification_subject: false,
+                },
+            );
+        }
+        if kind == "task" {
+            t.references.insert(
+                "projects".into(),
+                ReferenceRule {
+                    target: "project".into(),
+                    title: "Repository".into(),
+                    required: false,
+                    multiple: true,
+                    verification_subject: true,
+                },
+            );
+            t.parent_decision = true;
+        }
+        (kind, t)
+    })
     .collect()
 }
 pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
     let mut types = defaults();
     for t in types.values_mut() {
         t.parent_gate = None;
+        t.color = None;
+        t.references.clear();
+        t.parent_decision = false;
     }
     for (kind, title, root, parents) in [
         ("intake", "Source note", true, vec![]),
@@ -118,6 +177,8 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         types.insert(
             kind.into(),
             TreeType {
+                references: BTreeMap::new(),
+                parent_decision: false,
                 color: None,
                 parent_gate: None,
                 title: title.into(),
@@ -141,6 +202,119 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             position: 0,
             reason: "Default workspace tree".into(),
         })
+}
+pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
+    if w.schema_migrated {
+        return Ok(());
+    }
+    let mut current = schema(w);
+    let preset = defaults();
+    let kinds: BTreeSet<_> = current.types.keys().cloned().collect();
+    for (kind, t) in &mut current.types {
+        if let Some(default) = preset.get(kind) {
+            if t.references.is_empty() {
+                t.references = default
+                    .references
+                    .iter()
+                    .filter(|(_, r)| kinds.contains(&r.target))
+                    .map(|(field, r)| (field.clone(), r.clone()))
+                    .collect();
+            }
+            if t.color.is_none() {
+                t.color = default.color.clone();
+            }
+            if t.role == default.role
+                && t.parents == default.parents
+                && t.parent_gate == default.parent_gate
+            {
+                t.parent_decision = default.parent_decision;
+            }
+        }
+    }
+    current.revision += 1;
+    current.actor = actor.into();
+    current.at = at.into();
+    current.position = position;
+    current.reason = "Record configurable reference and presentation rules".into();
+    w.tree_schema.push(current);
+    w.schema_migrated = true;
+    Ok(())
+}
+pub fn reference_targets(
+    w: &Workspace,
+    kind: &str,
+    data: &Value,
+) -> Result<Vec<(String, String, bool)>> {
+    let t = schema(w)
+        .types
+        .get(kind)
+        .cloned()
+        .context("unknown object type")?;
+    let mut targets = vec![];
+    for (field, rule) in &t.references {
+        let values: Vec<&str> = match data.get(field) {
+            None | Some(Value::Null) => vec![],
+            Some(Value::Array(values)) if rule.multiple => values
+                .iter()
+                .map(|v| v.as_str().context("reference IDs must be strings"))
+                .collect::<Result<_>>()?,
+            Some(Value::String(value)) if !rule.multiple => vec![value],
+            _ => bail!("reference {field} has invalid cardinality"),
+        };
+        ensure!(
+            !rule.required || !values.is_empty(),
+            "reference {field} is required"
+        );
+        let mut seen = BTreeSet::new();
+        for value in values {
+            let target = if value.contains(':') {
+                value.into()
+            } else {
+                ensure!(
+                    rule.target != "*",
+                    "a wildcard reference needs a full object address"
+                );
+                address(&rule.target, value)
+            };
+            let target = resolve_address(w, &target).to_owned();
+            let object = w
+                .objects
+                .get(&target)
+                .filter(|o| o.current().present)
+                .context(format!("unknown reference target: {target}"))?;
+            ensure!(
+                rule.target == "*" || rule.target == object.kind,
+                "reference {field} targets the wrong object type"
+            );
+            ensure!(
+                seen.insert(target.clone()),
+                "duplicate reference in {field}"
+            );
+            targets.push((field.clone(), target, rule.verification_subject));
+        }
+    }
+    Ok(targets)
+}
+pub fn referenced(w: &Workspace, key: &str, target: &str) -> bool {
+    let target = resolve_address(w, target);
+    let mut current = Some(key);
+    let mut seen = BTreeSet::new();
+    while let Some(key) = current {
+        let key = resolve_address(w, key);
+        if !seen.insert(key) {
+            return false;
+        }
+        let Some(o) = w.objects.get(key) else {
+            return false;
+        };
+        if reference_targets(w, &o.kind, &o.current().data)
+            .is_ok_and(|refs| refs.iter().any(|(_, id, _)| id == target))
+        {
+            return true;
+        }
+        current = o.current().parent.as_deref();
+    }
+    false
 }
 fn address(kind: &str, id: &str) -> String {
     format!("{kind}:{id}")
@@ -275,6 +449,7 @@ fn parent_valid(
     w: &Workspace,
     kind: &str,
     parent: Option<&str>,
+    child: Option<&str>,
 ) -> Result<()> {
     let t = types
         .get(kind)
@@ -287,7 +462,12 @@ fn parent_valid(
                 .get(resolve_address(w, p))
                 .context("unknown parent")?;
             ensure!(
-                obj.current().present || kind == "task" && obj.kind == "ac",
+                obj.current().present
+                    || !w.schema_migrated && kind == "task" && obj.kind == "ac"
+                    || child.is_some_and(|key| w.task_process.contains_key(key)
+                        && w.objects
+                            .get(key)
+                            .is_some_and(|o| o.current().parent.as_deref() == Some(p))),
                 "parent is absent from the current tree"
             );
             ensure!(
@@ -349,6 +529,35 @@ pub fn set_schema(
                 "built-in semantic roles cannot change"
             );
         }
+        ensure!(
+            !t.parent_decision || t.role == "task",
+            "parent decisions apply to Task roles"
+        );
+        for (field, rule) in &t.references {
+            commands::identifier(field)?;
+            commands::nonempty(&rule.title)?;
+            ensure!(
+                rule.target == "*" || types.contains_key(&rule.target),
+                "unknown reference target type"
+            );
+            ensure!(
+                ![
+                    "title",
+                    "owner",
+                    "body",
+                    "description",
+                    "contract",
+                    "purpose",
+                    "status",
+                    "archived",
+                    "decision_required",
+                    "depends_on",
+                    "before_launch"
+                ]
+                .contains(&field.as_str()),
+                "reference field conflicts with a document field"
+            );
+        }
         for p in &t.parents {
             ensure!(p == "*" || types.contains_key(p), "unknown parent type");
         }
@@ -365,7 +574,13 @@ pub fn set_schema(
             );
         }
         if !legacy_task_binding(w, obj) {
-            parent_valid(types, w, &obj.kind, obj.current().parent.as_deref())?;
+            parent_valid(
+                types,
+                w,
+                &obj.kind,
+                obj.current().parent.as_deref(),
+                Some(&address(&obj.kind, &obj.id)),
+            )?;
         }
     }
     w.tree_schema.push(SchemaRevision {
@@ -498,10 +713,43 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
             key == &address("requirement", req)
                 || kind == "ac" && parent.as_deref() == Some(&address("requirement", req))
         });
+        let mut data = data.clone();
+        if w.schema_migrated
+            && let Some(previous) = obj.revisions.last()
+            && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
+        {
+            for field in t.references.keys() {
+                let native_update = field == "consumers"
+                    && matches!(command, Command::Revise { req, .. } if key == &address("requirement", req));
+                if native_update && !t.references[field].multiple {
+                    data[field] = data[field]
+                        .as_array()
+                        .and_then(|values| values.first())
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                } else if !native_update && let Some(value) = previous.data.get(field) {
+                    data[field] = value.clone();
+                }
+            }
+        }
+        if w.schema_migrated
+            && let Some(previous) = obj.revisions.last()
+            && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
+        {
+            for field in defaults()
+                .get(kind)
+                .into_iter()
+                .flat_map(|t| t.references.keys())
+            {
+                if !t.references.contains_key(field) && previous.data.get(field).is_none() {
+                    data.as_object_mut().unwrap().remove(field);
+                }
+            }
+        }
         let changed = obj
             .revisions
             .last()
-            .is_none_or(|v| v.data != *data || v.parent != parent || !v.present)
+            .is_none_or(|v| v.data != data || v.parent != parent || !v.present)
             || forced;
         if changed {
             let links = obj
@@ -576,15 +824,8 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         }
         if link.blocking {
             ensure!(
-                link.relation == "depends_on"
-                    && (["ac", "requirement", "task"].contains(&target.kind.as_str())
-                        || schema(w).types.get(&target.kind).is_some_and(|t| [
-                            "ac",
-                            "requirement",
-                            "task"
-                        ]
-                        .contains(&t.role.as_str()))),
-                "blocking dependencies require an AC, REQ or Task target"
+                link.relation == "depends_on",
+                "blocking links must be dependencies"
             );
         }
     }
@@ -713,6 +954,14 @@ fn typed_command(
     data: &Value,
     reason: &str,
 ) -> Result<Option<Command>> {
+    let mut native_data = data.clone();
+    if w.schema_migrated
+        && kind == "requirement"
+        && let Some(value) = data.get("consumers").and_then(Value::as_str)
+    {
+        native_data["consumers"] = json!([value]);
+    }
+    let data = &native_data;
     let exists = w.objects.contains_key(&address(kind, id));
     let allowed: Option<&[&str]> = match kind {
         "domain" => Some(&["title", "owner", "description", "archived"]),
@@ -732,7 +981,12 @@ fn typed_command(
     if let Some(allowed) = allowed {
         for field in data.as_object().context("data must be an object")?.keys() {
             ensure!(
-                allowed.contains(&field.as_str()),
+                allowed.contains(&field.as_str())
+                    || w.schema_migrated
+                        && schema(w)
+                            .types
+                            .get(kind)
+                            .is_some_and(|t| t.references.contains_key(field)),
                 "unknown document field {field}; use process commands for evidence"
             );
         }
@@ -805,7 +1059,9 @@ fn typed_command(
         }
         "requirement" => {
             let consumers = list(data, "consumers")?;
-            ensure!(!consumers.is_empty(), "REQ needs at least one Consumer");
+            if !w.schema_migrated {
+                ensure!(!consumers.is_empty(), "REQ needs at least one Consumer");
+            }
             let capability = ancestor(w, parent, "capability").ok();
             if let Some(q) = w.requirements.get(id) {
                 let r = q.revisions.last().unwrap();
@@ -869,8 +1125,19 @@ fn typed_command(
             } else {
                 acs.push(ac);
             }
-            let req_data = &w.objects[&address("requirement", &req)].current().data;
-            revise(&req, r, q.capability.clone(), req_data, reason, acs)?
+            let mut req_data = w.objects[&address("requirement", &req)]
+                .current()
+                .data
+                .clone();
+            if w.schema_migrated
+                && let Some(value) = req_data
+                    .get("consumers")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            {
+                req_data["consumers"] = json!([value]);
+            }
+            revise(&req, r, q.capability.clone(), &req_data, reason, acs)?
         }
         "task" => {
             let ac_id = local(parent, "ac")?;
@@ -993,8 +1260,11 @@ pub fn save(
         );
     }
     commands::nonempty(&string(data, "title")?)?;
-    parent_valid(&schema(w).types, w, kind, parent.as_deref())?;
+    parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;
+    if w.schema_migrated {
+        reference_targets(w, kind, data)?;
+    }
     validate_links(w, &key, links)?;
     let unchanged = old
         .as_ref()
@@ -1029,7 +1299,7 @@ pub fn save(
                     "only current owner can transfer responsibility"
                 );
             }
-            if ["project", "intake", "point"].contains(&kind.as_str()) {
+            if ["project", "intake", "point"].contains(&kind.as_str()) && !w.schema_migrated {
                 ensure!(
                     old.is_some(),
                     "create source data with save_object kind=note"
@@ -1112,7 +1382,26 @@ pub fn save(
         && kind != "note"
         && !candidate.document_overrides.contains(&key)
     {
-        projected
+        if w.schema_migrated {
+            let mut normalized = projected;
+            for (field, value) in data.as_object().unwrap() {
+                normalized[field] = value.clone();
+            }
+            for field in defaults()
+                .get(kind)
+                .into_iter()
+                .flat_map(|t| t.references.keys())
+            {
+                if !schema(w).types[kind].references.contains_key(field)
+                    && data.get(field).is_none()
+                {
+                    normalized.as_object_mut().unwrap().remove(field);
+                }
+            }
+            normalized
+        } else {
+            projected
+        }
     } else {
         data.clone()
     };
@@ -1183,28 +1472,7 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
-            let evidence = match target.kind.as_str() {
-                "ac" => target
-                    .current()
-                    .parent
-                    .as_deref()
-                    .and_then(|p| p.strip_prefix("requirement:"))
-                    .and_then(|req| w.requirements.get(req))
-                    .and_then(|q| q.revisions.last())
-                    .is_some_and(|r| {
-                        crate::checks::latest(r).is_some_and(|(_, run)| {
-                            crate::checks::verdict(r, run, &target.id) == "pass"
-                        })
-                    }),
-                "requirement" => w
-                    .requirements
-                    .get(&target.id)
-                    .and_then(|q| q.revisions.last())
-                    .is_some_and(|r| crate::checks::summary(r)["accepted"] == true),
-                _ if crate::tasks::task(w, &l.target).is_some() => crate::tasks::task(w, &l.target)
-                    .is_some_and(|t| t.done.is_some() && t.retired.is_none()),
-                _ => false,
-            };
+            let evidence = verified(w, &address(&target.kind, &target.id));
             evidence && visit(w, &l.target, stack)
         });
         let parent_ready = o
@@ -1241,7 +1509,7 @@ pub fn validate_tree(w: &Workspace) -> Result<()> {
             "object type is absent from the tree schema"
         );
         if !legacy_task_binding(w, o) {
-            parent_valid(&types, w, &o.kind, o.current().parent.as_deref())?;
+            parent_valid(&types, w, &o.kind, o.current().parent.as_deref(), Some(key))?;
         }
         parent_cycle(w, key, o.current().parent.as_deref())?;
     }
@@ -1289,7 +1557,7 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
 
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::MigrateNotes {} | Command::MigrateTasks {} => {
+        Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }
@@ -1361,34 +1629,87 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
 }
 pub fn annotation_address(w: &Workspace, key: &str) -> String {
     let key = resolve_address(w, key);
-    if let Some(id) = key.strip_prefix("ac:")
-        && !id.contains('/')
-        && let Some(req) = w
-            .objects
-            .get(key)
-            .and_then(|o| o.current().parent.as_deref())
-            .and_then(|p| p.strip_prefix("requirement:"))
-    {
-        return format!("ac:{req}/{id}");
+    if let Some((req, _, ac)) = criterion_context(w, key) {
+        return format!("ac:{req}/{}", ac.id);
     }
     key.into()
 }
 
-pub fn process(w: &Workspace, key: &str) -> Value {
-    if let Some(p) = crate::tasks::process(w, resolve_address(w, key)) {
-        return p;
+/// Resolve the configured verification role against the journal evidence adapter.
+pub fn verification_context<'a>(w: &'a Workspace, key: &str) -> Option<(&'a str, &'a Revision)> {
+    let mut current = Some(resolve_address(w, key));
+    let mut seen = BTreeSet::new();
+    while let Some(key) = current {
+        if !seen.insert(key) {
+            return None;
+        }
+        let o = w.objects.get(key)?;
+        let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
+        if role.as_deref() == Some("requirement")
+            && !w.document_overrides.contains(key)
+            && let Some(r) = w.requirements.get(&o.id).and_then(|q| q.revisions.last())
+        {
+            return Some((&o.id, r));
+        }
+        current = o.current().parent.as_deref();
+    }
+    None
+}
+pub fn criterion_context<'a>(
+    w: &'a Workspace,
+    key: &str,
+) -> Option<(&'a str, &'a Revision, &'a Ac)> {
+    let key = resolve_address(w, key);
+    let o = w.objects.get(key)?;
+    if w.document_overrides.contains(key) || schema(w).types.get(&o.kind)?.role != "ac" {
+        return None;
+    }
+    let (req, revision) = verification_context(w, o.current().parent.as_deref()?)?;
+    let ac = revision.acs.iter().find(|ac| ac.id == o.id)?;
+    Some((req, revision, ac))
+}
+fn verified(w: &Workspace, key: &str) -> bool {
+    if let Some(t) = crate::tasks::task(w, key) {
+        return t.done.is_some() && t.retired.is_none();
+    }
+    if let Some((_, r, ac)) = criterion_context(w, key) {
+        return crate::checks::latest(r)
+            .is_some_and(|(_, run)| crate::checks::verdict(r, run, &ac.id) == "pass");
     }
     let Some(o) = w.objects.get(resolve_address(w, key)) else {
+        return false;
+    };
+    !w.document_overrides.contains(resolve_address(w, key))
+        && schema(w)
+            .types
+            .get(&o.kind)
+            .is_some_and(|t| t.role == "requirement")
+        && w.requirements
+            .get(&o.id)
+            .and_then(|q| q.revisions.last())
+            .is_some_and(|r| crate::checks::summary(r)["accepted"] == true)
+}
+
+pub fn process(w: &Workspace, key: &str) -> Value {
+    let key = resolve_address(w, key);
+    if let Some(p) = crate::tasks::process(w, key) {
+        return p;
+    }
+    let Some(o) = w.objects.get(key) else {
         return json!({});
     };
-    match o.kind.as_str() {
-        "note"=>json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed")}),
-        "requirement"=>w.requirements.get(&o.id).and_then(|q|q.revisions.last()).map(|r|json!({"req":o.id,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,&o.id,r)})).unwrap_or_else(||json!({})),
-        "ac"=>o.current().parent.as_deref().and_then(|p|p.strip_prefix("requirement:")).and_then(|req|w.requirements.get(req).and_then(|q|q.revisions.last()).map(|r|(req,r))).map(|(req,r)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"status":requirement_summary(w,req,r)["acs"][&o.id]})).unwrap_or_else(||json!({})),
-        "task"=>o.id.split_once('/').and_then(|(req,id)|w.requirements.get(req).and_then(|q|q.revisions.last()).and_then(|r|r.tasks.get(id).map(|t|(req,r,t)))).map(|(req,r,t)|json!({"req":req,"revision":r.number,"assignee":t.assignee,"done":t.done,"retired":t.retired,"review_required":t.review_required,"status":if t.retired.is_some(){"retired"}else if t.done.is_some(){"done"}else if t.assignee.is_some(){"in_progress"}else{"open"}})).unwrap_or_else(||json!({})),
-        _=>json!({}),
+    if o.kind == "note" {
+        return json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed")});
+    }
+    let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
+    match role.as_deref() {
+        Some("requirement") if !w.document_overrides.contains(key) => w.requirements.get(&o.id).and_then(|q|q.revisions.last()).map(|r|json!({"req":o.id,"revision":r.number,"confirmed":r.confirmed,"summary":requirement_summary(w,&o.id,r)})).unwrap_or_else(||json!({})),
+        Some("ac") => criterion_context(w, key).map(|(req,r,ac)|json!({"req":req,"revision":r.number,"confirmed":r.confirmed,"pending_run":requirement_summary(w,req,r)["pending_run"],"status":requirement_summary(w,req,r)["acs"][&ac.id]})).unwrap_or_else(||json!({})),
+        Some("task") => o.id.split_once('/').and_then(|(req,id)|w.requirements.get(req).and_then(|q|q.revisions.last()).and_then(|r|r.tasks.get(id).map(|t|(req,r,t)))).map(|(req,r,t)|json!({"req":req,"revision":r.number,"assignee":t.assignee,"done":t.done,"retired":t.retired,"review_required":t.review_required,"status":if t.retired.is_some(){"retired"}else if t.done.is_some(){"done"}else if t.assignee.is_some(){"in_progress"}else{"open"}})).unwrap_or_else(||json!({})),
+        _ => json!({}),
     }
 }
+
 pub fn signal(w: &Workspace, key: &str) -> Value {
     let Some(o) = w.objects.get(resolve_address(w, key)) else {
         return json!({});
