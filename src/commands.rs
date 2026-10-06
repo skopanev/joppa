@@ -26,6 +26,16 @@ pub enum Command {
         links: Vec<crate::objects::ObjectLink>,
         reason: String,
     },
+    ArchiveObject {
+        target: String,
+        revision: u32,
+        reason: String,
+    },
+    RestoreObject {
+        target: String,
+        revision: u32,
+        reason: String,
+    },
     SetNoteStatus {
         target: String,
         revision: u32,
@@ -587,6 +597,12 @@ pub(crate) fn apply_inner(
         }
         Command::SaveObject { .. } => {
             crate::objects::save(w, actor, command, position, recorded_at)?;
+        }
+        Command::ArchiveObject { .. } => {
+            crate::objects::archive(w, actor, command, position, recorded_at)?;
+        }
+        Command::RestoreObject { .. } => {
+            crate::objects::restore(w, actor, command, position, recorded_at)?;
         }
         Command::SetNoteStatus {
             target,

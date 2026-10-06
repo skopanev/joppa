@@ -2151,3 +2151,113 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
     };
     json!({"tone":tone,"label":label,"at":o.current().at})
 }
+
+
+pub fn archive(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+) -> Result<()> {
+    let Command::ArchiveObject {
+        target,
+        revision,
+        reason,
+    } = command
+    else {
+        bail!("archive_object required")
+    };
+    ensure!(
+        w.members.get(actor).is_some_and(|role| role == "agent") || actor == w.admin,
+        "workspace owner or agent required"
+    );
+    commands::nonempty(reason)?;
+    let target = resolve_address(w, target).to_owned();
+    let old = w.objects.get(&target).context("unknown object")?;
+    ensure!(
+        old.current().revision == *revision,
+        "stale object revision; read the object again"
+    );
+    ensure!(
+        old.current().present,
+        "object is absent from the current tree"
+    );
+    let kind = &old.kind;
+    ensure!(
+        schema(w).types.get(kind).map(|t| t.role.as_str()) == Some("group"),
+        "archive_object requires a group"
+    );
+
+    let has_live_children = w.objects.values().any(|o| {
+        o.current().parent.as_ref() == Some(&target) && o.current().present
+    });
+    ensure!(
+        !has_live_children,
+        "cannot archive a group with active children"
+    );
+
+    let mut next = old.current().clone();
+    next.present = false;
+    next.revision += 1;
+    next.position = position;
+    next.actor = actor.to_owned();
+    next.reason = reason.clone();
+    next.at = at.to_owned();
+    
+    w.objects.get_mut(&target).unwrap().revisions.push(next);
+    Ok(())
+}
+
+pub fn restore(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+) -> Result<()> {
+    let Command::RestoreObject {
+        target,
+        revision,
+        reason,
+    } = command
+    else {
+        bail!("restore_object required")
+    };
+    ensure!(
+        w.members.get(actor).is_some_and(|role| role == "agent") || actor == w.admin,
+        "workspace owner or agent required"
+    );
+    commands::nonempty(reason)?;
+    let target = resolve_address(w, target).to_owned();
+    let old = w.objects.get(&target).context("unknown object")?;
+    ensure!(
+        old.current().revision == *revision,
+        "stale object revision; read the object again"
+    );
+    ensure!(
+        !old.current().present,
+        "object is already present in the current tree"
+    );
+
+    let kind = &old.kind;
+    ensure!(
+        schema(w).types.get(kind).map(|t| t.role.as_str()) == Some("group"),
+        "restore_object requires a group"
+    );
+
+    // restore validates active schema/parent
+    parent_valid(&schema(w).types, w, kind, old.current().parent.as_deref(), Some(&target))?;
+    parent_cycle(w, &target, old.current().parent.as_deref())?;
+    
+    let mut next = old.current().clone();
+    next.present = true;
+    next.revision += 1;
+    next.position = position;
+    next.actor = actor.to_owned();
+    next.reason = reason.clone();
+    next.at = at.to_owned();
+    
+    w.objects.get_mut(&target).unwrap().revisions.push(next);
+    Ok(())
+}

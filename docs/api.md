@@ -5,6 +5,10 @@ Use `joppa_objects`, `joppa_tree`, `save_object` and `set_tree_schema`.
 Pass the current `revision` with each document or schema write.
 The following operations retain their original verification and compatibility rules.
 
+archive_object: target, revision; archives an empty group object
+restore_object: target, revision; restores an archived group object
+
+
 # Journal API
 
 ## Technical writing

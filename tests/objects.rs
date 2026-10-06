@@ -707,3 +707,48 @@ fn common_document_fields_survive_process_commands_and_full_replacement_removes_
         2
     );
 }
+
+#[test]
+fn archive_and_restore_group_objects() {
+    let mut w = crate::workspace();
+    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"}},"reason":"Setup"}));
+    
+    // Create an initiative
+    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner"},"reason":"Create group"}));
+    
+    // Try to archive with an invalid revision
+    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive it"}));
+    
+    // Archive it
+    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive it"}));
+    
+    // Check it's no longer present
+    let obj = w.state.objects.get("initiative:i").unwrap();
+    assert!(!obj.current().present);
+    assert_eq!(obj.current().revision, 2);
+    
+    // Try to archive again (fails because already archived / not present)
+    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));
+    
+    // Restore it
+    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore it"}));
+    
+    // Check it's present again
+    let obj = w.state.objects.get("initiative:i").unwrap();
+    assert!(obj.current().present);
+    assert_eq!(obj.current().revision, 3);
+}
+
+#[test]
+fn cannot_archive_with_live_children() {
+    let mut w = crate::workspace();
+    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":{"initiative":{"role":"group"},"note":{"role":"requirement"}},"reason":"Setup"}));
+    
+    w.ok("agent", json!({"op":"save_object","kind":"initiative","id":"i","revision":0,"parent":null,"data":{"title":"Initiative","owner":"owner"},"reason":"Create group"}));
+    w.ok("agent", json!({"op":"save_object","kind":"note","id":"n","revision":0,"parent":"initiative:i","data":{"title":"Note","owner":"owner"},"reason":"Create child"}));
+    
+    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive with children"}));
+    
+    // Archive child first? Actually there is no archive_object for requirement, but we can delete or change parent?
+    // Let's just test that it fails.
+}
