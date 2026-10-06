@@ -137,6 +137,7 @@ fn schema_migration_preserves_document_history_and_runs_once() {
     );
 }
 
+// [owner-consumers-sources-ac3]
 #[test]
 fn wildcard_references_allow_multiple_types_and_require_full_addresses() {
     let mut w = World::new();
@@ -163,6 +164,7 @@ fn wildcard_references_allow_multiple_types_and_require_full_addresses() {
     assert!(objects::reference_targets(&w.state, "note", &json!({"context":["d"]})).is_err());
 }
 
+// [subject-agreed-first-ac3]
 #[test]
 fn inherited_subjects_constrain_claims_and_check_plans() {
     let mut w = World::new();
@@ -201,6 +203,7 @@ fn inherited_subjects_constrain_claims_and_check_plans() {
     w.no("runner",json!({"op":"plan","req":"r","revision":number,"run":"missing-inherited","subject":{"app":"build1"},"scope":"Access","discovery_complete":true,"checks":[{"id":"access","ac":"ios","method":"automated","expected":["Access retained"]},{"id":"key","ac":"key","method":"manual","expected":["Correct key"]}]}));
 }
 
+// [owner-consumers-sources-ac2]
 #[test]
 fn a_default_reference_field_can_select_one_target_of_another_type() {
     let mut w = World::new();

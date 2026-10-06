@@ -23,7 +23,7 @@ await page.getByRole('tab',{name:'Inputs',exact:true}).click();const queue=page.
 await page.getByRole('tab',{name:'Initiative',exact:true}).click();
 await page.locator('#collection-initiative [data-object-address="initiative:release"]').waitFor();
 assert.match(await page.locator('[data-object-address="initiative:release"] .status-circle').getAttribute('aria-label'),/^Status: Historical object/,
-  '[uniform-object-cards-ac1] one card component carries the status of any configured type');
+  '[ac:uniform-object-cards-ac1] one card component carries the status of any configured type');
 await page.getByRole('tab',{name:'Inputs',exact:true}).click();
 let source=queue.locator('[data-object-address="note:source"]');
 assert.equal(await queue.locator('[data-object-address="note:processed"]').count(),0,'processed input stays out of the default queue');
@@ -108,9 +108,9 @@ await page.goto('http://joppa.test/');
 await page.getByRole('tab',{name:'Initiative',exact:true}).waitFor();
 const reads=()=>seen.filter(entry=>entry.includes('/objects?'));
 assert.equal(reads().filter(entry=>entry.includes('address=')).length,0,
-  '[lazy-object-context-ac1] the initial board reads no document body');
+  '[ac:lazy-object-context-ac1] the initial board reads no document body');
 assert.equal(seen.filter(entry=>entry.includes('history=true')).length,0,
-  '[lazy-object-context-ac1] the initial board reads no revision history');
+  '[ac:lazy-object-context-ac1] the initial board reads no revision history');
 await page.getByRole('tab',{name:'Consumer',exact:true}).click();
 const person=page.locator('[data-object-address="consumer:person"]');
 await person.waitFor();
@@ -118,24 +118,24 @@ seen.length=0;
 await person.locator(':scope > summary').click();
 await person.locator(':scope > .object-body > .object-children .collection-empty').waitFor();
 assert.ok(reads().some(entry=>entry.includes('address=consumer%3Aperson')||entry.includes('address=consumer:person')),
-  '[lazy-object-context-ac2] opening an object reads its current document');
+  '[ac:lazy-object-context-ac2] opening an object reads its current document');
 assert.ok(reads().some(entry=>entry.includes('parent=consumer%3Aperson')||entry.includes('parent=consumer:person')),
-  '[lazy-object-context-ac2] opening an object reads its direct child metadata');
+  '[ac:lazy-object-context-ac2] opening an object reads its direct child metadata');
 await person.locator(':scope > summary').click();
 seen.length=0;
 await person.locator(':scope > summary').click();
 await page.waitForTimeout(250);
 assert.equal(reads().length,0,
-  '[lazy-object-context-ac3] reopening an unchanged object reuses the loaded document');
+  '[ac:lazy-object-context-ac3] reopening an unchanged object reuses the loaded document');
 seen.length=0;
 await person.locator(':scope > summary .history-button').click();
 const historyDialog=page.locator('.notes-dialog');
 await historyDialog.waitFor();
 assert.equal(reads().filter(entry=>entry.includes('revision=')).length,0,
-  '[lazy-object-context-ac4] the history dialog reads no earlier revision before a choice');
+  '[ac:lazy-object-context-ac4] the history dialog reads no earlier revision before a choice');
 await historyDialog.getByLabel('Object revision').selectOption('1');
 await page.waitForFunction(()=>true);
 assert.ok(reads().some(entry=>entry.includes('revision=1')),
-  '[lazy-object-context-ac4] an earlier revision is read only after the user selects it');
+  '[ac:lazy-object-context-ac4] an earlier revision is read only after the user selects it');
 assert.deepEqual(errors,[]);
 console.log('Common object browser checks passed');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

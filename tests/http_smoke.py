@@ -95,10 +95,15 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
                     self.meta[values.get('property', values.get('name'))] = values.get('content')
         with urllib.request.urlopen(urllib.request.Request(base+'/', headers={'User-Agent':'TelegramBot'})) as response:
             preview = Preview()
-            preview.feed(response.read().decode())
+            public_html = response.read().decode()
+            preview.feed(public_html)
             assert response.status == 200
+        # [ac:public-link-preview-ac1] The preview contains absolute URLs and product metadata.
         assert preview.meta['og:title'].startswith('Joppa')
+        assert urllib.parse.urlparse(preview.meta['og:url']).scheme in ('http','https')
         assert preview.meta['og:description'] == 'A versioned product tree with connected tasks.'
+        # [ac:public-link-preview-ac3] Public HTML omits private product data.
+        assert 'Проверка карточки' not in public_html and ws not in public_html
         assert preview.meta['twitter:card'] == 'summary_large_image'
         assert urllib.parse.urlparse(preview.meta['og:image']).scheme in ('https', 'http')
         image_path = urllib.parse.urlparse(preview.meta['og:image']).path
@@ -106,6 +111,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             image = response.read()
             assert response.status == 200 and response.headers['Content-Type'] == 'image/png'
             assert image[:8] == b'\x89PNG\r\n\x1a\n'
+            # [ac:public-link-preview-ac2] The public PNG has the declared dimensions.
             assert int.from_bytes(image[16:20], 'big') == 1200
             assert int.from_bytes(image[20:24], 'big') == 630
         with urllib.request.urlopen(urllib.request.Request(base+'/api/me',headers={'Authorization':'Bearer '+owner_token})) as response:
@@ -203,7 +209,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
         assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 4
-        # [mcp-schema-objects-ac2] Process reads retain workspace authorization.
+        # [ac:mcp-schema-objects-ac2] Process reads retain workspace authorization.
         assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
         with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
@@ -359,7 +365,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'finish','req':'key','revision':1,'run':'manual1'})
         ok({'op':'accept','req':'key','revision':1,'run':'manual1'})
         assert request('/api/workspaces/'+ws)[1]['summary']['key']['accepted'] is True
-        # [mcp-schema-objects-ac3] Read only the selected current verification record.
+        # [ac:mcp-schema-objects-ac3] Read only the selected current verification record.
         process = request('/api/workspaces/'+ws+'/board?level=process&id=ac:key-rights')[1]
         assert process['req'] == 'key' and process['revision'] == 1
         assert set(process['runs']) == {'manual1'}

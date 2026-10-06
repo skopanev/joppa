@@ -191,6 +191,7 @@ fn configured_types_verify_without_default_type_names_and_keep_ids_separate() {
         serde_json::to_value(old).unwrap()
     );
 }
+// [ac:verification-context-ac1]
 #[test]
 fn nested_specifications_select_the_nearest_context_and_reject_evidence_injection() {
     let mut w = setup_custom();
@@ -263,6 +264,7 @@ fn nested_specifications_select_the_nearest_context_and_reject_evidence_injectio
     );
 }
 
+// [ac:verification-context-ac2]
 #[test]
 fn custom_workflow_ids_do_not_collide_with_legacy_verification_ids() {
     let mut w = World::new();

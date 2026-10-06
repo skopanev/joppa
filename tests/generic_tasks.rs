@@ -72,6 +72,7 @@ fn action(w: &mut World, actor: &str, key: &str, op: &str, extra: Value) {
     w.ok(actor, cmd);
 }
 
+// [task-serves-one-ac-ac1]
 #[test]
 fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
     let mut w = configured();
@@ -133,6 +134,7 @@ fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
     objects::validate_tree(&w.state).unwrap();
 }
 
+// [restructure-keeps-evidence-ac3]
 #[test]
 fn task_parent_change_preserves_id_and_requires_owner_review() {
     let mut w = configured();
@@ -337,6 +339,7 @@ fn configured_verification_scope_applies_to_independent_task_projects() {
     assert_eq!(w.state.task_process["task:scope"].projects, vec!["app"]);
 }
 
+// [one-taker-ac2]
 #[test]
 fn schema_selects_completion_or_test_evidence_as_the_parent_gate() {
     let mut w = configured();

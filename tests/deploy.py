@@ -83,14 +83,14 @@ elif 'install.sh' in cmd:
         self.assertIn("rm -rf -- '/root/joppa-deploy.TEST1234'", self.log.read_text())
 
     def test_dirty_checkout_is_rejected_before_connecting(self):
-        """[release-commit-integrity-ac1] Reject a dirty release checkout."""
+        """[ac:release-commit-integrity-ac1] Reject a dirty release checkout."""
         (self.repo / "private-data").write_text("must not ship")
         result = self.deploy()
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
 
     def test_head_change_cannot_change_the_packaged_or_reported_commit(self):
-        """[release-commit-integrity-ac3] Keep the selected commit during concurrent work."""
+        """[ac:release-commit-integrity-ac3] Keep the selected commit during concurrent work."""
         marker = self.repo / 'commit-marker'
         marker.write_text('selected commit')
         self.git('add', '.')

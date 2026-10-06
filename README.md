@@ -110,25 +110,25 @@ separate HttpOnly cookies and expire after 12 hours. Session token hashes and
 sign-out revocations are stored in PostgreSQL, so deployments preserve sign-in. Google credentials and API tokens never reach browser storage.
 Without Joppa's own Google configuration, sign-in fails closed with a setup message.
 
-The **Workspace** menu lists only accessible products. The full-width product tree
-shows domains, capabilities, requirements and acceptance criteria with distinct
-visual levels and check statuses. Use domain, person and status filters with live counts. **Assigned to me** includes REQs
-you own, unfinished tasks assigned to you and ACs awaiting your decision. Filter choices stay within each workspace.
-Every page reload collapses the tree; open domains, capabilities and requirements inline by clicking their titles.
-Use the **copy + robot** button
-on a domain, capability, requirement or AC to copy its permanent, database-wide unique
-Only the permanent ID is copied for your agent. IDs use `workspace-D|C|R|A-XXXXXXXXXX`; agents resolve them through
-`joppa_read({"item_id":"..."})`.
-The portal is read-only, including descriptions, comments, attachments and tree order.
-Use the workspace, filter and revision menus to choose what to view. All content
-changes and decisions go through agents using MCP. The history icon on every
-domain, capability, REQ and AC opens a plain timeline:
-time, author and change, one saved operation per entry.
-REQ History also contains the revision selector. Cards show a short revision label next to the history button;
-internal IDs stay behind the copy button. Empty Tasks, Checks and Discussion sections
-are hidden; populated sections show task titles, people and readable evidence.
-Reordering does not create a REQ revision or reset checks.
-[How it works](http://127.0.0.1:6212/guide) explains the four levels separately.
+The **Workspace** menu lists only accessible products. Root tabs come from each
+workspace schema. Type titles, colors and order follow that schema.
+All object types use the same card. Open a card to read its document and direct
+children. Owner and status filters apply within the selected root tab.
+The initial page contains metadata. It loads documents and earlier revisions
+only when requested. Closing and opening a loaded card uses its cached content.
+
+Use the **copy + robot** button on any card to copy its permanent identifier.
+A success mark and a toast confirm copying. Agents resolve the copied identifier
+with `joppa_read({"item_id":"..."})`. The same reader handles every configured type.
+Use **Revisions** to read one saved document. Historical documents omit current
+comments, files and process status. Current comments, attachments and Context
+remain separate annotations.
+
+The portal is read-only. Agents change documents, links and schema through MCP.
+Types with `inbox: true` supply an input queue. It shows unprocessed inputs first.
+The **All** checkbox includes processed inputs. Related inputs remain visible
+under the objects they affect. Processing preserves the source document.
+
 If port 6212 is occupied, use another local port such as 6213. Public access
 requires an HTTPS proxy; see [server deployment](server/README.md).
 
@@ -186,6 +186,8 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_model_docs` | Read English model, process and evidence rules |
 | `joppa_help` | Read command shapes and API rules |
+| `joppa_tree` | Read the workspace schema and its saved revisions |
+| `joppa_objects` | Read object lists, documents, links and revisions |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
 
@@ -206,8 +208,8 @@ python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
 ```
 
 Commands print JSON. `next` selects and claims under one server lock. Repeat
-`--priority kind:id` in preference order; accepted kinds are domain, capability,
-requirement, ac, task, project and consumer. It tries the first scope with a
+`--priority kind:id` in preference order. Each priority addresses an object from
+the configured tree. Reference scopes follow the workspace schema. It tries the first scope with a
 claimable Task, then the next, then the ordinary oldest Task. `--project` and
 `--purpose` remain hard filters. `next --dry-run` returns `{ "task": ... }`
 without claiming; `task` is `null` when nothing is available. Another worker
@@ -298,9 +300,8 @@ legal-policy interpretation or proof that an AC set is complete.
 Agent search combines PostgreSQL full-text and pgvector results when the private
 DeepInfra key is configured; otherwise it reports full-text mode. See [search](docs/search.md).
 Attachment upload endpoints are not yet implemented; their storage configuration
-is preparatory. Journal reads currently
-replay the whole workspace; larger volumes will need projections and paginated
-history. The portal is read-only; authoring and decisions
+is preparatory. Current object lists and board reads use database projections. Full journal
+reads and writes still replay workspace history. The portal is read-only; authoring and decisions
 use MCP.
 
 See the [model](docs/model.md), [process](docs/process.md), [green rule](docs/green.md),

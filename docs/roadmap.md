@@ -91,40 +91,20 @@ Acceptance criteria:
 
 Touchpoints: `src/store.rs::gate`, the pilot repository’s release pipeline.
 
-## 4. Unify responsibility as Owner at every product level
+## 4. Owner and common object model
 
-Priority: mandatory product requirement. Status: accepted into backlog, not implemented.
-Source: owner instruction relayed by r2 on 2026-09-23, AgentBus request
-`finik-pm-owner-refactor`.
+Status: implemented. Current documents use `owner` for every configured type.
+The workspace schema defines names, parent rules, reference fields and colors.
+Tasks follow the configured parent rules. Inputs use common document revisions.
+Historical commands retain their earlier field names for journal replay.
+The public Domain commands also accept `authority` as a compatibility alias.
+The common `save_object` operation uses `owner`.
 
-Problem: Domain `authority`, REQ `owner` and AC assessment `recipient` expose
-inconsistent names for responsibility and make assignment hard to understand.
-
-Acceptance criteria:
-
-- Use one canonical `owner` field and the label **Owner** on Domain, Capability,
-  Requirement, AC and Intake. The Domain Owner is responsible for decisions in
-  that area; the AC Owner is the person from whom the AC decision is expected.
-- Replace `authority` and `recipient` in the current model and authoring contract,
-  including MCP schemas/help, CLI/API commands, documentation, portal labels and
-  person filters. This is a model change, not only a label rename. Keep the portal
-  read-only; agents assign or change ownership through authenticated commands.
-- Specify a migration from domain authority, REQ owner and AC recipient/decider
-  assignments. Resolve conflicting AC assignments explicitly; do not silently
-  choose one person, infer an owner from an author or automatically inherit one
-  from a parent. Define missing-owner handling and assignment permissions before
-  implementing the migration.
-- Preserve immutable events, past decisions, evidence and attribution. Historical
-  actors record who actually acted, independently of current ownership. Keep old
-  events replayable and define the client compatibility transition. Reassignment
-  must not fabricate approval, readiness, acceptance or a passing result.
-- Verify migration and replay of existing workspaces, conflicting and missing
-  assignments, authorized and unauthorized reassignment, MCP read/write round
-  trips, Owner labels and person filters across all five supported levels.
-
-Touchpoints: `src/model.rs`, `src/commands.rs`, `src/store.rs`, MCP/CLI schemas,
-`src/board.js`, `docs/model.md`, `docs/api.md`, `docs/agent-instructions.txt`,
-`src/guide.html`, model and integration tests.
+Verification: `tests/schema_objects.rs`, `tests/configured_references.rs`,
+`tests/custom_verification.rs`, `tests/generic_tasks.rs` and their database checks.
+Browser checks cover common cards, schema tabs, lazy reads and input queues.
+Current product requirements belong in the Joppa workspace. These source files
+supply evidence after their checks run against a recorded commit.
 
 ## Deliberate non-change
 

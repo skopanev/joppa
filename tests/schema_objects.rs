@@ -35,6 +35,7 @@ fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value) {
     w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"reason":"Store the common document"}));
 }
 
+// [product-tree-shape-ac1]
 #[test]
 fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
     let mut w = empty();
@@ -94,6 +95,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
     assert!(!objects::input_type(&w.state, "note"));
 }
 
+// [ac:restructure-keeps-evidence-ac4]
 #[test]
 fn document_migration_preserves_all_revisions_and_runs_once() {
     let mut w = World::new();
@@ -116,6 +118,7 @@ fn document_migration_preserves_all_revisions_and_runs_once() {
     );
 }
 
+// [ac:product-tree-shape-ac6]
 #[test]
 fn verification_uses_roles_when_former_group_names_are_verification_types() {
     let mut w = empty();
@@ -196,6 +199,7 @@ fn verification_uses_roles_when_former_group_names_are_verification_types() {
     );
 }
 
+// [product-tree-shape-ac4]
 #[test]
 fn every_type_can_order_its_own_siblings() {
     let mut w = empty();
@@ -231,6 +235,7 @@ fn every_type_can_order_its_own_siblings() {
     );
 }
 
+// [ac:mcp-schema-objects-ac4]
 #[test]
 fn native_and_custom_verification_names_use_common_process_keys() {
     for (spec, criterion) in [("requirement", "ac"), ("contract", "check")] {

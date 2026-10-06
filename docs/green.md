@@ -13,8 +13,16 @@ Run     build b1f4a2c -> check outcomes
 Joppa   records the report and derives the verdict
 ```
 
-The current check protocol uses the stable local AC ID returned by MCP in the
-`[AC-id]` tag. Resolve a copied public system ID through `joppa_read` first.
+Use the criterion identifier returned by MCP in the `[AC-id]` tag.
+New configured criteria use complete addresses, such as `[ac:copy-feedback-ac1]`.
+Earlier criteria retain their saved identifiers. Resolve a copied public ID
+through `joppa_read` before creating a check plan.
+Rust tests can place one `// [AC-id]` annotation immediately above the test.
+The annotation identifies that test, not every test in its source file.
+
+Source tags connect checks to contracts. A tag alone is not passing evidence.
+Record the exact test, command, source commit and result in a sealed plan.
+Keep missing coverage and absent owner confirmation visible.
 
 ## One test — one AC
 

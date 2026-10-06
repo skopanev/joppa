@@ -21,6 +21,7 @@ fn link(target: &str, revision: Option<u32>, blocking: bool) -> ObjectLink {
         .into(),
     }
 }
+// [request-verbatim-ac1]
 #[test]
 fn note_revisions_preserve_source_and_reject_stale_writes() {
     let mut w = World::new();
@@ -140,6 +141,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
         json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Invalid AC parent"}),
     );
 }
+// [ac:all-object-links-ac3]
 #[test]
 fn ordinary_cycles_are_allowed_and_blocking_cycles_are_rejected() {
     let mut w = World::new();
@@ -203,6 +205,7 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());
     assert_eq!(r.number, 1, "a link does not rewrite the test contract");
 }
+// [ac:dependency-evidence-ac1]
 #[test]
 fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
     let mut w = World::new();
@@ -425,6 +428,7 @@ fn legacy_plans_allow_owner_review_without_a_new_scope_contract() {
     assert_eq!(w.summary(2)["coverage_reviewed"], true);
 }
 
+// [ask-only-missing-ac3]
 #[test]
 fn note_processing_keeps_source_and_reopens_changed_input() {
     let mut w = World::new();
@@ -481,6 +485,7 @@ fn schema_colors_reject_css_values_and_keep_old_schema() {
     assert_eq!(objects::schema(&w.state).revision, 1);
 }
 
+// [restructure-keeps-evidence-ac1]
 #[test]
 fn type_order_changes_schema_without_changing_documents() {
     let mut w = World::new();
@@ -510,6 +515,7 @@ fn type_order_changes_schema_without_changing_documents() {
     w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":invalid,"reason":"Reject an invalid index"}));
 }
 
+// [ac:unrouted-requests-listed-ac2]
 #[test]
 fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
     let mut w = World::new();
@@ -579,6 +585,7 @@ fn launch_configuration_preserves_owner_acceptance_and_can_disable_the_preset() 
     assert_eq!(objects::launch_summary(&w.state)["configured"], false);
 }
 
+// [ac:dependency-evidence-ac2]
 #[test]
 fn requirement_dependencies_follow_tests_and_completed_work_loses_verification() {
     let mut w = World::new();
