@@ -2206,6 +2206,7 @@ pub fn archive(
     next.at = at.to_owned();
     
     w.objects.get_mut(&target).unwrap().revisions.push(next);
+    w.document_overrides.insert(target.clone());
     Ok(())
 }
 
@@ -2259,5 +2260,6 @@ pub fn restore(
     next.at = at.to_owned();
     
     w.objects.get_mut(&target).unwrap().revisions.push(next);
+    w.document_overrides.insert(target.clone());
     Ok(())
 }

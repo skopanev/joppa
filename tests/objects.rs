@@ -752,3 +752,36 @@ fn cannot_archive_with_live_children() {
     // Archive child first? Actually there is no archive_object for requirement, but we can delete or change parent?
     // Let's just test that it fails.
 }
+
+#[test]
+fn archive_legacy_group_does_not_resync() {
+    let mut w = crate::workspace();
+    w.ok("owner", json!({"op":"domain","id":"legacy","title":"Legacy","description":"D","reason":"Create"}));
+    
+    // It should be present and synced
+    assert!(w.state.objects.get("domain:legacy").unwrap().current().present);
+    
+    // Archive it
+    let rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
+    w.ok("agent", json!({"op":"archive_object","target":"domain:legacy","revision":rev,"reason":"Archive it"}));
+    
+    let archived_rev = w.state.objects.get("domain:legacy").unwrap().current().revision;
+    assert!(!w.state.objects.get("domain:legacy").unwrap().current().present);
+    
+    // Perform an unrelated command to trigger sync
+    w.ok("owner", json!({"op":"domain","id":"other","title":"Other","description":"D","reason":"Unrelated"}));
+    
+    // Legacy should still be absent and revision unchanged!
+    let current = w.state.objects.get("domain:legacy").unwrap().current();
+    assert!(!current.present);
+    assert_eq!(current.revision, archived_rev);
+    
+    // Restore it
+    w.ok("agent", json!({"op":"restore_object","target":"domain:legacy","revision":archived_rev,"reason":"Restore it"}));
+    
+    // Unrelated command
+    w.ok("owner", json!({"op":"domain","id":"another","title":"A","description":"D","reason":"Unrelated"}));
+    
+    let current = w.state.objects.get("domain:legacy").unwrap().current();
+    assert!(current.present);
+}
