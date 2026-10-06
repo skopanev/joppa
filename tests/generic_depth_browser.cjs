@@ -58,10 +58,15 @@ try{
     else if(url.pathname.endsWith('/tree'))value=schema;
     else if(url.pathname.endsWith('/objects')){
       const a=url.searchParams.get('address');
+      const related=url.searchParams.get('related_to');
       value=a?document(a):{items:rows.filter(r=>{
         const parent=url.searchParams.get('parent');
         const kind=url.searchParams.get('kind');
-        return (kind?r.kind===kind:true)&&(parent==='*'?true:(parent||null)===r.parent);
+        if(kind&&r.kind!==kind)return false;
+        // A related list holds only the objects actually linked to that address.
+        if(related)return r.links.some(l=>l.target===related)
+          ||(find(related)?.links||[]).some(l=>l.target===r.address);
+        return parent==='*'?true:(parent||null)===r.parent;
       }),next_cursor:null};
     }
     return route.fulfill({status:value?200:404,json:value||{error:'Unknown route'}});
@@ -99,7 +104,7 @@ try{
     '[uniform-object-cards-ac4] the input list offers no editing control');
   assert.equal(await page.locator('#collection-intake input:not([type="checkbox"])').count(),0,
     '[uniform-object-cards-ac4] the input list takes no typed input');
-  const intake=page.locator('[data-object-address="intake:in-1"]');
+  const intake=page.locator('#collection-intake [data-object-address="intake:in-1"]');
   await intake.waitFor();
   await intake.locator(':scope > summary').click();
   await intake.getByText('Action one',{exact:false}).waitFor();
@@ -150,6 +155,10 @@ try{
     '[copy-feedback-ac4] a refused clipboard reports the failure');
   assert.notEqual(await other.innerText(),'Copied',
     '[copy-feedback-ac4] a refused clipboard never claims success');
+  // The criterion asks for the identifier to stay available by hand, so it has
+  // to be readable somewhere after the failure, not only inside the clipboard.
+  assert.ok(await page.getByText(find(address(0)).item_id,{exact:false}).count()>0,
+    '[copy-feedback-ac4] a refused clipboard leaves the identifier readable for manual copying');
 
   assert.deepEqual(errors,[],'no page errors');
   console.log('generic_depth_browser: ok');
