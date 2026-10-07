@@ -14,6 +14,7 @@ const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
 
 const ATTACK='</script><script>window.attacked=true</script>';
+const SUBJECT_ATTACK='<img src=x onerror=alert(1)>';
 const types={
   area:{title:'Area',index:10,role:'group',root:true,parents:[]},
   spec:{title:'Spec',index:20,role:'requirement',root:false,parents:['area']},
@@ -38,7 +39,7 @@ const record={revision:3,confirmed:true,
     {id:'m2',address:'measure:m2',title:'Session survives a refresh',signal:{tone:'red',label:'Checks failed'}},
     {id:'m3',address:'measure:m3',title:'Nothing linked yet',signal:{tone:'grey',label:'Not checked'}},
   ],
-  runs:{r1:{scope:'One build of the web client',subject:{code:'code-sha-v1',environment:'pg16-image-v1'},plan:[
+  runs:{r1:{scope:'One build of the web client',subject:{code:'code-sha-v1',environment:'pg16-image-v1',fixture:SUBJECT_ATTACK},plan:[
     {id:'t-pass[m1]',ac:'m1',method:'automated',expected:['a session cookie']},
     {id:'t-stale[m1]',ac:'m1',method:'automated',expected:['an older pass']},
     {id:'t-fail[m2]',ac:'m2',method:'automated',expected:['a kept session']},
@@ -159,7 +160,8 @@ try{
   assert.match(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('aria-label'),
     /^Status: Checks passed/,'a criterion keeps its own status label');
   await criterion(0).getByText('Recorded by the suite',{exact:false}).waitFor();
-  await criterion(0).locator('.ac-check').first().getByText('code: code-sha-v1 · environment: pg16-image-v1',{exact:true}).waitFor();
+  await criterion(0).locator('.ac-check').first().getByText('code: code-sha-v1 · environment: pg16-image-v1 · fixture: '+SUBJECT_ATTACK,{exact:true}).waitFor();
+  assert.equal(await inspector.locator('img').count(),0,'subject values render as text, never HTML');
 
   // Mobile: the same card and inspector fit a narrow screen without a
   // horizontal page scrollbar.
