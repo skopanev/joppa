@@ -71,6 +71,83 @@ fn run(w: &mut World, req: &str, id: &str, criteria: &[(&str, &str)]) {
         json!({"op":"finish","req":req,"revision":revision,"run":id}),
     );
 }
+
+// [task-check-evidence-binding]
+#[test]
+fn custom_criterion_bindings_resolve_aliases_and_recheck_dependencies() {
+    let mut w = setup_custom();
+    save(
+        &mut w,
+        "spec:task-tests",
+        None,
+        json!({"title":"Custom Task checks","body":"Verify the current configured context","owner":"owner"}),
+    );
+    for key in ["measure:first", "rule:prerequisite"] {
+        save(
+            &mut w,
+            key,
+            Some("spec:task-tests"),
+            json!({"title":key,"owner":"owner"}),
+        );
+    }
+    ready(
+        &mut w,
+        "spec:task-tests",
+        &["measure:first", "rule:prerequisite"],
+    );
+    for (id, parent, links) in [
+        (
+            "one",
+            "measure:first",
+            json!([{"target":"rule:prerequisite","relation":"depends_on","revision":w.state.objects["rule:prerequisite"].current().revision,"blocking":true}]),
+        ),
+        ("other", "rule:prerequisite", json!([])),
+    ] {
+        w.ok("agent",json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":parent,
+            "data":{"title":id,"owner":"owner","contract":"Implement this configured criterion","purpose":"implementation"},"links":links,"reason":"Bind custom Task work"}));
+    }
+    w.state
+        .object_aliases
+        .insert("work:legacy-one".into(), "work:one".into());
+    let make_plan = |w: &World, id: &str, target: &str| {
+        json!({"op":"plan","req":"spec:task-tests","revision":revision(w,"spec:task-tests"),"run":id,
+        "subject":{"build":"sha-one"},"scope":"Configured specification tests","discovery_complete":true,
+        "checks":[{"id":"[measure:first] exact result","ac":"measure:first","method":"automated","expected":["expected result"],"tasks":[{"address":target,"origin_revision":1}]},
+            {"id":"[rule:prerequisite] exact result","ac":"rule:prerequisite","method":"automated","expected":["expected result"]}]})
+    };
+    w.no("runner", make_plan(&w, "wrong-criterion", "work:other"));
+    for (id, prerequisite, expected) in [
+        ("blocked", "fail", "unverified"),
+        ("ready", "pass", "pass"),
+        ("changed", "fail", "unverified"),
+    ] {
+        w.ok("runner", make_plan(&w, id, "work:legacy-one"));
+        let current = revision(&w, "spec:task-tests");
+        for (ac, outcome) in [
+            ("measure:first", "pass"),
+            ("rule:prerequisite", prerequisite),
+        ] {
+            w.ok("runner",json!({"op":"result","req":"spec:task-tests","revision":current,"run":id,"evidence":{"check":format!("[{ac}] exact result"),"outcome":outcome,"observed":["expected result"],"note":"Executed the exact check"}}));
+        }
+        w.ok(
+            "runner",
+            json!({"op":"finish","req":"spec:task-tests","revision":current,"run":id}),
+        );
+        assert_eq!(objects::verification(&w.state, "work:one"), expected);
+        assert_eq!(
+            w.state.requirements["spec:task-tests"]
+                .revisions
+                .last()
+                .unwrap()
+                .runs[id]
+                .plan[0]
+                .tasks[0]
+                .address,
+            "work:one"
+        );
+    }
+    assert!(w.state.task_process["work:one"].done.is_none());
+}
 #[test]
 fn configured_types_verify_without_default_type_names_and_keep_ids_separate() {
     let mut w = setup_custom();

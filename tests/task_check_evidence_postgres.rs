@@ -247,6 +247,26 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     assert_eq!(failed["process"]["verification"], "fail");
     assert_eq!(failed["process"]["status"], "done");
     assert_eq!(failed["signal"]["tone"], "red");
+    let failed_candidates = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            work_filter: Some("unstarted"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    let failed_ios = failed_candidates["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == "ios")
+        .unwrap();
+    assert_eq!(
+        failed_ios["work_summary"]["done_verification"],
+        json!({"pass":0,"fail":1,"unverified":0})
+    );
     println!(
         "Task evidence: shared=true, no_fake_confirmation=true, current_queue=true, journal_selects=0, stored_prior_checks=true, coverage_review=true, newer_pending=true, failure_keeps_done=true"
     );

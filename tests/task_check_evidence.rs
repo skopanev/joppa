@@ -79,11 +79,13 @@ fn bindings_reject_stale_unknown_duplicate_and_foreign_context_atomically() {
     );
     w.no("runner", bound_plan(&w, "criterion", &["job:other"]));
     w.no("runner", bound_plan(&w, "context", &["job:root"]));
-    assert!(w.state.requirements["r"].revisions[0].runs.is_empty());
     w.ok(
-        "runner",
-        bound_plan(&w, "valid", &["job:one", "job:two", "job:whole"]),
+        "owner",
+        json!({"op":"retire_task","id":"job:two","revision":1,"reason":"Retire a fixture binding"}),
     );
+    w.no("runner", bound_plan(&w, "retired", &["job:two"]));
+    assert!(w.state.requirements["r"].revisions[0].runs.is_empty());
+    w.ok("runner", bound_plan(&w, "valid", &["job:one", "job:whole"]));
 }
 
 // [task-check-evidence-verdict]
@@ -194,7 +196,7 @@ fn reviewing_a_changed_group_does_not_revive_its_old_test_evidence() {
     let mut w = fixture();
     w.ok("agent",json!({"op":"save_object","kind":"section","id":"nested","revision":0,"parent":"ac:ios","data":{"title":"Source group","owner":"owner"},"reason":"Add an intermediate source"}));
     let task = w.state.objects["job:one"].current().clone();
-    w.ok("agent",json!({"op":"save_object","kind":"job","id":"one","revision":task.revision,"parent":"section:nested","data":task.data,"reason":"Place work in the source group"}));
+    w.ok("owner",json!({"op":"save_object","kind":"job","id":"one","revision":task.revision,"parent":"section:nested","data":task.data,"reason":"Place work in the source group"}));
     w.ok("owner",json!({"op":"review_task","id":"job:one","revision":w.state.objects["job:one"].current().revision,"reason":"Review the current source group"}));
     w.ok("runner", bound_plan(&w, "old-group", &["job:one"]));
     finish(&mut w, "old-group", Some("pass"), "pass");

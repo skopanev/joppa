@@ -59,8 +59,15 @@ fn validate_task_bindings(w: &Workspace, req: &str, checks: &[Check]) -> Result<
                     );
                     break;
                 }
-                let source = &w.objects[address];
-                if crate::objects::schema(w).types[&source.kind].role == "requirement" {
+                let source = w
+                    .objects
+                    .get(address)
+                    .ok_or_else(|| anyhow::anyhow!("unknown Task parent"))?;
+                if crate::objects::schema(w)
+                    .types
+                    .get(&source.kind)
+                    .is_some_and(|kind| kind.role == "requirement")
+                {
                     break;
                 }
                 parent = source.current().parent.as_deref();
@@ -546,6 +553,18 @@ pub fn apply(
             checks,
             enforce_coverage,
         } => {
+            let normalized_checks: Vec<_> = checks
+                .iter()
+                .cloned()
+                .map(|mut check| {
+                    for binding in &mut check.tasks {
+                        binding.address =
+                            crate::objects::resolve_address(w, &binding.address).to_owned();
+                    }
+                    check
+                })
+                .collect();
+            let checks = &normalized_checks;
             validate_task_bindings(w, req, checks)?;
             let task_contexts = checks
                 .iter()

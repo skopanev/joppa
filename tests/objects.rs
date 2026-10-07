@@ -603,7 +603,24 @@ fn requirement_dependencies_follow_tests_and_completed_work_loses_verification()
         "agent",
         json!({"op":"claim_task","id":"task:dependent","revision":1}),
     );
-    w.run("first", "pass");
+    let run = |w: &mut World, id: &str, outcome: &str| {
+        let mut checks = plan(id);
+        checks["checks"][0]["tasks"] = json!([{"address":"task:dependent","origin_revision":1}]);
+        w.ok("runner", checks);
+        w.ok(
+            "runner",
+            result(id, "[ios] paid access", outcome, vec!["access retained"]),
+        );
+        w.ok(
+            "owner",
+            result(id, "key-permissions", "pass", vec!["read", "verify"]),
+        );
+        w.ok(
+            "runner",
+            json!({"op":"finish","req":"r","revision":1,"run":id}),
+        );
+    };
+    run(&mut w, "first", "pass");
     assert_eq!(w.summary(1)["accepted"], false);
     assert!(objects::work_ready(&w.state, "task:dependent"));
     w.ok(
@@ -616,7 +633,7 @@ fn requirement_dependencies_follow_tests_and_completed_work_loses_verification()
         objects::process(&w.state, "task:dependent")["verification"],
         "pass"
     );
-    w.run("second", "fail");
+    run(&mut w, "second", "fail");
     assert!(!objects::work_ready(&w.state, "task:dependent"));
     let process = objects::process(&w.state, "task:dependent");
     assert_eq!(process["status"], "done");
