@@ -322,6 +322,16 @@ pub async fn read_objects(
         .await?
         .get(0),
     )?;
+    let kinds_for = |role: &str| {
+        selected
+            .iter()
+            .filter(|(_, t)| t.role == role)
+            .map(|(kind, _)| kind.clone())
+            .collect::<Vec<_>>()
+    };
+    let task_kinds = kinds_for("task");
+    let criterion_kinds = kinds_for("ac");
+    let specification_kinds = kinds_for("requirement");
     ensure!(
         scope.note_status.is_none()
             || scope
@@ -363,23 +373,22 @@ pub async fn read_objects(
     let rows = conn.query(r#"
         WITH RECURSIVE active_task_parents(address) AS (
             SELECT COALESCE(a.target,t.parent)
-            FROM joppa.objects t JOIN joppa.board_cache b ON b.workspace=t.workspace
+            FROM joppa.objects t
             LEFT JOIN joppa.object_aliases a ON a.workspace=t.workspace AND a.address=t.parent
             WHERE t.workspace=$1 AND t.present AND t.parent IS NOT NULL
-                AND b.first_view->'object_types'->t.kind->>'role'='task'
+                AND t.kind=ANY($10::text[])
                 AND COALESCE(t.process->>'status','open') NOT IN ('done','retired')
             UNION
             SELECT COALESCE(a.target,p.parent)
             FROM active_task_parents t JOIN joppa.objects p ON p.workspace=$1 AND p.address=t.address
-            JOIN joppa.board_cache b ON b.workspace=p.workspace
             LEFT JOIN joppa.object_aliases a ON a.workspace=p.workspace AND a.address=p.parent
-            WHERE p.parent IS NOT NULL AND COALESCE(b.first_view->'object_types'->p.kind->>'role','') NOT IN ('ac','requirement')
+            WHERE p.parent IS NOT NULL AND p.kind<>ALL($11::text[]) AND p.kind<>ALL($12::text[])
         )
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,
             (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status
-        FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace
+        FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present))
             AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3)
@@ -387,13 +396,13 @@ pub async fn read_objects(
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
                 AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
-            AND (NOT $9::boolean OR (o.present AND b.first_view->'object_types'->o.kind->>'role'='ac'
+            AND (NOT $9::boolean OR (o.present AND o.kind=ANY($11::text[])
                 AND o.process->'assessment'->>'state'='ready' AND o.work_ready AND NOT o.review_required
                 AND COALESCE(jsonb_typeof(o.process->'readiness_blocker'),'null')<>'object'
                 AND COALESCE(o.process->>'verification','unverified')<>'pass'
                 AND NOT EXISTS (SELECT 1 FROM active_task_parents t WHERE t.address=o.address)))
         ORDER BY o.address LIMIT $5
-    "#, &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to,&unstarted]).await?;
+    "#, &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to,&unstarted,&task_kinds,&criterion_kinds,&specification_kinds]).await?;
     let more = rows.len() > limit;
     let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     let next = more.then(|| {
