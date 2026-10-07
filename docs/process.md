@@ -13,7 +13,7 @@ owner responsible for its meaning and acceptance.
 | Developer | Implement work and resolve technical questions |
 | Agent | Help formulate REQ/ACs, assess readiness, organize work and run checks; ask for missing decisions |
 
-Technical analysis is work, usually performed by an agent. An intake author does
+Technical analysis is work, usually performed by an agent. An Input author does
 not need to understand code, identify a build or estimate implementation. A
 relevant deadline can be recorded without becoming an implementation estimate.
 
@@ -23,13 +23,14 @@ applicable decision rather than repeatedly asking for it. A material change
 requires a new decision. Platforms come from the agreed AC and context; see
 [AC scope](model.md#ac-scope).
 
-Each implementation Task belongs to exactly one AC and states a technical
-contract. Triage may create unassigned Tasks before the AC becomes ready. The
-MCP Task queue lists work the authenticated actor can claim; `claim_task` and
-`claim_next_task` assign it atomically once the AC is ready. `release_task`
-returns unfinished work with a reason. An AC blocked by a decision stays open
-but ineligible for claim; there is no separate Task-level blocked status. Task
-completion is implementation evidence, never a passing check.
+Each Task has one parent permitted by the workspace schema and a technical contract.
+The default recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
+Triage can create unassigned Tasks before their configured parent gate permits a claim.
+The MCP queue lists work that the authenticated actor can claim.
+`claim_task` and `claim_next_task` assign eligible work atomically.
+`release_task` returns unfinished work with a reason.
+An unmet gate or dependency prevents a claim. It does not create a Task work status named blocked.
+Task completion records work evidence. It never supplies a passing criterion check.
 
 ## Discussion and corrections
 
@@ -81,8 +82,8 @@ Expected behavior is disputed  -> request a decision; affected work waits.
 ```
 
 Retrospective wording is easy to tailor to a convenient fix. It needs the same
-owner confirmation as any other REQ. The tree being incomplete must not block
-intake, and intake never proves the tree complete.
+owner confirmation as any other REQ. An incomplete tree must not prevent
+Input capture. Input capture does not prove that the tree is complete.
 
 ## Readiness and results
 
@@ -133,15 +134,17 @@ The tree describes the product. A project identifies a repository where work
 happens. One REQ may involve app, backend and infrastructure. Link repositories
 to tasks, not to separate copies of the business tree.
 
-A task references concrete ACs of a revision and has an assignee and purpose:
-implementation, manual work or a decision. Completing it records what was done;
-it does not turn an AC green. Decision tasks reference the actual decision
-comment. Manual work still needs its explicit expected/observed evidence.
+A Task records its permitted parent, assignee, purpose and technical contract.
+Its reference fields come from the workspace schema. A purpose can use any nonempty label.
+The decision purpose retains the configured decision rules.
+Completing a Task records the delivered result. It does not turn an AC green.
+Decision Tasks reference the actual decision comment when the schema requires it.
+Manual work still needs explicit expected and observed evidence.
 
 ## Editing guidance
 
 Approximate character counts can help editing: 60 for domain/capability titles,
 140 for a REQ title, 110 for an AC and 800 for a REQ body. Longer wording is not
 rejected solely for length. Keep detailed sources linked rather than treating
-the body as an entire document. Empty REQ/AC wording is rejected, and raw intake
+the body as an entire document. Empty REQ/AC wording is rejected, and source Input text
 is stored without truncation.

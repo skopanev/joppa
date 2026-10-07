@@ -167,6 +167,31 @@ Task process commands use the Task object address and its own revision.
 `joppa_objects.revision` always selects the addressed document's revision.
 Read the current Task before you claim, release, review, retire or complete it.
 
+### Context for external planners
+
+Use object addresses as canonical identifiers for a configured tree.
+The `id` field of a common object is its local identifier. Its `address` includes the type prefix.
+A verification response can retain a legacy identifier or use a complete object address in `requirement.id`.
+Do not compare that field directly with a short input identifier.
+Resolve a public identifier with `joppa_read` using `item_id` alone.
+Read its `object.address`, then use `joppa_objects` for the current document.
+
+Read a selected object's ancestors through `document.parent`, one object at a time.
+Stop when the parent is null. Use the workspace schema to identify semantic roles.
+Do not require Domain or Capability names, a fixed depth, or grouping confirmation fields.
+Read configured references from the common document and its `references` metadata.
+Legacy verification fields such as `capability` and `consumers` do not replace the common document.
+
+Record each source address and its document revision in the implementation plan.
+Read linked documents at their pinned revision when the link supplies one.
+Before publishing work, compare the relevant current revisions with the recorded source revisions.
+Unrelated workspace events do not invalidate an unchanged source contract.
+The response `position` identifies the observed workspace state. It does not replace source revision checks.
+Reject unknown, inaccessible or cyclic parent context with a clear error.
+Never treat missing context as successful discovery.
+
+### Compatibility commands
+
 Old authoring commands remain compatible.
 Domain and Consumer edits through those commands do not supply a stale-write token.
 Use `save_object` for new document edits.
