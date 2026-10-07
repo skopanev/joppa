@@ -789,8 +789,9 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         .ok()
         .and_then(|v| v["reason"].as_str().map(str::to_owned))
         .unwrap_or_else(|| "Journal operation".into());
-    let schema_revision = schema(w).revision;
-    let adapter_fields: BTreeMap<_, _> = schema(w)
+    let configured = schema(w);
+    let schema_revision = configured.revision;
+    let adapter_fields: BTreeMap<_, _> = configured
         .types
         .keys()
         .map(|kind| (kind.clone(), document_adapter_fields(w, kind)))
@@ -816,11 +817,15 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         {
             obj.parent_override = false;
         }
-        // The migrated document keeps its parent when a verification revision
-        // has no legacy grouping. Explicit legacy grouping changes still apply.
+        // The migrated specification owns its parent through both sync passes.
+        // Only an explicit legacy grouping change can replace that parent here.
         let preserve_document_parent = w.documents_migrated
             && !obj.revisions.is_empty()
-            && matches!(command, Command::Revise { req, capability: None, .. } if key == &requirement_address(req));
+            && configured
+                .types
+                .get(kind)
+                .is_some_and(|t| t.role == "requirement")
+            && !matches!(command, Command::Revise { req, capability: Some(_), .. } if key == &requirement_address(req));
         let parent = if obj.parent_override || preserve_document_parent {
             obj.revisions.last().and_then(|v| v.parent.clone())
         } else {
