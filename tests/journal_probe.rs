@@ -284,6 +284,16 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
         command: json!({"op":"domain","id":"batch-group","title":"Batch group","owner":"owner"}),
     }];
     let batch = store::execute_batch(&pool, &ws, "owner", "outer-batch", &operations).await?;
+    let batch_position = batch["results"][0]["position"].as_i64().unwrap();
+    let private_request: String = pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT request_id FROM joppa.events WHERE workspace=$1 AND position=$2",
+            &[&ws, &batch_position],
+        )
+        .await?
+        .get(0);
     reset(&pool).await?;
     let replay = store::execute_batch(&pool, &ws, "owner", "outer-batch", &operations).await?;
     assert_eq!(replay["position"], batch["position"]);
@@ -302,11 +312,45 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
     pool.get().await?.execute("UPDATE joppa.board_cache SET first_view=first_view-'legacy_receipts_version' WHERE workspace=$1", &[&ws]).await?;
     store::migrate(&pool).await?;
     store::migrate(&pool).await?;
+    assert!(!pool.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2)", &[&ws,&private_request]).await?.get::<_,bool>(0));
+    assert!(
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            &private_request,
+            &operations[0].command
+        )
+        .await
+        .is_err()
+    );
     assert_eq!(pool.get().await?.query_one("SELECT input::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id='outer-batch'", &[&ws]).await?.get::<_,String>(0), receipt);
     reset(&pool).await?;
     store::execute_input(&pool, &ws, "owner", "after-migration", &json!({"op":"edit_domain","id":"d","title":"After migration","owner":"owner","reason":"Check marker persistence"})).await?;
     store::execute_input(&pool, &ws, "owner", "after-projection", &json!({"op":"edit_domain","id":"d","title":"After projection","owner":"owner","reason":"Check marker persistence"})).await?;
     assert_eq!(journal_selects(&pool).await?["calls"], 0);
+    let incremental = snapshot(&pool, &ws).await?;
+    pool.get()
+        .await?
+        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws])
+        .await?;
+    store::backfill_board(&pool).await?;
+    assert_eq!(snapshot(&pool, &ws).await?, incremental);
+    assert!(!pool.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2)", &[&ws,&private_request]).await?.get::<_,bool>(0));
+    assert!(
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            &private_request,
+            &operations[0].command
+        )
+        .await
+        .is_err()
+    );
+    let replay = store::execute_batch(&pool, &ws, "owner", "outer-batch", &operations).await?;
+    assert_eq!(replay["results"], batch["results"]);
+    assert_eq!(replay["replayed"], true);
     println!(
         "Legacy retries: fallback_detected=true, migrated_journal_calls=0, alias=true, uri=true, actor_and_content_guard=true, complete_batch_receipt=true, marker_persists=true"
     );

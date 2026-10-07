@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 const LEGACY_RECEIPTS_VERSION: &str = "1";
+const BATCH_POSITIONS: &str = "WITH batch_positions AS MATERIALIZED (SELECT DISTINCT (operation->>'position')::bigint AS position FROM joppa.command_receipts r CROSS JOIN LATERAL jsonb_array_elements(r.result->'results') operation WHERE r.workspace=$1 AND r.input->>'batch'='true')";
 
 async fn legacy_receipts_ready(client: &impl GenericClient, workspace: &str) -> Result<bool> {
     Ok(client.query_opt("SELECT first_view->>'legacy_receipts_version' FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?
@@ -26,8 +27,8 @@ pub(super) async fn migrate_legacy_receipts_workspace(
     if legacy_receipts_ready(client, workspace).await? {
         return Ok(());
     }
-    client.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result,recorded_at) SELECT e.workspace,e.request_id,e.actor,jsonb_build_object('legacy_command',e.command),jsonb_build_object('position',e.position),e.recorded_at FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id) ON CONFLICT(workspace,request_id) DO NOTHING", &[&workspace]).await?;
-    let missing: bool = client.query_one("SELECT EXISTS(SELECT 1 FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id))", &[&workspace]).await?.get(0);
+    client.execute(&format!("{BATCH_POSITIONS} INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result,recorded_at) SELECT e.workspace,e.request_id,e.actor,jsonb_build_object('legacy_command',e.command),jsonb_build_object('position',e.position),e.recorded_at FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM batch_positions b WHERE b.position=e.position) AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id) ON CONFLICT(workspace,request_id) DO NOTHING"), &[&workspace]).await?;
+    let missing: bool = client.query_one(&format!("{BATCH_POSITIONS} SELECT EXISTS(SELECT 1 FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM batch_positions b WHERE b.position=e.position) AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id))"), &[&workspace]).await?.get(0);
     ensure!(!missing, "legacy request receipts are incomplete");
     client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
     Ok(())

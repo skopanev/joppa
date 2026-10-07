@@ -20,11 +20,12 @@ occurs after access checks; knowing a request ID never grants access.
 
 Migration copies missing legacy request receipts from the journal under the same workspace lock.
 It preserves the stored command and compares its typed form when a caller retries it.
-The migration marks a workspace complete only after every existing event has a receipt.
+The migration marks a workspace complete only after every existing event has a receipt or belongs to a batch receipt.
 An incomplete migration keeps the indexed journal lookup to prevent duplicate effects.
 Completed workspaces use receipts for normal retries and do not query events on a receipt miss.
 New batches retain one receipt with the complete original operations and reference labels.
 Callers retry a batch with its public request ID, not an internal event ID.
+Migration excludes internal batch events by the positions in their complete batch receipt.
 
 Workspace renames append a canonical ID and reserve a new alias; the immutable
 storage identity and old links survive. Both names resolve through the same
