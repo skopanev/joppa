@@ -604,6 +604,7 @@ function renderVerification(root,record){
         const label=result?.outcome==='pass'?'Passed':result?.outcome==='fail'?'Failed':result?.outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Missing result':'Running';
         const name=E('h4',undefined,'ac-check-heading');name.append(statusCircle({tone:result?.outcome==='fail'?'red':result?.outcome==='pass'?'green':result?'grey':'yellow',label,at}),E('span',check.id));
         row.append(name,E('p',label+' · '+run.scope,'node-meta'));
+        cardFact(row,'Subject',Object.entries(run.subject||{}).map(([key,value])=>key+': '+value).join(' · ')||'Not recorded');
         cardFact(row,'Expected',(check.expected||[]).join(', '));
         if(result){cardFact(row,'Observed',(result.observed||[]).join(', ')||'Nothing recorded');if(result.note)cardFact(row,'Evidence',result.note);}
         item.append(row);

@@ -38,7 +38,7 @@ const record={revision:3,confirmed:true,
     {id:'m2',address:'measure:m2',title:'Session survives a refresh',signal:{tone:'red',label:'Checks failed'}},
     {id:'m3',address:'measure:m3',title:'Nothing linked yet',signal:{tone:'grey',label:'Not checked'}},
   ],
-  runs:{r1:{scope:'One build of the web client',plan:[
+  runs:{r1:{scope:'One build of the web client',subject:{code:'code-sha-v1',environment:'pg16-image-v1'},plan:[
     {id:'t-pass[m1]',ac:'m1',method:'automated',expected:['a session cookie']},
     {id:'t-stale[m1]',ac:'m1',method:'automated',expected:['an older pass']},
     {id:'t-fail[m2]',ac:'m2',method:'automated',expected:['a kept session']},
@@ -66,7 +66,7 @@ const browser=await chromium.launch({headless:true});
 try{
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let signedIn=false;const methods=new Set();
+  let signedIn=false,revised=false;const methods=new Set();
   await page.route('http://joppa.test/**',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname.startsWith('/api/workspaces/'))methods.add(route.request().method());
@@ -79,7 +79,8 @@ try{
     let value;
     if(url.pathname==='/api/me')value={actor:'owner',email:'owner@example.test'};
     else if(url.pathname==='/api/workspaces')value=[{id:'w',title:'Example product'}];
-    else if(url.pathname.endsWith('/board')&&url.searchParams.get('level')==='process')value=record;
+    else if(url.pathname.endsWith('/board')&&url.searchParams.get('level')==='process')value=revised?
+      {...record,revision:4,confirmed:false,runs:{},result_dates:{},criteria:record.criteria.map(c=>({...c,signal:{tone:'grey',label:'Not checked'}}))}:record;
     else if(url.pathname.endsWith('/board'))value={workspace:'w',custom_tree:true,lazy:true,
       object_types:types,state:{title:'Example product',members:{owner:'human'},domains:{},
       capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
@@ -93,6 +94,13 @@ try{
         if(kind&&r.kind!==kind)return false;
         return parent==='*'?true:(parent||null)===r.parent;
       }),next_cursor:null};
+      if(a==='spec:access'){
+        value.current_revision=2;value.revision_count=2;value.document.revision=2;
+        value.process={req:'access',revision:revised?4:3,verification:revised?'unverified':'pass'};
+        if(url.searchParams.get('revision')==='1'){
+          value.document.revision=1;value.historical=true;value.process=null;value.signal=null;
+        }
+      }
     }
     return route.fulfill({status:value?200:404,json:value||{error:'Unknown route'}});
   });
@@ -151,12 +159,35 @@ try{
   assert.match(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('aria-label'),
     /^Status: Checks passed/,'a criterion keeps its own status label');
   await criterion(0).getByText('Recorded by the suite',{exact:false}).waitFor();
+  await criterion(0).locator('.ac-check').first().getByText('code: code-sha-v1 · environment: pg16-image-v1',{exact:true}).waitFor();
 
   // Mobile: the same card and inspector fit a narrow screen without a
   // horizontal page scrollbar.
   await page.setViewportSize({width:390,height:780});
   await page.waitForFunction(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1);
   await inspector.waitFor();
+
+  // Saved revisions do not borrow the current verdict. A new context has no old runs.
+  await spec.locator(':scope > summary .history-button').click();
+  const history=page.getByRole('dialog');
+  await history.getByLabel('Object revision').selectOption('1');
+  await history.getByText('Saved document revision.',{exact:false}).waitFor();
+  assert.equal(await history.getByRole('button',{name:'Checks',exact:true}).count(),0,
+    '[green-needs-all-checks-ac4] a saved document does not expose current checks');
+  assert.equal(await history.locator('[data-tone="green"]').count(),0,
+    'a saved revision never borrows the current green status');
+  assert.equal(await history.getByText('Verification: Passed',{exact:true}).count(),0);
+  await history.getByRole('button',{name:'Close',exact:true}).click();
+  revised=true;
+  await page.reload();
+  await page.locator('[data-object-address="area:core"] > summary').click();
+  await spec.locator(':scope > summary').click();
+  await spec.getByRole('button',{name:'Checks',exact:true}).click();
+  await spec.locator('.verification-record').getByText('Revision 4',{exact:false}).waitFor();
+  assert.equal(await spec.locator('.verification-record .ac-check').count(),0,
+    'the current context does not reuse checks from the earlier revision');
+  assert.equal(await spec.locator('.verification-record [data-tone="green"]').count(),0);
+  assert.equal(await spec.locator('.verification-record [data-tone="grey"]').count(),3);
 
   // The offline snapshot renders the same card with no network at all.
   const snapshot={workspace:'w',lazy:false,custom_tree:true,object_types:types,
