@@ -816,7 +816,12 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         {
             obj.parent_override = false;
         }
-        let parent = if obj.parent_override {
+        // The migrated document keeps its parent when a verification revision
+        // has no legacy grouping. Explicit legacy grouping changes still apply.
+        let preserve_document_parent = w.documents_migrated
+            && !obj.revisions.is_empty()
+            && matches!(command, Command::Revise { req, capability: None, .. } if key == &requirement_address(req));
+        let parent = if obj.parent_override || preserve_document_parent {
             obj.revisions.last().and_then(|v| v.parent.clone())
         } else {
             parent.clone()
@@ -1480,14 +1485,6 @@ pub fn save(
     if (!unchanged || schema(w).types[kind].role == "requirement") && !generic_task {
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             candidate.document_overrides.remove(&key);
-            // Common documents own their parents after document migration.
-            // The verification adapter does not carry that parent in Revise.
-            if w.documents_migrated
-                && let Command::Revise { req, .. } = &cmd
-                && let Some(object) = candidate.objects.get_mut(&requirement_address(req))
-            {
-                object.parent_override = true;
-            }
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
             sync(&mut candidate, actor, &cmd, position, at);
         } else {

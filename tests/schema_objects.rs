@@ -208,6 +208,10 @@ fn migrated_criterion_edits_preserve_native_and_custom_specification_parents() {
         save(&mut w, "ac:ios", Some("requirement:r"), data);
         let after = w.state.objects["requirement:r"].current();
         assert_eq!(after.parent, before.current().parent);
+        assert_eq!(
+            w.state.objects["requirement:r"].parent_override,
+            before.parent_override
+        );
         assert_eq!(after.data, before.current().data);
         assert_eq!(after.links, before.current().links);
         assert_eq!(
@@ -254,6 +258,87 @@ fn migrated_criterion_edits_preserve_native_and_custom_specification_parents() {
         assert_eq!(serde_json::to_value(&w.state).unwrap(), state);
         assert_eq!(w.position, position);
     }
+}
+
+#[test]
+fn explicit_legacy_grouping_changes_do_not_depend_on_prior_criterion_edits() {
+    for edit_first in [false, true] {
+        let mut w = World::new();
+        migrate(&mut w);
+        if edit_first {
+            let mut data = w.state.objects["ac:ios"].current().data.clone();
+            data["title"] = json!("The iOS client follows the access contract");
+            save(&mut w, "ac:ios", Some("requirement:r"), data);
+        }
+        w.ok("agent",json!({"op":"capability","id":"other","domain":"d","title":"Other grouping","owner":"owner"}));
+        let current = w.state.requirements["r"].revisions.last().unwrap().clone();
+        let mut acs = current.acs.clone();
+        for ac in &mut acs {
+            ac.assessment = None;
+        }
+        w.ok("agent",json!({"op":"revise","req":"r","expected_revision":current.number,"capability":"other","consumers":current.consumers,"title":current.title,"body":current.body,"owner":current.owner,"reason":"Move explicit legacy grouping","acs":acs,"coverage_policy":true,"carry_tasks":true}));
+        assert_eq!(
+            w.state.objects["requirement:r"].current().parent.as_deref(),
+            Some("capability:other")
+        );
+        assert!(!w.state.objects["requirement:r"].parent_override);
+    }
+}
+
+#[test]
+fn criterion_edits_preserve_custom_specification_type_context() {
+    let mut w = empty();
+    let types = json!({
+        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+    });
+    w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure named roles"}));
+    save(
+        &mut w,
+        "area:outer",
+        None,
+        json!({"title":"Outer","owner":"owner"}),
+    );
+    save(
+        &mut w,
+        "area:inner",
+        Some("area:outer"),
+        json!({"title":"Inner","owner":"owner"}),
+    );
+    save(
+        &mut w,
+        "spec:r",
+        Some("area:inner"),
+        json!({"title":"Access","body":"Use the access contract","owner":"owner","custom_context":{"implementation":"Retain this context"}}),
+    );
+    save(
+        &mut w,
+        "criterion:check",
+        Some("spec:r"),
+        json!({"title":"The access contract applies","owner":"owner"}),
+    );
+    let before = w.state.objects["spec:r"].current().clone();
+    save(
+        &mut w,
+        "criterion:check",
+        Some("spec:r"),
+        json!({"title":"The current access contract applies","owner":"owner"}),
+    );
+    assert_eq!(objects::requirement_address("spec:r"), "spec:r");
+    assert_eq!(w.state.objects["spec:r"].current().parent, before.parent);
+    assert_eq!(w.state.objects["spec:r"].current().data, before.data);
+    assert_eq!(
+        w.state.objects["criterion:check"]
+            .current()
+            .parent
+            .as_deref(),
+        Some("spec:r")
+    );
+    assert!(
+        objects::criterion_context(&w.state, "criterion:check")
+            .is_some_and(|(req, _, _)| req == "spec:r")
+    );
 }
 
 // [ac:product-tree-shape-ac6]
