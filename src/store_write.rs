@@ -3,6 +3,36 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+const LEGACY_RECEIPTS_VERSION: &str = "1";
+
+async fn legacy_receipts_ready(client: &impl GenericClient, workspace: &str) -> Result<bool> {
+    Ok(client.query_opt("SELECT first_view->>'legacy_receipts_version' FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?
+        .is_some_and(|r| r.get::<_,Option<String>>(0).as_deref() == Some(LEGACY_RECEIPTS_VERSION)))
+}
+
+pub(super) async fn migrate_legacy_receipts(client: &impl GenericClient) -> Result<()> {
+    for row in client.query("SELECT workspace FROM joppa.board_cache WHERE COALESCE(first_view->>'legacy_receipts_version','')<>$1 ORDER BY workspace", &[&LEGACY_RECEIPTS_VERSION]).await? {
+        let workspace: String = row.get(0);
+        client.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&workspace]).await?;
+        migrate_legacy_receipts_workspace(client, &workspace).await?;
+    }
+    Ok(())
+}
+
+pub(super) async fn migrate_legacy_receipts_workspace(
+    client: &impl GenericClient,
+    workspace: &str,
+) -> Result<()> {
+    if legacy_receipts_ready(client, workspace).await? {
+        return Ok(());
+    }
+    client.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result,recorded_at) SELECT e.workspace,e.request_id,e.actor,jsonb_build_object('legacy_command',e.command),jsonb_build_object('position',e.position),e.recorded_at FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id) ON CONFLICT(workspace,request_id) DO NOTHING", &[&workspace]).await?;
+    let missing: bool = client.query_one("SELECT EXISTS(SELECT 1 FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS(SELECT 1 FROM joppa.command_receipts r WHERE r.workspace=e.workspace AND r.request_id=e.request_id))", &[&workspace]).await?.get(0);
+    ensure!(!missing, "legacy request receipts are incomplete");
+    client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
+    Ok(())
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BatchOperation {
@@ -373,13 +403,25 @@ async fn write(
     }
     ensure!(actor != "joppa-access", "internal enrollment operation");
     if let Some(row) = tx.query_opt("SELECT actor,input::text,result::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
-        ensure!(row.get::<_, String>(0) == actor && serde_json::from_str::<Value>(row.get::<_, &str>(1))? == input, "request_id reused with different content/actor");
+        let stored: Value = serde_json::from_str(row.get::<_, &str>(1))?;
+        if let Some(raw) = stored.get("legacy_command") {
+            ensure!(!batch, "request_id already used by an operation");
+            let command: Command = serde_json::from_value(operations[0].command.clone())?;
+            let previous: Command = serde_json::from_value(raw.clone())?;
+            ensure!(row.get::<_, String>(0) == actor && serde_json::to_value(&previous)? == serde_json::to_value(&command)?, "request_id reused with different content/actor");
+            let mut result: Value = serde_json::from_str(row.get::<_, &str>(2))?;
+            result["command"] = json!(command);
+            result["replayed"] = json!(true);
+            return Ok(result);
+        }
+        ensure!(row.get::<_, String>(0) == actor && stored == input, "request_id reused with different content/actor");
         let mut result: Value = serde_json::from_str(row.get::<_, &str>(2))?;
         result["replayed"] = json!(true);
         return Ok(result);
     }
     // Old single-operation requests retain their idempotency contract after upgrade.
-    if let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
+    if !legacy_receipts_ready(&*tx, &workspace).await?
+        && let Some(row) = tx.query_opt("SELECT actor,command::text,position FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await? {
         ensure!(!batch, "request_id already used by an operation");
         let command: Command = serde_json::from_value(operations[0].command.clone())?;
         let previous: Command = serde_json::from_str(row.get::<_, &str>(1))?;
@@ -481,6 +523,9 @@ async fn write(
     result["replayed"] = json!(false);
     result["summary"] = state_rows::changed_summaries(&state, selected.as_ref());
     tx.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result) VALUES($1,$2,$3,$4::text::jsonb,$5::text::jsonb)", &[&workspace,&request_id,&actor,&input.to_string(),&result.to_string()]).await?;
+    if base_position == 0 {
+        tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
+    }
     tx.commit().await?;
     Ok(result)
 }

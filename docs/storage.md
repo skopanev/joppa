@@ -18,6 +18,14 @@ A batch uses one transaction and lock, but one event per operation. An error
 rolls back all events, generated IDs, aliases and the receipt. Receipt lookup
 occurs after access checks; knowing a request ID never grants access.
 
+Migration copies missing legacy request receipts from the journal under the same workspace lock.
+It preserves the stored command and compares its typed form when a caller retries it.
+The migration marks a workspace complete only after every existing event has a receipt.
+An incomplete migration keeps the indexed journal lookup to prevent duplicate effects.
+Completed workspaces use receipts for normal retries and do not query events on a receipt miss.
+New batches retain one receipt with the complete original operations and reference labels.
+Callers retry a batch with its public request ID, not an internal event ID.
+
 Workspace renames append a canonical ID and reserve a new alias; the immutable
 storage identity and old links survive. Both names resolve through the same
 access checks. A name cannot be reassigned to another workspace.
@@ -39,6 +47,11 @@ Writes read the current validation graph. They exclude past revisions and large 
 An addressed Input command loads its body before validation. Search loads bodies only for affected documents and their ancestors.
 The transaction stores changed rows, affected search documents and affected queue entries.
 The journal remains the source for administrative recovery.
+
+The isolated database test uses `pg_stat_statements` to count queries that select journal events.
+It checks current reads, normal writes, legacy retries, one selected past revision, and a large unrelated Input.
+It also requires administrative recovery to produce observed journal reads and the same projection rows.
+This extension runs in test databases and is not required by the production application.
 
 `backfill-board` rebuilds projections under a workspace lock. It commits all projections, including search, in one transaction.
 Deployment stops the application before projection migration. Rollback rebuilds the previous cache format before restarting the previous binary.

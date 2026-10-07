@@ -76,6 +76,7 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
     }
     migrate_notes_in(&*tx).await?;
     refresh_readiness_in(&*tx).await?;
+    write::migrate_legacy_receipts(&*tx).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -215,6 +216,7 @@ pub async fn backfill_board(pool: &Pool) -> Result<usize> {
         .await?;
         let (state, events) = load(&*tx, &id).await?;
         board::project(&*tx, &id, &state, &events).await?;
+        write::migrate_legacy_receipts_workspace(&*tx, &id).await?;
         search::project(
             &*tx,
             &id,
