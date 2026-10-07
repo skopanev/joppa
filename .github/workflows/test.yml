@@ -19,7 +19,7 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d joppa_test_ci -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'"
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d joppa_test_ci -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'" -c "ALTER SYSTEM SET pg_stat_statements.track = 'all'"
           docker restart "$POSTGRES_CONTAINER"
           for attempt in $(seq 1 30); do
             if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d joppa_test_ci; then
