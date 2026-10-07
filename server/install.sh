@@ -60,10 +60,6 @@ if [[ "$db_exists" != 1 ]]; then
         rm -f "$stage/initial.dump"
     fi
 fi
-for migration in migrations/*.sql; do
-    runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa < "$migration"
-done
-runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa -c 'CREATE EXTENSION IF NOT EXISTS vector'
 # Generate a database password only once and keep it out of argv, logs and Git.
 python3 - <<'PY'
 import os, pathlib, secrets, subprocess
@@ -77,18 +73,6 @@ if not config.exists():
     with os.fdopen(os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640), 'w') as f:
         f.write('JOPPA_DATABASE_URL=postgresql://joppa_app:'+password+'@127.0.0.1:5432/joppa\nJOPPA_TOKENS_FILE=/etc/joppa/tokens.json\nJOPPA_LOGIN_USERS_FILE=/etc/joppa/login-users.json\n')
 PY
-runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa <<'SQL'
-GRANT CONNECT ON DATABASE joppa TO joppa_app;
-GRANT USAGE ON SCHEMA joppa TO joppa_app;
-GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
-GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
-GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_app;
-GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_app;
-GRANT DELETE ON joppa.task_queue TO joppa_app;
-GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_app;
-GRANT DELETE ON joppa.object_links TO joppa_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
-SQL
 for name in tokens.json login-users.json google-client.json access-rules.json; do
     [[ ! -f "$stage/private/$name" ]] || install -m 640 -o root -g joppa "$stage/private/$name" "/etc/joppa/$name"
 done
@@ -132,6 +116,23 @@ restore_previous() {
 if ! runuser -u postgres -- env 'JOPPA_DATABASE_URL=postgresql:///joppa?host=/var/run/postgresql' /opt/joppa/bin/joppa migrate; then
     restore_previous || true
     echo 'Projection migration failed. Restored the previous version if compatible.' >&2
+    exit 1
+fi
+if ! runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa <<'SQL'
+GRANT CONNECT ON DATABASE joppa TO joppa_app;
+GRANT USAGE ON SCHEMA joppa TO joppa_app;
+GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
+GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
+GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_app;
+GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_app;
+GRANT DELETE ON joppa.task_queue TO joppa_app;
+GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_app;
+GRANT DELETE ON joppa.object_links TO joppa_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
+SQL
+then
+    restore_previous || true
+    echo 'Database grants failed. Restored the previous version if compatible.' >&2
     exit 1
 fi
 systemctl restart joppa

@@ -121,6 +121,52 @@ elif 'install.sh' in cmd:
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_installer_stops_traffic_before_migration_and_recovers_failures(self):
+        """Execute the service handover with successful and failed database commands."""
+        installer = (SOURCE / 'server/install.sh').read_text()
+        start = installer.index('if systemctl is-active --quiet joppa; then')
+        end = installer.index('healthy=false', start)
+        events = self.root / 'handover-events'
+        runtime = self.root / 'runtime.env'
+        runtime.write_text('JOPPA_DATABASE_URL=test-only\n')
+        for tool in ('systemctl', 'runuser'):
+            executable = self.bin / tool
+            executable.write_text('''#!/usr/bin/env python3
+import os, pathlib, sys
+args = sys.argv[1:]
+action = ' '.join(args)
+if sys.argv[0].endswith('runuser'):
+    action = 'migrate' if args[-1] == 'migrate' else 'grants'
+    if action == 'grants': sys.stdin.read()
+with open(os.environ['HANDOVER_EVENTS'], 'a') as stream: stream.write(action+'\\n')
+sys.exit(1 if action == os.environ.get('HANDOVER_FAIL') else 0)
+''')
+            executable.chmod(0o755)
+        previous = self.bin / 'joppa.previous'
+        previous.write_text('#!/bin/sh\nexit 0\n')
+        previous.chmod(0o755)
+        script = installer[start:end].replace('/opt/joppa/bin', str(self.bin))
+        script = script.replace('/etc/joppa/runtime.env', str(runtime))
+        for failure in ('', 'migrate', 'grants'):
+            with self.subTest(failure=failure):
+                events.write_text('')
+                previous.write_text('#!/bin/sh\nexit 0\n')
+                previous.chmod(0o755)
+                (self.bin / 'joppa.next').write_text('fixture release')
+                result = subprocess.run(['bash', '-c', 'set -euo pipefail\n'+script],
+                    env={**self.env, 'HANDOVER_EVENTS': str(events), 'HANDOVER_FAIL': failure},
+                    text=True, capture_output=True)
+                self.assertEqual(result.returncode, 1 if failure else 0, result.stderr)
+                order = events.read_text().splitlines()
+                self.assertLess(order.index('stop joppa'), order.index('migrate'))
+                if failure != 'migrate':
+                    self.assertLess(order.index('migrate'), order.index('grants'))
+                    self.assertLess(order.index('grants'), order.index('restart joppa'))
+                else:
+                    self.assertNotIn('grants', order)
+                self.assertEqual(order.count('migrate'), 1)
+                self.assertEqual(order.count('restart joppa'), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
