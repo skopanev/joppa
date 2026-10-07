@@ -234,7 +234,8 @@ function statusCircle(signal,number){
   if(signal?.stale_after&&Date.parse(signal.stale_after)<=Date.now()&&signal.tone!=='red')
     signal={...signal,tone:'orange',label:signal.status?'Checks stale':'Contains stale checks'};
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
-  const hint='Status: '+signal.label+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
+  const assessment=signal.readiness_blocker||signal.assessment;
+  const hint='Status: '+signal.label+assessmentHint(assessment)+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
   circle.dataset.tone=signal.tone;circle.dataset.hint=hint;circle.tabIndex=0;
   circle.setAttribute('role','img');circle.setAttribute('aria-label',hint);
   circle.addEventListener('pointerenter',()=>showStatusHint(circle));
@@ -242,6 +243,12 @@ function statusCircle(signal,number){
   circle.addEventListener('focus',()=>showStatusHint(circle));
   circle.addEventListener('blur',hideStatusHint);
   return circle;
+}
+function assessmentHint(a){
+  if(!a)return '';
+  if(a.state==='unassessed')return '\nReadiness: Not assessed';
+  if(a.state==='waiting')return '\nQuestion: '+a.reason+'\nRecipient: '+personLabel(a.recipient||'Unassigned');
+  return '\nReadiness: Ready';
 }
 function nodeTitle(text,signal){
   const title=E('span',text,'node-title');title.prepend(statusCircle(signal));return title;
@@ -539,6 +546,8 @@ function fillCommonObject(body,detail){
   meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));body.append(meta);
   if(detail.process?.verification&&(detail.process.req||data.objectTypes?.[detail.kind]?.role==='task'))body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
   if(detail.process?.status&&!inputQueue(detail.kind))body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
+  const assessment=detail.process?.readiness_blocker||detail.process?.assessment;
+  if(!historical&&assessment)body.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   for(const [key,value] of Object.entries(d)){
     if(['title','owner'].includes(key)||(inputQueue(detail.kind)&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;

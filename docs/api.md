@@ -3,6 +3,13 @@
 Read [Objects and workspace trees](objects.md) before new document edits.
 Use `joppa_objects`, `joppa_tree`, `save_object` and `set_tree_schema`.
 Pass the current `revision` with each document or schema write.
+Current criterion process metadata includes `assessment.state`: `unassessed`, `waiting`, or `ready`.
+It also includes the current specification revision, reason, recipient, and decision reference.
+Task process and queue metadata include the direct parent assessment when that parent has the configured criterion role.
+`readiness_blocker` identifies the assessment that prevents a configured readiness gate, including criterion dependencies.
+A waiting Task reports the same question and recipient in `waiting_reason` and its claim refusal.
+Decision Tasks retain the configured exception for collecting their parent's decision.
+These fields describe readiness. They do not change check evidence or work completion.
 The following operations retain their original verification and compatibility rules.
 
 `archive_object` requires `target`, `revision` and `reason`. It archives an empty object whose configured role is `group`.

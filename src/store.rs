@@ -75,6 +75,7 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         search::project(&*tx, &id, &state, events.last().map_or(0, |e| e.position), None).await?;
     }
     migrate_notes_in(&*tx).await?;
+    refresh_readiness_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -171,6 +172,34 @@ async fn ensure_notes(
     Ok(changed)
 }
 pub(super) const BOARD_PROJECTION_VERSION: &str = "5";
+pub(super) const READINESS_METADATA_VERSION: &str = "1";
+
+/// Refresh current assessment metadata without reading or changing journal history.
+pub async fn refresh_readiness_metadata(pool: &Pool) -> Result<()> {
+    let mut conn = pool.get().await?;
+    let tx = conn.transaction().await?;
+    tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
+        .await?;
+    refresh_readiness_in(&*tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
+    for row in client.query("SELECT workspace FROM joppa.board_cache WHERE COALESCE(first_view->>'readiness_metadata_version','')<>$1 ORDER BY workspace", &[&READINESS_METADATA_VERSION]).await? {
+        let workspace: String = row.get(0);
+        client.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&workspace]).await?;
+        let (state, _) = state_rows::current(client, &workspace).await?;
+        let schema = crate::objects::schema(&state);
+        let selected = state.objects.iter().filter(|(_, o)| {
+            schema.types.get(&o.kind).is_some_and(|t| matches!(t.role.as_str(), "ac" | "task"))
+        }).map(|(key, _)| key.clone()).collect();
+        objects::project(client, &workspace, &state, &[], Some(&selected)).await?;
+        queue_rows::project(client, &workspace, &state, Some(&selected)).await?;
+        client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{readiness_metadata_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&READINESS_METADATA_VERSION]).await?;
+    }
+    Ok(())
+}
 
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let mut conn = pool.get().await?;

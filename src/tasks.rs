@@ -73,6 +73,21 @@ pub fn review_required(w: &Workspace, key: &str, t: &Task) -> bool {
             .is_some_and(|old| old != &context(w, key))
 }
 
+pub fn parent_assessment(w: &Workspace, key: &str) -> Option<Value> {
+    objects::assessment(w, w.objects.get(key)?.current().parent.as_deref()?)
+}
+
+pub fn readiness_blocker(w: &Workspace, key: &str) -> Option<Value> {
+    let o = w.objects.get(key)?;
+    let schema = objects::schema(w);
+    let t = schema.types.get(&o.kind)?;
+    if t.parent_gate.as_deref() != Some("ready") {
+        return None;
+    }
+    let decision = task(w, key)?.purpose == "decision" && (!w.schema_migrated || t.parent_decision);
+    objects::readiness_blocker(w, o.current().parent.as_deref()?, !decision)
+}
+
 fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<()> {
     let o = w.objects.get(key).context("unknown Task")?;
     let schema = objects::schema(w);
@@ -109,6 +124,9 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
         }
         _ => false,
     };
+    if !ready && let Some(blocker) = readiness_blocker(w, key) {
+        anyhow::bail!("{}", objects::assessment_reason(&blocker));
+    }
     ensure!(ready, "Task parent does not satisfy its configured gate");
     Ok(())
 }
@@ -341,6 +359,8 @@ pub fn process(w: &Workspace, key: &str) -> Option<Value> {
     p["revision"] = json!(o.current().revision);
     p["review_required"] = json!(review_required(w, key, t));
     p["status"] = json!(status(t));
+    p["assessment"] = json!(parent_assessment(w, key));
+    p["readiness_blocker"] = json!(readiness_blocker(w, key));
     Some(p)
 }
 

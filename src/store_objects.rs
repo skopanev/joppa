@@ -57,8 +57,11 @@ pub(super) async fn project(
         }
         let mut signal = objects::signal(state, address);
         if let Some(previous) = previous {
-            signal["at"] = if previous["signal"]["tone"] == signal["tone"]
-                && previous["signal"]["label"] == signal["label"]
+            signal["at"] = if events.is_empty()
+                || (previous["signal"]["tone"] == signal["tone"]
+                    && previous["signal"]["label"] == signal["label"]
+                    && previous["signal"]["assessment"] == signal["assessment"]
+                    && previous["signal"]["readiness_blocker"] == signal["readiness_blocker"])
             {
                 previous["signal"]["at"].clone()
             } else {

@@ -396,6 +396,7 @@ pub(super) fn queue_entries(
             "ac":o.current().parent.as_deref().and_then(|p|crate::objects::criterion_context(state,p).map(|(_,_,ac)|ac.id.as_str())),
             "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
+            "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
             "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at
         })));
     }

@@ -1936,6 +1936,70 @@ pub fn criterion_context<'a>(
         .find(|ac| criterion_address(&ac.id) == key)?;
     Some((req, revision, ac))
 }
+
+/// Read the assessment from the current configured verification context.
+pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
+    let (req, r, ac) = criterion_context(w, key)?;
+    let state = match ac.assessment.as_ref() {
+        None => "unassessed",
+        Some(a) if a.ready => "ready",
+        Some(_) => "waiting",
+    };
+    Some(
+        json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
+        "reason":ac.assessment.as_ref().map(|a| &a.reason),
+        "recipient":ac.assessment.as_ref().and_then(|a| a.owner.as_ref()),
+        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())}),
+    )
+}
+
+/// Return the first assessment that prevents readiness, with a cycle guard.
+pub fn readiness_blocker(w: &Workspace, key: &str, include_self: bool) -> Option<Value> {
+    fn visit<'a>(r: &'a Revision, ac: &'a Ac, seen: &mut BTreeSet<&'a str>) -> Option<&'a Ac> {
+        if !seen.insert(&ac.id) {
+            return None;
+        }
+        if !ac.assessment.as_ref().is_some_and(|a| a.ready) {
+            return Some(ac);
+        }
+        ac.depends_on.iter().find_map(|id| {
+            r.acs
+                .iter()
+                .find(|a| &a.id == id)
+                .and_then(|a| visit(r, a, seen))
+        })
+    }
+    let (_, r, ac) = criterion_context(w, key)?;
+    let mut seen = BTreeSet::new();
+    let blocker = if include_self {
+        visit(r, ac, &mut seen)
+    } else {
+        ac.depends_on.iter().find_map(|id| {
+            r.acs
+                .iter()
+                .find(|a| &a.id == id)
+                .and_then(|a| visit(r, a, &mut seen))
+        })
+    }?;
+    assessment(w, &criterion_address(&blocker.id))
+}
+
+pub fn assessment_reason(a: &Value) -> String {
+    if a["state"] == "unassessed" {
+        format!(
+            "Criterion {} has no readiness assessment",
+            a["criterion"].as_str().unwrap_or("")
+        )
+    } else {
+        format!(
+            "{} · Recipient: {}",
+            a["reason"]
+                .as_str()
+                .unwrap_or("Readiness decision required"),
+            a["recipient"].as_str().unwrap_or("Unassigned")
+        )
+    }
+}
 fn verified(w: &Workspace, key: &str) -> bool {
     if let Some(t) = crate::tasks::task(w, key) {
         return t.done.is_some() && t.retired.is_none();
@@ -2093,6 +2157,10 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     };
     result["verification"] = json!(verification(w, key));
     result["annotation_address"] = json!(annotation_address(w, key));
+    if role.as_deref() == Some("ac") {
+        result["assessment"] = json!(assessment(w, key));
+        result["readiness_blocker"] = json!(readiness_blocker(w, key, true));
+    }
     result
 }
 
@@ -2129,7 +2197,10 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         ) {
             (_, Some("fail")) => ("red", "Checks failed"),
             (Some(true), Some("pass")) => ("green", "Checks passed"),
-            (Some(false), _) => ("yellow", "AC is not ready"),
+            (Some(false), _) if p["readiness_blocker"]["state"] == "unassessed" => {
+                ("yellow", "Readiness not assessed")
+            }
+            (Some(false), _) => ("yellow", "Readiness decision required"),
             _ => ("grey", "AC awaits checks"),
         }
     } else if schema(w)
@@ -2165,12 +2236,21 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             Some("done") => ("grey", "Work complete · Unverified"),
             Some("retired") => ("grey", "Task retired"),
             Some("in_progress") => ("yellow", "Task in progress"),
+            _ if p["readiness_blocker"].is_object() => {
+                ("yellow", "Task waits for parent readiness")
+            }
             _ => ("grey", "Task open"),
         }
     } else {
         ("grey", "Current document")
     };
-    json!({"tone":tone,"label":label,"at":o.current().at})
+    let mut signal = json!({"tone":tone,"label":label,"at":o.current().at});
+    for field in ["assessment", "readiness_blocker"] {
+        if p[field].is_object() {
+            signal[field] = p[field].clone();
+        }
+    }
+    signal
 }
 
 pub fn archive(
