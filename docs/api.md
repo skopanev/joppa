@@ -149,6 +149,8 @@ Missing assessments and waiting decisions do not qualify. Current object metadat
 An active Task binds to its nearest criterion through tree parents, including intermediate groups.
 This binding stops at the nearest specification. A Task attached to a specification does not claim its individual criteria.
 Completed and retired Tasks remain readable and do not count as active work.
+Each candidate includes `work_summary` counts for active, done and retired Tasks.
+A candidate with done Tasks can need verification instead of new implementation. The list does not create Tasks.
 The filter lists matching criteria across the tree by default. An explicit `parent` still selects direct children.
 The existing cursor, kind and related-object filters remain available. A workspace change invalidates the cursor.
 Candidates include current object revisions and assessment source revisions. Lists do not load revision bodies or the journal.

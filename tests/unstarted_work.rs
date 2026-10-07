@@ -110,7 +110,16 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     let current = task_detail(&pool, &ws, &address).await?;
     apply(&pool, &ws, "agent", json!({"op":"complete_task","id":address,"revision":current["current_revision"],"evidence":"The fixture implementation is complete"})).await?;
-    assert_eq!(criteria(&candidates(&pool, &ws).await?), vec!["ios"]);
+    let done = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&done), vec!["ios"]);
+    assert_eq!(
+        done["items"][0]["work_summary"],
+        json!({"active":0,"done":1,"retired":0})
+    );
+    assert_eq!(
+        task_detail(&pool, &ws, &address).await?["process"]["verification"],
+        "unverified"
+    );
     apply(&pool, &ws, "agent", task("two")).await?;
     let all = store::task_queue(&pool, &ws, "agent", "all", 100, None).await?;
     let retired = all["tasks"]
@@ -120,7 +129,12 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
         .find(|t| t["status"] == "open")
         .unwrap();
     apply(&pool, &ws, "owner", json!({"op":"retire_task","id":retired["address"],"revision":retired["revision"],"reason":"The fixture work is no longer required"})).await?;
-    assert_eq!(criteria(&candidates(&pool, &ws).await?), vec!["ios"]);
+    let retired_page = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&retired_page), vec!["ios"]);
+    assert_eq!(
+        retired_page["items"][0]["work_summary"],
+        json!({"active":0,"done":1,"retired":1})
+    );
     assert_eq!(
         store::task_queue(&pool, &ws, "agent", "all", 100, None).await?["tasks"]
             .as_array()
@@ -306,13 +320,53 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             source["process"]["assessment"]
         );
     }
+    let ordinary_before = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
+    assert!(
+        ordinary_before["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["parent"].is_null() && item.get("work_summary").is_none())
+    );
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"spec-work","revision":0,"parent":"spec:s","data":{"title":"Work on the specification","owner":"owner","contract":"Work on the specification as a whole","purpose":"implementation"},"reason":"Check the specification binding boundary"})).await?;
+    assert_eq!(
+        criteria(&candidates(&pool, &ws).await?),
+        vec!["condition:a", "condition:b"]
+    );
+    assert!(
+        candidates(&pool, &ws).await?["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0}))
+    );
+    let ordinary_after = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
+    assert_eq!(ordinary_before["items"], ordinary_after["items"]);
+    let direct = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            work_filter: Some("unstarted"),
+            parent: Some("spec:s"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(criteria(&direct), vec!["condition:a", "condition:b"]);
     apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":"section:nested","data":{"title":"Implement the first condition","owner":"owner","contract":"Implement this exact condition","purpose":"implementation"},"reason":"Bind work through an intermediate group"})).await?;
     assert_eq!(
         criteria(&candidates(&pool, &ws).await?),
         vec!["condition:b"]
     );
     let queue = store::task_queue(&pool, &ws, "agent", "available", 100, None).await?;
-    assert_eq!(queue["tasks"][0]["address"], "job:one");
+    assert!(
+        queue["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|task| task["address"] == "job:one")
+    );
     let b = task_detail(&pool, &ws, "condition:b").await?;
     apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"condition","id":"b","revision":b["current_revision"],"parent":b["document"]["parent"],"data":b["document"]["data"],"links":[{"target":"section:blocker","relation":"depends_on","revision":1,"blocking":true}],"reason":"Require an unmet dependency"})).await?;
     assess_current(&pool, &ws, "condition:a", true).await?;
@@ -325,7 +379,12 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     assess_current(&pool, &ws, "condition:b", true).await?;
     let task = task_detail(&pool, &ws, "job:one").await?;
     apply(&pool,&ws,"owner",json!({"op":"retire_task","id":"job:one","revision":task["current_revision"],"reason":"Keep the fixture history"})).await?;
-    assert_eq!(criteria(&candidates(&pool, &ws).await?).len(), 2);
+    let retired_page = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&retired_page).len(), 2);
+    assert_eq!(
+        retired_page["items"][0]["work_summary"],
+        json!({"active":0,"done":0,"retired":1})
+    );
     assert_eq!(
         task_detail(&pool, &ws, "job:one").await?["process"]["status"],
         "retired"
