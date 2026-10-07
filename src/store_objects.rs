@@ -208,6 +208,7 @@ pub struct ObjectScope<'a> {
     pub cursor: Option<&'a str>,
     pub note_status: Option<&'a str>,
     pub related_to: Option<&'a str>,
+    pub work_filter: Option<&'a str>,
 }
 pub async fn read_objects(
     pool: &Pool,
@@ -226,6 +227,11 @@ pub async fn read_objects(
     let position: i64 = row.get(0);
     let public: String = row.get(1);
     let prefix: String = row.get(2);
+    ensure!(
+        scope.work_filter.is_none_or(|filter| filter == "unstarted"),
+        "unknown work filter"
+    );
+    let unstarted = scope.work_filter == Some("unstarted");
     if let Some(key) = scope.address {
         let key = conn
             .query_opt(
@@ -240,7 +246,8 @@ pub async fn read_objects(
                 && scope.kind.is_none()
                 && scope.cursor.is_none()
                 && scope.note_status.is_none()
-                && scope.related_to.is_none(),
+                && scope.related_to.is_none()
+                && scope.work_filter.is_none(),
             "address cannot be combined with list filters"
         );
         let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
@@ -353,7 +360,40 @@ pub async fn read_objects(
     } else {
         None
     };
-    let rows=conn.query("SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present)) AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3) AND (($4::text IS NULL AND ($8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*') AND ($7::text IS NULL OR o.inbox_status=$7) AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8)))) ORDER BY o.address LIMIT $5", &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to]).await?;
+    let rows = conn.query(r#"
+        WITH RECURSIVE active_task_parents(address) AS (
+            SELECT COALESCE(a.target,t.parent)
+            FROM joppa.objects t JOIN joppa.board_cache b ON b.workspace=t.workspace
+            LEFT JOIN joppa.object_aliases a ON a.workspace=t.workspace AND a.address=t.parent
+            WHERE t.workspace=$1 AND t.present AND t.parent IS NOT NULL
+                AND b.first_view->'object_types'->t.kind->>'role'='task'
+                AND COALESCE(t.process->>'status','open') NOT IN ('done','retired')
+            UNION
+            SELECT COALESCE(a.target,p.parent)
+            FROM active_task_parents t JOIN joppa.objects p ON p.workspace=$1 AND p.address=t.address
+            JOIN joppa.board_cache b ON b.workspace=p.workspace
+            LEFT JOIN joppa.object_aliases a ON a.workspace=p.workspace AND a.address=p.parent
+            WHERE p.parent IS NOT NULL AND COALESCE(b.first_view->'object_types'->p.kind->>'role','') NOT IN ('ac','requirement')
+        )
+        SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,
+            (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
+                AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
+            o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status
+        FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace
+        LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
+        WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present))
+            AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3)
+            AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
+            AND ($7::text IS NULL OR o.inbox_status=$7)
+            AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
+                AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
+            AND (NOT $9::boolean OR (o.present AND b.first_view->'object_types'->o.kind->>'role'='ac'
+                AND o.process->'assessment'->>'state'='ready' AND o.work_ready AND NOT o.review_required
+                AND COALESCE(jsonb_typeof(o.process->'readiness_blocker'),'null')<>'object'
+                AND COALESCE(o.process->>'verification','unverified')<>'pass'
+                AND NOT EXISTS (SELECT 1 FROM active_task_parents t WHERE t.address=o.address)))
+        ORDER BY o.address LIMIT $5
+    "#, &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to,&unstarted]).await?;
     let more = rows.len() > limit;
     let items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     let next = more.then(|| {

@@ -129,6 +129,17 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
     )
     .await?;
     store::task_queue(&pool, &ws, "owner", "available", 100, None).await?;
+    store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            work_filter: Some("unstarted"),
+            limit: 100,
+            ..Default::default()
+        },
+    )
+    .await?;
     let list = store::read_objects(
         &pool,
         &ws,

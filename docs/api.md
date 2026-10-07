@@ -141,6 +141,17 @@ The Task owner or workspace owner confirms that contract. Use `save_object` to m
 Completed Tasks retain their original contract. Use `retire_task` when work no longer applies.
 
 `joppa_tasks` exposes paginated `available`, `mine`, `waiting` and `all` queues from the current projection.
+
+`joppa_objects` with `work_filter="unstarted"` lists current criteria that need planned work.
+It selects criterion and Task roles from the workspace schema, regardless of their type names.
+Candidates need a ready assessment, current dependencies, and verification other than `pass`.
+Missing assessments and waiting decisions do not qualify. Current object metadata shows their reasons and recipients.
+An active Task binds to its nearest criterion through tree parents, including intermediate groups.
+This binding stops at the nearest specification. A Task attached to a specification does not claim its individual criteria.
+Completed and retired Tasks remain readable and do not count as active work.
+The filter lists matching criteria across the tree by default. An explicit `parent` still selects direct children.
+The existing cursor, kind and related-object filters remain available. A workspace change invalidates the cursor.
+Candidates include current object revisions and assessment source revisions. Lists do not load revision bodies or the journal.
 `available` uses the same eligibility rules as `claim_task`: an explicit contract, reviewed parent context, satisfied dependencies and the configured parent gate.
 The Task must have no assignee, completion or retirement. A decision Task requires its designated human owner to claim it.
 Under the default AC gate, that owner can claim decision work before the AC becomes ready.

@@ -1,0 +1,334 @@
+mod common;
+use common::*;
+use deadpool_postgres::Pool;
+use joppa::store::{self, ObjectScope};
+use serde_json::{Value, json};
+
+async fn apply(pool: &Pool, ws: &str, actor: &str, command: Value) -> anyhow::Result<Value> {
+    store::execute_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
+}
+async fn fixture() -> anyhow::Result<(Pool, String)> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(
+        db.starts_with("joppa_test"),
+        "isolated test database required"
+    );
+    store::migrate(&pool).await?;
+    Ok((pool, format!("planning-{}", uuid::Uuid::new_v4().simple())))
+}
+async fn candidates(pool: &Pool, ws: &str) -> anyhow::Result<Value> {
+    store::read_objects(
+        pool,
+        ws,
+        "agent",
+        &ObjectScope {
+            work_filter: Some("unstarted"),
+            limit: 100,
+            ..Default::default()
+        },
+    )
+    .await
+}
+fn criteria(page: &Value) -> Vec<String> {
+    page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            i["signal"]["assessment"]["criterion"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect()
+}
+async fn task_detail(pool: &Pool, ws: &str, address: &str) -> anyhow::Result<Value> {
+    store::read_objects(
+        pool,
+        ws,
+        "agent",
+        &ObjectScope {
+            address: Some(address),
+            ..Default::default()
+        },
+    )
+    .await
+}
+async fn assess_current(pool: &Pool, ws: &str, address: &str, ready: bool) -> anyhow::Result<()> {
+    let obj = task_detail(pool, ws, address).await?;
+    apply(pool, ws, "agent", json!({"op":"assess","req":obj["process"]["req"],"revision":obj["process"]["revision"],"ac":obj["process"]["criterion"],"assessment":{"ready":ready,"reason":if ready {"Contract is clear"} else {"Which behavior is required?"},"recipient":if ready {Value::Null} else {json!("owner")}}})).await?;
+    Ok(())
+}
+
+// [ac:unstarted-work-visible-ac1]
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
+-> anyhow::Result<()> {
+    let (pool, ws) = fixture().await?;
+    for command in setup() {
+        apply(&pool, &ws, "owner", command).await?;
+    }
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    apply(&pool, &ws, "agent", assess("ios", true)).await?;
+    apply(&pool, &ws, "agent", assess("key", false)).await?;
+    let page = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&page), vec!["ios"]);
+    assert_eq!(page["items"][0]["signal"]["assessment"]["revision"], 1);
+    assert!(
+        store::read_objects(
+            &pool,
+            &ws,
+            "outsider",
+            &ObjectScope {
+                work_filter: Some("unstarted"),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err()
+    );
+    let task = |id: &str| json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Implement the agreed login behavior"});
+    apply(&pool, &ws, "agent", task("one")).await?;
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    let queue = store::task_queue(&pool, &ws, "agent", "available", 100, None).await?;
+    let address = queue["tasks"][0]["address"].as_str().unwrap().to_owned();
+    assert_eq!(queue["tasks"][0]["assessment"]["criterion"], "ios");
+    apply(
+        &pool,
+        &ws,
+        "agent",
+        json!({"op":"claim_task","id":address,"revision":queue["tasks"][0]["revision"]}),
+    )
+    .await?;
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    let current = task_detail(&pool, &ws, &address).await?;
+    apply(&pool, &ws, "agent", json!({"op":"complete_task","id":address,"revision":current["current_revision"],"evidence":"The fixture implementation is complete"})).await?;
+    assert_eq!(criteria(&candidates(&pool, &ws).await?), vec!["ios"]);
+    apply(&pool, &ws, "agent", task("two")).await?;
+    let all = store::task_queue(&pool, &ws, "agent", "all", 100, None).await?;
+    let retired = all["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["status"] == "open")
+        .unwrap();
+    apply(&pool, &ws, "owner", json!({"op":"retire_task","id":retired["address"],"revision":retired["revision"],"reason":"The fixture work is no longer required"})).await?;
+    assert_eq!(criteria(&candidates(&pool, &ws).await?), vec!["ios"]);
+    assert_eq!(
+        store::task_queue(&pool, &ws, "agent", "all", 100, None).await?["tasks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let old = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some(&address),
+            revision: Some(1),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        old["document"]["data"]["contract"],
+        "Implement the agreed login behavior"
+    );
+    apply(&pool, &ws, "agent", assess("key", true)).await?;
+    let first = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            work_filter: Some("unstarted"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    let next = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            work_filter: Some("unstarted"),
+            limit: 1,
+            cursor: first["next_cursor"].as_str(),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_ne!(first["items"][0]["address"], next["items"][0]["address"]);
+    assert!(next["next_cursor"].is_null());
+    apply(
+        &pool,
+        &ws,
+        "owner",
+        json!({"op":"confirm","req":"r","revision":1}),
+    )
+    .await?;
+    assert!(
+        store::read_objects(
+            &pool,
+            &ws,
+            "agent",
+            &ObjectScope {
+                work_filter: Some("unstarted"),
+                cursor: first["next_cursor"].as_str(),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err()
+    );
+    apply(&pool, &ws, "owner", json!({"op":"define_verification_scope","req":"r","revision":1,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Use the complete fixture subject"})).await?;
+    apply(&pool, &ws, "runner", plan("pass")).await?;
+    apply(
+        &pool,
+        &ws,
+        "runner",
+        result("pass", "[ios] paid access", "pass", vec!["access retained"]),
+    )
+    .await?;
+    apply(
+        &pool,
+        &ws,
+        "owner",
+        result("pass", "key-permissions", "pass", vec!["read", "verify"]),
+    )
+    .await?;
+    apply(
+        &pool,
+        &ws,
+        "runner",
+        json!({"op":"finish","req":"r","revision":1,"run":"pass"}),
+    )
+    .await?;
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    apply(&pool, &ws, "agent", revision(1)).await?;
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    for ac in ["ios", "key"] {
+        let mut a = assess(ac, true);
+        a["revision"] = json!(2);
+        apply(&pool, &ws, "agent", a).await?;
+    }
+    assert_eq!(criteria(&candidates(&pool, &ws).await?).len(), 2);
+    Ok(())
+}
+
+// [ac:unstarted-work-visible-ac1]
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencies()
+-> anyhow::Result<()> {
+    let (pool, ws) = fixture().await?;
+    apply(
+        &pool,
+        &ws,
+        "owner",
+        json!({"op":"workspace","title":"Custom planning"}),
+    )
+    .await?;
+    apply(
+        &pool,
+        &ws,
+        "owner",
+        json!({"op":"member","id":"agent","role":"agent"}),
+    )
+    .await?;
+    let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
+    let types = json!({"spec":{"title":"Specification","role":"requirement","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","inbox":true,"root":true,"parents":["*"]}});
+    apply(&pool,&ws,"agent",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use arbitrary type names"})).await?;
+    for (kind, id, parent, data) in [
+        (
+            "spec",
+            "s",
+            None,
+            json!({"title":"Spec","owner":"owner","body":"The exact contract"}),
+        ),
+        (
+            "condition",
+            "a",
+            Some("spec:s"),
+            json!({"title":"First condition","owner":"owner"}),
+        ),
+        (
+            "condition",
+            "b",
+            Some("spec:s"),
+            json!({"title":"Second condition","owner":"owner","depends_on":["condition:a"]}),
+        ),
+        (
+            "section",
+            "nested",
+            Some("condition:a"),
+            json!({"title":"Nested work","owner":"owner"}),
+        ),
+        (
+            "section",
+            "blocker",
+            None,
+            json!({"title":"Unverified dependency","owner":"owner"}),
+        ),
+        (
+            "input",
+            "raw",
+            None,
+            json!({"title":"Unrelated source","owner":"owner","body":"raw input ".repeat(100_000)}),
+        ),
+    ] {
+        apply(&pool,&ws,"agent",json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"links":[],"reason":"Set up the planning fixture"})).await?;
+    }
+    assess_current(&pool, &ws, "condition:a", false).await?;
+    assess_current(&pool, &ws, "condition:b", true).await?;
+    assert!(
+        criteria(&candidates(&pool, &ws).await?).is_empty(),
+        "waiting prerequisite must exclude the dependent criterion"
+    );
+    assess_current(&pool, &ws, "condition:a", true).await?;
+    let page = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&page), vec!["condition:a", "condition:b"]);
+    assert!(!page.to_string().contains("raw input"));
+    for item in page["items"].as_array().unwrap() {
+        let source = task_detail(&pool, &ws, item["address"].as_str().unwrap()).await?;
+        assert_eq!(item["revision"], source["current_revision"]);
+        assert_eq!(
+            item["signal"]["assessment"],
+            source["process"]["assessment"]
+        );
+    }
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":"section:nested","data":{"title":"Implement the first condition","owner":"owner","contract":"Implement this exact condition","purpose":"implementation"},"reason":"Bind work through an intermediate group"})).await?;
+    assert_eq!(
+        criteria(&candidates(&pool, &ws).await?),
+        vec!["condition:b"]
+    );
+    let queue = store::task_queue(&pool, &ws, "agent", "available", 100, None).await?;
+    assert_eq!(queue["tasks"][0]["address"], "job:one");
+    let b = task_detail(&pool, &ws, "condition:b").await?;
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"condition","id":"b","revision":b["current_revision"],"parent":b["document"]["parent"],"data":b["document"]["data"],"links":[{"target":"section:blocker","relation":"depends_on","revision":1,"blocking":true}],"reason":"Require an unmet dependency"})).await?;
+    assess_current(&pool, &ws, "condition:a", true).await?;
+    assess_current(&pool, &ws, "condition:b", true).await?;
+    assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    let b = task_detail(&pool, &ws, "condition:b").await?;
+    assert_eq!(b["work_ready"], false);
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"condition","id":"b","revision":b["current_revision"],"parent":b["document"]["parent"],"data":b["document"]["data"],"links":[],"reason":"Remove the fixture dependency"})).await?;
+    assess_current(&pool, &ws, "condition:a", true).await?;
+    assess_current(&pool, &ws, "condition:b", true).await?;
+    let task = task_detail(&pool, &ws, "job:one").await?;
+    apply(&pool,&ws,"owner",json!({"op":"retire_task","id":"job:one","revision":task["current_revision"],"reason":"Keep the fixture history"})).await?;
+    assert_eq!(criteria(&candidates(&pool, &ws).await?).len(), 2);
+    assert_eq!(
+        task_detail(&pool, &ws, "job:one").await?["process"]["status"],
+        "retired"
+    );
+    Ok(())
+}

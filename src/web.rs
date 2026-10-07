@@ -235,6 +235,7 @@ struct ObjectQuery {
     cursor: Option<String>,
     note_status: Option<String>,
     related_to: Option<String>,
+    work_filter: Option<String>,
 }
 async fn objects(
     State(app): State<App>,
@@ -258,6 +259,7 @@ async fn objects(
                 cursor: q.cursor.as_deref(),
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
+                work_filter: q.work_filter.as_deref(),
             },
         )
         .await,
