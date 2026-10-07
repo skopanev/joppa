@@ -1480,6 +1480,14 @@ pub fn save(
     if (!unchanged || schema(w).types[kind].role == "requirement") && !generic_task {
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             candidate.document_overrides.remove(&key);
+            // Common documents own their parents after document migration.
+            // The verification adapter does not carry that parent in Revise.
+            if w.documents_migrated
+                && let Command::Revise { req, .. } = &cmd
+                && let Some(object) = candidate.objects.get_mut(&requirement_address(req))
+            {
+                object.parent_override = true;
+            }
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
             sync(&mut candidate, actor, &cmd, position, at);
         } else {
