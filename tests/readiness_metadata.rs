@@ -147,6 +147,24 @@ fn dependency_question_blocks_work_but_own_decision_task_remains_available() {
     assert_eq!(p["readiness_blocker"]["recipient"], "legal");
     save(
         &mut w,
+        "task:dependent-decision",
+        Some("ac:ios"),
+        work("Collect a dependent decision", "decision"),
+    );
+    let dependent = objects::process(&w.state, "task:dependent-decision");
+    assert_eq!(dependent["readiness_blocker"]["criterion"], "key");
+    let refusal = tasks::claimable(
+        &w.state,
+        "legal",
+        "task:dependent-decision",
+        &w.state.task_process["task:dependent-decision"],
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(refusal.contains("Which exact permissions?"));
+    assert!(refusal.contains("Recipient: legal"));
+    save(
+        &mut w,
         "task:decision",
         Some("ac:key"),
         work("Collect the decision", "decision"),
@@ -194,6 +212,8 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
         joppa::commands::apply_replay(&mut w.state, "owner", &cmd, w.position + 1, "now").unwrap();
         w.position += 1;
     }
+    assert!(w.state.schema_migrated);
+    assert!(w.state.documents_migrated);
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{

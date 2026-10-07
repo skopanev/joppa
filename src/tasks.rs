@@ -109,15 +109,13 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
         "completed" => task(w, parent).is_some_and(|t| t.done.is_some() && t.retired.is_none()),
         "verified" => process["verification"] == "pass",
         "ready" => {
-            if let Some((_, r, ac)) = objects::criterion_context(w, parent) {
+            if objects::criterion_context(w, parent).is_some() {
                 if purpose == "decision"
                     && (!w.schema_migrated || schema.types[&o.kind].parent_decision)
                 {
                     commands::human(w, actor)?;
-                    ac.depends_on.iter().all(|id| commands::ready(r, id))
-                } else {
-                    commands::ready(r, &ac.id)
                 }
+                readiness_blocker(w, key).is_none()
             } else {
                 objects::work_ready(w, parent)
             }
