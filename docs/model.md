@@ -91,9 +91,10 @@ revision starts at n/a**, including unchanged ones. Comments alone do not create
 revisions. See the [process](process.md).
 Changing the capability or consumer list uses the same REQ ID and a new revision
 with a reason. Previous revisions keep their original capability and consumers.
-Sources can be linked to a revision with a type, URI, source version and relation
-to the requirement. Linking or withdrawing a source records an event; previous
-revision sources remain available in history.
+Sources can be linked to a revision with a type, a URI or external identifier,
+a source version and a relation to the requirement.
+Linking or withdrawing a source records an event.
+Previous revision sources remain available in history.
 
 ### Immutable history — WORM
 

@@ -45,7 +45,10 @@ set_domain_archived: id, archived (true|false), reason; workspace owner only; su
 edit_capability: id, title, owner:null (unchanged), reason; workspace owner, or agent changing an unconfirmed title without changing owner
 revise: req, expected_revision (0 for new), capability, consumers:[id,...], title, body, owner, reason,
         acs:[{id,text,depends_on:[],owner:null,before_launch:false}]
-link_source: req, revision, id, kind, uri, external_id:null, version, relation (origin|supports|contradicts|decision)
+link_source: req, revision, id, kind, uri (optional), external_id:null, version, relation (origin|supports|contradicts|decision)
+      Supply a nonempty uri or external_id. Omit uri when the source exists only
+      in an external tool. The journal and reads store an omitted URI as an empty
+      string. When both references exist, the source retains both.
 withdraw_source: req, revision, id, reason; source author or REQ owner
 confirm: req, revision; REQ owner confirms wording
 comment: req, revision, id, text, kind (comment|decision|accept|change|reject|correction),

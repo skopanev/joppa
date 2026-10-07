@@ -168,6 +168,7 @@ pub enum Command {
         revision: u32,
         id: String,
         kind: String,
+        #[serde(default)]
         uri: String,
         #[serde(default)]
         external_id: Option<String>,
@@ -1047,7 +1048,11 @@ pub(crate) fn apply_inner(
         } => {
             identifier(id)?;
             identifier(kind)?;
-            nonempty(uri)?;
+            ensure!(
+                !uri.trim().is_empty()
+                    || external_id.as_ref().is_some_and(|id| !id.trim().is_empty()),
+                "source needs a URI or an external identifier"
+            );
             nonempty(version)?;
             ensure!(
                 ["origin", "supports", "contradicts", "decision"].contains(&relation.as_str()),
