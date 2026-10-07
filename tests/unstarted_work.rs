@@ -114,7 +114,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     assert_eq!(criteria(&done), vec!["ios"]);
     assert_eq!(
         done["items"][0]["work_summary"],
-        json!({"active":0,"done":1,"retired":0})
+        json!({"active":0,"done":1,"retired":0,"done_verification":{"pass":0,"fail":0,"unverified":1}})
     );
     assert_eq!(
         task_detail(&pool, &ws, &address).await?["process"]["verification"],
@@ -133,7 +133,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     assert_eq!(criteria(&retired_page), vec!["ios"]);
     assert_eq!(
         retired_page["items"][0]["work_summary"],
-        json!({"active":0,"done":1,"retired":1})
+        json!({"active":0,"done":1,"retired":1,"done_verification":{"pass":0,"fail":0,"unverified":1}})
     );
     assert_eq!(
         store::task_queue(&pool, &ws, "agent", "all", 100, None).await?["tasks"]
@@ -338,7 +338,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             .as_array()
             .unwrap()
             .iter()
-            .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0}))
+            .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0,"done_verification":{"pass":0,"fail":0,"unverified":0}}))
     );
     let ordinary_after = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
     assert_eq!(ordinary_before["items"], ordinary_after["items"]);
@@ -383,7 +383,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     assert_eq!(criteria(&retired_page).len(), 2);
     assert_eq!(
         retired_page["items"][0]["work_summary"],
-        json!({"active":0,"done":0,"retired":1})
+        json!({"active":0,"done":0,"retired":1,"done_verification":{"pass":0,"fail":0,"unverified":0}})
     );
     assert_eq!(
         task_detail(&pool, &ws, "job:one").await?["process"]["status"],

@@ -177,9 +177,9 @@ async fn ensure_notes(
     Ok(changed)
 }
 pub(super) const BOARD_PROJECTION_VERSION: &str = "5";
-pub(super) const READINESS_METADATA_VERSION: &str = "1";
+pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
-/// Refresh current assessment metadata without reading or changing journal history.
+/// Refresh current assessment and verification metadata without reading journal history.
 pub async fn refresh_readiness_metadata(pool: &Pool) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
@@ -196,9 +196,18 @@ async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
         client.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&workspace]).await?;
         let (state, _) = state_rows::current(client, &workspace).await?;
         let schema = crate::objects::schema(&state);
-        let selected = state.objects.iter().filter(|(_, o)| {
+        let mut selected: std::collections::BTreeSet<_> = state.objects.iter().filter(|(_, o)| {
             schema.types.get(&o.kind).is_some_and(|t| matches!(t.role.as_str(), "ac" | "task"))
         }).map(|(key, _)| key.clone()).collect();
+        loop {
+            let dependents: Vec<_> = state.objects.iter().filter(|(key, o)| {
+                !selected.contains(*key) && (o.current().parent.as_deref().is_some_and(|parent| selected.contains(crate::objects::resolve_address(&state,parent)))
+                    || o.current().links.iter().any(|link| link.relation == "depends_on" && selected.contains(crate::objects::resolve_address(&state,&link.target)))
+                    || o.current().data["depends_on"].as_array().is_some_and(|deps| deps.iter().filter_map(Value::as_str).any(|key| selected.contains(&crate::objects::criterion_address(key)))))
+            }).map(|(key,_)|key.clone()).collect();
+            if dependents.is_empty() { break; }
+            selected.extend(dependents);
+        }
         objects::project(client, &workspace, &state, &[], Some(&selected)).await?;
         queue_rows::project(client, &workspace, &state, Some(&selected)).await?;
         client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{readiness_metadata_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&READINESS_METADATA_VERSION]).await?;

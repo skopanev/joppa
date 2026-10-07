@@ -31,7 +31,7 @@ def main():
                        input=json.dumps(command), text=True, check=True, stdout=subprocess.DEVNULL)
     send("plan", subject=manifest["subject"], scope=manifest["scope"],
          discovery_complete=manifest["discovery_complete"],
-         checks=[{k: c[k] for k in ("id", "ac", "method", "expected")} for c in checks])
+         checks=[{**{k: c[k] for k in ("id", "ac", "method", "expected")}, **({"tasks":c["tasks"]} if c.get("tasks") else {})} for c in checks])
     failed = not manifest["discovery_complete"]
     for check in checks:
         try:

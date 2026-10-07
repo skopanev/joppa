@@ -151,6 +151,8 @@ pub struct Revision {
     pub coverage_policy: bool,
     #[serde(default)]
     pub coverage_change: Vec<Check>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prior_checks: Vec<Check>,
     #[serde(default)]
     pub coverage_review: Option<CoverageReview>,
     /// The owner-approved component set and check boundary for this revision.
@@ -261,6 +263,14 @@ pub struct Check {
     pub ac: String,
     pub method: String,
     pub expected: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tasks: Vec<TaskBinding>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TaskBinding {
+    pub address: String,
+    pub origin_revision: u32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -282,6 +292,8 @@ pub struct Run {
     pub started: u64,
     pub finished: Option<u64>,
     pub results: BTreeMap<String, Evidence>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub task_contexts: BTreeMap<String, Option<(String, u32)>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Issue {

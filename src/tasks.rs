@@ -56,10 +56,10 @@ pub fn display_tasks(w: &Workspace, req: &str) -> std::collections::BTreeMap<Str
     result
 }
 
-fn context(w: &Workspace, key: &str) -> Option<(String, u32)> {
-    let p = w.objects.get(key)?.current().parent.as_ref()?;
+pub(crate) fn context(w: &Workspace, key: &str) -> Option<(String, u32)> {
+    let p = objects::resolve_address(w, w.objects.get(key)?.current().parent.as_deref()?);
     Some((
-        p.clone(),
+        p.to_owned(),
         w.task_process
             .get(p)
             .map_or(w.objects.get(p)?.current().revision, |t| t.origin_revision),

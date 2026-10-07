@@ -397,7 +397,8 @@ pub(super) fn queue_entries(
             "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
             "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
-            "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at
+            "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at,
+            "origin_revision":t.origin_revision,"verification":crate::objects::verification(state,key),"signal":crate::objects::signal(state,key)
         })));
     }
     Ok(entries)

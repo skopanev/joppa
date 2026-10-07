@@ -153,8 +153,24 @@ def main():
     common(complete, write=True, address=True)
     complete.add_argument("--evidence", required=True)
 
+    raw = group.add_parser("command", help="send a JSON operation through authenticated MCP")
+    raw.add_argument("workspace")
+    raw.add_argument("request_id")
+    raw.add_argument("--url", help="MCP endpoint; defaults to JOPPA_MCP_URL")
+    raw.add_argument("--token-file", help="private bearer token file; defaults to JOPPA_TOKEN_FILE")
+
     args = parser.parse_args()
     space = workspace(args)
+    if args.resource == "command":
+        try:
+            value = json.load(sys.stdin)
+        except (ValueError, OSError) as error:
+            raise JoppaError("read one JSON operation from stdin") from error
+        if not isinstance(value, dict):
+            raise JoppaError("operation must be a JSON object")
+        output = mcp(args, "joppa_command", {"workspace":space,"request_id":args.request_id,"command":value})
+        print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
+        return
     if args.action == "list":
         query = {"workspace": space, "view": args.view, "limit": args.limit}
         if args.cursor:

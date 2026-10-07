@@ -250,9 +250,13 @@ One test names one AC; an AC can have several tests. Submit the complete expecte
 set and a discovery-complete assertion before execution.
 
 ```sh
-JOPPA_ACTOR=ci python3 scripts/run_checks.py product examples/checks.json \
-  --joppa ./target/debug/joppa
+python3 scripts/run_checks.py product examples/checks.json \
+  --joppa ./client/joppa
 ```
+
+Set `JOPPA_MCP_URL` and a private `JOPPA_TOKEN_FILE` for the existing MCP client.
+Checks can bind Tasks with `tasks: [{"address":"task:ID","origin_revision":2}]`.
+Read the stable revision from `process.origin_revision`. Results update Task verification without completing work.
 
 Replace sample component versions and commands with real ones. The adapter seals
 the plan, executes commands without a shell, records each result and completes

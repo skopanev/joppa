@@ -994,6 +994,17 @@ pub(crate) fn apply_inner(
                 .last()
                 .map(|old| old.sources.clone())
                 .unwrap_or_default();
+            let prior_checks = r
+                .revisions
+                .last()
+                .map(|old| {
+                    old.runs
+                        .values()
+                        .max_by_key(|run| run.started)
+                        .map(|run| run.plan.clone())
+                        .unwrap_or_else(|| old.prior_checks.clone())
+                })
+                .unwrap_or_default();
             let mut tasks = BTreeMap::new();
             if *carry_tasks {
                 for old in &r.revisions {
@@ -1031,6 +1042,7 @@ pub(crate) fn apply_inner(
                 acceptance: None,
                 coverage_policy: *coverage_policy,
                 coverage_change: Vec::new(),
+                prior_checks,
                 coverage_review: None,
                 verification_scope: None,
                 sources,

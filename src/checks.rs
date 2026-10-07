@@ -12,6 +12,124 @@ pub fn latest(r: &Revision) -> Option<(&String, &Run)> {
         .filter(|(_, run)| run.finished.is_some())
         .max_by_key(|(_, run)| run.started)
 }
+
+fn validate_task_bindings(w: &Workspace, req: &str, checks: &[Check]) -> Result<()> {
+    for check in checks {
+        let mut seen = BTreeSet::new();
+        for binding in &check.tasks {
+            let key = crate::objects::resolve_address(w, &binding.address);
+            ensure!(seen.insert(key), "duplicate Task binding in a check");
+            let obj = w
+                .objects
+                .get(key)
+                .ok_or_else(|| anyhow::anyhow!("unknown bound Task"))?;
+            ensure!(obj.current().present, "bound Task is absent");
+            ensure!(
+                crate::objects::schema(w)
+                    .types
+                    .get(&obj.kind)
+                    .is_some_and(|kind| kind.role == "task"),
+                "binding requires a configured Task role"
+            );
+            let task = crate::tasks::task(w, key)
+                .ok_or_else(|| anyhow::anyhow!("unknown bound Task process"))?;
+            ensure!(task.retired.is_none(), "bound Task is retired");
+            ensure!(
+                task.origin_revision == binding.origin_revision,
+                "stale Task contract revision"
+            );
+            ensure!(
+                !crate::tasks::review_required(w, key, task),
+                "bound Task needs source review"
+            );
+            ensure!(
+                crate::objects::verification_context(w, key)
+                    .is_some_and(|(context, _)| context == req),
+                "bound Task belongs to another verification context"
+            );
+            let mut parent = obj.current().parent.as_deref();
+            let mut parents = BTreeSet::new();
+            while let Some(address) = parent {
+                let address = crate::objects::resolve_address(w, address);
+                ensure!(parents.insert(address), "Task parent cycle");
+                if let Some((_, _, criterion)) = crate::objects::criterion_context(w, address) {
+                    ensure!(
+                        criterion.id == check.ac,
+                        "bound Task belongs to another criterion"
+                    );
+                    break;
+                }
+                let source = &w.objects[address];
+                if crate::objects::schema(w).types[&source.kind].role == "requirement" {
+                    break;
+                }
+                parent = source.current().parent.as_deref();
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn task_verdict(w: &Workspace, key: &str) -> &'static str {
+    let key = crate::objects::resolve_address(w, key);
+    let Some(task) = crate::tasks::task(w, key) else {
+        return "unverified";
+    };
+    if task.retired.is_some()
+        || crate::tasks::review_required(w, key, task)
+        || crate::tasks::readiness_blocker(w, key).is_some()
+    {
+        return "unverified";
+    }
+    let Some((_, revision)) = crate::objects::verification_context(w, key) else {
+        return "unverified";
+    };
+    let Some(run) = revision.runs.values().max_by_key(|run| run.started) else {
+        return "unverified";
+    };
+    if run.finished.is_none() || !run.discovery_complete {
+        return "unverified";
+    }
+    if run.task_contexts.get(key) != Some(&crate::tasks::context(w, key)) {
+        return "unverified";
+    }
+    let checks: Vec<_> = run
+        .plan
+        .iter()
+        .filter(|check| {
+            check.tasks.iter().any(|binding| {
+                crate::objects::resolve_address(w, &binding.address) == key
+                    && binding.origin_revision == task.origin_revision
+            })
+        })
+        .collect();
+    if checks.is_empty() {
+        return "unverified";
+    }
+    if checks.iter().any(|check| {
+        run.results
+            .get(&check.id)
+            .is_some_and(|result| result.outcome == "fail")
+    }) {
+        return "fail";
+    }
+    if checks.iter().any(|check| {
+        run.results
+            .get(&check.id)
+            .is_none_or(|result| result.outcome != "pass")
+    }) {
+        return "unverified";
+    }
+    if !revision.coverage_change.is_empty()
+        && revision
+            .coverage_review
+            .as_ref()
+            .is_none_or(|review| review.changes != revision.coverage_change)
+    {
+        return "unverified";
+    }
+    "pass"
+}
 pub fn verdict(r: &Revision, run: &Run, ac: &str) -> &'static str {
     if !r.confirmed || !ready(r, ac) || !run.discovery_complete || run.finished.is_none() {
         return "n/a";
@@ -428,6 +546,15 @@ pub fn apply(
             checks,
             enforce_coverage,
         } => {
+            validate_task_bindings(w, req, checks)?;
+            let task_contexts = checks
+                .iter()
+                .flat_map(|check| &check.tasks)
+                .map(|binding| {
+                    let address = crate::objects::resolve_address(w, &binding.address);
+                    (address.to_owned(), crate::tasks::context(w, address))
+                })
+                .collect();
             identifier(run)?;
             nonempty(scope)?;
             ensure!(
@@ -438,7 +565,14 @@ pub fn apply(
                 nonempty(k)?;
                 nonempty(v)?;
             }
-            let old_checks: Vec<Check> = if *n > 1 {
+            let old_checks: Vec<Check> = if let Some(current) = w
+                .requirements
+                .get(req)
+                .and_then(|q| q.revisions.last())
+                .filter(|r| !r.prior_checks.is_empty())
+            {
+                current.prior_checks.clone()
+            } else if *n > 1 {
                 w.requirements
                     .get(req)
                     .and_then(|q| {
@@ -453,6 +587,26 @@ pub fn apply(
             } else {
                 Vec::new()
             };
+            let current_bindings: BTreeSet<_> = checks
+                .iter()
+                .flat_map(|check| &check.tasks)
+                .map(|binding| (binding.address.clone(), binding.origin_revision))
+                .collect();
+            let obsolete_bindings: BTreeSet<_> = w
+                .requirements
+                .get(req)
+                .and_then(|q| q.revisions.last())
+                .into_iter()
+                .flat_map(|r| r.runs.values())
+                .flat_map(|run| &run.plan)
+                .flat_map(|check| &check.tasks)
+                .filter(|binding| {
+                    crate::tasks::task(w, &binding.address).is_none_or(|task| {
+                        task.retired.is_some() || task.origin_revision != binding.origin_revision
+                    })
+                })
+                .map(|binding| (binding.address.clone(), binding.origin_revision))
+                .collect();
             let task_projects: Vec<String> = w
                 .task_process
                 .iter()
@@ -552,16 +706,36 @@ pub fn apply(
                         checks.iter().any(|n| n.id == c.id
                             && n.ac == c.ac
                             && n.method == c.method
-                            && n.expected == c.expected),
+                            && n.expected == c.expected
+                            && c.tasks.iter().all(|binding| n.tasks.contains(binding)
+                                || obsolete_bindings.contains(&(
+                                    binding.address.clone(),
+                                    binding.origin_revision
+                                )))),
                         "expected check disappeared/changed; revise REQ to replace its verification contract"
                     );
                 }
             }
             if r.coverage_policy || *enforce_coverage {
-                let changes: Vec<Check> = old_checks
+                let mut changes: Vec<Check> = old_checks
                     .into_iter()
                     .filter(|old| !checks.iter().any(|new| new == old))
                     .collect();
+                for check in r
+                    .coverage_change
+                    .iter()
+                    .chain(r.runs.values().flat_map(|run| &run.plan))
+                {
+                    if check.tasks.iter().any(|binding| {
+                        obsolete_bindings
+                            .contains(&(binding.address.clone(), binding.origin_revision))
+                            && !current_bindings
+                                .contains(&(binding.address.clone(), binding.origin_revision))
+                    }) && !changes.contains(check)
+                    {
+                        changes.push(check.clone());
+                    }
+                }
                 if r.coverage_review
                     .as_ref()
                     .is_some_and(|review| review.changes != changes)
@@ -581,6 +755,7 @@ pub fn apply(
                     started: position,
                     finished: None,
                     results: BTreeMap::new(),
+                    task_contexts,
                 },
             );
         }

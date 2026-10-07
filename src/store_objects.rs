@@ -371,27 +371,31 @@ pub async fn read_objects(
         None
     };
     let rows = conn.query(r#"
-        WITH RECURSIVE task_parents(task,address,status) AS (
-            SELECT t.address,COALESCE(a.target,t.parent),COALESCE(t.process->>'status','open')
+        WITH RECURSIVE task_parents(task,address,status,verification) AS (
+            SELECT t.address,COALESCE(a.target,t.parent),COALESCE(t.process->>'status','open'),COALESCE(t.process->>'verification','unverified')
             FROM joppa.objects t
             LEFT JOIN joppa.object_aliases a ON a.workspace=t.workspace AND a.address=t.parent
             WHERE $9::boolean AND t.workspace=$1 AND t.present AND t.parent IS NOT NULL
                 AND t.kind=ANY($10::text[])
             UNION
-            SELECT t.task,COALESCE(a.target,p.parent),t.status
+            SELECT t.task,COALESCE(a.target,p.parent),t.status,t.verification
             FROM task_parents t JOIN joppa.objects p ON p.workspace=$1 AND p.address=t.address
             LEFT JOIN joppa.object_aliases a ON a.workspace=p.workspace AND a.address=p.parent
             WHERE p.parent IS NOT NULL AND p.kind<>ALL($11::text[]) AND p.kind<>ALL($12::text[])
         ), work_counts AS (
             SELECT address,COUNT(*) FILTER (WHERE status NOT IN ('done','retired')) AS active,
-                COUNT(*) FILTER (WHERE status='done') AS done,COUNT(*) FILTER (WHERE status='retired') AS retired
+                COUNT(*) FILTER (WHERE status='done') AS done,COUNT(*) FILTER (WHERE status='retired') AS retired,
+                COUNT(*) FILTER (WHERE status='done' AND verification='pass') AS done_pass,
+                COUNT(*) FILTER (WHERE status='done' AND verification='fail') AS done_fail,
+                COUNT(*) FILTER (WHERE status='done' AND verification NOT IN ('pass','fail')) AS done_unverified
             FROM task_parents GROUP BY address
         )
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,
             (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
-            jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text
+            jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0),
+                'done_verification',jsonb_build_object('pass',COALESCE(w.done_pass,0),'fail',COALESCE(w.done_fail,0),'unverified',COALESCE(w.done_unverified,0)))::text
         FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address

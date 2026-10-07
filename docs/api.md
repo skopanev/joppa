@@ -404,3 +404,31 @@ For custom types, these process keys are full addresses such as `spec:billing` a
 Use the same criterion key in `plan.checks[].ac` and in the automated test tag, such as `[measure:paid-access]`.
 Legacy process keys remain compatible.
 Public copied IDs are opaque. Read their type from the object response.
+
+
+## Task check evidence
+
+A sealed check can include `tasks: [{"address": "task:ID", "origin_revision": 2}]`.
+Read `process.origin_revision` from the Task. This identifies its stable contract.
+Claim, release and completion change the object revision but preserve that contract revision.
+The server rejects stale, absent, retired, foreign-context or duplicate bindings atomically.
+Task names and permitted parents follow the workspace schema.
+A criterion Task must match the check criterion. A specification Task can use any check within that context.
+
+Use the existing `plan`, `result` and `finish` operations. Seal the plan before execution.
+The latest started run decides Task verification. A newer unfinished run makes it unverified.
+All declared Task checks must pass. A failed check gives fail. Missing, skipped or absent checks give unverified.
+Task verification does not complete work or confirm its specification.
+A Task without declared bindings cannot inherit a parent pass.
+Changed contracts, source context and dependencies invalidate current evidence without deleting history.
+Required bindings cannot disappear from a later plan. Changed coverage needs the existing owner review.
+
+The existing test adapter preserves these bindings. It can use the authenticated MCP client:
+
+```sh
+python3 scripts/run_checks.py WORKSPACE checks.json --joppa ./client/joppa
+```
+
+Use the existing `JOPPA_MCP_URL` and private `JOPPA_TOKEN_FILE` settings.
+The adapter reports actual command outcomes. It seals the plan before it starts a command.
+It reports each failure and then finishes the run. No extra test runner is required.

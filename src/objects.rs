@@ -2072,40 +2072,8 @@ pub fn verification(w: &Workspace, key: &str) -> &'static str {
     if !work_ready(w, key) {
         return "unverified";
     }
-    if let Some(t) = crate::tasks::task(w, key) {
-        if t.done.is_none()
-            || t.retired.is_some()
-            || crate::tasks::process(w, key).is_some_and(|p| p["review_required"] == true)
-        {
-            return "unverified";
-        }
-        let mut parent = w
-            .objects
-            .get(key)
-            .and_then(|o| o.current().parent.as_deref());
-        let mut seen = BTreeSet::new();
-        while let Some(key) = parent {
-            if !seen.insert(key) {
-                return "unverified";
-            }
-            if criterion_context(w, key).is_some()
-                || schema(w)
-                    .types
-                    .get(&w.objects[key].kind)
-                    .is_some_and(|t| t.role == "requirement")
-            {
-                return if verification(w, key) == "pass" {
-                    "pass"
-                } else {
-                    "unverified"
-                };
-            }
-            parent = w
-                .objects
-                .get(key)
-                .and_then(|o| o.current().parent.as_deref());
-        }
-        return "unverified";
+    if crate::tasks::task(w, key).is_some() {
+        return crate::checks::task_verdict(w, key);
     }
     if let Some((req, r, ac)) = criterion_context(w, key) {
         let summary = requirement_summary(w, req, r);
@@ -2233,6 +2201,7 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             Some("done") if p["verification"] == "pass" => {
                 ("green", "Work complete · Checks passed")
             }
+            Some("done") if p["verification"] == "fail" => ("red", "Work complete · Checks failed"),
             Some("done") => ("grey", "Work complete · Unverified"),
             Some("retired") => ("grey", "Task retired"),
             Some("in_progress") => ("yellow", "Task in progress"),
