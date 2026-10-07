@@ -151,6 +151,27 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
 
     reset(&pool).await?;
     store::execute_input(&pool, &ws, "owner", "normal-write", &json!({"op":"edit_domain","id":"d","title":"Measured current title","owner":"owner","reason":"Check current write access"})).await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "normal-create-domain",
+        &json!({"op":"domain","id":"new","title":"Measured new domain","owner":"owner"}),
+    )
+    .await?;
+    store::execute_input(&pool, &ws, "agent", "normal-create-input", &json!({"op":"save_object","kind":"note","id":"new-input","revision":0,"parent":null,"data":{"title":"Measured new Input","owner":"owner","body":"New input"},"links":[],"reason":"Check new object registration"})).await?;
+    let mut new_requirement = revision(0);
+    new_requirement["req"] = json!("new");
+    new_requirement["acs"][0]["id"] = json!("new-ios");
+    new_requirement["acs"][1]["id"] = json!("new-key");
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "normal-create-requirement",
+        &new_requirement,
+    )
+    .await?;
     let writes = journal_selects(&pool).await?;
     println!("Current write journal probe: {writes}");
     assert_eq!(writes["calls"], 0, "normal write selected journal events");
@@ -354,5 +375,124 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
     println!(
         "Legacy retries: fallback_detected=true, migrated_journal_calls=0, alias=true, uri=true, actor_and_content_guard=true, complete_batch_receipt=true, marker_persists=true"
     );
+    Ok(())
+}
+
+// [ac:17a50553-b267-4ecf-8f74-190486759f8d]
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
+async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
+-> anyhow::Result<()> {
+    for rename_first in [true, false] {
+        let (pool, ws) = fixture().await?;
+        pool.resize(1);
+        let backend: i32 = pool
+            .get()
+            .await?
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await?
+            .get(0);
+        let legacy_function: String = pool
+            .get()
+            .await?
+            .query_one(
+                "SELECT pg_get_functiondef('joppa.register_item(text,text,text)'::regprocedure)",
+                &[],
+            )
+            .await?
+            .get(0);
+        let prefix = format!("prefix-{}", uuid::Uuid::new_v4().simple());
+        let rename = store::BatchOperation {
+            reference: None,
+            command: json!({"op":"rename_workspace","title":"Renamed product","reference_prefix":prefix,"reason":"Check batch order"}),
+        };
+        let create = store::BatchOperation {
+            reference: None,
+            command: json!({"op":"domain","id":"ordered","title":"Ordered domain","owner":"owner"}),
+        };
+        let operations = if rename_first {
+            vec![rename, create]
+        } else {
+            vec![create, rename]
+        };
+        reset(&pool).await?;
+        let result =
+            store::execute_batch(&pool, &ws, "owner", "ordered-batch", &operations).await?;
+        let create_index = usize::from(rename_first);
+        let expected_prefix = if rename_first { &prefix } else { &ws };
+        assert!(
+            result["results"][create_index]["system_ids"]["domain"]["ordered"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{expected_prefix}-D-"))
+        );
+        let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());
+        store::execute_input(
+            &pool,
+            &foreign,
+            "owner",
+            "workspace",
+            &json!({"op":"workspace","title":"Foreign product"}),
+        )
+        .await?;
+        let other = store::execute_input(
+            &pool,
+            &foreign,
+            "owner",
+            "create",
+            &json!({"op":"domain","id":"other","title":"Other domain","owner":"owner"}),
+        )
+        .await?;
+        assert!(
+            other["system_ids"]["domain"]["other"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{foreign}-D-"))
+        );
+        assert_eq!(journal_selects(&pool).await?["calls"], 0);
+        assert!(
+            store::execute_input(
+                &pool,
+                &ws,
+                "owner",
+                "invalid-create",
+                &json!({"op":"domain","id":"invalid","title":"Invalid domain","owner":"unknown"})
+            )
+            .await
+            .is_err()
+        );
+        let row = pool
+            .get()
+            .await?
+            .query_one(
+                "SELECT pg_backend_pid(),NULLIF(current_setting('joppa.reference_prefix',true),'')",
+                &[],
+            )
+            .await?;
+        assert_eq!(row.get::<_, i32>(0), backend);
+        assert!(
+            row.get::<_, Option<String>>(1).is_none(),
+            "prefix leaked after commit or rollback"
+        );
+        reset(&pool).await?;
+        pool.get()
+            .await?
+            .execute(
+                "SELECT joppa.register_item($1,'domain','admin-probe')",
+                &[&ws],
+            )
+            .await?;
+        let admin = journal_selects(&pool).await?;
+        assert_eq!(
+            admin["calls"], 1,
+            "probe must detect the administrative legacy function"
+        );
+        assert_eq!(admin["rows"], 1);
+        store::migrate(&pool).await?;
+        assert_eq!(pool.get().await?.query_one("SELECT pg_get_functiondef('joppa.register_item(text,text,text)'::regprocedure)", &[]).await?.get::<_,String>(0), legacy_function);
+        println!(
+            "Current prefix: rename_first={rename_first}, journal_calls=0, same_backend=true, no_context_leak=true, legacy_admin_probe={admin}, legacy_function_preserved=true"
+        );
+    }
     Ok(())
 }

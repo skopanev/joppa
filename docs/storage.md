@@ -54,6 +54,12 @@ It checks current reads, normal writes, legacy retries, one selected past revisi
 It also requires administrative recovery to produce observed journal reads and the same projection rows.
 This extension runs in test databases and is not required by the production application.
 
+Current event inserts supply their reference prefix through a transaction-local database setting.
+The ID trigger uses this prefix without selecting journal events.
+Each operation sets the prefix, so creation follows a preceding rename inside the same batch.
+Commit and rollback clear the setting. Current object registration also passes its known prefix directly.
+Older binaries and direct administrative imports retain the journal-based registration function.
+
 `backfill-board` rebuilds projections under a workspace lock. It commits all projections, including search, in one transaction.
 Deployment stops the application before projection migration. Rollback rebuilds the previous cache format before restarting the previous binary.
 

@@ -328,8 +328,13 @@ async fn item_ids(
             let (original_kind, original_id) = crate::objects::original_identity(state, kind, id);
             client
                 .execute(
-                    "SELECT joppa.register_item($1,$2,$3)",
-                    &[&workspace, &original_kind, &original_id],
+                    "SELECT joppa.register_item($1,$2,$3,$4)",
+                    &[
+                        &workspace,
+                        &original_kind,
+                        &original_id,
+                        &state.reference_prefix.as_deref().unwrap_or(workspace),
+                    ],
                 )
                 .await?;
             if original_kind != kind || original_id != id {
@@ -477,7 +482,7 @@ async fn write(
             }
             let event_request = if batch { format!("batch-{batch_id}-{index}") } else { request_id.to_owned() };
             let payload = serde_json::to_string(&command)?;
-            let recorded_at:String=tx.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload]).await?.get(0);
+            let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,$2,$3,$4,$5::text::jsonb FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace)]).await?.get(0);
             commands::apply(&mut state, actor, &command, position, &recorded_at)?;
             crate::objects::validate_tree(&state)?;
             events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
