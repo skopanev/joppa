@@ -160,6 +160,8 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
     )
     .await?;
     store::execute_input(&pool, &ws, "agent", "normal-create-input", &json!({"op":"save_object","kind":"note","id":"new-input","revision":0,"parent":null,"data":{"title":"Measured new Input","owner":"owner","body":"New input"},"links":[],"reason":"Check new object registration"})).await?;
+    store::execute_input(&pool, &ws, "owner", "normal-create-capability", &json!({"op":"capability","id":"new-capability","title":"Measured new capability","domain":"d"})).await?;
+    store::execute_input(&pool, &ws, "owner", "normal-create-consumer", &json!({"op":"consumer","id":"new-consumer","title":"Measured new consumer","owner":"owner"})).await?;
     let mut new_requirement = revision(0);
     new_requirement["req"] = json!("new");
     new_requirement["acs"][0]["id"] = json!("new-ios");
@@ -410,11 +412,26 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
             reference: None,
             command: json!({"op":"domain","id":"ordered","title":"Ordered domain","owner":"owner"}),
         };
-        let operations = if rename_first {
+        let mut operations = if rename_first {
             vec![rename, create]
         } else {
             vec![create, rename]
         };
+        let second_prefix = format!("second-{}", uuid::Uuid::new_v4().simple());
+        operations.extend([
+            store::BatchOperation { reference: None, command: json!({"op":"rename_workspace","title":"Renamed twice","reference_prefix":second_prefix,"reason":"Check the second batch rename"}) },
+            store::BatchOperation { reference: None, command: json!({"op":"domain","id":"second","title":"Second domain","owner":"owner"}) },
+        ]);
+        let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());
+        // Administrative provisioning precedes the normal command probe.
+        store::execute_input(
+            &pool,
+            &foreign,
+            "owner",
+            "workspace",
+            &json!({"op":"workspace","title":"Foreign product"}),
+        )
+        .await?;
         reset(&pool).await?;
         let result =
             store::execute_batch(&pool, &ws, "owner", "ordered-batch", &operations).await?;
@@ -426,15 +443,12 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
                 .unwrap()
                 .starts_with(&format!("{expected_prefix}-D-"))
         );
-        let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());
-        store::execute_input(
-            &pool,
-            &foreign,
-            "owner",
-            "workspace",
-            &json!({"op":"workspace","title":"Foreign product"}),
-        )
-        .await?;
+        assert!(
+            result["results"][3]["system_ids"]["domain"]["second"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{second_prefix}-D-"))
+        );
         let other = store::execute_input(
             &pool,
             &foreign,
@@ -450,6 +464,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
                 .starts_with(&format!("{foreign}-D-"))
         );
         assert_eq!(journal_selects(&pool).await?["calls"], 0);
+        reset(&pool).await?;
         assert!(
             store::execute_input(
                 &pool,
@@ -460,6 +475,11 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
             )
             .await
             .is_err()
+        );
+        let inserts: i64 = pool.get().await?.query_one("SELECT COALESCE(sum(calls),0)::bigint FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND userid=(SELECT usesysid FROM pg_user WHERE usename=current_user) AND query ILIKE $1", &[&"%INSERT INTO joppa.events%"]).await?.get(0);
+        assert_eq!(
+            inserts, 1,
+            "rollback test must execute the context-setting event INSERT"
         );
         let row = pool
             .get()
