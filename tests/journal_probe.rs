@@ -22,9 +22,14 @@ async fn selects(pool: &Pool, table: &str) -> anyhow::Result<Value> {
         .into_iter()
         .filter_map(|r| {
             let query: String = r.get(0);
-            let normalized = query.to_ascii_lowercase();
-            (normalized.contains("select") && normalized.contains(table))
-                .then(|| json!({"query":query,"calls":r.get::<_,i64>(1),"rows":r.get::<_,i64>(2)}))
+            let normalized = query
+                .to_ascii_lowercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (normalized.contains(&format!("from {table}"))
+                || normalized.contains(&format!("join {table}")))
+            .then(|| json!({"query":query,"calls":r.get::<_,i64>(1),"rows":r.get::<_,i64>(2)}))
         })
         .collect();
     let count: i64 = statements
