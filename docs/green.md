@@ -85,12 +85,15 @@ new backend build does not rewrite that report, create a REQ revision or verify
 the new combination. Record and execute a new plan for the changed subject, then
 obtain acceptance of the new successful run.
 
-The current portal summarizes the latest-started completed run; it does not
-maintain a current-deployment comparison. Inspect the run subject before using
+The current verdict uses the latest-started run. An unfinished run is unverified.
+Elapsed time alone does not expire a pass or refuse acceptance or launch.
+The portal does not maintain a current-deployment comparison. Inspect the run subject before using
 a green card as evidence about production. A release pipeline must supply its
 actual target versions to the launch gate and enforce the result. The gate
 checks the keys declared by the recorded run; it cannot discover a component
-that the verification contract never named.
+that the verification contract never named. Include every relevant environment
+version in `verification_scope.subject_keys`. An unchanged code SHA cannot
+verify a changed database, image or external service version.
 
 For reproducibility, identify the input fixture/data version and record the
 steps, expected behavior, observed behavior and relevant report/log references.

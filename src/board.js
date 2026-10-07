@@ -231,8 +231,6 @@ function showStatusHint(circle){
 }
 document.addEventListener('scroll',hideStatusHint,true);
 function statusCircle(signal,number){
-  if(signal?.stale_after&&Date.parse(signal.stale_after)<=Date.now()&&signal.tone!=='red')
-    signal={...signal,tone:'orange',label:signal.status?'Checks stale':'Contains stale checks'};
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
   const assessment=signal.readiness_blocker||signal.assessment;
   const hint='Status: '+signal.label+assessmentHint(assessment)+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
@@ -603,9 +601,8 @@ function renderVerification(root,record){
         count++;const result=run.results?.[check.id];
         const row=E('article',undefined,'ac-check');
         const at=record.result_dates?.[id]?.[check.id];
-        const stale=result?.outcome==='pass'&&at&&Date.now()-Date.parse(at)>7*24*60*60*1000;
-        const label=stale?'Passed · older than 7 days':result?.outcome==='pass'?'Passed':result?.outcome==='fail'?'Failed':result?.outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Missing result':'Running';
-        const name=E('h4',undefined,'ac-check-heading');name.append(statusCircle({tone:result?.outcome==='fail'?'red':stale?'orange':result?.outcome==='pass'?'green':result?'grey':'yellow',label,at}),E('span',check.id));
+        const label=result?.outcome==='pass'?'Passed':result?.outcome==='fail'?'Failed':result?.outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Missing result':'Running';
+        const name=E('h4',undefined,'ac-check-heading');name.append(statusCircle({tone:result?.outcome==='fail'?'red':result?.outcome==='pass'?'green':result?'grey':'yellow',label,at}),E('span',check.id));
         row.append(name,E('p',label+' · '+run.scope,'node-meta'));
         cardFact(row,'Expected',(check.expected||[]).join(', '));
         if(result){cardFact(row,'Observed',(result.observed||[]).join(', ')||'Nothing recorded');if(result.note)cardFact(row,'Evidence',result.note);}

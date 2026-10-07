@@ -3,6 +3,26 @@ use common::*;
 use serde_json::json;
 
 #[test]
+fn acceptance_does_not_expire_by_calendar_age() {
+    let mut w = World::new();
+    w.ready();
+    w.run("old-pass", "pass");
+    let command =
+        serde_json::from_value(json!({"op":"accept","req":"r","revision":1,"run":"old-pass"}))
+            .unwrap();
+    joppa::commands::apply(
+        &mut w.state,
+        "owner",
+        &command,
+        w.position + 1,
+        "2036-01-01T00:00:00Z",
+    )
+    .unwrap();
+    w.position += 1;
+    assert_eq!(w.summary(1)["accepted"], true);
+}
+
+#[test]
 fn only_workspace_owner_can_rename_without_changing_content() {
     let mut w = World::new();
     let command =

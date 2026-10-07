@@ -368,10 +368,10 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'assess','req':'key','revision':1,'ac':'key-rights',
             'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
         ok({'op':'define_verification_scope','req':'key','revision':1,
-            'subject_keys':['environment'],'scope':'Key permissions before launch',
+            'subject_keys':['code','environment'],'scope':'Key permissions before launch',
             'reason':'Owner-approved provider configuration boundary'})
         ok({'op':'plan','req':'key','revision':1,'run':'manual1',
-            'subject':{'environment':'config-v1'},'scope':'Key permissions before launch',
+            'subject':{'code':'code-sha-v1','environment':'config-v1'},'scope':'Key permissions before launch',
             'discovery_complete':True,'checks':[{'id':'manual-key-rights','ac':'key-rights',
                 'method':'manual','expected':['read','verify']}]})
         ok({'op':'result','req':'key','revision':1,'run':'manual1',
@@ -387,9 +387,12 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert process['criteria'][0]['address'] == 'ac:key-rights'
         assert process['result_dates']['manual1']['manual-key-rights']
         assert 'state' not in process and 'history' not in process
-        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v1"}', text=True, capture_output=True)
+        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v1","environment":"config-v1"}', text=True, capture_output=True)
         assert gate.returncode == 0, gate.stderr
-        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"environment":"config-v2"}', text=True, capture_output=True)
+        # [launch-gate-ac1] The same code cannot reuse a pass from another environment.
+        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v1","environment":"config-v2"}', text=True, capture_output=True)
+        assert gate.returncode != 0
+        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v2","environment":"config-v1"}', text=True, capture_output=True)
         assert gate.returncode != 0
         ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','contract':'Implement command and attach merged build evidence'})
         # The portal retains older revisions after a wording change.

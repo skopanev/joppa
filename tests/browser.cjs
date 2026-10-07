@@ -34,7 +34,7 @@ const old=new Date(Date.now()-14*24*60*60*1000).toISOString();
 const record={revision:3,confirmed:true,
   verification_scope:{scope:'One build of the web client'},
   criteria:[
-    {id:'m1',address:'measure:m1',title:'Sign in works',signal:{tone:'green',label:'Checks passed'}},
+    {id:'m1',address:'measure:m1',title:'Sign in works',signal:{tone:'green',label:'Checks passed',stale_after:old}},
     {id:'m2',address:'measure:m2',title:'Session survives a refresh',signal:{tone:'red',label:'Checks failed'}},
     {id:'m3',address:'measure:m3',title:'Nothing linked yet',signal:{tone:'grey',label:'Not checked'}},
   ],
@@ -139,10 +139,13 @@ try{
     'a criterion lists each check planned against it');
   const tone=locator=>locator.locator('.ac-check-heading .status-circle').getAttribute('data-tone');
   assert.equal(await tone(criterion(0).locator('.ac-check').nth(0)),'green','a pass reads green');
-  assert.equal(await tone(criterion(0).locator('.ac-check').nth(1)),'orange',
-    'a pass older than seven days reads orange');
+  assert.equal(await tone(criterion(0).locator('.ac-check').nth(1)),'green',
+    '[green-needs-all-checks-ac4] elapsed time alone does not expire a pass');
   assert.equal(await tone(criterion(1).locator('.ac-check').nth(0)),'red','a failure reads red');
-  await criterion(0).locator('.ac-check').nth(1).getByText('older than 7 days',{exact:false}).waitFor();
+  assert.match(await criterion(0).locator('.ac-check').nth(1).locator('.status-circle').getAttribute('aria-label'),
+    /^Status: Passed/,'the old pass keeps its outcome label');
+  assert.equal(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('data-tone'),
+    'green','the server verdict stays green when a legacy stale_after date has elapsed');
   await criterion(1).locator('.ac-check').nth(1).getByText('Skipped',{exact:false}).waitFor();
   await criterion(2).getByText('No tests linked yet.',{exact:true}).waitFor();
   assert.match(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('aria-label'),

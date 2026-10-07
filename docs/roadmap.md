@@ -54,8 +54,9 @@ Acceptance criteria:
   REQ revision, run and component versions; expose expected/observed evidence.
 - Distinguish no declared checks, missing results, skipped results and a running
   plan. None can produce a green circle. Render the AC circle grey for
-  unverified, yellow for pending decisions or work, red for failure, orange for
-  a pass older than seven days, and green only for a fresh server-verified pass.
+  unverified, yellow for pending decisions or work, red for failure, and green
+  for a server-verified pass. Elapsed time alone does not expire a pass.
+  Current evidence must match the context revision and requested subject.
 - A REQ is green for verification only when all of its ACs pass on one subject.
   A capability aggregates every current REQ, including items hidden by filters;
   empty capabilities or empty AC sets cannot appear verified.
