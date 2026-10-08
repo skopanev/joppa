@@ -75,6 +75,21 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     for command in setup() {
         apply(&pool, &ws, "owner", command).await?;
     }
+    let roots = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("domain"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        roots["items"][0]["verification_summary"],
+        json!({"total":2,"passed":0})
+    );
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     apply(&pool, &ws, "agent", assess("ios", true)).await?;
     apply(&pool, &ws, "agent", assess("key", false)).await?;
@@ -205,6 +220,49 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
         .is_err()
     );
     apply(&pool, &ws, "owner", json!({"op":"define_verification_scope","req":"r","revision":1,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Use the complete fixture subject"})).await?;
+    apply(&pool, &ws, "runner", plan("mixed")).await?;
+    apply(
+        &pool,
+        &ws,
+        "runner",
+        result(
+            "mixed",
+            "[ios] paid access",
+            "pass",
+            vec!["access retained"],
+        ),
+    )
+    .await?;
+    apply(
+        &pool,
+        &ws,
+        "owner",
+        result("mixed", "key-permissions", "fail", vec!["read", "verify"]),
+    )
+    .await?;
+    apply(
+        &pool,
+        &ws,
+        "runner",
+        json!({"op":"finish","req":"r","revision":1,"run":"mixed"}),
+    )
+    .await?;
+    let roots = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("domain"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        roots["items"][0]["verification_summary"],
+        json!({"total":2,"passed":1})
+    );
+    assert_eq!(roots["items"][0]["signal"]["tone"], "grey");
     apply(&pool, &ws, "runner", plan("pass")).await?;
     apply(
         &pool,
@@ -228,7 +286,38 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     )
     .await?;
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
+    let roots = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("domain"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        roots["items"][0]["verification_summary"],
+        json!({"total":2,"passed":2})
+    );
+    assert_eq!(roots["items"][0]["signal"]["tone"], "grey");
     apply(&pool, &ws, "agent", revision(1)).await?;
+    let roots = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("domain"),
+            limit: 1,
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(
+        roots["items"][0]["verification_summary"],
+        json!({"total":2,"passed":0})
+    );
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     for ac in ["ios", "key"] {
         let mut a = assess(ac, true);
@@ -321,6 +410,20 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         );
     }
     let ordinary_before = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
+    let spec = ordinary_before["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["address"] == "spec:s")
+        .unwrap();
+    assert_eq!(spec["verification_summary"], json!({"total":2,"passed":0}));
+    let unrelated = ordinary_before["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["address"] == "input:raw")
+        .unwrap();
+    assert!(unrelated.get("verification_summary").is_none());
     assert!(
         ordinary_before["items"]
             .as_array()

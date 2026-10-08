@@ -419,6 +419,31 @@ pub async fn read_objects(
             item["work_summary"] = serde_json::from_str(row.get(15))?;
         }
     }
+    if !items.is_empty() && !criterion_kinds.is_empty() {
+        let addresses: Vec<_> = items.iter().filter_map(|i| i["address"].as_str()).collect();
+        let counts = conn.query(r#"
+            WITH RECURSIVE descendants(root,address) AS (
+                SELECT address,address FROM joppa.objects WHERE workspace=$1 AND address=ANY($2::text[])
+                UNION
+                SELECT d.root,c.address FROM descendants d
+                JOIN joppa.objects c ON c.workspace=$1 AND c.parent=d.address
+            )
+            SELECT d.root,COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE c.signal->>'tone'='green') AS passed
+            FROM descendants d JOIN joppa.objects c ON c.workspace=$1 AND c.address=d.address
+            WHERE c.present AND c.kind=ANY($3::text[])
+            GROUP BY d.root
+        "#, &[&workspace,&addresses,&criterion_kinds]).await?;
+        for row in counts {
+            if let Some(item) = items
+                .iter_mut()
+                .find(|i| i["address"] == row.get::<_, String>(0))
+            {
+                item["verification_summary"] =
+                    json!({"total":row.get::<_,i64>(1),"passed":row.get::<_,i64>(2)});
+            }
+        }
+    }
     let next = more.then(|| {
         format!(
             "{position}:{}",

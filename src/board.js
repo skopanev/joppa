@@ -537,7 +537,15 @@ function commonObjectCard(item){
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
   const signal=item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
-  summary.append(nodeTitle(item.title,signal),objectTypeLabel(item.kind));
+  const title=nodeTitle(item.title,signal),counts=item.verification_summary;
+  const isCriterion=data.objectTypes?.[item.kind]?.role==='ac';
+  if(isCriterion&&signal.tone==='green'||!isCriterion&&counts?.total>0){
+    const passed=isCriterion||counts.passed>0;
+    const chip=E('span',isCriterion?'Passed':`${counts.passed}/${counts.total} passed`,'verification-chip'+(passed?' has-passes':''));
+    if(!isCriterion)chip.setAttribute('aria-label',`${counts.passed} of ${counts.total} criteria have passing checks`);
+    title.firstChild.after(chip);
+  }
+  summary.append(title,objectTypeLabel(item.kind));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);

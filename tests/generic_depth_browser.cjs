@@ -31,6 +31,8 @@ const rows=[...chain.map((_,i)=>row(i)),
    parent:null,item_id:'W-O-9',links:[{target:address(5),relation:'related'},{target:'intake:in-2',relation:'related'}]},
   {...row(0),address:'intake:in-2',kind:'intake',id:'in-2',title:'Second input',
    parent:null,item_id:'W-O-10',links:[{target:'intake:in-1',relation:'related'}]}];
+rows[0].verification_summary={total:2,passed:1};
+rows[4].signal={tone:'green',label:'Checks passed'};
 const find=a=>rows.find(r=>r.address===a);
 const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item_id:find(a).item_id,
   current_revision:1,revision_count:1,work_ready:true,review_required:false,
@@ -102,6 +104,11 @@ try{
   assert.match(await page.locator(`[data-object-address="${address(1)}"] > .object-body > .object-meta`).innerText(),/Owner: Rita Petrov/);
   assert.match(await page.locator(`[data-object-address="${address(5)}"] > .object-body > .object-meta`).innerText(),/Owner: build-runner/);
   const rootSummary=page.locator(`[data-object-address="${address(0)}"] > summary`);
+  assert.equal(await rootSummary.locator('.verification-chip').innerText(),'1/2 passed');
+  assert.equal(await rootSummary.locator('.status-circle').getAttribute('data-tone'),'grey',
+    'Partial progress does not verify the whole group');
+  assert.equal(await page.locator(`[data-object-address="${address(4)}"] > summary .verification-chip`).innerText(),'Passed',
+    'A custom criterion type shows a visible passing label');
   await rootSummary.focus();
   assert.equal(await rootSummary.evaluate(e=>getComputedStyle(e).outlineStyle),'none','Card focus does not outline the whole block');
   assert.equal(await page.getByRole('tabpanel').getAttribute('tabindex'),'-1','Collection panels do not add an invisible keyboard stop');
