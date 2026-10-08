@@ -586,7 +586,8 @@ function commonObjectCard(item,loadedDetail){
     chip=E('span',isCriterion?'Passed':counts.passed>0?`${counts.passed}/${counts.total}`:String(counts.total),'verification-chip'+(passed?' has-passes':''));
     if(!isCriterion)chip.setAttribute('aria-label',`${counts.passed} of ${counts.total} criteria have passing checks`);
   }
-  summary.append(title,objectTypeLabel(item.kind),...(chip?[chip]:[]));
+  // An empty slot keeps the count column aligned on rows without a count.
+  summary.append(title,objectTypeLabel(item.kind),chip||E('span',undefined,'count-slot'));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);

@@ -130,8 +130,9 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object>summary>.node-title{flex:1;min-width:0;font-size:var(--object-title-size,15px);font-weight:normal;color:var(--heading);line-height:1.45;
   overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .type-label{color:var(--muted)}
-.type-badge{flex:none;margin-right:-.11em;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
-:not(.object-children)>.common-object>summary>.type-badge{display:none}
+.type-badge{flex:none;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
+.common-object>summary>.type-badge{min-width:2.8rem;text-align:left}
+:not(.object-children)>.common-object>summary>.type-badge{visibility:hidden}
 .type-badge:focus-visible{outline:1px dashed var(--object-color,var(--heading));outline-offset:3px}
 .common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
@@ -139,7 +140,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .object-body,.common-object .object-body{padding:0 0 1.2em 0}
 .object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + var(--row-gap))}
-.object-children{margin:.6em 0 0 3px;padding-left:1.2rem;border-left:1px dashed var(--rule)}
+.object-children{margin:.6em 0 0 3px;padding-left:calc(4px + var(--row-gap));border-left:1px dashed var(--rule)}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
 
@@ -163,7 +164,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .object-secondary{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 1.4em;margin-top:.4em}
 .object-section{margin:0;padding:.15em 0;border:0}
 .object-section[open]{flex-basis:100%;padding-bottom:.6em}
-.object-section>summary{display:flex;align-items:baseline;gap:.5em;font-size:.85em;color:var(--muted)}
+.object-section>summary{display:flex;align-items:baseline;gap:.5em;margin-left:calc(-1.2em - 1.5px);font-size:.85em;color:var(--muted)}
 .object-section[open]>summary{margin-bottom:.4em}
 .object-secondary .object-meta{margin-top:0}
 .object-loading{padding:.6em 0;color:var(--muted);font-size:.85em}
@@ -187,7 +188,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .ready{--status-ink:#196b70}.pass{--status-ink:#2d6c3c}.fail{--status-ink:#a13935}
 .verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .node-title>.status-circle{vertical-align:middle}
-.common-object>summary>.verification-chip{flex:none;margin:0;font-size:.8rem;font-variant-numeric:tabular-nums}
+.common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
 .verification-chip.has-passes{color:#2d6c3c}
 .ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
 .ac-check{padding:.3em 0}
@@ -262,6 +263,8 @@ dialog::backdrop{background:#22222240}
   .common-object>summary>.node-title{flex:1 1 100%}
   /* Вторая строка начинается под текстом заголовка. Метка верхнего уровня скрыта, поэтому отступ берёт следующий элемент. */
   .common-object>summary{--second-line:calc(8px + var(--row-gap))}
+  :not(.object-children)>.common-object>summary>.type-badge,.common-object>summary>.count-slot{display:none}
+  .common-object>summary>.verification-chip{min-width:0}
   .common-object>summary>.node-title+.type-badge,
   :not(.object-children)>.common-object>summary>.node-title+.type-badge+*{margin-left:var(--second-line)}
   .object-children{padding-left:.8rem}
