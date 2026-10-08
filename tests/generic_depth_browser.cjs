@@ -33,6 +33,7 @@ const rows=[...chain.map((_,i)=>row(i)),
    parent:null,item_id:'W-O-10',links:[{target:'intake:in-1',relation:'related'}]}];
 rows[0].verification_summary={total:2,passed:1};
 rows[4].signal={tone:'green',label:'Checks passed'};
+rows.push({...row(4),address:'measure:measure-2',id:'measure-2',title:'Failed condition',item_id:'W-MEASURE-2',signal:{tone:'red',label:'Checks failed'}});
 const find=a=>rows.find(r=>r.address===a);
 const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item_id:find(a).item_id,
   current_revision:1,revision_count:1,work_ready:true,review_required:false,
@@ -111,6 +112,10 @@ try{
       const nodes=[...body.children];return nodes.indexOf(body.querySelector(':scope > .object-children'))<nodes.indexOf(body.querySelector(':scope > .object-secondary'));
     }),'Structural children precede secondary sections');
   }
+  const failed=page.locator('[data-object-address="measure:measure-2"] > summary .status-circle');
+  assert.equal(await failed.isVisible(),true,'A failed criterion keeps a visible status before expansion');
+  assert.equal(await failed.getAttribute('data-tone'),'red');
+  assert.match(await failed.getAttribute('aria-label'),/^Status: Checks failed/);
   const rootSummary=page.locator(`[data-object-address="${address(0)}"] > summary`);
   assert.equal(await rootSummary.locator('.verification-chip').innerText(),'1/2 passed');
   assert.equal(await rootSummary.locator('.status-circle').getAttribute('data-tone'),'grey',
@@ -137,6 +142,7 @@ try{
     await page.setViewportSize({width,height:844});
     await page.waitForFunction(()=>document.getAnimations().length===0);
     await page.screenshot({path:'/tmp/joppa-depth-mobile-'+width+'.png',fullPage:true});
+    assert.equal(await page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-full-title`).isVisible(),true,'The clipped title is visible in the open mobile body');
   assert.equal(await page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-full-title`).innerText(),find(address(4)).title,'The open body shows the full long title once');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The six-level tree fits a mobile viewport');
     for(let i=0;i<chain.length;i++){

@@ -587,7 +587,7 @@ function fillCommonObject(body,detail){
   const contentKey=['body','description','contract'].find(key=>typeof d[key]==='string'&&d[key].trim());
   if(contentKey)body.append(E('p',d[contentKey],'object-content node-description'));
   for(const [key,value] of Object.entries(d)){
-    if(['title','owner',contentKey].includes(key)||(inputQueue(detail.kind)&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
+    if(['title','owner',contentKey].includes(key)||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
     const field=E('div',undefined,'object-field');
     const refRule=data.objectTypes?.[detail.kind]?.references?.[key];
     field.append(E('small',refRule?refRule.title:key.replaceAll('_',' '),'type-label'));
@@ -607,7 +607,7 @@ function fillCommonObject(body,detail){
   }
   secondary.append(fields);
   const links=new Map();
-  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label=link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
+  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
   for(const link of detail.incoming||[]){const key=link.source+'@';const entry=links.get(key)||{address:link.source,title:link.title||link.source,labels:[]};entry.labels.push('Linked from · '+link.relation);links.set(key,entry);}
   if(links.size){
     const group=objectSection('Links '+links.size,'object-relations');
