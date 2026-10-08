@@ -119,8 +119,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .root-collection.object-collection>.object-collection-title{display:none}
 
 /* One row per object. The chevron opens it; children indent under a rule. */
-.common-object{margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
-.common-object>summary{display:flex;align-items:baseline;gap:.6rem;padding:.55em 0;min-width:0}
+.common-object{--row-gap:.75rem;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
+.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);padding:.85em 0;min-width:0}
 .common-object>summary:before{content:none}
 .note-section>summary:before,.object-section>summary:before{
   content:'›';flex:none;width:.7rem;font-size:14px;line-height:1;color:var(--muted);transition:transform .15s;display:inline-block;text-align:center}
@@ -130,15 +130,15 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object>summary>.node-title{flex:1;min-width:0;font-size:var(--object-title-size,15px);font-weight:normal;color:var(--heading);line-height:1.45;
   overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .type-label{color:var(--muted)}
-.type-badge{flex:none;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
+.type-badge{flex:none;margin-right:-.11em;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
 :not(.object-children)>.common-object>summary>.type-badge{display:none}
 .type-badge:focus-visible{outline:1px dashed var(--object-color,var(--heading));outline-offset:3px}
-.common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:1.1em;flex:none;font-size:.8rem}
+.common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
 .common-object .item-actions>button:hover{color:var(--link)}
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
-.object-body,.common-object .object-body{padding:0 0 1em 0}
-.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + .45rem)}
+.object-body,.common-object .object-body{padding:0 0 1.2em 0}
+.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + var(--row-gap))}
 .object-children{margin:.6em 0 0 3px;padding-left:1.2rem;border-left:1px dashed var(--rule)}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
@@ -178,7 +178,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .detail-fact{margin:.3em 0;font-size:.85em;white-space:pre-wrap}
 
 /* Evidence: status is a coloured dot that always carries a text label. */
-.status-circle{--signal:#8c9791;display:inline-block;flex:none;width:8px;height:8px;margin-right:.45rem;border-radius:50%;background:var(--signal);vertical-align:2px}
+.status-circle{--signal:#8c9791;display:inline-block;flex:none;width:8px;height:8px;margin-right:var(--row-gap,.45rem);border-radius:50%;background:var(--signal);vertical-align:2px}
 .status-circle.green{--signal:#39835a}.status-circle.yellow{--signal:#c8921f}.status-circle.orange{--signal:#c4772e}
 .status-circle.red{--signal:#bc5d52}.status-circle.purple{--signal:#8061a9}.status-circle.grey{--signal:#8c9791}
 .status-circle.numbered{width:auto;height:auto;background:none;border-radius:0;color:var(--signal);font-size:.8em;vertical-align:baseline}
@@ -209,7 +209,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-text{margin:.3em 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Copy: the label swaps without moving the row. */
-.copy{display:inline-block;line-height:inherit;color:var(--muted)}
+.copy{display:inline-block;margin-right:-1px;line-height:inherit;color:var(--muted)}
 .copy:hover{color:var(--link)}
 .copy svg{display:inline-block;width:12px;height:12px;vertical-align:middle;position:relative;top:.5px}
 
@@ -261,7 +261,7 @@ dialog::backdrop{background:#22222240}
   .common-object>summary{flex-wrap:wrap;row-gap:.15em}
   .common-object>summary>.node-title{flex:1 1 100%}
   /* Вторая строка начинается под текстом заголовка. Метка верхнего уровня скрыта, поэтому отступ берёт следующий элемент. */
-  .common-object>summary{--second-line:calc(8px + .45rem)}
+  .common-object>summary{--second-line:calc(8px + var(--row-gap))}
   .common-object>summary>.node-title+.type-badge,
   :not(.object-children)>.common-object>summary>.node-title+.type-badge+*{margin-left:var(--second-line)}
   .object-children{padding-left:.8rem}
