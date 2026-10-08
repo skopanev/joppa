@@ -67,6 +67,7 @@ function renderTree(schema){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);
       card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object type':definitions[p]?.title||p)].join(', ')+(related.length?'. '+related.join(' '):''));
       if(t.parents.includes('*'))card.append(element('small','Inside any type','schema-parent-rule'));
+      if(t.title_size!==undefined&&t.title_size!==null)card.append(element('small','Title '+t.title_size+' px','schema-title-size'));
     }
     card.addEventListener('mouseenter',()=>{hovered=id;highlight(id);});card.addEventListener('mouseleave',()=>{hovered=undefined;highlight(document.activeElement?.dataset.kind);});
     card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight(hovered));node.card=card;types.append(card);

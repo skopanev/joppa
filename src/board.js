@@ -268,7 +268,7 @@ function rootCollectionTabs(root){
     return panel;
   });
   let nav=root.querySelector(':scope > .collection-tabs');
-  if(!nav){nav=E('div',undefined,'collection-tabs');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Root collections');root.querySelector('.tree-intro').after(nav);}
+  if(!nav){nav=E('div',undefined,'collection-tabs');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Root collections');root.prepend(nav);}
   nav.replaceChildren();nav.hidden=false;
   const key='joppa-collection:'+ws;
   let selected;
@@ -408,8 +408,11 @@ async function objectPart(params){
   return {items,next_cursor:null};
 }
 function applyObjectColor(node,kind){
-  const color=data.objectTypes?.[kind]?.color||'#63756b';
+  const type=data.objectTypes?.[kind]||{};
+  const color=type.color||'#63756b';
   if(/^#[0-9a-f]{6}$/i.test(color))node.style.setProperty('--object-color',color);
+  const size=type.title_size;
+  node.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:18)+'px');
 }
 async function appendObjectChildren(root,parent,kind,extra={}){
   const generation=loadNumber;
@@ -449,9 +452,7 @@ async function renderObjectTree(){
   const generation=loadNumber;
   const configuration=window.SNAPSHOT?{schema:data.snapshot_schema}:await api('workspaces/'+encodeURIComponent(ws)+'/tree');if(generation!==loadNumber)return;
   data.objectTypes=configuration.schema.types;
-  const intro=E('div',undefined,'tree-intro');intro.append(E('h1',data.state.title),E('p','Open an object to read its details and children.','hint'));
-  if(data.launch.configured)intro.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
-  root.append(intro);
+  if(data.launch.configured)root.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
   commonObjectFilters(root,contents);root.append(contents);
   for(const kind of inboxKinds().filter(kind=>data.objectTypes[kind].root))commonNotes(root,undefined,kind);

@@ -14,7 +14,7 @@ const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epi
   ['outcome','Outcome','requirement'],['measure','Measure','ac'],['action','Action','task']];
 const types={};
 chain.forEach(([kind,title,role],i)=>{types[kind]={title,role,index:i*10,root:i===0,
-  parents:i===0?[]:[chain[i-1][0]]};});
+  parents:i===0?[]:[chain[i-1][0]],title_size:[21,18,16,17,16,15][i]};});
 types.intake={title:'Intake',role:'document',index:70,root:true,parents:[],inbox:true,
   description:'Customer input to review.'};
 const schema={workspace:'w',current_revision:3,schema:{revision:3,actor:'owner',
@@ -91,10 +91,13 @@ try{
   assert.equal(await page.locator('.tree-domain').count(),0,
     '[ac:uniform-object-cards-ac1] one card component serves a schema with no built-in type name');
 
+  assert.equal(await page.getByText('Open an object to read its details and children.').count(),0);
+
   // 2. Six configured levels open one inside the other.
   for(let i=0;i<chain.length;i++){
     const card=page.locator(`[data-object-address="${address(i)}"]`);
     await card.waitFor();
+    assert.equal(await card.locator(':scope > summary > .node-title').evaluate(e=>getComputedStyle(e).fontSize),types[chain[i][0]].title_size+'px','Every configured type supplies its own size');
     assert.match(await card.locator(':scope > summary').innerText(),new RegExp(chain[i][1],'i'),
       `[ac:uniform-object-cards-ac1] level ${i+1} takes its title from the schema`);
     await card.locator(':scope > summary').click();
@@ -147,6 +150,7 @@ try{
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The six-level tree fits a mobile viewport');
     for(let i=0;i<chain.length;i++){
       const card=page.locator(`[data-object-address="${address(i)}"]`);
+      assert.equal(await card.locator(':scope > summary > .node-title').evaluate(e=>getComputedStyle(e).fontSize),types[chain[i][0]].title_size+'px','Mobile titles retain the configured size');
       const bounds=await card.boundingBox();
       assert.ok(bounds.width>220,`Deep cards keep space for text: viewport=${width}, level=${i+1}, width=${bounds.width}`);
       const title=await card.locator(':scope > summary > .node-title').boundingBox();

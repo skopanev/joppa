@@ -45,6 +45,7 @@ fn configured() -> World {
                 inbox: None,
                 launch_blocker: None,
                 color: None,
+                title_size: None,
                 title: kind.into(),
                 role: role.into(),
                 root,

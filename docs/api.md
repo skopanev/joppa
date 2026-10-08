@@ -12,7 +12,7 @@ Decision Tasks retain the configured exception for collecting their parent's dec
 These fields describe readiness. They do not change check evidence or work completion.
 The following operations retain their original verification and compatibility rules.
 
-`archive_object` requires `target`, `revision` and `reason`. It archives an empty object whose configured role is `group`.
+`archive_object` requires `target`, `revision` and `reason`. It archives an object with no live children whose configured role is `group` or `document`.
 `restore_object` uses the same fields. It restores an object archived with `archive_object` if the current schema permits its parent.
 Both commands require an agent or the workspace owner. They append a revision and preserve IDs, links, fields and annotations.
 Archive a group only after moving or archiving its active children. Restore its parent before restoring a child.

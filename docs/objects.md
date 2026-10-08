@@ -226,7 +226,7 @@ Their addresses, public IDs, completion results and original revisions remain re
 The server resolves old `req` process addresses to the same Task record.
 Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the current queue.
 
-## Note processing and type colors
+## Note processing and type presentation
 
 Set `inbox: true` on any schema type to hold incoming information.
 An omitted flag disables the queue. The type name does not supply a default. Missing `data.status` means `unprocessed`.
@@ -248,7 +248,11 @@ Lists return `note_status` without source bodies or revision history.
 
 Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presentation.
 Colors apply to the board and schema diagram. Status circles retain their verification colors.
-Color changes create a schema revision. They do not change object parents or select a different board layout.
+Each type can set `title_size`, an integer from 12 to 48 pixels. Omit it to use 18 pixels.
+The board uses this size at every nesting level and screen width.
+For example, set 21 for a root type, 18 for its child type, and 16 for deeper types.
+Read the current schema before `set_tree_schema`. Preserve the other type fields.
+Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
 ## Type order
 

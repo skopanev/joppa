@@ -178,6 +178,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             inbox: None,
             launch_blocker: None,
             color: None,
+            title_size: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
@@ -249,6 +250,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow::Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    store::migrate(&pool).await?;
     let ws = format!(
         "note-queue-{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
@@ -259,12 +261,14 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["note"]["color"] = json!("#7655a2");
+    types["note"]["title_size"] = json!(21);
     types["note"]["title"] = json!("Incoming note");
     types["domain"]["index"] = json!(200);
     store::execute_remote_input(&pool, &ws, "agent", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
     let board = store::board_read(&pool, &ws, "agent", None, None, None).await?;
     assert_eq!(board["custom_tree"], false);
     assert_eq!(board["object_types"]["note"]["color"], "#7655a2");
+    assert_eq!(board["object_types"]["note"]["title_size"], 21);
     assert_eq!(board["object_types"]["domain"]["index"], 200);
     for (id, parent, links) in [
         (
@@ -405,5 +409,84 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     )
     .await?;
     assert_eq!(note["document"]["data"]["status"], "unprocessed");
+    let found =
+        store::search::find(&pool, "agent", &ws, "Changed input", Some("note"), 10, None).await?;
+    assert_eq!(found["items"].as_array().unwrap().len(), 1);
+    store::execute_remote_input(&pool,&ws,"agent","archive-a",&json!({"op":"archive_object","target":"note:a","revision":3,"reason":"Keep the review in history"})).await?;
+    let archived = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:a"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(archived["document"]["present"], false);
+    assert_eq!(archived["revision_count"], 4);
+    let found =
+        store::search::find(&pool, "agent", &ws, "Changed input", Some("note"), 10, None).await?;
+    assert!(found["items"].as_array().unwrap().is_empty());
+    let listed = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            kind: Some("note"),
+            parent: Some("*"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert!(
+        !listed["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["address"] == "note:a")
+    );
+    let domain = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("domain:d"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert!(
+        !domain["incoming"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["source"] == "note:a")
+    );
+    let historical = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:a"),
+            revision: Some(1),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(historical["document"]["data"]["body"], "Original source");
+    store::execute_remote_input(&pool,&ws,"agent","restore-a",&json!({"op":"restore_object","target":"note:a","revision":4,"reason":"Restore the source"})).await?;
+    let restored = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("note:a"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(restored["document"]["present"], true);
+    assert_eq!(restored["document"]["data"]["body"], "Changed input");
     Ok(())
 }

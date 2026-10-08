@@ -27,6 +27,8 @@ pub struct TreeType {
     pub inbox: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_size: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -122,6 +124,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 references: BTreeMap::new(),
                 parent_decision: false,
                 color: None,
+                title_size: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
                 launch_blocker: (kind == "ac").then_some(true),
                 inbox: (kind == "note").then_some(true),
@@ -196,6 +199,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
                 inbox: None,
                 launch_blocker: None,
                 color: None,
+                title_size: None,
                 parent_gate: None,
                 title: title.into(),
                 role: "document".into(),
@@ -548,6 +552,10 @@ pub fn set_schema(
                 && color.starts_with('#')
                 && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)),
             "type color must use #RRGGBB"
+        );
+        ensure!(
+            t.title_size.is_none_or(|size| (12..=48).contains(&size)),
+            "type title_size must be an integer from 12 to 48 pixels"
         );
         ensure!(
             t.parent_gate
@@ -2254,8 +2262,11 @@ pub fn archive(
     );
     let kind = &old.kind;
     ensure!(
-        schema(w).types.get(kind).map(|t| t.role.as_str()) == Some("group"),
-        "archive_object requires a group"
+        schema(w)
+            .types
+            .get(kind)
+            .is_some_and(|t| ["group", "document"].contains(&t.role.as_str())),
+        "archive_object requires a group or document"
     );
 
     let has_live_children = w
@@ -2264,7 +2275,7 @@ pub fn archive(
         .any(|o| o.current().parent.as_ref() == Some(&target) && o.current().present);
     ensure!(
         !has_live_children,
-        "cannot archive a group with active children"
+        "cannot archive an object with active children"
     );
 
     let mut next = old.current().clone();
@@ -2318,8 +2329,11 @@ pub fn restore(
 
     let kind = &old.kind;
     ensure!(
-        schema(w).types.get(kind).map(|t| t.role.as_str()) == Some("group"),
-        "restore_object requires a group"
+        schema(w)
+            .types
+            .get(kind)
+            .is_some_and(|t| ["group", "document"].contains(&t.role.as_str())),
+        "restore_object requires a group or document"
     );
 
     parent_valid(
