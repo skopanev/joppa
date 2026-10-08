@@ -520,12 +520,24 @@ function commonNotes(root,relatedTo,kind){
   }
   return section;
 }
+function objectTypeLabel(kind){
+  const title=data.objectTypes?.[kind]?.title||kind.toUpperCase();
+  const words=title.trim().split(/\s+/);
+  const short=words.length===1&&title===title.toLocaleUpperCase()?title:words.map(word=>Array.from(word)[0]).join('').toLocaleUpperCase();
+  const label=E('abbr',short,'type-label type-badge');
+  label.dataset.hint=title;label.tabIndex=0;label.setAttribute('aria-label',title);
+  label.addEventListener('pointerenter',()=>showStatusHint(label));
+  label.addEventListener('pointerleave',hideStatusHint);
+  label.addEventListener('focus',()=>showStatusHint(label));
+  label.addEventListener('blur',hideStatusHint);
+  return label;
+}
 function commonObjectCard(item){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
   const signal=item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
-  summary.append(nodeTitle(item.title,signal),E('small',data.objectTypes?.[item.kind]?.title||item.kind.toUpperCase(),'type-label'));
+  summary.append(nodeTitle(item.title,signal),objectTypeLabel(item.kind));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
