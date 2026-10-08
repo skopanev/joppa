@@ -131,6 +131,12 @@ function animateBranchHeight(node,from,to,closing=false){
     if(closing){node.open=false;node.classList.remove('branch-closing');}
   };
 }
+// Opened content arrives softly instead of appearing at once.
+function revealBranch(node){
+  const body=node.querySelector(':scope > .object-body');
+  if(!body||reducedMotion())return;
+  body.animate([{opacity:0,transform:'translateY(-4px)'},{opacity:1,transform:'none'}],{duration:260,easing:'cubic-bezier(.2,.75,.25,1)'});
+}
 function closedBranchHeight(node){
   const style=getComputedStyle(node),summary=node.querySelector(':scope > summary');
   return summary.getBoundingClientRect().height+
@@ -142,6 +148,17 @@ function enableBranchMotion(node){
     if(event.defaultPrevented||event.target.closest('button,a,input,label,select,textarea'))return;
     event.preventDefault();
     const opening=!node.open||node.classList.contains('branch-closing');
+    // A branch with lazy content loads while closed, then opens once to its full height.
+    if(opening&&!node.open&&node.branchPrepare&&!node.branchReady){
+      if(node.classList.contains('is-loading'))return;
+      node.classList.add('is-loading');
+      node.branchPrepare().then(()=>{
+        node.classList.remove('is-loading');node.branchReady=true;
+        const start=node.getBoundingClientRect().height;node.open=true;
+        animateBranchHeight(node,start,node.getBoundingClientRect().height);revealBranch(node);
+      },()=>node.classList.remove('is-loading'));
+      return;
+    }
     const from=node.getBoundingClientRect().height;
     stopBranchAnimation(node);
     node.classList.toggle('branch-closing',!opening);
@@ -593,7 +610,17 @@ function commonObjectCard(item,loadedDetail){
   const copy=copyButton(item.item_id||item.address);
   const history=button('Revisions',()=>showObjectRevisions(item.address),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
-  card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=loadedDetail||await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.insertBefore(children,body.querySelector(':scope > .object-secondary'));if(!detail.historical)await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+  // Fill the body with the document and its children. Both requests run at once.
+  const fill=async()=>{
+    const generation=loadNumber,childParams={limit:'50',parent:item.address};
+    const [detail,kids]=await Promise.all([loadedDetail||objectPart({address:item.address}),objectPart(childParams).catch(()=>null)]);
+    if(generation!==loadNumber||!card.isConnected)return;
+    body.replaceChildren();fillCommonObject(body,detail);
+    const children=E('div',undefined,'object-children');body.insertBefore(children,body.querySelector(':scope > .object-secondary'));
+    if(!detail.historical){if(kids)appendObjectPage(children,kids,childParams,generation);else await appendObjectChildren(children,item.address);}
+  };
+  card.branchPrepare=async()=>{if(loaded)return;loaded=true;try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
+  card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
 }
 function syncObjectTitles(root=document){

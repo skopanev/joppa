@@ -120,7 +120,16 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 
 /* One row per object. The chevron opens it; children indent under a rule. */
 .common-object{--row-gap:.75rem;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
-.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);padding:.85em 0;min-width:0}
+.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
+.common-object>summary:hover{background:#f5efe2}
+.common-object[open]>summary{background:#faf6ec}.common-object[open]>summary:hover{background:#f5efe2}
+/* Наведение на раскрытую строку проявляет линию её детей. */
+.object-children{transition:border-color .12s}
+.common-object:has(>summary:hover)>.object-body>.object-children{border-left-color:var(--muted);border-left-style:solid}
+/* Загрузка: точка превращается в крутилку, строка ещё закрыта. */
+.common-object.is-loading>summary{cursor:progress}
+.common-object.is-loading>summary .status-circle{background:none;box-sizing:border-box;border:1.5px solid var(--signal);border-right-color:transparent;animation:branch-spin .6s linear infinite}
+@keyframes branch-spin{to{transform:rotate(360deg)}}
 .common-object>summary:before{content:none}
 .note-section>summary:before,.object-section>summary:before{
   content:'›';flex:none;width:.7rem;font-size:14px;line-height:1;color:var(--muted);transition:transform .15s;display:inline-block;text-align:center}
