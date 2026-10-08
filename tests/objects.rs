@@ -506,6 +506,12 @@ fn schema_title_sizes_preserve_documents_and_old_schemas() {
 fn schema_badges_and_previews_preserve_full_document_titles() {
     let mut w = World::new();
     let title = "A complete saved title with business context that remains unchanged when the preview becomes short";
+    // The title is written while the type still allows it; the shorter limit later must not rewrite it.
+    let mut types = objects::schema(&w.state).types;
+    types.remove("intake");
+    types.remove("point");
+    types.get_mut("note").unwrap().title_preview_length = Some(256);
+    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Allow long note titles"}));
     save(
         &mut w,
         "note:preview",
@@ -514,12 +520,9 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
         vec![],
     );
     let before = serde_json::to_value(&w.state.objects).unwrap();
-    let mut types = objects::schema(&w.state).types;
-    types.remove("intake");
-    types.remove("point");
     types.get_mut("note").unwrap().badge = Some("INPUT".into());
     types.get_mut("note").unwrap().title_preview_length = Some(64);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure compact titles and badges"}));
+    w.ok("agent",json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Configure compact titles and badges"}));
     assert_eq!(before, serde_json::to_value(&w.state.objects).unwrap());
     assert_eq!(
         w.state.objects["note:preview"].current().data["title"],
@@ -528,14 +531,14 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
     for badge in ["", "TOO-LONG-LABEL", "REQ CAP", "REQ\n"] {
         let mut invalid = types.clone();
         invalid.get_mut("note").unwrap().badge = Some(badge.into());
-        w.no("agent",json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Reject invalid badge"}));
+        w.no("agent",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid badge"}));
     }
     for length in [0, 257, -1] {
         let mut invalid = serde_json::to_value(&types).unwrap();
         invalid["note"]["title_preview_length"] = json!(length);
-        w.no("agent",json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Reject invalid title preview"}));
+        w.no("agent",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid title preview"}));
     }
-    assert_eq!(objects::schema(&w.state).revision, 1);
+    assert_eq!(objects::schema(&w.state).revision, 2);
     assert_eq!(
         objects::schema(&w.state).types["note"].badge.as_deref(),
         Some("INPUT")

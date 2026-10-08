@@ -1807,7 +1807,44 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
     false
 }
 
+/// Default title length when a type does not set `title_preview_length`.
+pub const TITLE_LENGTH_DEFAULT: u32 = 64;
+/// A new title fits its row: it is at most the type's `title_preview_length`.
+/// Only new writes are checked, so old journals with long titles still replay.
+fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {
+    let value = serde_json::to_value(cmd)?;
+    let kind = match value["op"].as_str().unwrap_or_default() {
+        "save_object" => value["kind"].as_str().unwrap_or_default(),
+        "domain" | "edit_domain" => "domain",
+        "capability" | "edit_capability" => "capability",
+        "consumer" | "edit_consumer" => "consumer",
+        "revise" => "requirement",
+        _ => return Ok(()),
+    };
+    let types = schema(w).types;
+    let limit = |kind: &str| {
+        types
+            .get(kind)
+            .and_then(|t| t.title_preview_length)
+            .unwrap_or(TITLE_LENGTH_DEFAULT) as usize
+    };
+    let mut titles = vec![(kind, value.get("title").or_else(|| value.pointer("/data/title")))];
+    if let Some(acs) = value.get("acs").and_then(Value::as_array) {
+        titles.extend(acs.iter().map(|ac| ("ac", ac.get("text"))));
+    }
+    for (kind, title) in titles {
+        if let Some(title) = title.and_then(Value::as_str) {
+            let limit = limit(kind);
+            ensure!(
+                title.chars().count() <= limit,
+                "a {kind} title is at most {limit} characters; put the details in the text"
+            );
+        }
+    }
+    Ok(())
+}
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
+    validate_title_length(w, cmd)?;
     match cmd {
         Command::MigrateNotes {}
         | Command::MigrateTasks {}

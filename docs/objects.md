@@ -253,8 +253,8 @@ The board and tree diagram use this size at every nesting level and screen width
 For example, set 17 for a root type, 15 for its child type, and 14 for deeper types.
 Each type can set `badge`, a label of 1 to 8 characters without spaces. Omit it to use initials from its title.
 Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to use 64 characters.
-The preview includes its final ellipsis. The complete title remains in the closed Details section.
-This limit changes the display only. Keep new titles short and put their context in `body` or `description`.
+This value is also the maximum length of a new title. The server refuses a longer title, so put the context in `body` or `description`.
+Older titles can be longer. The board shows a preview that ends with an ellipsis, and the complete title stays in the Details section.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
