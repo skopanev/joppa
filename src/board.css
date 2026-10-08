@@ -274,6 +274,9 @@ select:disabled{opacity:1;color:#203c2d;background-color:#f4f6f2;border-color:#d
 .common-object>summary>.type-badge{display:inline-flex;align-items:center;justify-content:center;align-self:center;justify-self:start;min-height:22px;padding:3px 7px;border:1px solid color-mix(in srgb,var(--object-color,#63756b) 24%,white);border-radius:6px;background:color-mix(in srgb,var(--object-color,#63756b) 7%,white);color:color-mix(in srgb,var(--object-color,#63756b) 80%,#15251e);font-size:10px;font-weight:650;line-height:1;letter-spacing:.04em;white-space:nowrap;text-decoration:none;cursor:help}
 .type-badge:focus-visible{outline:2px solid var(--object-color,#63756b);outline-offset:3px}
 .verification-chip{display:inline-block;margin:0 8px 3px 0;padding:3px 7px;border:1px solid #82918840;border-radius:6px;background:#f2f4f1;color:#65736a;font-size:11px;font-weight:650;line-height:1.25;letter-spacing:0;white-space:nowrap;vertical-align:middle}.verification-chip.has-passes{border-color:#39835a55;background:#edf6ef;color:#256741}
+.object-comments{margin:16px 0 0;padding:12px 0 0;border-top:1px solid var(--line)}
+.object-comments>summary{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);list-style:none}.object-comments>summary::-webkit-details-marker{display:none}.object-comments>summary:before{content:'›';font-size:18px;line-height:1;transition:transform .15s}.object-comments[open]:not(.branch-closing)>summary:before{transform:rotate(90deg)}
+@media(prefers-reduced-motion:reduce){.object-comments>summary:before{transition:none}}
 .common-object .item-actions>button{width:auto;min-height:32px;height:32px;padding:4px 7px;font-size:11px;line-height:1.2;white-space:nowrap}
 
 /* One toast for every message: bottom right, three seconds, then away. */

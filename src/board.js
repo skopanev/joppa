@@ -590,7 +590,13 @@ function fillCommonObject(body,detail){
   if(detail.incoming?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Linked from'));for(const link of detail.incoming)group.append(button(link.title+' · '+link.relation,()=>showCommonObject(link.source),'object-link'));body.append(group);}
   const annotations=historical?{}:detail.annotations||{};
   if(annotations.description){const context=E('div',undefined,'object-field');context.append(E('small','Context','type-label'),E('p',annotations.description,'node-description'));body.append(context);}
-  for(const comment of Object.values(annotations.comments||{})){if(comment.withdrawn)continue;const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));body.append(row);}
+  const comments=Object.values(annotations.comments||{}).filter(comment=>!comment.withdrawn);
+  if(comments.length){
+    const group=E('details',undefined,'object-comments');
+    group.append(E('summary',comments.length+' '+(comments.length===1?'comment':'comments')));
+    for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));group.append(row);}
+    enableBranchMotion(group);body.append(group);
+  }
   const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length)body.append(attachmentList(files));
   if(!historical)for(const kind of inboxKinds())commonNotes(body,detail.address,kind);
   if(!historical&&detail.process?.req){
