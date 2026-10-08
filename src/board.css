@@ -138,7 +138,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object .item-actions>button:hover{color:var(--link)}
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .object-body,.common-object .object-body{padding:0 0 1em 0}
-.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + 3.65rem)}
+.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + .45rem)}
 .object-children{margin:.6em 0 0 3px;padding-left:1.2rem;border-left:1px dashed var(--rule)}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
@@ -186,8 +186,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .waiting{--status-ink:#865611}.available{--status-ink:#35643e}.progress{--status-ink:#2a6297}
 .ready{--status-ink:#196b70}.pass{--status-ink:#2d6c3c}.fail{--status-ink:#a13935}
 .verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
-.node-title>.status-circle{vertical-align:.09em}
-.node-title>.verification-chip{min-width:2.6rem;margin-right:.6rem;text-align:right;font-variant-numeric:tabular-nums;vertical-align:baseline}
+.node-title>.status-circle{vertical-align:middle}
+.common-object>summary>.verification-chip{flex:none;margin:0;font-size:.8rem;font-variant-numeric:tabular-nums}
 .verification-chip.has-passes{color:#2d6c3c}
 .ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
 .ac-check{padding:.3em 0}
@@ -209,12 +209,12 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-text{margin:.3em 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Copy: the label swaps without moving the row. */
-.copy{display:inline-flex;align-items:baseline;justify-content:center;width:16px;color:var(--muted)}
+.copy{display:inline-block;line-height:inherit;color:var(--muted)}
 .copy:hover{color:var(--link)}
-.copy svg{position:relative;top:1.5px}
-.copy svg{display:block;flex:none}
+.copy svg{display:inline-block;width:12px;height:12px;vertical-align:middle;position:relative;top:.5px}
+
 .copy .agent-face{display:none}
-.copy .copy-check{display:none}.copy.copied .copy-symbol{display:none}.copy.copied .copy-check{display:block}
+.copy .copy-check{display:none}.copy.copied .copy-symbol{display:none}.copy.copied .copy-check{display:inline-block}
 .copy.copied{color:#2d6c3c}
 
 /* Dialogs are plain sheets. */
@@ -262,11 +262,8 @@ dialog::backdrop{background:#22222240}
   .common-object>summary>.node-title{flex:1 1 100%}
   /* Вторая строка начинается под текстом заголовка. Метка верхнего уровня скрыта, поэтому отступ берёт следующий элемент. */
   .common-object>summary{--second-line:calc(8px + .45rem)}
-  .common-object>summary:has(>.node-title>.verification-chip){--second-line:calc(8px + .45rem + 2.45rem)}
   .common-object>summary>.node-title+.type-badge,
   :not(.object-children)>.common-object>summary>.node-title+.type-badge+*{margin-left:var(--second-line)}
-  .node-title>.verification-chip{min-width:2rem;margin-right:.45rem}
-  .object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + 2.9rem)}
   .object-children{padding-left:.8rem}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }

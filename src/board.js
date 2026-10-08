@@ -579,13 +579,14 @@ function commonObjectCard(item,loadedDetail){
   const preview=objectTitlePreview(item.title,item.kind);
   const title=nodeTitle(preview,signal),counts=item.verification_summary;title.dataset.truncated=String(preview!==item.title);
   const isCriterion=data.objectTypes?.[item.kind]?.role==='ac';
+  // The count sits on the right of the row, after the type label, not inside the title.
+  let chip=null;
   if(isCriterion&&signal.tone==='green'||!isCriterion&&counts?.total>0){
     const passed=isCriterion||counts.passed>0;
-    const chip=E('span',isCriterion?'Passed':counts.passed>0?`${counts.passed}/${counts.total}`:String(counts.total),'verification-chip'+(passed?' has-passes':''));
+    chip=E('span',isCriterion?'Passed':counts.passed>0?`${counts.passed}/${counts.total}`:String(counts.total),'verification-chip'+(passed?' has-passes':''));
     if(!isCriterion)chip.setAttribute('aria-label',`${counts.passed} of ${counts.total} criteria have passing checks`);
-    title.firstChild.after(chip);
   }
-  summary.append(title,objectTypeLabel(item.kind));
+  summary.append(title,objectTypeLabel(item.kind),...(chip?[chip]:[]));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
