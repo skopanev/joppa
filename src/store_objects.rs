@@ -223,10 +223,22 @@ pub async fn read_objects(
         .read_only(true)
         .start()
         .await?;
-    let row=conn.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+    let row=conn.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),COALESCE(state->>'reference_prefix',workspace),(first_view->'object_types')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
     let position: i64 = row.get(0);
     let public: String = row.get(1);
     let prefix: String = row.get(2);
+    let selected: std::collections::BTreeMap<String, objects::TreeType> =
+        serde_json::from_str(row.get(3))?;
+    let kinds_for = |role: &str| {
+        selected
+            .iter()
+            .filter(|(_, t)| t.role == role)
+            .map(|(kind, _)| kind.clone())
+            .collect::<Vec<_>>()
+    };
+    let task_kinds = kinds_for("task");
+    let criterion_kinds = kinds_for("ac");
+    let specification_kinds = kinds_for("requirement");
     ensure!(
         scope.work_filter.is_none_or(|filter| filter == "unstarted"),
         "unknown work filter"
@@ -300,9 +312,17 @@ pub async fn read_objects(
             .as_str()
             .unwrap_or(&key);
         let annotations:Value=serde_json::from_str(conn.query_one("SELECT COALESCE((SELECT value FROM joppa.state_entries WHERE workspace=$1 AND section='notes' AND key=$2),'{}'::jsonb)::text", &[&workspace,&annotation]).await?.get(0))?;
-        return Ok(
-            json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}}),
-        );
+        let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
+        if n == current as u32 {
+            add_verification_summaries(
+                &*conn,
+                &workspace,
+                std::slice::from_mut(&mut item),
+                &criterion_kinds,
+            )
+            .await?;
+        }
+        return Ok(item);
     }
     ensure!(
         scope.revision.is_none() && !scope.history,
@@ -314,24 +334,6 @@ pub async fn read_objects(
             .is_none_or(|status| ["unprocessed", "processed"].contains(&status)),
         "unknown Note status"
     );
-    let selected: std::collections::BTreeMap<String, objects::TreeType> = serde_json::from_str(
-        conn.query_one(
-            "SELECT (first_view->'object_types')::text FROM joppa.board_cache WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .get(0),
-    )?;
-    let kinds_for = |role: &str| {
-        selected
-            .iter()
-            .filter(|(_, t)| t.role == role)
-            .map(|(kind, _)| kind.clone())
-            .collect::<Vec<_>>()
-    };
-    let task_kinds = kinds_for("task");
-    let criterion_kinds = kinds_for("ac");
-    let specification_kinds = kinds_for("requirement");
     ensure!(
         scope.note_status.is_none()
             || scope
@@ -419,9 +421,25 @@ pub async fn read_objects(
             item["work_summary"] = serde_json::from_str(row.get(15))?;
         }
     }
+    add_verification_summaries(&*conn, &workspace, &mut items, &criterion_kinds).await?;
+    let next = more.then(|| {
+        format!(
+            "{position}:{}",
+            items.last().unwrap()["address"].as_str().unwrap()
+        )
+    });
+    Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
+}
+
+async fn add_verification_summaries(
+    client: &impl GenericClient,
+    workspace: &str,
+    items: &mut [Value],
+    criterion_kinds: &[String],
+) -> Result<()> {
     if !items.is_empty() && !criterion_kinds.is_empty() {
         let addresses: Vec<_> = items.iter().filter_map(|i| i["address"].as_str()).collect();
-        let counts = conn.query(r#"
+        let counts = client.query(r#"
             WITH RECURSIVE descendants(root,address) AS (
                 SELECT address,address FROM joppa.objects WHERE workspace=$1 AND address=ANY($2::text[])
                 UNION
@@ -444,11 +462,5 @@ pub async fn read_objects(
             }
         }
     }
-    let next = more.then(|| {
-        format!(
-            "{position}:{}",
-            items.last().unwrap()["address"].as_str().unwrap()
-        )
-    });
-    Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
+    Ok(())
 }

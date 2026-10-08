@@ -72,6 +72,7 @@ async function api(path) {
   const j = await r.json();
   if(r.status===401){loadNumber++;data=null;document.body.classList.remove('authenticated');$('tree').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
   if(r.status===404 && path.startsWith('workspaces/')&&!path.includes('/objects?')){data=null;$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));}
+  if(path.includes('/objects?')&&(r.status===404||j.error==='unknown object'))throw Error('Object not found.');
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }

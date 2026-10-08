@@ -191,6 +191,38 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
     .await?;
     assert_eq!(detail["process"]["verification"], "pass");
     assert_eq!(
+        detail["verification_summary"],
+        json!({"total":1,"passed":1})
+    );
+    for address in ["spec:same", "epic:same", "section:middle"] {
+        let parent = store::read_objects(
+            &pool,
+            &ws,
+            "agent",
+            &ObjectScope {
+                address: Some(address),
+                ..Default::default()
+            },
+        )
+        .await?;
+        assert_eq!(
+            parent["verification_summary"],
+            json!({"total":2,"passed":2})
+        );
+    }
+    let historical = store::read_objects(
+        &pool,
+        &ws,
+        "agent",
+        &ObjectScope {
+            address: Some("epic:same"),
+            revision: Some(1),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert!(historical.get("verification_summary").is_none());
+    assert_eq!(
         detail["annotations"]["comments"]["source"]["text"],
         "Evidence context"
     );

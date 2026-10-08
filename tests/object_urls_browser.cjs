@@ -21,6 +21,7 @@ const row=(address)=>({address,kind:address.split(':')[0],id:address.split(':')[
 const document=(address,revision)=>{
   const current=row(address),r=Number(revision)||2,historical=r!==2;
   return {...current,current_revision:2,revision_count:2,historical,
+    ...(!historical&&address==='folder:alpha'?{verification_summary:{total:1,passed:0}}:{}),
     document:{revision:r,parent:current.parent,present:current.present,
       data:{title:current.title,owner:'owner',body:historical?'Original criterion context':records[address].body},
       links:records[address].links,at:'2026-10-08T09:00:00Z'},
@@ -60,7 +61,7 @@ const url=(address,revision,workspace='w')=>{
       else if(target.pathname.endsWith('/objects')){
         const address=target.searchParams.get('address'),workspace=target.pathname.split('/')[3];
         if(address){
-          if(workspace!=='w'||!records[address]){status=404;value={error:'Object not found'};}
+          if(workspace!=='w'||!records[address]){status=workspace==='w'?409:404;value={error:'unknown object'};}
           else value=document(address,target.searchParams.get('revision'));
         }else{
           const parent=target.searchParams.get('parent'),kind=target.searchParams.get('kind');
@@ -85,6 +86,7 @@ const url=(address,revision,workspace='w')=>{
     assert.equal(requests.some(r=>r.includes('address=measure')),false,'Child bodies are not read before expansion');
     assert.equal(await page.getByRole('tab').count(),0,'The item page omits root navigation and filters');
     assert.equal(await selected('folder:alpha').locator('.type-badge').first().innerText(),'FOLD','The badge comes from the schema');
+    assert.equal(await selected('folder:alpha').locator(':scope > summary .verification-chip').innerText(),'1','The direct page uses the current object count');
 
     await follow('incoming:beta');
     assert.equal(new URL(page.url()).searchParams.get('object'),'incoming:beta');
@@ -124,7 +126,7 @@ const url=(address,revision,workspace='w')=>{
     await page.goto(url('incoming:archived'));await ready('incoming:archived');
     assert.equal(await selected('incoming:archived').getByText('The original archived source remains readable').isVisible(),true);
     assert.equal(await selected('incoming:archived').getByText('Historical object. This object is absent from the current tree.').isVisible(),true);
-    await page.goto(url('foreign:private'));await page.getByText('Object not found',{exact:true}).waitFor();
+    await page.goto(url('foreign:private'));await page.getByText('Object not found.',{exact:true}).waitFor();
     assert.equal(await page.locator('.object-page .common-object').count(),0);
     requests.length=0;
     await page.goto(url('folder:alpha',undefined,'private'));await page.getByText('This workspace is not available to your account.').waitFor();

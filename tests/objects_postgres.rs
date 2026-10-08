@@ -105,6 +105,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     assert_eq!(old["current_revision"], 2);
     assert_eq!(old["historical"], true);
     assert!(old["process"].is_null() && old["signal"].is_null());
+    assert!(old.get("verification_summary").is_none());
     assert!(old["annotations"].as_object().unwrap().is_empty());
     assert!(old["incoming"].as_array().unwrap().is_empty());
     assert_eq!(old["links"][0]["metadata_scope"], "current");
@@ -146,6 +147,18 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             .iter()
             .any(|v| v["source"] == "note:source")
     );
+    let listed = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
+    let listed_parent = listed["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["address"] == "domain:d")
+        .unwrap();
+    assert_eq!(
+        parent["verification_summary"],
+        listed_parent["verification_summary"]
+    );
+    assert_eq!(parent["verification_summary"]["total"], 2);
     let ops: Vec<store::BatchOperation> = serde_json::from_value(json!([
         {"ref":"one","command":{"op":"save_object","kind":"note","revision":0,"parent":null,"data":{"title":"Generated note","owner":"owner","body":"First"},"reason":"Create source"}},
         {"command":{"op":"save_object","kind":"note","id":{"$ref":"one/id"},"revision":{"$ref":"one/saved_revision"},"parent":null,"data":{"title":"Generated note","owner":"owner","body":"Second"},"reason":"Update source"}}
