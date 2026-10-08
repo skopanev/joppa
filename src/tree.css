@@ -1,5 +1,5 @@
 /* Workspace tree: the board's plain page around one diagram. Boxes are outlines; colour marks the type. */
-body.schema-page{max-width:1100px}
+body.schema-page{max-width:1280px}
 .schema-page .brand{text-decoration:none}
 .schema-page .tree-intro{margin-bottom:1.2em}
 .schema-page #revision{width:auto}
@@ -21,7 +21,7 @@ body.schema-page{max-width:1100px}
 .schema-edge-label.dimmed{opacity:.2}.schema-edge-label.selected{fill:var(--heading)}
 /* Type boxes: an outline, the configured title size, the type colour on the left edge. */
 .type{position:absolute;display:flex;flex-direction:column;justify-content:center;min-height:72px;padding:10px 12px;border:1px solid var(--rule);border-left:2px solid var(--object-color,var(--text));background:var(--bg);color:var(--heading);transition:border-color .15s}
-.type h2{margin:0;font-size:var(--object-title-size,18px);font-weight:normal;line-height:1.35;overflow-wrap:anywhere}
+.type h2{margin:0;font-size:var(--object-title-size,15px);font-weight:normal;line-height:1.35;overflow-wrap:anywhere}
 .type small{display:block;margin-top:4px;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);overflow-wrap:anywhere}
 .type .schema-parent-rule{margin-top:6px;font-size:.7rem;color:var(--muted)}
 .type:hover,.type:focus{border-color:var(--text)}

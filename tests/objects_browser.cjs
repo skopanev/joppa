@@ -30,7 +30,7 @@ assert.equal(await queue.locator('[data-object-address="note:processed"]').count
 await queue.getByLabel('All inputs').check();await queue.locator('[data-object-address="note:processed"]').waitFor();
 await queue.getByLabel('All inputs').uncheck();await queue.locator('[data-object-address="note:processed"]').waitFor({state:'detached'});
 assert.equal(await source.locator('.node-title').evaluate(e=>getComputedStyle(e).fontSize),'22px');
-assert.equal(await page.locator('[data-object-address="consumer:person"] .node-title').evaluate(e=>getComputedStyle(e).fontSize),'18px');
+assert.equal(await page.locator('[data-object-address="consumer:person"] .node-title').evaluate(e=>getComputedStyle(e).fontSize),'15px');
 assert.equal(await source.evaluate(e=>e.style.getPropertyValue('--object-color')),'#ad5c27');
 await page.waitForFunction(()=>document.getAnimations().length===0);await page.screenshot({path:'/tmp/joppa-note-queue-desktop.png',fullPage:true});await source.locator(':scope > summary').click();await source.getByText('Updated source text').waitFor();assert.equal(await source.locator('.object-comments').getAttribute('open'),null,'comments start collapsed');await source.locator('.object-comments > summary').click();await source.getByText('Preserve the context').waitFor();assert.equal(seen.filter(url=>url.includes('address=note')).length,1);assert.equal(await page.locator('.tree-intro').count(),0);
 await source.locator(':scope > summary').click();await source.locator(':scope > summary').click();assert.equal(seen.filter(url=>url.includes('address=note')).length,1,'closing and reopening reuse loaded body');await source.getByRole('button',{name:'Revisions'}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Object revision').selectOption('1');await dialog.getByText('Original source text').waitFor();assert.equal(await dialog.getByText('Preserve the context').count(),0,'historic documents exclude current comments');assert.equal(await dialog.getByRole('button',{name:'Checks and tasks'}).count(),0);assert(seen.some(url=>url.includes('revision=1')));await dialog.getByRole('button',{name:'Close'}).click();
@@ -54,7 +54,7 @@ assert(hierarchy.initiative<hierarchy.requirement&&hierarchy.requirement<hierarc
 await page.setViewportSize({width:390,height:844});
 await page.waitForFunction(()=>document.querySelector('.schema-scroll').scrollWidth>document.querySelector('.schema-scroll').clientWidth);
 assert.equal(await page.locator('.type[data-kind="note"] h2').evaluate(e=>getComputedStyle(e).fontSize),'22px','the mobile diagram uses the configured title size');
-assert.equal(await page.locator('.type[data-kind="initiative"] h2').evaluate(e=>getComputedStyle(e).fontSize),'18px','the mobile diagram keeps the shared fallback');
+assert.equal(await page.locator('.type[data-kind="initiative"] h2').evaluate(e=>getComputedStyle(e).fontSize),'15px','the mobile diagram keeps the shared fallback');
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'only the diagram scrolls on mobile');
 await page.locator('.schema-scroll').evaluate(el=>el.scrollLeft=el.scrollWidth);
 await page.locator('.type[data-kind="task"]').focus();assert.equal(await page.locator('.schema-edge.selected').count(),1);

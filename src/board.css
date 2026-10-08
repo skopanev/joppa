@@ -1,11 +1,11 @@
 /* Joppa board. Plain text on a warm page, after kopanev.me (Bear Blog).
    No cards, shadows or tinted surfaces: rows, dashed rules and small caps. */
 :root{
-  --width:720px;
+  --width:1100px;
   --bg:#fffcf5;--text:#444;--heading:#222;--muted:#8a8478;--rule:#d9d3c7;
   --link:#0062ff;--visited:#8b6fcb;--code-bg:#eee;
   --line:var(--rule);--accent:var(--link);
-  font:16px/1.6 Verdana,sans-serif;color:var(--text);background:var(--bg);font-synthesis:none;
+  font:14px/1.6 Verdana,sans-serif;color:var(--text);background:var(--bg);font-synthesis:none;
 }
 html{overflow-y:scroll;scrollbar-gutter:stable}
 *{box-sizing:border-box}
@@ -48,7 +48,7 @@ select:disabled{opacity:1;cursor:default;background-image:none;padding-right:10p
 
 /* Small caps label, as series tags on kopanev.me. */
 .tagline,.type-label,.type-badge,.collection-label,.object-field>.type-label{
-  font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;font-weight:normal;white-space:nowrap}
+  font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;font-weight:normal;white-space:nowrap}
 .tagline{color:var(--muted)}
 
 /* Sign-in. */
@@ -113,7 +113,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object[open]>summary:before,.note-section[open]>summary:before,.object-section[open]:not(.branch-closing)>summary:before{transform:rotate(90deg)}
 .common-object.branch-closing>summary:before,.note-section.branch-closing>summary:before{transform:rotate(0)}
 /* The configured type size stays the title size on every screen. */
-.common-object>summary>.node-title{flex:1;min-width:0;font-size:var(--object-title-size,18px);font-weight:normal;color:var(--heading);line-height:1.45;
+.common-object>summary>.node-title{flex:1;min-width:0;font-size:var(--object-title-size,15px);font-weight:normal;color:var(--heading);line-height:1.45;
   overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
