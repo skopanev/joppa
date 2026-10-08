@@ -249,7 +249,7 @@ Lists return `note_status` without source bodies or revision history.
 Each schema type can set `color: "#RRGGBB"`. Omit it to use the default presentation.
 Colors apply to the board and schema diagram. Status circles retain their verification colors.
 Each type can set `title_size`, an integer from 12 to 48 pixels. Omit it to use 18 pixels.
-The board uses this size at every nesting level and screen width.
+The board and tree diagram use this size at every nesting level and screen width.
 For example, set 21 for a root type, 18 for its child type, and 16 for deeper types.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.

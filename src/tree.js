@@ -62,12 +62,13 @@ function renderTree(schema){
   for(const [id,node] of nodes){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
     const color=definitions[id]?.color||"#63756b";if(/^#[0-9a-f]{6}$/i.test(color||''))card.style.setProperty('--object-color',color);
+    const size=definitions[id]?.title_size;
+    card.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:18)+'px');
     card.append(element('h2',node.title),element('small',node.label));
     if(definitions[id]){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);
       card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object type':definitions[p]?.title||p)].join(', ')+(related.length?'. '+related.join(' '):''));
       if(t.parents.includes('*'))card.append(element('small','Inside any type','schema-parent-rule'));
-      if(t.title_size!==undefined&&t.title_size!==null)card.append(element('small','Title '+t.title_size+' px','schema-title-size'));
     }
     card.addEventListener('mouseenter',()=>{hovered=id;highlight(id);});card.addEventListener('mouseleave',()=>{hovered=undefined;highlight(document.activeElement?.dataset.kind);});
     card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight(hovered));node.card=card;types.append(card);
