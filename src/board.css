@@ -318,4 +318,7 @@ select:disabled{opacity:1;color:#203c2d;background-color:#f4f6f2;border-color:#d
 .dialog-revisions{grid-column:1 / -1;display:grid;gap:6px;font-size:12px;color:var(--muted);min-width:0}
 .dialog-revisions select{min-width:0;max-width:100%;margin:0}
 .notes-body,.object-field,.object-links{min-width:0}
-.object-link{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.object-link{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-decoration:none}.object-link:hover{text-decoration:underline;text-underline-offset:3px}
+.object-page-navigation{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:18px}.object-page-navigation>a{padding:0;background:none;border:0;color:var(--muted);font-size:13px}.object-page-navigation>.hint{margin-left:auto}
+
+.notes-dialog .history-dialog-header h2{font-size:var(--object-title-size,18px);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}

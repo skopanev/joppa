@@ -251,6 +251,10 @@ Colors apply to the board and schema diagram. Status circles retain their verifi
 Each type can set `title_size`, an integer from 12 to 48 pixels. Omit it to use 18 pixels.
 The board and tree diagram use this size at every nesting level and screen width.
 For example, set 21 for a root type, 18 for its child type, and 16 for deeper types.
+Each type can set `badge`, a label of 1 to 8 characters without spaces. Omit it to use initials from its title.
+Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to use 64 characters.
+The preview includes its final ellipsis. The complete title remains in the closed Details section.
+This limit changes the display only. Keep new titles short and put their context in `body` or `description`.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
@@ -337,3 +341,13 @@ A copied ID uses the same object reader for every type name.
 Verification objects also return their configured evidence context. Historical evidence reads omit current document bodies.
 Search indexes current objects and their ancestor context through the same document tree.
 It returns each configured type under its actual name.
+
+## Object URLs
+
+Open an object with `/?workspace=WORKSPACE&object=ADDRESS`.
+Add `revision=N` to read one saved document revision.
+Object links, configured references, and criterion links use these URLs.
+The browser replaces the page and uses its normal Back and Forward history.
+An object page reads its document and direct children. It does not read root lists.
+Older revisions omit current children, comments, files, and verification details.
+The server applies the same workspace access rules as the board.

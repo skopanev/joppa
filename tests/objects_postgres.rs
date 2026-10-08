@@ -179,6 +179,8 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             launch_blocker: None,
             color: None,
             title_size: None,
+            badge: None,
+            title_preview_length: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),

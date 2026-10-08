@@ -29,6 +29,10 @@ pub struct TreeType {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub badge: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_preview_length: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -125,6 +129,8 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 color: None,
                 title_size: None,
+                badge: None,
+                title_preview_length: None,
                 parent_gate: (kind == "task").then(|| "ready".into()),
                 launch_blocker: (kind == "ac").then_some(true),
                 inbox: (kind == "note").then_some(true),
@@ -200,6 +206,8 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
                 launch_blocker: None,
                 color: None,
                 title_size: None,
+                badge: None,
+                title_preview_length: None,
                 parent_gate: None,
                 title: title.into(),
                 role: "document".into(),
@@ -556,6 +564,18 @@ pub fn set_schema(
         ensure!(
             t.title_size.is_none_or(|size| (12..=48).contains(&size)),
             "type title_size must be an integer from 12 to 48 pixels"
+        );
+        ensure!(
+            t.badge
+                .as_deref()
+                .is_none_or(|badge| (1..=8).contains(&badge.chars().count())
+                    && badge.chars().all(|c| !c.is_whitespace() && !c.is_control())),
+            "type badge must contain 1 to 8 characters without spaces or control characters"
+        );
+        ensure!(
+            t.title_preview_length
+                .is_none_or(|length| (1..=256).contains(&length)),
+            "type title_preview_length must be an integer from 1 to 256 characters"
         );
         ensure!(
             t.parent_gate

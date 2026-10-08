@@ -32,6 +32,7 @@ const rows=[...chain.map((_,i)=>row(i)),
   {...row(0),address:'intake:in-2',kind:'intake',id:'in-2',title:'Second input',
    parent:null,item_id:'W-O-10',links:[{target:'intake:in-1',relation:'related'}]}];
 rows[0].verification_summary={total:2,passed:1};
+rows[1].verification_summary={total:2,passed:0};
 rows[4].signal={tone:'green',label:'Checks passed'};
 rows.push({...row(4),address:'measure:measure-2',id:'measure-2',title:'Failed condition',item_id:'W-MEASURE-2',signal:{tone:'red',label:'Checks failed'}});
 const find=a=>rows.find(r=>r.address===a);
@@ -119,8 +120,9 @@ try{
   assert.equal(await failed.isVisible(),true,'A failed criterion keeps a visible status before expansion');
   assert.equal(await failed.getAttribute('data-tone'),'red');
   assert.match(await failed.getAttribute('aria-label'),/^Status: Checks failed/);
+  assert.equal(await page.locator(`[data-object-address="${address(1)}"] > summary .verification-chip`).innerText(),'2','Zero passing criteria show only the total');
   const rootSummary=page.locator(`[data-object-address="${address(0)}"] > summary`);
-  assert.equal(await rootSummary.locator('.verification-chip').innerText(),'1/2 passed');
+  assert.equal(await rootSummary.locator('.verification-chip').innerText(),'1/2');
   assert.equal(await rootSummary.locator('.status-circle').getAttribute('data-tone'),'grey',
     'Partial progress does not verify the whole group');
   assert.equal(await page.locator(`[data-object-address="${address(4)}"] > summary .verification-chip`).innerText(),'Passed',
@@ -145,8 +147,13 @@ try{
     await page.setViewportSize({width,height:844});
     await page.waitForFunction(()=>document.getAnimations().length===0);
     await page.screenshot({path:'/tmp/joppa-depth-mobile-'+width+'.png',fullPage:true});
-    assert.equal(await page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-full-title`).isVisible(),true,'The clipped title is visible in the open mobile body');
-  assert.equal(await page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-full-title`).innerText(),find(address(4)).title,'The open body shows the full long title once');
+    const full=page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-secondary > .object-details .object-full-title`);
+    assert.equal(await full.isVisible(),false,'The full title stays in closed Details');
+    const details=page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-secondary > .object-details`);
+    await details.locator(':scope > summary').click();
+    assert.equal(await full.locator('p').innerText(),find(address(4)).title,'Details preserves the complete long title');
+    await details.locator(':scope > summary').click();
+    await page.waitForFunction(()=>document.getAnimations().length===0);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The six-level tree fits a mobile viewport');
     for(let i=0;i<chain.length;i++){
       const card=page.locator(`[data-object-address="${address(i)}"]`);
@@ -206,13 +213,12 @@ try{
   assert.equal(await intake.locator('.note-items').count(),0,'Related inputs do not repeat linked objects as full cards');
   await links.locator(':scope > summary').click();
   assert.equal(await links.locator('[data-link-address="intake:in-2"]').count(),1,'A linked input appears once');
-  await links.locator('[data-link-address="intake:in-2"]').click();
-  const linkedDialog=page.getByRole('dialog');
-  await linkedDialog.waitFor();
-  assert.equal(await linkedDialog.locator('.object-relations').getAttribute('open'),null,'Dialog links also start collapsed');
-  await linkedDialog.locator('.object-relations > summary').click();
-  assert.equal(await linkedDialog.locator('[data-link-address="intake:in-1"]').count(),1,'The source link remains available');
-  await linkedDialog.getByRole('button',{name:'Close',exact:true}).click();
+  const target=links.locator('[data-link-address="intake:in-2"]');
+  assert.equal(await target.evaluate(e=>e.tagName),'A','Object links use native browser navigation');
+  const destination=new URL(await target.getAttribute('href'));
+  assert.equal(destination.searchParams.get('workspace'),'w');
+  assert.equal(destination.searchParams.get('object'),'intake:in-2');
+  // The URL cycle and Back/Forward cases have a separate browser fixture.
 
   holdInputReload=true;
   await page.getByLabel('All intake',{exact:true}).check();
