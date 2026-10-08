@@ -1,0 +1,2 @@
+# git archive (server/deploy.sh) stamps the build label into the page.
+src/board.html export-subst

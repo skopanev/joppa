@@ -33,23 +33,26 @@ summary{cursor:pointer;list-style:none}
 summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}
 summary:focus-visible:before{outline:1px dashed var(--heading);outline-offset:2px}
+.common-object>summary:focus-visible>.node-title{text-decoration:underline dashed;text-underline-offset:4px}
+.common-object>summary:hover>.node-title{color:#000}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
 input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
 textarea{min-height:88px;resize:vertical}
 /* Height and size stay usable on touch screens and prevent iOS zoom. */
 select{appearance:none;-webkit-appearance:none;height:44px;min-height:44px;width:100%;min-width:0;
-  padding:7px 32px 7px 10px;font-size:16px;font-weight:400;line-height:1.4;color:var(--heading);
-  border:1px solid var(--rule);border-radius:0;background-color:transparent;cursor:pointer;
+  padding:7px 24px 7px 0;font-size:16px;font-weight:400;line-height:1.4;color:var(--heading);
+  border:0;border-bottom:1px dashed var(--rule);border-radius:0;background-color:transparent;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23444' stroke-width='1.2'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 11px center;background-size:10px 6px}
-select:hover:not(:disabled){border-color:var(--text)}
-select:disabled{opacity:1;cursor:default;background-image:none;padding-right:10px}
+  background-repeat:no-repeat;background-position:right 4px center;background-size:10px 6px}
+select:hover:not(:disabled){border-bottom-color:var(--text)}
+select:disabled{opacity:1;cursor:default;background-image:none;padding-right:0;border-bottom-color:transparent}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 /* Small caps label, as series tags on kopanev.me. */
 .tagline,.type-label,.type-badge,.collection-label,.object-field>.type-label{
   font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;font-weight:normal;white-space:nowrap}
 .tagline{color:var(--muted)}
+.brand>.tagline{position:relative;top:2px}
 
 /* Sign-in. */
 body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:none}
@@ -57,7 +60,11 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .checking-session .login-content{visibility:hidden}
 #login-screen{min-height:80svh;display:flex;align-items:center}
 .login-content{display:flex;flex-direction:column;align-items:flex-start;gap:.2em}
-.login-mark,.brand-mark{display:none}
+.brand-mark,.login-mark{display:flex;align-items:center;gap:3px;transform:rotate(-12deg);flex:none}
+.brand-mark i,.login-mark i{display:block;width:5px;height:19px;border-radius:3px;background:#365d41}
+.brand-mark i:nth-child(2),.login-mark i:nth-child(2){height:28px;background:#4b7858}
+.brand-mark i:last-child,.login-mark i:last-child{height:14px;background:#7f9b69}
+.login-mark{gap:4px;height:36px;margin-bottom:.8em}.login-mark i{width:7px;height:25px;border-radius:4px}.login-mark i:nth-child(2){height:36px}.login-mark i:last-child{height:18px}
 .login-brand{font-size:2em;color:var(--heading);letter-spacing:-.02em;line-height:1.2}
 #login-title{font-size:1em;color:var(--text);margin:2em 0 .8em}#login-title>span{color:inherit}
 #login-button{display:inline-flex;align-items:center;gap:.7em;padding:.6em 1em;border:1px solid var(--text);color:var(--heading);text-decoration:none}
@@ -68,17 +75,20 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #login-cancel{font-size:.8em;color:var(--muted);margin-top:.4em}
 
 /* Header: the brand, its line, the workspace and text links. */
-.app-header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1.2em;padding:0 0 1em;margin-bottom:1.6em;border-bottom:1px dashed var(--rule)}
-.brand{display:flex;align-items:baseline;gap:.8em;font-weight:normal}
-.brand-word{font-size:1.5em;color:var(--heading);letter-spacing:-.02em}
-.brand-word>span{color:inherit}
-.workspace-label{margin:0;flex:1 1 220px;max-width:280px}
-.header-actions{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1em;margin-left:auto;font-size:.8em}
+.app-header{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1em;padding:.2em 0 .8em;margin-bottom:1.4em;border-bottom:1px dashed var(--rule)}
+.brand{display:flex;align-items:center;gap:.6em;font-weight:normal}
+.brand-word{font-size:1.6em;color:var(--heading);letter-spacing:-.03em;line-height:1}
+.brand-word>span{color:#4b7858}
+.workspace-label{display:flex;align-items:center;gap:.5em;margin:0;flex:none}
+.workspace-label:before{content:"/";color:var(--rule);font-size:1.4em}
+.workspace-label select{width:auto;border:0;padding-left:0;color:var(--heading)}
+.header-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1.1em;margin-left:auto;font-size:.8em}
 .help-link{color:var(--link)}
-#refresh{font-size:1.2em;line-height:1;color:var(--muted);text-decoration:none}
-#refresh:hover{color:var(--link)}
+#refresh{display:none}
 #identity{color:var(--muted)}
 #logout{font-size:inherit;color:var(--muted)}
+.build-version{font:11px/1 ui-monospace,monospace;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
+.login-content>.build-version{margin-top:2.4em}
 
 .layout{display:block}
 #sidebar{display:block}
@@ -87,10 +97,12 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 /* Root tabs read as site navigation; the current one is underlined. */
 .root-collection[hidden],.collection-tabs[hidden]{display:none!important}
 .root-collection:focus-visible{outline:none}
-.collection-tabs{display:flex;flex-wrap:wrap;gap:.2em 1.2em;margin:0 0 1.4em;overflow-x:auto}
+.collection-tabs{display:flex;flex-wrap:wrap;gap:.2em 1.2em;margin:0 0 .9em;padding-bottom:.6em;overflow-x:auto}
 .collection-tab{color:var(--link);font-size:1em;white-space:nowrap}
 .collection-tab[aria-selected=true]{color:var(--heading);text-decoration-line:underline;text-decoration-style:wavy;text-decoration-thickness:1px;text-underline-offset:5px}
-.filter-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6em;margin:0 0 1.4em}
+.filter-fields{display:flex;flex-wrap:wrap;gap:.2em 2em;margin:0 0 1.2em}
+.filter-fields select{width:auto;min-width:9em;font-size:14px}
+@media(pointer:coarse){.filter-fields select{font-size:16px}}
 #tree>.filter-fields{margin-bottom:1.4em}
 
 /* Collections. */
@@ -100,6 +112,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .collection-title{font-size:1.2em;color:var(--heading)}
 .collection-description{font-size:.85em;color:var(--muted)}
 .collection-label{color:var(--muted)}
+#tree:has(>.collection-tabs:not([hidden])) .root-collection>.collection-heading .collection-title{display:none}
 .collection-items{border-top:1px dashed var(--rule)}
 .object-collection{margin:2em 0 0}
 .object-collection-title{margin:0 0 .4em;font-size:1em;color:var(--muted)}
@@ -107,23 +120,26 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 
 /* One row per object. The chevron opens it; children indent under a rule. */
 .common-object{margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
-.common-object>summary{display:flex;align-items:baseline;gap:.6em;padding:.7em 0;min-width:0}
-.common-object>summary:before,.note-section>summary:before,.object-section>summary:before{
-  content:'›';flex:none;width:.7em;color:var(--muted);transition:transform .15s;display:inline-block}
-.common-object[open]>summary:before,.note-section[open]>summary:before,.object-section[open]:not(.branch-closing)>summary:before{transform:rotate(90deg)}
-.common-object.branch-closing>summary:before,.note-section.branch-closing>summary:before{transform:rotate(0)}
+.common-object>summary{display:flex;align-items:baseline;gap:.6rem;padding:.55em 0;min-width:0}
+.common-object>summary:before{content:none}
+.note-section>summary:before,.object-section>summary:before{
+  content:'›';flex:none;width:.7rem;font-size:14px;line-height:1;color:var(--muted);transition:transform .15s;display:inline-block;text-align:center}
+.note-section[open]>summary:before,.object-section[open]:not(.branch-closing)>summary:before{transform:rotate(90deg)}
+.note-section.branch-closing>summary:before{transform:rotate(0)}
 /* The configured type size stays the title size on every screen. */
 .common-object>summary>.node-title{flex:1;min-width:0;font-size:var(--object-title-size,15px);font-weight:normal;color:var(--heading);line-height:1.45;
   overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
+:not(.object-children)>.common-object>summary>.type-badge{display:none}
 .type-badge:focus-visible{outline:1px dashed var(--object-color,var(--heading));outline-offset:3px}
-.common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.8em;flex:none;font-size:.75em;opacity:.55;transition:opacity .15s}
-.common-object>summary:hover .item-actions,.common-object>summary:focus-within .item-actions{opacity:1}
-.common-object .item-actions>button{white-space:nowrap}
-.note-state{flex:none;font-size:.75em;color:var(--muted);white-space:nowrap}
-.object-body,.common-object .object-body{padding:0 0 1em 1.3em}
-.object-children{margin:.6em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
+.common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:1.1em;flex:none;font-size:.8rem}
+.common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
+.common-object .item-actions>button:hover{color:var(--link)}
+.note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
+.object-body,.common-object .object-body{padding:0 0 1em 0}
+.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + 3.65rem)}
+.object-children{margin:.6em 0 0 3px;padding-left:1.2rem;border-left:1px dashed var(--rule)}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
 
@@ -141,8 +157,12 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .object-link{display:block;max-width:100%;text-align:left;color:var(--link);font-size:.95em;white-space:normal;overflow-wrap:anywhere}
 .object-link:visited{color:var(--visited)}
 .object-link-meta{display:block;font-size:.8em;color:var(--muted)}
-.object-secondary{margin-top:1em}
-.object-section{margin:0;padding:.4em 0;border-top:1px dashed var(--rule)}
+.object-body{display:flex;flex-direction:column}
+.object-body>.object-children{order:2}
+.object-body>.object-secondary{order:1}
+.object-secondary{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 1.4em;margin-top:.4em}
+.object-section{margin:0;padding:.15em 0;border:0}
+.object-section[open]{flex-basis:100%;padding-bottom:.6em}
 .object-section>summary{display:flex;align-items:baseline;gap:.5em;font-size:.85em;color:var(--muted)}
 .object-section[open]>summary{margin-bottom:.4em}
 .object-secondary .object-meta{margin-top:0}
@@ -158,14 +178,16 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .detail-fact{margin:.3em 0;font-size:.85em;white-space:pre-wrap}
 
 /* Evidence: status is a coloured dot that always carries a text label. */
-.status-circle{--signal:#8c9791;display:inline-block;flex:none;width:8px;height:8px;margin-right:.5em;border-radius:50%;background:var(--signal);vertical-align:2px}
+.status-circle{--signal:#8c9791;display:inline-block;flex:none;width:8px;height:8px;margin-right:.45rem;border-radius:50%;background:var(--signal);vertical-align:2px}
 .status-circle.green{--signal:#39835a}.status-circle.yellow{--signal:#c8921f}.status-circle.orange{--signal:#c4772e}
 .status-circle.red{--signal:#bc5d52}.status-circle.purple{--signal:#8061a9}.status-circle.grey{--signal:#8c9791}
 .status-circle.numbered{width:auto;height:auto;background:none;border-radius:0;color:var(--signal);font-size:.8em;vertical-align:baseline}
 .status-hint{position:fixed;z-index:10000;pointer-events:none;max-width:min(300px,calc(100vw - 16px));padding:.5em .7em;background:var(--heading);color:var(--bg);font-size:.75em;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
 .waiting{--status-ink:#865611}.available{--status-ink:#35643e}.progress{--status-ink:#2a6297}
 .ready{--status-ink:#196b70}.pass{--status-ink:#2d6c3c}.fail{--status-ink:#a13935}
-.verification-chip{display:inline-block;margin-right:.8em;font-size:.8em;color:var(--muted);white-space:nowrap}
+.verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
+.node-title>.status-circle{vertical-align:.09em}
+.node-title>.verification-chip{min-width:2.6rem;margin-right:.6rem;text-align:right;font-variant-numeric:tabular-nums;vertical-align:baseline}
 .verification-chip.has-passes{color:#2d6c3c}
 .ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
 .ac-check{padding:.3em 0}
@@ -187,8 +209,11 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-text{margin:.3em 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Copy: the label swaps without moving the row. */
-.copy{display:inline-flex;align-items:center;gap:.3em}
+.copy{display:inline-flex;align-items:baseline;justify-content:center;width:16px;color:var(--muted)}
+.copy:hover{color:var(--link)}
+.copy svg{position:relative;top:1.5px}
 .copy svg{display:block;flex:none}
+.copy .agent-face{display:none}
 .copy .copy-check{display:none}.copy.copied .copy-symbol{display:none}.copy.copied .copy-check{display:block}
 .copy.copied{color:#2d6c3c}
 
@@ -233,10 +258,16 @@ dialog::backdrop{background:#22222240}
   .header-actions{margin-left:0;width:100%}
   #identity{display:none}
   .filter-fields{grid-template-columns:minmax(0,1fr)}
-  .common-object>summary{flex-wrap:wrap}
-  .common-object .item-actions{opacity:1;margin-left:1.3em}
-  .object-body,.common-object .object-body{padding-left:.9em}
-  .object-children{padding-left:.7em}
+  .common-object>summary{flex-wrap:wrap;row-gap:.15em}
+  .common-object>summary>.node-title{flex:1 1 100%}
+  /* Вторая строка начинается под текстом заголовка. Метка верхнего уровня скрыта, поэтому отступ берёт следующий элемент. */
+  .common-object>summary{--second-line:calc(8px + .45rem)}
+  .common-object>summary:has(>.node-title>.verification-chip){--second-line:calc(8px + .45rem + 2.45rem)}
+  .common-object>summary>.node-title+.type-badge,
+  :not(.object-children)>.common-object>summary>.node-title+.type-badge+*{margin-left:var(--second-line)}
+  .node-title>.verification-chip{min-width:2rem;margin-right:.45rem}
+  .object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + 2.9rem)}
+  .object-children{padding-left:.8rem}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}#toast{transform:none}}
