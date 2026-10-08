@@ -39,14 +39,14 @@ const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item
   document:{revision:1,parent:find(a).parent,present:true,links:find(a).links,
     data:{title:find(a).title,owner:a===address(1)?'rita':a===address(5)?'build-runner':'owner',body:'Read the current contract before work. Keep the source and its saved revisions.'},actor:'owner',at:'2026-10-06T09:00:00Z',reason:'Create'},
   links:find(a).links.map(l=>({link:l,title:find(l.target).title,kind:find(l.target).kind,
-    current_revision:1,present:true})),incoming:[],annotations:{}});
+    current_revision:1,present:true})),incoming:a==='intake:in-1'?[{source:'intake:in-2',title:'Second input',relation:'related'}]:[],annotations:{},process:a===address(3)?{req:'context',verification:'pass'}:undefined});
 
 (async()=>{
 const browser=await chromium.launch({headless:true});
 try{
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let clipboardWorks=true;
+  let clipboardWorks=true,processReads=0;
   let holdInputReload=false,releaseInputReload,inputRequestStarted;
   const inputRequest=new Promise(resolve=>{inputRequestStarted=resolve;});
   await page.addInitScript(()=>{window.__copied=null;});
@@ -57,6 +57,7 @@ try{
     let value;
     if(url.pathname==='/api/me')value={actor:'owner',email:'sergey.kopanev@example.test'};
     else if(url.pathname==='/api/workspaces')value=[{id:'w',title:'Example product'}];
+    else if(url.pathname.endsWith('/board')&&url.searchParams.get('level')==='process'){processReads++;value={revision:1,confirmed:true,criteria:[],runs:{}};}
     else if(url.pathname.endsWith('/board'))value={workspace:'w',custom_tree:false,lazy:true,
       object_types:types,member_labels:{owner:'sergey.kopanev',rita:'Rita Petrov'},state:{title:'Example product',members:{owner:'human',rita:'human','build-runner':'agent'},domains:{},
       capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
@@ -96,19 +97,38 @@ try{
     assert.match(await card.locator(':scope > summary').innerText(),new RegExp(chain[i][1],'i'),
       `[ac:uniform-object-cards-ac1] level ${i+1} takes its title from the schema`);
     await card.locator(':scope > summary').click();
-    await card.locator(':scope > .object-body > .object-meta').waitFor();
+    await card.locator(':scope > .object-body > .object-secondary').waitFor();
   }
 
   assert.equal(await page.locator('#identity').innerText(),'Sergey Kopanev');
-  assert.match(await page.locator(`[data-object-address="${address(0)}"] > .object-body > .object-meta`).innerText(),/Owner: Sergey Kopanev/);
-  assert.match(await page.locator(`[data-object-address="${address(1)}"] > .object-body > .object-meta`).innerText(),/Owner: Rita Petrov/);
-  assert.match(await page.locator(`[data-object-address="${address(5)}"] > .object-body > .object-meta`).innerText(),/Owner: build-runner/);
+  assert.match(await page.locator(`[data-object-address="${address(0)}"] > .object-body > .object-secondary > .object-details > .object-meta`).textContent(),/Owner: Sergey Kopanev/);
+  assert.match(await page.locator(`[data-object-address="${address(1)}"] > .object-body > .object-secondary > .object-details > .object-meta`).textContent(),/Owner: Rita Petrov/);
+  assert.match(await page.locator(`[data-object-address="${address(5)}"] > .object-body > .object-secondary > .object-details > .object-meta`).textContent(),/Owner: build-runner/);
+  for(let i=0;i<chain.length;i++){
+    const card=page.locator(`[data-object-address="${address(i)}"]`);
+    assert.equal(await card.locator(':scope > .object-body > .object-secondary .object-details').getAttribute('open'),null,'Details start collapsed');
+    assert.ok(await card.locator(':scope > .object-body').evaluate(body=>{
+      const nodes=[...body.children];return nodes.indexOf(body.querySelector(':scope > .object-children'))<nodes.indexOf(body.querySelector(':scope > .object-secondary'));
+    }),'Structural children precede secondary sections');
+  }
   const rootSummary=page.locator(`[data-object-address="${address(0)}"] > summary`);
   assert.equal(await rootSummary.locator('.verification-chip').innerText(),'1/2 passed');
   assert.equal(await rootSummary.locator('.status-circle').getAttribute('data-tone'),'grey',
     'Partial progress does not verify the whole group');
   assert.equal(await page.locator(`[data-object-address="${address(4)}"] > summary .verification-chip`).innerText(),'Passed',
     'A custom criterion type shows a visible passing label');
+  const checks=page.locator(`[data-object-address="${address(3)}"] > .object-body > .object-secondary > .object-checks`);
+  assert.equal(await checks.getAttribute('open'),null,'Checks start collapsed');
+  assert.equal(processReads,0,'Opening cards does not load check history');
+  await checks.locator(':scope > summary').click();
+  await checks.locator('.verification-record h3').waitFor();
+  assert.equal(processReads,1,'Opening Checks reads only its verification context');
+  await checks.locator(':scope > summary').click();
+  await page.waitForFunction(()=>document.getAnimations().length===0);
+  await checks.locator(':scope > summary').click();
+  await page.waitForFunction(()=>document.getAnimations().length===0);
+  assert.equal(processReads,1,'Reopening Checks reuses loaded evidence');
+  await checks.locator(':scope > summary').click();
   await rootSummary.focus();
   assert.equal(await rootSummary.evaluate(e=>getComputedStyle(e).outlineStyle),'none','Card focus does not outline the whole block');
   assert.equal(await page.getByRole('tabpanel').getAttribute('tabindex'),'-1','Collection panels do not add an invisible keyboard stop');
@@ -117,6 +137,7 @@ try{
     await page.setViewportSize({width,height:844});
     await page.waitForFunction(()=>document.getAnimations().length===0);
     await page.screenshot({path:'/tmp/joppa-depth-mobile-'+width+'.png',fullPage:true});
+  assert.equal(await page.locator(`[data-object-address="${address(4)}"] > .object-body > .object-full-title`).innerText(),find(address(4)).title,'The open body shows the full long title once');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'The six-level tree fits a mobile viewport');
     for(let i=0;i<chain.length;i++){
       const card=page.locator(`[data-object-address="${address(i)}"]`);
@@ -168,13 +189,20 @@ try{
   const intake=page.locator('#collection-intake [data-object-address="intake:in-1"]').first();
   await intake.waitFor();
   await intake.locator(':scope > summary').click();
-  await intake.getByText('Action one',{exact:false}).waitFor();
-  const related=intake.locator('.note-items [data-object-address="intake:in-2"]');
-  await related.waitFor();await related.locator(':scope > summary').click();
-  await related.locator(':scope > .object-body > .object-meta').waitFor();
-  await page.waitForFunction(()=>!document.querySelector('#collection-intake .object-loading'));
-  assert.equal(await related.locator('[data-object-address="intake:in-1"]').count(),0,'Related cycles do not repeat an ancestor card');
-  assert.equal(await related.locator('.object-links button').filter({hasText:'Customer input'}).count(),1,'The source link remains available');
+  const links=intake.locator(':scope > .object-body .object-relations');
+  await links.waitFor();
+  assert.equal(await links.getAttribute('open'),null,'Links start collapsed');
+  assert.equal(await links.locator(':scope > summary').innerText(),'Links 2','Incoming and outgoing links to the same object share one row');
+  assert.equal(await intake.locator('.note-items').count(),0,'Related inputs do not repeat linked objects as full cards');
+  await links.locator(':scope > summary').click();
+  assert.equal(await links.locator('[data-link-address="intake:in-2"]').count(),1,'A linked input appears once');
+  await links.locator('[data-link-address="intake:in-2"]').click();
+  const linkedDialog=page.getByRole('dialog');
+  await linkedDialog.waitFor();
+  assert.equal(await linkedDialog.locator('.object-relations').getAttribute('open'),null,'Dialog links also start collapsed');
+  await linkedDialog.locator('.object-relations > summary').click();
+  assert.equal(await linkedDialog.locator('[data-link-address="intake:in-1"]').count(),1,'The source link remains available');
+  await linkedDialog.getByRole('button',{name:'Close',exact:true}).click();
 
   holdInputReload=true;
   await page.getByLabel('All intake',{exact:true}).check();

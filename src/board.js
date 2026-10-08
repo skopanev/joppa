@@ -551,24 +551,43 @@ function commonObjectCard(item){
   const copy=copyButton(item.item_id||item.address);
   const history=button('Revisions',()=>showCommonObject(item.address,true),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
-  card.addEventListener('toggle',async()=>{if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.append(children);await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+  card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;const generation=loadNumber;body.append(E('p','Loading object…','object-loading hint'));try{const detail=await objectPart({address:item.address});if(generation!==loadNumber||!card.isConnected)return;resizeBranch(card,()=>{body.replaceChildren();fillCommonObject(body,detail);});const children=E('div',undefined,'object-children');body.insertBefore(children,body.querySelector(':scope > .object-secondary'));await appendObjectChildren(children,item.address);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
+}
+function syncObjectTitles(root=document){
+  for(const title of root.querySelectorAll('.object-full-title')){
+    const heading=title.closest('.common-object')?.querySelector(':scope > summary > .node-title');
+    title.hidden=!heading||heading.scrollHeight<=heading.clientHeight+1;
+  }
+}
+window.addEventListener('resize',()=>syncObjectTitles());
+function objectSection(title,cls){
+  const group=E('details',undefined,'object-section '+cls);
+  group.append(E('summary',title));enableBranchMotion(group);return group;
 }
 function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
   const historical=detail.historical??r.revision!==detail.current_revision;
+  const heading=body.parentElement?.querySelector(':scope > summary > .node-title');
+  if(heading){const full=E('h3',d.title,'object-full-title');full.hidden=heading.scrollHeight<=heading.clientHeight+1;body.append(full);}
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current verification revision.','dependency-review'));
+  const secondary=E('div',undefined,'object-secondary');
+  const fields=objectSection('Details','object-details');
   const meta=E('div',undefined,'object-meta');
-  meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));body.append(meta);
-  if(detail.process?.verification&&(detail.process.req||data.objectTypes?.[detail.kind]?.role==='task'))body.append(E('p','Verification: '+({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification),'node-meta'));
-  if(detail.process?.status&&!inputQueue(detail.kind))body.append(E('p','Status: '+(typeof detail.process.status==='string'?detail.process.status:detail.signal?.label||'Current'),'node-meta'));
+  meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));fields.append(meta);
+  const verification=detail.process?.verification&&({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification);
+  if(verification)fields.append(E('p','Verification: '+verification,'node-meta'));
+  const status=typeof detail.process?.status==='string'?detail.process.status:detail.signal?.label;
+  if(detail.process?.status&&!inputQueue(detail.kind)&&status!==verification&&status!=='Checks '+verification?.toLowerCase())fields.append(E('p','Status: '+status,'node-meta'));
   const assessment=detail.process?.readiness_blocker||detail.process?.assessment;
-  if(!historical&&assessment)body.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
+  if(!historical&&assessment)fields.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
+  const contentKey=['body','description','contract'].find(key=>typeof d[key]==='string'&&d[key].trim());
+  if(contentKey)body.append(E('p',d[contentKey],'object-content node-description'));
   for(const [key,value] of Object.entries(d)){
-    if(['title','owner'].includes(key)||(inputQueue(detail.kind)&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
+    if(['title','owner',contentKey].includes(key)||(inputQueue(detail.kind)&&key==='status')||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
     const field=E('div',undefined,'object-field');
     const refRule=data.objectTypes?.[detail.kind]?.references?.[key];
     field.append(E('small',refRule?refRule.title:key.replaceAll('_',' '),'type-label'));
@@ -584,28 +603,36 @@ function fillCommonObject(body,detail){
     }else{
       field.append(E('p',typeof value==='string'?value:JSON.stringify(value),'node-description'));
     }
-    body.append(field);
+    fields.append(field);
   }
-  if(detail.links?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Links'));for(const {link,title,current_revision,present} of detail.links){const row=button((title||link.target)+' · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':''),()=>showCommonObject(link.target,false,link.revision),'object-link');group.append(row);}body.append(group);}
-  if(detail.incoming?.length){const group=E('div',undefined,'object-links');group.append(E('h3','Linked from'));for(const link of detail.incoming)group.append(button(link.title+' · '+link.relation,()=>showCommonObject(link.source),'object-link'));body.append(group);}
+  secondary.append(fields);
+  const links=new Map();
+  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label=link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
+  for(const link of detail.incoming||[]){const key=link.source+'@';const entry=links.get(key)||{address:link.source,title:link.title||link.source,labels:[]};entry.labels.push('Linked from · '+link.relation);links.set(key,entry);}
+  if(links.size){
+    const group=objectSection('Links '+links.size,'object-relations');
+    const rows=E('div',undefined,'object-links');
+    for(const entry of links.values()){const row=button(entry.title,()=>showCommonObject(entry.address,false,entry.revision),'object-link');row.dataset.linkAddress=entry.address;row.append(E('small',[...new Set(entry.labels)].join(' · '),'object-link-meta'));rows.append(row);}
+    group.append(rows);secondary.append(group);
+  }
   const annotations=historical?{}:detail.annotations||{};
-  if(annotations.description){const context=E('div',undefined,'object-field');context.append(E('small','Context','type-label'),E('p',annotations.description,'node-description'));body.append(context);}
+  if(annotations.description){const context=E('div',undefined,'object-field');context.append(E('small','Context','type-label'),E('p',annotations.description,'node-description'));fields.append(context);}
   const comments=Object.values(annotations.comments||{}).filter(comment=>!comment.withdrawn);
   if(comments.length){
-    const group=E('details',undefined,'object-comments');
-    group.append(E('summary',comments.length+' '+(comments.length===1?'comment':'comments')));
+    const group=objectSection(comments.length+' '+(comments.length===1?'comment':'comments'),'object-comments');
     for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));group.append(row);}
-    enableBranchMotion(group);body.append(group);
+    secondary.append(group);
   }
-  const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length)body.append(attachmentList(files));
-  if(!historical)for(const kind of inboxKinds())commonNotes(body,detail.address,kind);
+  const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
   if(!historical&&detail.process?.req){
-    const inspect=button('Checks',async()=>{
-      inspect.disabled=true;
-      try{const record=window.SNAPSHOT?snapshotVerification(detail):await boardPart('process',detail.address);const content=E('section',undefined,'verification-record');renderVerification(content,record);body.append(content);inspect.remove();}
-      finally{inspect.disabled=false;}
-    },'text-button');body.append(inspect);
+    const group=objectSection('Checks','object-checks'),content=E('section',undefined,'verification-record');group.append(content);let loaded=false;
+    group.addEventListener('toggle',async()=>{
+      if(!group.open||loaded)return;loaded=true;const generation=loadNumber;content.append(E('p','Loading checks…','hint'));
+      try{const record=window.SNAPSHOT?snapshotVerification(detail):await boardPart('process',detail.address);if(generation!==loadNumber||!group.isConnected)return;resizeBranch(group,()=>{content.replaceChildren();renderVerification(content,record);});}
+      catch(e){loaded=false;content.replaceChildren();notify(e);}
+    });secondary.append(group);
   }
+  body.append(secondary);
 }
 function snapshotVerification(detail){
   const req=detail.process.req,r=data.state.requirements[req].revisions.at(-1);
