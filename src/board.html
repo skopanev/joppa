@@ -53,7 +53,7 @@
 </main>
 <script>/* BOARD_SCRIPT */</script>
 <script>
-// Build label "v<yy>w<iso week>.<hash>". git archive fills data-build with "<commit time> <short hash>".
+// Build label "v<yy>w<iso week>.<iso weekday>-<hhmm UTC>", from the commit time that git archive stamps into data-build.
 for(const label of document.querySelectorAll('.build-version')){
   const [time,hash]=label.dataset.build.split(' ');
   if(!/^\d+$/.test(time)||!hash){label.remove();continue;}
@@ -61,7 +61,8 @@ for(const label of document.querySelectorAll('.build-version')){
   day.setUTCDate(day.getUTCDate()+3-(day.getUTCDay()+6)%7);
   const jan4=new Date(Date.UTC(day.getUTCFullYear(),0,4));
   const week=1+Math.round(((day-jan4)/864e5-3+(jan4.getUTCDay()+6)%7)/7);
-  label.textContent='v'+String(day.getUTCFullYear()).slice(2)+'w'+String(week).padStart(2,'0')+'.'+hash;
+  const pad=n=>String(n).padStart(2,'0');
+  label.textContent='v'+String(day.getUTCFullYear()).slice(2)+'w'+pad(week)+'.'+((at.getUTCDay()+6)%7+1)+'-'+pad(at.getUTCHours())+pad(at.getUTCMinutes());
   label.title='Build '+hash+', '+at.toISOString().slice(0,16).replace('T',' ')+' UTC';
 }
 </script>
