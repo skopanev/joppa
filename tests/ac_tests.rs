@@ -115,3 +115,41 @@ fn set_ac_tests_keeps_its_own_history_and_refuses_bad_lists() {
     let e = w.apply("outsider", json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"No"})).unwrap_err();
     assert!(e.to_string().contains("not a workspace member"), "{e}");
 }
+
+// Real output of `bun test ./tests/auth/login.test.ts`: nested describe, test.each, todo, skip.
+const BUN_EACH: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="6" assertions="4" failures="1" skipped="2" time="0.043805834">
+  <testsuite name="tests/auth/login.test.ts" file="tests/auth/login.test.ts" tests="6" assertions="4" failures="1" skipped="2" time="0.01664375">
+    <testsuite name="login" file="tests/auth/login.test.ts" line="2" tests="6" assertions="4" failures="1" skipped="2" time="0">
+      <testsuite name="passkey" file="tests/auth/login.test.ts" line="3" tests="6" assertions="4" failures="1" skipped="2" time="0.011">
+        <testcase name="works for 1" classname="passkey &gt; login" time="0.01146" file="tests/auth/login.test.ts" line="4" assertions="1" />
+        <testcase name="works for 2" classname="passkey &gt; login" time="0.000071" file="tests/auth/login.test.ts" line="4" assertions="1" />
+        <testcase name="same name" classname="passkey &gt; login" time="0.000075" file="tests/auth/login.test.ts" line="5" assertions="1" />
+        <testcase name="same name" classname="passkey &gt; login" time="0.000794" file="tests/auth/login.test.ts" line="5" assertions="1">
+          <failure type="AssertionError" message="expect(received).toBe(expected)&#10;&#10;Expected: 3&#10;Received: 2&#10;">AssertionError: expect(received).toBe(expected)&#10;&#10;Expected: 3&#10;Received: 2&#10;&#10;      at tests/auth/login.test.ts:5:68&#10;</failure>
+        </testcase>
+        <testcase name="later" classname="passkey &gt; login" time="0" file="tests/auth/login.test.ts" line="6" assertions="0">
+          <skipped message="TODO" />
+        </testcase>
+        <testcase name="skipped" classname="passkey &gt; login" time="0" file="tests/auth/login.test.ts" line="7" assertions="0">
+          <skipped />
+        </testcase>
+      </testsuite>
+    </testsuite>
+  </testsuite>
+</testsuites>"#;
+
+#[test]
+fn bun_each_cases_share_or_split_addresses_and_paths_stay_relative() {
+    let results = parse_junit(BUN_EACH).unwrap();
+    let base = "tests/auth/login.test.ts > login > passkey > ";
+    assert!(results.iter().all(|r| r.address.starts_with(base)), "{results:?}");
+    let same: Vec<&str> = results.iter().filter(|r| r.address == format!("{base}same name")).map(|r| r.status.as_str()).collect();
+    assert_eq!(same, vec!["pass", "fail"]);
+    let reports = [report(1, "c", 1, false, 10)];
+    let rows: Vec<(i64, TestResult)> = results.into_iter().map(|r| (1, r)).collect();
+    let s = criterion_status(&tests(&["tests/auth/login.test.ts > login > passkey > same name"]), false, &reports, &rows);
+    assert_eq!(s.status, "red", "one failing case of a shared address fails it");
+    let dotted = BUN.replace(r#"name="sign-in.test.ts" file"#, r#"name="./sign-in.test.ts" file"#);
+    assert_eq!(parse_junit(&dotted).unwrap()[0].address, OPENS);
+}

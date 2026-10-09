@@ -45,5 +45,6 @@ jobs:
           JOPPA_LOGIN_USERS_FILE: ${{ runner.temp }}/joppa-test-aliases.json
       - run: cargo build --locked
       - run: python3 tests/http_smoke.py
+      - run: python3 tests/reports_smoke.py
 
       - run: python3 tests/task_check_reporting.py

@@ -29,12 +29,12 @@ fn attribute(element: &BytesStart, name: &str) -> Result<Option<String>> {
 
 fn testcase(suites: &[String], element: &BytesStart) -> Result<TestResult> {
     let name = attribute(element, "name")?.context("a testcase has no name")?;
-    let mut parts: Vec<&str> = suites
-        .iter()
-        .map(String::as_str)
-        .filter(|s| !s.is_empty())
-        .collect();
-    parts.push(&name);
+    // The outer suite is the file: keep it relative, with "/" and no leading "./".
+    let mut parts: Vec<String> = suites.iter().filter(|s| !s.is_empty()).cloned().collect();
+    if let Some(file) = parts.first_mut() {
+        *file = file.replace('\\', "/").trim_start_matches("./").to_owned();
+    }
+    parts.push(name);
     let duration_ms = attribute(element, "time")?
         .and_then(|t| t.parse::<f64>().ok())
         .map(|seconds| (seconds * 1000.0).round() as i64);

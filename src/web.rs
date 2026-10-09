@@ -279,10 +279,14 @@ async fn upload_report(
     State(app): State<App>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Json(upload): Json<store::ReportUpload>,
+    body: axum::body::Bytes,
 ) -> ApiResult {
+    // The token is checked before the body is read, so a missing token is always 401.
     let actor = authenticate(&app, &headers).await?;
     require_write_credential(&headers)?;
+    let upload: store::ReportUpload = serde_json::from_slice(&body).map_err(|e| {
+        (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": format!("bad report upload: {e}")})))
+    })?;
     result(store::upload_report(&app.pool, &workspace, &actor, upload).await)
 }
 #[derive(Deserialize)]
