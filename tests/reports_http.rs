@@ -48,6 +48,7 @@ async fn world() -> Result<World> {
         json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
         json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
         json!({"op":"revise","req":"key","expected_revision":0,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]}),
+        json!({"op":"task","req":"key","revision":1,"id":"t1","title":"Build key rights","acs":["key-rights"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"}),
     ]
     .into_iter()
     .enumerate()
@@ -749,6 +750,73 @@ async fn a_test_tag_in_code_links_nothing() -> Result<()> {
     ensure!(
         w.status().await?["status"] == "green",
         "a tag in a test name links nothing"
+    );
+    Ok(())
+}
+
+async fn task(w: &World) -> Result<Value> {
+    Ok(w.http
+        .get(format!("{}/tests?task=task:key/t1", w.base))
+        .bearer_auth(&w.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_task_is_done_when_its_criterion_is_green() -> Result<()> {
+    // all-bound-checks-pass-ac1: the agent reads task T under criterion A.
+    let w = world().await?;
+    ensure!(
+        task(&w).await?["done"] == false,
+        "not done before any report"
+    );
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let t = task(&w).await?;
+    ensure!(
+        t["done"] == true
+            && t["criterion"]["address"] == "ac:key-rights"
+            && t["criterion"]["status"] == "green",
+        "{t}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
+    // all-bound-checks-pass-ac2: a newer commit makes A red.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(task(&w).await?["done"] == true, "done on c1");
+    w.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    let t = task(&w).await?;
+    ensure!(
+        t["done"] == false
+            && t["criterion"]["status"] == "red"
+            && t["criterion"]["commit"] == "c2c2c2c",
+        "{t}"
     );
     Ok(())
 }

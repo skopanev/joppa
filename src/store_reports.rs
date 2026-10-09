@@ -125,6 +125,28 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
     Ok(json!({"items": items}))
 }
 
+/// A task has no test status of its own: it is done while its criterion is green.
+pub async fn task_status(pool: &Pool, workspace: &str, actor: &str, task: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let workspace = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &workspace, actor, false).await?;
+    let criterion: String = conn
+        .query_opt(
+            "SELECT parent FROM joppa.objects WHERE workspace=$1 AND address=$2 AND kind='task'",
+            &[&workspace, &task],
+        )
+        .await?
+        .and_then(|row| row.get(0))
+        .context("unknown task")?;
+    drop(conn);
+    let status = criterion_tests(pool, &workspace, actor, &criterion).await?;
+    Ok(json!({
+        "address": task,
+        "done": status["status"] == "green",
+        "criterion": {"address": criterion, "status": status["status"], "commit": status["commit"]},
+    }))
+}
+
 /// Status of one criterion from its saved test list and all clean default-branch reports.
 pub async fn criterion_tests(
     pool: &Pool,

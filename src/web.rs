@@ -302,6 +302,8 @@ async fn upload_report(
 struct TestsQuery {
     /// One criterion address, or several separated by commas. Without it: the overview.
     ac: Option<String>,
+    /// A task address: done while its criterion is green.
+    task: Option<String>,
 }
 async fn criterion_tests(
     State(app): State<App>,
@@ -310,6 +312,9 @@ async fn criterion_tests(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
+    if let Some(task) = q.task {
+        return result(store::task_status(&app.pool, &workspace, &actor, &task).await);
+    }
     let Some(ac) = q.ac else {
         return result(store::tests_overview(&app.pool, &workspace, &actor).await);
     };
