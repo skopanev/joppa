@@ -5,13 +5,16 @@
 <meta name="theme-color" content="#fffcf5">
 <title>Workspace tree · Joppa</title>
 <link rel="icon" href="/favicon.svg">
+<script>/* Theme before first paint: the saved choice, else the system setting. */
+try{document.documentElement.dataset.theme=localStorage.getItem('joppa-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}
+</script>
 <style>/* BOARD_STYLE */
 /* TREE_STYLE */</style>
 <body class="authenticated schema-page">
 <header class="app-header">
   <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong><span class="tagline">AI first product specification</span></a>
   <label class="workspace-label"><span class="sr-only">Workspace</span><select id="workspace" aria-label="Workspace"></select></label>
-  <nav class="header-actions" aria-label="Navigation"><a class="help-link" href="/" id="board-link">Back to board ↗</a><select id="revision" aria-label="Schema revision"></select></nav>
+  <nav class="header-actions" aria-label="Navigation"><a class="help-link" href="/" id="board-link">Back to board ↗</a><select id="revision" aria-label="Schema revision"></select><button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button></nav>
 </header>
 <main class="layout">
   <div class="tree-intro"><h1>Workspace tree</h1><p class="hint">Object types, allowed parents and references. Follow the arrows to read their relationships.</p></div>
@@ -25,5 +28,14 @@
   <p class="hint schema-footer">Note holds new information, with revisions, comments, files and links. Any two objects can have context links or dependencies.</p>
 </main>
 <script>/* TREE_SCRIPT */</script>
+<script>
+// Theme switch: flip, remember, and keep the browser chrome colour in step.
+for(const button of document.querySelectorAll('.theme-toggle'))button.addEventListener('click',()=>{
+  const root=document.documentElement,next=root.dataset.theme==='dark'?'light':'dark';
+  root.dataset.theme=next;try{localStorage.setItem('joppa-theme',next)}catch(e){}
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',next==='dark'?'#424f56':'#fffcf5');
+});
+if(document.documentElement.dataset.theme==='dark')document.querySelector('meta[name=theme-color]')?.setAttribute('content','#424f56');
+</script>
 </body>
 </html>

@@ -234,6 +234,11 @@ $('login-button').onclick=async()=>{
   }catch(e){if(attempt===signInAttempt){status.textContent=e.message;status.dataset.error='true';signInWindow?.close();}}
   finally{if(attempt===signInAttempt){b.disabled=false;$('login-cancel').hidden=true;}}
 };
+// The name opens a small account menu; Sign out lives there.
+function setAccountMenu(open){$('account-menu').hidden=!open;$('identity').setAttribute('aria-expanded',String(open));if(open)$('logout').focus();}
+$('identity').onclick=()=>setAccountMenu($('account-menu').hidden);
+document.addEventListener('click',e=>{if(!$('account-menu').hidden&&!e.target.closest('.account'))setAccountMenu(false);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('account-menu').hidden){setAccountMenu(false);$('identity').focus();}});
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
 $('workspaces').onchange=async e=>{
   ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);
@@ -271,8 +276,11 @@ function assessmentHint(a){
   if(a.state==='waiting')return '\nQuestion: '+a.reason+'\nRecipient: '+personLabel(a.recipient||'Unassigned');
   return '\nReadiness: Ready';
 }
-function nodeTitle(text,signal){
-  const title=E('span',text,'node-title');title.prepend(statusCircle(signal));return title;
+// A shortened title keeps its full text; an open row shows the full text in place.
+function nodeTitle(text,signal,full){
+  const title=E('span',undefined,'node-title');
+  if(full&&full!==text)title.append(E('span',text,'title-short'),E('span',full,'title-full'));else title.append(text);
+  title.prepend(statusCircle(signal));return title;
 }
 function rootCollectionTabs(root){
   if(!Object.keys(data.objectTypes||{}).length)return;
@@ -594,7 +602,7 @@ function commonObjectCard(item,loadedDetail){
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
   const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
   const preview=objectTitlePreview(item.title,item.kind);
-  const title=nodeTitle(preview,signal),counts=item.verification_summary;title.dataset.truncated=String(preview!==item.title);
+  const title=nodeTitle(preview,signal,item.title),counts=item.verification_summary;title.dataset.truncated=String(preview!==item.title);
   const isCriterion=data.objectTypes?.[item.kind]?.role==='ac';
   // The count sits on the right of the row, after the type label, not inside the title.
   let chip=null;
@@ -639,7 +647,8 @@ function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
   const historical=detail.historical??r.revision!==detail.current_revision;
-  const heading=body.parentElement?.querySelector(':scope > summary > .node-title,.history-dialog-header h2');
+  // Cards show the full title in their own row; only the dialog header needs a separate line.
+  const heading=body.parentElement?.querySelector(':scope > .history-dialog-header h2');
   const full=heading?E('div',undefined,'object-field object-full-title'):null;
   if(full){full.hidden=heading.dataset.truncated!=='true'&&heading.scrollHeight<=heading.clientHeight+1;full.append(E('small','Full title','type-label'),E('p',d.title,'node-description'));}
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));

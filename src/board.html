@@ -21,6 +21,9 @@
 <meta name="twitter:description" content="AI first product specification. A versioned product tree with connected tasks.">
 <meta name="twitter:image" content="/* PUBLIC_ORIGIN *//social-preview.png">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>/* Theme before first paint: the saved choice, else the system setting. */
+try{document.documentElement.dataset.theme=localStorage.getItem('joppa-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}
+</script>
 <style>/* BOARD_STYLE */</style>
 <body class="checking-session">
 <section id="login-screen" aria-labelledby="login-title">
@@ -33,6 +36,7 @@
     <p id="login-status" role="status" aria-live="polite"></p>
     <button id="login-cancel" hidden>Cancel sign-in</button>
     <span class="build-version" data-build="$Format:%ct %h$"></span>
+    <button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
   </div>
 </section>
 <header class="app-header">
@@ -44,7 +48,7 @@
 <a id="tree-schema-link" class="help-link" href="/tree">Workspace tree ↗</a>
 <a class="help-link" href="/guide" target="_blank" rel="noopener">How it works ↗</a>
 <button id="refresh" title="Refresh" aria-label="Refresh">↻</button>
-<span id="identity"></span><button id="logout" hidden>Sign out</button><span class="build-version" data-build="$Format:%ct %h$"></span>
+<span class="account"><button id="identity" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="account-menu"></button><span id="account-menu" class="account-menu" hidden><button id="logout" hidden>Sign out</button></span></span><span class="build-version" data-build="$Format:%ct %h$"></span><button class="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </nav>
 </header>
 <div id="notice" class="notice" role="status"></div>
@@ -65,6 +69,15 @@ for(const label of document.querySelectorAll('.build-version')){
   label.textContent='v'+String(day.getUTCFullYear()).slice(2)+'w'+pad(week)+'.'+((at.getUTCDay()+6)%7+1)+'-'+pad(at.getUTCHours())+pad(at.getUTCMinutes());
   label.title='Build '+hash+', '+at.toISOString().slice(0,16).replace('T',' ')+' UTC';
 }
+</script>
+<script>
+// Theme switch: flip, remember, and keep the browser chrome colour in step.
+for(const button of document.querySelectorAll('.theme-toggle'))button.addEventListener('click',()=>{
+  const root=document.documentElement,next=root.dataset.theme==='dark'?'light':'dark';
+  root.dataset.theme=next;try{localStorage.setItem('joppa-theme',next)}catch(e){}
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',next==='dark'?'#424f56':'#fffcf5');
+});
+if(document.documentElement.dataset.theme==='dark')document.querySelector('meta[name=theme-color]')?.setAttribute('content','#424f56');
 </script>
 </body>
 </html>
