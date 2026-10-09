@@ -6,6 +6,8 @@
 // The hook never blocks a push. It uploads nothing for a dirty run, for another
 // branch or for a report from another commit.
 // Extra reports of the same run, such as .joppa/bun.junit.xml, join the main one.
+// Each extra report has its stamp beside it (.joppa/bun.stamp.json); the merged
+// report is full only when every part is full.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 
@@ -21,6 +23,11 @@ async function main() {
     const extra = readdirSync(".joppa").filter((f) => f.endsWith(".junit.xml")).sort();
     if (extra.length)
       junit = `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>${[junit, ...extra.map((f) => readFileSync(`.joppa/${f}`, "utf8"))].map(suites).join("\n")}</testsuites>\n`;
+    for (const f of extra) {
+      const part = `.joppa/${f.replace(/\.junit\.xml$/, ".stamp.json")}`;
+      const full = existsSync(part) && JSON.parse(readFileSync(part, "utf8")).full === true;
+      if (!full) stamp.full = false;
+    }
   } catch {
     return say("no report or config, nothing uploaded");
   }

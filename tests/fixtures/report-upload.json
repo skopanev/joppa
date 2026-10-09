@@ -1,0 +1,12 @@
+{
+ "stamp": {
+  "commit": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+  "commit_time": "2026-10-09T10:00:00Z",
+  "order": 1,
+  "branch": "master",
+  "dirty": false,
+  "full": true,
+  "default_branch": true
+ },
+ "junit": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuites><testsuite name=\"tests/auth/login.test.ts\"><testsuite name=\"login\"><testcase name=\"opens\" /><testcase name=\"refuses\" /></testsuite></testsuite></testsuites>\n"
+}

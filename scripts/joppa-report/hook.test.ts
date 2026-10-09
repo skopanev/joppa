@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const KIT = import.meta.dir;
+// The body that the real endpoint accepts (tests/reports_http.rs posts the same fixture).
+const FIXTURE = JSON.parse(readFileSync(join(KIT, "../../tests/fixtures/report-upload.json"), "utf8"));
+const shape = (v: any): any =>
+  v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, shape(v[k])])) : typeof v;
 let root = "";
 let repo = "";
 const uploads: any[] = [];
@@ -32,7 +36,11 @@ beforeAll(() => {
   server = Bun.serve({
     port: 0,
     async fetch(request) {
-      uploads.push({ auth: request.headers.get("authorization"), path: new URL(request.url).pathname, body: await request.json() });
+      const body = await request.json();
+      // Reject any body that the real endpoint would not take, so hook and server cannot drift.
+      if (JSON.stringify(shape(body)) !== JSON.stringify(shape(FIXTURE)))
+        return Response.json({ error: "body does not match the upload fixture" }, { status: 422 });
+      uploads.push({ auth: request.headers.get("authorization"), path: new URL(request.url).pathname, body });
       return Response.json({ tests: 2, report: uploads.length });
     },
   });
@@ -123,6 +131,7 @@ test("extra reports of the same run join the upload", async () => {
   // The Joppa kit runs cargo and bun tests; the hook sends both in one report.
   bunTest({ JOPPA_FULL_RUN: "1" });
   writeFileSync(join(repo, ".joppa/extra.junit.xml"), '<testsuites><testsuite name="tests/extra.rs"><testcase name="extra_case" /></testsuite></testsuites>');
+  writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: true }));
   git("commit", "-q", "--allow-empty", "-m", "Merge check");
   bunTest({ JOPPA_FULL_RUN: "1" });
   uploads.length = 0;
@@ -130,5 +139,17 @@ test("extra reports of the same run join the upload", async () => {
   expect(uploads.length).toBe(1);
   expect(uploads[0].body.junit).toContain('name="opens"');
   expect(uploads[0].body.junit).toContain('name="extra_case"');
+  expect(uploads[0].body.stamp.full).toBe(true);
+});
+
+test("a merged report is full only when every part is full", async () => {
+  writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: false }));
+  git("commit", "-q", "--allow-empty", "-m", "Partial extra");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  expect((await push()).code).toBe(0);
+  expect(uploads.length).toBe(1);
+  expect(uploads[0].body.stamp.full).toBe(false);
   rmSync(join(repo, ".joppa/extra.junit.xml"));
+  rmSync(join(repo, ".joppa/extra.stamp.json"));
 });

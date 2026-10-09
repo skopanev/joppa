@@ -281,8 +281,14 @@ async fn upload_report(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> ApiResult {
-    // The token is checked before the body is read, so a missing token is always 401.
-    let actor = authenticate(&app, &headers).await?;
+    // The token is checked before the body is read. The hook prints these texts in git push.
+    let unauthorized = |text: &str| (StatusCode::UNAUTHORIZED, Json(json!({ "error": text })));
+    if !headers.contains_key(header::AUTHORIZATION) {
+        return Err(unauthorized("token required"));
+    }
+    let actor = authenticate(&app, &headers)
+        .await
+        .map_err(|_| unauthorized("token is not valid"))?;
     require_write_credential(&headers)?;
     let upload: store::ReportUpload = serde_json::from_slice(&body).map_err(|e| {
         (

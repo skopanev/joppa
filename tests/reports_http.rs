@@ -344,7 +344,7 @@ async fn an_upload_without_a_token_is_refused() -> Result<()> {
         )
         .await?;
     ensure!(
-        code == 401 && reply["error"] == "Please sign in to continue",
+        code == 401 && reply["error"] == "token required",
         "{code} {reply}"
     );
     ensure!(
@@ -367,7 +367,7 @@ async fn an_upload_with_an_invalid_token_is_refused() -> Result<()> {
         )
         .await?;
     ensure!(
-        code == 401 && reply["error"] == "Please sign in to continue",
+        code == 401 && reply["error"] == "token is not valid",
         "{code} {reply}"
     );
     ensure!(
@@ -451,6 +451,52 @@ async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
     ensure!(
         s["tests_revision"] == 2 && s["tests"].as_array().map(Vec::len) == Some(1),
         "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_dirty_failure_on_a_newer_commit_does_not_turn_green_red() -> Result<()> {
+    // result-has-output-ac2, the other way: a clean pass, then a dirty failure on a newer commit.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let (code, _) = w
+        .raw_upload(
+            Some(&w.token),
+            stamp("c2c2c2c", 2, true),
+            junit(&[("opens", "fail"), ("refuses", "pass")]),
+        )
+        .await?;
+    ensure!(code == 200, "the dirty report is stored");
+    let s = w.status().await?;
+    ensure!(s["status"] == "green" && s["commit"] == "c1c1c1c", "{s}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_shared_upload_fixture_is_accepted() -> Result<()> {
+    // The hook test sends bodies of exactly this shape to its fake Joppa.
+    let w = world().await?;
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/report-upload.json"))?;
+    let (code, reply) = w
+        .raw_upload(
+            Some(&w.token),
+            fixture["stamp"].clone(),
+            fixture["junit"].as_str().unwrap().into(),
+        )
+        .await?;
+    ensure!(code == 200 && reply["tests"] == 2, "{code} {reply}");
+    ensure!(
+        w.status().await?["status"] == "green",
+        "the fixture proves both tests"
     );
     Ok(())
 }
