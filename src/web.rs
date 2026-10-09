@@ -291,6 +291,7 @@ async fn upload_report(
 }
 #[derive(Deserialize)]
 struct TestsQuery {
+    /// One criterion address, or several separated by commas.
     ac: String,
 }
 async fn criterion_tests(
@@ -300,7 +301,18 @@ async fn criterion_tests(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    result(store::criterion_tests(&app.pool, &workspace, &actor, &q.ac).await)
+    let targets: Vec<&str> = q.ac.split(',').filter(|a| !a.is_empty()).take(100).collect();
+    if targets.len() == 1 {
+        return result(store::criterion_tests(&app.pool, &workspace, &actor, targets[0]).await);
+    }
+    let mut items = vec![];
+    for target in targets {
+        match store::criterion_tests(&app.pool, &workspace, &actor, target).await {
+            Ok(status) => items.push(status),
+            Err(e) => return result(Err(e)),
+        }
+    }
+    Ok(Json(json!({"items": items})))
 }
 /// Browser sessions can read product data; writes require agent/service credentials.
 fn require_write_credential(

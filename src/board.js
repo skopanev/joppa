@@ -493,6 +493,7 @@ function appendObjectPage(root,part,params,generation){
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
   }
+  applyTestStatuses(items);
   if(!items.length&&!part.next_cursor&&!params.parent&&!root.querySelector('.common-object')){
     const type=params.kind&&data.objectTypes[params.kind];
     root.append(E('p',type?'No '+type.title.toLowerCase()+' here.':'No objects here yet.','hint collection-empty'));
@@ -635,6 +636,45 @@ function objectSection(title,cls){
   const group=E('details',undefined,'object-section '+cls);
   group.append(E('summary',title));enableBranchMotion(group);return group;
 }
+// A criterion that lists tests takes its dot from them: green when every test passes,
+// red when one fails or is missing, grey otherwise. Without tests the dot keeps its status.
+const testTone=status=>status==='pass'||status==='green'?'green':['fail','missing','red'].includes(status)?'red':'grey';
+function testSummary(s){
+  const passed=s.tests.filter(t=>t.status==='pass').length;
+  return 'Tests: '+passed+' of '+s.tests.length+' pass'+(s.commit?' · commit '+s.commit.slice(0,7):'')+(s.commits_behind?' · '+s.commits_behind+' commits behind':'')+(s.tests_draft?' · list needs saving':'');
+}
+async function applyTestStatuses(items){
+  const criteria=items.filter(item=>data.objectTypes?.[item.kind]?.role==='ac').map(item=>item.address);
+  if(!criteria.length)return;
+  let reply;
+  try{reply=await api('workspaces/'+encodeURIComponent(ws)+'/tests?ac='+encodeURIComponent(criteria.join(',')));}catch{return;}
+  for(const status of reply.items||[reply]){
+    if(status.reason==='no tests')continue;
+    for(const card of document.querySelectorAll('.common-object[data-object-address="'+CSS.escape(status.address)+'"]')){
+      const dot=card.querySelector(':scope > summary .status-circle');
+      if(dot)dot.replaceWith(statusCircle({tone:testTone(status.status),label:testSummary(status)}));
+    }
+  }
+}
+// The tests that prove a criterion, each with its latest result.
+function criterionTestsSection(address){
+  const group=objectSection('Tests','object-tests');
+  api('workspaces/'+encodeURIComponent(ws)+'/tests?ac='+encodeURIComponent(address)).then(s=>{
+    group.querySelector(':scope > summary').textContent='Tests '+s.tests.length;
+    if(!s.tests.length){group.append(E('p','No tests are listed for this criterion.','hint'));return;}
+    group.append(E('p',testSummary(s),'node-meta'));
+    if(s.tests_draft)group.append(E('p','The criterion text changed. Save the test list again.','dependency-review'));
+    for(const t of s.tests){
+      const row=E('div',undefined,'ac-check');
+      const head=E('p',undefined,'ac-check-heading');
+      head.append(statusCircle({tone:testTone(t.status),label:t.status.replace('_',' ')}),E('span',t.address));
+      row.append(head,E('p',[t.status.replace('_',' '),t.commit&&'commit '+t.commit.slice(0,7)].filter(Boolean).join(' · '),'detail-fact'));
+      if(t.message)row.append(E('pre',t.message));
+      group.append(row);
+    }
+  }).catch(e=>group.append(E('p',e.message,'hint')));
+  return group;
+}
 function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
@@ -678,6 +718,7 @@ function fillCommonObject(body,detail){
     fields.append(field);
   }
   secondary.append(fields);
+  if(!historical&&data.objectTypes?.[detail.kind]?.role==='ac')secondary.append(criterionTestsSection(detail.address));
   const links=new Map();
   for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
   for(const link of detail.incoming||[]){const key=link.source+'@';const entry=links.get(key)||{address:link.source,title:link.title||link.source,labels:[]};entry.labels.push('Linked from · '+link.relation);links.set(key,entry);}
