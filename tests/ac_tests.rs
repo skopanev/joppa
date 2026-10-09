@@ -180,7 +180,11 @@ fn set_ac_tests_keeps_its_own_history_and_refuses_bad_lists() {
     for (tests, error) in [
         (
             json!(["login ok"]),
-            "a test address needs file > describe > name",
+            "a test address needs file > name at least",
+        ),
+        (
+            json!(["login > ok"]),
+            "a test address needs file > name at least",
         ),
         (json!([OPENS, OPENS]), "is listed twice"),
     ] {
@@ -192,6 +196,18 @@ fn set_ac_tests_keeps_its_own_history_and_refuses_bad_lists() {
             .unwrap_err();
         assert!(e.to_string().contains(error), "{e}");
     }
+    // checks-listed-first-ac2: the owner saves "login > ok", which has no file.
+    let e = w
+        .apply(
+            "owner",
+            json!({"op":"set_ac_tests","target":ac,"tests":["login > ok"],"reason":"No file"}),
+        )
+        .unwrap_err();
+    assert!(
+        e.to_string()
+            .contains("a test address needs file > name at least"),
+        "{e}"
+    );
     let e = w
         .apply(
             "outsider",

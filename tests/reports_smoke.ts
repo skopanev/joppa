@@ -116,7 +116,7 @@ try {
   check(s.status === "green" && s.tests_revision === 2, s);
 
   const [bad, body] = await call("/commands", { request_id: crypto.randomUUID(), command: { op: "set_ac_tests", target: "ac:key-rights", tests: ["login ok"], reason: "Bad" } }, agent);
-  check(bad === 409 && JSON.stringify(body).includes("file > describe > name"), body);
+  check(bad === 409 && JSON.stringify(body).includes("file > name at least"), body);
   console.log("reports smoke: ok");
 } finally {
   server.kill();

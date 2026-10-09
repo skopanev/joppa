@@ -39,12 +39,16 @@ impl AcTests {
 
 pub fn validate_address(address: &str) -> Result<()> {
     let parts: Vec<&str> = address.split(SEPARATOR).collect();
+    // The first part is the test file: a path with a file extension, such as tests/login.test.ts.
+    let file = parts[0].rsplit('/').next().unwrap_or_default();
     ensure!(
         parts.len() >= 2
             && parts.iter().all(|part| !part.trim().is_empty())
+            && file.contains('.')
+            && !file.starts_with('.')
             && address.chars().count() <= MAX_ADDRESS
             && !address.chars().any(char::is_control),
-        "a test address needs file > describe > name"
+        "a test address needs file > name at least"
     );
     Ok(())
 }
