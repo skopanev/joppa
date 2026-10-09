@@ -21,6 +21,7 @@ struct World {
     _dir: std::path::PathBuf,
     base: String,
     token: String,
+    owner: String,
     http: reqwest::Client,
 }
 
@@ -57,8 +58,12 @@ async fn world() -> Result<World> {
     let dir = std::env::temp_dir().join(format!("joppa-reports-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let token = uuid::Uuid::new_v4().simple().to_string();
+    let owner = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
-    std::fs::write(&tokens, json!({ token.clone(): "agent" }).to_string())?;
+    std::fs::write(
+        &tokens,
+        json!({ token.clone(): "agent", owner.clone(): "owner" }).to_string(),
+    )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
         .port();
@@ -85,6 +90,7 @@ async fn world() -> Result<World> {
                 _dir: dir,
                 base: format!("{root}/api/workspaces/{ws}"),
                 token,
+                owner,
                 http: reqwest::Client::new(),
             };
             world.list(&[A, B]).await?;
@@ -124,6 +130,43 @@ impl World {
         ensure!(
             reply.status().is_success(),
             "upload: {}",
+            reply.text().await?
+        );
+        Ok(())
+    }
+    /// Post a report with any stamp and token; returns the status code and the reply body.
+    async fn raw_upload(
+        &self,
+        token: Option<&str>,
+        stamp: Value,
+        junit: String,
+    ) -> Result<(u16, Value)> {
+        let mut request = self.http.post(format!("{}/reports", self.base));
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        let reply = request
+            .json(&json!({"stamp": stamp, "junit": junit}))
+            .send()
+            .await?;
+        Ok((
+            reply.status().as_u16(),
+            reply.json().await.unwrap_or(Value::Null),
+        ))
+    }
+    /// skopanev's role in these tests: change the criterion text, which makes a new revision.
+    async fn revise_text(&self, expected: u32, text: &str) -> Result<()> {
+        let command = json!({"op":"revise","req":"key","expected_revision":expected,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Sharper wording","acs":[{"id":"key-rights","text":text}]});
+        let reply = self
+            .http
+            .post(format!("{}/commands", self.base))
+            .bearer_auth(&self.owner)
+            .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+            .send()
+            .await?;
+        ensure!(
+            reply.status().is_success(),
+            "revise: {}",
             reply.text().await?
         );
         Ok(())
@@ -257,6 +300,156 @@ async fn a_partial_run_updates_only_the_tests_it_ran() -> Result<()> {
             && s["tests"][0]["commit"] == "c2c2c2c"
             && s["tests"][1]["commit"] == "c1c1c1c"
             && s["commit"] == "c1c1c1c",
+        "{s}"
+    );
+    Ok(())
+}
+
+fn stamp(commit: &str, order: i64, dirty: bool) -> Value {
+    json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":dirty,"full":true})
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn every_report_records_its_commit_and_uploader() -> Result<()> {
+    // no-manual-pass-ac1: the agent token uploads; the stored report names the commit and the agent.
+    let w = world().await?;
+    let (code, reply) = w
+        .raw_upload(
+            Some(&w.token),
+            stamp("c1c1c1c", 1, false),
+            junit(&[("opens", "pass")]),
+        )
+        .await?;
+    ensure!(
+        code == 200
+            && reply["commit"] == "c1c1c1c"
+            && reply["uploader"] == "agent"
+            && reply["report"].is_i64(),
+        "{reply}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_upload_without_a_token_is_refused() -> Result<()> {
+    // no-manual-pass-ac2
+    let w = world().await?;
+    let (code, reply) = w
+        .raw_upload(
+            None,
+            stamp("c1c1c1c", 1, false),
+            junit(&[("opens", "pass")]),
+        )
+        .await?;
+    ensure!(
+        code == 401 && reply["error"] == "Please sign in to continue",
+        "{code} {reply}"
+    );
+    ensure!(
+        w.status().await?["tests"][0]["status"] == "not_run",
+        "nothing was stored"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_upload_with_an_invalid_token_is_refused() -> Result<()> {
+    // no-manual-pass-ac3
+    let w = world().await?;
+    let (code, reply) = w
+        .raw_upload(
+            Some("bad"),
+            stamp("c1c1c1c", 1, false),
+            junit(&[("opens", "pass")]),
+        )
+        .await?;
+    ensure!(
+        code == 401 && reply["error"] == "Please sign in to continue",
+        "{code} {reply}"
+    );
+    ensure!(
+        w.status().await?["tests"][0]["status"] == "not_run",
+        "nothing was stored"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_dirty_run_is_stored_but_does_not_count() -> Result<()> {
+    // result-has-output-ac2: opens failed on C; a dirty run at C says it passes.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    let (code, reply) = w
+        .raw_upload(
+            Some(&w.token),
+            stamp("c1c1c1c", 1, true),
+            junit(&[("opens", "pass"), ("refuses", "pass")]),
+        )
+        .await?;
+    ensure!(
+        code == 200 && reply["replayed"] == false,
+        "the dirty report is stored: {reply}"
+    );
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "red" && s["tests"][0]["status"] == "fail",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> {
+    // check-list-frozen-ac1 and ac2: the text changes, the list waits; saving it ends the draft for good.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "green before the text change"
+    );
+    w.revise_text(1, "Only read and verify until launch")
+        .await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "grey" && s["reason"] == "tests_draft" && s["tests_draft"] == true,
+        "{s}"
+    );
+    w.list(&[A, B]).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "green" && s["tests_draft"] == false && s["tests_revision"] == 2,
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
+    // reduced-coverage-reviewed-ac1: the agent removes one test; the list keeps its own history.
+    let w = world().await?;
+    ensure!(w.status().await?["tests_revision"] == 1, "first list");
+    w.list(&[A]).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests_revision"] == 2 && s["tests"].as_array().map(Vec::len) == Some(1),
         "{s}"
     );
     Ok(())

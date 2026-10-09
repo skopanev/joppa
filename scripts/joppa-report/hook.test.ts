@@ -1,0 +1,134 @@
+// The report kit end to end on a fixture git repository: a real `bun test` with the
+// stamp preload, then a real `git push` through the pre-push hook to a fake Joppa.
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const KIT = import.meta.dir;
+let root = "";
+let repo = "";
+const uploads: any[] = [];
+let server: ReturnType<typeof Bun.serve>;
+
+function run(cmd: string[], env: Record<string, string> = {}) {
+  const r = Bun.spawnSync(cmd, { cwd: repo || root, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
+  return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+}
+const git = (...args: string[]) => run(["git", ...args]);
+const stamp = () => JSON.parse(readFileSync(join(repo, ".joppa/stamp.json"), "utf8"));
+const head = () => git("rev-parse", "HEAD").out.trim();
+const bunTest = (env: Record<string, string> = {}, args: string[] = []) => run(["bun", "test", ...args], env);
+// Async: the fake Joppa answers the hook from this same process.
+async function push(...args: string[]) {
+  const p = Bun.spawn(["git", "push", ...args, "origin", "master"], {
+    cwd: repo, env: { ...process.env, JOPPA_REPORT_TOKEN: "fixture-token" }, stdout: "pipe", stderr: "pipe",
+  });
+  const out = (await new Response(p.stdout).text()) + (await new Response(p.stderr).text());
+  return { code: await p.exited, out };
+}
+
+beforeAll(() => {
+  server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      uploads.push({ auth: request.headers.get("authorization"), path: new URL(request.url).pathname, body: await request.json() });
+      return Response.json({ tests: 2, report: uploads.length });
+    },
+  });
+  root = mkdtempSync(join(tmpdir(), "joppa-kit-"));
+  run(["git", "init", "-q", "--bare", join(root, "remote.git")]);
+  run(["git", "init", "-q", "-b", "master", join(root, "repo")]);
+  repo = join(root, "repo");
+  git("config", "user.email", "kit@example.test");
+  git("config", "user.name", "Kit");
+  writeFileSync(join(repo, "bunfig.toml"), `[test]\npreload = ["${KIT}/stamp.ts"]\n[test.reporter]\njunit = ".joppa/junit.xml"\n`);
+  writeFileSync(join(repo, ".gitignore"), ".joppa/junit.xml\n.joppa/stamp.json\n");
+  writeFileSync(
+    join(repo, "login.test.ts"),
+    `import { describe, expect, test } from "bun:test";\ndescribe("login", () => {\n  test("opens", () => expect(1).toBe(1));\n  test("refuses", () => expect(2).toBe(2));\n});\n`,
+  );
+  Bun.spawnSync(["mkdir", "-p", join(repo, ".joppa")]);
+  writeFileSync(join(repo, ".joppa/config.json"), JSON.stringify({ url: `http://127.0.0.1:${server.port}`, workspace: "fixture", default_branch: "master" }));
+  git("add", ".");
+  git("commit", "-q", "-m", "Fixture");
+  git("remote", "add", "origin", join(root, "remote.git"));
+  symlinkSync(join(KIT, "pre-push"), join(repo, ".git/hooks/pre-push"));
+});
+afterAll(() => {
+  server.stop(true);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("a normal test run writes one testcase per test", () => {
+  // result-has-output-ac1
+  expect(bunTest({ JOPPA_FULL_RUN: "1" }).code).toBe(0);
+  const junit = readFileSync(join(repo, ".joppa/junit.xml"), "utf8");
+  expect(junit.match(/<testcase /g)?.length).toBe(2);
+});
+
+test("a clean run stamps its commit as clean and full", () => {
+  // result-has-output-ac3
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  expect(stamp()).toMatchObject({ commit: head(), dirty: false, full: true, branch: "master" });
+});
+
+test("a run on a dirty tree is stamped dirty", () => {
+  // result-has-output-ac4
+  writeFileSync(join(repo, "login.test.ts"), readFileSync(join(repo, "login.test.ts"), "utf8") + "// edit\n");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  expect(stamp().dirty).toBe(true);
+  git("checkout", "--", "login.test.ts");
+});
+
+test("a filtered run is stamped partial", () => {
+  // result-has-output-ac5
+  bunTest({}, ["-t", "opens"]);
+  expect(stamp().full).toBe(false);
+});
+
+test("a push uploads the report of the pushed commit", async () => {
+  // runner-executed-ac1
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  expect((await push()).code).toBe(0);
+  expect(uploads.length).toBe(1);
+  expect(uploads[0].path).toBe("/api/workspaces/fixture/reports");
+  expect(uploads[0].auth).toBe("Bearer fixture-token");
+  expect(uploads[0].body.stamp).toMatchObject({ commit: head(), dirty: false, full: true, default_branch: true });
+  expect(uploads[0].body.junit).toContain('name="opens"');
+});
+
+test("a push with an old report uploads nothing", async () => {
+  // runner-executed-ac2
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  git("commit", "-q", "--allow-empty", "-m", "New commit without a test run");
+  uploads.length = 0;
+  const pushed = await push();
+  expect(pushed.code).toBe(0);
+  expect(uploads.length).toBe(0);
+  expect(pushed.out).toContain("not for the pushed default-branch commit");
+});
+
+test("a push with --no-verify uploads nothing", async () => {
+  // runner-executed-ac3
+  git("commit", "-q", "--allow-empty", "-m", "Another commit");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  expect((await push("--no-verify")).code).toBe(0);
+  expect(uploads.length).toBe(0);
+});
+
+test("extra reports of the same run join the upload", async () => {
+  // The Joppa kit runs cargo and bun tests; the hook sends both in one report.
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  writeFileSync(join(repo, ".joppa/extra.junit.xml"), '<testsuites><testsuite name="tests/extra.rs"><testcase name="extra_case" /></testsuite></testsuites>');
+  git("commit", "-q", "--allow-empty", "-m", "Merge check");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  expect((await push()).code).toBe(0);
+  expect(uploads.length).toBe(1);
+  expect(uploads[0].body.junit).toContain('name="opens"');
+  expect(uploads[0].body.junit).toContain('name="extra_case"');
+  rmSync(join(repo, ".joppa/extra.junit.xml"));
+});

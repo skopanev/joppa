@@ -79,7 +79,9 @@ pub async fn upload_report(
         &[&id, &serde_json::to_string(&results)?],
     ).await?;
     tx.commit().await?;
-    Ok(json!({"report": id, "tests": results.len(), "replayed": false, "uploader": actor}))
+    Ok(
+        json!({"report": id, "commit": stamp.commit, "tests": results.len(), "replayed": false, "uploader": actor}),
+    )
 }
 
 /// Green and red criteria with their ancestors, so each row can show "green / total" below it.

@@ -5,7 +5,8 @@
 // Token:   JOPPA_REPORT_TOKEN, or the file ~/.config/joppa/report-token.
 // The hook never blocks a push. It uploads nothing for a dirty run, for another
 // branch or for a report from another commit.
-import { existsSync, readFileSync } from "node:fs";
+// Extra reports of the same run, such as .joppa/bun.junit.xml, join the main one.
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 
 const say = (text: string) => console.error(`joppa report: ${text}`);
@@ -16,6 +17,10 @@ async function main() {
     config = JSON.parse(readFileSync(".joppa/config.json", "utf8"));
     stamp = JSON.parse(readFileSync(".joppa/stamp.json", "utf8"));
     junit = readFileSync(".joppa/junit.xml", "utf8");
+    const suites = (xml: string) => xml.match(/<testsuites[^>]*>([\s\S]*)<\/testsuites>/)?.[1] ?? "";
+    const extra = readdirSync(".joppa").filter((f) => f.endsWith(".junit.xml")).sort();
+    if (extra.length)
+      junit = `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>${[junit, ...extra.map((f) => readFileSync(`.joppa/${f}`, "utf8"))].map(suites).join("\n")}</testsuites>\n`;
   } catch {
     return say("no report or config, nothing uploaded");
   }
