@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # [ac:public-link-preview-ac1] The preview contains absolute URLs and product metadata.
         assert preview.meta['og:title'].startswith('Joppa')
         assert urllib.parse.urlparse(preview.meta['og:url']).scheme in ('http','https')
-        assert preview.meta['og:description'] == 'A versioned product tree with connected tasks.'
+        assert preview.meta['og:description'] == 'AI first product specification. A versioned product tree with connected tasks.'
         # [ac:public-link-preview-ac3] Public HTML omits private product data.
         assert 'Проверка карточки' not in public_html and ws not in public_html
         assert preview.meta['twitter:card'] == 'summary_large_image'
@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         # Remote MCP notifications return 202 without a JSON-RPC response.
         assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
         reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search','joppa_tree','joppa_objects'}
+        assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_read','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_model_docs','joppa_search','joppa_tree','joppa_tests','joppa_objects'}
         tools = {tool['name']: tool for tool in reply['result']['tools']}
         writing = (ROOT/'docs/writing.md').read_text()
         initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
