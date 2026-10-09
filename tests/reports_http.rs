@@ -449,7 +449,9 @@ async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
     w.list(&[A]).await?;
     let s = w.status().await?;
     ensure!(
-        s["tests_revision"] == 2 && s["tests"].as_array().map(Vec::len) == Some(1),
+        s["tests_revision"] == 2
+            && s["tests"].as_array().map(Vec::len) == Some(1)
+            && s["tests_saved_by"] == "agent",
         "{s}"
     );
     Ok(())
@@ -497,6 +499,35 @@ async fn the_shared_upload_fixture_is_accepted() -> Result<()> {
     ensure!(
         w.status().await?["status"] == "green",
         "the fixture proves both tests"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_upload_cannot_name_its_uploader() -> Result<()> {
+    // no-manual-pass-ac1: the uploader comes from the token. A body that claims one is refused.
+    let w = world().await?;
+    let mut claimed = stamp("c1c1c1c", 1, false);
+    claimed["uploader"] = json!("owner");
+    let (code, reply) = w
+        .raw_upload(Some(&w.token), claimed, junit(&[("opens", "pass")]))
+        .await?;
+    ensure!(code == 422, "{code} {reply}");
+    ensure!(
+        w.status().await?["tests"][0]["status"] == "not_run",
+        "nothing was stored"
+    );
+    let (_, reply) = w
+        .raw_upload(
+            Some(&w.token),
+            stamp("c1c1c1c", 1, false),
+            junit(&[("opens", "pass")]),
+        )
+        .await?;
+    ensure!(
+        reply["uploader"] == "agent",
+        "the token names the uploader: {reply}"
     );
     Ok(())
 }

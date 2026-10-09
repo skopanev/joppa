@@ -168,5 +168,6 @@ pub async fn criterion_tests(
     let mut status = serde_json::to_value(criterion_status(&tests, draft, &reports, &results))?;
     status["address"] = json!(target);
     status["tests_revision"] = json!(current.map(|r| r.revision));
+    status["tests_saved_by"] = json!(current.map(|r| &r.actor));
     Ok(status)
 }

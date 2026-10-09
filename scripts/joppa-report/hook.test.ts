@@ -153,3 +153,19 @@ test("a merged report is full only when every part is full", async () => {
   rmSync(join(repo, ".joppa/extra.junit.xml"));
   rmSync(join(repo, ".joppa/extra.stamp.json"));
 });
+
+test("a push to another branch uploads nothing", async () => {
+  // runner-executed: only the default branch counts, even with a fresh full report.
+  git("checkout", "-q", "-b", "feature/x");
+  git("commit", "-q", "--allow-empty", "-m", "Feature work");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  const p = Bun.spawn(["git", "push", "origin", "feature/x"], {
+    cwd: repo, env: { ...process.env, JOPPA_REPORT_TOKEN: "fixture-token" }, stdout: "pipe", stderr: "pipe",
+  });
+  const out = await new Response(p.stderr).text();
+  expect(await p.exited).toBe(0);
+  expect(uploads.length).toBe(0);
+  expect(out).toContain("not for the pushed default-branch commit");
+  git("checkout", "-q", "master");
+});
