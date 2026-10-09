@@ -661,10 +661,12 @@ function showTestCount(chip){
   chip.textContent=green?green+' / '+chip.dataset.total:chip.dataset.total;
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
   chip.setAttribute('aria-label',green+' of '+chip.dataset.total+' criteria are green'+(red?', '+red+' red':''));
-  // The row dot follows its criteria: green when all are green, red when one is red.
-  const total=Number(chip.dataset.total),tone=red?'red':green===total?'green':null;
+  // The row dot rises from its criteria: red when one is red, green when all are green,
+  // and yellow while any criterion below is not green yet.
+  const total=Number(chip.dataset.total),tone=red?'red':green===total?'green':'yellow';
+  const label=red?red+' of '+total+' criteria are red':green===total?'All '+total+' criteria are green':green+' of '+total+' criteria are green';
   const dot=chip.closest('summary')?.querySelector('.status-circle');
-  if(tone&&dot&&dot.dataset.tone!==tone)dot.replaceWith(statusCircle({tone,label:red?red+' of '+total+' criteria are red':'All '+total+' criteria are green'}));
+  if(dot&&(dot.dataset.tone!==tone||dot.dataset.hint!=='Status: '+label))dot.replaceWith(statusCircle({tone,label}));
 }
 // A criterion that lists tests takes its dot from them: green when every test passes,
 // red when one fails or is missing, grey otherwise. Without tests the dot keeps its status.
