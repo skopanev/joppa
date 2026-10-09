@@ -22,3 +22,4 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-postgres = "0.7"
+quick-xml = "0.42.0"

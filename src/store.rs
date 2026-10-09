@@ -19,6 +19,9 @@ mod objects;
 pub use objects::{ObjectScope, read_objects, tree_schema};
 #[path = "store_queue.rs"]
 mod queue_rows;
+#[path = "store_reports.rs"]
+mod reports;
+pub use reports::{REPORT_MAX, ReportUpload, Stamp, criterion_tests, upload_report};
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
@@ -71,6 +74,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
         "../migrations/016_current_item_references.sql"
     ))
     .await?;
+    tx.batch_execute(include_str!("../migrations/017_test_reports.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;

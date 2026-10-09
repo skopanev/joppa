@@ -1,3 +1,4 @@
+pub mod ac_tests;
 pub mod access;
 pub mod checks;
 pub mod commands;

@@ -274,6 +274,30 @@ async fn tree_schema(
     let actor = authenticate(&app, &headers).await?;
     result(store::tree_schema(&app.pool, &workspace, &actor, q.revision).await)
 }
+/// A test run uploads its JUnit report. Only a token may upload, never a browser session.
+async fn upload_report(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(upload): Json<store::ReportUpload>,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    require_write_credential(&headers)?;
+    result(store::upload_report(&app.pool, &workspace, &actor, upload).await)
+}
+#[derive(Deserialize)]
+struct TestsQuery {
+    ac: String,
+}
+async fn criterion_tests(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<TestsQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::criterion_tests(&app.pool, &workspace, &actor, &q.ac).await)
+}
 /// Browser sessions can read product data; writes require agent/service credentials.
 fn require_write_credential(
     headers: &HeaderMap,
@@ -523,6 +547,11 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
         .route("/api/workspaces/{workspace}/tree", get(tree_schema))
+        .route(
+            "/api/workspaces/{workspace}/reports",
+            post(upload_report).layer(axum::extract::DefaultBodyLimit::max(store::REPORT_MAX + 64 * 1024)),
+        )
+        .route("/api/workspaces/{workspace}/tests", get(criterion_tests))
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с

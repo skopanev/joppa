@@ -53,6 +53,9 @@ pub struct Workspace {
     /// шестью способами.
     #[serde(default)]
     pub notes: BTreeMap<String, Notes>,
+    /// Tests that prove each criterion, by criterion address, with their own history.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ac_tests: BTreeMap<String, crate::ac_tests::AcTests>,
 }
 /// Всё, что человек навесил на объект сверх его собственных полей.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

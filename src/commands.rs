@@ -36,6 +36,12 @@ pub enum Command {
         revision: u32,
         reason: String,
     },
+    /// Save the list of tests that prove a criterion. It keeps its own history.
+    SetAcTests {
+        target: String,
+        tests: Vec<String>,
+        reason: String,
+    },
     SetNoteStatus {
         target: String,
         revision: u32,
@@ -605,6 +611,11 @@ pub(crate) fn apply_inner(
         Command::RestoreObject { .. } => {
             crate::objects::restore(w, actor, command, position, recorded_at)?;
         }
+        Command::SetAcTests {
+            target,
+            tests,
+            reason,
+        } => crate::ac_tests::set(w, actor, target, tests, reason, position, recorded_at)?,
         Command::SetNoteStatus {
             target,
             revision,
