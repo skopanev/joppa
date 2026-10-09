@@ -124,7 +124,11 @@ async fn call(
             for target in field("ac")?.split(',').filter(|a| !a.is_empty()).take(100) {
                 items.push(store::criterion_tests(pool, workspace, actor, target).await?);
             }
-            Ok(if items.len() == 1 { items.remove(0) } else { json!({"items": items}) })
+            Ok(if items.len() == 1 {
+                items.remove(0)
+            } else {
+                json!({"items": items})
+            })
         }
         "joppa_tree" => {
             store::tree_schema(

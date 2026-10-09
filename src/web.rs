@@ -285,7 +285,10 @@ async fn upload_report(
     let actor = authenticate(&app, &headers).await?;
     require_write_credential(&headers)?;
     let upload: store::ReportUpload = serde_json::from_slice(&body).map_err(|e| {
-        (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": format!("bad report upload: {e}")})))
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error": format!("bad report upload: {e}")})),
+        )
     })?;
     result(store::upload_report(&app.pool, &workspace, &actor, upload).await)
 }
@@ -568,7 +571,9 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/tree", get(tree_schema))
         .route(
             "/api/workspaces/{workspace}/reports",
-            post(upload_report).layer(axum::extract::DefaultBodyLimit::max(store::REPORT_MAX + 64 * 1024)),
+            post(upload_report).layer(axum::extract::DefaultBodyLimit::max(
+                store::REPORT_MAX + 64 * 1024,
+            )),
         )
         .route("/api/workspaces/{workspace}/tests", get(criterion_tests))
         .route("/api/workspaces/{workspace}/commands", post(command))

@@ -1828,7 +1828,10 @@ fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {
             .and_then(|t| t.title_preview_length)
             .unwrap_or(TITLE_LENGTH_DEFAULT) as usize
     };
-    let mut titles = vec![(kind, value.get("title").or_else(|| value.pointer("/data/title")))];
+    let mut titles = vec![(
+        kind,
+        value.get("title").or_else(|| value.pointer("/data/title")),
+    )];
     if let Some(acs) = value.get("acs").and_then(Value::as_array) {
         titles.extend(acs.iter().map(|ac| ("ac", ac.get("text"))));
     }

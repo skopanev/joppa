@@ -50,13 +50,30 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
         .cloned()
         .collect();
     let results = results.as_slice();
-    let ran = |report: &Report| results.iter().any(|(id, r)| *id == report.id && r.address == address);
-    let mut ordered: Vec<&Report> = reports.iter().collect();
-    ordered.sort_by(|a, b| b.order.cmp(&a.order).then(b.received_ms.cmp(&a.received_ms)));
-    let Some(deciding) = ordered.into_iter().find(|r| r.full || ran(r)) else {
-        return TestStatus { address: address.into(), status: "not_run".into(), commit: None, message: None, order: None };
+    let ran = |report: &Report| {
+        results
+            .iter()
+            .any(|(id, r)| *id == report.id && r.address == address)
     };
-    let same_commit: Vec<&Report> = reports.iter().filter(|r| r.commit == deciding.commit).collect();
+    let mut ordered: Vec<&Report> = reports.iter().collect();
+    ordered.sort_by(|a, b| {
+        b.order
+            .cmp(&a.order)
+            .then(b.received_ms.cmp(&a.received_ms))
+    });
+    let Some(deciding) = ordered.into_iter().find(|r| r.full || ran(r)) else {
+        return TestStatus {
+            address: address.into(),
+            status: "not_run".into(),
+            commit: None,
+            message: None,
+            order: None,
+        };
+    };
+    let same_commit: Vec<&Report> = reports
+        .iter()
+        .filter(|r| r.commit == deciding.commit)
+        .collect();
     let rows: Vec<&TestResult> = results
         .iter()
         .filter(|(id, r)| r.address == address && same_commit.iter().any(|report| report.id == *id))
@@ -90,19 +107,28 @@ pub fn criterion_status(
     reports: &[Report],
     results: &[(i64, TestResult)],
 ) -> CriterionStatus {
-    let statuses: Vec<TestStatus> = tests.iter().map(|t| test_status(t, reports, results)).collect();
+    let statuses: Vec<TestStatus> = tests
+        .iter()
+        .map(|t| test_status(t, reports, results))
+        .collect();
     let (status, reason) = if tests.is_empty() {
         ("grey", Some("no tests"))
     } else if draft {
         ("grey", Some("tests_draft"))
-    } else if statuses.iter().any(|t| t.status == "fail" || t.status == "missing") {
+    } else if statuses
+        .iter()
+        .any(|t| t.status == "fail" || t.status == "missing")
+    {
         ("red", None)
     } else if statuses.iter().all(|t| t.status == "pass") {
         ("green", None)
     } else {
         ("grey", Some("not all tests passed"))
     };
-    let oldest = statuses.iter().filter(|t| t.order.is_some()).min_by_key(|t| t.order);
+    let oldest = statuses
+        .iter()
+        .filter(|t| t.order.is_some())
+        .min_by_key(|t| t.order);
     let newest_order = reports.iter().map(|r| r.order).max();
     CriterionStatus {
         status: status.into(),

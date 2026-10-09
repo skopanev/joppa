@@ -40,7 +40,10 @@ pub async fn upload_report(
     ensure!(upload.junit.len() <= REPORT_MAX, "a report is at most 5 MB");
     ensure!(
         (7..=64).contains(&stamp.commit.len())
-            && stamp.commit.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            && stamp
+                .commit
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
         "stamp.commit must be a lowercase git sha"
     );
     ensure!(!stamp.branch.trim().is_empty(), "stamp.branch is required");
@@ -85,13 +88,19 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
     let listed: Vec<String> = conn
-        .query("SELECT key FROM joppa.state_entries WHERE workspace=$1 AND section='ac_tests'", &[&workspace])
+        .query(
+            "SELECT key FROM joppa.state_entries WHERE workspace=$1 AND section='ac_tests'",
+            &[&workspace],
+        )
         .await?
         .iter()
         .map(|r| r.get(0))
         .collect();
     let parents: std::collections::HashMap<String, Option<String>> = conn
-        .query("SELECT address,parent FROM joppa.objects WHERE workspace=$1", &[&workspace])
+        .query(
+            "SELECT address,parent FROM joppa.objects WHERE workspace=$1",
+            &[&workspace],
+        )
         .await?
         .iter()
         .map(|r| (r.get(0), r.get(1)))
@@ -115,7 +124,12 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
 }
 
 /// Status of one criterion from its saved test list and all clean default-branch reports.
-pub async fn criterion_tests(pool: &Pool, workspace: &str, actor: &str, target: &str) -> Result<Value> {
+pub async fn criterion_tests(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    target: &str,
+) -> Result<Value> {
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
@@ -128,8 +142,12 @@ pub async fn criterion_tests(pool: &Pool, workspace: &str, actor: &str, target: 
                 .map(|row| row.map(|r| r.get::<_, String>(0)))
         }
     };
-    let object: Value = serde_json::from_str(&entry("objects").await?.context("unknown criterion")?)?;
-    let saved: Option<AcTests> = entry("ac_tests").await?.map(|v| serde_json::from_str(&v)).transpose()?;
+    let object: Value =
+        serde_json::from_str(&entry("objects").await?.context("unknown criterion")?)?;
+    let saved: Option<AcTests> = entry("ac_tests")
+        .await?
+        .map(|v| serde_json::from_str(&v))
+        .transpose()?;
     let current = saved.as_ref().and_then(AcTests::current);
     let tests = current.map(|r| r.tests.clone()).unwrap_or_default();
     let draft = current.is_some_and(|r| r.text_hash != text_hash(&object["revisions"][0]["data"]));
