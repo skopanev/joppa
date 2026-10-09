@@ -616,6 +616,8 @@ function commonObjectCard(item,loadedDetail){
   }
   // An empty slot keeps the count column aligned on rows without a count.
   summary.append(title,objectTypeLabel(item.kind),chip||E('span',undefined,'count-slot'));
+  // The count can colour the row dot only once both sit in the summary.
+  if(chip?.dataset.total)showTestCount(chip);
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
