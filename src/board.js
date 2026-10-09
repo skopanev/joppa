@@ -183,6 +183,7 @@ async function load() {
   data = next;
   data.objectTypes=next.object_types||{};
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
+  loadTestOverview();
   await renderObjectTree();
 }
 async function boardPart(level,id,revision){
@@ -491,7 +492,10 @@ function appendObjectPage(root,part,params,generation){
         holder.append(E('h2',data.objectTypes[item.kind].title,'object-collection-title'));root.append(holder);
       }
     }
-    if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address))holder.append(commonObjectCard(item));
+    if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address)){
+      const card=commonObjectCard(item);holder.append(card);
+      if(!new URLSearchParams(location.search).has('object')&&openBranches().has(item.address))card.open=true;
+    }
   }
   applyTestStatuses(items);
   if(!items.length&&!part.next_cursor&&!params.parent&&!root.querySelector('.common-object')){
@@ -589,6 +593,12 @@ function objectTypeLabel(kind){
   label.addEventListener('blur',hideStatusHint);
   return label;
 }
+// Open branches survive a visit to an object page and the way back to the board.
+const openKey=()=>'joppa-open-'+ws;
+function openBranches(){try{return new Set(JSON.parse(sessionStorage.getItem(openKey())||'[]'));}catch{return new Set();}}
+function rememberBranch(address,open){
+  try{const set=openBranches();if(open)set.add(address);else set.delete(address);sessionStorage.setItem(openKey(),JSON.stringify([...set]));}catch{}
+}
 function commonObjectCard(item,loadedDetail){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
@@ -599,10 +609,10 @@ function commonObjectCard(item,loadedDetail){
   const isCriterion=data.objectTypes?.[item.kind]?.role==='ac';
   // The count sits on the right of the row, after the type label, not inside the title.
   let chip=null;
-  if(isCriterion&&signal.tone==='green'||!isCriterion&&counts?.total>0){
-    const passed=isCriterion||counts.passed>0;
-    chip=E('span',isCriterion?'Passed':counts.passed>0?`${counts.passed}/${counts.total}`:String(counts.total),'verification-chip'+(passed?' has-passes':''));
-    if(!isCriterion)chip.setAttribute('aria-label',`${counts.passed} of ${counts.total} criteria have passing checks`);
+  if(isCriterion&&signal.tone==='green'){
+    chip=E('span','Passed','verification-chip has-passes');
+  }else if(!isCriterion&&counts?.total>0){
+    chip=E('span',undefined,'verification-chip');chip.dataset.address=item.address;chip.dataset.total=counts.total;showTestCount(chip);
   }
   // An empty slot keeps the count column aligned on rows without a count.
   summary.append(title,objectTypeLabel(item.kind),chip||E('span',undefined,'count-slot'));
@@ -621,7 +631,7 @@ function commonObjectCard(item,loadedDetail){
     if(!detail.historical){if(kids)appendObjectPage(children,kids,childParams,generation);else await appendObjectChildren(children,item.address);}
   };
   card.branchPrepare=async()=>{if(loaded)return;loaded=true;try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
-  card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+  card.addEventListener('toggle',async()=>{if(!new URLSearchParams(location.search).has('object'))rememberBranch(item.address,card.open);if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
 }
 function syncObjectTitles(root=document){
@@ -635,6 +645,19 @@ window.addEventListener('resize',()=>syncObjectTitles());
 function objectSection(title,cls){
   const group=E('details',undefined,'object-section '+cls);
   group.append(E('summary',title));enableBranchMotion(group);return group;
+}
+// The count on a row reads "green / total": criteria below it whose tests all pass.
+let testOverview=null;
+async function loadTestOverview(){
+  try{testOverview=await api('workspaces/'+encodeURIComponent(ws)+'/tests');}catch{testOverview={items:[]};}
+  for(const chip of document.querySelectorAll('.verification-chip[data-total]'))showTestCount(chip);
+}
+function showTestCount(chip){
+  const below=(testOverview?.items||[]).filter(i=>i.ancestors.includes(chip.dataset.address));
+  const green=below.filter(i=>i.status==='green').length,red=below.filter(i=>i.status==='red').length;
+  chip.textContent=green+' / '+chip.dataset.total;
+  chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
+  chip.setAttribute('aria-label',green+' of '+chip.dataset.total+' criteria are green'+(red?', '+red+' red':''));
 }
 // A criterion that lists tests takes its dot from them: green when every test passes,
 // red when one fails or is missing, grey otherwise. Without tests the dot keeps its status.

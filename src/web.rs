@@ -291,8 +291,8 @@ async fn upload_report(
 }
 #[derive(Deserialize)]
 struct TestsQuery {
-    /// One criterion address, or several separated by commas.
-    ac: String,
+    /// One criterion address, or several separated by commas. Without it: the overview.
+    ac: Option<String>,
 }
 async fn criterion_tests(
     State(app): State<App>,
@@ -301,7 +301,10 @@ async fn criterion_tests(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    let targets: Vec<&str> = q.ac.split(',').filter(|a| !a.is_empty()).take(100).collect();
+    let Some(ac) = q.ac else {
+        return result(store::tests_overview(&app.pool, &workspace, &actor).await);
+    };
+    let targets: Vec<&str> = ac.split(',').filter(|a| !a.is_empty()).take(100).collect();
     if targets.len() == 1 {
         return result(store::criterion_tests(&app.pool, &workspace, &actor, targets[0]).await);
     }

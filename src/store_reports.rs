@@ -5,6 +5,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 pub const REPORT_MAX: usize = 5 * 1024 * 1024;
+/// A stored failure message keeps its first 8 KB; the full log stays in the raw report.
+const MESSAGE_MAX: usize = 8 * 1024;
 
 /// What the test run knew about itself, written by the project's preload and hook.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,7 +44,16 @@ pub async fn upload_report(
         "stamp.commit must be a lowercase git sha"
     );
     ensure!(!stamp.branch.trim().is_empty(), "stamp.branch is required");
-    let results = parse_junit(&upload.junit)?;
+    let mut results = parse_junit(&upload.junit)?;
+    for result in &mut results {
+        if let Some(message) = result.message.as_mut().filter(|m| m.len() > MESSAGE_MAX) {
+            let mut end = MESSAGE_MAX;
+            while !message.is_char_boundary(end) {
+                end -= 1;
+            }
+            message.truncate(end);
+        }
+    }
     let stamp_hash = format!(
         "{:x}",
         Sha256::digest(format!("{}\n{}", serde_json::to_string(stamp)?, upload.junit).as_bytes())
@@ -66,6 +77,41 @@ pub async fn upload_report(
     ).await?;
     tx.commit().await?;
     Ok(json!({"report": id, "tests": results.len(), "replayed": false, "uploader": actor}))
+}
+
+/// Green and red criteria with their ancestors, so each row can show "green / total" below it.
+pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let workspace = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &workspace, actor, false).await?;
+    let listed: Vec<String> = conn
+        .query("SELECT key FROM joppa.state_entries WHERE workspace=$1 AND section='ac_tests'", &[&workspace])
+        .await?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    let parents: std::collections::HashMap<String, Option<String>> = conn
+        .query("SELECT address,parent FROM joppa.objects WHERE workspace=$1", &[&workspace])
+        .await?
+        .iter()
+        .map(|r| (r.get(0), r.get(1)))
+        .collect();
+    drop(conn);
+    let mut items = vec![];
+    for address in listed {
+        let status = criterion_tests(pool, &workspace, actor, &address).await?;
+        if !["green", "red"].contains(&status["status"].as_str().unwrap_or_default()) {
+            continue;
+        }
+        let mut ancestors = vec![];
+        let mut next = parents.get(&address).cloned().flatten();
+        while let Some(parent) = next.filter(|p| !ancestors.contains(p)) {
+            next = parents.get(&parent).cloned().flatten();
+            ancestors.push(parent);
+        }
+        items.push(json!({"address": address, "status": status["status"], "ancestors": ancestors}));
+    }
+    Ok(json!({"items": items}))
 }
 
 /// Status of one criterion from its saved test list and all clean default-branch reports.

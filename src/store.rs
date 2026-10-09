@@ -21,7 +21,7 @@ pub use objects::{ObjectScope, read_objects, tree_schema};
 mod queue_rows;
 #[path = "store_reports.rs"]
 mod reports;
-pub use reports::{REPORT_MAX, ReportUpload, Stamp, criterion_tests, upload_report};
+pub use reports::{REPORT_MAX, ReportUpload, Stamp, criterion_tests, tests_overview, upload_report};
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};

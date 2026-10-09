@@ -103,6 +103,9 @@ try {
   check(s.status === "red" && s.tests[1].message === "boom", s);
   await upload("a7a7a7a", 6, [["opens", "pass"], ["refuses", "pass"]]);
   check((await status()).status === "green", "recovered");
+  const [, overview] = await call("/tests");
+  const row = overview.items.find((i: any) => i.address === "ac:key-rights");
+  check(row?.status === "green" && row.ancestors.includes("capability:restrict") && row.ancestors.includes("domain:security"), overview);
 
   // A text change makes the list a draft until it is saved again.
   await revise(1, "Only read and verify until launch");

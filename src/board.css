@@ -199,6 +199,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .node-title>.status-circle{vertical-align:middle}
 .common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
+.verification-chip.has-failures{color:#a13935}
 .verification-chip.has-passes{color:#2d6c3c}
 .ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
 .ac-check{padding:.3em 0}
