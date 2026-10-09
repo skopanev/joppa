@@ -659,6 +659,10 @@ function showTestCount(chip){
   chip.textContent=green?green+' / '+chip.dataset.total:chip.dataset.total;
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
   chip.setAttribute('aria-label',green+' of '+chip.dataset.total+' criteria are green'+(red?', '+red+' red':''));
+  // The row dot follows its criteria: green when all are green, red when one is red.
+  const total=Number(chip.dataset.total),tone=red?'red':green===total?'green':null;
+  const dot=chip.closest('summary')?.querySelector('.status-circle');
+  if(tone&&dot&&dot.dataset.tone!==tone)dot.replaceWith(statusCircle({tone,label:red?red+' of '+total+' criteria are red':'All '+total+' criteria are green'}));
 }
 // A criterion that lists tests takes its dot from them: green when every test passes,
 // red when one fails or is missing, grey otherwise. Without tests the dot keeps its status.
