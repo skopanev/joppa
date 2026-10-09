@@ -272,3 +272,55 @@ fn bun_each_cases_share_or_split_addresses_and_paths_stay_relative() {
     );
     assert_eq!(parse_junit(&dotted).unwrap()[0].address, OPENS);
 }
+
+#[test]
+fn clock_time_alone_never_changes_status() {
+    // time-not-stale-ac3: the same reports, read seven days apart, give the same status.
+    const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+    let rows = [result(1, "x", "pass")];
+    let now = criterion_status(&tests(&["x"]), false, &[report(1, "c", 1, true, 10)], &rows);
+    let later = criterion_status(
+        &tests(&["x"]),
+        false,
+        &[report(1, "c", 1, true, 10 + 7 * DAY_MS)],
+        &rows,
+    );
+    assert_eq!(
+        (now.status.as_str(), now.commit.as_deref()),
+        ("green", Some("c"))
+    );
+    assert_eq!(
+        (later.status.as_str(), later.commit.as_deref()),
+        ("green", Some("c"))
+    );
+}
+
+#[test]
+fn an_account_without_membership_cannot_save_a_test_list() {
+    // checks-listed-first-ac3: "eve" is signed in but not a member.
+    let mut w = World::new();
+    let ac = joppa::objects::criterion_address("ios");
+    let e = w
+        .apply(
+            "eve",
+            json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"No"}),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("not a workspace member"), "{e}");
+    assert!(!w.state.ac_tests.contains_key(&ac));
+}
+
+#[test]
+fn a_task_has_no_test_list_of_its_own() {
+    // foreign-check-ignored-ac1
+    let mut w = World::new();
+    w.ok("owner", json!({"op":"task","req":"r","revision":1,"id":"t1","title":"Build iOS access","acs":["ios"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"}));
+    let e = w
+        .apply("agent", json!({"op":"set_ac_tests","target":"task:r/t1","tests":[OPENS],"reason":"Wrong target"}))
+        .unwrap_err();
+    assert!(
+        e.to_string()
+            .contains("tests are listed on criteria, not on tasks"),
+        "{e}"
+    );
+}

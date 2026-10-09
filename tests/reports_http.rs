@@ -531,3 +531,224 @@ async fn an_upload_cannot_name_its_uploader() -> Result<()> {
     );
     Ok(())
 }
+
+async fn upload_xml(
+    w: &World,
+    commit: &str,
+    order: i64,
+    full: bool,
+    default_branch: bool,
+    xml: &str,
+) -> Result<()> {
+    let mut stamp = stamp(commit, order, false);
+    stamp["full"] = json!(full);
+    stamp["default_branch"] = json!(default_branch);
+    let (code, reply) = w.raw_upload(Some(&w.token), stamp, xml.into()).await?;
+    ensure!(code == 200, "{code} {reply}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_red_test_stays_red_on_a_partial_run_that_skips_it() -> Result<()> {
+    // defect-stays-red-ac1: opens fails on C1; a partial report for C2 has only refuses.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    w.upload("c2c2c2c", 2, false, junit(&[("refuses", "pass")]))
+        .await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["status"] == "fail" && s["tests"][0]["commit"] == "c1c1c1c",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_red_test_clears_when_a_newer_commit_passes_it() -> Result<()> {
+    // defect-stays-red-ac2
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    w.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["status"] == "pass"
+            && s["tests"][0]["commit"] == "c2c2c2c"
+            && s["status"] == "green",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_report_from_a_feature_branch_does_not_change_status() -> Result<()> {
+    // result-names-subject-ac1: the criterion is grey; a passing report arrives from branch "feat".
+    let w = world().await?;
+    upload_xml(
+        &w,
+        "f1f1f1f",
+        5,
+        true,
+        false,
+        &junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "grey" && s["tests"][0]["status"] == "not_run",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
+    // checks-listed-first-ac1: skopanev (the owner token) saves one address.
+    let w = world().await?;
+    let command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["a.test.ts > login > ok"],"reason":"Link the test"});
+    let reply = w
+        .http
+        .post(format!("{}/commands", w.base))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+        .send()
+        .await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let s = w.status().await?;
+    ensure!(
+        s["tests"]
+            .as_array()
+            .map(|t| t.iter().map(|t| t["address"].clone()).collect::<Vec<_>>())
+            == Some(vec![json!("a.test.ts > login > ok")])
+            && s["tests_saved_by"] == "owner",
+        "{s}"
+    );
+    Ok(())
+}
+
+const FAILING_REFUSES: &str = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses"><failure message="expected 403, got 200" /></testcase></testsuite></testsuite></testsuites>"#;
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
+    // old-results-history-ac1: the agent token reads A.
+    let w = world().await?;
+    upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["status"] == "pass"
+            && s["tests"][0]["commit"] == "c1c1c1c"
+            && s["tests"][1]["status"] == "fail"
+            && s["tests"][1]["message"] == "expected 403, got 200",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn mcp_returns_each_test_with_status_and_commit() -> Result<()> {
+    // old-results-history-ac3: the agent calls the MCP tool joppa_tests.
+    let w = world().await?;
+    upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
+    let root = w.base.split("/api/").next().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let reply: Value = w
+        .http
+        .post(format!("{root}/mcp"))
+        .bearer_auth(&w.token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"workspace":workspace,"ac":"ac:key-rights"}}}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let s: Value = serde_json::from_str(
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("null"),
+    )?;
+    ensure!(
+        s["tests"][0]["status"] == "pass"
+            && s["tests"][0]["commit"] == "c1c1c1c"
+            && s["tests"][1]["status"] == "fail"
+            && s["tests"][1]["commit"] == "c1c1c1c",
+        "{reply}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {
+    // time-not-stale-ac1: A is decided on C; five newer commits ran other tests only.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    for order in 2..=6 {
+        upload_xml(&w, &format!("{order}{order}{order}{order}{order}{order}{order}"), order, false, true,
+            r#"<testsuites><testsuite name="tests/other.test.ts"><testcase name="other" /></testsuite></testsuites>"#).await?;
+    }
+    let s = w.status().await?;
+    ensure!(
+        s["commit"] == "c1c1c1c" && s["commits_behind"] == 5 && s["status"] == "green",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_test_tag_in_code_links_nothing() -> Result<()> {
+    // binding-pins-contract-ac1: "[ac:key-rights] other" fails in the same full report.
+    let w = world().await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(w.status().await?["status"] == "green", "green before");
+    w.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[
+            ("opens", "pass"),
+            ("refuses", "pass"),
+            ("[ac:key-rights] other", "fail"),
+        ]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "a tag in a test name links nothing"
+    );
+    Ok(())
+}
