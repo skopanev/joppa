@@ -655,7 +655,8 @@ async function loadTestOverview(){
 function showTestCount(chip){
   const below=(testOverview?.items||[]).filter(i=>i.ancestors.includes(chip.dataset.address));
   const green=below.filter(i=>i.status==='green').length,red=below.filter(i=>i.status==='red').length;
-  chip.textContent=green+' / '+chip.dataset.total;
+  // Without green criteria the row keeps its plain total.
+  chip.textContent=green?green+' / '+chip.dataset.total:chip.dataset.total;
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
   chip.setAttribute('aria-label',green+' of '+chip.dataset.total+' criteria are green'+(red?', '+red+' red':''));
 }
