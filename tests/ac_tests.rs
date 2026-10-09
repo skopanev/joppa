@@ -86,10 +86,15 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
     assert_eq!(criterion_status(&[], false, &reports, &[]).reason.as_deref(), Some("no tests"));
     let s = criterion_status(&tests(&["x"]), false, &reports, &[]);
     assert_eq!((s.status.as_str(), s.tests[0].status.as_str()), ("grey", "not_run"));
+    let full = [report(1, "c", 1, true, 10)];
     for skipped in ["skipped", "todo"] {
-        let s = criterion_status(&tests(&["x"]), false, &reports, &[result(1, "x", skipped)]);
+        let s = criterion_status(&tests(&["x"]), false, &full, &[result(1, "x", skipped)]);
         assert_eq!(s.status, "grey");
     }
+    // `bun test -t other` marks x skipped in a partial run: x keeps its earlier pass.
+    let filtered = [report(1, "c1", 1, false, 10), report(2, "c2", 2, false, 20)];
+    let s = criterion_status(&tests(&["x"]), false, &filtered, &[result(1, "x", "pass"), result(2, "x", "skipped")]);
+    assert_eq!((s.status.as_str(), s.commit.as_deref()), ("green", Some("c1")));
     let s = criterion_status(&tests(&["x"]), true, &reports, &[result(1, "x", "pass")]);
     assert_eq!((s.status.as_str(), s.reason.as_deref()), ("grey", Some("tests_draft")));
 }

@@ -1,0 +1,44 @@
+#!/usr/bin/env bun
+// Git pre-push hook: upload .joppa/junit.xml when the pushed commit is the one it ran on.
+// Install: ln -s ../../scripts/joppa-report/pre-push .git/hooks/pre-push
+// Config:  .joppa/config.json {"url": "...", "workspace": "...", "default_branch": "master"}
+// Token:   JOPPA_REPORT_TOKEN, or the file ~/.config/joppa/report-token.
+// The hook never blocks a push. It uploads nothing for a dirty run, for another
+// branch or for a report from another commit.
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+
+const say = (text: string) => console.error(`joppa report: ${text}`);
+
+async function main() {
+  let config, stamp, junit;
+  try {
+    config = JSON.parse(readFileSync(".joppa/config.json", "utf8"));
+    stamp = JSON.parse(readFileSync(".joppa/stamp.json", "utf8"));
+    junit = readFileSync(".joppa/junit.xml", "utf8");
+  } catch {
+    return say("no report or config, nothing uploaded");
+  }
+  const tokenFile = `${homedir()}/.config/joppa/report-token`;
+  const token = process.env.JOPPA_REPORT_TOKEN || (existsSync(tokenFile) ? readFileSync(tokenFile, "utf8").trim() : "");
+  if (!token) return say("no token, nothing uploaded");
+  const target = `refs/heads/${config.default_branch ?? "master"}`;
+  const pushed = (await Bun.stdin.text()).split("\n").filter(Boolean).map((l) => l.split(" "));
+  if (!pushed.some((p) => p.length === 4 && p[2] === target && p[1] === stamp.commit))
+    return say("the report is not for the pushed default-branch commit, nothing uploaded");
+  if (stamp.dirty) return say("the run was on a dirty tree, nothing uploaded");
+  try {
+    const reply = await fetch(`${config.url.replace(/\/$/, "")}/api/workspaces/${config.workspace}/reports`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ stamp: { ...stamp, default_branch: true }, junit }),
+    });
+    const result = await reply.json();
+    say(reply.ok ? `uploaded ${result.tests} results for ${stamp.commit.slice(0, 7)}` : `upload refused: ${result.error ?? reply.status}`);
+  } catch (error) {
+    say(`upload failed: ${error}`);
+  }
+}
+
+await main();
+process.exit(0);

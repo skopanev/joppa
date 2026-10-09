@@ -26,3 +26,6 @@ google-client*.json
 tokens.json
 login-users.json
 access-rules.json
+
+# Test reports and stamps written by scripts/joppa-report
+.joppa/

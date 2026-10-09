@@ -5,6 +5,8 @@
 //! ran the test or was a full run. On that commit, red wins: a failure or an
 //! absence from a full run beats a pass. A criterion is green only when every
 //! listed test passes; it shows the oldest commit among its tests.
+//! A filter such as `bun test -t` reports every other test as skipped, so skipped
+//! and todo results count only in full runs; a partial run did not run those tests.
 use super::TestResult;
 use serde::Serialize;
 
@@ -40,7 +42,14 @@ pub struct CriterionStatus {
     pub tests: Vec<TestStatus>,
 }
 
-fn test_status(address: &str, reports: &[Report], results: &[(i64, TestResult)]) -> TestStatus {
+fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> TestStatus {
+    let full = |id: i64| reports.iter().any(|r| r.id == id && r.full);
+    let results: Vec<(i64, TestResult)> = all
+        .iter()
+        .filter(|(id, r)| full(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
+        .cloned()
+        .collect();
+    let results = results.as_slice();
     let ran = |report: &Report| results.iter().any(|(id, r)| *id == report.id && r.address == address);
     let mut ordered: Vec<&Report> = reports.iter().collect();
     ordered.sort_by(|a, b| b.order.cmp(&a.order).then(b.received_ms.cmp(&a.received_ms)));
