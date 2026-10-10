@@ -770,7 +770,7 @@ function fillCommonObject(body,detail){
     for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));group.append(row);}
     secondary.append(group);
   }
-  const files=Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
+  const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
   if(!historical&&detail.process?.req){
     const group=objectSection('Checks','object-checks'),content=E('section',undefined,'verification-record');group.append(content);let loaded=false;
     group.addEventListener('toggle',async()=>{
