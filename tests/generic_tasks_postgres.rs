@@ -111,10 +111,11 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     let retry = store::execute_remote_input(&pool, &ws, actor, request, &claim).await?;
     assert_eq!(retry["position"], receipt["position"]);
     assert_eq!(retry["replayed"], true);
+    let next_actor = if actor == "agent" { "other" } else { "agent" };
     let rest = store::execute_remote_input(
         &pool,
         &ws,
-        "agent",
+        next_actor,
         "next",
         &json!({"op":"claim_next_task","priorities":priority}),
     )

@@ -129,7 +129,39 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
     Ok(())
 }
 
+pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str) -> Result<()> {
+    if w.members.get(actor).is_none_or(|role| role != "agent") {
+        return Ok(());
+    }
+    let active =
+        |t: &Task| t.assignee.as_deref() == Some(actor) && t.done.is_none() && t.retired.is_none();
+    if let Some((key, _)) = w
+        .task_process
+        .iter()
+        .find(|(key, t)| active(t) && w.objects.get(*key).is_some_and(|o| o.current().present))
+    {
+        anyhow::bail!("agent already holds task {key}");
+    }
+    for (req, requirement) in &w.requirements {
+        if let Some(revision) = requirement.revisions.last() {
+            for (id, task) in &revision.tasks {
+                let key = address(req, id);
+                if !w.task_process.contains_key(&key) && active(task) {
+                    anyhow::bail!("agent already holds task {key}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
+    validate_claim(w, actor, key, t)?;
+    ensure_agent_available(w, actor)
+}
+
+// Existing journal claims can predate the limit on active work.
+pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
     ensure!(
         w.members.contains_key(actor),
         "claimant is not a workspace member"
@@ -417,7 +449,7 @@ pub fn apply(
     let authority = owner == actor || actor == w.admin;
     let reason = match cmd {
         Command::ClaimTask { .. } => {
-            claimable(w, actor, &key, &t)?;
+            validate_claim(w, actor, &key, &t)?;
             t.assignee = Some(actor.into());
             "Task claimed"
         }

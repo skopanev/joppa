@@ -553,6 +553,21 @@ pub fn apply(
     recorded_at: &str,
 ) -> Result<()> {
     crate::objects::validate_current(w, command)?;
+    match command {
+        Command::ClaimTask { req, id, .. } => {
+            let key = crate::tasks::address(req, id);
+            if crate::tasks::task(w, &key).is_some_and(|t| t.assignee.is_none()) {
+                crate::tasks::ensure_agent_available(w, actor)?;
+            }
+        }
+        Command::Task {
+            assignee: Some(assignee),
+            ..
+        } => {
+            crate::tasks::ensure_agent_available(w, assignee)?;
+        }
+        _ => {}
+    }
     apply_replay(w, actor, command, position, recorded_at)
 }
 

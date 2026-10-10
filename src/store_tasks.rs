@@ -321,7 +321,7 @@ pub(super) fn queue_entries(
             {
                 continue;
             }
-            let claim_error = checks::claimable(state, actor, req, id, revision, task)
+            let claim_error = checks::validate_claim(state, actor, req, id, revision, task)
                 .err()
                 .map(|e| e.to_string());
             let status = if task.retired.is_some() {
@@ -375,7 +375,7 @@ pub(super) fn queue_entries(
         {
             continue;
         }
-        let claim_error = crate::tasks::claimable(state, actor, key, t)
+        let claim_error = crate::tasks::validate_claim(state, actor, key, t)
             .err()
             .map(|e| e.to_string());
         let status = crate::tasks::status(t);
