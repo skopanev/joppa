@@ -2,8 +2,19 @@ use joppa::{access::Rules, commands::Command, store};
 use serde_json::json;
 use std::collections::BTreeSet;
 
+/// The rule file from the environment, or a temporary one for this test binary only.
+fn private_file(var: &str, name: &str) -> std::path::PathBuf {
+    if let Some(path) = std::env::var_os(var) {
+        return path.into();
+    }
+    let path = std::env::temp_dir().join(format!("joppa-test-{name}-{}.json", std::process::id()));
+    // SAFETY: this binary has one test, and it sets the variable before it starts work.
+    unsafe { std::env::set_var(var, &path) };
+    path
+}
+
 #[tokio::test]
-#[ignore = "requires isolated test database, JOPPA_ACCESS_RULES_FILE and JOPPA_LOGIN_USERS_FILE"]
+#[ignore = "requires isolated test database"]
 async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> anyhow::Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let conn = pool.get().await?;
@@ -14,9 +25,7 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
     anyhow::ensure!(db.starts_with("joppa_test"), "test database required");
     drop(conn);
     store::migrate(&pool).await?;
-    let path = std::path::PathBuf::from(
-        std::env::var_os("JOPPA_ACCESS_RULES_FILE").expect("private test rule path"),
-    );
+    let path = private_file("JOPPA_ACCESS_RULES_FILE", "access");
     let id = uuid::Uuid::new_v4().simple().to_string();
     let alpha = format!("alpha-{id}");
     let beta = format!("beta-{id}");
@@ -26,9 +35,7 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
     let bob_mail = format!("same-{id}@beta.example");
     let mut config = json!({"domains":{"alpha.example":[alpha],"beta.example":[beta]},"emails":{}});
     std::fs::write(&path, serde_json::to_vec(&config)?)?;
-    let aliases_path = std::path::PathBuf::from(
-        std::env::var_os("JOPPA_LOGIN_USERS_FILE").expect("private test aliases path"),
-    );
+    let aliases_path = private_file("JOPPA_LOGIN_USERS_FILE", "aliases");
     let legacy_actor = format!("legacy-{id}");
     std::fs::write(
         &aliases_path,
