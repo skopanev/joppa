@@ -35,10 +35,19 @@ async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String,
         };
     }
     // Private service credentials remain available to unattended integrations.
-    app.identities
-        .get(token)
-        .cloned()
-        .ok_or_else(|| oauth::challenge(app))
+    if let Some(actor) = app.identities.get(token) {
+        return Ok(actor.clone());
+    }
+    // Agent tokens that the workspace owner created; a revoked one is refused.
+    match store::token_actor(&app.pool, token).await {
+        Ok(Some(actor)) => Ok(actor),
+        Ok(None) => Err(oauth::challenge(app)),
+        Err(e) => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response()),
+    }
 }
 async fn get_endpoint(State(app): State<App>, headers: HeaderMap) -> Response {
     if let Err(e) = identity(&app, &headers).await {

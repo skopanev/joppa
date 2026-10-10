@@ -129,7 +129,18 @@ async fn authenticate(
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "));
         match token {
-            Some(t) => app.identities.get(t).cloned(),
+            Some(t) => match app.identities.get(t) {
+                Some(actor) => Some(actor.clone()),
+                None => match store::token_actor(&app.pool, t).await {
+                    Ok(actor) => actor,
+                    Err(e) => {
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": e.to_string()})),
+                        ));
+                    }
+                },
+            },
             None => None,
         }
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
@@ -330,6 +341,37 @@ async fn criterion_tests(
         }
     }
     Ok(Json(json!({"items": items})))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgentTokenRequest {
+    agent: String,
+}
+/// The workspace owner creates an agent token; the raw token is in this reply only.
+async fn create_agent_token(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<AgentTokenRequest>,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::create_agent_token(&app.pool, &workspace, &actor, &body.agent).await)
+}
+async fn revoke_agent_token(
+    State(app): State<App>,
+    Path((workspace, id)): Path<(String, i64)>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::revoke_agent_token(&app.pool, &workspace, &actor, id).await)
+}
+async fn list_agent_tokens(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::list_agent_tokens(&app.pool, &workspace, &actor).await)
 }
 /// Browser sessions can read product data; writes require agent/service credentials.
 fn require_write_credential(
@@ -587,6 +629,14 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             )),
         )
         .route("/api/workspaces/{workspace}/tests", get(criterion_tests))
+        .route(
+            "/api/workspaces/{workspace}/agent-tokens",
+            get(list_agent_tokens).post(create_agent_token),
+        )
+        .route(
+            "/api/workspaces/{workspace}/agent-tokens/{id}/revoke",
+            post(revoke_agent_token),
+        )
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с

@@ -820,3 +820,103 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     );
     Ok(())
 }
+
+async fn post(w: &World, token: &str, path: &str, body: Value) -> Result<(u16, Value)> {
+    let reply = w
+        .http
+        .post(format!("{}{path}", w.base))
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await?;
+    Ok((
+        reply.status().as_u16(),
+        reply.json().await.unwrap_or(Value::Null),
+    ))
+}
+async fn save_note(w: &World, token: &str, id: &str) -> Result<(u16, Value)> {
+    let command = json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":"Signal"},"links":[],"reason":"Save"});
+    post(
+        w,
+        token,
+        "/commands",
+        json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
+    )
+    .await
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_token_writes_as_the_agent_and_stops_when_revoked() -> Result<()> {
+    // agent-own-identity-ac1, write-records-agent-ac1, removal-at-once-ac2
+    let w = world().await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(
+        code == 200
+            && created["token"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("jpt_")),
+        "{code} {created}"
+    );
+    let bot = created["token"].as_str().unwrap().to_owned();
+    let (code, saved) = save_note(&w, &bot, "from-bot").await?;
+    ensure!(code == 200, "{code} {saved}");
+    let read: Value = w
+        .http
+        .get(format!("{}/objects?address=note:from-bot", w.base))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?
+        .json()
+        .await?;
+    ensure!(
+        read["document"]["actor"] == "bot",
+        "the write records the agent: {read}"
+    );
+    let id = created["id"].as_i64().unwrap();
+    let (code, _) = post(
+        &w,
+        &w.owner,
+        &format!("/agent-tokens/{id}/revoke"),
+        json!({}),
+    )
+    .await?;
+    ensure!(code == 200, "revoke");
+    let (code, reply) = save_note(&w, &bot, "after-revoke").await?;
+    ensure!(
+        code == 401 && reply["error"] == "token revoked",
+        "{code} {reply}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn only_the_owner_creates_an_agent_token() -> Result<()> {
+    // removal-at-once-ac3 shape: a member who is not the owner cannot manage tokens.
+    let w = world().await?;
+    let (code, reply) = post(&w, &w.token, "/agent-tokens", json!({"agent":"bot2"})).await?;
+    ensure!(
+        code == 409 && reply["error"] == "workspace owner required",
+        "{code} {reply}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_token_does_not_reach_another_workspace() -> Result<()> {
+    // agent-needs-grant-ac3 shape: the token makes the agent a member of one workspace only.
+    let a = world().await?;
+    let b = world().await?;
+    let (_, created) = post(&a, &a.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    let bot = created["token"].as_str().unwrap().to_owned();
+    let reply = b
+        .http
+        .get(format!("{}/objects?limit=5&kind=domain", b.base))
+        .bearer_auth(&bot)
+        .send()
+        .await?;
+    ensure!(reply.status().as_u16() == 404, "{}", reply.status());
+    Ok(())
+}

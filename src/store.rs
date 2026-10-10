@@ -17,8 +17,11 @@ pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
 pub use objects::{ObjectScope, read_objects, tree_schema};
+#[path = "store_grants.rs"]
+mod grants;
 #[path = "store_queue.rs"]
 mod queue_rows;
+pub use grants::{create_agent_token, list_agent_tokens, revoke_agent_token, token_actor};
 #[path = "store_reports.rs"]
 mod reports;
 pub use reports::{
@@ -77,6 +80,8 @@ pub async fn migrate(pool: &Pool) -> Result<()> {
     ))
     .await?;
     tx.batch_execute(include_str!("../migrations/017_test_reports.sql"))
+        .await?;
+    tx.batch_execute(include_str!("../migrations/018_agent_tokens.sql"))
         .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);

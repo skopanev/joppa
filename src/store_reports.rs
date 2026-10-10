@@ -100,7 +100,7 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
         .collect();
     let parents: std::collections::HashMap<String, Option<String>> = conn
         .query(
-            "SELECT address,parent FROM joppa.objects WHERE workspace=$1",
+            "SELECT address,parent FROM joppa.objects WHERE workspace=$1 AND present",
             &[&workspace],
         )
         .await?
@@ -109,7 +109,8 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
         .collect();
     drop(conn);
     let mut items = vec![];
-    for address in listed {
+    // Archived criteria are out of the spec; they count nowhere.
+    for address in listed.into_iter().filter(|a| parents.contains_key(a)) {
         let status = criterion_tests(pool, &workspace, actor, &address).await?;
         if !["green", "red"].contains(&status["status"].as_str().unwrap_or_default()) {
             continue;

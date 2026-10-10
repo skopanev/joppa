@@ -444,7 +444,7 @@ async fn add_verification_summaries(
                 SELECT address,address FROM joppa.objects WHERE workspace=$1 AND address=ANY($2::text[])
                 UNION
                 SELECT d.root,c.address FROM descendants d
-                JOIN joppa.objects c ON c.workspace=$1 AND c.parent=d.address
+                JOIN joppa.objects c ON c.workspace=$1 AND c.parent=d.address AND c.present
             )
             SELECT d.root,COUNT(*) AS total,
                 COUNT(*) FILTER (WHERE c.signal->>'tone'='green') AS passed

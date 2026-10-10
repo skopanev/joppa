@@ -2325,8 +2325,8 @@ pub fn archive(
         schema(w)
             .types
             .get(kind)
-            .is_some_and(|t| ["group", "document"].contains(&t.role.as_str())),
-        "archive_object requires a group or document"
+            .is_some_and(|t| ["group", "document", "requirement", "ac"].contains(&t.role.as_str())),
+        "archive_object requires a group, document, requirement or criterion"
     );
 
     let has_live_children = w

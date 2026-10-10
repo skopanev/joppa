@@ -191,3 +191,29 @@ fn an_agent_member_can_change_the_tree() {
     );
     assert_eq!(joppa::objects::schema(&w.state).revision, 1);
 }
+
+#[test]
+fn a_requirement_with_no_live_criteria_can_be_archived() {
+    // removal-is-archiving-ac2: its criteria go first, then the requirement.
+    let mut w = World::new();
+    let revision = w.state.objects["requirement:r"].current().revision;
+    refused(
+        &mut w,
+        "owner",
+        json!({"op":"archive_object","target":"requirement:r","revision":revision,"reason":"Cut"}),
+        "cannot archive an object with active children",
+    );
+    for ac in ["ac:ios", "ac:key"] {
+        let revision = w.state.objects[ac].current().revision;
+        w.ok(
+            "owner",
+            json!({"op":"archive_object","target":ac,"revision":revision,"reason":"Cut"}),
+        );
+    }
+    let revision = w.state.objects["requirement:r"].current().revision;
+    w.ok(
+        "owner",
+        json!({"op":"archive_object","target":"requirement:r","revision":revision,"reason":"Cut"}),
+    );
+    assert!(!w.state.objects["requirement:r"].current().present);
+}
