@@ -198,6 +198,10 @@ The server resolves `person` or `agent` from the author's workspace identity.
 Membership roles are immutable, so the same type applies to earlier records.
 Administrative snapshots also include this field in their journal history.
 
+Lists for a configured `inbox=true` type show unprocessed inputs first.
+Each status group uses address order. List items expose `status` and `note_status`.
+Use the returned cursor for the next page. A workspace change expires it.
+
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.

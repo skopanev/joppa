@@ -684,6 +684,157 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_inbox_lists_undecided_inputs_before_decided_inputs() -> Result<()> {
+    // undecided-first-ac1
+    let w = world().await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = grant["token"].as_str().unwrap();
+    for id in ["a-decided", "b-decided", "z-undecided"] {
+        w.note(id, 0, id, "Input", json!([])).await?;
+        if id != "z-undecided" {
+            w.command(json!({"op":"decide_note","target":format!("note:{id}"),"revision":1,"outcome":"changed_spec","reason":"Input reviewed","links":["domain:security"]})).await?;
+        }
+    }
+    let expected = ["note:z-undecided", "note:a-decided", "note:b-decided"];
+    let http = w.get("kind=note&parent=*&limit=100").await?;
+    ensure!(http["items"][0]["status"] == "unprocessed", "{http}");
+    let mut cursor = None;
+    for (i, address) in expected.into_iter().enumerate() {
+        let mut arguments = json!({"workspace":w.ws,"kind":"note","parent":"*","limit":1});
+        if let Some(cursor) = cursor {
+            arguments["cursor"] = cursor;
+        }
+        let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(token)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":arguments}}))
+            .send().await?.json().await?;
+        ensure!(response["result"]["isError"] != true, "{response}");
+        let page: Value = serde_json::from_str(
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        ensure!(
+            page["items"].as_array().unwrap().len() == 1 && page["items"][0]["address"] == address,
+            "{page}"
+        );
+        ensure!(page["items"][0] == http["items"][i], "{page} / {http}");
+        cursor = page["next_cursor"].as_str().map(|s| json!(s));
+    }
+    ensure!(cursor.is_none(), "the last page must finish the list");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn inbox_order_uses_the_schema_and_rejects_a_stale_cursor() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["input"] = types["note"].clone();
+    types["note"]["inbox"] = json!(false);
+    w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Configure the input type"})).await?;
+    for kind in ["input", "note"] {
+        for id in ["a-decided", "b-decided", "z-undecided"] {
+            let status = if id == "z-undecided" {
+                "unprocessed"
+            } else {
+                "processed"
+            };
+            w.command(json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":"Input","status":status},"links":[],"reason":"Capture"})).await?;
+        }
+    }
+    w.command(json!({"op":"save_object","kind":"input","id":"y-nested","revision":0,"parent":"domain:security","data":{"title":"Nested input","owner":"owner","body":"Input"},"links":[],"reason":"Capture"})).await?;
+    let first = w.get("kind=input&parent=*&limit=1").await?;
+    ensure!(first["items"][0]["address"] == "input:y-nested", "{first}");
+    let mut cursor = first["next_cursor"].as_str().unwrap().to_owned();
+    for address in ["input:z-undecided", "input:a-decided", "input:b-decided"] {
+        let page = w
+            .get(&format!("kind=input&parent=*&limit=1&cursor={cursor}"))
+            .await?;
+        ensure!(page["items"][0]["address"] == address, "{page}");
+        cursor = page["next_cursor"].as_str().unwrap_or("").into();
+    }
+    ensure!(cursor.is_empty(), "the last page must finish the list");
+    let ordinary = w.get("kind=note&parent=*&limit=100").await?;
+    ensure!(
+        ordinary["items"][0]["address"] == "note:a-decided"
+            && ordinary["items"][0].get("status").is_none(),
+        "the type name must not enable queue behavior: {ordinary}"
+    );
+    let pending = w
+        .get("kind=input&parent=*&note_status=unprocessed&limit=100")
+        .await?;
+    ensure!(pending["items"].as_array().unwrap().len() == 2, "{pending}");
+    let processed = w
+        .get("kind=input&parent=*&note_status=processed&limit=1")
+        .await?;
+    let next = w
+        .get(&format!(
+            "kind=input&parent=*&note_status=processed&limit=1&cursor={}",
+            processed["next_cursor"].as_str().unwrap()
+        ))
+        .await?;
+    ensure!(
+        processed["items"][0]["address"] == "input:a-decided"
+            && next["items"][0]["address"] == "input:b-decided",
+        "{processed} / {next}"
+    );
+    let stale = first["next_cursor"].as_str().unwrap();
+    w.command(json!({"op":"set_note_status","target":"input:y-nested","revision":1,"status":"processed","reason":"Reviewed"})).await?;
+    let response = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{}/objects?kind=input&parent=*&limit=1&cursor={stale}",
+            w.root, w.ws
+        ))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::CONFLICT,
+        "{response:?}"
+    );
+    ensure!(
+        response.json::<Value>().await?["error"]
+            == "object list changed; start again without cursor",
+        "a status change must expire the cursor"
+    );
+    let position = w.get("kind=input&parent=*&limit=1").await?["position"]
+        .as_u64()
+        .unwrap();
+    for key in ["2:input:z-undecided", "0:note:a-decided", "0:input:z:bad"] {
+        let response = w
+            .http
+            .get(format!(
+                "{}/api/workspaces/{}/objects?kind=input&parent=*&cursor={position}:{key}",
+                w.root, w.ws
+            ))
+            .bearer_auth(&w.owner)
+            .send()
+            .await?;
+        ensure!(
+            response.status() == reqwest::StatusCode::CONFLICT,
+            "{response:?}"
+        );
+    }
+    let response = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{}/objects?kind=note&parent=*&cursor={position}:0:input:z-undecided",
+            w.root, w.ws
+        ))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::CONFLICT,
+        "a cursor cannot change its order mode"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
     // signal-in-one-inbox-ac1
     let w = world().await?;

@@ -405,15 +405,41 @@ pub async fn read_objects(
     };
     let limit = if scope.limit == 0 { 50 } else { scope.limit };
     ensure!((1..=100).contains(&limit), "limit must be 1 to 100");
-    let after = if let Some(cursor) = scope.cursor {
+    let inbox = scope
+        .kind
+        .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false)));
+    let (after_processed, after) = if let Some(cursor) = scope.cursor {
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
         ensure!(
             p.parse::<i64>()? == position,
             "object list changed; start again without cursor"
         );
-        key
+        if inbox {
+            let (phase, address) = key
+                .split_once(':')
+                .context("invalid inbox cursor; start again without cursor")?;
+            ensure!(
+                ["0", "1"].contains(&phase)
+                    && address
+                        .split_once(':')
+                        .is_some_and(|(kind, id)| Some(kind) == scope.kind
+                            && !id.is_empty()
+                            && !id.contains(':')),
+                "invalid inbox cursor; start again without cursor"
+            );
+            (phase == "1", address)
+        } else {
+            ensure!(
+                key.split_once(':')
+                    .is_some_and(|(kind, id)| !kind.is_empty()
+                        && !id.is_empty()
+                        && !id.contains(':')),
+                "invalid object cursor; start again without cursor"
+            );
+            (false, key)
+        }
     } else {
-        ""
+        (false, "")
     };
     let parent = if let Some(parent) = scope.parent {
         Some(
@@ -428,7 +454,16 @@ pub async fn read_objects(
     } else {
         None
     };
-    let rows = conn.query(r#"
+    let (after_filter, order) = if inbox {
+        (
+            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text)",
+            "(o.inbox_status='processed'),o.address",
+        )
+    } else {
+        ("o.address>$2 AND NOT $13::boolean", "o.address")
+    };
+    let query = format!(
+        r#"
         WITH RECURSIVE task_parents(task,address,status,verification) AS (
             SELECT t.address,COALESCE(a.target,t.parent),COALESCE(t.process->>'status','open'),COALESCE(t.process->>'verification','unverified')
             FROM joppa.objects t
@@ -458,7 +493,7 @@ pub async fn read_objects(
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address
         WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present))
-            AND o.address>$2 AND ($3::text IS NULL OR o.kind=$3)
+            AND {after_filter} AND ($3::text IS NULL OR o.kind=$3)
             AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
@@ -468,10 +503,36 @@ pub async fn read_objects(
                 AND COALESCE(jsonb_typeof(o.process->'readiness_blocker'),'null')<>'object'
                 AND COALESCE(o.process->>'verification','unverified')<>'pass'
                 AND COALESCE(w.active,0)=0))
-        ORDER BY o.address LIMIT $5
-    "#, &[&workspace,&after,&scope.kind,&parent,&((limit+1) as i64),&prefix,&scope.note_status,&related_to,&unstarted,&task_kinds,&criterion_kinds,&specification_kinds]).await?;
+        ORDER BY {order} LIMIT $5
+    "#
+    );
+    let rows = conn
+        .query(
+            &query,
+            &[
+                &workspace,
+                &after,
+                &scope.kind,
+                &parent,
+                &((limit + 1) as i64),
+                &prefix,
+                &scope.note_status,
+                &related_to,
+                &unstarted,
+                &task_kinds,
+                &criterion_kinds,
+                &specification_kinds,
+                &after_processed,
+            ],
+        )
+        .await?;
     let more = rows.len() > limit;
     let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
+    for item in &mut items {
+        if !item["note_status"].is_null() {
+            item["status"] = item["note_status"].clone();
+        }
+    }
     if unstarted {
         for (item, row) in items.iter_mut().zip(rows.iter()) {
             item["work_summary"] = serde_json::from_str(row.get(15))?;
@@ -479,10 +540,16 @@ pub async fn read_objects(
     }
     add_verification_summaries(&*conn, &workspace, &mut items, &criterion_kinds).await?;
     let next = more.then(|| {
-        format!(
-            "{position}:{}",
-            items.last().unwrap()["address"].as_str().unwrap()
-        )
+        let last = items.last().unwrap();
+        let address = last["address"].as_str().unwrap();
+        if inbox {
+            format!(
+                "{position}:{}:{address}",
+                u8::from(last["note_status"] == "processed")
+            )
+        } else {
+            format!("{position}:{address}")
+        }
     });
     Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
 }
