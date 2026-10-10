@@ -54,6 +54,8 @@ pub enum Command {
         duplicate_of: Option<String>,
         #[serde(default)]
         question: Option<String>,
+        #[serde(default)]
+        recipient: Option<String>,
     },
     AcceptCommit {
         target: String,
@@ -679,6 +681,7 @@ pub(crate) fn apply_inner(
             links,
             duplicate_of,
             question,
+            recipient,
         } => {
             let decision = crate::inbox::Decision {
                 target,
@@ -688,6 +691,7 @@ pub(crate) fn apply_inner(
                 links,
                 duplicate_of: duplicate_of.as_deref(),
                 question: question.as_deref(),
+                recipient: recipient.as_deref(),
             };
             crate::inbox::decide(w, actor, &decision, position, recorded_at)?;
         }

@@ -14,6 +14,7 @@ pub struct Decision<'a> {
     pub links: &'a [String],
     pub duplicate_of: Option<&'a str>,
     pub question: Option<&'a str>,
+    pub recipient: Option<&'a str>,
 }
 
 /// A member with role human is a person; agents and runners are not.
@@ -27,6 +28,10 @@ pub fn actor_type(w: &Workspace, actor: &str) -> &'static str {
 
 pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &str) -> Result<()> {
     crate::commands::nonempty(d.reason)?;
+    ensure!(
+        d.recipient.is_none() || d.outcome == "needs_information",
+        "recipient requires needs_information"
+    );
     let key = crate::objects::resolve_address(w, d.target).to_owned();
     let note = w.objects.get(&key).context("unknown Note")?;
     ensure!(
@@ -68,10 +73,15 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
                 .filter(|q| !q.trim().is_empty())
                 .context("needs_information needs a question")?;
             let data = &note.current().data;
-            let asked = data["source"]["author"]
-                .as_str()
-                .or(data["owner"].as_str())
-                .unwrap_or_default();
+            let asked = if let Some(recipient) = d.recipient {
+                crate::commands::human(w, recipient)?;
+                recipient
+            } else {
+                data["source"]["author"]
+                    .as_str()
+                    .or(data["owner"].as_str())
+                    .unwrap_or_default()
+            };
             decision["question"] = json!(question);
             decision["asked"] = json!(asked);
         }
