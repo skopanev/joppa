@@ -131,3 +131,28 @@ fn an_agent_saves_a_draft_requirement_with_two_criteria() {
         ["refund-time", "refund-notice"]
     );
 }
+
+#[test]
+fn an_agent_cannot_reject_a_requirement() {
+    // decisions-from-people-ac2
+    let mut w = World::new();
+    w.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
+    refused(
+        &mut w,
+        "agent",
+        json!({"op":"comment","req":"r","revision":1,"id":"no","text":"Reject this","kind":"reject","reply_to":null,"ac":null}),
+        "only a person records this decision",
+    );
+}
+
+#[test]
+fn a_member_who_is_not_the_owner_cannot_accept() {
+    // who-may-accept-ac1
+    let mut w = World::new();
+    refused(
+        &mut w,
+        "legal",
+        json!({"op":"accept_commit","target":"requirement:r","revision":1,"commit":"c1c1c1c"}),
+        "only the requirement owner or its decider accepts",
+    );
+}

@@ -463,6 +463,9 @@ async fn write(
                     crate::objects::reference_targets(&state, kind, &data)?;
                 } else { ensure!(!consumers.is_empty(), "REQ requires at least one consumer"); }
             }
+            if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
+                super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
+            }
             if let Command::Task { acs, contract, .. } = &command {
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;

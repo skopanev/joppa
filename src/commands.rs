@@ -55,6 +55,12 @@ pub enum Command {
         #[serde(default)]
         question: Option<String>,
     },
+    AcceptCommit {
+        target: String,
+        revision: u32,
+        #[serde(default)]
+        commit: Option<String>,
+    },
     RedactObject {
         target: String,
         fragment: String,
@@ -505,6 +511,14 @@ pub fn target(w: &Workspace, address: &str) -> Result<()> {
     }
     Ok(())
 }
+/// Decisions on requirements come from people; an agent may only propose them.
+pub fn person(w: &Workspace, actor: &str) -> Result<()> {
+    ensure!(
+        crate::inbox::actor_type(w, actor) == "person",
+        "only a person records this decision"
+    );
+    Ok(())
+}
 pub fn human(w: &Workspace, actor: &str) -> Result<()> {
     ensure!(
         w.members.get(actor).is_some_and(|r| r == "human"),
@@ -654,6 +668,19 @@ pub(crate) fn apply_inner(
             };
             crate::inbox::decide(w, actor, &decision, position, recorded_at)?;
         }
+        Command::AcceptCommit {
+            target,
+            revision,
+            commit,
+        } => crate::acceptance::accept(
+            w,
+            actor,
+            target,
+            *revision,
+            commit.as_deref(),
+            position,
+            recorded_at,
+        )?,
         Command::RedactObject {
             target,
             fragment,
@@ -1343,8 +1370,8 @@ pub(crate) fn apply_inner(
                 .contains(&kind.as_str()),
                 "unknown comment kind"
             );
-            if kind == "decision" {
-                human(w, actor)?;
+            if ["decision", "accept", "reject", "change"].contains(&kind.as_str()) {
+                person(w, actor)?;
             }
             let r = revision(w, req, *n, false)?;
             if ["accept", "change", "reject"].contains(&kind.as_str()) {

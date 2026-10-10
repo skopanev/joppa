@@ -2198,6 +2198,9 @@ pub fn process(w: &Workspace, key: &str) -> Value {
         _ => json!({}),
     };
     result["verification"] = json!(verification(w, key));
+    if role.as_deref() == Some("requirement") {
+        result["acceptance"] = crate::acceptance::current(w, resolve_address(w, key));
+    }
     result["annotation_address"] = json!(annotation_address(w, key));
     if role.as_deref() == Some("ac") {
         result["assessment"] = json!(assessment(w, key));

@@ -875,6 +875,7 @@ pub fn apply(
             revision: n,
             run,
         } => {
+            crate::commands::person(w, actor)?;
             let r = revision(w, req, *n, true)?;
             ensure!(r.owner == actor, "only REQ owner accepts");
             ensure!(
