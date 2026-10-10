@@ -201,9 +201,11 @@ async fn ensure_notes(
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
         commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+        let actor_type = crate::inbox::actor_type(state, &actor).to_owned();
         events.push(Event {
             position,
             actor,
+            actor_type,
             recorded_at,
             command,
         });
@@ -282,6 +284,7 @@ pub async fn backfill_board(pool: &Pool) -> Result<usize> {
 pub struct Event {
     pub position: u64,
     pub actor: String,
+    pub actor_type: String,
     pub recorded_at: String,
     pub command: Command,
 }
@@ -295,9 +298,11 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
         commands::apply_replay(&mut state, &actor, &command, position, row.get(2))
             .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
+        let actor_type = crate::inbox::actor_type(&state, &actor).to_owned();
         events.push(Event {
             position,
             actor,
+            actor_type,
             recorded_at: row.get(2),
             command,
         });
