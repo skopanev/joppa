@@ -617,3 +617,36 @@ async fn a_redacted_fragment_cannot_be_read_anywhere() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_item_id_and_an_address_find_their_object_first() -> Result<()> {
+    // lookup-by-id-ac1, lookup-by-id-ac2
+    let w = world().await?;
+    w.note("first", 0, "Passkey plan", "passkey for first", json!([]))
+        .await?;
+    w.note(
+        "second",
+        0,
+        "Passkey rollout",
+        "passkey for second",
+        json!([]),
+    )
+    .await?;
+    let item_id = w.get("address=note:second").await?["item_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    ensure!(!item_id.is_empty(), "the note needs an item ID");
+    let by_id = w.search(&item_id).await?;
+    ensure!(
+        by_id.first().map(String::as_str) == Some("note:second"),
+        "{item_id}: {by_id:?}"
+    );
+    let by_address = w.search("note:second").await?;
+    ensure!(
+        by_address.first().map(String::as_str) == Some("note:second"),
+        "{by_address:?}"
+    );
+    Ok(())
+}
