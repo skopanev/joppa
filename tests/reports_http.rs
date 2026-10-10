@@ -1122,3 +1122,42 @@ async fn an_agent_cannot_accept_a_requirement() -> Result<()> {
     ensure!(w.acceptance().await?.is_null(), "nothing is accepted");
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_criterion_without_tests_refuses_acceptance() -> Result<()> {
+    // accept-needs-all-passed-ac1: an untested criterion does not pass by being empty.
+    let w = world().await?;
+    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"One more criterion","acs":[{"id":"key-rights","text":"Only read and verify before launch"},{"id":"key-audit","text":"Every key change is in the audit log"}]});
+    let reply = w
+        .http
+        .post(format!("{}/commands", w.base))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+        .send()
+        .await?;
+    ensure!(
+        reply.status().is_success(),
+        "revise: {}",
+        reply.text().await?
+    );
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    refused_acceptance(&w, "c1c1c1c", NEEDS).await
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_listed_test_missing_from_the_full_run_refuses_acceptance() -> Result<()> {
+    // accept-needs-all-passed-ac1: a listed test that did not run is not a pass.
+    let w = world().await?;
+    w.list(&[A, B]).await?;
+    w.upload("c1c1c1c", 1, true, junit(&[("opens", "pass")]))
+        .await?;
+    refused_acceptance(&w, "c1c1c1c", NEEDS).await
+}
