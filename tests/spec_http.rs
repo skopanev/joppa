@@ -403,3 +403,79 @@ async fn another_workspace_answers_exactly_like_an_absent_one() -> Result<()> {
     ensure!(existing.1.contains("Workspace not found"), "{existing:?}");
     Ok(())
 }
+
+impl World {
+    /// The error text of a command that must be refused.
+    async fn refused(&self, command: Value) -> Result<String> {
+        let reply = self
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", self.root, self.ws))
+            .bearer_auth(&self.owner)
+            .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+            .send()
+            .await?;
+        ensure!(!reply.status().is_success(), "{command} must be refused");
+        Ok(reply.text().await?)
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_edit_adds_a_revision_and_keeps_the_original() -> Result<()> {
+    // edits-keep-original-ac1
+    let w = world().await?;
+    w.note("a", 0, "A", "original text", json!([])).await?;
+    w.note("a", 1, "A", "edited text", json!([])).await?;
+    let current = w.get("address=note:a").await?;
+    let first = w.get("address=note:a&revision=1").await?;
+    ensure!(
+        current["document"]["revision"] == 2
+            && current["document"]["data"]["body"] == "edited text",
+        "{current}"
+    );
+    ensure!(
+        first["document"]["data"]["body"] == "original text",
+        "{first}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_edit_on_a_stale_revision_is_refused() -> Result<()> {
+    // edits-keep-original-ac2
+    let w = world().await?;
+    w.note("a", 0, "A", "original text", json!([])).await?;
+    w.note("a", 1, "A", "edited text", json!([])).await?;
+    let error = w
+        .refused(json!({"op":"save_object","kind":"note","id":"a","revision":1,"parent":null,"data":{"title":"A","owner":"owner","body":"late text"},"links":[],"reason":"Save"}))
+        .await?;
+    ensure!(
+        error.contains("stale object revision; read the object again"),
+        "{error}"
+    );
+    let current = w.get("address=note:a").await?;
+    ensure!(
+        current["document"]["data"]["body"] == "edited text",
+        "{current}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_link_to_another_workspace_is_refused() -> Result<()> {
+    // workspaces-isolated-ac2
+    let a = world().await?;
+    let b = world().await?;
+    b.note("only-b", 0, "B", "lives in B", json!([])).await?;
+    a.note("a", 0, "A", "lives in A", json!([])).await?;
+    let error = a
+        .refused(json!({"op":"save_object","kind":"note","id":"a","revision":1,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"links":[{"target":"note:only-b","relation":"related"}],"reason":"Link"}))
+        .await?;
+    ensure!(
+        error.contains("unknown linked object in this workspace"),
+        "{error}"
+    );
+    Ok(())
+}
