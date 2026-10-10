@@ -209,6 +209,10 @@ Use the returned cursor for the next page. A workspace change expires it.
 When the selected specification revision has no criteria, `joppa_read` reports
 `status="no criteria"` and `verification="unverified"`.
 
+For `decide_note` with `outcome="needs_information"`, set `recipient` to name a human workspace member.
+Without it, the question goes to the source author or object owner.
+HTTP and MCP object reads expose `question.recipient` and `question.text` from the selected revision.
+
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.

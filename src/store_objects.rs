@@ -369,6 +369,13 @@ pub async fn read_objects(
             }
         }
         let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
+        let decision = &document["data"]["decision"];
+        if decision["outcome"] == "needs_information"
+            && let (Some(recipient), Some(text)) =
+                (decision["asked"].as_str(), decision["question"].as_str())
+        {
+            item["question"] = json!({"recipient":recipient,"text":text});
+        }
         if n == current as u32 {
             add_verification_summaries(
                 &*conn,
