@@ -377,6 +377,30 @@ pub async fn read_objects(
             item["question"] = json!({"recipient":recipient,"text":text});
         }
         if n == current as u32 {
+            let mut files: Vec<_> = item["annotations"]["attachments"]
+                .as_object()
+                .into_iter()
+                .flat_map(|attachments| attachments.iter())
+                .filter(|(_, file)| file["removed"] != true)
+                .map(|(id, file)| {
+                    let mut file = file.clone();
+                    file["id"] = json!(id);
+                    file["created_at"] = file["at"].clone();
+                    let at = chrono::DateTime::parse_from_str(
+                        file["at"].as_str().unwrap_or(""),
+                        "%Y-%m-%d %H:%M:%S%.f%#z",
+                    )
+                    .ok();
+                    (at, id.clone(), file)
+                })
+                .collect();
+            files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+            item["files"] = json!(
+                files
+                    .into_iter()
+                    .map(|(_, _, file)| file)
+                    .collect::<Vec<_>>()
+            );
             add_verification_summaries(
                 &*conn,
                 &workspace,

@@ -213,6 +213,10 @@ For `decide_note` with `outcome="needs_information"`, set `recipient` to name a 
 Without it, the question goes to the source author or object owner.
 HTTP and MCP object reads expose `question.recipient` and `question.text` from the selected revision.
 
+Current HTTP and MCP object reads return `files`, with the newest attachment first.
+Each file includes its attachment `id`, `created_at`, and existing metadata.
+Files with the same name remain separate entries. Removed attachments do not appear in this list.
+
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.
