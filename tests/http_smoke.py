@@ -156,8 +156,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'acs': [{'id': 'key-rights', 'text': 'До запуска у ключа только read и verify', 'before_launch': True}]})
         status, _ = command({'op': 'confirm', 'req': 'key', 'revision': 1}, token=agent_token)
         assert status == 409, 'agent cannot confirm owner wording'
-        status, _ = command({'op': 'confirm', 'req': 'key', 'revision': 1, 'actor': 'owner'}, token=agent_token)
-        assert status == 422, 'actor injection must fail deserialization'
+        status, body = command({'op': 'confirm', 'req': 'key', 'revision': 1, 'actor': 'owner'}, token=agent_token)
+        assert status == 409 and 'actor comes from the identity' in str(body), 'actor injection must be refused'
         assert request('/api/workspaces/missing')[0] == 404
         status, body = request('/api/workspaces/' + other_ws + '/commands',
                        {'request_id':'create','command':{'op':'workspace','title':'Forbidden remote create'}}, other_token)
