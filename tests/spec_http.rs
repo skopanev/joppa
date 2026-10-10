@@ -20,6 +20,7 @@ struct World {
     root: String,
     ws: String,
     owner: String,
+    alex: String,
     /// A signed-in account that is not a member of the workspace.
     eve: String,
     pool: deadpool_postgres::Pool,
@@ -40,6 +41,7 @@ async fn world() -> Result<World> {
     let ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
         json!({"op":"workspace","title":"Spec over HTTP"}),
+        json!({"op":"member","id":"alex","role":"human"}),
         json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
         json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
         json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
@@ -55,11 +57,12 @@ async fn world() -> Result<World> {
     let dir = std::env::temp_dir().join(format!("joppa-spec-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
+    let alex = uuid::Uuid::new_v4().simple().to_string();
     let eve = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ owner.clone(): "owner", eve.clone(): "eve" }).to_string(),
+        json!({ owner.clone(): "owner", alex.clone(): "alex", eve.clone(): "eve" }).to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
@@ -88,6 +91,7 @@ async fn world() -> Result<World> {
                 root,
                 ws,
                 owner,
+                alex,
                 eve,
                 pool,
                 http: reqwest::Client::new(),
@@ -192,6 +196,68 @@ impl World {
             )
         }))
     }
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
+    // comments-on-object-ac1
+    let w = world().await?;
+    w.note("input", 0, "Input", "Context", json!([])).await?;
+    for address in [
+        "domain:security",
+        "capability:restrict",
+        "requirement:key",
+        "ac:key-rights",
+        "note:input",
+    ] {
+        let before = chrono::Utc::now();
+        let response = w
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+            .bearer_auth(&w.alex)
+            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"note","target":address,"id":"n1","text":"Clarify the boundary"}}))
+            .send()
+            .await?;
+        ensure!(response.status().is_success(), "{}", response.text().await?);
+        let object = w.get(&format!("address={address}")).await?;
+        let comment = &object["annotations"]["comments"]["n1"];
+        ensure!(comment["author"] == "alex", "{comment}");
+        ensure!(comment["actor"] == comment["author"], "{comment}");
+        ensure!(comment["at"] == comment["created_at"], "{comment}");
+        let created = chrono::DateTime::parse_from_str(
+            comment["created_at"].as_str().unwrap_or(""),
+            "%Y-%m-%d %H:%M:%S%.f%#z",
+        )?
+        .with_timezone(&chrono::Utc);
+        ensure!(
+            created >= before && created <= chrono::Utc::now(),
+            "{comment}"
+        );
+        ensure!(
+            (created - before).num_milliseconds() <= 5000,
+            "comment time exceeds the five second write interval: {comment}"
+        );
+        let response = w
+            .http
+            .post(format!("{}/mcp", w.root))
+            .bearer_auth(&w.alex)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}}))
+            .send()
+            .await?;
+        ensure!(response.status().is_success(), "{}", response.text().await?);
+        let reply: Value = response.json().await?;
+        let object: Value = serde_json::from_str(
+            reply["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        ensure!(
+            object["annotations"]["comments"]["n1"] == *comment,
+            "{reply}"
+        );
+    }
+    Ok(())
 }
 
 #[tokio::test]
