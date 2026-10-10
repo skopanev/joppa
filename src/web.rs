@@ -396,7 +396,10 @@ async fn command(
     if let Err(error) = joppa::commands::reject_actor_field(&request)
         .and_then(|()| joppa::commands::reject_actor_field(&request["command"]))
     {
-        return result(Err(error));
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error":error.to_string()})),
+        ));
     }
     let request: Request = serde_json::from_value(request).map_err(|error| {
         (
