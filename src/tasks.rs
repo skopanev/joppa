@@ -399,6 +399,13 @@ pub fn apply(
     );
     let o = w.objects.get(&key).context("unknown Task")?;
     ensure!(o.current().present, "Task is absent from the current tree");
+    // A lost race names the claim, not the revision that the claim moved.
+    if matches!(cmd, Command::ClaimTask { .. }) {
+        ensure!(
+            w.task_process[&key].assignee.is_none(),
+            "task is already claimed"
+        );
+    }
     ensure!(
         o.current().revision == revision,
         "stale Task revision; read the Task again"

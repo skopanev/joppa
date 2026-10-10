@@ -237,3 +237,11 @@ fn only_a_person_rejects_or_marks_a_duplicate() {
         (Some("rejected"), Some("alex"))
     );
 }
+
+#[test]
+fn an_account_without_membership_cannot_add_a_signal() {
+    // signal-in-one-inbox-ac3
+    let mut w = world();
+    let command = json!({"op":"save_object","kind":"note","id":"eve","revision":0,"parent":null,"data":{"title":"Signal eve","owner":"owner","body":"Hi","source":{"author":"eve"}},"links":[],"reason":"Intake"});
+    refused(&mut w, "eve", command, "not a workspace member");
+}
