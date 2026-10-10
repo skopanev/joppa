@@ -118,3 +118,16 @@ fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
         "AC is not ready for work",
     );
 }
+
+#[test]
+fn an_agent_saves_a_draft_requirement_with_two_criteria() {
+    // agent-drafts-ac1
+    let mut w = World::new();
+    w.ok("agent", json!({"op":"revise","req":"refunds","expected_revision":0,"capability":"c","consumers":["customer"],"title":"Refunds are fast","body":"From the support note about slow refunds","owner":"owner","reason":"Draft from a note","acs":[{"id":"refund-time","text":"A refund reaches the card in one day"},{"id":"refund-notice","text":"The customer gets a notice when the refund starts"}]}));
+    let r = &w.state.requirements["refunds"].revisions[0];
+    assert!(!r.confirmed, "an agent draft is not confirmed");
+    assert_eq!(
+        r.acs.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+        ["refund-time", "refund-notice"]
+    );
+}
