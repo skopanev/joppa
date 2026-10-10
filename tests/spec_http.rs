@@ -21,6 +21,7 @@ struct World {
     ws: String,
     owner: String,
     alex: String,
+    bot: String,
     /// A signed-in account that is not a member of the workspace.
     eve: String,
     pool: deadpool_postgres::Pool,
@@ -42,6 +43,7 @@ async fn world() -> Result<World> {
     for (i, op) in [
         json!({"op":"workspace","title":"Spec over HTTP"}),
         json!({"op":"member","id":"alex","role":"human"}),
+        json!({"op":"member","id":"bot","role":"agent"}),
         json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
         json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
         json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
@@ -58,11 +60,12 @@ async fn world() -> Result<World> {
     std::fs::create_dir_all(&dir)?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();
+    let bot = uuid::Uuid::new_v4().simple().to_string();
     let eve = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ owner.clone(): "owner", alex.clone(): "alex", eve.clone(): "eve" }).to_string(),
+        json!({ owner.clone(): "owner", alex.clone(): "alex", bot.clone(): "bot", eve.clone(): "eve" }).to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
@@ -92,6 +95,7 @@ async fn world() -> Result<World> {
                 ws,
                 owner,
                 alex,
+                bot,
                 eve,
                 pool,
                 http: reqwest::Client::new(),
@@ -104,10 +108,13 @@ async fn world() -> Result<World> {
 
 impl World {
     async fn command(&self, command: Value) -> Result<Value> {
+        self.command_as(&self.owner, command).await
+    }
+    async fn command_as(&self, token: &str, command: Value) -> Result<Value> {
         let reply = self
             .http
             .post(format!("{}/api/workspaces/{}/commands", self.root, self.ws))
-            .bearer_auth(&self.owner)
+            .bearer_auth(token)
             .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
             .send()
             .await?;
@@ -223,6 +230,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
         let object = w.get(&format!("address={address}")).await?;
         let comment = &object["annotations"]["comments"]["n1"];
         ensure!(comment["author"] == "alex", "{comment}");
+        ensure!(comment["actor_type"] == "person", "{comment}");
         ensure!(comment["actor"] == comment["author"], "{comment}");
         ensure!(comment["at"] == comment["created_at"], "{comment}");
         let created = chrono::DateTime::parse_from_str(
@@ -257,6 +265,102 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             "{reply}"
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
+    // identity-type-ac1
+    let w = world().await?;
+    w.note("identity", 0, "Identity", "Original body", json!([]))
+        .await?;
+    for (token, actor, actor_type, revision) in
+        [(&w.alex, "alex", "person", 1), (&w.bot, "bot", "agent", 2)]
+    {
+        w.command_as(token, json!({"op":"save_object","kind":"note","id":"identity","revision":revision,"parent":null,"data":{"title":"Identity","owner":"owner","body":format!("Write by {actor}"),"source":{"actor":"business value"}},"links":[],"reason":"Clarify"})).await?;
+        w.command_as(
+            token,
+            json!({"op":"note","target":"note:identity","id":actor,"text":"Clarify the boundary"}),
+        )
+        .await?;
+        let query = format!("address=note:identity&revision={}", revision + 1);
+        let object = w.get(&query).await?;
+        ensure!(
+            object["document"]["actor"] == actor && object["document"]["actor_type"] == actor_type,
+            "{object}"
+        );
+        ensure!(
+            object["document"]["data"]["source"] == json!({"actor":"business value"}),
+            "business data must stay unchanged: {object}"
+        );
+    }
+    for (revision, actor, actor_type) in [(2, "alex", "person"), (3, "bot", "agent")] {
+        let object = w
+            .get(&format!("address=note:identity&revision={revision}"))
+            .await?;
+        ensure!(
+            object["document"]["actor"] == actor && object["document"]["actor_type"] == actor_type,
+            "{object}"
+        );
+        let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.owner)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:identity","revision":revision}}}))
+            .send().await?.json().await?;
+        ensure!(response["result"]["isError"] != true, "{response}");
+        let mcp: Value = serde_json::from_str(
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        ensure!(mcp == object, "{mcp} / {object}");
+    }
+    let current = w.get("address=note:identity").await?;
+    ensure!(
+        current["annotations"]["comments"]["alex"]["actor_type"] == "person",
+        "{current}"
+    );
+    ensure!(
+        current["annotations"]["comments"]["bot"]["actor_type"] == "agent",
+        "{current}"
+    );
+    let snapshot = store::read(&w.pool, &w.ws, "owner", &store::Scope::full()).await?;
+    for (actor, actor_type) in [("alex", "person"), ("bot", "agent")] {
+        let events: Vec<_> = snapshot["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["actor"] == actor)
+            .collect();
+        ensure!(
+            events.len() == 2 && events.iter().all(|event| event["actor_type"] == actor_type),
+            "{events:?}"
+        );
+    }
+    let conn = w.pool.get().await?;
+    let raw: String = conn.query_one("SELECT document::text FROM joppa.object_revisions WHERE workspace=$1 AND address='note:identity' AND revision=2", &[&w.ws]).await?.get(0);
+    ensure!(
+        serde_json::from_str::<Value>(&raw)?["actor_type"].is_null(),
+        "the read must not rewrite a stored revision"
+    );
+    let response = w.http.post(format!("{}/api/workspaces/{}/commands", w.root, w.ws)).bearer_auth(&w.owner)
+        .json(&json!({"request_id":"change-role","command":{"op":"member","id":"alex","role":"agent"}})).send().await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::CONFLICT,
+        "{response:?}"
+    );
+    ensure!(
+        response.json::<Value>().await?["error"]
+            == "member exists; identities cannot be reassigned",
+        "a role must remain immutable"
+    );
+    ensure!(
+        w.get("address=note:identity&revision=2").await?["document"]["actor_type"] == "person",
+        "the refused role change must not affect history"
+    );
+    ensure!(
+        w.get("address=note:identity&history=true").await?["revision_count"] == 3,
+        "history must return the revision count"
+    );
     Ok(())
 }
 

@@ -13,6 +13,34 @@ impl std::error::Error for AccessDenied {}
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
 
+/// Resolve types for the authors of the records that this read returns.
+pub(super) async fn actor_types(
+    client: &impl GenericClient,
+    workspace: &str,
+    actors: &[String],
+) -> Result<std::collections::BTreeMap<String, &'static str>> {
+    if actors.is_empty() {
+        return Ok(Default::default());
+    }
+    let rows = client.query(
+        "SELECT a.actor,m.value#>>'{}', (SELECT value->>'admin' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key='') FROM unnest($2::text[]) a(actor) LEFT JOIN joppa.state_entries m ON m.workspace=$1 AND m.section='members' AND m.key=a.actor",
+        &[&workspace, &actors],
+    ).await?;
+    let mut state = Workspace {
+        admin: rows[0].get::<_, Option<String>>(2).unwrap_or_default(),
+        ..Default::default()
+    };
+    for row in &rows {
+        if let Some(role) = row.get::<_, Option<String>>(1) {
+            state.members.insert(row.get(0), role);
+        }
+    }
+    Ok(actors
+        .iter()
+        .map(|actor| (actor.clone(), crate::inbox::actor_type(&state, actor)))
+        .collect())
+}
+
 pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BTreeSet<String>>> {
     let identity = client
         .query_opt(
@@ -134,6 +162,7 @@ pub async fn enroll(
         let events = [Event {
             position: position as u64,
             actor: "joppa-access".into(),
+            actor_type: crate::inbox::actor_type(&state, "joppa-access").into(),
             recorded_at: at,
             command,
         }];

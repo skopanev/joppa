@@ -489,7 +489,9 @@ pub(super) async fn full(
     }
     let mut events = vec![];
     for row in client.query("SELECT position,actor,recorded_at::text,command::text FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await? {
-        events.push(Event{position:row.get::<_,i64>(0) as u64,actor:row.get(1),recorded_at:row.get(2),command:serde_json::from_str(row.get(3))?});
+        let actor: String = row.get(1);
+        let actor_type = crate::inbox::actor_type(&state, &actor).to_owned();
+        events.push(Event{position:row.get::<_,i64>(0) as u64,actor,actor_type,recorded_at:row.get(2),command:serde_json::from_str(row.get(3))?});
     }
     Ok((state, events))
 }

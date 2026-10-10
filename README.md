@@ -193,6 +193,11 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
 
+Object revisions, comments and schema revisions show `actor_type` beside `actor`.
+The server resolves `person` or `agent` from the author's workspace identity.
+Membership roles are immutable, so the same type applies to earlier records.
+Administrative snapshots also include this field in their journal history.
+
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.

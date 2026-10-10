@@ -214,8 +214,12 @@ pub async fn tree_schema(
                 .context("unknown schema revision")?,
         )?
     };
+    let types =
+        access::actor_types(&**conn, &workspace, std::slice::from_ref(&selected.actor)).await?;
+    let mut schema = json!(selected);
+    schema["actor_type"] = json!(types[&selected.actor]);
     Ok(
-        json!({"workspace":row.get::<_,String>(2),"position":row.get::<_,i64>(3),"current_revision":current,"schema":selected}),
+        json!({"workspace":row.get::<_,String>(2),"position":row.get::<_,i64>(3),"current_revision":current,"schema":schema}),
     )
 }
 
@@ -297,7 +301,7 @@ pub async fn read_objects(
         }
         let n = scope.revision.unwrap_or(current as u32);
         ensure!(n > 0, "object revision must be positive");
-        let document: Value = if n == current as u32 {
+        let mut document: Value = if n == current as u32 {
             serde_json::from_str(row.get(3))?
         } else {
             serde_json::from_str(conn.query_opt("SELECT document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 AND revision=$3", &[&workspace,&key,&(n as i32)]).await?.context("unknown object revision")?.get(0))?
@@ -334,10 +338,34 @@ pub async fn read_objects(
             .as_str()
             .unwrap_or(&key);
         let mut annotations:Value=serde_json::from_str(conn.query_one("SELECT COALESCE((SELECT value FROM joppa.state_entries WHERE workspace=$1 AND section='notes' AND key=$2),'{}'::jsonb)::text", &[&workspace,&annotation]).await?.get(0))?;
+        let mut authors = std::collections::BTreeSet::new();
+        if let Some(actor) = document["actor"].as_str() {
+            authors.insert(actor.to_owned());
+        }
+        if n == current as u32
+            && let Some(comments) = annotations["comments"].as_object()
+        {
+            authors.extend(
+                comments
+                    .values()
+                    .filter_map(|comment| comment["actor"].as_str().map(str::to_owned)),
+            );
+        }
+        let types =
+            access::actor_types(&*conn, &workspace, &authors.into_iter().collect::<Vec<_>>())
+                .await?;
+        if let Some(actor) = document["actor"].as_str() {
+            document["actor_type"] = json!(types[actor]);
+        }
         if let Some(comments) = annotations["comments"].as_object_mut() {
             for comment in comments.values_mut() {
                 comment["author"] = comment["actor"].clone();
                 comment["created_at"] = comment["at"].clone();
+                if n == current as u32
+                    && let Some(actor) = comment["actor"].as_str()
+                {
+                    comment["actor_type"] = json!(types[actor]);
+                }
             }
         }
         let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
