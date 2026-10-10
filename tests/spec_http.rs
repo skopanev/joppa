@@ -370,3 +370,36 @@ async fn search_never_returns_another_workspaces_objects() -> Result<()> {
     ensure!(found.is_empty(), "{found:?}");
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn another_workspace_answers_exactly_like_an_absent_one() -> Result<()> {
+    // workspaces-isolated-ac1, invited-people-only-ac1: a stranger must not learn that B exists.
+    let w = world().await?;
+    let other = format!("http-spec-b-{}", uuid::Uuid::new_v4().simple());
+    let create: Operation = serde_json::from_value(json!({"op":"workspace","title":"B"}))?;
+    store::execute(&w.pool, &other, "someone-else", "create-b", &create).await?;
+    let read = |ws: String| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .get(format!(
+                    "{}/api/workspaces/{ws}/objects?limit=5&kind=domain",
+                    w.root
+                ))
+                .bearer_auth(&w.owner)
+                .send()
+                .await?;
+            Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
+        }
+    };
+    let existing = read(other).await?;
+    let absent = read(format!("absent-{}", uuid::Uuid::new_v4().simple())).await?;
+    ensure!(
+        existing.0 == 404 && existing == absent,
+        "{existing:?} vs {absent:?}"
+    );
+    ensure!(existing.1.contains("Workspace not found"), "{existing:?}");
+    Ok(())
+}
