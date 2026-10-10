@@ -133,7 +133,7 @@ pub async fn task_status(pool: &Pool, workspace: &str, actor: &str, task: &str) 
     access::check(&**conn, &workspace, actor, false).await?;
     let criterion: String = conn
         .query_opt(
-            "SELECT parent FROM joppa.objects WHERE workspace=$1 AND address=$2 AND kind='task'",
+            "SELECT o.parent FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.address=$2 AND b.first_view->'object_types'->o.kind->>'role'='task'",
             &[&workspace, &task],
         )
         .await?
