@@ -166,6 +166,11 @@ fn a_duplicate_without_an_original_is_refused() {
 fn a_signal_stays_open_until_a_final_decision() {
     // open-until-decided-ac1
     let mut w = world();
+    assert_eq!(
+        data(&w, "a")["status"],
+        "unprocessed",
+        "a new signal is open"
+    );
     w.ok(
         "agent",
         decide(
@@ -223,9 +228,9 @@ fn only_a_person_rejects_or_marks_a_duplicate() {
         command,
         "only a person decides on a signal from a person",
     );
-    assert_ne!(
+    assert_eq!(
         data(&w, "a")["status"],
-        "processed",
+        "unprocessed",
         "the refused decision leaves the signal open"
     );
     w.ok("alex", decide(&w, "a", "rejected", json!({})));

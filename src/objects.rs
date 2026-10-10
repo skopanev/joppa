@@ -1646,6 +1646,10 @@ pub fn save(
     } else {
         data.clone()
     };
+    // A new signal is unprocessed until someone decides on it.
+    if input_type(w, kind) && saved_data["status"].is_null() {
+        saved_data["status"] = json!("unprocessed");
+    }
     if input_type(w, kind)
         && let Some(old) = &old
     {
