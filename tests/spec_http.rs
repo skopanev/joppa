@@ -273,9 +273,23 @@ async fn a_blocking_link_pins_the_target_revision_and_asks_for_review() -> Resul
 }
 
 async fn journal_refuses(sql: &str) -> Result<()> {
+    // As an application role that has UPDATE and DELETE rights, so only the WORM
+    // trigger can refuse; a superuser could drop the trigger and prove nothing.
     let w = world().await?;
-    let conn = w.pool.get().await?;
-    let error = conn
+    let mut conn = w.pool.get().await?;
+    conn.batch_execute(
+        "DO $$ BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'joppa_test_app') THEN
+                CREATE ROLE joppa_test_app NOLOGIN NOSUPERUSER;
+            END IF;
+         END $$;
+         GRANT USAGE ON SCHEMA joppa TO joppa_test_app;
+         GRANT SELECT, UPDATE, DELETE ON joppa.events TO joppa_test_app;",
+    )
+    .await?;
+    let tx = conn.transaction().await?;
+    tx.batch_execute("SET LOCAL ROLE joppa_test_app").await?;
+    let error = tx
         .execute(sql, &[&w.ws])
         .await
         .expect_err("the journal must refuse");
