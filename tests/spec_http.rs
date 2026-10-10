@@ -167,6 +167,31 @@ impl World {
             .filter_map(|r| Some(format!("{}:{}", r["kind"].as_str()?, r["id"].as_str()?)))
             .collect())
     }
+    /// The first search result, only when it is an exact ID or address match.
+    async fn first_exact(&self, query: &str) -> Result<Option<String>> {
+        let reply: Value = self
+            .http
+            .post(format!("{}/mcp", self.root))
+            .bearer_auth(&self.owner)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"workspace":self.ws,"query":query}}}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        let found: Value = serde_json::from_str(
+            reply["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        let first = &found["items"][0];
+        Ok((first["exact_id"] == true).then(|| {
+            format!(
+                "{}:{}",
+                first["kind"].as_str().unwrap_or(""),
+                first["id"].as_str().unwrap_or("")
+            )
+        }))
+    }
 }
 
 #[tokio::test]
@@ -638,14 +663,14 @@ async fn an_item_id_and_an_address_find_their_object_first() -> Result<()> {
         .unwrap_or_default()
         .to_owned();
     ensure!(!item_id.is_empty(), "the note needs an item ID");
-    let by_id = w.search(&item_id).await?;
+    let by_id = w.first_exact(&item_id).await?;
     ensure!(
-        by_id.first().map(String::as_str) == Some("note:second"),
+        by_id.as_deref() == Some("note:second"),
         "{item_id}: {by_id:?}"
     );
-    let by_address = w.search("note:second").await?;
+    let by_address = w.first_exact("note:second").await?;
     ensure!(
-        by_address.first().map(String::as_str) == Some("note:second"),
+        by_address.as_deref() == Some("note:second"),
         "{by_address:?}"
     );
     Ok(())

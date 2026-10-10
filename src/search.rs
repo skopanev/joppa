@@ -231,7 +231,11 @@ pub async fn find(
       UNION ALL
       SELECT d.kind,d.local_id,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
       ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
-      WHERE i.id=$2 AND d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3))
+      WHERE i.id=$2 AND d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3)
+      UNION ALL
+      SELECT d.kind,d.local_id,true,0::real FROM joppa.search_documents d
+      WHERE d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3)
+        AND d.kind||':'||d.local_id=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2))
       SELECT kind,local_id,bool_or(exact) AS exact FROM matches GROUP BY kind,local_id
       ORDER BY exact DESC,max(rank) DESC,kind,local_id LIMIT 100", &[&workspace,&query,&kind]).await?;
     for (rank, row) in rows.iter().enumerate() {
