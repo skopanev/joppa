@@ -207,6 +207,84 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> {
+    // agent-acts-within-grant-ac1
+    let w = world().await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let bot = token["token"].as_str().unwrap();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let command = json!({"op":"save_object","kind":"note","id":"agent-author","revision":0,"parent":null,"data":{"title":"The granted agent writes as itself","owner":"owner","body":"The owner and author have separate meanings","source":{"actor":"business source"}},"reason":"Record the authenticated agent author"});
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(bot)
+        .json(&json!({"request_id":request_id,"command":command}))
+        .send()
+        .await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::OK,
+        "{}",
+        response.status()
+    );
+    let saved: Value = response.json().await?;
+    let position = saved["position"]
+        .as_u64()
+        .ok_or_else(|| anyhow::anyhow!("The write returned no journal position: {saved}"))?;
+    let conn = w.pool.get().await?;
+    let events = conn.query("SELECT position,actor,command::text FROM joppa.events WHERE workspace=$1 AND request_id=$2", &[&w.ws,&request_id]).await?;
+    ensure!(events.len() == 1, "The write has {} events", events.len());
+    ensure!(
+        events[0].get::<_, i64>(0) as u64 == position && events[0].get::<_, String>(1) == "bot",
+        "The saved event has a different position or author"
+    );
+    let stored: Value = serde_json::from_str(events[0].get(2))?;
+    ensure!(
+        stored["op"] == "save_object" && stored["kind"] == "note" && stored["id"] == "agent-author",
+        "{stored}"
+    );
+    let journal = store::read(&w.pool, &w.ws, "owner", &store::Scope::full()).await?;
+    let events: Vec<_> = journal["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["position"] == position)
+        .collect();
+    ensure!(
+        events.len() == 1,
+        "The journal lost or duplicated the write"
+    );
+    ensure!(
+        events[0]["actor"] == "bot" && events[0]["actor_type"] == "agent",
+        "{:?}",
+        events[0]
+    );
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author"}}})).send().await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::OK,
+        "{}",
+        response.status()
+    );
+    let response: Value = response.json().await?;
+    ensure!(response["result"]["isError"] != true, "{response}");
+    let object: Value = serde_json::from_str(
+        response["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("null"),
+    )?;
+    ensure!(
+        object["document"]["actor"] == "bot" && object["document"]["actor_type"] == "agent",
+        "{object}"
+    );
+    ensure!(
+        object["document"]["data"]["owner"] == "owner"
+            && object["document"]["data"]["source"]["actor"] == "business source",
+        "The identity changed business data: {object}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
     // no-shared-credentials-ac1
     let w = world().await?;
