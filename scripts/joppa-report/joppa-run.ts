@@ -3,11 +3,6 @@
 // as one report for the pre-push hook.
 //   JOPPA_TEST_DATABASE_URL=... bun scripts/joppa-report/joppa-run.ts
 import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-
-// tests/access.rs writes its rule files here, as in CI.
-process.env.JOPPA_ACCESS_RULES_FILE ??= `${tmpdir()}/joppa-test-access.json`;
-process.env.JOPPA_LOGIN_USERS_FILE ??= `${tmpdir()}/joppa-test-aliases.json`;
 
 const cargo = Bun.spawnSync(
   ["bun", "scripts/joppa-report/cargo-junit.ts", "--no-fail-fast", "--", "--include-ignored", "--test-threads=1"],
