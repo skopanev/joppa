@@ -479,3 +479,37 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
+    // signal-in-one-inbox-ac1
+    let w = world().await?;
+    w.note("first", 0, "First", "Refunds are slow", json!([]))
+        .await?;
+    let inbox = w.get("kind=note&parent=*&limit=100").await?;
+    let items = inbox["items"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        items.len() == 1 && items[0]["address"] == "note:first",
+        "{inbox}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
+    // signal-in-one-inbox-ac2
+    let w = world().await?;
+    w.command(json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":"requirement:key","data":{"title":"Under","owner":"owner","body":"About keys"},"links":[],"reason":"Save"}))
+        .await?;
+    let inbox = w.get("kind=note&parent=*&limit=100").await?;
+    let items = inbox["items"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        items
+            .iter()
+            .any(|i| i["address"] == "note:under" && i["parent"] == "requirement:key"),
+        "{inbox}"
+    );
+    Ok(())
+}
