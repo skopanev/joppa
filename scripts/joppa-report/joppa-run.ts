@@ -13,10 +13,26 @@ const bun = Bun.spawnSync(
   { stdout: "inherit", stderr: "inherit" },
 );
 writeFileSync(".joppa/bun.stamp.json", JSON.stringify({ full: true }) + "\n");
-const browser = Bun.spawnSync(
-  ["node", "--test", "--test-reporter=junit", "tests/grey_ac_browser.cjs"],
-  { stdout: "pipe", stderr: "inherit" },
-);
-writeFileSync(".joppa/browser.junit.xml", browser.stdout);
-writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: true }) + "\n");
-process.exit(cargo.exitCode || bun.exitCode || browser.exitCode ? 1 : 0);
+let available = false;
+try {
+  available = Bun.spawnSync(
+    ["node", "-e", "require(process.env.PLAYWRIGHT_MODULE || 'playwright')"],
+    { stdout: "ignore", stderr: "ignore" },
+  ).exitCode === 0;
+} catch {
+  // Node is optional when the browser runner is absent.
+}
+let browserExit = 0;
+if (available) {
+  const browser = Bun.spawnSync(
+    ["node", "--test", "--test-reporter=junit", "tests/grey_ac_browser.cjs"],
+    { stdout: "pipe", stderr: "inherit" },
+  );
+  writeFileSync(".joppa/browser.junit.xml", browser.stdout);
+  browserExit = browser.exitCode;
+} else {
+  writeFileSync(".joppa/browser.junit.xml", "<testsuites></testsuites>\n");
+  console.error("joppa report: browser tests skipped because Playwright is absent; this run is partial");
+}
+writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: available }) + "\n");
+process.exit(cargo.exitCode || bun.exitCode || browserExit ? 1 : 0);
