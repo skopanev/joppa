@@ -437,11 +437,20 @@ pub fn nonempty(s: &str) -> Result<()> {
     Ok(())
 }
 
+/// A field that the client must not send. HTTP answers it with 422.
+#[derive(Debug)]
+pub struct ClientField(pub &'static str);
+impl std::fmt::Display for ClientField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for ClientField {}
+
 pub fn reject_actor_field(input: &serde_json::Value) -> Result<()> {
-    ensure!(
-        input.get("actor").is_none(),
-        "actor comes from the identity, not the request"
-    );
+    if input.get("actor").is_some() {
+        return Err(ClientField("actor comes from the identity, not the request").into());
+    }
     Ok(())
 }
 pub fn identifier(s: &str) -> Result<()> {

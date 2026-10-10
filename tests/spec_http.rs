@@ -466,7 +466,7 @@ async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
                 .send()
                 .await?;
             ensure!(
-                response.status() == reqwest::StatusCode::CONFLICT,
+                response.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY,
                 "{}: {}",
                 response.status(),
                 response.text().await?

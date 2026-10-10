@@ -163,6 +163,8 @@ fn result(value: Result<Value>) -> ApiResult {
         (
             if e.is::<store::AccessDenied>() {
                 StatusCode::NOT_FOUND
+            } else if e.is::<joppa::commands::ClientField>() {
+                StatusCode::UNPROCESSABLE_ENTITY
             } else {
                 StatusCode::CONFLICT
             },
