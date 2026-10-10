@@ -109,8 +109,10 @@ fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
     w.ok("agent", assess("ios", true));
     for id in ["finished", "ongoing"] {
         w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
+        if id == "finished" {
+            w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
+        }
     }
-    w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
     let mut next = revision(1);
     next["carry_tasks"] = json!(true);
     w.ok("agent", next);

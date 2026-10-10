@@ -502,7 +502,12 @@ async fn write(
             }else{None};
             if let Some(name) = &operation.reference { refs.insert(name.clone(), resolved); }
             Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"object":saved,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))
-        }.await.with_context(|| format!("operation {}", index + 1))?;
+        }.await;
+        let apply = if batch {
+            apply.with_context(|| format!("operation {}", index + 1))
+        } else {
+            apply
+        }?;
         results.push(apply);
     }
     ensure_notes(&*tx, &workspace, &mut state, &mut events, base_position).await?;

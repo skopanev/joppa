@@ -154,20 +154,29 @@ pub(super) async fn read(
         0
     };
     ensure!(offset >= 0, "invalid task cursor offset");
-    let filter = "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND NOT claimable))";
+    let held = client.query_opt("SELECT address FROM joppa.task_queue WHERE workspace=$1 AND actor=$2 AND assignee=$2 AND status='in_progress' AND EXISTS(SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2 AND value='\"agent\"'::jsonb) ORDER BY created_at,sort_req,sort_id LIMIT 1", &[&workspace,&actor]).await?.map(|r| r.get::<_,String>(0));
+    let filter = "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND $6::text IS NULL) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR $6::text IS NOT NULL)))";
     let total: i64 = client
         .query_one(
             &format!("SELECT count(*) FROM joppa.task_queue WHERE {filter}"),
-            &[&workspace, &actor, &project, &purpose, &view],
+            &[&workspace, &actor, &project, &purpose, &view, &held],
         )
         .await?
         .get(0);
     ensure!(offset <= total, "invalid task cursor offset");
-    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($6::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($6)+1),created_at,sort_req,sort_id LIMIT $7 OFFSET $8"), &[&workspace,&actor,&project,&purpose,&view,&targets,&(limit as i64),&offset]).await?;
-    let items: Vec<Value> = rows
+    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($7::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($7)+1),created_at,sort_req,sort_id LIMIT $8 OFFSET $9"), &[&workspace,&actor,&project,&purpose,&view,&held,&targets,&(limit as i64),&offset]).await?;
+    let mut items: Vec<Value> = rows
         .iter()
         .map(|r| serde_json::from_str(r.get(0)))
         .collect::<std::result::Result<_, _>>()?;
+    if let Some(held) = held {
+        for item in &mut items {
+            if item["claimable"] == true {
+                item["claimable"] = json!(false);
+                item["waiting_reason"] = json!(format!("agent already holds task {held}"));
+            }
+        }
+    }
     let next = (offset + (items.len() as i64) < total)
         .then(|| format!("{position}:{}", offset + items.len() as i64));
     Ok(

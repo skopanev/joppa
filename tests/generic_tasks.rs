@@ -75,7 +75,43 @@ fn action(w: &mut World, actor: &str, key: &str, op: &str, extra: Value) {
     w.ok(actor, cmd);
 }
 
-// [task-serves-one-ac-ac1]
+// one-task-per-agent-ac1
+#[test]
+fn an_agent_holds_only_one_active_task_across_configured_types() {
+    let mut w = configured();
+    for key in ["task:one", "work:two"] {
+        save(
+            &mut w,
+            key,
+            Some("spec:root"),
+            contract("Implement the contract"),
+        );
+    }
+    action(&mut w, "agent", "task:one", "claim_task", json!({}));
+    let second = json!({"op":"claim_task","id":"work:two","revision":w.state.objects["work:two"].current().revision});
+    let position = w.position;
+    let error = w.apply("agent", second.clone()).unwrap_err();
+    assert_eq!(error.to_string(), "agent already holds task task:one");
+    assert_eq!(w.position, position);
+    assert!(w.state.task_process["work:two"].assignee.is_none());
+    w.ok("other", second);
+    action(
+        &mut w,
+        "agent",
+        "task:one",
+        "complete_task",
+        json!({"evidence":"The contract works"}),
+    );
+    action(
+        &mut w,
+        "other",
+        "work:two",
+        "release_task",
+        json!({"reason":"Return the work"}),
+    );
+    action(&mut w, "agent", "work:two", "claim_task", json!({}));
+}
+
 #[test]
 fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
     let mut w = configured();
@@ -109,16 +145,16 @@ fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
     assert!(
         tasks::claimable(
             &w.state,
-            "agent",
+            "other",
             "work:two",
             &w.state.task_process["work:two"]
         )
         .is_ok()
     );
-    action(&mut w, "agent", "work:two", "claim_task", json!({}));
+    action(&mut w, "other", "work:two", "claim_task", json!({}));
     action(
         &mut w,
-        "agent",
+        "other",
         "work:two",
         "complete_task",
         json!({"evidence":"The child change is complete"}),
@@ -135,6 +171,47 @@ fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
     assert!(w.state.requirements.is_empty());
     assert_eq!(w.state.objects["task:one"].revisions.len(), 3);
     objects::validate_tree(&w.state).unwrap();
+}
+
+#[test]
+fn old_journal_claims_survive_and_new_claims_obey_the_agent_limit() {
+    let mut w = configured();
+    for key in ["task:one", "work:two", "task:three"] {
+        save(
+            &mut w,
+            key,
+            Some("spec:root"),
+            contract("Implement the contract"),
+        );
+    }
+    for key in ["task:one", "work:two"] {
+        let cmd: Command =
+            serde_json::from_value(json!({"op":"claim_task","id":key,"revision":1})).unwrap();
+        commands::apply_replay(
+            &mut w.state,
+            "agent",
+            &cmd,
+            w.position + 1,
+            "2026-01-01T00:00:00Z",
+        )
+        .unwrap();
+        w.position += 1;
+    }
+    assert_eq!(
+        w.state.task_process["task:one"].assignee.as_deref(),
+        Some("agent")
+    );
+    assert_eq!(
+        w.state.task_process["work:two"].assignee.as_deref(),
+        Some("agent")
+    );
+    let error = w
+        .apply(
+            "agent",
+            json!({"op":"claim_task","id":"task:three","revision":1}),
+        )
+        .unwrap_err();
+    assert_eq!(error.to_string(), "agent already holds task task:one");
 }
 
 // [restructure-keeps-evidence-ac3]

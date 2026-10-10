@@ -201,6 +201,19 @@ pub fn claimable(
     r: &Revision,
     task: &Task,
 ) -> Result<()> {
+    validate_claim(w, actor, req, id, r, task)?;
+    crate::tasks::ensure_agent_available(w, actor)
+}
+
+// Existing journal claims can predate the limit on active work.
+pub(crate) fn validate_claim(
+    w: &Workspace,
+    actor: &str,
+    req: &str,
+    id: &str,
+    r: &Revision,
+    task: &Task,
+) -> Result<()> {
     ensure!(
         w.members.contains_key(actor),
         "claimant is not a workspace member"
@@ -334,7 +347,7 @@ pub fn apply(
                 .tasks
                 .get(id)
                 .ok_or_else(|| anyhow::anyhow!("unknown task"))?;
-            claimable(w, actor, req, id, r, task)?;
+            validate_claim(w, actor, req, id, r, task)?;
             revision(w, req, *n, true)?
                 .tasks
                 .get_mut(id)
