@@ -1654,6 +1654,8 @@ pub fn save(
             if let Some(fields) = value.as_object_mut() {
                 fields.remove("status");
                 fields.remove("owner");
+                // A decision is a record about the signal, not a change of the signal.
+                fields.remove("decision");
             }
             value
         };

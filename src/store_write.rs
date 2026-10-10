@@ -489,7 +489,7 @@ async fn write(
             let mut resolved=serde_json::to_value(&command)?;
             let saved_address = match &command {
                 Command::SaveObject { id, kind, .. } => Some(format!("{kind}:{id}")),
-                Command::SetNoteStatus { target, .. } => Some(crate::objects::resolve_address(&state, target).to_owned()),
+                Command::SetNoteStatus { target, .. } | Command::DecideNote { target, .. } => Some(crate::objects::resolve_address(&state, target).to_owned()),
                 _ => None,
             };
             let saved=if let Some(address)=saved_address {

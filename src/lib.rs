@@ -3,6 +3,7 @@ pub mod access;
 pub mod checks;
 pub mod commands;
 pub mod embeddings;
+pub mod inbox;
 mod intake;
 pub mod model;
 pub mod objects;

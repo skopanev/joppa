@@ -42,6 +42,19 @@ pub enum Command {
         tests: Vec<String>,
         reason: String,
     },
+    /// Decide an Inbox signal: changed_spec, needs_information, rejected or duplicate.
+    DecideNote {
+        target: String,
+        revision: u32,
+        outcome: String,
+        reason: String,
+        #[serde(default)]
+        links: Vec<String>,
+        #[serde(default)]
+        duplicate_of: Option<String>,
+        #[serde(default)]
+        question: Option<String>,
+    },
     SetNoteStatus {
         target: String,
         revision: u32,
@@ -616,6 +629,26 @@ pub(crate) fn apply_inner(
             tests,
             reason,
         } => crate::ac_tests::set(w, actor, target, tests, reason, position, recorded_at)?,
+        Command::DecideNote {
+            target,
+            revision,
+            outcome,
+            reason,
+            links,
+            duplicate_of,
+            question,
+        } => {
+            let decision = crate::inbox::Decision {
+                target,
+                revision: *revision,
+                outcome,
+                reason,
+                links,
+                duplicate_of: duplicate_of.as_deref(),
+                question: question.as_deref(),
+            };
+            crate::inbox::decide(w, actor, &decision, position, recorded_at)?;
+        }
         Command::SetNoteStatus {
             target,
             revision,
