@@ -209,6 +209,7 @@ async fn call(
             .await
         }
         "joppa_command" => {
+            joppa::commands::reject_actor_field(a)?;
             store::execute_remote_input(
                 pool,
                 field("workspace")?,
@@ -219,6 +220,12 @@ async fn call(
             .await
         }
         "joppa_batch" => {
+            joppa::commands::reject_actor_field(a)?;
+            if let Some(operations) = a["operations"].as_array() {
+                for operation in operations {
+                    joppa::commands::reject_actor_field(operation)?;
+                }
+            }
             let operations: Vec<store::BatchOperation> =
                 serde_json::from_value(a["operations"].clone())?;
             store::execute_remote_batch(

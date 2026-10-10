@@ -389,10 +389,21 @@ async fn command(
     State(app): State<App>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<Request>,
+    Json(request): Json<Value>,
 ) -> ApiResult {
     require_write_credential(&headers)?;
     let actor = authenticate(&app, &headers).await?;
+    if let Err(error) = joppa::commands::reject_actor_field(&request)
+        .and_then(|()| joppa::commands::reject_actor_field(&request["command"]))
+    {
+        return result(Err(error));
+    }
+    let request: Request = serde_json::from_value(request).map_err(|error| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error":error.to_string()})),
+        )
+    })?;
     result(
         store::execute_remote_input(
             &app.pool,
