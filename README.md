@@ -198,6 +198,10 @@ The server resolves `person` or `agent` from the author's workspace identity.
 Membership roles are immutable, so the same type applies to earlier records.
 Administrative snapshots also include this field in their journal history.
 
+Write requests cannot supply `actor` in their envelopes or operations.
+The authenticated identity selects the journal author.
+An `actor` field inside document data remains part of that data.
+
 Lists for a configured `inbox=true` type show unprocessed inputs first.
 Each status group uses address order. List items expose `status` and `note_status`.
 Use the returned cursor for the next page. A workspace change expires it.

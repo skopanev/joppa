@@ -436,6 +436,14 @@ pub fn nonempty(s: &str) -> Result<()> {
     ensure!(!s.trim().is_empty(), "text must not be empty");
     Ok(())
 }
+
+pub fn reject_actor_field(input: &serde_json::Value) -> Result<()> {
+    ensure!(
+        input.get("actor").is_none(),
+        "actor comes from the identity, not the request"
+    );
+    Ok(())
+}
 pub fn identifier(s: &str) -> Result<()> {
     ensure!(
         !s.is_empty()

@@ -207,6 +207,132 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
+    // no-shared-credentials-ac1
+    let w = world().await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let bot = token["token"].as_str().unwrap();
+    let error = "actor comes from the identity, not the request";
+    let command = json!({"op":"save_object","kind":"note","id":"identity-guard","revision":0,"parent":null,"data":{"title":"Identity guard","owner":"owner","body":"Business context","actor":"business actor","source":{"actor":"skopanev"}},"reason":"Keep the authenticated author"});
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let conn = w.pool.get().await?;
+    let before: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    for claimed in [json!("skopanev"), Value::Null] {
+        for in_command in [false, true] {
+            let mut input = json!({"request_id":request_id,"command":command});
+            if in_command {
+                input["command"]["actor"] = claimed.clone();
+            } else {
+                input["actor"] = claimed.clone();
+            }
+            let response = w
+                .http
+                .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+                .bearer_auth(bot)
+                .json(&input)
+                .send()
+                .await?;
+            ensure!(
+                response.status() == reqwest::StatusCode::CONFLICT,
+                "{}: {}",
+                response.status(),
+                response.text().await?
+            );
+            let response: Value = response.json().await?;
+            ensure!(response["error"] == error, "{response}");
+        }
+    }
+    let mut nested = command.clone();
+    nested["actor"] = json!("skopanev");
+    let cases = [
+        (
+            "joppa_command",
+            json!({"workspace":w.ws,"request_id":request_id,"actor":"skopanev","command":command}),
+        ),
+        (
+            "joppa_command",
+            json!({"workspace":w.ws,"request_id":request_id,"command":nested}),
+        ),
+        (
+            "joppa_batch",
+            json!({"workspace":w.ws,"request_id":request_id,"actor":"skopanev","operations":[{"command":command}]}),
+        ),
+        (
+            "joppa_batch",
+            json!({"workspace":w.ws,"request_id":request_id,"operations":[{"command":command},{"command":nested}]}),
+        ),
+        (
+            "joppa_batch",
+            json!({"workspace":w.ws,"request_id":request_id,"operations":[{"actor":"skopanev","command":command}]}),
+        ),
+    ];
+    for (name, arguments) in cases {
+        let expected = if name == "joppa_batch"
+            && arguments["operations"][1]["command"].get("actor").is_some()
+        {
+            format!("operation 2: {error}")
+        } else {
+            error.to_owned()
+        };
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?;
+        ensure!(response.status().is_success(), "{}", response.status());
+        let response: Value = response.json().await?;
+        ensure!(
+            response["result"]["isError"] == true
+                && response["result"]["content"][0]["text"] == expected,
+            "{response}"
+        );
+    }
+    let after: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    ensure!(before == after, "A refused write appended an event");
+    let impersonated: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1 AND actor='skopanev'",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    ensure!(impersonated == 0, "The bot token wrote as a person");
+    let receipts: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2",
+            &[&w.ws, &request_id],
+        )
+        .await?
+        .get(0);
+    ensure!(receipts == 0, "A refused write consumed its request ID");
+    let saved = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(bot)
+        .json(&json!({"request_id":request_id,"command":command}))
+        .send()
+        .await?;
+    ensure!(saved.status().is_success(), "{}", saved.text().await?);
+    let read = w.get("address=note:identity-guard").await?;
+    ensure!(read["document"]["actor"] == "bot", "{read}");
+    ensure!(
+        read["document"]["data"]["actor"] == "business actor"
+            && read["document"]["data"]["source"]["actor"] == "skopanev",
+        "{read}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> Result<()> {
     // returned-work-kept-ac1
     let w = world().await?;

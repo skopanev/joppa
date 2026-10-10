@@ -442,6 +442,7 @@ async fn write(
     let batch_id = Uuid::new_v4();
     for (index, operation) in operations.iter().enumerate() {
         let apply = async {
+            commands::reject_actor_field(&operation.command)?;
             if let Some(name) = &operation.reference {
                 commands::identifier(name)?;
                 ensure!(!refs.contains_key(name), "duplicate batch reference");
