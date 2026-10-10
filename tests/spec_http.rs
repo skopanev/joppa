@@ -207,6 +207,120 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
+    // old-agent-locked-out-ac1
+    let w = world().await?;
+    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2").await?;
+    let bot = first["token"].as_str().unwrap();
+    let bot2 = second["token"].as_str().unwrap();
+    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"returned","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for transfer"})).await?;
+    w.command_as(
+        bot,
+        json!({"op":"claim_task","id":"task:returned","revision":1}),
+    )
+    .await?;
+    w.command_as(bot, json!({"op":"release_task","id":"task:returned","revision":2,"reason":"Return the unfinished work"})).await?;
+    w.command_as(
+        bot2,
+        json!({"op":"claim_task","id":"task:returned","revision":3}),
+    )
+    .await?;
+    let claimed = w.get("address=task:returned").await?;
+    ensure!(claimed["current_revision"] == 4, "{claimed}");
+    ensure!(claimed["process"]["assignee"] == "bot2", "{claimed}");
+    let conn = w.pool.get().await?;
+    let before: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let complete = json!({"op":"complete_task","id":"task:returned","revision":4,"evidence":"Implemented the contract and recorded checks"});
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(bot)
+        .json(&json!({"request_id":request_id,"command":complete}))
+        .send()
+        .await?;
+    ensure!(
+        response.status() == reqwest::StatusCode::CONFLICT,
+        "{}",
+        response.status()
+    );
+    let response: Value = response.json().await?;
+    ensure!(
+        response["error"] == "Task is not claimed unfinished work",
+        "{response}"
+    );
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":complete}}})).send().await?;
+    ensure!(response.status().is_success(), "{}", response.status());
+    let response: Value = response.json().await?;
+    ensure!(
+        response["result"]["isError"] == true
+            && response["result"]["content"][0]["text"] == "Task is not claimed unfinished work",
+        "{response}"
+    );
+    let after: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    ensure!(before == after, "The refused completion appended an event");
+    let receipts: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2",
+            &[&w.ws, &request_id],
+        )
+        .await?
+        .get(0);
+    ensure!(
+        receipts == 0,
+        "The refused completion consumed its request ID"
+    );
+    let unchanged = w.get("address=task:returned").await?;
+    ensure!(
+        unchanged["document"] == claimed["document"] && unchanged["process"] == claimed["process"],
+        "The refused completion changed the task: {unchanged}"
+    );
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(bot2)
+        .json(&json!({"request_id":request_id,"command":complete}))
+        .send()
+        .await?;
+    ensure!(response.status().is_success(), "{}", response.text().await?);
+    let done = w.get("address=task:returned").await?;
+    ensure!(
+        done["current_revision"] == 5
+            && done["document"]["actor"] == "bot2"
+            && done["process"]["done"].is_string(),
+        "{done}"
+    );
+    w.command(json!({"op":"save_object","kind":"task","id":"owner-completion","revision":0,"parent":"ac:key-rights","data":{"title":"Record the owner completion","owner":"owner","contract":"Implement the same key rights contract","purpose":"implementation","projects":[]},"reason":"Check the existing owner authority"})).await?;
+    w.command_as(
+        bot2,
+        json!({"op":"claim_task","id":"task:owner-completion","revision":1}),
+    )
+    .await?;
+    w.command(json!({"op":"complete_task","id":"task:owner-completion","revision":2,"evidence":"The owner records the completed work"})).await?;
+    let owned = w.get("address=task:owner-completion").await?;
+    ensure!(
+        owned["document"]["actor"] == "owner" && owned["process"]["done"].is_string(),
+        "{owned}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
     // no-shared-credentials-ac1
     let w = world().await?;

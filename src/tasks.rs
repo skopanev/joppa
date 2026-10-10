@@ -470,7 +470,7 @@ pub fn apply(
             commands::nonempty(evidence)?;
             ensure!(
                 authority || t.assignee.as_deref() == Some(actor),
-                "Task owner or assignee required"
+                "Task is not claimed unfinished work"
             );
             ensure!(
                 t.assignee.is_some()
