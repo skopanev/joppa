@@ -355,7 +355,9 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
         3,
         "both link directions and parent membership appear"
     );
-    assert_eq!(related["items"][0]["note_status"], "processed");
+    assert_eq!(related["items"][0]["note_status"], "unprocessed");
+    assert_eq!(related["items"][2]["address"], "note:a");
+    assert_eq!(related["items"][2]["status"], "processed");
     let note = store::read_objects(
         &pool,
         &ws,
