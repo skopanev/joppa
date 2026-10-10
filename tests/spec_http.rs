@@ -321,6 +321,119 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
+    // done-is-not-green-ac2
+    let w = world().await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let bot = token["token"].as_str().unwrap();
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["job"] = types["task"].clone();
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check verification with a configured task type"})).await?;
+    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let conn = w.pool.get().await?;
+    for kind in ["task", "job"] {
+        w.command(json!({"op":"save_object","kind":kind,"id":"report-only","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the report contract","owner":"owner","contract":"Implement the key rights and record checks","purpose":"implementation","projects":[]},"reason":"Create work for the verification guard"})).await?;
+        let address = format!("{kind}:report-only");
+        w.command_as(bot, json!({"op":"claim_task","id":address,"revision":1}))
+            .await?;
+        let claimed = w.get(&format!("address={address}")).await?;
+        ensure!(
+            claimed["process"]["assignee"] == "bot"
+                && claimed["process"]["verification"] == "unverified",
+            "{claimed}"
+        );
+        let before: i64 = conn
+            .query_one(
+                "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+                &[&w.ws],
+            )
+            .await?
+            .get(0);
+        let request_id = uuid::Uuid::new_v4().to_string();
+        for verification in [json!("passing"), Value::Null] {
+            let mut data = claimed["document"]["data"].clone();
+            data["verification"] = verification;
+            let command = json!({"op":"save_object","kind":kind,"id":"report-only","revision":claimed["current_revision"],"parent":"ac:key-rights","data":data,"reason":"Attempt to set verification by hand"});
+            let response = w
+                .http
+                .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+                .bearer_auth(bot)
+                .json(&json!({"request_id":request_id,"command":command}))
+                .send()
+                .await?;
+            ensure!(
+                response.status() == reqwest::StatusCode::CONFLICT,
+                "{}",
+                response.status()
+            );
+            let response: Value = response.json().await?;
+            ensure!(
+                response["error"] == "verification comes from test reports",
+                "{response}"
+            );
+            let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":command}}})).send().await?;
+            ensure!(response.status().is_success(), "{}", response.status());
+            let response: Value = response.json().await?;
+            ensure!(
+                response["result"]["isError"] == true
+                    && response["result"]["content"][0]["text"]
+                        == "verification comes from test reports",
+                "{response}"
+            );
+        }
+        let after: i64 = conn
+            .query_one(
+                "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+                &[&w.ws],
+            )
+            .await?
+            .get(0);
+        ensure!(
+            before == after,
+            "The refused verification write appended an event"
+        );
+        let receipts: i64 = conn
+            .query_one(
+                "SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2",
+                &[&w.ws, &request_id],
+            )
+            .await?
+            .get(0);
+        ensure!(
+            receipts == 0,
+            "The refused verification write consumed its request ID"
+        );
+        let unchanged = w.get(&format!("address={address}")).await?;
+        ensure!(
+            unchanged["document"] == claimed["document"]
+                && unchanged["process"] == claimed["process"],
+            "The refused verification write changed the task: {unchanged}"
+        );
+        let mut data = claimed["document"]["data"].clone();
+        data["context"] = json!({"verification":"passing"});
+        let valid = json!({"op":"save_object","kind":kind,"id":"report-only","revision":claimed["current_revision"],"parent":"ac:key-rights","data":data,"reason":"Keep a nested business value"});
+        let response = w
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+            .bearer_auth(bot)
+            .json(&json!({"request_id":request_id,"command":valid}))
+            .send()
+            .await?;
+        ensure!(response.status().is_success(), "{}", response.text().await?);
+        let updated = w.get(&format!("address={address}")).await?;
+        ensure!(
+            updated["document"]["data"]["context"]["verification"] == "passing"
+                && updated["process"]["verification"] == "unverified",
+            "{updated}"
+        );
+        w.command_as(bot, json!({"op":"release_task","id":address,"revision":updated["current_revision"],"reason":"Return the tested work"})).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
     // no-shared-credentials-ac1
     let w = world().await?;

@@ -1479,6 +1479,10 @@ pub fn save(
         );
     }
     ensure!(data.is_object(), "data must be an object");
+    ensure!(
+        data.get("verification").is_none(),
+        "verification comes from test reports"
+    );
     if w.documents_migrated {
         for field in data.as_object().unwrap().keys() {
             ensure!(!process_field(field), "use process commands for {field}");
