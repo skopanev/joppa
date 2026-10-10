@@ -206,6 +206,9 @@ Lists for a configured `inbox=true` type show unprocessed inputs first.
 Each status group uses address order. List items expose `status` and `note_status`.
 Use the returned cursor for the next page. A workspace change expires it.
 
+When the selected specification revision has no criteria, `joppa_read` reports
+`status="no criteria"` and `verification="unverified"`.
+
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.

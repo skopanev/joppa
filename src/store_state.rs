@@ -406,6 +406,10 @@ pub(super) async fn read_requirement(
         let n = scope.revision.unwrap() as i32;
         serde_json::from_str(client.query_opt("SELECT value::text FROM joppa.state_revisions WHERE workspace=$1 AND section='requirements' AND key=$2 AND revision=$3", &[&workspace,&req,&n]).await?.context("unknown requirement revision")?.get(0))?
     };
+    if revision.acs.is_empty() {
+        out["status"] = json!("no criteria");
+        out["verification"] = json!("unverified");
+    }
     out["requirement"]["capability"] =
         json!(revision.capability.as_deref().or(q.capability.as_deref()));
     out["requirement"]["revisions"] = json!([revision]);
