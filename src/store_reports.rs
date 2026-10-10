@@ -140,9 +140,16 @@ pub async fn task_status(pool: &Pool, workspace: &str, actor: &str, task: &str) 
         .context("unknown task")?;
     drop(conn);
     let status = criterion_tests(pool, &workspace, actor, &criterion).await?;
+    // One field for the task and the Agents domain: done means its verification passed.
+    let verification = match status["status"].as_str() {
+        Some("green") => "passed",
+        Some("red") => "failed",
+        _ => "unverified",
+    };
     Ok(json!({
         "address": task,
-        "done": status["status"] == "green",
+        "verification": verification,
+        "done": verification == "passed",
         "criterion": {"address": criterion, "status": status["status"], "commit": status["commit"]},
     }))
 }
