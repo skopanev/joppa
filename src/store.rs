@@ -40,7 +40,30 @@ pub fn pool(url: &str) -> Result<Pool> {
         tokio_postgres::NoTls,
     )?)
 }
+/// Migrations are repeatable, and Postgres aborts one side of a deadlock with a running
+/// transaction (SQLSTATE 40P01). A deadlocked migration simply runs again.
 pub async fn migrate(pool: &Pool) -> Result<()> {
+    for attempt in 1.. {
+        match migrate_once(pool).await {
+            Err(e) if attempt < 3 && is_deadlock(&e) => {
+                // Visible on purpose: a retried migration must show up in the logs.
+                eprintln!("joppa: migration attempt {attempt} hit a deadlock, retrying: {e:#}");
+                tokio::time::sleep(std::time::Duration::from_millis(100 * attempt)).await;
+            }
+            done => return done,
+        }
+    }
+    unreachable!()
+}
+fn is_deadlock(e: &anyhow::Error) -> bool {
+    e.chain().any(|cause| {
+        cause
+            .downcast_ref::<tokio_postgres::Error>()
+            .and_then(tokio_postgres::Error::code)
+            .is_some_and(|code| *code == tokio_postgres::error::SqlState::T_R_DEADLOCK_DETECTED)
+    })
+}
+async fn migrate_once(pool: &Pool) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
