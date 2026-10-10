@@ -31,6 +31,19 @@ pub(super) async fn project(
                 | Command::MigrateDocuments {}
         )
     });
+    // A redaction rewrites the stored revisions of its object; nothing else may.
+    let redactions: Vec<(String, String)> = events
+        .iter()
+        .filter_map(|e| match &e.command {
+            Command::RedactObject {
+                target, fragment, ..
+            } => Some((
+                objects::resolve_address(state, target).to_owned(),
+                fragment.clone(),
+            )),
+            _ => None,
+        })
+        .collect();
     let mut docs = vec![];
     let mut revisions = vec![];
     let mut sources: Vec<String> = vec![];
@@ -44,7 +57,10 @@ pub(super) async fn project(
         let r = obj.current();
         let previous = existing.get(address);
         let previous_revision = previous.and_then(|v| v["revision"].as_u64()).unwrap_or(0) as u32;
-        if let Some(previous) = previous.filter(|_| !state.unloaded_objects.contains(address)) {
+        if let Some(previous) = previous.filter(|_| {
+            !state.unloaded_objects.contains(address)
+                && !redactions.iter().any(|(a, _)| a == address)
+        }) {
             let old = obj
                 .revisions
                 .iter()
@@ -118,6 +134,12 @@ pub(super) async fn project(
     }
     if !docs.is_empty() {
         client.execute("INSERT INTO joppa.objects(workspace,address,kind,local_id,revision,parent,present,title,owner,description,document_at,inbox_status,document,review_required,work_ready,signal,process) SELECT $1,x.address,x.kind,x.local_id,x.revision,x.parent,x.present,x.title,x.owner,x.description,x.document_at,x.inbox_status,x.document,x.review_required,x.work_ready,x.signal,x.process FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,kind text,local_id text,revision integer,parent text,present boolean,title text,owner text,description text,document_at text,inbox_status text,document jsonb,review_required boolean,work_ready boolean,signal jsonb,process jsonb) ON CONFLICT(workspace,address) DO UPDATE SET revision=EXCLUDED.revision,parent=EXCLUDED.parent,present=EXCLUDED.present,title=EXCLUDED.title,owner=EXCLUDED.owner,description=EXCLUDED.description,document_at=EXCLUDED.document_at,inbox_status=EXCLUDED.inbox_status,document=EXCLUDED.document,review_required=EXCLUDED.review_required,work_ready=EXCLUDED.work_ready,signal=EXCLUDED.signal,process=EXCLUDED.process", &[&workspace,&json!(docs).to_string()]).await?;
+    }
+    for (address, fragment) in &redactions {
+        // The fragment as it appears inside a JSON string.
+        let encoded = serde_json::to_string(fragment)?;
+        let encoded = &encoded[1..encoded.len() - 1];
+        client.execute("UPDATE joppa.object_revisions SET document=replace(document::text,$3,$4)::jsonb WHERE workspace=$1 AND address=$2 AND strpos(document::text,$3)>0", &[&workspace,address,&encoded,&crate::redact::MASK]).await?;
     }
     if !revisions.is_empty() {
         let body = json!(revisions).to_string();

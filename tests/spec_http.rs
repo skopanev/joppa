@@ -20,6 +20,8 @@ struct World {
     root: String,
     ws: String,
     owner: String,
+    /// A signed-in account that is not a member of the workspace.
+    eve: String,
     pool: deadpool_postgres::Pool,
     http: reqwest::Client,
 }
@@ -53,8 +55,12 @@ async fn world() -> Result<World> {
     let dir = std::env::temp_dir().join(format!("joppa-spec-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
+    let eve = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
-    std::fs::write(&tokens, json!({ owner.clone(): "owner" }).to_string())?;
+    std::fs::write(
+        &tokens,
+        json!({ owner.clone(): "owner", eve.clone(): "eve" }).to_string(),
+    )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
         .port();
@@ -82,6 +88,7 @@ async fn world() -> Result<World> {
                 root,
                 ws,
                 owner,
+                eve,
                 pool,
                 http: reqwest::Client::new(),
             });
@@ -510,6 +517,103 @@ async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
             .iter()
             .any(|i| i["address"] == "note:under" && i["parent"] == "requirement:key"),
         "{inbox}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result<()> {
+    // signal-in-one-inbox-ac3: eve learns nothing, not even that the workspace exists.
+    let w = world().await?;
+    let save = |ws: String| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .post(format!("{}/api/workspaces/{ws}/commands", w.root))
+                .bearer_auth(&w.eve)
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"eve","revision":0,"parent":null,"data":{"title":"Signal eve","owner":"owner","body":"Hi"},"links":[],"reason":"Intake"}}))
+                .send()
+                .await?;
+            Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
+        }
+    };
+    let member_only = save(w.ws.clone()).await?;
+    let absent = save(format!("absent-{}", uuid::Uuid::new_v4().simple())).await?;
+    ensure!(
+        member_only.0 == 404 && member_only == absent,
+        "{member_only:?} vs {absent:?}"
+    );
+    ensure!(
+        member_only.1.contains("Workspace not found"),
+        "{member_only:?}"
+    );
+    let inbox = w.get("kind=note&parent=*&limit=100").await?;
+    ensure!(
+        inbox["items"].as_array().is_some_and(|i| i.is_empty()),
+        "{inbox}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_redacted_fragment_cannot_be_read_anywhere() -> Result<()> {
+    // owner-redacts-secret-ac1
+    let w = world().await?;
+    w.note("leak", 0, "Leak", "the key is sk-123 for prod", json!([]))
+        .await?;
+    w.note("leak", 1, "Leak", "rotate sk-123 today", json!([]))
+        .await?;
+    ensure!(
+        w.search("sk-123").await? == ["note:leak"],
+        "search must find the fragment before the redaction"
+    );
+    w.command(json!({"op":"redact_object","target":"note:leak","fragment":"sk-123","reason":"leaked key"}))
+        .await?;
+    let reads = [
+        w.get("address=note:leak").await?,
+        w.get("address=note:leak&revision=1").await?,
+        w.get("address=note:leak&revision=2").await?,
+        w.get("address=note:leak&history=true").await?,
+        w.get("kind=note&parent=*&limit=100").await?,
+    ];
+    for read in &reads {
+        ensure!(!read.to_string().contains("sk-123"), "{read}");
+    }
+    ensure!(
+        reads[1]["document"]["data"]["body"] == "the key is [redacted] for prod",
+        "{}",
+        reads[1]
+    );
+    let found = w.search("sk-123").await?;
+    ensure!(found.is_empty(), "{found:?}");
+    let state: String = w
+        .pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='redactions' AND key='note:leak'",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    ensure!(
+        state.contains("leaked key") && state.contains("owner") && !state.contains("sk-123"),
+        "{state}"
+    );
+    // A rebuild from the journal replays the redaction and agrees with the stored revisions.
+    w.pool
+        .get()
+        .await?
+        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&w.ws])
+        .await?;
+    store::backfill_board(&w.pool).await?;
+    let rebuilt = w.get("address=note:leak&revision=1").await?;
+    ensure!(
+        rebuilt["document"]["data"]["body"] == "the key is [redacted] for prod",
+        "{rebuilt}"
     );
     Ok(())
 }

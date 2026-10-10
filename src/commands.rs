@@ -55,6 +55,11 @@ pub enum Command {
         #[serde(default)]
         question: Option<String>,
     },
+    RedactObject {
+        target: String,
+        fragment: String,
+        reason: String,
+    },
     SetNoteStatus {
         target: String,
         revision: u32,
@@ -649,6 +654,11 @@ pub(crate) fn apply_inner(
             };
             crate::inbox::decide(w, actor, &decision, position, recorded_at)?;
         }
+        Command::RedactObject {
+            target,
+            fragment,
+            reason,
+        } => crate::redact::redact(w, actor, target, fragment, reason, position, recorded_at)?,
         Command::SetNoteStatus {
             target,
             revision,

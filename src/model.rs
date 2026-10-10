@@ -11,6 +11,9 @@ pub struct Workspace {
     pub object_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub objects: BTreeMap<String, crate::objects::Object>,
+    /// Owner redactions per object. The fragment itself stays only in the journal.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub redactions: BTreeMap<String, Vec<crate::redact::Redaction>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_process: BTreeMap<String, Task>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
