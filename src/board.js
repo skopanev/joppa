@@ -664,12 +664,13 @@ function showTestCount(chip){
   // The row dot rises from its criteria: red when one is red, green when all are green,
   // and yellow while any criterion below is not green yet.
   const total=Number(chip.dataset.total),tone=red?'red':green===total?'green':'yellow';
-  const label=red?red+' of '+total+' criteria are red':green===total?'All '+total+' criteria are green':green+' of '+total+' criteria are green';
+  const noun=n=>n===1?' criterion':' criteria';
+  const label=red?red+' of '+total+noun(total)+(red===1?' is red':' are red'):green+' of '+total+noun(total)+(green===1?' is green':' are green');
   const dot=chip.closest('summary')?.querySelector('.status-circle');
   if(dot&&(dot.dataset.tone!==tone||dot.dataset.hint!=='Status: '+label))dot.replaceWith(statusCircle({tone,label}));
 }
-// A criterion that lists tests takes its dot from them: green when every test passes,
-// red when one fails or is missing, grey otherwise. Without tests the dot keeps its status.
+// A criterion takes its dot from its tests: green when every test passes,
+// red when one fails or is missing, grey otherwise, and grey "No tests" without tests.
 const testTone=status=>status==='pass'||status==='green'?'green':['fail','missing','red'].includes(status)?'red':'grey';
 function testSummary(s){
   const passed=s.tests.filter(t=>t.status==='pass').length;
@@ -681,10 +682,11 @@ async function applyTestStatuses(items){
   let reply;
   try{reply=await api('workspaces/'+encodeURIComponent(ws)+'/tests?ac='+encodeURIComponent(criteria.join(',')));}catch{return;}
   for(const status of reply.items||[reply]){
-    if(status.reason==='no tests')continue;
     for(const card of document.querySelectorAll('.common-object[data-object-address="'+CSS.escape(status.address)+'"]')){
       const dot=card.querySelector(':scope > summary .status-circle');
-      if(dot)dot.replaceWith(statusCircle({tone:testTone(status.status),label:testSummary(status)}));
+      // A criterion without tests is grey "No tests", so yellow on the board means mixed only.
+      const label=status.reason==='no tests'?'No tests':testSummary(status);
+      if(dot)dot.replaceWith(statusCircle({tone:testTone(status.status),label}));
     }
   }
 }
