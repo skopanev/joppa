@@ -207,6 +207,126 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> Result<()> {
+    // returned-work-kept-ac1
+    let w = world().await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2").await?;
+    let bot2 = token["token"].as_str().unwrap();
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"task:handover","revision":1}),
+    )
+    .await?;
+    for (id, text) in [
+        ("first", "The first boundary is clear"),
+        ("second", "The second boundary still needs work"),
+    ] {
+        w.command_as(
+            &w.bot,
+            json!({"op":"note","target":"task:handover","id":id,"text":text}),
+        )
+        .await?;
+    }
+    w.command(json!({"op":"define_verification_scope","req":"key","revision":1,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
+    w.command_as(&w.bot, json!({"op":"plan","req":"key","revision":1,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[key-rights] first-boundary","ac":"key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[key-rights] second-boundary","ac":"key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
+    let partial = json!({"check":"[key-rights] first-boundary","outcome":"pass","observed":["The first boundary holds"],"note":"Partial implementation at commit def456","link":"https://example.test/repository/commit/def456"});
+    w.command_as(
+        &w.bot,
+        json!({"op":"result","req":"key","revision":1,"run":"partial","evidence":partial}),
+    )
+    .await?;
+    let before = w.get("address=task:handover").await?;
+    w.command_as(&w.bot, json!({"op":"release_task","id":"task:handover","revision":before["current_revision"],"reason":"Return the remaining boundary to the queue"})).await?;
+    let available = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(bot2)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tasks","arguments":{"workspace":w.ws,"view":"available"}}}))
+        .send()
+        .await?;
+    ensure!(
+        available.status().is_success(),
+        "{}: {}",
+        available.status(),
+        available.text().await?
+    );
+    let reply: Value = available.json().await?;
+    ensure!(reply["result"]["isError"] != true, "{reply}");
+    let available: Value = serde_json::from_str(
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("null"),
+    )?;
+    ensure!(
+        available["tasks"]
+            .as_array()
+            .is_some_and(|tasks| tasks.iter().any(|task| task["address"] == "task:handover")),
+        "{available}"
+    );
+    let returned = w.get("address=task:handover").await?;
+    w.command_as(
+        bot2,
+        json!({"op":"claim_task","id":"task:handover","revision":returned["current_revision"]}),
+    )
+    .await?;
+
+    let reply = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot2).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"task:handover"}}})).send().await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let reply: Value = reply.json().await?;
+    ensure!(reply["result"]["isError"] != true, "{reply}");
+    let task: Value = serde_json::from_str(
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("null"),
+    )?;
+    ensure!(task["process"]["assignee"] == "bot2", "{task}");
+    ensure!(task["process"]["status"] == "in_progress", "{task}");
+    ensure!(
+        task["annotations"] == before["annotations"],
+        "the handover changed the original notes: {task}"
+    );
+    let notes = task["annotations"]["comments"].as_object().unwrap();
+    ensure!(
+        notes.len() == 2 && notes.values().all(|note| note["author"] == "bot"),
+        "{notes:?}"
+    );
+
+    let evidence = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{}/board?level=process&id=task:handover",
+            w.root, w.ws
+        ))
+        .bearer_auth(bot2)
+        .send()
+        .await?;
+    ensure!(evidence.status().is_success(), "{}", evidence.text().await?);
+    let evidence: Value = evidence.json().await?;
+    let run = &evidence["runs"]["partial"];
+    ensure!(
+        run["subject"]["commit"] == "def456" && run["reporter"] == "bot",
+        "{run}"
+    );
+    ensure!(
+        run["finished"].is_null() && run["discovery_complete"] == false,
+        "{run}"
+    );
+    ensure!(
+        run["results"]["[key-rights] first-boundary"] == partial
+            && run["results"]["[key-rights] second-boundary"].is_null(),
+        "{run}"
+    );
+    ensure!(
+        run["plan"][0]["tasks"][0]["address"] == "task:handover",
+        "{run}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
     // comments-on-object-ac1
     let w = world().await?;
