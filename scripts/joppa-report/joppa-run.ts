@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Joppa's own full run: cargo test (with the database tests) and the bun tests of this kit,
-// as one report for the pre-push hook.
+// Joppa's full run includes Rust, report kit and browser tests.
+// The pre-push hook sends them as one report.
 //   JOPPA_TEST_DATABASE_URL=... bun scripts/joppa-report/joppa-run.ts
 import { writeFileSync } from "node:fs";
 
@@ -13,4 +13,10 @@ const bun = Bun.spawnSync(
   { stdout: "inherit", stderr: "inherit" },
 );
 writeFileSync(".joppa/bun.stamp.json", JSON.stringify({ full: true }) + "\n");
-process.exit(cargo.exitCode || bun.exitCode ? 1 : 0);
+const browser = Bun.spawnSync(
+  ["node", "--test", "--test-reporter=junit", "tests/grey_ac_browser.cjs"],
+  { stdout: "pipe", stderr: "inherit" },
+);
+writeFileSync(".joppa/browser.junit.xml", browser.stdout);
+writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: true }) + "\n");
+process.exit(cargo.exitCode || bun.exitCode || browser.exitCode ? 1 : 0);
