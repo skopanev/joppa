@@ -915,6 +915,17 @@ async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> R
 async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
     // comments-on-object-ac1
     let w = world().await?;
+    let clock = w.pool.get().await?;
+    let server_time = || async {
+        let time: String = clock
+            .query_one("SELECT clock_timestamp()::text", &[])
+            .await?
+            .get(0);
+        Ok::<_, anyhow::Error>(
+            chrono::DateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S%.f%#z")?
+                .with_timezone(&chrono::Utc),
+        )
+    };
     w.note("input", 0, "Input", "Context", json!([])).await?;
     for address in [
         "domain:security",
@@ -923,7 +934,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
         "ac:key-rights",
         "note:input",
     ] {
-        let before = chrono::Utc::now();
+        let before = server_time().await?;
         let response = w
             .http
             .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
@@ -943,9 +954,10 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             "%Y-%m-%d %H:%M:%S%.f%#z",
         )?
         .with_timezone(&chrono::Utc);
+        let after = server_time().await?;
         ensure!(
-            created >= before && created <= chrono::Utc::now(),
-            "{comment}"
+            created >= before && created <= after,
+            "{comment}; server interval {before} to {after}"
         );
         ensure!(
             (created - before).num_milliseconds() <= 5000,
