@@ -222,6 +222,7 @@ async function boardPart(level,id,revision){
   return api('workspaces/'+encodeURIComponent(ws)+'/board?'+params);
 }
 async function showApp(identity) {
+  closeAccountMenu();
   if(identity.email===undefined)identity={...identity,...await api('me')};
   viewerActor=identity.actor;
   $('identity').textContent=displayPersonName(identity.name||identity.email||identity.actor||'Account');

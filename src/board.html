@@ -4,7 +4,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#fffcf5">
 <script>
-try{const theme=localStorage.getItem('theme');document.documentElement.dataset.theme=['light','dark'].includes(theme)?theme:'system';}
+try{
+  const saved=localStorage.getItem('theme');
+  const theme=saved??localStorage.getItem('joppa-theme');
+  const explicit=['light','dark'].includes(theme);
+  document.documentElement.dataset.theme=explicit?theme:'system';
+  try{
+    if(saved===null&&explicit)localStorage.setItem('theme',theme);
+    localStorage.removeItem('joppa-theme');
+  }catch{}
+}
 catch{document.documentElement.dataset.theme='system';}
 </script>
 <title>joppa</title>

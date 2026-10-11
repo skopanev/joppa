@@ -263,6 +263,19 @@ test('theme: the saved choice overrides or follows the system theme', async () =
     await f.page.emulateMedia({colorScheme: 'dark'});
     assert.equal(await background(), 'rgb(25, 28, 32)');
     assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), null);
+    await f.page.evaluate(() => localStorage.setItem('joppa-theme', 'light'));
+    await f.page.reload();
+    await f.page.locator('body.authenticated').waitFor();
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'light');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('joppa-theme')), null);
+    await toggle.click();
+    await f.page.evaluate(() => localStorage.setItem('joppa-theme', 'light'));
+    await f.page.reload();
+    await f.page.locator('body.authenticated').waitFor();
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'dark');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('joppa-theme')), null);
   } finally { await f.close(); }
 });
 
