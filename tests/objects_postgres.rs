@@ -158,7 +158,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         parent["verification_summary"],
         listed_parent["verification_summary"]
     );
-    assert_eq!(parent["verification_summary"]["total"], 2);
+    assert_eq!(parent["verification_summary"]["total"], 1);
     let ops: Vec<store::BatchOperation> = serde_json::from_value(json!([
         {"ref":"one","command":{"op":"save_object","kind":"note","revision":0,"parent":null,"data":{"title":"Generated note","owner":"owner","body":"First"},"reason":"Create source"}},
         {"command":{"op":"save_object","kind":"note","id":{"$ref":"one/id"},"revision":{"$ref":"one/saved_revision"},"parent":null,"data":{"title":"Generated note","owner":"owner","body":"Second"},"reason":"Update source"}}

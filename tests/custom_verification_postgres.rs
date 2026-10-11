@@ -190,11 +190,9 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
     )
     .await?;
     assert_eq!(detail["process"]["verification"], "pass");
-    assert_eq!(
-        detail["verification_summary"],
-        json!({"total":1,"passed":1})
-    );
-    for address in ["spec:same", "epic:same", "section:middle"] {
+    // Process evidence does not replace a current test report in child counts.
+    assert!(detail.get("verification_summary").is_none());
+    for (address, total) in [("spec:same", 1), ("epic:same", 1), ("section:middle", 2)] {
         let parent = store::read_objects(
             &pool,
             &ws,
@@ -207,7 +205,7 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
         .await?;
         assert_eq!(
             parent["verification_summary"],
-            json!({"total":2,"passed":2})
+            json!({"total":total,"passed":0,"failed":0})
         );
     }
     let historical = store::read_objects(

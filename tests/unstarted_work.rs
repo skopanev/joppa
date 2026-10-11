@@ -88,7 +88,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     .await?;
     assert_eq!(
         roots["items"][0]["verification_summary"],
-        json!({"total":2,"passed":0})
+        json!({"total":1,"passed":0,"failed":0})
     );
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     apply(&pool, &ws, "agent", assess("ios", true)).await?;
@@ -260,7 +260,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     .await?;
     assert_eq!(
         roots["items"][0]["verification_summary"],
-        json!({"total":2,"passed":1})
+        json!({"total":1,"passed":0,"failed":0})
     );
     assert_eq!(roots["items"][0]["signal"]["tone"], "grey");
     apply(&pool, &ws, "runner", plan("pass")).await?;
@@ -299,7 +299,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     .await?;
     assert_eq!(
         roots["items"][0]["verification_summary"],
-        json!({"total":2,"passed":2})
+        json!({"total":1,"passed":0,"failed":0})
     );
     assert_eq!(roots["items"][0]["signal"]["tone"], "grey");
     apply(&pool, &ws, "agent", revision(1)).await?;
@@ -316,7 +316,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     .await?;
     assert_eq!(
         roots["items"][0]["verification_summary"],
-        json!({"total":2,"passed":0})
+        json!({"total":1,"passed":0,"failed":0})
     );
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     for ac in ["ios", "key"] {
@@ -416,14 +416,21 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         .iter()
         .find(|item| item["address"] == "spec:s")
         .unwrap();
-    assert_eq!(spec["verification_summary"], json!({"total":2,"passed":0}));
+    assert_eq!(
+        spec["verification_summary"],
+        json!({"total":2,"passed":0,"failed":0})
+    );
     let unrelated = ordinary_before["items"]
         .as_array()
         .unwrap()
         .iter()
         .find(|item| item["address"] == "input:raw")
         .unwrap();
-    assert!(unrelated.get("verification_summary").is_none());
+    // The wildcard schema permits criteria below this type, but it has no children.
+    assert_eq!(
+        unrelated["verification_summary"],
+        json!({"total":0,"passed":0,"failed":0})
+    );
     assert!(
         ordinary_before["items"]
             .as_array()
@@ -444,7 +451,16 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0,"done_verification":{"pass":0,"fail":0,"unverified":0}}))
     );
     let ordinary_after = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
-    assert_eq!(ordinary_before["items"], ordinary_after["items"]);
+    let mut expected = ordinary_before["items"].clone();
+    // The wildcard schema also permits a criterion below the new direct work child.
+    let spec = expected
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|item| item["address"] == "spec:s")
+        .unwrap();
+    spec["verification_summary"] = json!({"total":3,"passed":0,"failed":0});
+    assert_eq!(expected, ordinary_after["items"]);
     let direct = store::read_objects(
         &pool,
         &ws,
