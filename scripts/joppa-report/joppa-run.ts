@@ -14,10 +14,25 @@ const bun = Bun.spawnSync(
 );
 writeFileSync(".joppa/bun.stamp.json", JSON.stringify({ full: true }) + "\n");
 // The same browser checks as CI. Playwright comes from PLAYWRIGHT_MODULE or the global npm root.
+// A box that cannot start Chromium marks this part as not run, so the report is partial, not red.
 const globalRoot = Bun.spawnSync(["npm", "root", "-g"]).stdout.toString().trim();
-const browser = Bun.spawnSync(
-  ["node", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs"],
-  { stdout: "inherit", stderr: "inherit", env: { ...process.env, NODE_PATH: process.env.NODE_PATH ?? globalRoot } },
+const env = { ...process.env, NODE_PATH: process.env.NODE_PATH ?? globalRoot };
+const probe = Bun.spawnSync(
+  ["node", "-e", "const fail=e=>{console.error(e.message.split('\\n')[0]);process.exit(1)};try{require(process.env.PLAYWRIGHT_MODULE||'playwright').chromium.launch().then(b=>b.close(),fail)}catch(e){fail(e)}"],
+  { env },
 );
-writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: true }) + "\n");
-process.exit(cargo.exitCode || bun.exitCode || browser.exitCode ? 1 : 0);
+let browserFailed = false;
+if (probe.exitCode === 0) {
+  const browser = Bun.spawnSync(
+    ["node", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs"],
+    { stdout: "inherit", stderr: "inherit", env },
+  );
+  browserFailed = browser.exitCode !== 0;
+  writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: true }) + "\n");
+} else {
+  const reason = probe.stderr.toString().trim().split("\n")[0] || "Chromium did not start";
+  console.log(`browser part not run: ${reason}`);
+  writeFileSync(".joppa/browser.junit.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<testsuites></testsuites>\n');
+  writeFileSync(".joppa/browser.stamp.json", JSON.stringify({ full: false }) + "\n");
+}
+process.exit(cargo.exitCode || bun.exitCode || browserFailed ? 1 : 0);
