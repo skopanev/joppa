@@ -141,12 +141,14 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
   try {
     await f.open('ledger:one');
     const link = f.page.locator('#suggested-method-link');
-    assert.equal(await link.innerText(), 'Suggested method ↗');
+    assert.equal(await link.innerText(), 'How it works ↗');
     const url = new URL(await link.getAttribute('href'), f.live.root);
     assert.equal(url.searchParams.get('workspace'), f.live.ws);
     assert.equal((await f.page.goto(url.href)).status(), 200);
     await f.page.locator('#workspace-levels #level-entry').waitFor();
-    assert.equal(await f.page.locator('h1').innerText(), 'Suggested method');
+    assert.equal(await f.page.locator('h1').innerText(), 'How it works');
+    assert.equal(await f.page.title(), 'How it works · joppa');
+    assert.ok((await f.page.locator('h1 + p').innerText()).startsWith('This is a suggested method.'));
     assert.deepEqual(await f.page.locator('.brand-word').evaluateAll(words => words.map(word => {
       const style = getComputedStyle(word);
       return {text: word.textContent, font: style.fontFamily, weight: style.fontWeight,
@@ -219,34 +221,48 @@ test('type-question: the schema question opens from each type badge', async () =
 test('theme: the saved choice overrides or follows the system theme', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}}, types, {colorScheme: 'dark'});
   const background = () => f.page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  const choose = async value => {
-    await f.page.locator('#identity').click();
-    await f.page.locator('#theme').selectOption(value);
-    await f.page.locator('#identity').click();
-  };
+  const toggle = f.page.locator('button#theme');
   try {
     await f.open('domain:d');
+    assert.equal(await f.page.locator('select#theme').count(), 0);
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), null);
     assert.equal(await background(), 'rgb(25, 28, 32)');
-    await choose('light');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Switch to light theme');
+    assert.equal(await toggle.locator('.theme-sun').isVisible(), true);
+    assert.equal(await toggle.locator('.theme-moon').isVisible(), false);
+    await f.page.emulateMedia({colorScheme: 'light'});
+    await f.page.waitForFunction(() => document.getElementById('theme').dataset.dark === 'false');
     assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Switch to dark theme');
+    assert.equal(await toggle.locator('.theme-moon').isVisible(), true);
+    await f.page.emulateMedia({colorScheme: 'dark'});
+    await toggle.click();
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'light');
     await f.page.reload();
     await f.page.locator('body.authenticated').waitFor();
     assert.equal(await background(), 'rgb(255, 252, 245)');
-    assert.equal(await f.page.locator('#theme').inputValue(), 'light');
-    await choose('dark');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Switch to dark theme');
+    await toggle.focus();
+    await f.page.keyboard.press('Space');
     await f.page.emulateMedia({colorScheme: 'light'});
     assert.equal(await background(), 'rgb(25, 28, 32)');
     await f.page.reload();
     await f.page.locator('body.authenticated').waitFor();
-    assert.equal(await f.page.locator('#theme').inputValue(), 'dark');
-    await choose('system');
-    assert.equal(await background(), 'rgb(255, 252, 245)');
-    await f.page.emulateMedia({colorScheme: 'dark'});
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'dark');
     assert.equal(await background(), 'rgb(25, 28, 32)');
+    await f.page.setViewportSize({width: 390, height: 844});
+    await toggle.click();
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await f.page.locator('meta[name="theme-color"]').getAttribute('content'), '#fffcf5');
+    const box = await toggle.boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44 && box.x >= 0 && box.x + box.width <= 390);
+    await f.page.evaluate(() => localStorage.removeItem('theme'));
     await f.page.reload();
     await f.page.locator('body.authenticated').waitFor();
-    assert.equal(await f.page.locator('#theme').inputValue(), 'system');
-    assert.equal(await f.page.evaluate(() => localStorage.getItem('joppa-theme')), 'system');
+    await f.page.emulateMedia({colorScheme: 'dark'});
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), null);
   } finally { await f.close(); }
 });
 
@@ -258,6 +274,7 @@ test('account-menu: sign out requires the user menu and ends the real session', 
     await f.page.locator('#identity').focus();
     await f.page.keyboard.press('Enter');
     assert.equal(await f.page.locator('#logout').isVisible(), true);
+    assert.deepEqual(await f.page.locator('.account-options > *').allTextContents(), ['Sign out']);
     await f.page.keyboard.press('Escape');
     assert.equal(await f.page.locator('#logout').isVisible(), false);
     await f.page.locator('#identity').click();

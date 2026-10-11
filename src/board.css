@@ -110,14 +110,16 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .header-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1.1em;margin-left:auto;font-size:.8rem}
 .help-link{color:var(--link)}
 #refresh{display:none}
+#theme{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;color:var(--muted);flex:none}
+#theme:hover{color:var(--heading)}
+#theme .theme-sun,#theme[data-dark=true] .theme-moon{display:none}
+#theme[data-dark=true] .theme-sun{display:block}
 #identity{color:var(--muted)}
 #identity:focus-visible{outline:1px dashed var(--heading);outline-offset:3px}
 #account-menu{position:relative}
 .account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
 #account-menu:not([open])>.account-options{display:none}
-.account-options label{margin:0;font-size:inherit}
-.account-options select{font-size:16px}
-.account-options #logout{display:block;margin-top:1rem;padding:.4rem 0}
+.account-options #logout{display:block;padding:.4rem 0}
 #logout{font-size:inherit;color:var(--muted)}
 .build-version{font:11px/1 ui-monospace,monospace;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
 .login-content>.build-version{margin-top:2.4em}
