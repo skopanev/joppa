@@ -492,7 +492,7 @@ function appendObjectPage(root,part,params,generation){
       }
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address)){
-      const card=commonObjectCard(item);holder.append(card);
+      const card=commonObjectCard(item,undefined,root.closest('.common-object')?.dataset.objectTitle);holder.append(card);
       if(!new URLSearchParams(location.search).has('object')&&openBranches().has(item.address))card.open=true;
     }
   }
@@ -598,13 +598,15 @@ function openBranches(){try{return new Set(JSON.parse(sessionStorage.getItem(ope
 function rememberBranch(address,open){
   try{const set=openBranches();if(open)set.add(address);else set.delete(address);sessionStorage.setItem(openKey(),JSON.stringify([...set]));}catch{}
 }
-function commonObjectCard(item,loadedDetail){
-  const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;applyObjectColor(card,item.kind);
+function commonObjectCard(item,loadedDetail,parentTitle){
+  const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
   const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
-  const preview=objectTitlePreview(item.title,item.kind);
-  const title=nodeTitle(preview,signal),counts=item.verification_summary;title.dataset.truncated=String(preview!==item.title);
+  const repeatsParent=item.title===parentTitle;
+  const heading=repeatsParent?data.objectTypes[item.kind].title+' · '+signal.label:item.title;
+  const preview=objectTitlePreview(heading,item.kind);
+  const title=nodeTitle(preview,signal),counts=item.verification_summary;title.dataset.truncated=String(!repeatsParent&&preview!==item.title);
   const isCriterion=data.objectTypes?.[item.kind]?.role==='ac';
   // The count sits on the right of the row, after the type label, not inside the title.
   let chip=null;

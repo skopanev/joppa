@@ -100,6 +100,20 @@ test('direct-child-counts: each row uses the shared next-level count', async () 
     assert.equal(f.requests.filter(r => new URL(r.url).pathname.endsWith('/tests')).length, 0);
   } finally { await f.close(); }
 });
+test('child-heading: a repeated parent title shows the configured type and status', async () => {
+  const f = await fixture({
+    'domain:d': {title: 'Shared title'},
+    'capability:c': {title: 'Shared title', parent: 'domain:d'},
+    'capability:other': {title: 'Different title', parent: 'domain:d'},
+  });
+  try {
+    const card = await f.open('domain:d');
+    const titles = card.locator(':scope > .object-body > .object-children > .common-object > summary > .node-title');
+    await titles.nth(1).waitFor();
+    assert.deepEqual(await titles.allTextContents(), ['Capabilities · Current document', 'Different title']);
+  } finally { await f.close(); }
+});
+
 test('lazy-children-ac1: a capability reads only its twenty direct requirements', async () => {
   const records = {'domain:d': {title: 'Domain'}, 'capability:X': {title: 'Capability', parent: 'domain:d'}};
   for (let index = 0; index < 20; index++) {

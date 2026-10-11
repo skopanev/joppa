@@ -2266,7 +2266,9 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         return json!({});
     };
     let p = process(w, key);
-    let (tone, label) = if !o.current().present {
+    let (tone, label) = if p["status"] == "retired" {
+        ("grey", "Retired")
+    } else if !o.current().present {
         (
             "grey",
             "Object is absent from the current verification revision",
@@ -2332,7 +2334,6 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             }
             Some("done") if p["verification"] == "fail" => ("red", "Work complete · Checks failed"),
             Some("done") => ("grey", "Work complete · Unverified"),
-            Some("retired") => ("grey", "Task retired"),
             Some("in_progress") => ("yellow", "Task in progress"),
             _ if p["readiness_blocker"].is_object() => {
                 ("yellow", "Task waits for parent readiness")

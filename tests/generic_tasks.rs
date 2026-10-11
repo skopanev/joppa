@@ -268,6 +268,18 @@ fn task_parent_change_preserves_id_and_requires_owner_review() {
         "task:one",
         &w.state.task_process["task:one"]
     ));
+    action(
+        &mut w,
+        "owner",
+        "task:one",
+        "retire_task",
+        json!({"reason":"The work is no longer required"}),
+    );
+    let signal = objects::signal(&w.state, "task:one");
+    assert_eq!(
+        (signal["tone"].as_str(), signal["label"].as_str()),
+        (Some("grey"), Some("Retired"))
+    );
 }
 
 #[test]
