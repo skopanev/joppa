@@ -2322,7 +2322,18 @@ async fn legacy_revision_cannot_bypass_a_configured_type_question() -> Result<()
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["requirement"]["question"] = json!("Which behavior does the product need?");
+    types["domain"]["question"] = json!("Which product area does this object describe?");
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check the requirement question"})).await?;
+    let response = w.http.post(format!("{}/api/workspaces/{}/commands", w.root, w.ws)).bearer_auth(&w.owner)
+        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"domain","id":"new","title":"New product area","authority":"owner"}})).send().await?;
+    ensure!(response.status().as_u16() == 422, "{}", response.status());
+    ensure!(
+        response.json::<Value>().await?["error"]
+            == "This type has a question. Use save_object with question_checked",
+        "wrong creation question error"
+    );
+    let exists: bool = w.pool.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.objects WHERE workspace=$1 AND address='domain:new')", &[&w.ws]).await?.get(0);
+    ensure!(!exists, "a refused legacy creation left an object");
     let original = w.get("address=requirement:key").await?;
     let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Updated rights","body":"Updated scope","owner":"owner","consumers":["customer"],"reason":"Revise the legacy contract","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]});
     let request_id = uuid::Uuid::new_v4().to_string();
