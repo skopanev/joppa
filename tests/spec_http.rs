@@ -2775,5 +2775,6 @@ async fn expired_claims_and_heartbeats_agree_over_http_and_mcp() -> Result<()> {
     )
     .await?;
     ensure!(resumed["command"]["id"] == "job:one", "{resumed}");
+    store::check_journal(&w.pool).await?;
     Ok(())
 }
