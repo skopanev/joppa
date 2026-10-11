@@ -187,6 +187,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         joppa::objects::TreeType {
             index: None,
             references: Default::default(),
+            required_fields: Default::default(),
             parent_decision: false,
             inbox: None,
             launch_blocker: None,

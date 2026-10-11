@@ -35,6 +35,94 @@ fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value) {
     w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"reason":"Store the common document"}));
 }
 
+#[test]
+fn required_fields_follow_configured_types_and_value_presence() {
+    let mut w = empty();
+    let mut types = objects::schema(&w.state).types;
+    let names = ["domain", "ac", "task", "note", "feedback"];
+    for name in names {
+        types.insert(name.into(), serde_json::from_value(json!({"title":name,"role":"document","root":true,"parents":["*"],"required_fields":{"origin":"origin is required"}})).unwrap());
+    }
+    types.insert(
+        "record".into(),
+        serde_json::from_value(
+            json!({"title":"Record","role":"document","root":true,"parents":["*"]}),
+        )
+        .unwrap(),
+    );
+    w.ok("agent", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require an ordinary field on configured types"}));
+    for name in names {
+        for value in [
+            None,
+            Some(Value::Null),
+            Some(json!("")),
+            Some(json!(" \t\n ")),
+            Some(json!([])),
+            Some(json!({})),
+        ] {
+            let mut data = json!({"title":"A document","owner":"owner"});
+            if let Some(value) = value {
+                data["origin"] = value;
+            }
+            let before = serde_json::to_value(&w.state).unwrap();
+            let error = w.apply("agent", json!({"op":"save_object","kind":name,"id":"empty","revision":0,"parent":null,"data":data,"reason":"Reject an absent value"})).unwrap_err();
+            assert_eq!(error.to_string(), "origin is required");
+            assert_eq!(serde_json::to_value(&w.state).unwrap(), before);
+        }
+        for (index, value) in [
+            json!(0),
+            json!(false),
+            json!("origin"),
+            json!([0]),
+            json!({"value":false}),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let key = format!("{name}:value-{index}");
+            save(
+                &mut w,
+                &key,
+                None,
+                json!({"title":"A document","owner":"owner","origin":value}),
+            );
+            assert_eq!(w.state.objects[&key].current().data["origin"], value);
+        }
+    }
+    save(
+        &mut w,
+        "record:plain",
+        None,
+        json!({"title":"An ordinary document","owner":"owner"}),
+    );
+}
+
+#[test]
+fn required_field_rules_reject_invalid_configuration_and_default_to_empty() {
+    let mut w = empty();
+    let current = objects::schema(&w.state);
+    for t in current.types.values() {
+        assert!(t.required_fields.is_empty());
+        assert!(
+            serde_json::to_value(t)
+                .unwrap()
+                .get("required_fields")
+                .is_none()
+        );
+    }
+    for rule in [
+        json!({"bad field":"Value is required"}),
+        json!({"source":" \n "}),
+        json!({"verification":"Verification is required"}),
+    ] {
+        let mut types = serde_json::to_value(&current.types).unwrap();
+        types["note"]["required_fields"] = rule;
+        let before = serde_json::to_value(&w.state).unwrap();
+        w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":types,"reason":"Reject an invalid required field rule"}));
+        assert_eq!(serde_json::to_value(&w.state).unwrap(), before);
+    }
+}
+
 // [product-tree-shape-ac1]
 #[test]
 fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {

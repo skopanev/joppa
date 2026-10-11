@@ -35,6 +35,8 @@ pub struct TreeType {
     pub title_preview_length: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub required_fields: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
 }
@@ -126,6 +128,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
             TreeType {
                 index: Some(index as u32),
                 references: BTreeMap::new(),
+                required_fields: BTreeMap::new(),
                 parent_decision: false,
                 color: None,
                 title_size: None,
@@ -201,6 +204,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
             TreeType {
                 index: None,
                 references: BTreeMap::new(),
+                required_fields: BTreeMap::new(),
                 parent_decision: false,
                 inbox: None,
                 launch_blocker: None,
@@ -530,6 +534,20 @@ fn parent_valid(
     }
     Ok(())
 }
+fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
+    for (field, error) in &t.required_fields {
+        let present = match data.get(field) {
+            None | Some(Value::Null) => false,
+            Some(Value::String(value)) => !value.trim().is_empty(),
+            Some(Value::Array(value)) => !value.is_empty(),
+            Some(Value::Object(value)) => !value.is_empty(),
+            Some(_) => true,
+        };
+        ensure!(present, "{error}");
+    }
+    Ok(())
+}
+
 pub fn set_schema(
     w: &mut Workspace,
     actor: &str,
@@ -620,6 +638,14 @@ pub fn set_schema(
                 "reference field conflicts with a document field"
             );
         }
+        for (field, error) in &t.required_fields {
+            commands::identifier(field)?;
+            commands::nonempty(error)?;
+            ensure!(
+                !process_field(field),
+                "a required field must be a document field"
+            );
+        }
         for p in &t.parents {
             ensure!(p == "*" || types.contains_key(p), "unknown parent type");
         }
@@ -629,6 +655,7 @@ pub fn set_schema(
             types.contains_key(&obj.kind),
             "object type is absent from the tree schema"
         );
+        validate_required_fields(&types[&obj.kind], &obj.current().data)?;
         if w.task_process.contains_key(&address(&obj.kind, &obj.id)) {
             ensure!(
                 types[&obj.kind].role == "task",
@@ -1496,6 +1523,10 @@ pub fn save(
         );
     }
     commands::nonempty(&string(data, "title")?)?;
+    validate_required_fields(
+        schema(w).types.get(kind).context("unknown object type")?,
+        data,
+    )?;
     parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;
     if w.schema_migrated {
@@ -1770,6 +1801,7 @@ pub fn validate_tree(w: &Workspace) -> Result<()> {
             types.contains_key(&o.kind),
             "object type is absent from the tree schema"
         );
+        validate_required_fields(&types[&o.kind], &o.current().data)?;
         if !legacy_task_binding(w, o) {
             parent_valid(&types, w, &o.kind, o.current().parent.as_deref(), Some(key))?;
         }

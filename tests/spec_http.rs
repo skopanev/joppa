@@ -1244,6 +1244,176 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn configured_required_source_refuses_an_agent_write_without_a_source() -> Result<()> {
+    // signal-records-source-ac2
+    let w = world().await?;
+    w.note("original", 0, "Original input", "Keep this text", json!([]))
+        .await?;
+    let original = w.get("address=note:original").await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["note"]["required_fields"] = json!({"source":"a signal needs a source"});
+    types["feedback"] = json!({"title":"Feedback","role":"document","root":true,"parents":["*"],"required_fields":{"source":"a signal needs a source"}});
+    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    let schema_command = json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Require the configured source field"});
+    let error = w.refused(schema_command.clone()).await?;
+    ensure!(error.contains("a signal needs a source"), "{error}");
+    let after = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    ensure!(after == schema, "A refused schema changed: {after}");
+    ensure!(
+        w.get("address=note:original").await?["document"] == original["document"],
+        "A refused schema changed the original input"
+    );
+    let source = json!({"channel":"web","author":"alex","at":"2026-10-09T10:00:00Z"});
+    let mut data = original["document"]["data"].clone();
+    data["source"] = source.clone();
+    w.command(json!({"op":"save_object","kind":"note","id":"original","revision":1,"parent":null,"data":data,"reason":"Supply the source before enabling the rule"})).await?;
+    w.command(schema_command).await?;
+    let history = w.get("address=note:original&revision=1").await?;
+    ensure!(
+        history["document"] == original["document"],
+        "The source rule changed a historical revision: {history}"
+    );
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let bot = grant["token"].as_str().unwrap();
+    for kind in ["note", "feedback"] {
+        for transport in ["http", "mcp"] {
+            let id = format!("{kind}-{transport}");
+            let address = format!("{kind}:{id}");
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let mut command = json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":"New input","owner":"owner","body":"Input text"},"reason":"Check the configured source rule"});
+            let conn = w.pool.get().await?;
+            let before: i64 = conn
+                .query_one(
+                    "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+                    &[&w.ws],
+                )
+                .await?
+                .get(0);
+            let request = |command: Value| {
+                let w = &w;
+                let request_id = &request_id;
+                async move {
+                    let (url, body) = if transport == "http" {
+                        (
+                            format!("{}/api/workspaces/{}/commands", w.root, w.ws),
+                            json!({"request_id":request_id,"command":command}),
+                        )
+                    } else {
+                        (
+                            format!("{}/mcp", w.root),
+                            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":command}}}),
+                        )
+                    };
+                    let response = w.http.post(url).bearer_auth(bot).json(&body).send().await?;
+                    Ok::<_, anyhow::Error>((
+                        response.status().as_u16(),
+                        response.json::<Value>().await?,
+                    ))
+                }
+            };
+            let (status, denied) = request(command.clone()).await?;
+            if transport == "http" {
+                ensure!(
+                    status == 409 && denied["error"] == "a signal needs a source",
+                    "{status}: {denied}"
+                );
+            } else {
+                ensure!(
+                    status == 200
+                        && denied["result"]["isError"] == true
+                        && denied["result"]["content"][0]["text"] == "a signal needs a source",
+                    "{status}: {denied}"
+                );
+            }
+            let after: i64 = conn
+                .query_one(
+                    "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+                    &[&w.ws],
+                )
+                .await?
+                .get(0);
+            ensure!(after == before, "A refused write appended an event");
+            let revisions: i64 = conn
+                .query_one(
+                    "SELECT COUNT(*) FROM joppa.object_revisions WHERE workspace=$1 AND address=$2",
+                    &[&w.ws, &address],
+                )
+                .await?
+                .get(0);
+            ensure!(revisions == 0, "A refused write created a revision");
+            let receipts: i64 = conn.query_one("SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&w.ws, &request_id]).await?.get(0);
+            ensure!(receipts == 0, "A refused write consumed its request ID");
+            drop(conn);
+            command["data"]["source"] = source.clone();
+            let (status, saved) = request(command).await?;
+            ensure!(status == 200, "{status}: {saved}");
+            if transport == "mcp" {
+                ensure!(saved["result"]["isError"] != true, "{saved}");
+            }
+            let read = w.get(&format!("address={address}")).await?;
+            ensure!(
+                read["document"]["data"]["source"] == source && read["current_revision"] == 1,
+                "{read}"
+            );
+        }
+    }
+    let error = w.refused(json!({"op":"save_object","kind":"note","id":"original","revision":2,"parent":null,"data":original["document"]["data"],"reason":"Try to remove the required source"})).await?;
+    ensure!(error.contains("a signal needs a source"), "{error}");
+    let original_after = w.get("address=note:original").await?;
+    ensure!(
+        original_after["current_revision"] == 2
+            && original_after["document"]["data"]["source"] == source,
+        "{original_after}"
+    );
+    w.command_as(bot, json!({"op":"save_object","kind":"record","id":"plain","revision":0,"parent":null,"data":{"title":"Ordinary record","owner":"owner"},"reason":"The schema does not require source for this type"})).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn legacy_document_commands_obey_configured_required_fields() -> Result<()> {
+    let w = world().await?;
+    let domain = w.get("address=domain:security").await?;
+    let mut data = domain["document"]["data"].clone();
+    data["origin"] = json!("The agreed security scope");
+    w.command(json!({"op":"save_object","kind":"domain","id":"security","revision":domain["current_revision"],"parent":null,"data":data,"reason":"Supply the origin before enabling the rule"})).await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["domain"]["required_fields"] = json!({"origin":"origin is required"});
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Apply the rule to legacy document writes"})).await?;
+    let conn = w.pool.get().await?;
+    let before: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    let error = w.refused(json!({"op":"domain","id":"no-origin","title":"A domain without an origin","owner":"owner"})).await?;
+    let error: Value = serde_json::from_str(&error)?;
+    ensure!(error["error"] == "origin is required", "{error}");
+    let after: i64 = conn
+        .query_one(
+            "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?
+        .get(0);
+    ensure!(
+        before == after,
+        "The refused legacy command appended an event"
+    );
+    let revisions: i64 = conn.query_one("SELECT COUNT(*) FROM joppa.object_revisions WHERE workspace=$1 AND address='domain:no-origin'", &[&w.ws]).await?.get(0);
+    ensure!(
+        revisions == 0,
+        "The refused legacy command created a revision"
+    );
+    Ok(())
+}
+
 impl World {
     /// The error text of a command that must be refused.
     async fn refused(&self, command: Value) -> Result<String> {

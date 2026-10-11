@@ -88,6 +88,24 @@ Grouping above REQ can use custom types without Domain or Capability.
 Each document revision records its schema revision.
 Historical schema reads return one selected revision.
 
+### Required document fields
+
+Set `required_fields` on any configured type:
+
+```json
+{"required_fields": {"source": "a signal needs a source"}}
+```
+
+Each entry maps a `data` field to its refusal message.
+Absent fields, nulls, blank text, empty lists and empty maps have no value.
+The numbers and booleans `0` and `false` are valid values.
+The default map is empty. The type name does not select this rule.
+Rules apply to creation and each later document revision, including legacy commands.
+The server rejects a schema if a current object lacks a required value.
+Supply missing values before you enable the rule.
+Failed writes preserve the journal, revisions and request IDs.
+Historical reads retain the original document and schema revision.
+
 ## Links and dependencies
 
 An object can link to many objects of any type in the same workspace.

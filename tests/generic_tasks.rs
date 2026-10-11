@@ -41,6 +41,7 @@ fn configured() -> World {
             TreeType {
                 index: None,
                 references: Default::default(),
+                required_fields: Default::default(),
                 parent_decision: false,
                 inbox: None,
                 launch_blocker: None,
