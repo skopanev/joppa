@@ -211,6 +211,144 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> {
+    // done-is-not-green-ac1
+    let w = world().await?;
+    let mcp = |name: &str, arguments: Value| {
+        let w = &w;
+        let name = name.to_owned();
+        async move {
+            let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .send().await?.error_for_status()?.json().await?;
+            ensure!(response["result"]["isError"] != true, "{response}");
+            Ok::<Value, anyhow::Error>(serde_json::from_str(
+                response["result"]["content"][0]["text"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("MCP result needs text"))?,
+            )?)
+        }
+    };
+    let tree = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = tree["schema"]["types"].clone();
+    types["job"] = types["task"].clone();
+    types["job"]["title"] = json!("Job");
+    w.command(json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":types,"reason":"Check another configured work type"})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["tests/spec_http.rs > completing_a_task_without_a_report_keeps_it_unverified"],"reason":"Wait for real test evidence"})).await?;
+    for kind in ["task", "job"] {
+        let address = format!("{kind}:unverified");
+        w.command(json!({"op":"save_object","kind":kind,"id":"unverified","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion before any report"})).await?;
+        w.command_as(&w.bot, json!({"op":"claim_task","id":address,"revision":1}))
+            .await?;
+        let claimed = mcp("joppa_objects", json!({"workspace":w.ws,"address":address})).await?;
+        ensure!(
+            claimed["process"]["status"] == "in_progress"
+                && claimed["process"]["assignee"] == "bot",
+            "{claimed}"
+        );
+        w.command_as(&w.bot, json!({"op":"complete_task","id":address,"revision":claimed["current_revision"],"evidence":"Implemented the contract; test evidence is still absent"})).await?;
+        let http: Value = w
+            .http
+            .get(format!("{}/api/workspaces/{}/objects", w.root, w.ws))
+            .bearer_auth(&w.bot)
+            .query(&[("address", &address)])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let tool = mcp("joppa_objects", json!({"workspace":w.ws,"address":address})).await?;
+        ensure!(http == tool, "HTTP and MCP disagree: {http} / {tool}");
+        ensure!(
+            http["process"]["status"] == "done"
+                && http["process"]["verification"] == "unverified"
+                && http["document"]["actor"] == "bot",
+            "{http}"
+        );
+        let http_tests: Value = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tests", w.root, w.ws))
+            .bearer_auth(&w.bot)
+            .query(&[("ac", "ac:key-rights")])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let tool_tests = mcp(
+            "joppa_tests",
+            json!({"workspace":w.ws,"ac":"ac:key-rights"}),
+        )
+        .await?;
+        ensure!(
+            http_tests == tool_tests && http_tests["status"] == "grey",
+            "HTTP and MCP criterion must stay grey: {http_tests} / {tool_tests}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
+    use sha2::{Digest, Sha256};
+    // files-keep-versions-ac2
+    let w = world().await?;
+    w.note(
+        "file-target",
+        0,
+        "Private files",
+        "Workspace members only",
+        json!([]),
+    )
+    .await?;
+    let bytes = format!("Unaccepted file {}", uuid::Uuid::new_v4());
+    let hash = format!("{:x}", Sha256::digest(bytes.as_bytes()));
+    let before = w.get("address=note:file-target").await?;
+    ensure!(before["files"] == json!([]), "{before}");
+    let mut replies = Vec::new();
+    for workspace in [
+        w.ws.clone(),
+        format!("absent-{}", uuid::Uuid::new_v4().simple()),
+    ] {
+        let response = w
+            .http
+            .post(format!("{}/api/workspaces/{workspace}/blobs", w.root))
+            .bearer_auth(&w.eve)
+            .body(bytes.clone())
+            .send()
+            .await?;
+        let status = response.status().as_u16();
+        let body: Value = response.json().await?;
+        ensure!(
+            status == 404 && body == json!({"error":"workspace not found or access denied"}),
+            "{status}: {body}"
+        );
+        replies.push((status, body));
+        let after = w.get("address=note:file-target").await?;
+        ensure!(
+            after == before,
+            "A refused upload changed the object: {after}"
+        );
+        let blobs: i64 = w
+            .pool
+            .get()
+            .await?
+            .query_one("SELECT count(*) FROM joppa.blobs WHERE hash=$1", &[&hash])
+            .await?
+            .get(0);
+        ensure!(blobs == 0, "A refused upload stored file content");
+    }
+    ensure!(
+        replies[0] == replies[1],
+        "Upload replies expose workspace existence: {replies:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     // old-agent-locked-out-ac1
     let w = world().await?;
