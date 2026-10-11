@@ -58,6 +58,7 @@ async fn browser_server() -> Result<()> {
     sessions::create(&pool, &cookie, "alex").await?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
+    let alex = uuid::Uuid::new_v4().simple().to_string();
     let mut fixture = Fixture {
         server: None,
         dir: std::env::temp_dir().join(&ws),
@@ -73,7 +74,7 @@ async fn browser_server() -> Result<()> {
     std::fs::write(&aliases, json!({"alex@example.test":"alex"}).to_string())?;
     std::fs::write(
         &tokens,
-        json!({owner.clone():"owner", agent.clone():"bot", uuid::Uuid::new_v4().simple().to_string():"alex"}).to_string(),
+        json!({owner.clone():"owner", agent.clone():"bot", alex.clone():"alex"}).to_string(),
     )?;
     #[cfg(unix)]
     {
@@ -121,7 +122,7 @@ async fn browser_server() -> Result<()> {
     }
     println!(
         "JOPPA_BROWSER_READY {}",
-        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"cookie":cookie,"access_file":rules})
+        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules})
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;

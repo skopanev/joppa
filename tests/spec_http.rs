@@ -837,6 +837,100 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_account_without_membership_cannot_comment_on_an_object() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    let question = "Which fact does this record preserve?";
+    types["record"] =
+        json!({"title":"Record","role":"document","root":true,"parents":[],"question":question});
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use a configured document type"})).await?;
+    w.command(json!({"op":"save_object","kind":"record","id":"one","revision":0,"parent":null,"data":{"title":"A recorded fact","owner":"owner","body":"The current boundary"},"question_checked":question,"reason":"Prepare the comment target"})).await?;
+    let absent = format!("absent-{}", uuid::Uuid::new_v4().simple());
+    let workspaces = vec![w.ws.clone(), absent.clone()];
+    let conn = w.pool.get().await?;
+    let counts = || async {
+        let row = conn.query_one("SELECT (SELECT COUNT(*) FROM joppa.events WHERE workspace=ANY($1)), (SELECT COUNT(*) FROM joppa.object_revisions WHERE workspace=ANY($1)), (SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=ANY($1))", &[&workspaces]).await?;
+        Ok::<_, anyhow::Error>((
+            row.get::<_, i64>(0),
+            row.get::<_, i64>(1),
+            row.get::<_, i64>(2),
+        ))
+    };
+    for address in ["domain:security", "record:one"] {
+        let original = w.get(&format!("address={address}")).await?;
+        let before = counts().await?;
+        let command =
+            json!({"op":"note","target":address,"id":"outsider","text":"An unauthorized comment"});
+        for transport in ["http", "mcp"] {
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let (status, denied) =
+                text_rule_request(&w, &w.eve, &request_id, command.clone(), transport).await?;
+            let (url, body) = if transport == "http" {
+                (
+                    format!("{}/api/workspaces/{absent}/commands", w.root),
+                    json!({"request_id":request_id,"command":command}),
+                )
+            } else {
+                (
+                    format!("{}/mcp", w.root),
+                    json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":absent,"request_id":request_id,"command":command}}}),
+                )
+            };
+            let response = w
+                .http
+                .post(url)
+                .bearer_auth(&w.eve)
+                .json(&body)
+                .send()
+                .await?;
+            let absent_status = response.status().as_u16();
+            let absent_reply: Value = response.json().await?;
+            ensure!(
+                status == absent_status && denied == absent_reply,
+                "The refusal reveals workspace access: {status}: {denied} vs {absent_status}: {absent_reply}"
+            );
+            if transport == "http" {
+                ensure!(
+                    status == 404 && denied["error"] == "Workspace not found",
+                    "{status}: {denied}"
+                );
+            } else {
+                ensure!(
+                    status == 200
+                        && denied["result"]["isError"] == true
+                        && denied["result"]["content"][0]["text"] == "Workspace not found",
+                    "{status}: {denied}"
+                );
+            }
+            ensure!(
+                counts().await? == before,
+                "The refused comment stored an event, revision or receipt"
+            );
+        }
+        let after = w.get(&format!("address={address}")).await?;
+        ensure!(
+            after["document"] == original["document"]
+                && after["annotations"]["comments"] == original["annotations"]["comments"],
+            "The refused comment changed the object: {after}"
+        );
+        w.command_as(
+            &w.alex,
+            json!({"op":"note","target":address,"id":"member","text":"A member comment"}),
+        )
+        .await?;
+        let current = w.get(&format!("address={address}")).await?;
+        ensure!(
+            current["annotations"]["comments"]["member"]["author"] == "alex"
+                && current["annotations"]["comments"]["member"]["text"] == "A member comment",
+            "{current}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
     // identity-type-ac1
     let w = world().await?;

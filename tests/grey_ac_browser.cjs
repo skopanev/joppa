@@ -51,9 +51,9 @@ async function server() {
   }};
 }
 
-async function fixture(records, configured = types) {
+async function fixture(records, configured = types, contextOptions = {}) {
   const live = await server();
-  const context = await browser.newContext({reducedMotion: 'reduce'});
+  const context = await browser.newContext({reducedMotion: 'reduce', ...contextOptions});
   const page = await context.newPage(), requests = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => {
@@ -76,9 +76,9 @@ async function fixture(records, configured = types) {
     return value;
   };
   const command = (value, owner = false) => api('/commands', {request_id: crypto.randomUUID(), command: value}, owner ? live.owner : live.agent);
-  const mcp = async (name, arguments_) => {
+  const mcp = async (name, arguments_, token = live.agent) => {
     const response = await fetch(live.root + '/mcp', {method: 'POST',
-      headers: {'Authorization': 'Bearer ' + live.agent, 'Content-Type': 'application/json'},
+      headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
       body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(arguments_.item_id ? {} : {workspace: live.ws}), ...arguments_}}})});
     assert.equal(response.status, 200);
     const reply = await response.json();
@@ -283,6 +283,34 @@ test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', a
     const row = card.locator('.common-object[data-object-address="requirement:empty"] > summary');
     assert.equal(await row.locator('.verification-chip').innerText(), '0 Proofs');
     assert.equal(await row.locator('.status-circle').getAttribute('data-tone'), 'grey');
+  } finally { await f.close(); }
+});
+
+test('comments-on-object-ac2: a comment shows its author and server time', async () => {
+  const configured = {record: {title: 'Records', role: 'document', root: true, parents: []}};
+  const address = 'record:one', text = 'Clarify this object boundary';
+  const f = await fixture({[address]: {title: 'A source record'}}, configured,
+    {locale: 'en-GB', timezoneId: 'Europe/Berlin'});
+  try {
+    await f.mcp('joppa_command',
+      {request_id: crypto.randomUUID(), command: {op: 'note', target: address, id: 'comment', text}}, f.live.alex);
+    const current = await f.api('/objects?address=' + encodeURIComponent(address));
+    const comment = current.annotations.comments.comment;
+    assert.equal(comment.author, 'alex');
+    assert.equal(comment.actor_type, 'person');
+    assert.equal(comment.created_at, comment.at);
+    const instant = new Date(comment.created_at.replace(' ', 'T').replace(/\+00$/, 'Z'));
+    assert.ok(Number.isFinite(instant.getTime()), 'the server timestamp must parse');
+    const expected = new Intl.DateTimeFormat('en-GB',
+      {dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin'}).format(instant);
+    const card = await f.open(address), comments = card.locator('.object-comments');
+    assert.equal(await comments.getAttribute('open'), null);
+    await comments.locator(':scope > summary').click();
+    const line = comments.locator('.note');
+    await line.locator('.note-text').waitFor();
+    assert.equal(await line.locator('.note-text').innerText(), text);
+    assert.equal(await line.locator('.note-meta').innerText(), 'alex · ' + expected);
+    assert.equal(await f.page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone), 'Europe/Berlin');
   } finally { await f.close(); }
 });
 
