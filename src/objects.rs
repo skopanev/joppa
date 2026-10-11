@@ -548,6 +548,35 @@ impl std::fmt::Display for RequiredField {
 }
 impl std::error::Error for RequiredField {}
 
+/// Validate current writes without applying new gates to journal replay.
+pub fn validate_authoring_questions(w: &Workspace, command: &Command, position: u64) -> Result<()> {
+    if matches!(command, Command::SaveObject { .. }) {
+        return Ok(());
+    }
+    let types = schema(w).types;
+    for o in w
+        .objects
+        .values()
+        .filter(|o| o.current().present && o.current().position == position)
+    {
+        if types.get(&o.kind).is_none_or(|t| t.question.is_none()) {
+            continue;
+        }
+        let previous = o.revisions.iter().rev().find(|r| r.position < position);
+        // Inbox decisions skip this gate only when the title and description stay unchanged.
+        let changed = ["title", "body", "description", "contract"]
+            .iter()
+            .any(|field| previous.and_then(|r| r.data.get(field)) != o.current().data.get(field));
+        if changed {
+            return Err(RequiredField(
+                "This type has a question. Use save_object with question_checked".into(),
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
     for (field, error) in &t.required_fields {
         let present = match data.get(field) {

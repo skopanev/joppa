@@ -2314,3 +2314,55 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     }
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn legacy_revision_cannot_bypass_a_configured_type_question() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["requirement"]["question"] = json!("Which behavior does the product need?");
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check the requirement question"})).await?;
+    let original = w.get("address=requirement:key").await?;
+    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Updated rights","body":"Updated scope","owner":"owner","consumers":["customer"],"reason":"Revise the legacy contract","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]});
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id":request_id,"command":command}))
+        .send()
+        .await?;
+    ensure!(response.status().as_u16() == 422, "{}", response.status());
+    ensure!(
+        response.json::<Value>().await?["error"]
+            == "This type has a question. Use save_object with question_checked",
+        "wrong legacy question error"
+    );
+    ensure!(
+        w.get("address=requirement:key").await?["document"] == original["document"],
+        "a refused legacy revision changed the object"
+    );
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["requirement"]
+        .as_object_mut()
+        .unwrap()
+        .remove("question");
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Keep the old path for types without a question"})).await?;
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id":request_id,"command":command}))
+        .send()
+        .await?;
+    ensure!(response.status().is_success(), "{}", response.text().await?);
+    let updated = w.get("address=requirement:key").await?;
+    ensure!(
+        updated["document"]["data"]["title"] == "Updated rights"
+            && updated["current_revision"] == original["current_revision"].as_u64().unwrap() + 1,
+        "{updated}"
+    );
+    Ok(())
+}

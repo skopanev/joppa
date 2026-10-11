@@ -495,6 +495,7 @@ async fn write(
             let payload = serde_json::to_string(&command)?;
             let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,$2,$3,$4,$5::text::jsonb FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace)]).await?.get(0);
             commands::apply(&mut state, actor, &command, position, &recorded_at)?;
+            crate::objects::validate_authoring_questions(&state, &command, position)?;
             crate::objects::validate_tree(&state)?;
             events.push(Event{position,actor:actor.to_owned(),actor_type:crate::inbox::actor_type(&state, actor).into(),recorded_at,command:command.clone()});
             let mut resolved=serde_json::to_value(&command)?;

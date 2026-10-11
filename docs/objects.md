@@ -376,4 +376,5 @@ A done Task prevents `archive_object` on its parent. Retire the Task before you 
 Each tree type can define an optional `question`. Read it from `joppa_tree` or `joppa_help` with `workspace`.
 Before saving, check that the title and description answer the question. Rewrite them when they do not.
 For `save_object`, send `question_checked` with the exact configured question. The server refuses an absent or different value before recording the operation.
+Legacy commands cannot change the title or description of a type with a question. Use `save_object` with `question_checked`.
 The save acknowledgement returns `object.question` for a type with a question. The server stores the question without checking meaning.
