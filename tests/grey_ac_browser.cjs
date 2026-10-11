@@ -131,6 +131,48 @@ const criterionRecords = {
 };
 
 describe('tests/grey_ac_browser.cjs', () => {
+test('suggested-method: the guide reads custom workspace levels and questions', async () => {
+  const configured = {
+    ledger: {title: 'Ledgers', role: 'document', root: true, parents: [], question: 'Which records belong together?'},
+    entry: {title: 'Entries', role: 'document', parents: ['ledger', 'entry'], question: 'Which fact does this entry preserve?'},
+    observation: {title: 'Observations', role: 'document', root: true, parents: ['*'], question: 'Which source provided this observation?'},
+  };
+  const f = await fixture({'ledger:one': {title: 'Product ledger'}, 'entry:one': {title: 'Recorded fact', parent: 'ledger:one'}}, configured);
+  try {
+    await f.open('ledger:one');
+    const link = f.page.locator('#suggested-method-link');
+    assert.equal(await link.innerText(), 'Suggested method ↗');
+    const url = new URL(await link.getAttribute('href'), f.live.root);
+    assert.equal(url.searchParams.get('workspace'), f.live.ws);
+    assert.equal((await f.page.goto(url.href)).status(), 200);
+    await f.page.locator('#workspace-levels #level-entry').waitFor();
+    assert.equal(await f.page.locator('h1').innerText(), 'Suggested method');
+    assert.equal(await f.page.locator('#default-tree').isVisible(), false);
+    assert.deepEqual(await f.page.locator('#workspace-levels h3').allTextContents(), ['Ledgers', 'Entries', 'Observations']);
+    for (const [kind, type] of Object.entries(configured)) {
+      const level = f.page.locator('#level-' + kind + ' > .level-card');
+      assert.ok((await level.innerText()).includes(type.question));
+    }
+    assert.equal(await f.page.locator('#level-ledger > ol > #level-entry').count(), 1);
+    assert.equal(await f.page.locator('#level-entry a[href="#level-entry"]').innerText(), 'Entries');
+    assert.ok((await f.page.locator('#level-observation').innerText()).includes('Any level'));
+    assert.ok(f.requests.some(request => new URL(request.url).pathname === '/api/workspaces/' + f.live.ws + '/tree'));
+    f.requests.length = 0;
+    await f.page.goto(f.live.root + '/guide');
+    await f.page.waitForLoadState('networkidle');
+    assert.equal(await f.page.locator('#default-tree').isVisible(), true);
+    assert.equal(await f.page.locator('#workspace-levels').isVisible(), false);
+    assert.equal(await f.page.locator('#level-intro').innerText(),
+      'Suggested default tree: Domain → Capability → REQ → AC. Each workspace schema sets its own levels and the question each level answers.');
+    assert.equal(f.requests.length, 0);
+    const response = await f.page.goto(f.live.root + '/guide?workspace=missing');
+    assert.equal(response.status(), 200);
+    await f.page.waitForFunction(() => document.getElementById('level-intro').textContent === 'Workspace not found');
+    assert.equal(await f.page.locator('#default-tree').isVisible(), false);
+    assert.equal(await f.page.locator('#workspace-levels .level-card').count(), 0);
+  } finally { await f.close(); }
+});
+
 test('type-question: the schema question opens from each type badge', async () => {
   const question = 'Which observation does this record preserve?';
   const configured = {record: {title: 'Records', role: 'document', root: true, parents: ['record'], badge: 'REC', question}};

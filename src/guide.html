@@ -1,37 +1,41 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>How Joppa works · joppa</title>
+<title>Suggested method · joppa</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<style>:root{font:14px/1.6 Verdana,sans-serif;color:#444;background:#fffcf5;font-synthesis:none;--rule:#d9d3c7;--muted:#8a8478}body{max-width:900px;margin:0 auto;padding:20px 20px 60px}a{color:#0062ff;text-decoration:none}a:hover{text-decoration:underline}h1,h2,h3{font-weight:normal;color:#222}h1{font-size:1.8em;line-height:1.2;margin:1.4em 0 .6em}h2{font-size:1.25em;line-height:1.3}section{border-top:1px dashed var(--rule);padding:1.2em 0 .6em;margin-top:1.4em}section[id]{scroll-margin-top:24px}small{color:var(--muted);font-size:.8em}p{color:#444}.tree{padding:1em 0;color:#222}.level-tree,.level-tree ol{list-style:none;margin:0;padding:0}.level-tree{margin:1.4em 0}.level-tree ol{margin:.8em 0 0 .6em;padding-left:1em;border-left:1px dashed var(--rule)}.level-tree li{position:relative}.level-tree li+li{margin-top:.8em}.level-card{padding:0 0 0 .8em;border-left:2px solid var(--level-ink)}.level-card h3{margin:0 0 .4em;color:#222;font-size:1.05em;line-height:1.35}.level-card h3 small{display:inline-block;margin-left:.6em;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--level-ink)}.level-card dl{margin:0}.level-card dt{font-size:.8em;color:var(--muted);margin-top:.5em}.level-card dd{margin:.1em 0 0;font-size:.95em}.level-card p{font-size:.95em;margin:.6em 0 0}.level-domain{--level-ink:#17685f}.level-capability{--level-ink:#6551a1}.level-requirement{--level-ink:#445f50}.level-ac{--level-ink:#285e96}.level-task{--level-ink:#916b22}.example{border-left:1px solid #999;padding-left:1.2em;font-style:italic}.guide-nav{display:flex;flex-wrap:wrap;gap:.3em 1.2em;margin:1.4em 0}a:focus-visible{outline:1px dashed #222;outline-offset:3px}.milestones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.2em;margin:1.4em 0}.milestone{padding-top:.6em;border-top:1px dashed var(--rule)}.milestone strong{display:block}.milestone p{font-size:.9em;margin:.3em 0 0}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9em}caption{text-align:left;margin:0 0 .6em;color:#222}th,td{text-align:left;vertical-align:top;padding:.6em .5em;border-bottom:1px dashed var(--rule)}th{color:#222;font-weight:normal}code{font-family:monospace;font-size:.9em;background:#eee;padding:2px;border-radius:3px;overflow-wrap:anywhere}.journey{list-style:none;counter-reset:journey;padding:0;margin:1.4em 0}.journey>li{counter-increment:journey;position:relative;padding:0 0 1.2em 2.4em}.journey>li:before{content:counter(journey) ".";position:absolute;left:0;top:0;color:var(--muted);font-family:monospace}.journey h3{font-size:1em;margin:0 0 .4em}.journey p{margin:.4em 0;font-size:.95em}.version{font-variant-numeric:tabular-nums;font-family:monospace}.evidence-note{padding-left:1.2em;border-left:1px solid #999}.outcome{display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}.outcome.fail{color:#a13935}.outcome.pass{color:#2d6c3c}.outcome.unverified{color:var(--muted)}.return-link{display:inline-block;margin-top:2em}@media(max-width:600px){h1{font-size:1.6em}.milestones{grid-template-columns:1fr;gap:.6em}.journey>li{padding-left:1.8em}th,td{padding:.5em .3em}.level-tree ol{margin-left:.2em;padding-left:.6em}}</style>
+<style>:root{font:14px/1.6 Verdana,sans-serif;color:#444;background:#fffcf5;font-synthesis:none;--rule:#d9d3c7;--muted:#6e685e}body{max-width:900px;margin:0 auto;padding:20px 20px 60px}a{color:#005cef;text-decoration:none}a:hover{text-decoration:underline}h1,h2,h3{font-weight:normal;color:#222}h1{font-size:1.8em;line-height:1.2;margin:1.4em 0 .6em}h2{font-size:1.25em;line-height:1.3}section{border-top:1px dashed var(--rule);padding:1.2em 0 .6em;margin-top:1.4em}section[id]{scroll-margin-top:24px}small{color:var(--muted);font-size:.8em}p{color:#444}.tree{padding:1em 0;color:#222}.level-tree,.level-tree ol{list-style:none;margin:0;padding:0}.level-tree{margin:1.4em 0}.level-tree ol{margin:.8em 0 0 .6em;padding-left:1em;border-left:1px dashed var(--rule)}.level-tree li{position:relative}.level-tree li+li{margin-top:.8em}.level-card{padding:0 0 0 .8em;border-left:2px solid var(--level-ink)}.level-card h3{margin:0 0 .4em;color:#222;font-size:1.05em;line-height:1.35}.level-card h3 small{display:inline-block;margin-left:.6em;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--level-ink)}.level-card dl{margin:0}.level-card dt{font-size:.8em;color:var(--muted);margin-top:.5em}.level-card dd{margin:.1em 0 0;font-size:.95em}.level-card p{font-size:.95em;margin:.6em 0 0}.level-domain{--level-ink:#17685f}.level-capability{--level-ink:#6551a1}.level-requirement{--level-ink:#445f50}.level-ac{--level-ink:#285e96}.level-task{--level-ink:#916b22}.example{border-left:1px solid #999;padding-left:1.2em;font-style:italic}.guide-nav{display:flex;flex-wrap:wrap;gap:.3em 1.2em;margin:1.4em 0}a:focus-visible{outline:1px dashed #222;outline-offset:3px}.milestones{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.2em;margin:1.4em 0}.milestone{padding-top:.6em;border-top:1px dashed var(--rule)}.milestone strong{display:block}.milestone p{font-size:.9em;margin:.3em 0 0}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9em}caption{text-align:left;margin:0 0 .6em;color:#222}th,td{text-align:left;vertical-align:top;padding:.6em .5em;border-bottom:1px dashed var(--rule)}th{color:#222;font-weight:normal}code{font-family:monospace;font-size:.9em;background:#eee;padding:2px;border-radius:3px;overflow-wrap:anywhere}.journey{list-style:none;counter-reset:journey;padding:0;margin:1.4em 0}.journey>li{counter-increment:journey;position:relative;padding:0 0 1.2em 2.4em}.journey>li:before{content:counter(journey) ".";position:absolute;left:0;top:0;color:var(--muted);font-family:monospace}.journey h3{font-size:1em;margin:0 0 .4em}.journey p{margin:.4em 0;font-size:.95em}.version{font-variant-numeric:tabular-nums;font-family:monospace}.evidence-note{padding-left:1.2em;border-left:1px solid #999}.outcome{display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}.outcome.fail{color:#a13935}.outcome.pass{color:#2d6c3c}.outcome.unverified{color:var(--muted)}.return-link{display:inline-block;margin-top:2em}@media(max-width:600px){h1{font-size:1.6em}.milestones{grid-template-columns:1fr;gap:.6em}.journey>li{padding-left:1.8em}th,td{padding:.5em .3em}.level-tree ol{margin-left:.2em;padding-left:.6em}}</style>
 <a href="/">← Back to your workspace</a>
-<h1>What must be true<br>about your product.</h1>
-<p>joppa connects commitments, work and evidence. Start by choosing a product from the workspace menu.</p>
+<h1>Suggested method</h1>
+<p>We suggest a tree that connects product commitments, work and evidence. Choose the levels and questions that fit your workspace.</p>
 <div class="milestones" aria-label="Three separate milestones">
 <article class="milestone"><strong>Work done</strong><p>A task records what was changed.</p></article>
 <article class="milestone"><strong>Checks passed</strong><p>Evidence supports an AC on recorded versions.</p></article>
 <article class="milestone"><strong>Owner accepted</strong><p>The owner accepts that revision and checked result.</p></article>
 </div>
 <nav class="guide-nav" aria-label="Guide sections"><a href="#tree-levels">The tree</a><a href="#agent-work">Working with agents</a><a href="#evidence">Evidence</a><a href="#worked-example">A complete example</a><a href="#revisions">Revisions &amp; setbacks</a></nav>
-<section><h2>One workspace. One product.</h2>
-<p>A product can span several repositories. They share one requirement tree. Tasks link to repositories: one acceptance criterion may need work in the app, backend and infrastructure.</p>
+<section><h2>We suggest one workspace per product</h2>
+<p>We suggest one shared tree for a product that spans several repositories. Link work to the affected repositories.</p>
 <p>Switching workspace changes the entire tree, requirements and discussions.</p></section>
 <section id="tree-levels"><h2>The product tree and its tasks</h2>
-<p>Domain → Capability → REQ → AC describes what the product must do. Tasks record the work needed to deliver it.</p>
+<p id="level-intro">Suggested default tree: Domain → Capability → REQ → AC. Each workspace schema sets its own levels and the question each level answers.</p>
+<div id="workspace-levels" hidden></div>
+<div id="default-tree">
 <ol class="level-tree" aria-label="Product levels and linked work"><li><article class="level-card level-domain"><h3>Domain</h3><dl><dt>Question it answers</dt><dd>Which part of the business is this?</dd><dt>Example</dt><dd>Subscriptions and access.</dd></dl></article>
 <ol><li><article class="level-card level-capability"><h3>Capability</h3><dl><dt>Question it answers</dt><dd>What can the product do?</dd><dt>Example</dt><dd>Restore paid access.</dd></dl></article>
 <ol><li><article class="level-card level-requirement"><h3>REQ <small>Requirement</small></h3><dl><dt>Question it answers</dt><dd>What must the product guarantee?</dd><dt>Example</dt><dd>A customer with an active subscription keeps paid access after signing in again.</dd></dl></article>
 <ol><li><article class="level-card level-ac"><h3>AC <small>Acceptance criterion</small></h3><dl><dt>Question it answers</dt><dd>What must be true to accept this requirement?</dd><dt>Example</dt><dd>On iOS, a customer with an active subscription has access to paid features after signing in again.</dd></dl></article>
 <ol><li><article class="level-card level-task"><h3>Task <small>Work linked to an object</small></h3><dl><dt>Question it answers</dt><dd>What work needs to be done?</dd><dt>Example</dt><dd>Implement paid-access restoration after sign-in in the iOS app.</dd></dl><p>The workspace schema selects permitted task parents. Each task has one parent. The default tree places tasks under acceptance criteria. One criterion can have several tasks. Other schemas can use different parent types.</p></article></li></ol></li></ol></li></ol></li></ol></li></ol>
-<p>Open a requirement to see its Tasks section. Tasks can be technical or operational, such as restricting a key’s permissions before launch. Completing a task records work done; the linked AC still needs a passed check.</p>
-<p>The workspace schema defines the tree. The default tree uses domains and capabilities to organize commitments. Verification uses the configured specification and criterion roles. Owner acceptance is tracked separately.</p><p>Status circles show the recorded verdict. Required passing checks produce green. Pending decisions or work produce yellow. Failed checks produce red. Unchecked or empty items produce grey. Elapsed time alone does not expire a pass. A result applies to its recorded context revision and subject. Another context revision or subject needs another run. Include relevant code, test and environment versions in the verification scope. Containers summarize their current children, including those hidden by filters. An empty branch cannot be green. Task completion does not make a criterion green. Historical document revisions use grey circles. Inspect the recorded subject before using a pass as evidence about the deployed version.</p></section>
-<section id="agent-work"><h2>Read here. Work with your agent.</h2>
-<p>Open a domain, capability, requirement or AC and choose the <strong>copy + robot</strong> button. Paste the unique system ID into your agent chat to discuss it. Content changes, discussions, decisions and test results are recorded through Joppa MCP. The portal is read-only, including comments, descriptions, attachments and tree order. Use the dropdowns to choose what to view. The history icon opens a compact list of when, who and what changed. A requirement’s revision number sits beside it; choose an older revision inside History to read its wording and evidence.</p>
+</div>
+<p>We suggest opening an object to read its linked work. The workspace schema selects the permitted task parents.</p>
+
+<p>The workspace schema defines the tree. We suggest domains and capabilities as default levels for organizing commitments. Verification uses the configured specification and criterion roles. Owner acceptance is tracked separately.</p><p>Status circles show the recorded verdict. Required passing checks produce green. Pending decisions or work produce yellow. Failed checks produce red. Unchecked or empty items produce grey. Elapsed time alone does not expire a pass. A result applies to its recorded context revision and subject. Another context revision or subject needs another run. Include relevant code, test and environment versions in the verification scope. Containers summarize their current children, including those hidden by filters. An empty branch cannot be green. Task completion does not make a criterion green. Historical document revisions use grey circles. Inspect the recorded subject before using a pass as evidence about the deployed version.</p></section>
+<section id="agent-work"><h2>We suggest reading here and writing through an agent</h2>
+<p>Open an object and choose the <strong>copy + robot</strong> button. Paste the unique system ID into your agent chat to discuss it. Content changes, discussions, decisions and test results are recorded through Joppa MCP. The portal is read-only, including comments, descriptions, attachments and tree order. Use the dropdowns to choose what to view. The history icon opens a compact list of when, who and what changed. A requirement’s revision number sits beside it; choose an older revision inside History to read its wording and evidence.</p>
 <p>File and comment icons are highlighted with a count when content exists. Empty icons stay thin, muted and disabled. Choose an active file icon beside a domain, capability, requirement, AC, intake or intake point to open the file list and read or download a file; adding or removing files goes through your agent. The notes button opens read-only descriptions and discussion. The copy button gives your agent only the permanent system ID.</p></section>
-<section><h2>Who shapes the tree?</h2>
-<p>An agent proposes domains and capabilities from the product and its documentation. The product owner reviews boundaries and decision owners, then confirms the structure.</p>
-<p>People and agents write requirements and ACs together. Each REQ has one owner who responds to suggestions and may flag an AC as not ready for work. Legal, compliance and leadership record decisions on the same requirement through MCP.</p>
-<p>The agent assesses each AC. Missing information becomes a specific question addressed to someone. Independent, ready ACs can proceed while others await a decision.</p></section>
+<section><h2>We suggest reviewing the tree with its owner</h2>
+<p>We suggest asking an agent to propose levels from the product documentation. The product owner reviews the boundaries, questions and owners.</p>
+<p>We suggest writing requirements and checks together. Assign an owner who answers questions and reviews changes. Record decisions through MCP.</p>
+<p>We suggest assessing readiness before work starts. Ask a named person for missing information. Independent work can proceed while other work awaits a decision.</p></section>
 <section id="evidence"><h2>What a check proves</h2>
 <p>A passed check supports one acceptance condition for one REQ revision on a recorded combination of builds and configuration. A completed task alone proves none of that.</p>
 <p>Before execution, the runner records the full expected check list and whether discovery is complete. Every expected check needs a result. Missing, skipped or undiscovered checks cannot make an AC green. One automated test names one AC; several tests may check the same AC.</p>
@@ -46,8 +50,8 @@
 <div class="example"><strong>A manual check needs concrete evidence too.</strong><p>For a key that must have exactly <code>read, verify</code>, record that expected list and the actual list. An extra <code>delete</code> permission means failure. “Checked manually” is insufficient. Only a human submits manual results; an agent records a human decision only on explicit instruction.</p></div>
 <p class="evidence-note"><strong>Read green as “verified on these versions”.</strong> The portal summarizes the latest-started completed run. It does not automatically compare that run with the deployed release. Inspect the versions in Checks before treating a green card as evidence about production. A newer unfinished run turns the status yellow; the previous completed result remains visible in Checks as historical evidence.</p>
 </section>
-<section id="worked-example"><h2>One requirement, from work to a new release</h2>
-<p>Illustrative build labels below stand for immutable versions. The agreed scope is iOS; Android and web require their own scope decision.</p>
+<section id="worked-example"><h2>A suggested path from a requirement to a release</h2>
+<p>We suggest the following workflow. Illustrative build labels below stand for immutable versions. The agreed scope is iOS; Android and web require their own scope decision.</p>
 <ol class="journey">
 <li><h3>Agree on the behavior</h3><p><strong>REQ:</strong> A customer with an active subscription keeps paid access after signing in again. <strong>AC:</strong> On iOS, paid features are available after sign-in for that customer.</p><p>The owner confirms revision 1. The agent assesses its AC. Two tasks deliver it: the backend returns the subscription entitlement, and the iOS app refreshes access after sign-in.</p></li>
 <li><h3>Record the plan, then run it</h3><p>The runner seals the full check list for <span class="version">app A1 + backend B1 + configuration C1</span>. It records the test environment and fixture. Both tasks can be complete while the AC still awaits verification.</p></li>
@@ -71,4 +75,41 @@
 <p>History preserves wording, reports and decisions with their authors and timestamps. Acceptance records what the owner considered sufficient for that revision and run; it does not prove that every possible condition has been discovered.</p>
 </section>
 <a class="return-link" href="/">← Back to your workspace</a>
+<script>
+const workspace=new URLSearchParams(location.search).get('workspace');
+if(workspace){
+  for(const link of document.querySelectorAll('a[href="/"]'))link.href='/?workspace='+encodeURIComponent(workspace);
+  document.getElementById('default-tree').hidden=true;
+  const intro=document.getElementById('level-intro'),host=document.getElementById('workspace-levels');
+  host.hidden=false;intro.textContent='Loading the workspace levels…';
+  const element=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
+  (async()=>{
+    const response=await fetch('/api/workspaces/'+encodeURIComponent(workspace)+'/tree');
+    const result=await response.json();if(!response.ok)throw Error(result.error||'Could not read the workspace schema.');
+    const definitions=result.schema.types;
+    const order=Object.keys(definitions).sort((a,b)=>(definitions[a].index??Infinity)-(definitions[b].index??Infinity)||a.localeCompare(b));
+    const seen=new Set(),list=element('ol');list.className='level-tree';list.setAttribute('aria-label','Workspace levels');
+    const append=(kind,parent)=>{
+      if(seen.has(kind))return;seen.add(kind);
+      const type=definitions[kind],row=element('li'),card=element('article');card.className='level-card';row.id='level-'+kind;
+      card.style.setProperty('--level-ink','#445f50');card.append(element('h3',type.title));
+      const facts=element('dl');facts.append(element('dt','Question it answers'),element('dd',type.question||'No question is configured.'));
+      const parents=element('dd');
+      for(const name of type.parents||[]){
+        if(parents.childNodes.length)parents.append(document.createTextNode(', '));
+        if(name==='*')parents.append(document.createTextNode('Any level'));
+        else{const link=element('a',definitions[name]?.title||name);link.href='#level-'+name;parents.append(link);}
+      }
+      if(!parents.childNodes.length)parents.textContent='Workspace';
+      facts.append(element('dt','Allowed parents'),parents);card.append(facts);row.append(card);parent.append(row);
+      const children=order.filter(child=>(definitions[child].parents||[]).includes(kind)&&!seen.has(child)&&!definitions[child].root);
+      if(children.length){const nested=element('ol');row.append(nested);for(const child of children)append(child,nested);}
+    };
+    for(const kind of order.filter(kind=>definitions[kind].root))append(kind,list);
+    for(const kind of order)append(kind,list);
+    host.replaceChildren(list);intro.textContent='This workspace defines the levels below. Each level shows its schema question and allowed parents.';
+    if(!order.length)host.append(element('p','No levels are configured.'));
+  })().catch(error=>{intro.textContent=error.message;host.replaceChildren();});
+}
+</script>
 </html>

@@ -201,6 +201,7 @@ async function load() {
   data = next;
   data.objectTypes=next.object_types||{};
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
+  $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(ws);
   await renderObjectTree();
 }
 async function boardPart(level,id,revision){
