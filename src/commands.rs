@@ -1,5 +1,5 @@
 use crate::{checks, model::*};
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -668,6 +668,17 @@ pub(crate) fn apply_inner(
         }
         Command::MigrateTaskClaims {} => {
             ensure!(actor == w.admin, "workspace owner required");
+            if !w.claims_migrated {
+                let now = w.claim_time_ms.context("server claim time is missing")?;
+                for task in w.task_process.values_mut() {
+                    if task.assignee.is_some() && task.done.is_none() && task.retired.is_none() {
+                        task.claim = Some(crate::model::TaskClaim {
+                            heartbeat_at_ms: now,
+                            deadline_ms: now + crate::tasks::CLAIM_DURATION_MS,
+                        });
+                    }
+                }
+            }
             w.claims_migrated = true;
         }
         Command::HeartbeatTask { .. } => anyhow::bail!("unknown Task"),

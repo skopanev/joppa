@@ -204,7 +204,7 @@ A claim lasts 30 minutes. Send `heartbeat_task {id, revision}` every 5 minutes t
 Only the holder can renew an unexpired claim. Heartbeat records an event without changing the document or context revision.
 The server keeps `process.claim.heartbeat_at_ms` and `process.claim.deadline_ms` as UTC milliseconds.
 An expired claim appears open with no assignee. Contracts, dependencies and parent gates still control whether it is claimable.
-Old claims without a deadline remain active until their first heartbeat or release.
+The migration gives active old claims 30 minutes from its server time. It preserves document revisions.
 
 ### Context for external planners
 

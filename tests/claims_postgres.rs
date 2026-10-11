@@ -413,6 +413,77 @@ async fn an_expired_claim_returns_a_configured_task_to_the_queue() -> Result<()>
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_claim_after_lock_wait_uses_event_time_and_replays() -> Result<()> {
+    let (pool, ws) = heartbeat_fixture().await?;
+    claim_time::age_ms(&pool, &ws, "job:one", 30 * 60_000 - 3_000).await?;
+    let mut blocker = pool.get().await?;
+    let lock = blocker.transaction().await?;
+    lock.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+        &[&ws],
+    )
+    .await?;
+    let deadline: i64 = lock.query_one("SELECT (process->'claim'->>'deadline_ms')::bigint FROM joppa.objects WHERE workspace=$1 AND address='job:one'", &[&ws]).await?.get(0);
+    let claim_pool = pool.clone();
+    let claim_ws = ws.clone();
+    let pending = tokio::spawn(async move {
+        store::execute_remote_input(
+            &claim_pool,
+            &claim_ws,
+            "other",
+            "claim-after-wait",
+            &json!({"op":"claim_next_task"}),
+        )
+        .await
+    });
+    let observer = pool.get().await?;
+    let mut started_before_deadline = false;
+    for _ in 0..100 {
+        let waiting: bool = observer.query_one("SELECT EXISTS(SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE l.locktype='advisory' AND NOT l.granted AND a.datname=current_database() AND floor(extract(epoch FROM a.xact_start)*1000)::bigint < $1)", &[&deadline]).await?.get(0);
+        if waiting {
+            started_before_deadline = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    ensure!(
+        started_before_deadline,
+        "claim transaction must begin before its deadline"
+    );
+    let now: i64 = lock
+        .query_one(
+            "SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint",
+            &[],
+        )
+        .await?
+        .get(0);
+    if now <= deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(
+            (deadline - now + 50) as u64,
+        ))
+        .await;
+    }
+    lock.commit().await?;
+    drop(observer);
+    let result = pending.await??;
+    ensure!(result["command"]["id"] == "job:one", "{result}");
+    let recorded: i64 = blocker.query_one("SELECT floor(extract(epoch FROM recorded_at)*1000)::bigint FROM joppa.events WHERE workspace=$1 AND request_id='claim-after-wait'", &[&ws]).await?.get(0);
+    ensure!(
+        recorded >= deadline,
+        "event time must follow the expired deadline"
+    );
+    let heartbeat: i64 = blocker.query_one("SELECT (process->'claim'->>'heartbeat_at_ms')::bigint FROM joppa.objects WHERE workspace=$1 AND address='job:one'", &[&ws]).await?.get(0);
+    ensure!(
+        heartbeat == recorded,
+        "live claim and replay use the same event time"
+    );
+    drop(blocker);
+    store::check_journal(&pool).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn heartbeats_keep_a_claim_after_its_initial_deadline() -> Result<()> {
     // heartbeat-return-ac2
     let (pool, ws) = heartbeat_fixture().await?;

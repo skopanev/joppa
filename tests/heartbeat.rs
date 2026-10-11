@@ -131,10 +131,45 @@ fn five_minute_heartbeats_preserve_the_claim_at_minute_31() -> Result<()> {
 }
 
 #[test]
-fn an_old_claim_keeps_its_holder_until_its_first_heartbeat() -> Result<()> {
+fn an_old_claim_gets_30_minutes_at_migration() -> Result<()> {
     let mut w = fixture(false)?;
     assert!(w.task_process["job:one"].claim.is_none());
+    let document = serde_json::to_value(&w.objects["job:one"])?;
     at(&mut w, "owner", json!({"op":"migrate_task_claims"}), 100)?;
+    let migration_time = chrono::DateTime::parse_from_rfc3339("2026-10-11T00:00:00Z")?
+        .timestamp_millis()
+        + 100 * 60_000;
+    let claim = w.task_process["job:one"].claim.clone().unwrap();
+    assert_eq!(claim.heartbeat_at_ms, migration_time);
+    assert_eq!(claim.deadline_ms, migration_time + 30 * 60_000);
+    assert_eq!(serde_json::to_value(&w.objects["job:one"])?, document);
+    at(&mut w, "owner", json!({"op":"migrate_task_claims"}), 101)?;
+    assert_eq!(
+        w.task_process["job:one"]
+            .claim
+            .as_ref()
+            .unwrap()
+            .deadline_ms,
+        claim.deadline_ms
+    );
+    let mut expired = w.clone();
+    for op in ["heartbeat_task", "complete_task"] {
+        let mut command = json!({"op":op,"id":"job:one","revision":2});
+        if op == "complete_task" {
+            command["evidence"] = json!("Expired claim");
+        }
+        assert!(at(&mut expired, "bot", command, 130).is_err());
+    }
+    at(
+        &mut expired,
+        "other",
+        json!({"op":"claim_task","id":"job:one","revision":2}),
+        130,
+    )?;
+    assert_eq!(
+        expired.task_process["job:one"].assignee.as_deref(),
+        Some("other")
+    );
     assert!(
         at(
             &mut w,

@@ -165,7 +165,7 @@ The Task must have no active claim, completion or retirement. A claim expires at
 The queue then shows open, assignee=null and claimable according to its current readiness and dependencies.
 An expired holder cannot renew or complete that claim. Claim and next check expiry under the workspace lock.
 A later claim changes the document revision. An identical request retry keeps its original result and deadline.
-Old claims without a deadline remain active until their first heartbeat or release.
+The migration gives active old claims 30 minutes from its server time. It preserves document revisions.
 The process includes claim.heartbeat_at_ms and claim.deadline_ms as server UTC milliseconds.
 Queue cursors retain their read time until the workspace position changes. A decision Task requires its designated human owner to claim it.
 Under the default AC gate, that owner can claim decision work before the AC becomes ready.

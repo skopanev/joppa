@@ -8,6 +8,15 @@ pub async fn age(
     address: &str,
     minutes: i64,
 ) -> Result<()> {
+    age_ms(pool, workspace, address, minutes * 60_000).await
+}
+
+pub async fn age_ms(
+    pool: &deadpool_postgres::Pool,
+    workspace: &str,
+    address: &str,
+    milliseconds: i64,
+) -> Result<()> {
     let client = pool.get().await?;
     let database: String = client
         .query_one("SELECT current_database()", &[])
@@ -21,7 +30,7 @@ pub async fn age(
         CREATE OR REPLACE FUNCTION public.joppa_test_claim_time() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
             IF NEW.request_id LIKE 'test-claim-time-%' THEN
-                NEW.recorded_at := clock_timestamp() - make_interval(mins => split_part(NEW.request_id,'-',4)::integer);
+                NEW.recorded_at := clock_timestamp() - split_part(NEW.request_id,'-',4)::bigint * interval '1 millisecond';
             END IF;
             RETURN NEW;
         END $$;
@@ -39,7 +48,7 @@ pub async fn age(
         .ok_or_else(|| anyhow::anyhow!("fixture Task must have a holder"))?;
     drop(client);
     let request = format!(
-        "test-claim-time-{minutes}-{}",
+        "test-claim-time-{milliseconds}-{}",
         uuid::Uuid::new_v4().simple()
     );
     joppa::store::execute_remote_input(
