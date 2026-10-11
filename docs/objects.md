@@ -101,8 +101,10 @@ Absent fields, nulls, blank text, empty lists and empty maps have no value.
 The numbers and booleans `0` and `false` are valid values.
 The default map is empty. The type name does not select this rule.
 Rules apply to creation and each later document revision, including legacy commands.
-The server rejects a schema if a current object lacks a required value.
+The server rejects a schema if a present object lacks a required value.
+Archived and deleted objects do not block the rule.
 Supply missing values before you enable the rule.
+HTTP returns 422 for an absent required value. MCP returns the configured error.
 Failed writes preserve the journal, revisions and request IDs.
 Historical reads retain the original document and schema revision.
 

@@ -1249,6 +1249,9 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
 async fn configured_required_source_refuses_an_agent_write_without_a_source() -> Result<()> {
     // signal-records-source-ac2
     let w = world().await?;
+    w.note("archived", 0, "Archived input", "No source", json!([]))
+        .await?;
+    w.command(json!({"op":"archive_object","target":"note:archived","revision":1,"reason":"Archive before requiring a source"})).await?;
     w.note("original", 0, "Original input", "Keep this text", json!([]))
         .await?;
     let original = w.get("address=note:original").await?;
@@ -1271,6 +1274,13 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
     data["source"] = source.clone();
     w.command(json!({"op":"save_object","kind":"note","id":"original","revision":1,"parent":null,"data":data,"reason":"Supply the source before enabling the rule"})).await?;
     w.command(schema_command).await?;
+    let archived = w.pool.get().await?.query_one("SELECT present, document::text FROM joppa.objects WHERE workspace=$1 AND address='note:archived'", &[&w.ws]).await?;
+    let present: bool = archived.get(0);
+    let document: Value = serde_json::from_str(archived.get(1))?;
+    ensure!(
+        !present && document["data"].get("source").is_none(),
+        "An archived input must not block or receive the required field: {document}"
+    );
     let history = w.get("address=note:original&revision=1").await?;
     ensure!(
         history["document"] == original["document"],
@@ -1317,7 +1327,7 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
             let (status, denied) = request(command.clone()).await?;
             if transport == "http" {
                 ensure!(
-                    status == 409 && denied["error"] == "a signal needs a source",
+                    status == 422 && denied["error"] == "a signal needs a source",
                     "{status}: {denied}"
                 );
             } else {

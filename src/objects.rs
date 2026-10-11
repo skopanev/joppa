@@ -534,6 +534,16 @@ fn parent_valid(
     }
     Ok(())
 }
+/// A required document value is absent. HTTP returns 422.
+#[derive(Debug)]
+pub struct RequiredField(pub String);
+impl std::fmt::Display for RequiredField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for RequiredField {}
+
 fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
     for (field, error) in &t.required_fields {
         let present = match data.get(field) {
@@ -543,7 +553,9 @@ fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
             Some(Value::Object(value)) => !value.is_empty(),
             Some(_) => true,
         };
-        ensure!(present, "{error}");
+        if !present {
+            return Err(RequiredField(error.clone()).into());
+        }
     }
     Ok(())
 }
