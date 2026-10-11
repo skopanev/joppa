@@ -437,6 +437,27 @@ async fn write(
     let (mut state, base_position) = state_rows::current(&*tx, &workspace).await?;
     let mut previous = state.clone();
     let mut events = Vec::new();
+    if !state.admin.is_empty() && !state.persistent_claims {
+        let command = Command::MigratePersistentClaims {};
+        let position = base_position + 1;
+        let migration_actor = state.admin.clone();
+        let payload = serde_json::to_string(&command)?;
+        let recorded_at: String = tx.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&migration_actor,&Uuid::new_v4().to_string(),&payload]).await?.get(0);
+        commands::apply_replay(
+            &mut state,
+            &migration_actor,
+            &command,
+            position,
+            &recorded_at,
+        )?;
+        events.push(Event {
+            position,
+            actor: migration_actor.clone(),
+            actor_type: crate::inbox::actor_type(&state, &migration_actor).into(),
+            recorded_at,
+            command,
+        });
+    }
     let mut refs = BTreeMap::new();
     let mut results = vec![];
     let batch_id = Uuid::new_v4();
@@ -481,12 +502,12 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
             );
-            let position = base_position + index as u64 + 1;
+            let position = base_position + events.len() as u64 + 1;
             if position == 1 {
                 tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
                 reserve_name(&*tx, &workspace, &workspace).await?;

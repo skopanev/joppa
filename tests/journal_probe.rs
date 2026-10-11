@@ -530,8 +530,8 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
 
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
-async fn heartbeat_reads_current_rows_and_keeps_documents_and_test_evidence() -> anyhow::Result<()>
-{
+async fn heartbeat_refusal_reads_current_rows_and_keeps_documents_and_test_evidence()
+-> anyhow::Result<()> {
     let (pool, ws) = fixture().await?;
     let current = store::tree_schema(&pool, &ws, "owner", None).await?;
     let mut types = current["schema"]["types"].clone();
@@ -573,14 +573,19 @@ async fn heartbeat_reads_current_rows_and_keeps_documents_and_test_evidence() ->
     };
     let evidence = snapshot(pool.clone(), ws.clone()).await?;
     reset(&pool).await?;
-    store::execute_remote_input(
+    let refused = store::execute_remote_input(
         &pool,
         &ws,
         "agent",
         "heartbeat",
         &json!({"op":"heartbeat_task","id":"job:one","revision":2}),
     )
-    .await?;
+    .await
+    .unwrap_err();
+    anyhow::ensure!(
+        refused.to_string() == "heartbeat_task is no longer supported",
+        "{refused}"
+    );
     store::task_queue(&pool, &ws, "agent", "mine", 10, None).await?;
     let probe = journal_selects(&pool).await?;
     anyhow::ensure!(

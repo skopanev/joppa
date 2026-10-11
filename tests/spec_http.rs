@@ -446,17 +446,41 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
             && done["process"]["done"].is_string(),
         "{done}"
     );
-    w.command(json!({"op":"save_object","kind":"task","id":"owner-completion","revision":0,"parent":"ac:key-rights","data":{"title":"Record the owner completion","owner":"owner","contract":"Implement the same key rights contract","purpose":"implementation","projects":[]},"reason":"Check the existing owner authority"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"owner-completion","revision":0,"parent":"ac:key-rights","data":{"title":"Check completion authority","owner":"owner","contract":"Implement the same key rights contract","purpose":"implementation","projects":[]},"reason":"Check completion by the current holder"})).await?;
     w.command_as(
         bot2,
         json!({"op":"claim_task","id":"task:owner-completion","revision":1}),
     )
     .await?;
-    w.command(json!({"op":"complete_task","id":"task:owner-completion","revision":2,"evidence":"The owner records the completed work"})).await?;
     let owned = w.get("address=task:owner-completion").await?;
+    let complete = json!({"op":"complete_task","id":"task:owner-completion","revision":2,"evidence":"Record the completed work"});
+    let response = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":complete}))
+        .send()
+        .await?;
     ensure!(
-        owned["document"]["actor"] == "owner" && owned["process"]["done"].is_string(),
-        "{owned}"
+        response.status() == reqwest::StatusCode::CONFLICT,
+        "{}",
+        response.status()
+    );
+    let response: Value = response.json().await?;
+    ensure!(
+        response["error"] == "Task is not claimed unfinished work",
+        "{response}"
+    );
+    let unchanged = w.get("address=task:owner-completion").await?;
+    ensure!(
+        unchanged["document"] == owned["document"] && unchanged["process"] == owned["process"],
+        "The refused owner completion changed the Task"
+    );
+    w.command_as(bot2, complete).await?;
+    let done = w.get("address=task:owner-completion").await?;
+    ensure!(
+        done["document"]["actor"] == "bot2" && done["process"]["done"].is_string(),
+        "{done}"
     );
     Ok(())
 }
@@ -2850,18 +2874,16 @@ mod claim_time;
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn expired_claims_and_heartbeats_agree_over_http_and_mcp() -> Result<()> {
+async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
+    claim_time::install(&w.pool).await?;
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
     w.command(json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"job:one","revision":1}),
-    )
-    .await?;
+    let response=w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(&w.bot).json(&json!({"request_id":format!("test-claim-time-86400000-{}",uuid::Uuid::new_v4().simple()),"command":{"op":"claim_task","id":"job:one","revision":1}})).send().await?;
+    ensure!(response.status().is_success(), "{}", response.text().await?);
     let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {
         let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?.json().await?;
         ensure!(reply["result"]["isError"] != true, "{reply}");
@@ -2869,17 +2891,8 @@ async fn expired_claims_and_heartbeats_agree_over_http_and_mcp() -> Result<()> {
             reply["result"]["content"][0]["text"].as_str().unwrap(),
         )?)
     };
-    read_mcp("joppa_command",json!({"workspace":w.ws,"request_id":"renew","command":{"op":"heartbeat_task","id":"job:one","revision":2}})).await?;
-    let renewed = w.get("address=job:one").await?;
-    ensure!(
-        renewed["current_revision"] == 2 && renewed["process"]["assignee"] == "bot",
-        "{renewed}"
-    );
-    for (age, view, status, holder) in [
-        (1, "mine", "in_progress", json!("bot")),
-        (31, "available", "open", Value::Null),
-    ] {
-        claim_time::age(&w.pool, &w.ws, "job:one", age).await?;
+    let before = w.get("address=job:one").await?;
+    for view in ["all", "mine", "available"] {
         let http: Value = w
             .http
             .get(format!(
@@ -2894,37 +2907,48 @@ async fn expired_claims_and_heartbeats_agree_over_http_and_mcp() -> Result<()> {
             .await?;
         let mcp = read_mcp("joppa_tasks", json!({"workspace":w.ws,"view":view})).await?;
         ensure!(http["tasks"] == mcp["tasks"], "HTTP {http} / MCP {mcp}");
-        ensure!(
-            http["tasks"][0]["status"] == status && http["tasks"][0]["assignee"] == holder,
-            "{http}"
-        );
-        let detail = w.get("address=job:one").await?;
-        ensure!(
-            detail["process"]["status"] == status && detail["process"]["assignee"] == holder,
-            "{detail}"
-        );
-        let list = w.get("kind=job&parent=*").await?;
-        ensure!(
-            list["items"][0]["signal"] == detail["signal"],
-            "list and detail agree"
-        );
+        if view == "available" {
+            ensure!(http["total"] == 0, "held work is unavailable");
+        } else {
+            ensure!(
+                http["tasks"][0]["status"] == "in_progress"
+                    && http["tasks"][0]["assignee"] == "bot",
+                "{http}"
+            );
+        }
     }
-    let denied = w
+    let command = json!({"op":"heartbeat_task","id":"job:one","revision":2});
+    let http: Value = w
         .http
-        .get(format!("{}/api/workspaces/{}/tasks", w.root, w.ws))
-        .bearer_auth(&w.eve)
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(&w.bot)
+        .json(&json!({"request_id":"refused-http","command":command}))
         .send()
+        .await?
+        .json()
         .await?;
     ensure!(
-        denied.status() == reqwest::StatusCode::NOT_FOUND,
-        "queue membership required"
+        http["error"] == "heartbeat_task is no longer supported",
+        "{http}"
     );
-    let resumed = read_mcp(
-        "joppa_command",
-        json!({"workspace":w.ws,"request_id":"resume","command":{"op":"claim_next_task"}}),
-    )
-    .await?;
-    ensure!(resumed["command"]["id"] == "job:one", "{resumed}");
+    let mcp:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":"refused-mcp","command":command}}})).send().await?.json().await?;
+    ensure!(
+        mcp["result"]["isError"] == true
+            && mcp["result"]["content"][0]["text"] == "heartbeat_task is no longer supported",
+        "{mcp}"
+    );
+    ensure!(
+        before == w.get("address=job:one").await?,
+        "refusals change no state"
+    );
+    let help = read_mcp("joppa_help", json!({"workspace":w.ws})).await?;
+    ensure!(
+        !help["operations"]
+            .as_str()
+            .unwrap()
+            .contains("heartbeat_task"),
+        "help does not advertise heartbeat writes"
+    );
     store::check_journal(&w.pool).await?;
     Ok(())
 }

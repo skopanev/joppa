@@ -144,7 +144,7 @@ pub async fn check_journal(pool: &Pool) -> Result<()> {
 }
 async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
     for row in client
-        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) ORDER BY w.id", &[])
+        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) OR NOT COALESCE((b.state->>'persistent_claims')::boolean,false) ORDER BY w.id", &[])
         .await?
     {
         let workspace: String = row.get(0);
@@ -194,6 +194,10 @@ async fn ensure_notes(
         (!state.schema_migrated, Command::MigrateSchema {}),
         (!state.documents_migrated, Command::MigrateDocuments {}),
         (!state.claims_migrated, Command::MigrateTaskClaims {}),
+        (
+            !state.persistent_claims,
+            Command::MigratePersistentClaims {},
+        ),
     ] {
         if !needed {
             continue;
@@ -218,7 +222,7 @@ async fn ensure_notes(
     }
     Ok(changed)
 }
-pub(super) const BOARD_PROJECTION_VERSION: &str = "6";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "7";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 /// Refresh current assessment and verification metadata without reading journal history.

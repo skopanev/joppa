@@ -34,7 +34,9 @@ pub(crate) fn parse_time(at: &str) -> Option<i64> {
 }
 
 pub(crate) fn expired(w: &Workspace, t: &Task) -> bool {
-    t.done.is_none()
+    w.replay_claims
+        && !w.persistent_claims
+        && t.done.is_none()
         && t.retired.is_none()
         && t.claim
             .as_ref()
@@ -54,23 +56,6 @@ pub(crate) fn unclaimed_eligibility(w: &Workspace, actor: &str, key: &str, t: &T
     open.assignee = None;
     open.claim = None;
     validate_claim(w, actor, key, &open)
-}
-
-pub(crate) fn effective_process(process: &mut Value, signal: &mut Value, now: i64) {
-    if process["done"].is_null()
-        && process["retired"].is_null()
-        && process["claim"]["deadline_ms"]
-            .as_i64()
-            .is_some_and(|deadline| now >= deadline)
-        && process["assignee"].is_string()
-    {
-        process["assignee"] = Value::Null;
-        process["status"] = json!("open");
-        if signal["label"] == "Task in progress" {
-            signal["label"] = json!("Task open");
-            signal["tone"] = json!("grey");
-        }
-    }
 }
 
 pub fn status(t: &Task) -> &'static str {
@@ -210,6 +195,10 @@ pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> 
 
 // Existing journal claims can predate the limit on active work.
 pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
+    ensure!(
+        !crate::planning::awaiting_publication(w, key, t),
+        "Task is awaiting planning publication"
+    );
     ensure!(
         w.members.contains_key(actor),
         "claimant is not a workspace member"
@@ -400,7 +389,15 @@ pub fn save(
             old.current().data["owner"] == actor
                 || holder(w, &t) == Some(actor)
                 || holder(w, &t).is_none() && t.created_by == actor
-                || actor == w.admin,
+                || actor == w.admin
+                || old.current().parent.as_deref().is_some_and(|p| {
+                    parent.map(|q| objects::resolve_address(w, q))
+                        == Some(objects::resolve_address(w, p))
+                        && old.current().data["owner"] == owner
+                        && w.planning_claims
+                            .get(objects::resolve_address(w, p))
+                            .is_some_and(|c| c.actor == actor)
+                }),
             "Task owner, assignee or unclaimed creator required"
         );
         ensure!(t.purpose == purpose, "task purpose cannot change");
@@ -531,8 +528,10 @@ pub fn apply(
         Command::ReleaseTask { reason, .. } => {
             commands::nonempty(reason)?;
             ensure!(
-                authority || t.assignee.as_deref() == Some(actor),
-                "Task owner or assignee required"
+                actor == w.admin
+                    || t.assignee.as_deref() == Some(actor)
+                    || w.replay_claims && !w.persistent_claims && authority,
+                "workspace owner required"
             );
             ensure!(
                 t.assignee.is_some() && t.done.is_none() && t.retired.is_none(),
@@ -545,14 +544,16 @@ pub fn apply(
         Command::CompleteTask { evidence, .. } => {
             commands::nonempty(evidence)?;
             ensure!(
-                authority || t.assignee.as_deref() == Some(actor),
+                t.assignee.as_deref() == Some(actor)
+                    || w.replay_claims && !w.persistent_claims && authority,
                 "Task is not claimed unfinished work"
             );
             ensure!(
-                t.assignee.is_some()
-                    && t.done.is_none()
-                    && t.retired.is_none()
-                    && !review_required(w, &key, &t),
+                t.assignee.is_some() && t.done.is_none() && t.retired.is_none(),
+                "Task is not claimed unfinished work"
+            );
+            ensure!(
+                !review_required(w, &key, &t),
                 "Task must be claimed, unfinished and reviewed"
             );
             ensure!(
@@ -659,7 +660,7 @@ pub fn apply(
     Ok(true)
 }
 
-fn append(
+pub(crate) fn append(
     w: &mut Workspace,
     key: &str,
     mut r: objects::ObjectRevision,

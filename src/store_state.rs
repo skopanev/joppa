@@ -90,6 +90,15 @@ pub(super) fn affected(
             changed.insert(key.clone());
         }
     }
+    for key in state
+        .planning_claims
+        .keys()
+        .chain(previous.planning_claims.keys())
+    {
+        if state.planning_claims.get(key) != previous.planning_claims.get(key) {
+            changed.insert(key.clone());
+        }
+    }
     for (key, notes) in &state.notes {
         if Some(serde_json::to_value(notes)?)
             != previous
@@ -281,8 +290,58 @@ pub(super) async fn hydrate_command(
     {
         addresses.push(crate::objects::resolve_address(state, id).to_owned());
     }
+    if matches!(
+        command["op"].as_str(),
+        Some("claim_planning" | "finish_planning" | "release_planning")
+    ) && let Some(ac) = command["ac"].as_str()
+    {
+        let ac = crate::objects::resolve_address(state, ac).to_owned();
+        addresses.push(ac.clone());
+        if command["op"] == "release_planning" {
+            addresses.extend(
+                state
+                    .task_process
+                    .keys()
+                    .filter(|key| {
+                        state
+                            .objects
+                            .get(*key)
+                            .is_some_and(|o| o.current().parent.as_deref() == Some(ac.as_str()))
+                    })
+                    .cloned(),
+            );
+        }
+    }
     if let Some(target) = command["target"].as_str() {
         addresses.push(crate::objects::resolve_address(state, target).to_owned());
+    }
+    if command["op"] == "finish_planning"
+        && let Some(ac) = command["ac"].as_str()
+    {
+        let ac = crate::objects::resolve_address(state, ac);
+        if let Some(claim) = state.planning_claims.get(ac) {
+            let keys: Vec<String> = state
+                .task_process
+                .keys()
+                .filter(|key| {
+                    state.objects.get(*key).is_some_and(|o| {
+                        o.current()
+                            .parent
+                            .as_deref()
+                            .map(|p| crate::objects::resolve_address(state, p))
+                            == Some(ac)
+                    })
+                })
+                .cloned()
+                .collect();
+            for row in client.query("SELECT address,document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=ANY($2) AND (document->>'position')::bigint>$3 ORDER BY address,revision", &[&workspace, &keys, &(claim.position as i64)]).await? {
+                    let key: String = row.get(0);
+                    let revision: crate::objects::ObjectRevision = serde_json::from_str(row.get(1))?;
+                    let object = state.objects.get_mut(&key).context("unknown Task")?;
+                    if !object.revisions.iter().any(|r| r.revision == revision.revision) { object.revisions.push(revision); }
+                    object.revisions.sort_by_key(|r| r.revision);
+                }
+        }
     }
     hydrate_objects(client, workspace, state, &addresses).await?;
     hydrate_objects(client, workspace, previous, &addresses).await?;
@@ -455,24 +514,6 @@ pub(super) async fn read_requirement(
         let mut tasks = revision.tasks.clone();
         for row in client.query("SELECT p.key,p.value::text FROM joppa.state_entries p JOIN joppa.state_entries c ON c.workspace=p.workspace AND c.section='task_context' AND c.key=p.key WHERE p.workspace=$1 AND p.section='task_process' AND c.value->>0=$2", &[&workspace,&req]).await? {
             tasks.insert(row.get(0),serde_json::from_str(row.get(1))?);
-        }
-        let now: i64 = client
-            .query_one(
-                "SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint",
-                &[],
-            )
-            .await?
-            .get(0);
-        for task in tasks.values_mut() {
-            if task.done.is_none()
-                && task.retired.is_none()
-                && task
-                    .claim
-                    .as_ref()
-                    .is_some_and(|claim| now >= claim.deadline_ms)
-            {
-                task.assignee = None;
-            }
         }
         out["requirement"]["revisions"][0]["tasks"] = json!(tasks);
     }

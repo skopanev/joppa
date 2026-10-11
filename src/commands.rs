@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    MigratePersistentClaims {},
     /// Internal migration event. Public authoring rejects this operation.
     MigrateNotes {},
     MigrateTasks {},
@@ -288,6 +289,18 @@ pub enum Command {
         assignee: Option<String>,
         #[serde(default)]
         contract: String,
+    },
+    ClaimPlanning {
+        ac: String,
+        revision: u32,
+    },
+    FinishPlanning {
+        ac: String,
+        reason: String,
+    },
+    ReleasePlanning {
+        ac: String,
+        reason: String,
     },
     HeartbeatTask {
         revision: u32,
@@ -579,6 +592,11 @@ pub fn apply(
     recorded_at: &str,
 ) -> Result<()> {
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
+    w.replay_claims = false;
+    ensure!(
+        !matches!(command, Command::HeartbeatTask { .. }),
+        "heartbeat_task is no longer supported"
+    );
     crate::objects::validate_current(w, command)?;
     match command {
         Command::ClaimTask { req, id, .. } => {
@@ -595,7 +613,9 @@ pub fn apply(
         }
         _ => {}
     }
-    apply_replay(w, actor, command, position, recorded_at)
+    apply_inner(w, actor, command, position, recorded_at)?;
+    crate::objects::sync(w, actor, command, position, recorded_at);
+    Ok(())
 }
 
 pub fn apply_replay(
@@ -606,7 +626,10 @@ pub fn apply_replay(
     recorded_at: &str,
 ) -> Result<()> {
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
-    apply_inner(w, actor, command, position, recorded_at)?;
+    w.replay_claims = true;
+    let result = apply_inner(w, actor, command, position, recorded_at);
+    w.replay_claims = false;
+    result?;
     crate::objects::sync(w, actor, command, position, recorded_at);
     Ok(())
 }
@@ -650,10 +673,17 @@ pub(crate) fn apply_inner(
         return Ok(());
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
+    if crate::planning::apply(w, actor, command, position, recorded_at)? {
+        return Ok(());
+    }
     if crate::tasks::apply(w, actor, command, position, recorded_at)? {
         return Ok(());
     }
     match command {
+        Command::MigratePersistentClaims {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            w.persistent_claims = true;
+        }
         Command::MigrateNotes {} => {
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;

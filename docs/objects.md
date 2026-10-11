@@ -200,11 +200,9 @@ Its `revision` selects the REQ verification revision for AC evidence commands.
 Task process commands use the Task object address and its own revision.
 `joppa_objects.revision` always selects the addressed document's revision.
 Read the current Task before you claim, release, review, retire or complete it.
-A claim lasts 30 minutes. Send `heartbeat_task {id, revision}` every 5 minutes to renew it.
-Only the holder can renew an unexpired claim. Heartbeat records an event without changing the document or context revision.
-The server keeps `process.claim.heartbeat_at_ms` and `process.claim.deadline_ms` as UTC milliseconds.
-An expired claim appears open with no assignee. Contracts, dependencies and parent gates still control whether it is claimable.
-The migration gives active old claims 30 minutes from its server time. It preserves document revisions.
+A claim persists until an explicit recorded action changes its holder or work state.
+Only the holder completes the work. The holder or workspace owner can release it.
+Earlier journal entries, claim metadata, documents and work remain readable.
 
 ### Context for external planners
 

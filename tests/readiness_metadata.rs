@@ -85,6 +85,9 @@ fn current_assessment_and_claim_refusal_show_the_same_question() {
         objects::process(&w.state, "ac:ios")["verification"],
         "unverified"
     );
+    let signal = objects::signal(&w.state, "ac:ios");
+    assert_eq!(signal["tone"], "grey");
+    assert_eq!(signal["label"], "Ready for work");
 }
 
 #[test]

@@ -1254,6 +1254,7 @@ pub(crate) fn process_field(field: &str) -> bool {
             | "tasks"
             | "assignee"
             | "claim"
+            | "planning_claim"
             | "done"
             | "retired"
             | "review_required"
@@ -2322,6 +2323,7 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     }
     result["annotation_address"] = json!(annotation_address(w, key));
     if role.as_deref() == Some("ac") {
+        result["planning_claim"] = json!(w.planning_claims.get(key));
         result["assessment"] = json!(assessment(w, key));
         result["readiness_blocker"] = json!(readiness_blocker(w, key, true));
     }
@@ -2367,6 +2369,7 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
                 ("yellow", "Readiness not assessed")
             }
             (Some(false), _) => ("yellow", "Readiness decision required"),
+            (Some(true), _) if p["readiness_blocker"].is_null() => ("grey", "Ready for work"),
             _ => ("grey", "AC awaits checks"),
         }
     } else if schema(w)
@@ -2456,6 +2459,11 @@ pub fn archive(
             .get(kind)
             .is_some_and(|t| ["group", "document", "requirement", "ac"].contains(&t.role.as_str())),
         "archive_object requires a group, document, requirement or criterion"
+    );
+
+    ensure!(
+        !w.planning_claims.keys().any(|ac| within(w, ac, &target)),
+        "cannot archive an object with an active planning claim"
     );
 
     let has_live_children = w.objects.values().any(|o| {

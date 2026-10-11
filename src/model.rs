@@ -3,6 +3,10 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
+    #[serde(default)]
+    pub persistent_claims: bool,
+    #[serde(skip)]
+    pub replay_claims: bool,
     #[serde(skip)]
     pub claim_time_ms: Option<i64>,
     #[serde(default)]
@@ -23,6 +27,8 @@ pub struct Workspace {
     pub redactions: BTreeMap<String, Vec<crate::redact::Redaction>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_process: BTreeMap<String, Task>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub planning_claims: BTreeMap<String, PlanningClaim>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_context: BTreeMap<String, Option<(String, u32)>>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -244,6 +250,12 @@ pub struct Comment {
     pub reply_to: Option<String>,
     pub ac: Option<String>,
     pub withdrawn: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PlanningClaim {
+    pub actor: String,
+    pub position: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {

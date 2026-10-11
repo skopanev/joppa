@@ -71,13 +71,7 @@ task (legacy creation): req, revision, id, title, acs:[id], projects:[id],
       Process commands below use the full Task address and its own revision.
       Old req arguments remain compatible and use the REQ revision.
 claim_task: revision, id; atomically assign an open Task to the authenticated actor
-      A claim lasts 30 minutes. heartbeat_task renews it.
-heartbeat_task: revision, id; only the current holder can renew an unexpired claim
-      Send it every 5 minutes. The server extends the deadline by 30 minutes.
-      It records the operation without changing the document or context revision.
-amend_task: revision, id, title, contract, projects:[id], reason; correct an
-      unfinished Task. The Task owner, assignee or unclaimed creator may amend it.
-      Completion history remains readable.
+      Claims persist until an explicit recorded action changes the holder or work state.
 claim_next_task: project (optional), purpose (optional), priorities (optional
       ordered list of kind:id selectors: domain, capability, requirement, ac,
       task, project, consumer or any configured type). Use the returned object address.
@@ -91,8 +85,8 @@ claim_next_task: project (optional), purpose (optional), priorities (optional
       For a read-only preview use joppa_tasks with view=available, limit=1 and
       the same project, purpose and priorities. It applies the same ordering and
       returns no Task when none is available; a later claim_task may lose a race.
-release_task: revision, id, reason; assignee, Task owner or workspace owner returns unfinished work to the queue
-complete_task: revision, id, evidence; assignee, Task owner or workspace owner completes claimed work
+release_task: revision, id, reason; the holder or workspace owner returns unfinished work to the queue
+complete_task: revision, id, evidence; only the current holder completes claimed work
       A decision Task under the default AC gate needs the actual specialist decision comment ID.
 review_task: revision, id, reason; Task owner or workspace owner confirms the current parent contract
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
@@ -161,12 +155,11 @@ The filter lists matching criteria across the tree by default. An explicit `pare
 The existing cursor, kind and related-object filters remain available. A workspace change invalidates the cursor.
 Candidates include current object revisions and assessment source revisions. Lists do not load revision bodies or the journal.
 `available` uses the same eligibility rules as `claim_task`: an explicit contract, reviewed parent context, satisfied dependencies and the configured parent gate.
-The Task must have no active claim, completion or retirement. A claim expires at its deadline.
-The queue then shows open, assignee=null and claimable according to its current readiness and dependencies.
-An expired holder cannot renew or complete that claim. Claim and next check expiry under the workspace lock.
-A later claim changes the document revision. An identical request retry keeps its original result and deadline.
-The migration gives active old claims 30 minutes from its server time. It preserves document revisions.
-The process includes claim.heartbeat_at_ms and claim.deadline_ms as server UTC milliseconds.
+The Task must have no active claim, completion or retirement.
+Elapsed time, missing heartbeats and server restarts never return a Task to the queue.
+Only the current holder can complete claimed work.
+The holder or workspace owner can release unfinished work with a reason.
+Earlier journal entries and claim metadata remain readable.
 Queue cursors retain their read time until the workspace position changes. A decision Task requires its designated human owner to claim it.
 Under the default AC gate, that owner can claim decision work before the AC becomes ready.
 Task status is `open`, `in_progress` or `done`. Unmet dependencies prevent claim and appear in readiness hints.
@@ -398,7 +391,7 @@ Create a Task with `save_object` under any parent permitted by the workspace sch
 Its type must have role `task`. The default type name is `task`.
 Use `id: "task:<local-id>"` or the returned custom type address for process commands.
 Omit `req`. Supply the current Task object `revision`.
-`claim_task`, `heartbeat_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
+`claim_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
 Generic `review_task` takes `reason` and does not take `ac`.
 Queue items report their object `address`, `parent`, `revision` and current status.
 Historical `req` addresses remain accepted and resolve to this same process record.
@@ -447,3 +440,25 @@ It reports each failure and then finishes the run. No extra test runner is requi
 
 `GET /api/workspaces/:workspace/tasks` reads the same queue as `joppa_tasks`.
 Use view, limit, cursor, project, purpose and comma-separated priorities as query parameters.
+
+
+## Planning a criterion
+
+Planning operates on the schema criterion role. The type name can differ from `ac`.
+
+- `claim_planning {ac, revision}` claims a ready, unverified criterion at its current object revision.
+- `finish_planning {ac, reason}` publishes the Task set and removes the planning claim.
+- `release_planning {ac, reason}` removes the claim and retires only its new Tasks.
+
+The authenticated member supplies the command actor. Each workspace permits one planning claim per criterion and per actor.
+Existing Tasks do not prevent a planning claim. Claims remain until an explicit finish or release.
+Current criterion reads expose `process.planning_claim`: `null` or `{actor, position}`. Position identifies the claim journal event.
+
+New Tasks have the planning gate only when their creator matches the holder and their creation position follows the claim.
+They remain visible in `all`, with `waiting_reason="Task is awaiting planning publication"`. They cannot enter `available` or receive a work claim.
+Existing Tasks keep their ordinary gates and active worker assignments. Claimed criteria stay outside `work_filter=unstarted`.
+
+Finish requires a Task creation or revision by the holder after the claim. It validates dependency targets and reachable dependency cycles across the workspace.
+Finish removes only the planning gate. It does not change verification or ordinary dependency gates.
+Only the holder can finish. The holder or workspace owner can release with a non-empty reason.
+Release preserves existing Tasks, their current documents, worker assignments, and history. Retired new Tasks retain their documents and history.

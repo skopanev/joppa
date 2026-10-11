@@ -1,22 +1,7 @@
 use anyhow::{Result, ensure};
-use serde_json::json;
 
 /// Set fixture event time before insertion. Keep the journal and current rows consistent.
-pub async fn age(
-    pool: &deadpool_postgres::Pool,
-    workspace: &str,
-    address: &str,
-    minutes: i64,
-) -> Result<()> {
-    age_ms(pool, workspace, address, minutes * 60_000).await
-}
-
-pub async fn age_ms(
-    pool: &deadpool_postgres::Pool,
-    workspace: &str,
-    address: &str,
-    milliseconds: i64,
-) -> Result<()> {
+pub async fn install(pool: &deadpool_postgres::Pool) -> Result<()> {
     let client = pool.get().await?;
     let database: String = client
         .query_one("SELECT current_database()", &[])
@@ -41,23 +26,5 @@ pub async fn age_ms(
             END IF;
         END $$;
     "#).await?;
-    let row=client.query_one("SELECT revision,process->>'assignee' FROM joppa.objects WHERE workspace=$1 AND address=$2", &[&workspace,&address]).await?;
-    let revision: i32 = row.get(0);
-    let holder: String = row
-        .get::<_, Option<String>>(1)
-        .ok_or_else(|| anyhow::anyhow!("fixture Task must have a holder"))?;
-    drop(client);
-    let request = format!(
-        "test-claim-time-{milliseconds}-{}",
-        uuid::Uuid::new_v4().simple()
-    );
-    joppa::store::execute_remote_input(
-        pool,
-        workspace,
-        &holder,
-        &request,
-        &json!({"op":"heartbeat_task","id":address,"revision":revision}),
-    )
-    .await?;
     Ok(())
 }

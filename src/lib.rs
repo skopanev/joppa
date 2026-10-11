@@ -8,6 +8,7 @@ pub mod inbox;
 mod intake;
 pub mod model;
 pub mod objects;
+pub mod planning;
 pub mod redact;
 pub mod sessions;
 pub mod store;
