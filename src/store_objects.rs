@@ -405,7 +405,7 @@ pub async fn read_objects(
                 &*conn,
                 &workspace,
                 std::slice::from_mut(&mut item),
-                &criterion_kinds,
+                &selected,
             )
             .await?;
         }
@@ -569,7 +569,7 @@ pub async fn read_objects(
             item["work_summary"] = serde_json::from_str(row.get(15))?;
         }
     }
-    add_verification_summaries(&*conn, &workspace, &mut items, &criterion_kinds).await?;
+    add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
     let next = more.then(|| {
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();
@@ -589,32 +589,111 @@ async fn add_verification_summaries(
     client: &impl GenericClient,
     workspace: &str,
     items: &mut [Value],
-    criterion_kinds: &[String],
+    types: &std::collections::BTreeMap<String, objects::TreeType>,
 ) -> Result<()> {
-    if !items.is_empty() && !criterion_kinds.is_empty() {
-        let addresses: Vec<_> = items.iter().filter_map(|i| i["address"].as_str()).collect();
-        let counts = client.query(r#"
-            WITH RECURSIVE descendants(root,address) AS (
-                SELECT address,address FROM joppa.objects WHERE workspace=$1 AND address=ANY($2::text[])
-                UNION
-                SELECT d.root,c.address FROM descendants d
-                JOIN joppa.objects c ON c.workspace=$1 AND c.parent=d.address AND c.present
-            )
-            SELECT d.root,COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE c.signal->>'tone'='green') AS passed
-            FROM descendants d JOIN joppa.objects c ON c.workspace=$1 AND c.address=d.address
-            WHERE c.present AND c.kind=ANY($3::text[])
-            GROUP BY d.root
-        "#, &[&workspace,&addresses,&criterion_kinds]).await?;
-        for row in counts {
-            if let Some(item) = items
-                .iter_mut()
-                .find(|i| i["address"] == row.get::<_, String>(0))
-            {
-                item["verification_summary"] =
-                    json!({"total":row.get::<_,i64>(1),"passed":row.get::<_,i64>(2)});
+    use std::collections::{BTreeMap, BTreeSet};
+    let criteria: Vec<String> = types
+        .iter()
+        .filter(|(_, t)| t.role == "ac")
+        .map(|(k, _)| k.clone())
+        .collect();
+    let mut branches: BTreeSet<String> = criteria.iter().cloned().collect();
+    loop {
+        let before = branches.clone();
+        for (kind, t) in types {
+            if before.contains(kind) {
+                for parent in &t.parents {
+                    if parent == "*" {
+                        branches.extend(types.keys().cloned());
+                    } else {
+                        branches.insert(parent.clone());
+                    }
+                }
             }
         }
+        if branches == before {
+            break;
+        }
+    }
+    let addresses: Vec<String> = items
+        .iter()
+        .filter(|i| {
+            i["present"] != false
+                && i["kind"]
+                    .as_str()
+                    .is_some_and(|k| branches.contains(k) && !criteria.iter().any(|c| c == k))
+        })
+        .filter_map(|i| i["address"].as_str().map(String::from))
+        .collect();
+    if addresses.is_empty() {
+        return Ok(());
+    }
+    let branches: Vec<String> = branches.into_iter().collect();
+    let rows = client
+        .query(
+            r#"
+        WITH RECURSIVE descendants(root,child,address) AS (
+            SELECT p.address,c.address,c.address FROM joppa.objects p
+            JOIN joppa.objects c ON c.workspace=p.workspace AND c.parent=p.address AND c.present
+            WHERE p.workspace=$1 AND p.address=ANY($2) AND p.present AND c.kind=ANY($3)
+            UNION
+            SELECT d.root,d.child,c.address FROM descendants d
+            JOIN joppa.objects p ON p.workspace=$1 AND p.address=d.address
+            JOIN joppa.objects c ON c.workspace=$1 AND c.parent=d.address AND c.present
+            WHERE NOT p.kind=ANY($4) AND c.kind=ANY($3)
+        )
+        SELECT d.root,d.child,CASE WHEN c.kind=ANY($4) THEN c.address END
+        FROM descendants d JOIN joppa.objects c ON c.workspace=$1 AND c.address=d.address
+    "#,
+            &[&workspace, &addresses, &branches, &criteria],
+        )
+        .await?;
+    let mut children = BTreeMap::<String, BTreeMap<String, BTreeSet<String>>>::new();
+    let mut targets = BTreeSet::new();
+    for row in rows {
+        let child = children
+            .entry(row.get(0))
+            .or_default()
+            .entry(row.get(1))
+            .or_default();
+        if let Some(criterion) = row.get::<_, Option<String>>(2) {
+            targets.insert(criterion.clone());
+            child.insert(criterion);
+        }
+    }
+    let statuses = super::reports::criterion_test_statuses(
+        client,
+        workspace,
+        &targets.into_iter().collect::<Vec<_>>(),
+    )
+    .await?;
+    for item in items {
+        let Some(address) = item["address"]
+            .as_str()
+            .filter(|a| addresses.iter().any(|v| v == a))
+        else {
+            continue;
+        };
+        let mut total = 0;
+        let mut passed = 0;
+        let mut failed = 0;
+        if let Some(children) = children.get(address) {
+            for criteria in children.values() {
+                total += 1;
+                passed += usize::from(
+                    !criteria.is_empty()
+                        && criteria
+                            .iter()
+                            .all(|a| statuses.get(a).is_some_and(|s| s["status"] == "green")),
+                );
+                failed += usize::from(
+                    criteria
+                        .iter()
+                        .any(|a| statuses.get(a).is_some_and(|s| s["status"] == "red")),
+                );
+            }
+        }
+        item["verification_summary"] = json!({"total":total,"passed":passed,"failed":failed});
     }
     Ok(())
 }

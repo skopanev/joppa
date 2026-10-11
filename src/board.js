@@ -183,7 +183,6 @@ async function load() {
   data = next;
   data.objectTypes=next.object_types||{};
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
-  loadTestOverview();
   await renderObjectTree();
 }
 async function boardPart(level,id,revision){
@@ -611,8 +610,8 @@ function commonObjectCard(item,loadedDetail){
   let chip=null;
   if(isCriterion&&signal.tone==='green'){
     chip=E('span','Passed','verification-chip has-passes');
-  }else if(!isCriterion&&counts?.total>0){
-    chip=E('span',undefined,'verification-chip');chip.dataset.address=item.address;chip.dataset.total=counts.total;showTestCount(chip);
+  }else if(!isCriterion&&counts&&verificationChildTitle(item.kind)){
+    chip=E('span',undefined,'verification-chip');chip.dataset.address=item.address;chip.dataset.total=counts.total;chip.dataset.passed=counts.passed;chip.dataset.failed=counts.failed||0;chip.dataset.childTitle=verificationChildTitle(item.kind);showTestCount(chip);
   }
   // An empty slot keeps the count column aligned on rows without a count.
   summary.append(title,objectTypeLabel(item.kind),chip||E('span',undefined,'count-slot'));
@@ -648,24 +647,20 @@ function objectSection(title,cls){
   const group=E('details',undefined,'object-section '+cls);
   group.append(E('summary',title));enableBranchMotion(group);return group;
 }
-// The count on a row reads "green / total": criteria below it whose tests all pass.
-let testOverview=null;
-async function loadTestOverview(){
-  try{testOverview=await api('workspaces/'+encodeURIComponent(ws)+'/tests');}catch{testOverview={items:[]};}
-  for(const chip of document.querySelectorAll('.verification-chip[data-total]'))showTestCount(chip);
+// The schema selects the next types that can contain verification criteria.
+function verificationChildTitle(kind){
+  const types=data.objectTypes,branches=new Set(Object.keys(types).filter(k=>types[k].role==='ac'));
+  let changed=true;
+  while(changed){const size=branches.size;for(const child of [...branches])for(const parent of types[child]?.parents||[])if(parent==='*')Object.keys(types).forEach(k=>branches.add(k));else branches.add(parent);changed=branches.size!==size;}
+  return [...new Set(Object.entries(types).filter(([k,t])=>branches.has(k)&&(t.parents||[]).some(p=>p===kind||p==='*')).map(([,t])=>t.title))].join(' / ');
 }
 function showTestCount(chip){
-  const below=(testOverview?.items||[]).filter(i=>i.ancestors.includes(chip.dataset.address));
-  const green=below.filter(i=>i.status==='green').length,red=below.filter(i=>i.status==='red').length;
-  // Without green criteria the row keeps its plain total.
-  chip.textContent=(green?green+' / '+chip.dataset.total:chip.dataset.total)+' AC';
+  const green=Number(chip.dataset.passed),red=Number(chip.dataset.failed),total=Number(chip.dataset.total),title=chip.dataset.childTitle;
+  chip.textContent=(green?green+' / '+total:total)+' '+title;
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
-  chip.setAttribute('aria-label',green+' of '+chip.dataset.total+' criteria are green'+(red?', '+red+' red':''));
-  // The row dot rises from its criteria: red when one is red, green when all are green,
-  // and yellow while any criterion below is not green yet.
-  const total=Number(chip.dataset.total),tone=red?'red':green===total?'green':'yellow';
-  const noun=n=>n===1?' criterion':' criteria';
-  const label=red?red+' of '+total+noun(total)+(red===1?' is red':' are red'):green+' of '+total+noun(total)+(green===1?' is green':' are green');
+  const label=green+' of '+total+' '+title+' ready'+(red?', '+red+' failed':'');
+  chip.setAttribute('aria-label',label);
+  const tone=red?'red':total>0&&green===total?'green':total>0?'yellow':'grey';
   const dot=chip.closest('summary')?.querySelector('.status-circle');
   if(dot&&(dot.dataset.tone!==tone||dot.dataset.hint!=='Status: '+label))dot.replaceWith(statusCircle({tone,label}));
 }

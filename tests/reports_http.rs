@@ -201,6 +201,128 @@ fn junit(cases: &[(&str, &str)]) -> String {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let command = |value: Value| {
+        let w = &w;
+        async move {
+            let (code, reply) = post(
+                w,
+                &w.owner,
+                "/commands",
+                json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":value}),
+            )
+            .await?;
+            ensure!(code == 200, "{code}: {reply}");
+            Ok::<_, anyhow::Error>(())
+        }
+    };
+    let tree: Value = w
+        .http
+        .get(format!("{}/tree", w.base))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let mut types = tree["schema"]["types"].clone();
+    for (kind, role, parent, title) in [
+        ("bundle", "group", None, "Bundles"),
+        ("branch", "group", Some("bundle"), "Branches"),
+        ("sheet", "requirement", Some("branch"), "Sheets"),
+        ("proof", "ac", Some("sheet"), "Proofs"),
+        ("extra", "document", Some("bundle"), "Extra"),
+    ] {
+        types[kind] = json!({"title":title,"role":role,"root":parent.is_none(),"parents":parent.into_iter().collect::<Vec<_>>()});
+    }
+    command(json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Count configured tree levels"})).await?;
+    for (kind, id, parent) in [
+        ("bundle", "root", None),
+        ("branch", "good", Some("bundle:root")),
+        ("branch", "bad", Some("bundle:root")),
+        ("branch", "empty", Some("bundle:root")),
+        ("sheet", "one", Some("branch:good")),
+        ("sheet", "two", Some("branch:good")),
+        ("sheet", "three", Some("branch:bad")),
+        ("extra", "input", Some("bundle:root")),
+    ] {
+        command(json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":{"title":id,"body":"The contract","owner":"owner"},"reason":"Create the counted tree"})).await?;
+    }
+    for (id, parent, test) in [
+        ("a", "sheet:one", A),
+        ("b", "sheet:one", A),
+        ("c", "sheet:two", A),
+        ("d", "sheet:three", B),
+    ] {
+        command(json!({"op":"save_object","kind":"proof","id":id,"revision":0,"parent":parent,"data":{"title":id,"description":"The exact criterion","owner":"owner"},"reason":"Create a configured criterion"})).await?;
+        command(json!({"op":"set_ac_tests","target":format!("proof:{id}"),"tests":[test],"reason":"Bind its exact test"})).await?;
+    }
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "fail")]),
+    )
+    .await?;
+    for (address, total, passed, failed) in [
+        ("bundle:root", 3, 1, 1),
+        ("branch:good", 2, 2, 0),
+        ("branch:bad", 1, 0, 1),
+        ("branch:empty", 0, 0, 0),
+        ("sheet:one", 2, 2, 0),
+    ] {
+        let http: Value = w
+            .http
+            .get(format!("{}/objects?address={address}", w.base))
+            .bearer_auth(&w.owner)
+            .send()
+            .await?
+            .json()
+            .await?;
+        let root = w.base.split("/api/").next().unwrap();
+        let workspace = w.base.rsplit('/').next().unwrap();
+        let mcp: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.owner).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":address}}})).send().await?.json().await?;
+        let mcp: Value = serde_json::from_str(
+            mcp["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        let expected = json!({"total":total,"passed":passed,"failed":failed});
+        ensure!(
+            http["verification_summary"] == expected && mcp["verification_summary"] == expected,
+            "{address}: HTTP {http}, MCP {mcp}"
+        );
+    }
+    let list: Value = w
+        .http
+        .get(format!("{}/objects?kind=bundle", w.base))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?
+        .json()
+        .await?;
+    ensure!(
+        list["items"][0]["verification_summary"] == json!({"total":3,"passed":1,"failed":1}),
+        "{list}"
+    );
+    command(json!({"op":"archive_object","target":"branch:empty","revision":1,"reason":"Remove an unused branch"})).await?;
+    let after: Value = w
+        .http
+        .get(format!("{}/objects?address=bundle:root", w.base))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?
+        .json()
+        .await?;
+    ensure!(
+        after["verification_summary"] == json!({"total":2,"passed":1,"failed":1}),
+        "{after}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn latest_run_decides_by_commit_order_not_upload_time() -> Result<()> {
     // latest-run-decides-ac1: the newer commit uploads first, the older one later.
     let w = world().await?;

@@ -371,3 +371,5 @@ The browser replaces the page and uses its normal Back and Forward history.
 An object page reads its document and direct children. It does not read root lists.
 Older revisions omit current children, comments, files, and verification details.
 The server applies the same workspace access rules as the board.
+
+A done Task prevents `archive_object` on its parent. Retire the Task before you archive the parent.

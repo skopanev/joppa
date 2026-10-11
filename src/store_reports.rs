@@ -165,41 +165,55 @@ pub async fn criterion_tests(
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    let entry = |section: &'static str| {
-        let conn = &conn;
-        let workspace = workspace.clone();
-        async move {
-            conn.query_opt("SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section=$2 AND key=$3", &[&workspace, &section, &target])
-                .await
-                .map(|row| row.map(|r| r.get::<_, String>(0)))
+    criterion_test_statuses(&**conn, &workspace, &[target.to_owned()])
+        .await?
+        .remove(target)
+        .context("unknown criterion")
+}
+
+/// Read test evidence once for the criteria in the requested tree branches.
+pub(super) async fn criterion_test_statuses(
+    client: &impl GenericClient,
+    workspace: &str,
+    targets: &[String],
+) -> Result<std::collections::BTreeMap<String, Value>> {
+    let rows = client.query("SELECT o.address,o.title,o.description,a.value::text FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
+    let mut criteria = vec![];
+    let mut tests = std::collections::BTreeSet::new();
+    for row in rows {
+        let saved: Option<AcTests> = row
+            .get::<_, Option<String>>(3)
+            .map(|s| serde_json::from_str(&s))
+            .transpose()?;
+        let data =
+            json!({"title":row.get::<_,String>(1),"description":row.get::<_,Option<String>>(2)});
+        if let Some(current) = saved.as_ref().and_then(AcTests::current) {
+            tests.extend(current.tests.iter().cloned());
         }
-    };
-    let object: Value =
-        serde_json::from_str(&entry("objects").await?.context("unknown criterion")?)?;
-    let saved: Option<AcTests> = entry("ac_tests")
-        .await?
-        .map(|v| serde_json::from_str(&v))
-        .transpose()?;
-    let current = saved.as_ref().and_then(AcTests::current);
-    let tests = current.map(|r| r.tests.clone()).unwrap_or_default();
-    let draft = current.is_some_and(|r| r.text_hash != text_hash(&object["revisions"][0]["data"]));
-    let reports: Vec<Report> = conn
+        criteria.push((row.get::<_, String>(0), data, saved));
+    }
+    if criteria.is_empty() {
+        return Ok(Default::default());
+    }
+    let reports: Vec<Report> = client
         .query("SELECT id,commit_sha,commit_order,full_run,(extract(epoch FROM received_at)*1000)::bigint FROM joppa.test_reports WHERE workspace=$1 AND default_branch AND NOT dirty", &[&workspace])
-        .await?
-        .iter()
-        .map(|r| Report { id: r.get(0), commit: r.get(1), order: r.get(2), full: r.get(3), received_ms: r.get(4) })
-        .collect();
-    let results: Vec<(i64, TestResult)> = conn
-        .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace, &tests])
-        .await?
-        .iter()
-        .map(|r| (r.get(0), TestResult { address: r.get(1), status: r.get(2), duration_ms: r.get(3), message: r.get(4) }))
-        .collect();
-    let mut status = serde_json::to_value(criterion_status(&tests, draft, &reports, &results))?;
-    status["address"] = json!(target);
-    status["tests_revision"] = json!(current.map(|r| r.revision));
-    status["tests_saved_by"] = json!(current.map(|r| &r.actor));
-    Ok(status)
+        .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_ms:r.get(4) }).collect();
+    let tests: Vec<String> = tests.into_iter().collect();
+    let results: Vec<(i64,TestResult)> = client
+        .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
+        .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4) })).collect();
+    let mut statuses = std::collections::BTreeMap::new();
+    for (address, data, saved) in criteria {
+        let current = saved.as_ref().and_then(AcTests::current);
+        let tests = current.map(|r| r.tests.as_slice()).unwrap_or_default();
+        let draft = current.is_some_and(|r| r.text_hash != text_hash(&data));
+        let mut status = serde_json::to_value(criterion_status(tests, draft, &reports, &results))?;
+        status["address"] = json!(address);
+        status["tests_revision"] = json!(current.map(|r| r.revision));
+        status["tests_saved_by"] = json!(current.map(|r| &r.actor));
+        statuses.insert(address, status);
+    }
+    Ok(statuses)
 }
 
 /// An acceptance needs a clean full run on a default-branch commit where every listed

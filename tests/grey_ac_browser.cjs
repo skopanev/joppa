@@ -18,7 +18,7 @@ let browser;
 before(async () => { browser = await chromium.launch({headless: true}); });
 after(async () => { await browser?.close(); });
 
-async function fixture(records, statuses = {}) {
+async function fixture(records, statuses = {}, objectTypes = types) {
   const context = await browser.newContext({reducedMotion: 'reduce'});
   const page = await context.newPage();
   const requests = [], errors = [];
@@ -31,6 +31,7 @@ async function fixture(records, statuses = {}) {
     const record = records[address];
     return {address, kind: address.split(':')[0], id: address.split(':')[1], title: record.title,
       parent: record.parent || null, revision: record.revision || 1, item_id: record.item_id || 'W-' + address,
+      verification_summary: record.verification_summary,
       present: true, work_ready: true, signal: {tone: 'grey', label: 'Current document'}};
   };
   await context.route('http://joppa.test/**', async route => {
@@ -40,9 +41,9 @@ async function fixture(records, statuses = {}) {
     let value, status = 200;
     if (url.pathname === '/api/me') value = {actor: 'owner', email: 'owner@example.test'};
     else if (url.pathname === '/api/workspaces') value = [{id: 'w', title: 'Test workspace'}];
-    else if (url.pathname.endsWith('/board')) value = {workspace: 'w', lazy: true, object_types: types,
+    else if (url.pathname.endsWith('/board')) value = {workspace: 'w', lazy: true, object_types: objectTypes,
       state: {title: 'Test workspace', members: {owner: 'human'}, requirements: {}}, launch: {configured: false}, system_ids: {}};
-    else if (url.pathname.endsWith('/tree')) value = {schema: {revision: 1, types}};
+    else if (url.pathname.endsWith('/tree')) value = {schema: {revision: 1, types: objectTypes}};
     else if (url.pathname.endsWith('/tests')) {
       const address = url.searchParams.get('ac');
       value = address ? statuses[address] : {items: []};
@@ -77,6 +78,28 @@ async function fixture(records, statuses = {}) {
 }
 
 describe('tests/grey_ac_browser.cjs', () => {
+test('direct-child-counts: each row uses the shared next-level count', async () => {
+  const configured = {
+    bundle: {title: 'Bundles', role: 'group', root: true, parents: []},
+    branch: {title: 'Branches', role: 'group', parents: ['bundle']},
+    sheet: {title: 'Sheets', role: 'requirement', parents: ['branch']},
+    proof: {title: 'Proofs', role: 'ac', parents: ['sheet']},
+    extra: {title: 'Extra', role: 'document', parents: ['bundle']},
+  };
+  const records = {
+    'bundle:root': {title: 'Root', verification_summary: {total: 3, passed: 1, failed: 1}},
+    'branch:good': {title: 'Good', parent: 'bundle:root', verification_summary: {total: 2, passed: 2, failed: 0}},
+    'branch:empty': {title: 'Empty', parent: 'bundle:root', verification_summary: {total: 0, passed: 0, failed: 0}},
+  };
+  const f = await fixture(records, {}, configured);
+  try {
+    const card = await f.open('bundle:root');
+    assert.equal(await card.locator(':scope > summary .verification-chip').innerText(), '1 / 3 Branches');
+    assert.equal(await card.locator('.common-object[data-object-address="branch:good"] > summary .verification-chip').innerText(), '2 / 2 Sheets');
+    assert.equal(await card.locator('.common-object[data-object-address="branch:empty"] > summary .verification-chip').innerText(), '0 Sheets');
+    assert.equal(f.requests.filter(r => new URL(r.url).pathname.endsWith('/tests')).length, 0);
+  } finally { await f.close(); }
+});
 test('lazy-children-ac1: a capability reads only its twenty direct requirements', async () => {
   const records = {'domain:d': {title: 'Domain'}, 'capability:X': {title: 'Capability', parent: 'domain:d'}};
   for (let index = 0; index < 20; index++) {
