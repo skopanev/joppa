@@ -185,6 +185,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     types.insert(
         "initiative".into(),
         joppa::objects::TreeType {
+            question: None,
             index: None,
             references: Default::default(),
             required_fields: Default::default(),

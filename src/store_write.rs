@@ -499,7 +499,12 @@ async fn write(
             let saved=if let Some(address)=saved_address {
                 let revision=state.objects[&address].current().revision;
                 resolved["address"]=json!(address);resolved["saved_revision"]=json!(revision);
-                Some(json!({"address":address,"revision":revision}))
+                let mut saved = json!({"address":address,"revision":revision});
+                if let Command::SaveObject { kind, .. } = &command
+                    && let Some(question) = crate::objects::schema(&state).types[kind].question.as_ref() {
+                    saved["question"] = json!(question);
+                }
+                Some(saved)
             }else{None};
             if let Some(name) = &operation.reference { refs.insert(name.clone(), resolved); }
             Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"object":saved,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))

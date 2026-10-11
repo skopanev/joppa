@@ -2198,3 +2198,59 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
     }
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    let question = "Which observation changes the current contract?";
+    types["observation"] = json!({"title":"Observation","role":"document","root":true,"parents":["*"],"question":question});
+    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Configure the authoring question"})).await?;
+    let call = |name: &str, arguments: Value| {
+        let name = name.to_owned();
+        let w = &w;
+        async move {
+            let reply = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .send().await?;
+            ensure!(reply.status().is_success(), "{}", reply.status());
+            let reply: Value = reply.json().await?;
+            ensure!(
+                reply.get("error").is_none() && reply["result"]["isError"] != true,
+                "{reply}"
+            );
+            let value: Value =
+                serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap())?;
+            Ok::<_, anyhow::Error>(value)
+        }
+    };
+    let help = call("joppa_help", json!({"workspace":w.ws})).await?;
+    let tree = call("joppa_tree", json!({"workspace":w.ws})).await?;
+    ensure!(help["tree"] == tree, "{help} vs {tree}");
+    ensure!(
+        tree["schema"]["types"]["observation"]["question"] == question,
+        "{tree}"
+    );
+    ensure!(
+        tree["schema"]["types"]["record"].get("question").is_none(),
+        "{tree}"
+    );
+    let generic_help = call("joppa_help", json!({})).await?;
+    ensure!(
+        generic_help.get("tree").is_none() && generic_help["operations"].is_string(),
+        "{generic_help}"
+    );
+    for kind in ["observation", "record"] {
+        let saved = call("joppa_command", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Agent observation","owner":"owner","description":"An observed failure changes the contract."},"reason":"Record the observation"}})).await?;
+        ensure!(saved["object"]["revision"] == 1, "{saved}");
+        if kind == "observation" {
+            ensure!(saved["object"]["question"] == question, "{saved}");
+        } else {
+            ensure!(saved["object"].get("question").is_none(), "{saved}");
+        }
+    }
+    Ok(())
+}

@@ -47,6 +47,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         types.insert(
             kind,
             TreeType {
+                question: None,
                 index: None,
                 references: Default::default(),
                 required_fields: Default::default(),

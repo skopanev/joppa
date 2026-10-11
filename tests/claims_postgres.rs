@@ -57,6 +57,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
         types.insert(
             kind,
             TreeType {
+                question: None,
                 index: None,
                 references: Default::default(),
                 required_fields: Default::default(),

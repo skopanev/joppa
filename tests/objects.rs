@@ -64,6 +64,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
     types.insert(
         "initiative".into(),
         TreeType {
+            question: None,
             index: None,
             references: Default::default(),
             required_fields: Default::default(),
@@ -334,6 +335,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
     types.insert(
         "initiative".into(),
         TreeType {
+            question: None,
             index: None,
             references: Default::default(),
             required_fields: Default::default(),

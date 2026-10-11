@@ -14,6 +14,8 @@ pub struct TreeType {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<u32>,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
     #[serde(default)]
     pub parents: Vec<String>,
     #[serde(default)]
@@ -126,6 +128,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
         (
             kind.into(),
             TreeType {
+                question: None,
                 index: Some(index as u32),
                 references: BTreeMap::new(),
                 required_fields: BTreeMap::new(),
@@ -202,6 +205,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
         types.insert(
             kind.into(),
             TreeType {
+                question: None,
                 index: None,
                 references: BTreeMap::new(),
                 required_fields: BTreeMap::new(),

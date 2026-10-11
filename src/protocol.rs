@@ -36,7 +36,7 @@ pub async fn handle(
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
-            tool("joppa_help", "Get operation shapes, workflow rules, and ASD-STE100 technical writing rules. Read before authoring commands.", json!({}), json!([]))
+            tool("joppa_help", "Get operation shapes and writing rules. Supply workspace to read schema questions. Check that title and description answer the type question before saving.", json!({"workspace":{"type":"string"}}), json!([]))
         ]})),
         "tools/call" => call(pool, actor, msg, embedder)
             .await
@@ -257,9 +257,13 @@ async fn call(
                 .collect::<serde_json::Map<String, Value>>()
                 .into())
         }
-        "joppa_help" => Ok(
-            json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES,"objects":include_str!("../docs/objects.md")}),
-        ),
+        "joppa_help" => {
+            let mut help = json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES,"objects":include_str!("../docs/objects.md")});
+            if a.get("workspace").is_some() {
+                help["tree"] = store::tree_schema(pool, field("workspace")?, actor, None).await?;
+            }
+            Ok(help)
+        }
         _ => anyhow::bail!("unknown tool"),
     }
 }
