@@ -10,6 +10,7 @@ const source=readFileSync(path.join(root,'src/board.js'),'utf8');
 const style=readFileSync(path.join(root,'src/board.css'),'utf8');
 const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',style)
+  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8'))
   .replace('/* BOARD_SCRIPT */',source)
   .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
 

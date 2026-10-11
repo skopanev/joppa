@@ -8,7 +8,7 @@ const assert=require('node:assert/strict');
 const root=path.join(__dirname,'..');
 const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
-  .replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
+  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
 
 const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epic','Epic','group'],
   ['outcome','Outcome','requirement'],['measure','Measure','ac'],['action','Action','task']];

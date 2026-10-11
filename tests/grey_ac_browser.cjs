@@ -147,6 +147,14 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
     assert.equal((await f.page.goto(url.href)).status(), 200);
     await f.page.locator('#workspace-levels #level-entry').waitFor();
     assert.equal(await f.page.locator('h1').innerText(), 'Suggested method');
+    assert.deepEqual(await f.page.locator('.brand-word').evaluateAll(words => words.map(word => {
+      const style = getComputedStyle(word);
+      return {text: word.textContent, font: style.fontFamily, weight: style.fontWeight,
+        size: Math.round(parseFloat(style.fontSize) / parseFloat(getComputedStyle(word.parentElement).fontSize) * 100) / 100,
+        height: parseFloat(style.lineHeight) / parseFloat(style.fontSize), alignment: style.verticalAlign,
+        color: style.color, dot: getComputedStyle(word.firstElementChild).color};
+    })), Array.from({length: 2}, () => ({text: 'joppa.', font: 'Verdana, sans-serif', weight: '400',
+      size: 1.15, height: 1, alignment: 'baseline', color: 'rgb(34, 34, 34)', dot: 'rgb(75, 120, 88)'})));
     assert.equal(await f.page.locator('#default-tree').isVisible(), false);
     assert.deepEqual(await f.page.locator('#workspace-levels h3').allTextContents(), ['Ledgers', 'Entries', 'Observations']);
     for (const [kind, type] of Object.entries(configured)) {
