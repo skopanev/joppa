@@ -99,12 +99,26 @@ Set `required_fields` on any configured type:
 Each entry maps a `data` field to its refusal message.
 Absent fields, nulls, blank text, empty lists and empty maps have no value.
 The numbers and booleans `0` and `false` are valid values.
+Use a rule object to require literal markers in a text field:
+
+```json
+{"required_fields": {"description": {"contains": ["Given:", "When:", "Then:", "Evidence:"], "error": "an ac description needs Given:, When:, Then: and Evidence:"}}}
+```
+
+The value must be text and contain every configured marker.
+The server compares markers with case sensitivity. Their order does not matter.
+The rule checks the text form. An agent checks its meaning.
+The marker list must contain at least one marker. Markers and error text must not be blank.
+The server rejects unknown fields in a rule object.
+The existing string rule keeps its value presence checks.
+For a type with `question`, supply the exact `question_checked` first.
+The server checks that question before it checks required fields.
 The default map is empty. The type name does not select this rule.
 Rules apply to creation and each later document revision, including legacy commands.
 The server rejects a schema if a present object lacks a required value.
 Archived and deleted objects do not block the rule.
 Supply missing values before you enable the rule.
-HTTP returns 422 for an absent required value. MCP returns the configured error.
+HTTP returns 422 if a required field rule fails. MCP returns the configured error.
 Failed writes preserve the journal, revisions and request IDs.
 Historical reads retain the original document and schema revision.
 

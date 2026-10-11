@@ -38,9 +38,29 @@ pub struct TreeType {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub required_fields: BTreeMap<String, String>,
+    pub required_fields: BTreeMap<String, RequiredFieldRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum RequiredFieldRule {
+    Presence(String),
+    Text(TextFieldRule),
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TextFieldRule {
+    pub contains: Vec<String>,
+    pub error: String,
+}
+impl RequiredFieldRule {
+    fn error(&self) -> &str {
+        match self {
+            Self::Presence(error) => error,
+            Self::Text(rule) => &rule.error,
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -538,7 +558,7 @@ fn parent_valid(
     }
     Ok(())
 }
-/// A required document value is absent. HTTP returns 422.
+/// A document value fails a required field rule. HTTP returns 422.
 #[derive(Debug)]
 pub struct RequiredField(pub String);
 impl std::fmt::Display for RequiredField {
@@ -578,16 +598,22 @@ pub fn validate_authoring_questions(w: &Workspace, command: &Command, position: 
 }
 
 fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
-    for (field, error) in &t.required_fields {
-        let present = match data.get(field) {
-            None | Some(Value::Null) => false,
-            Some(Value::String(value)) => !value.trim().is_empty(),
-            Some(Value::Array(value)) => !value.is_empty(),
-            Some(Value::Object(value)) => !value.is_empty(),
-            Some(_) => true,
+    for (field, rule) in &t.required_fields {
+        let valid = match rule {
+            RequiredFieldRule::Presence(_) => match data.get(field) {
+                None | Some(Value::Null) => false,
+                Some(Value::String(value)) => !value.trim().is_empty(),
+                Some(Value::Array(value)) => !value.is_empty(),
+                Some(Value::Object(value)) => !value.is_empty(),
+                Some(_) => true,
+            },
+            RequiredFieldRule::Text(rule) => data
+                .get(field)
+                .and_then(Value::as_str)
+                .is_some_and(|text| rule.contains.iter().all(|marker| text.contains(marker))),
         };
-        if !present {
-            return Err(RequiredField(error.clone()).into());
+        if !valid {
+            return Err(RequiredField(rule.error().to_owned()).into());
         }
     }
     Ok(())
@@ -683,9 +709,18 @@ pub fn set_schema(
                 "reference field conflicts with a document field"
             );
         }
-        for (field, error) in &t.required_fields {
+        for (field, rule) in &t.required_fields {
             commands::identifier(field)?;
-            commands::nonempty(error)?;
+            commands::nonempty(rule.error())?;
+            if let RequiredFieldRule::Text(rule) = rule {
+                ensure!(
+                    !rule.contains.is_empty(),
+                    "a text rule needs at least one marker"
+                );
+                for marker in &rule.contains {
+                    commands::nonempty(marker)?;
+                }
+            }
             ensure!(
                 !process_field(field),
                 "a required field must be a document field"
