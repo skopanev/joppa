@@ -1489,6 +1489,7 @@ pub fn save(
         data,
         links,
         reason,
+        ..
     } = command
     else {
         bail!("save_object required")

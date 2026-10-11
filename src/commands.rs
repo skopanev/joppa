@@ -24,6 +24,8 @@ pub enum Command {
         data: serde_json::Value,
         #[serde(default)]
         links: Vec<crate::objects::ObjectLink>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        question_checked: Option<String>,
         reason: String,
     },
     ArchiveObject {
@@ -745,6 +747,7 @@ pub(crate) fn apply_inner(
             let mut data = r.data.clone();
             data["status"] = serde_json::json!(status);
             let command = Command::SaveObject {
+                question_checked: None,
                 kind: note.kind.clone(),
                 id: note.id.clone(),
                 revision: *revision,

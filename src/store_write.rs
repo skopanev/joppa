@@ -454,6 +454,13 @@ async fn write(
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let command: Command = serde_json::from_value(value)?;
+            if let Command::SaveObject { kind, question_checked, .. } = &command {
+                let schema = crate::objects::schema(&state);
+                if let Some(question) = schema.types.get(kind).and_then(|t| t.question.as_ref())
+                    && question_checked.as_ref() != Some(question) {
+                    return Err(crate::objects::RequiredField(format!("Check that the title and description answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
+                }
+            }
             if let Command::Revise { req, consumers, capability, .. } = &command {
                 ensure!(capability.is_some() || req.contains(':'), "legacy revise requires a Capability; use save_object for a custom tree");
                 if state.schema_migrated {

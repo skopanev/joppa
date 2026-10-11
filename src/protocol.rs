@@ -36,7 +36,7 @@ pub async fn handle(
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
-            tool("joppa_help", "Get operation shapes and writing rules. Supply workspace to read schema questions. Check that title and description answer the type question before saving.", json!({"workspace":{"type":"string"}}), json!([]))
+            tool("joppa_help", "Get operation shapes and writing rules. Read before authoring commands. Supply workspace to read schema questions. Check the title and description, then resend save_object with question_checked equal to the question.", json!({"workspace":{"type":"string"}}), json!([]))
         ]})),
         "tools/call" => call(pool, actor, msg, embedder)
             .await
@@ -64,6 +64,7 @@ fn authoring_command_schema() -> Value {
         "additionalProperties":true,
         "description":"Operation fields depend on op. Read joppa_help.operations. Apply joppa_help.writing to new technical text.",
         "properties":{
+            "question_checked":{"type":"string","description":"For save_object, use the exact configured type question after checking that the title and description answer it. Read joppa_help with workspace first."},
             "revision":{"description":"For save_object, archive_object, restore_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
             "title":text(), "body":text(), "text":text(), "description":text(),
             "reason":text(), "contract":text(), "scope":text(), "value":text(),
