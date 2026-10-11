@@ -199,6 +199,164 @@ fn junit(cases: &[(&str, &str)]) -> String {
     )
 }
 
+async fn ready_for_planning(w: &World) -> Result<Value> {
+    for command in [
+        json!({"op":"confirm","req":"key","revision":1}),
+        json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"Known work scope"}}),
+    ] {
+        let (code, reply) = post(
+            w,
+            &w.owner,
+            "/commands",
+            json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+        )
+        .await?;
+        ensure!(code == 200, "{code} {reply}");
+    }
+    planning_criterion(w).await
+}
+
+async fn planning_criterion(w: &World) -> Result<Value> {
+    Ok(w.http
+        .get(format!("{}/objects?address=ac:key-rights", w.base))
+        .bearer_auth(&w.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+async fn planning_batch(w: &World, operations: Value) -> Result<Value> {
+    let root = w.base.split("/api/").next().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    Ok(w.http.post(format!("{root}/mcp")).bearer_auth(&w.token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_batch","arguments":{
+            "workspace":workspace,"request_id":uuid::Uuid::new_v4().to_string(),"operations":operations}}}))
+        .send().await?.json().await?)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn planning_claim_refuses_junit_green_over_http_and_mcp_without_mutation() -> Result<()> {
+    let w = world().await?;
+    ready_for_planning(&w).await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "JUnit must be green"
+    );
+    let before = planning_criterion(&w).await?;
+    let command =
+        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
+    let (code, reply) = post(
+        &w,
+        &w.token,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+    )
+    .await?;
+    ensure!(
+        code == 409 && reply["error"] == "criterion is already verified",
+        "{code} {reply}"
+    );
+    let root = w.base.split("/api/").next().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{
+            "workspace":workspace,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}}}))
+        .send().await?.json().await?;
+    ensure!(response["result"]["isError"] == true, "{response}");
+    ensure!(
+        response["result"]["content"][0]["text"] == "criterion is already verified",
+        "{response}"
+    );
+    let after = planning_criterion(&w).await?;
+    ensure!(
+        after["document"] == before["document"]
+            && after["process"] == before["process"]
+            && after["position"] == before["position"],
+        "refusal changed the criterion or journal position"
+    );
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    store::check_journal(&pool).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() -> Result<()> {
+    let w = world().await?;
+    ready_for_planning(&w).await?;
+    w.list(&[A]).await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "fail")]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "the stored list must be green"
+    );
+    let before = planning_criterion(&w).await?;
+    let claim =
+        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
+    let reply = planning_batch(&w, json!([
+        {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A,B],"reason":"Include the failing check"}},
+        {"command":claim}
+    ])).await?;
+    ensure!(
+        reply["result"]["isError"] != true && reply.get("error").is_none(),
+        "current red list must permit planning: {reply}"
+    );
+    ensure!(
+        w.status().await?["status"] == "red",
+        "the new list must be red"
+    );
+    ensure!(
+        planning_criterion(&w).await?["process"]["planning_claim"]["actor"] == "agent",
+        "claim missing"
+    );
+    let (code, reply) = post(&w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{
+        "op":"release_planning","ac":"ac:key-rights","reason":"Check the opposite batch transition"}})).await?;
+    ensure!(code == 200, "{code} {reply}");
+    let before = planning_criterion(&w).await?;
+    let status_before = w.status().await?;
+    let claim =
+        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
+    let reply = planning_batch(&w, json!([
+        {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A],"reason":"Use the passing check"}},
+        {"command":claim}
+    ])).await?;
+    ensure!(
+        reply["result"]["isError"] == true
+            && reply["result"]["content"][0]["text"]
+                .as_str()
+                .is_some_and(|error| error.ends_with("criterion is already verified")),
+        "current green list must refuse planning: {reply}"
+    );
+    let after = planning_criterion(&w).await?;
+    ensure!(
+        after["document"] == before["document"]
+            && after["process"] == before["process"]
+            && after["position"] == before["position"],
+        "rejected batch changed the criterion or journal position"
+    );
+    ensure!(
+        w.status().await? == status_before,
+        "rejected batch changed the saved test list"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Result<()> {

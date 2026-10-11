@@ -357,7 +357,7 @@ fn journal_replay_and_serialization_keep_the_planning_claim_and_gate() {
 
 // planning-claim-ac1
 #[test]
-fn readiness_and_verification_guards_preserve_the_criterion() {
+fn readiness_guard_preserves_the_criterion_and_legacy_results_do_not_replace_junit() {
     let mut w = configured();
     let revision = w.state.requirements["spec:one"]
         .revisions
@@ -390,12 +390,12 @@ fn readiness_and_verification_guards_preserve_the_criterion() {
         json!({"op":"finish","req":"spec:one","revision":revision,"run":"checks"}),
     );
     assert_eq!(objects::verification(&w.state, "criterion:a"), "pass");
-    refuse(
-        &mut w,
+    // JUnit status is checked by the transactional store, not by legacy run metadata.
+    w.ok(
         "planner",
         json!({"op":"claim_planning","ac":"criterion:a","revision":object_revision}),
-        "criterion is already verified",
     );
+    assert_eq!(w.state.planning_claims["criterion:a"].actor, "planner");
 }
 
 // planning-claim-ac3

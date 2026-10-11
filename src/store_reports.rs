@@ -179,7 +179,6 @@ pub(super) async fn criterion_test_statuses(
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     let rows = client.query("SELECT o.address,o.title,o.description,a.value::text FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
     let mut criteria = vec![];
-    let mut tests = std::collections::BTreeSet::new();
     for row in rows {
         let saved: Option<AcTests> = row
             .get::<_, Option<String>>(3)
@@ -187,14 +186,42 @@ pub(super) async fn criterion_test_statuses(
             .transpose()?;
         let data =
             json!({"title":row.get::<_,String>(1),"description":row.get::<_,Option<String>>(2)});
-        if let Some(current) = saved.as_ref().and_then(AcTests::current) {
-            tests.extend(current.tests.iter().cloned());
-        }
         criteria.push((row.get::<_, String>(0), data, saved));
     }
+    statuses_for_criteria(client, workspace, criteria).await
+}
+
+/// Use the current transaction's text and test list, including earlier batch writes.
+pub(super) async fn planning_criterion_status(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &crate::model::Workspace,
+    target: &str,
+) -> Result<Value> {
+    let data = state.objects[target].current().data.clone();
+    statuses_for_criteria(
+        client,
+        workspace,
+        vec![(target.to_owned(), data, state.ac_tests.get(target).cloned())],
+    )
+    .await?
+    .remove(target)
+    .context("unknown criterion")
+}
+
+async fn statuses_for_criteria(
+    client: &impl GenericClient,
+    workspace: &str,
+    criteria: Vec<(String, Value, Option<AcTests>)>,
+) -> Result<std::collections::BTreeMap<String, Value>> {
     if criteria.is_empty() {
         return Ok(Default::default());
     }
+    let tests: std::collections::BTreeSet<String> = criteria
+        .iter()
+        .filter_map(|(_, _, saved)| saved.as_ref().and_then(AcTests::current))
+        .flat_map(|current| current.tests.iter().cloned())
+        .collect();
     let reports: Vec<Report> = client
         .query("SELECT id,commit_sha,commit_order,full_run,(extract(epoch FROM received_at)*1000)::bigint FROM joppa.test_reports WHERE workspace=$1 AND default_branch AND NOT dirty", &[&workspace])
         .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_ms:r.get(4) }).collect();

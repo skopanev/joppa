@@ -24,6 +24,28 @@ fn criterion(w: &Workspace, ac: &str) -> Result<String> {
     Ok(key.into())
 }
 
+pub(crate) fn validate_claim(
+    w: &Workspace,
+    actor: &str,
+    ac: &str,
+    revision: u32,
+) -> Result<String> {
+    let key = criterion(w, ac)?;
+    ensure!(
+        !w.planning_claims.contains_key(&key),
+        "criterion is already claimed for planning"
+    );
+    ensure!(
+        !w.planning_claims.values().any(|c| c.actor == actor),
+        "agent already holds a planning claim in this workspace"
+    );
+    ensure!(
+        w.objects[&key].current().revision == revision,
+        "stale object revision; read the object again"
+    );
+    Ok(key)
+}
+
 fn child(w: &Workspace, key: &str, ac: &str) -> bool {
     w.objects.get(key).is_some_and(|o| {
         o.current().present
@@ -114,22 +136,7 @@ pub fn apply(
     }
     let key = criterion(w, ac)?;
     if let Command::ClaimPlanning { revision, .. } = command {
-        ensure!(
-            !w.planning_claims.contains_key(&key),
-            "criterion is already claimed for planning"
-        );
-        ensure!(
-            !w.planning_claims.values().any(|c| c.actor == actor),
-            "agent already holds a planning claim in this workspace"
-        );
-        ensure!(
-            w.objects[&key].current().revision == *revision,
-            "stale object revision; read the object again"
-        );
-        ensure!(
-            objects::verification(w, &key) != "pass",
-            "criterion is already verified"
-        );
+        validate_claim(w, actor, ac, *revision)?;
         ensure!(
             objects::assessment(w, &key).is_some_and(|a| a["state"] == "ready")
                 && objects::readiness_blocker(w, &key, true).is_none()
