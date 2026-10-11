@@ -11,6 +11,7 @@ pub enum Command {
     MigrateTasks {},
     MigrateSchema {},
     MigrateDocuments {},
+    MigrateTaskClaims {},
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
@@ -287,6 +288,10 @@ pub enum Command {
         assignee: Option<String>,
         #[serde(default)]
         contract: String,
+    },
+    HeartbeatTask {
+        revision: u32,
+        id: String,
     },
     ClaimTask {
         #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -573,11 +578,12 @@ pub fn apply(
     position: u64,
     recorded_at: &str,
 ) -> Result<()> {
+    w.claim_time_ms = crate::tasks::parse_time(recorded_at);
     crate::objects::validate_current(w, command)?;
     match command {
         Command::ClaimTask { req, id, .. } => {
             let key = crate::tasks::address(req, id);
-            if crate::tasks::task(w, &key).is_some_and(|t| t.assignee.is_none()) {
+            if crate::tasks::task(w, &key).is_some_and(|t| crate::tasks::holder(w, t).is_none()) {
                 crate::tasks::ensure_agent_available(w, actor)?;
             }
         }
@@ -599,6 +605,7 @@ pub fn apply_replay(
     position: u64,
     recorded_at: &str,
 ) -> Result<()> {
+    w.claim_time_ms = crate::tasks::parse_time(recorded_at);
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);
     Ok(())
@@ -659,6 +666,11 @@ pub(crate) fn apply_inner(
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_schema(w, actor, position, recorded_at)?;
         }
+        Command::MigrateTaskClaims {} => {
+            ensure!(actor == w.admin, "workspace owner required");
+            w.claims_migrated = true;
+        }
+        Command::HeartbeatTask { .. } => anyhow::bail!("unknown Task"),
         Command::MigrateDocuments {} => {
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_documents(w, actor, position, recorded_at)?;

@@ -267,6 +267,20 @@ pub(super) async fn hydrate_command(
     if let (Some(kind), Some(id)) = (command["kind"].as_str(), command["id"].as_str()) {
         addresses.push(format!("{kind}:{id}"));
     }
+    if matches!(
+        command["op"].as_str(),
+        Some(
+            "claim_task"
+                | "release_task"
+                | "complete_task"
+                | "review_task"
+                | "retire_task"
+                | "amend_task"
+        )
+    ) && let Some(id) = command["id"].as_str()
+    {
+        addresses.push(crate::objects::resolve_address(state, id).to_owned());
+    }
     if let Some(target) = command["target"].as_str() {
         addresses.push(crate::objects::resolve_address(state, target).to_owned());
     }
@@ -441,6 +455,24 @@ pub(super) async fn read_requirement(
         let mut tasks = revision.tasks.clone();
         for row in client.query("SELECT p.key,p.value::text FROM joppa.state_entries p JOIN joppa.state_entries c ON c.workspace=p.workspace AND c.section='task_context' AND c.key=p.key WHERE p.workspace=$1 AND p.section='task_process' AND c.value->>0=$2", &[&workspace,&req]).await? {
             tasks.insert(row.get(0),serde_json::from_str(row.get(1))?);
+        }
+        let now: i64 = client
+            .query_one(
+                "SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint",
+                &[],
+            )
+            .await?
+            .get(0);
+        for task in tasks.values_mut() {
+            if task.done.is_none()
+                && task.retired.is_none()
+                && task
+                    .claim
+                    .as_ref()
+                    .is_some_and(|claim| now >= claim.deadline_ms)
+            {
+                task.assignee = None;
+            }
         }
         out["requirement"]["revisions"][0]["tasks"] = json!(tasks);
     }

@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Workspace {
     #[serde(skip)]
+    pub claim_time_ms: Option<i64>,
+    #[serde(default)]
+    pub claims_migrated: bool,
+    #[serde(skip)]
     pub unloaded_objects: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub notes_migrated: bool,
@@ -243,6 +247,8 @@ pub struct Comment {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim: Option<TaskClaim>,
     pub title: String,
     pub acs: Vec<String>,
     pub projects: Vec<String>,
@@ -264,6 +270,12 @@ pub struct Task {
     pub origin_revision: u32,
     #[serde(default)]
     pub retired: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskClaim {
+    pub heartbeat_at_ms: i64,
+    pub deadline_ms: i64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

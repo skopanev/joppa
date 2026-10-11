@@ -314,6 +314,7 @@ pub fn apply(
             r.tasks.insert(
                 id.clone(),
                 Task {
+                    claim: None,
                     title: title.clone(),
                     acs: acs.clone(),
                     projects: projects.clone(),

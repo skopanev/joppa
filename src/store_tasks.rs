@@ -378,6 +378,9 @@ pub(super) fn queue_entries(
         let claim_error = crate::tasks::validate_claim(state, actor, key, t)
             .err()
             .map(|e| e.to_string());
+        let unclaimed_error = crate::tasks::unclaimed_eligibility(state, actor, key, t)
+            .err()
+            .map(|error| error.to_string());
         let status = crate::tasks::status(t);
         let include = match view {
             "available" => claim_error.is_none(),
@@ -398,6 +401,7 @@ pub(super) fn queue_entries(
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
             "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
             "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at,
+            "claim":t.claim,"unclaimed_eligible":unclaimed_error.is_none(),"unclaimed_error":unclaimed_error,
             "origin_revision":t.origin_revision,"verification":crate::objects::verification(state,key),"signal":crate::objects::signal(state,key)
         })));
     }

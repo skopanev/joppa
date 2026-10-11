@@ -70,13 +70,13 @@ pub(super) async fn project(
                 }
                 targets.insert(format!("task:{}", id.rsplit('/').next().unwrap_or(&id)));
             }
-            rows.push(json!({"address":address,"actor":actor,"created_at":created_at,"sort_req":req,"sort_id":id,"status":data["status"],"assignee":data["assignee"],"purpose":data["purpose"],"claimable":data["claimable"],"targets":targets,"subjects":subjects,"data":data}));
+            rows.push(json!({"address":address,"actor":actor,"created_at":created_at,"sort_req":req,"sort_id":id,"status":data["status"],"assignee":data["assignee"],"purpose":data["purpose"],"claimable":data["claimable"],"eligible":data.get("unclaimed_eligible").unwrap_or(&data["claimable"]),"claim_deadline_ms":data["claim"]["deadline_ms"],"targets":targets,"subjects":subjects,"data":data}));
         }
     }
     let selected = selected.map(|s| s.iter().cloned().collect::<Vec<_>>());
     client.execute("DELETE FROM joppa.task_queue WHERE workspace=$1 AND ($2::text[] IS NULL OR address=ANY($2))", &[&workspace,&selected]).await?;
     if !rows.is_empty() {
-        client.execute("INSERT INTO joppa.task_queue(workspace,address,actor,created_at,sort_req,sort_id,status,assignee,purpose,claimable,targets,subjects,data) SELECT $1,x.address,x.actor,x.created_at,x.sort_req,x.sort_id,x.status,x.assignee,x.purpose,x.claimable,x.targets,x.subjects,x.data FROM jsonb_to_recordset($2::text::jsonb) x(address text,actor text,created_at bigint,sort_req text,sort_id text,status text,assignee text,purpose text,claimable boolean,targets text[],subjects text[],data jsonb)", &[&workspace,&json!(rows).to_string()]).await?;
+        client.execute("INSERT INTO joppa.task_queue(workspace,address,actor,created_at,sort_req,sort_id,status,assignee,purpose,claimable,eligible,claim_deadline_ms,targets,subjects,data) SELECT $1,x.address,x.actor,x.created_at,x.sort_req,x.sort_id,x.status,x.assignee,x.purpose,x.claimable,x.eligible,x.claim_deadline_ms,x.targets,x.subjects,x.data FROM jsonb_to_recordset($2::text::jsonb) x(address text,actor text,created_at bigint,sort_req text,sort_id text,status text,assignee text,purpose text,claimable boolean,eligible boolean,claim_deadline_ms bigint,targets text[],subjects text[],data jsonb)", &[&workspace,&json!(rows).to_string()]).await?;
     }
     Ok(())
 }
@@ -106,7 +106,7 @@ pub(super) async fn read(
     purpose: Option<&str>,
     priorities: &[String],
 ) -> Result<Value> {
-    let row=client.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),(first_view->'object_types')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+    let row=client.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),(first_view->'object_types')::text,floor(extract(epoch FROM clock_timestamp())*1000)::bigint FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
     let position: i64 = row.get(0);
     let public: String = row.get(1);
     let mut targets = vec![];
@@ -143,32 +143,56 @@ pub(super) async fn read(
         purpose.is_none_or(|p| !p.trim().is_empty()),
         "task purpose must be nonempty"
     );
-    let offset = if let Some(cursor) = cursor {
-        let (snapshot, offset) = cursor.split_once(':').context("invalid task cursor")?;
+    let server_now: i64 = row.get(3);
+    let (now, offset) = if let Some(cursor) = cursor {
+        let parts: Vec<_> = cursor.split(':').collect();
+        ensure!(parts.len() == 3, "invalid task cursor");
         ensure!(
-            snapshot.parse::<i64>()? == position,
+            parts[0].parse::<i64>()? == position,
             "task queue changed; start again without cursor"
         );
-        offset.parse::<i64>()?
+        let time = parts[1].parse::<i64>()?;
+        ensure!(time > 0 && time <= server_now, "invalid task cursor time");
+        (time, parts[2].parse::<i64>()?)
     } else {
-        0
+        (server_now, 0)
     };
     ensure!(offset >= 0, "invalid task cursor offset");
-    let held = client.query_opt("SELECT address FROM joppa.task_queue WHERE workspace=$1 AND actor=$2 AND assignee=$2 AND status='in_progress' AND EXISTS(SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2 AND value='\"agent\"'::jsonb) ORDER BY created_at,sort_req,sort_id LIMIT 1", &[&workspace,&actor]).await?.map(|r| r.get::<_,String>(0));
-    let filter = "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND $6::text IS NULL) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR $6::text IS NOT NULL)))";
+    let held = client.query_opt("SELECT address FROM joppa.task_queue WHERE workspace=$1 AND actor=$2 AND assignee=$2 AND status='in_progress' AND (claim_deadline_ms IS NULL OR claim_deadline_ms>$3) AND EXISTS(SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2 AND value='\"agent\"'::jsonb) ORDER BY created_at,sort_req,sort_id LIMIT 1", &[&workspace,&actor,&now]).await?.map(|r| r.get::<_,String>(0));
+    let filter = "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND (claimable OR (status='in_progress' AND claim_deadline_ms<=$7 AND eligible)) AND $6::text IS NULL) OR ($5='mine' AND assignee=$2 AND status='in_progress' AND (claim_deadline_ms IS NULL OR claim_deadline_ms>$7)) OR ($5='waiting' AND ((status='open' AND NOT claimable) OR (status='in_progress' AND claim_deadline_ms<=$7 AND NOT eligible) OR ($6::text IS NOT NULL AND (status='open' OR (status='in_progress' AND claim_deadline_ms<=$7))))))";
     let total: i64 = client
         .query_one(
             &format!("SELECT count(*) FROM joppa.task_queue WHERE {filter}"),
-            &[&workspace, &actor, &project, &purpose, &view, &held],
+            &[&workspace, &actor, &project, &purpose, &view, &held, &now],
         )
         .await?
         .get(0);
     ensure!(offset <= total, "invalid task cursor offset");
-    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($7::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($7)+1),created_at,sort_req,sort_id LIMIT $8 OFFSET $9"), &[&workspace,&actor,&project,&purpose,&view,&held,&targets,&(limit as i64),&offset]).await?;
+    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($8::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($8)+1),created_at,sort_req,sort_id LIMIT $9 OFFSET $10"), &[&workspace,&actor,&project,&purpose,&view,&held,&now,&targets,&(limit as i64),&offset]).await?;
     let mut items: Vec<Value> = rows
         .iter()
         .map(|r| serde_json::from_str(r.get(0)))
         .collect::<std::result::Result<_, _>>()?;
+    for item in &mut items {
+        if item["status"] == "in_progress"
+            && item["claim"]["deadline_ms"]
+                .as_i64()
+                .is_some_and(|deadline| now >= deadline)
+        {
+            item["status"] = json!("open");
+            item["assignee"] = Value::Null;
+            item["claimable"] = item["unclaimed_eligible"].clone();
+            item["waiting_reason"] = item["unclaimed_error"].clone();
+            if let Some(signal) = item.get_mut("signal")
+                && signal["label"] == "Task in progress"
+            {
+                signal["label"] = json!("Task open");
+                signal["tone"] = json!("grey");
+            }
+        }
+        item.as_object_mut().unwrap().remove("unclaimed_eligible");
+        item.as_object_mut().unwrap().remove("unclaimed_error");
+    }
     if let Some(held) = held {
         for item in &mut items {
             if item["claimable"] == true {
@@ -178,7 +202,7 @@ pub(super) async fn read(
         }
     }
     let next = (offset + (items.len() as i64) < total)
-        .then(|| format!("{position}:{}", offset + items.len() as i64));
+        .then(|| format!("{position}:{now}:{}", offset + items.len() as i64));
     Ok(
         json!({"workspace":public,"position":position,"view":view,"total":total,"tasks":items,"next_cursor":next}),
     )

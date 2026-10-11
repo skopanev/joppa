@@ -71,6 +71,10 @@ task (legacy creation): req, revision, id, title, acs:[id], projects:[id],
       Process commands below use the full Task address and its own revision.
       Old req arguments remain compatible and use the REQ revision.
 claim_task: revision, id; atomically assign an open Task to the authenticated actor
+      A claim lasts 30 minutes. heartbeat_task renews it.
+heartbeat_task: revision, id; only the current holder can renew an unexpired claim
+      Send it every 5 minutes. The server extends the deadline by 30 minutes.
+      It records the operation without changing the document or context revision.
 amend_task: revision, id, title, contract, projects:[id], reason; correct an
       unfinished Task. The Task owner, assignee or unclaimed creator may amend it.
       Completion history remains readable.
@@ -157,7 +161,13 @@ The filter lists matching criteria across the tree by default. An explicit `pare
 The existing cursor, kind and related-object filters remain available. A workspace change invalidates the cursor.
 Candidates include current object revisions and assessment source revisions. Lists do not load revision bodies or the journal.
 `available` uses the same eligibility rules as `claim_task`: an explicit contract, reviewed parent context, satisfied dependencies and the configured parent gate.
-The Task must have no assignee, completion or retirement. A decision Task requires its designated human owner to claim it.
+The Task must have no active claim, completion or retirement. A claim expires at its deadline.
+The queue then shows open, assignee=null and claimable according to its current readiness and dependencies.
+An expired holder cannot renew or complete that claim. Claim and next check expiry under the workspace lock.
+A later claim changes the document revision. An identical request retry keeps its original result and deadline.
+Old claims without a deadline remain active until their first heartbeat or release.
+The process includes claim.heartbeat_at_ms and claim.deadline_ms as server UTC milliseconds.
+Queue cursors retain their read time until the workspace position changes. A decision Task requires its designated human owner to claim it.
 Under the default AC gate, that owner can claim decision work before the AC becomes ready.
 Task status is `open`, `in_progress` or `done`. Unmet dependencies prevent claim and appear in readiness hints.
 Task completion does not verify an AC or specification. Only verification evidence can make an AC pass.
@@ -388,7 +398,7 @@ Create a Task with `save_object` under any parent permitted by the workspace sch
 Its type must have role `task`. The default type name is `task`.
 Use `id: "task:<local-id>"` or the returned custom type address for process commands.
 Omit `req`. Supply the current Task object `revision`.
-`claim_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
+`claim_task`, `heartbeat_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
 Generic `review_task` takes `reason` and does not take `ac`.
 Queue items report their object `address`, `parent`, `revision` and current status.
 Historical `req` addresses remain accepted and resolve to this same process record.
@@ -434,3 +444,6 @@ python3 scripts/run_checks.py WORKSPACE checks.json --joppa ./client/joppa
 Use the existing `JOPPA_MCP_URL` and private `JOPPA_TOKEN_FILE` settings.
 The adapter reports actual command outcomes. It seals the plan before it starts a command.
 It reports each failure and then finishes the run. No extra test runner is required.
+
+`GET /api/workspaces/:workspace/tasks` reads the same queue as `joppa_tasks`.
+Use view, limit, cursor, project, purpose and comma-separated priorities as query parameters.

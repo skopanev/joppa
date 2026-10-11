@@ -249,7 +249,7 @@ pub async fn read_objects(
         .read_only(true)
         .start()
         .await?;
-    let row=conn.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),COALESCE(state->>'reference_prefix',workspace),(first_view->'object_types')::text FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+    let row=conn.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),COALESCE(state->>'reference_prefix',workspace),(first_view->'object_types')::text,floor(extract(epoch FROM clock_timestamp())*1000)::bigint FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
     let position: i64 = row.get(0);
     let public: String = row.get(1);
     let prefix: String = row.get(2);
@@ -262,6 +262,7 @@ pub async fn read_objects(
             .map(|(kind, _)| kind.clone())
             .collect::<Vec<_>>()
     };
+    let now: i64 = row.get(4);
     let task_kinds = kinds_for("task");
     let criterion_kinds = kinds_for("ac");
     let specification_kinds = kinds_for("requirement");
@@ -369,6 +370,11 @@ pub async fn read_objects(
             }
         }
         let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
+        if n == current as u32 && task_kinds.iter().any(|kind| item["kind"] == kind.as_str()) {
+            let mut process = item["process"].take();
+            crate::tasks::effective_process(&mut process, &mut item["signal"], now);
+            item["process"] = process;
+        }
         let decision = &document["data"]["decision"];
         if decision["outcome"] == "needs_information"
             && let (Some(recipient), Some(text)) =
@@ -519,7 +525,7 @@ pub async fn read_objects(
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
             jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0),
-                'done_verification',jsonb_build_object('pass',COALESCE(w.done_pass,0),'fail',COALESCE(w.done_fail,0),'unverified',COALESCE(w.done_unverified,0)))::text
+                'done_verification',jsonb_build_object('pass',COALESCE(w.done_pass,0),'fail',COALESCE(w.done_fail,0),'unverified',COALESCE(w.done_unverified,0)))::text,CASE WHEN o.kind=ANY($10::text[]) THEN jsonb_build_object('assignee',o.process->'assignee','claim',o.process->'claim','done',o.process->'done','retired',o.process->'retired') ELSE '{{}}'::jsonb END::text
         FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address
@@ -559,7 +565,11 @@ pub async fn read_objects(
         .await?;
     let more = rows.len() > limit;
     let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
-    for item in &mut items {
+    for (item, row) in items.iter_mut().zip(rows.iter()) {
+        if task_kinds.iter().any(|kind| item["kind"] == kind.as_str()) {
+            let mut process: Value = serde_json::from_str(row.get(16))?;
+            crate::tasks::effective_process(&mut process, &mut item["signal"], now);
+        }
         if !item["note_status"].is_null() {
             item["status"] = item["note_status"].clone();
         }

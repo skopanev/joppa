@@ -2694,3 +2694,86 @@ async fn legacy_revision_cannot_bypass_a_configured_type_question() -> Result<()
     );
     Ok(())
 }
+
+#[path = "common/claim_time.rs"]
+mod claim_time;
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn expired_claims_and_heartbeats_agree_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
+    w.command(json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"job:one","revision":1}),
+    )
+    .await?;
+    let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {
+        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?.json().await?;
+        ensure!(reply["result"]["isError"] != true, "{reply}");
+        Ok(serde_json::from_str(
+            reply["result"]["content"][0]["text"].as_str().unwrap(),
+        )?)
+    };
+    read_mcp("joppa_command",json!({"workspace":w.ws,"request_id":"renew","command":{"op":"heartbeat_task","id":"job:one","revision":2}})).await?;
+    let renewed = w.get("address=job:one").await?;
+    ensure!(
+        renewed["current_revision"] == 2 && renewed["process"]["assignee"] == "bot",
+        "{renewed}"
+    );
+    for (age, view, status, holder) in [
+        (1, "mine", "in_progress", json!("bot")),
+        (31, "available", "open", Value::Null),
+    ] {
+        claim_time::age(&w.pool, &w.ws, "job:one", age).await?;
+        let http: Value = w
+            .http
+            .get(format!(
+                "{}/api/workspaces/{}/tasks?view={view}",
+                w.root, w.ws
+            ))
+            .bearer_auth(&w.bot)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let mcp = read_mcp("joppa_tasks", json!({"workspace":w.ws,"view":view})).await?;
+        ensure!(http["tasks"] == mcp["tasks"], "HTTP {http} / MCP {mcp}");
+        ensure!(
+            http["tasks"][0]["status"] == status && http["tasks"][0]["assignee"] == holder,
+            "{http}"
+        );
+        let detail = w.get("address=job:one").await?;
+        ensure!(
+            detail["process"]["status"] == status && detail["process"]["assignee"] == holder,
+            "{detail}"
+        );
+        let list = w.get("kind=job&parent=*").await?;
+        ensure!(
+            list["items"][0]["signal"] == detail["signal"],
+            "list and detail agree"
+        );
+    }
+    let denied = w
+        .http
+        .get(format!("{}/api/workspaces/{}/tasks", w.root, w.ws))
+        .bearer_auth(&w.eve)
+        .send()
+        .await?;
+    ensure!(
+        denied.status() == reqwest::StatusCode::NOT_FOUND,
+        "queue membership required"
+    );
+    let resumed = read_mcp(
+        "joppa_command",
+        json!({"workspace":w.ws,"request_id":"resume","command":{"op":"claim_next_task"}}),
+    )
+    .await?;
+    ensure!(resumed["command"]["id"] == "job:one", "{resumed}");
+    Ok(())
+}

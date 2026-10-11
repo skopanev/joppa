@@ -24,6 +24,55 @@ pub fn task<'a>(w: &'a Workspace, key: &str) -> Option<&'a Task> {
     })
 }
 
+pub const CLAIM_DURATION_MS: i64 = 30 * 60 * 1000;
+
+pub(crate) fn parse_time(at: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .or_else(|_| chrono::DateTime::parse_from_str(at, "%Y-%m-%d %H:%M:%S%.f%#z"))
+        .ok()
+        .map(|time| time.timestamp_millis())
+}
+
+pub(crate) fn expired(w: &Workspace, t: &Task) -> bool {
+    t.done.is_none()
+        && t.retired.is_none()
+        && t.claim
+            .as_ref()
+            .is_some_and(|claim| w.claim_time_ms.is_some_and(|now| now >= claim.deadline_ms))
+}
+
+pub(crate) fn holder<'a>(w: &Workspace, t: &'a Task) -> Option<&'a str> {
+    if expired(w, t) {
+        None
+    } else {
+        t.assignee.as_deref()
+    }
+}
+
+pub(crate) fn unclaimed_eligibility(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
+    let mut open = t.clone();
+    open.assignee = None;
+    open.claim = None;
+    validate_claim(w, actor, key, &open)
+}
+
+pub(crate) fn effective_process(process: &mut Value, signal: &mut Value, now: i64) {
+    if process["done"].is_null()
+        && process["retired"].is_null()
+        && process["claim"]["deadline_ms"]
+            .as_i64()
+            .is_some_and(|deadline| now >= deadline)
+        && process["assignee"].is_string()
+    {
+        process["assignee"] = Value::Null;
+        process["status"] = json!("open");
+        if signal["label"] == "Task in progress" {
+            signal["label"] = json!("Task open");
+            signal["tone"] = json!("grey");
+        }
+    }
+}
+
 pub fn status(t: &Task) -> &'static str {
     if t.retired.is_some() {
         "retired"
@@ -133,8 +182,7 @@ pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str) -> Result<()> {
     if w.members.get(actor).is_none_or(|role| role != "agent") {
         return Ok(());
     }
-    let active =
-        |t: &Task| t.assignee.as_deref() == Some(actor) && t.done.is_none() && t.retired.is_none();
+    let active = |t: &Task| holder(w, t) == Some(actor) && t.done.is_none() && t.retired.is_none();
     if let Some((key, _)) = w
         .task_process
         .iter()
@@ -166,7 +214,7 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
         w.members.contains_key(actor),
         "claimant is not a workspace member"
     );
-    ensure!(t.assignee.is_none(), "task is already claimed");
+    ensure!(holder(w, t).is_none(), "task is already claimed");
     ensure!(t.done.is_none(), "task is already completed");
     ensure!(t.retired.is_none(), "task is retired");
     ensure!(
@@ -329,6 +377,7 @@ pub fn save(
         );
     }
     let mut t = task(w, key).cloned().unwrap_or_else(|| Task {
+        claim: None,
         title: String::new(),
         acs: vec![],
         projects: vec![],
@@ -349,8 +398,8 @@ pub fn save(
         );
         ensure!(
             old.current().data["owner"] == actor
-                || t.assignee.as_deref() == Some(actor)
-                || t.assignee.is_none() && t.created_by == actor
+                || holder(w, &t) == Some(actor)
+                || holder(w, &t).is_none() && t.created_by == actor
                 || actor == w.admin,
             "Task owner, assignee or unclaimed creator required"
         );
@@ -402,6 +451,7 @@ pub fn apply(
     at: &str,
 ) -> Result<bool> {
     let (req, revision, id) = match cmd {
+        Command::HeartbeatTask { revision, id } => (&String::new(), *revision, id),
         Command::ClaimTask { req, revision, id }
         | Command::AmendTask {
             req, revision, id, ..
@@ -434,7 +484,7 @@ pub fn apply(
     // A lost race names the claim, not the revision that the claim moved.
     if matches!(cmd, Command::ClaimTask { .. }) {
         ensure!(
-            w.task_process[&key].assignee.is_none(),
+            holder(w, &w.task_process[&key]).is_none(),
             "task is already claimed"
         );
     }
@@ -447,10 +497,35 @@ pub fn apply(
         .context("Task needs an owner")?;
     let mut t = w.task_process[&key].clone();
     let authority = owner == actor || actor == w.admin;
+    if expired(w, &t) {
+        t.assignee = None;
+    }
     let reason = match cmd {
+        Command::HeartbeatTask { .. } => {
+            ensure!(
+                t.assignee.as_deref() == Some(actor) && t.done.is_none() && t.retired.is_none(),
+                "only the holder can renew an unexpired claim"
+            );
+            let now = w.claim_time_ms.context("server claim time is missing")?;
+            t.claim = Some(crate::model::TaskClaim {
+                heartbeat_at_ms: now,
+                deadline_ms: now + CLAIM_DURATION_MS,
+            });
+            w.task_process.insert(key, t);
+            return Ok(true);
+        }
         Command::ClaimTask { .. } => {
             validate_claim(w, actor, &key, &t)?;
             t.assignee = Some(actor.into());
+            t.claim = if w.claims_migrated {
+                let now = w.claim_time_ms.context("server claim time is missing")?;
+                Some(crate::model::TaskClaim {
+                    heartbeat_at_ms: now,
+                    deadline_ms: now + CLAIM_DURATION_MS,
+                })
+            } else {
+                None
+            };
             "Task claimed"
         }
         Command::ReleaseTask { reason, .. } => {
@@ -464,6 +539,7 @@ pub fn apply(
                 "Task is not claimed unfinished work"
             );
             t.assignee = None;
+            t.claim = None;
             reason
         }
         Command::CompleteTask { evidence, .. } => {
@@ -515,6 +591,7 @@ pub fn apply(
                 );
             }
             t.done = Some(evidence.clone());
+            t.claim = None;
             "Task completed"
         }
         Command::AmendTask {
@@ -571,6 +648,7 @@ pub fn apply(
             );
             t.review_required = false;
             t.retired = Some(reason.clone());
+            t.claim = None;
             reason
         }
         _ => unreachable!(),

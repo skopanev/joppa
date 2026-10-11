@@ -449,6 +449,9 @@ async fn write(
             }
             let mut value = resolve(&operation.command, &refs)?;
             generate(&mut value)?;
+            if value["op"] == "claim_next_task" {
+                state.claim_time_ms = Some(tx.query_one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint", &[]).await?.get(0));
+            }
             resolve_task(&mut value, &state)?;
             resolve_claim_next(&mut value, &state, actor)?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
@@ -478,7 +481,7 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

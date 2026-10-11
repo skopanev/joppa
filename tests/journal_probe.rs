@@ -527,3 +527,83 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
     }
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
+async fn heartbeat_reads_current_rows_and_keeps_documents_and_test_evidence() -> anyhow::Result<()>
+{
+    let (pool, ws) = fixture().await?;
+    let current = store::tree_schema(&pool, &ws, "owner", None).await?;
+    let mut types = current["schema"]["types"].clone();
+    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    store::execute_remote_input(&pool,&ws,"owner","jobs",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Configured work"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation","body":"Detailed context ".repeat(100_000)},"reason":"Create work"})).await?;
+    store::execute_remote_input(
+        &pool,
+        &ws,
+        "agent",
+        "claim",
+        &json!({"op":"claim_task","id":"job:one","revision":1}),
+    )
+    .await?;
+    let before = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    let snapshot = |pool: Pool, ws: String| async move {
+        let client = pool.get().await?;
+        let rows=client.query("SELECT section,key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section IN ('task_context','ac_tests','requirements') ORDER BY section,key", &[&ws]).await?;
+        Ok::<_, anyhow::Error>(
+            rows.iter()
+                .map(|row| {
+                    (
+                        row.get::<_, String>(0),
+                        row.get::<_, String>(1),
+                        row.get::<_, String>(2),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    let evidence = snapshot(pool.clone(), ws.clone()).await?;
+    reset(&pool).await?;
+    store::execute_remote_input(
+        &pool,
+        &ws,
+        "agent",
+        "heartbeat",
+        &json!({"op":"heartbeat_task","id":"job:one","revision":2}),
+    )
+    .await?;
+    store::task_queue(&pool, &ws, "agent", "mine", 10, None).await?;
+    let probe = journal_selects(&pool).await?;
+    anyhow::ensure!(
+        probe["calls"] == 0,
+        "heartbeat and queue must not select the journal: {probe}"
+    );
+    let after = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    anyhow::ensure!(
+        before["document"] == after["document"],
+        "heartbeat keeps the full document"
+    );
+    anyhow::ensure!(
+        evidence == snapshot(pool.clone(), ws.clone()).await?,
+        "heartbeat keeps context and evidence"
+    );
+    Ok(())
+}

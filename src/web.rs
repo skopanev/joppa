@@ -280,6 +280,42 @@ async fn objects(
         .await,
     )
 }
+#[derive(Deserialize)]
+struct TaskQuery {
+    view: Option<String>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    project: Option<String>,
+    purpose: Option<String>,
+    priorities: Option<String>,
+}
+async fn tasks(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(query): Query<TaskQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    let priorities = query
+        .priorities
+        .as_deref()
+        .map(|text| text.split(',').map(str::to_owned).collect::<Vec<_>>())
+        .unwrap_or_default();
+    result(
+        store::task_queue_filtered(
+            &app.pool,
+            &workspace,
+            &actor,
+            query.view.as_deref().unwrap_or("available"),
+            query.limit.unwrap_or(50),
+            query.cursor.as_deref(),
+            query.project.as_deref(),
+            query.purpose.as_deref(),
+            &priorities,
+        )
+        .await,
+    )
+}
 async fn tree_schema(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -644,6 +680,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
+        .route("/api/workspaces/{workspace}/tasks", get(tasks))
         .route("/api/workspaces/{workspace}/tree", get(tree_schema))
         .route(
             "/api/workspaces/{workspace}/reports",

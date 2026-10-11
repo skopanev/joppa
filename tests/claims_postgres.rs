@@ -292,3 +292,333 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
     ensure!(next["command"]["id"] == held, "{next}");
     Ok(())
 }
+
+#[path = "common/claim_time.rs"]
+mod claim_time;
+
+async fn heartbeat_fixture() -> Result<(deadpool_postgres::Pool, String)> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let db: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    ensure!(
+        db.starts_with("joppa_test"),
+        "isolated test database required"
+    );
+    store::migrate(&pool).await?;
+    let ws = format!("heartbeat-{}", uuid::Uuid::new_v4().simple());
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "workspace",
+        &json!({"op":"workspace","title":"Heartbeat"}),
+    )
+    .await?;
+    for actor in ["bot", "other"] {
+        store::execute_input(
+            &pool,
+            &ws,
+            "owner",
+            actor,
+            &json!({"op":"member","id":actor,"role":"agent"}),
+        )
+        .await?;
+    }
+    let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
+    store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":{"job":{"title":"Jobs","role":"task","root":true,"parents":["*"]}},"reason":"Use a configured work type"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","contract":"Implement and check the behavior","purpose":"implementation"},"reason":"Create work"})).await?;
+    store::execute_remote_input(
+        &pool,
+        &ws,
+        "bot",
+        "claim",
+        &json!({"op":"claim_task","id":"job:one","revision":1}),
+    )
+    .await?;
+    Ok((pool, ws))
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_expired_claim_returns_a_configured_task_to_the_queue() -> Result<()> {
+    // heartbeat-return-ac1
+    let (pool, ws) = heartbeat_fixture().await?;
+    claim_time::age(&pool, &ws, "job:one", 31).await?;
+    let queue = store::task_queue(&pool, &ws, "bot", "available", 10, None).await?;
+    ensure!(
+        queue["tasks"][0]["status"] == "open"
+            && queue["tasks"][0]["assignee"].is_null()
+            && queue["tasks"][0]["claimable"] == true,
+        "{queue}"
+    );
+    ensure!(
+        store::task_queue(&pool, &ws, "bot", "mine", 10, None).await?["total"] == 0,
+        "expired hold is not mine"
+    );
+    for command in [
+        json!({"op":"heartbeat_task","id":"job:one","revision":2}),
+        json!({"op":"complete_task","id":"job:one","revision":2,"evidence":"Old claim"}),
+    ] {
+        ensure!(
+            store::execute_remote_input(
+                &pool,
+                &ws,
+                "bot",
+                &uuid::Uuid::new_v4().to_string(),
+                &command
+            )
+            .await
+            .is_err(),
+            "expired holder must fail"
+        );
+    }
+    let claim = json!({"op":"claim_task","id":"job:one","revision":2});
+    let (a, b) = tokio::join!(
+        store::execute_remote_input(&pool, &ws, "bot", "race-a", &claim),
+        store::execute_remote_input(&pool, &ws, "other", "race-b", &claim)
+    );
+    ensure!(
+        a.is_ok() != b.is_ok(),
+        "exactly one claim must win: {a:?} {b:?}"
+    );
+    let object = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    ensure!(
+        object["current_revision"] == 3 && object["process"]["status"] == "in_progress",
+        "{object}"
+    );
+    let client = pool.get().await?;
+    let count: i64 = client
+        .query_one(
+            "SELECT count(*) FROM joppa.object_revisions WHERE workspace=$1 AND address='job:one'",
+            &[&ws],
+        )
+        .await?
+        .get(0);
+    ensure!(count == 3, "claim history remains");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn heartbeats_keep_a_claim_after_its_initial_deadline() -> Result<()> {
+    // heartbeat-return-ac2
+    let (pool, ws) = heartbeat_fixture().await?;
+    let initial = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    for minute in (5..=30).step_by(5) {
+        claim_time::age(&pool, &ws, "job:one", 5).await?;
+        let heartbeat = json!({"op":"heartbeat_task","id":"job:one","revision":2});
+        let request = format!("heartbeat-{minute}");
+        let accepted = store::execute_remote_input(&pool, &ws, "bot", &request, &heartbeat).await?;
+        let replayed = store::execute_remote_input(&pool, &ws, "bot", &request, &heartbeat).await?;
+        ensure!(
+            replayed["replayed"] == true && accepted["position"] == replayed["position"],
+            "retry remains idempotent"
+        );
+        let current = store::read_objects(
+            &pool,
+            &ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some("job:one"),
+                ..Default::default()
+            },
+        )
+        .await?;
+        ensure!(
+            current["document"] == initial["document"]
+                && current["process"]["origin_revision"] == initial["process"]["origin_revision"],
+            "heartbeat preserves document and context: {current}"
+        );
+        ensure!(
+            current["process"]["claim"]["deadline_ms"].as_i64().unwrap()
+                - current["process"]["claim"]["heartbeat_at_ms"]
+                    .as_i64()
+                    .unwrap()
+                == 30 * 60_000,
+            "renew for 30 minutes"
+        );
+    }
+    claim_time::age(&pool, &ws, "job:one", 1).await?;
+    let queue = store::task_queue(&pool, &ws, "bot", "mine", 10, None).await?;
+    ensure!(
+        queue["tasks"][0]["status"] == "in_progress" && queue["tasks"][0]["assignee"] == "bot",
+        "{queue}"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "other",
+            "steal",
+            &json!({"op":"claim_task","id":"job:one","revision":2})
+        )
+        .await
+        .is_err(),
+        "another agent cannot claim"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "other",
+            "heartbeat-other",
+            &json!({"op":"heartbeat_task","id":"job:one","revision":2})
+        )
+        .await
+        .is_err(),
+        "another agent cannot renew"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "bot",
+            "heartbeat-stale",
+            &json!({"op":"heartbeat_task","id":"job:one","revision":1})
+        )
+        .await
+        .is_err(),
+        "stale revision cannot renew"
+    );
+    store::execute_remote_input(&pool,&ws,"bot","done",&json!({"op":"complete_task","id":"job:one","revision":2,"evidence":"Implemented and checked"})).await?;
+    let done = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    ensure!(
+        done["process"]["claim"].is_null(),
+        "completed work has no active deadline"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "bot",
+            "heartbeat-done",
+            &json!({"op":"heartbeat_task","id":"job:one","revision":3})
+        )
+        .await
+        .is_err(),
+        "completed work cannot renew"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn expiry_keeps_dependencies_and_cannot_restore_an_old_holder() -> Result<()> {
+    let (pool, ws) = heartbeat_fixture().await?;
+    store::execute_remote_input(&pool,&ws,"owner","dependency",&json!({"op":"save_object","kind":"job","id":"dependency","revision":0,"parent":null,"data":{"title":"Prerequisite","owner":"owner","contract":"Deliver the prerequisite","purpose":"implementation"},"reason":"Create dependency"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","link",&json!({"op":"save_object","kind":"job","id":"one","revision":2,"parent":null,"data":{"title":"Implement the contract","owner":"owner","contract":"Implement and check the behavior","purpose":"implementation"},"links":[{"target":"job:dependency","relation":"depends_on","blocking":true,"revision":1}],"reason":"Work requires the prerequisite"})).await?;
+    claim_time::age(&pool, &ws, "job:one", 31).await?;
+    let waiting = store::task_queue(&pool, &ws, "bot", "waiting", 10, None).await?;
+    ensure!(
+        waiting["tasks"][0]["address"] == "job:one"
+            && waiting["tasks"][0]["claimable"] == false
+            && waiting["tasks"][0]["assignee"].is_null(),
+        "{waiting}"
+    );
+    ensure!(
+        waiting["tasks"][0]["signal"]["tone"] == "purple",
+        "keep the dependency signal"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "bot",
+            "blocked-claim",
+            &json!({"op":"claim_task","id":"job:one","revision":3})
+        )
+        .await
+        .is_err(),
+        "expiry cannot bypass a dependency"
+    );
+    store::execute_remote_input(
+        &pool,
+        &ws,
+        "owner",
+        "retire",
+        &json!({"op":"retire_task","id":"job:one","revision":3,"reason":"Retire work"}),
+    )
+    .await?;
+    let retired = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("job:one"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    ensure!(
+        retired["process"]["status"] == "retired" && retired["process"]["claim"].is_null(),
+        "{retired}"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "bot",
+            "heartbeat-retired",
+            &json!({"op":"heartbeat_task","id":"job:one","revision":4})
+        )
+        .await
+        .is_err(),
+        "retired work cannot renew"
+    );
+    let (pool, ws) = heartbeat_fixture().await?;
+    claim_time::age(&pool, &ws, "job:one", 31).await?;
+    let heartbeat = json!({"op":"heartbeat_task","id":"job:one","revision":2});
+    let claim = json!({"op":"claim_task","id":"job:one","revision":2});
+    let (renew, reclaim) = tokio::join!(
+        store::execute_remote_input(&pool, &ws, "bot", "late-heartbeat", &heartbeat),
+        store::execute_remote_input(&pool, &ws, "other", "reclaim", &claim)
+    );
+    ensure!(
+        renew.is_err() && reclaim.is_ok(),
+        "an expired heartbeat cannot restore the holder: {renew:?} {reclaim:?}"
+    );
+    ensure!(
+        store::execute_remote_input(
+            &pool,
+            &ws,
+            "bot",
+            "old-holder",
+            &json!({"op":"heartbeat_task","id":"job:one","revision":3})
+        )
+        .await
+        .is_err(),
+        "old holder cannot renew with a fresh revision"
+    );
+    Ok(())
+}

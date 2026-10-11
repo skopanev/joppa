@@ -1253,6 +1253,7 @@ pub(crate) fn process_field(field: &str) -> bool {
             | "acs"
             | "tasks"
             | "assignee"
+            | "claim"
             | "done"
             | "retired"
             | "review_required"
@@ -1975,7 +1976,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         Command::MigrateNotes {}
         | Command::MigrateTasks {}
         | Command::MigrateSchema {}
-        | Command::MigrateDocuments {} => {
+        | Command::MigrateDocuments {}
+        | Command::MigrateTaskClaims {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }
