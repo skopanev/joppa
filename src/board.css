@@ -1,11 +1,27 @@
 /* Joppa board. Plain text on a warm page, after kopanev.me (Bear Blog).
    No cards, shadows or tinted surfaces: rows, dashed rules and small caps. */
 :root{
+  color-scheme:light;
   --width:1100px;
   --bg:#fffcf5;--text:#444;--heading:#222;--muted:#8a8478;--rule:#d9d3c7;
   --link:#0062ff;--visited:#8b6fcb;--code-bg:#eee;
+  --hover:#f5efe2;--selected:#faf6ec;--control-hover:#fff;--pass:#2d6c3c;--fail:#a13935;
   --line:var(--rule);--accent:var(--link);
   font:14px/1.6 Verdana,sans-serif;color:var(--text);background:var(--bg);font-synthesis:none;
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#191c20;--text:#d6d8dc;--heading:#f1f2f4;--muted:#a5a9b0;--rule:#444951;
+  --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;
+  --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
+}
+@media(prefers-color-scheme:dark){
+  :root[data-theme=system]{
+    color-scheme:dark;
+    --bg:#191c20;--text:#d6d8dc;--heading:#f1f2f4;--muted:#a5a9b0;--rule:#444951;
+    --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;
+    --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
+  }
 }
 html{overflow-y:scroll;scrollbar-gutter:stable}
 *{box-sizing:border-box}
@@ -34,7 +50,7 @@ summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}
 summary:focus-visible:before{outline:1px dashed var(--heading);outline-offset:2px}
 .common-object>summary:focus-visible>.node-title{text-decoration:underline dashed;text-underline-offset:4px}
-.common-object>summary:hover>.node-title{color:#000}
+.common-object>summary:hover>.node-title{color:var(--heading)}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
 input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
 textarea{min-height:88px;resize:vertical}
@@ -68,7 +84,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .login-brand{font-size:2em;color:var(--heading);letter-spacing:-.02em;line-height:1.2}
 #login-title{font-size:1em;color:var(--text);margin:2em 0 .8em}#login-title>span{color:inherit}
 #login-button{display:inline-flex;align-items:center;gap:.7em;padding:.6em 1em;border:1px solid var(--text);color:var(--heading);text-decoration:none}
-#login-button:hover{background:#fff}
+#login-button:hover{background:var(--control-hover)}
 .login-arrow{color:var(--muted)}
 #login-status{font-size:.8em;color:var(--muted);min-height:1.6em;margin:1em 0 0;white-space:normal}
 #login-status[data-error=true]{color:#a64438}
@@ -86,6 +102,13 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .help-link{color:var(--link)}
 #refresh{display:none}
 #identity{color:var(--muted)}
+#identity:focus-visible{outline:1px dashed var(--heading);outline-offset:3px}
+#account-menu{position:relative}
+.account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
+#account-menu:not([open])>.account-options{display:none}
+.account-options label{margin:0;font-size:inherit}
+.account-options select{font-size:16px}
+.account-options #logout{display:block;margin-top:1rem;padding:.4rem 0}
 #logout{font-size:inherit;color:var(--muted)}
 .build-version{font:11px/1 ui-monospace,monospace;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
 .login-content>.build-version{margin-top:2.4em}
@@ -121,8 +144,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 /* One row per object. The chevron opens it; children indent under a rule. */
 .common-object{--row-gap:.75rem;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
 .common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
-.common-object>summary:hover{background:#f5efe2}
-.common-object[open]>summary{background:#faf6ec}.common-object[open]>summary:hover{background:#f5efe2}
+.common-object>summary:hover{background:var(--hover)}
+.common-object[open]>summary{background:var(--selected)}.common-object[open]>summary:hover{background:var(--hover)}
 /* Наведение на раскрытую строку проявляет линию её детей. */
 .object-children{transition:border-color .12s}
 .common-object:has(>summary:hover)>.object-body>.object-children{border-left-color:var(--muted);border-left-style:solid}
@@ -141,8 +164,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:var(--object-color,var(--muted));text-decoration:none;cursor:help}
 .common-object>summary>.type-badge{min-width:2.8rem;text-align:left}
-:not(.object-children)>.common-object>summary>.type-badge{visibility:hidden}
 .type-badge:focus-visible{outline:1px dashed var(--object-color,var(--heading));outline-offset:3px}
+.type-question{position:fixed;inset:auto;margin:0;max-width:min(420px,calc(100vw - 16px));max-height:calc(100svh - 16px);overflow:auto;padding:.7rem 1rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font-size:.9rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
 .common-object .item-actions>button:hover{color:var(--link)}
@@ -195,12 +218,12 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .status-circle.numbered{width:auto;height:auto;background:none;border-radius:0;color:var(--signal);font-size:.8em;vertical-align:baseline}
 .status-hint{position:fixed;z-index:10000;pointer-events:none;max-width:min(300px,calc(100vw - 16px));padding:.5em .7em;background:var(--heading);color:var(--bg);font-size:.75em;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
 .waiting{--status-ink:#865611}.available{--status-ink:#35643e}.progress{--status-ink:#2a6297}
-.ready{--status-ink:#196b70}.pass{--status-ink:#2d6c3c}.fail{--status-ink:#a13935}
+.ready{--status-ink:#196b70}.pass{--status-ink:var(--pass)}.fail{--status-ink:var(--fail)}
 .verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .node-title>.status-circle{vertical-align:middle}
 .common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
-.verification-chip.has-failures{color:#a13935}
-.verification-chip.has-passes{color:#2d6c3c}
+.verification-chip.has-failures{color:var(--fail)}
+.verification-chip.has-passes{color:var(--pass)}
 .ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
 .ac-check{padding:.3em 0}
 .ac-check-heading{display:flex;align-items:baseline;margin:0;font-size:.85em;color:var(--heading)}
@@ -227,7 +250,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 
 .copy .agent-face{display:none}
 .copy .copy-check{display:none}.copy.copied .copy-symbol{display:none}.copy.copied .copy-check{display:inline-block}
-.copy.copied{color:#2d6c3c}
+.copy.copied{color:var(--pass)}
 
 /* Dialogs are plain sheets. */
 dialog{width:min(680px,calc(100% - 32px));max-height:85vh;padding:0;border:1px solid var(--text);border-radius:0;background:var(--bg);color:var(--text)}
@@ -268,16 +291,14 @@ dialog::backdrop{background:#22222240}
   body{padding:16px}
   .workspace-label{max-width:none}
   .header-actions{margin-left:0;width:100%}
-  #identity{display:none}
   .filter-fields{grid-template-columns:minmax(0,1fr)}
   .common-object>summary{flex-wrap:wrap;row-gap:.15em}
   .common-object>summary>.node-title{flex:1 1 100%}
-  /* Вторая строка начинается под текстом заголовка. Метка верхнего уровня скрыта, поэтому отступ берёт следующий элемент. */
+  /* Align the second row with the title text. */
   .common-object>summary{--second-line:calc(8px + var(--row-gap))}
-  :not(.object-children)>.common-object>summary>.type-badge,.common-object>summary>.count-slot{display:none}
+  .common-object>summary>.count-slot{display:none}
   .common-object>summary>.verification-chip{min-width:0}
-  .common-object>summary>.node-title+.type-badge,
-  :not(.object-children)>.common-object>summary>.node-title+.type-badge+*{margin-left:var(--second-line)}
+  .common-object>summary>.node-title+.type-badge{margin-left:var(--second-line)}
   .object-children{padding-left:.8rem}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }

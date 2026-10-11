@@ -90,6 +90,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
     const [kind, id] = address.split(':');
     const value = {op: 'save_object', kind, id, revision, parent: record.parent || null,
       data: {title: record.title, owner: 'owner', body: record.body || 'Current source'}, reason: 'Define the browser fixture'};
+    if (configured[kind]?.question) value.question_checked = configured[kind].question;
     return useMcp ? mcp('joppa_command', {request_id: crypto.randomUUID(), command: value}) : command(value);
   };
   const upload = (commit, order, cases, full = true) => {
@@ -130,6 +131,101 @@ const criterionRecords = {
 };
 
 describe('tests/grey_ac_browser.cjs', () => {
+test('type-question: the schema question opens from each type badge', async () => {
+  const question = 'Which observation does this record preserve?';
+  const configured = {record: {title: 'Records', role: 'document', root: true, parents: ['record'], badge: 'REC', question}};
+  const f = await fixture({'record:root': {title: 'Source'}, 'record:child': {title: 'Detail', parent: 'record:root'}}, configured);
+  try {
+    const card = await f.open('record:root');
+    const child = card.locator('.common-object[data-object-address="record:child"]');
+    await child.waitFor();
+    const badge = child.locator(':scope > summary > .type-badge');
+    assert.equal(await badge.getAttribute('title'), 'Records\n' + question);
+    await badge.hover();
+    assert.equal(await f.page.locator('.status-hint').innerText(), 'Records\n' + question);
+    await badge.click();
+    const panel = f.page.locator('.type-question:popover-open');
+    await panel.waitFor();
+    assert.equal(await panel.innerText(), question);
+    assert.equal(await badge.getAttribute('aria-expanded'), 'true');
+    assert.equal(await child.getAttribute('open'), null);
+    await f.page.keyboard.press('Escape');
+    await f.page.waitForFunction(() => !document.querySelector('.type-question:popover-open'));
+    await badge.focus();
+    await f.page.keyboard.press('Enter');
+    await panel.waitFor();
+    await badge.click();
+    await f.page.waitForFunction(() => !document.querySelector('.type-question:popover-open'));
+    await f.page.setViewportSize({width: 390, height: 844});
+    const rootBadge = card.locator(':scope > summary > .type-badge');
+    await rootBadge.click();
+    await panel.waitFor();
+    assert.equal(await panel.innerText(), question);
+    const box = await panel.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 390 && box.y >= 0 && box.y + box.height <= 844);
+  } finally { await f.close(); }
+});
+
+test('theme: the saved choice overrides or follows the system theme', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}}, types, {colorScheme: 'dark'});
+  const background = () => f.page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const choose = async value => {
+    await f.page.locator('#identity').click();
+    await f.page.locator('#theme').selectOption(value);
+    await f.page.locator('#identity').click();
+  };
+  try {
+    await f.open('domain:d');
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    await choose('light');
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    await f.page.reload();
+    await f.page.locator('body.authenticated').waitFor();
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await f.page.locator('#theme').inputValue(), 'light');
+    await choose('dark');
+    await f.page.emulateMedia({colorScheme: 'light'});
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    await f.page.reload();
+    await f.page.locator('body.authenticated').waitFor();
+    assert.equal(await f.page.locator('#theme').inputValue(), 'dark');
+    await choose('system');
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    await f.page.emulateMedia({colorScheme: 'dark'});
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    await f.page.reload();
+    await f.page.locator('body.authenticated').waitFor();
+    assert.equal(await f.page.locator('#theme').inputValue(), 'system');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('joppa-theme')), 'system');
+  } finally { await f.close(); }
+});
+
+test('account-menu: sign out requires the user menu and ends the real session', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    await f.open('domain:d');
+    assert.equal(await f.page.locator('#logout').isVisible(), false);
+    await f.page.locator('#identity').focus();
+    await f.page.keyboard.press('Enter');
+    assert.equal(await f.page.locator('#logout').isVisible(), true);
+    await f.page.keyboard.press('Escape');
+    assert.equal(await f.page.locator('#logout').isVisible(), false);
+    await f.page.locator('#identity').click();
+    await f.page.locator('.brand').click();
+    assert.equal(await f.page.locator('#logout').isVisible(), false);
+    await f.page.setViewportSize({width: 390, height: 844});
+    await f.page.locator('#identity').click();
+    const menu = await f.page.locator('.account-options').boundingBox();
+    assert.ok(menu.x >= 0 && menu.x + menu.width <= 390);
+    const logout = f.page.waitForResponse(r => new URL(r.url()).pathname === '/auth/logout');
+    await f.page.locator('#logout').click();
+    assert.equal((await logout).status(), 200);
+    await f.page.locator('#login-button').waitFor({state: 'visible'});
+    assert.equal(await f.page.locator('.app-header').isVisible(), false);
+    assert.ok(!(await f.page.context().cookies()).some(cookie => cookie.name === 'joppa_session'));
+  } finally { await f.close(); }
+});
+
 test('direct-child-counts: each row uses the shared next-level count', async () => {
   const configured = {
     bundle: {title: 'Bundles', role: 'group', root: true, parents: []},

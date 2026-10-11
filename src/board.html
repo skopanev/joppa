@@ -3,6 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#fffcf5">
+<script>
+try{const theme=localStorage.getItem('joppa-theme');document.documentElement.dataset.theme=['light','dark','system'].includes(theme)?theme:'system';}
+catch{document.documentElement.dataset.theme='system';}
+</script>
 <title>joppa</title>
 <meta name="description" content="AI first product specification. A versioned product tree with connected tasks.">
 <link rel="canonical" href="/* PUBLIC_ORIGIN *//">
@@ -44,7 +48,15 @@
 <a id="tree-schema-link" class="help-link" href="/tree">Workspace tree ↗</a>
 <a class="help-link" href="/guide" target="_blank" rel="noopener">How it works ↗</a>
 <button id="refresh" title="Refresh" aria-label="Refresh">↻</button>
-<span id="identity"></span><button id="logout" hidden>Sign out</button><span class="build-version" data-build="$Format:%ct %h$"></span>
+<details id="account-menu">
+  <summary id="identity"></summary>
+  <div class="account-options">
+    <label for="theme">Theme</label>
+    <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+    <button id="logout" hidden>Sign out</button>
+  </div>
+</details>
+<span class="build-version" data-build="$Format:%ct %h$"></span>
 </nav>
 </header>
 <div id="notice" class="notice" role="status"></div>

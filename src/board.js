@@ -8,6 +8,24 @@ const $ = id => document.getElementById(id),
     if (cls) e.className = cls;
     return e;
   };
+const theme=$('theme');
+theme.value=document.documentElement.dataset.theme;
+theme.onchange=()=>{
+  document.documentElement.dataset.theme=theme.value;
+  try{localStorage.setItem('joppa-theme',theme.value);}catch{}
+  updateThemeColor();
+};
+const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+function updateThemeColor(){
+  const dark=theme.value==='dark'||theme.value==='system'&&systemTheme.matches;
+  document.querySelector('meta[name="theme-color"]').content=dark?'#191c20':'#fffcf5';
+}
+systemTheme.addEventListener('change',updateThemeColor);
+updateThemeColor();
+document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))$('account-menu').open=false;});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&$('account-menu').open){$('account-menu').open=false;$('identity').focus();}
+});
 let toastTimer;
 function toast(message,failed=false){
   let host=document.querySelector('#toast');
@@ -584,8 +602,30 @@ function objectTypeLabel(kind){
   const type=data.objectTypes?.[kind]||{},title=type.title||kind.toUpperCase();
   const words=title.trim().split(/\s+/);
   const short=words.length===1&&title===title.toLocaleUpperCase()?title:words.map(word=>Array.from(word)[0]).join('').toLocaleUpperCase();
-  const label=E('abbr',type.badge||short,'type-label type-badge');
-  label.dataset.hint=title;label.tabIndex=0;label.setAttribute('aria-label',title);
+  const question=type.question||'',hint=question?title+'\n'+question:title;
+  const label=E(question?'button':'abbr',type.badge||short,'type-label type-badge');
+  label.dataset.hint=hint;label.title=hint;label.tabIndex=0;label.setAttribute('aria-label',title);
+  if(question){
+    label.type='button';label.setAttribute('aria-expanded','false');
+    const panel=E('div',question,'type-question');panel.id='type-question-'+crypto.randomUUID();panel.setAttribute('popover','auto');
+    label.setAttribute('aria-controls',panel.id);
+    label.setAttribute('popovertarget',panel.id);
+    label.addEventListener('click',event=>{
+      event.stopPropagation();hideStatusHint();
+      if(!panel.isConnected)document.body.append(panel);
+    });
+    panel.addEventListener('beforetoggle',event=>{
+      label.setAttribute('aria-expanded',String(event.newState==='open'));
+      if(event.newState==='open')panel.style.visibility='hidden';
+    });
+    panel.addEventListener('toggle',()=>{
+      if(!panel.matches(':popover-open')){panel.remove();return;}
+      const anchor=label.getBoundingClientRect(),box=panel.getBoundingClientRect();
+      panel.style.left=Math.max(8,Math.min(anchor.left,window.innerWidth-box.width-8))+'px';
+      panel.style.top=(anchor.bottom+10+box.height<=window.innerHeight-8?anchor.bottom+10:Math.max(8,anchor.top-box.height-10))+'px';
+      panel.style.visibility='';
+    });
+  }
   label.addEventListener('pointerenter',()=>showStatusHint(label));
   label.addEventListener('pointerleave',hideStatusHint);
   label.addEventListener('focus',()=>showStatusHint(label));
