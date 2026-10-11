@@ -59,8 +59,7 @@ async fn upload(
             &actor,
             &store::Scope::from_args(&json!({})).unwrap(),
         )
-        .await
-        .map_err(|_| store::AccessDenied.into()),
+        .await,
     )?;
     result(
         store::put_blob(&app.pool, &body)
