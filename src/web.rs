@@ -52,19 +52,16 @@ async fn upload(
     let actor = authenticate(&app, &headers).await?;
     // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
     // хранилище, ничего не имея в воркспейсе.
-    store::read(
-        &app.pool,
-        &workspace,
-        &actor,
-        &store::Scope::from_args(&json!({})).unwrap(),
-    )
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"workspace not found or access denied"})),
+    let _ = result(
+        store::read(
+            &app.pool,
+            &workspace,
+            &actor,
+            &store::Scope::from_args(&json!({})).unwrap(),
         )
-    })?;
+        .await
+        .map_err(|_| store::AccessDenied.into()),
+    )?;
     result(
         store::put_blob(&app.pool, &body)
             .await

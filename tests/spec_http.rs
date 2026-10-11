@@ -322,7 +322,7 @@ async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
         let status = response.status().as_u16();
         let body: Value = response.json().await?;
         ensure!(
-            status == 404 && body == json!({"error":"workspace not found or access denied"}),
+            status == 404 && body == json!({"error":"Workspace not found"}),
             "{status}: {body}"
         );
         replies.push((status, body));

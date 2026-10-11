@@ -494,10 +494,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         }
     }
     let (state, events) = state_rows::full(&*conn, workspace).await?;
-    ensure!(
-        state.members.contains_key(actor),
-        "workspace not found or access denied"
-    );
+    ensure!(state.members.contains_key(actor), access::AccessDenied);
     let mut system_ids = json!({});
     for row in conn
         .query(
