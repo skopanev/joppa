@@ -316,4 +316,4 @@ dialog::backdrop{background:#22222240}
   .object-children{padding-left:.8rem}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }
-@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}#toast{transform:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}#toast{transform:none}.theme-icon{transition:none}.theme-icon:hover{transform:none}}
