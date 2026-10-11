@@ -2386,10 +2386,12 @@ pub fn archive(
         "archive_object requires a group, document, requirement or criterion"
     );
 
-    let has_live_children = w
-        .objects
-        .values()
-        .any(|o| o.current().parent.as_ref() == Some(&target) && o.current().present);
+    let has_live_children = w.objects.values().any(|o| {
+        o.current().parent.as_ref() == Some(&target)
+            && o.current().present
+            && crate::tasks::task(w, &address(&o.kind, &o.id))
+                .is_none_or(|task| task.retired.is_none())
+    });
     ensure!(
         !has_live_children,
         "cannot archive an object with active children"

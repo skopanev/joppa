@@ -982,6 +982,77 @@ async fn an_archived_object_still_reads_by_address() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["work"] = json!({"title":"Work","role":"task","root":false,"parents":["*"]});
+    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check archive with configured Task and parent names"})).await?;
+    w.command(json!({"op":"save_object","kind":"record","id":"parent","revision":0,"parent":null,"data":{"title":"Parent record","owner":"owner"},"reason":"Create a configured parent"})).await?;
+    for (index, (parent, kind)) in [("ac:key-rights", "task"), ("record:parent", "work")]
+        .into_iter()
+        .enumerate()
+    {
+        let before = w.get(&format!("address={parent}")).await?;
+        let task = format!("{kind}:archive-{index}");
+        w.command(json!({"op":"save_object","kind":kind,"id":format!("archive-{index}"),"revision":0,"parent":parent,"data":{"title":"Retired work","owner":"owner","contract":"This work no longer applies","purpose":"implementation","projects":[]},"reason":"Create work under the parent"})).await?;
+        let archive = json!({"op":"archive_object","target":parent,"revision":before["current_revision"],"reason":"Remove the unused parent"});
+        let error: Value = serde_json::from_str(&w.refused(archive.clone()).await?)?;
+        ensure!(
+            error["error"] == "cannot archive an object with active children",
+            "{error}"
+        );
+        w.command(json!({"op":"retire_task","id":task,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+        let retired = w.get(&format!("address={task}")).await?;
+        ensure!(retired["process"]["status"] == "retired", "{retired}");
+        let note = format!("note:live-child-{index}");
+        w.command(json!({"op":"save_object","kind":"note","id":format!("live-child-{index}"),"revision":0,"parent":parent,"data":{"title":"Present input","owner":"owner","body":"This input still applies"},"reason":"Keep an ordinary present child"})).await?;
+        let error: Value = serde_json::from_str(&w.refused(archive.clone()).await?)?;
+        ensure!(
+            error["error"] == "cannot archive an object with active children",
+            "{error}"
+        );
+        w.command(json!({"op":"archive_object","target":note,"revision":1,"reason":"Archive the remaining input"})).await?;
+        w.command(archive).await?;
+        let after = w.get(&format!("address={parent}")).await?;
+        ensure!(after["document"]["present"] == false, "{after}");
+        let history = w
+            .get(&format!(
+                "address={parent}&revision={}",
+                before["current_revision"]
+            ))
+            .await?;
+        ensure!(
+            history["document"] == before["document"],
+            "The parent history changed: {history}"
+        );
+        let after_task = w.get(&format!("address={task}")).await?;
+        ensure!(
+            after_task["document"] == retired["document"]
+                && after_task["process"]["status"] == "retired",
+            "Archive changed the retired Task: {after_task}"
+        );
+        let list = w
+            .get(&format!(
+                "parent={}&limit=100",
+                before["document"]["parent"].as_str().unwrap_or("*")
+            ))
+            .await?;
+        ensure!(
+            list["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|item| item["address"] != parent || item["present"] == false),
+            "The archived parent remains present in the list: {list}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_children_api_returns_one_level_only() -> Result<()> {
     // lazy-children-ac2
     let w = world().await?;
