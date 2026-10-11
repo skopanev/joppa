@@ -267,7 +267,12 @@ test('theme: the saved choice overrides or follows the system theme', async () =
 });
 
 test('account-menu: sign out requires the user menu and ends the real session', async () => {
-  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const configured = {...types,
+    incoming: {title: 'Inbox', role: 'document', root: true, parents: [], inbox: true},
+    audience: {title: 'Consumers', role: 'document', root: true, parents: []},
+  };
+  const f = await fixture({'domain:d': {title: 'Domain'},
+    'incoming:one': {title: 'Incoming change'}, 'audience:one': {title: 'Product user'}}, configured);
   try {
     await f.open('domain:d');
     assert.equal(await f.page.locator('#logout').isVisible(), false);
@@ -280,6 +285,36 @@ test('account-menu: sign out requires the user menu and ends the real session', 
     await f.page.locator('#identity').click();
     await f.page.locator('.brand').click();
     assert.equal(await f.page.locator('#logout').isVisible(), false);
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    await f.page.locator('#tab-domain').waitFor();
+    const closedMenu = async () => {
+      assert.equal(await f.page.locator('#account-menu').getAttribute('open'), null);
+      assert.equal(await f.page.locator('.account-options').isVisible(), false);
+      assert.equal(await f.page.locator('#logout').isVisible(), false);
+    };
+    await f.page.locator('#identity').click();
+    await f.page.locator('#tab-incoming').click();
+    await f.page.locator('#collection-incoming .common-object').waitFor();
+    await closedMenu();
+    await f.page.locator('#identity').click();
+    await f.page.locator('#tab-audience').click();
+    await f.page.locator('#collection-audience .common-object').waitFor();
+    await closedMenu();
+    await f.page.locator('#identity').click();
+    await f.page.locator('#tab-domain').focus();
+    await f.page.keyboard.press('Home');
+    await closedMenu();
+    await f.page.evaluate(() => history.pushState(null, '', '#menu-history-check'));
+    await f.page.locator('#identity').click();
+    await f.page.evaluate(() => history.back());
+    await f.page.waitForFunction(() => location.hash === '' && !document.getElementById('account-menu').open);
+    await closedMenu();
+    await f.page.locator('#identity').click();
+    await f.open('domain:d');
+    await closedMenu();
+    await f.page.goBack();
+    await f.page.locator('#tab-domain').waitFor();
+    await closedMenu();
     await f.page.setViewportSize({width: 390, height: 844});
     await f.page.locator('#identity').click();
     const menu = await f.page.locator('.account-options').boundingBox();

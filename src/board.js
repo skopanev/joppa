@@ -29,7 +29,10 @@ function updateThemeColor(){
 }
 systemTheme.addEventListener('change',updateThemeColor);
 updateThemeColor();
-document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))$('account-menu').open=false;});
+function closeAccountMenu(){$('account-menu').open=false;}
+document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))closeAccountMenu();},true);
+window.addEventListener('popstate',closeAccountMenu);
+window.addEventListener('pageshow',closeAccountMenu);
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&$('account-menu').open){$('account-menu').open=false;$('identity').focus();}
 });
@@ -202,6 +205,7 @@ function resizeBranch(node,update){
   if(node.open&&!node.classList.contains('branch-closing'))animateBranchHeight(node,before,node.getBoundingClientRect().height);
 }
 async function load() {
+  closeAccountMenu();
   const request = ++loadNumber;
   const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));
   if (request !== loadNumber) return;
@@ -324,6 +328,7 @@ function rootCollectionTabs(root){
   try{selected=sessionStorage.getItem(key);}catch{}
   if(!panels.some(panel=>panel.dataset.collectionKind===selected))selected=panels[0]?.dataset.collectionKind;
   const activate=(kind,focus=false)=>{
+    closeAccountMenu();
     selected=kind;try{sessionStorage.setItem(key,kind);}catch{}
     for(const panel of panels){
       const active=panel.dataset.collectionKind===kind;panel.hidden=!active||Boolean(data.filterActive);
