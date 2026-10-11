@@ -1173,6 +1173,77 @@ async fn another_workspace_answers_exactly_like_an_absent_one() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Result<()> {
+    // agent-needs-grant-ac1
+    let w = world().await?;
+    let other = format!("http-spec-b-{}", uuid::Uuid::new_v4().simple());
+    let secret = format!("private-body-{}", uuid::Uuid::new_v4().simple());
+    for (index, command) in [
+        json!({"op":"workspace","title":"Private workspace B"}),
+        json!({"op":"save_object","kind":"note","id":"private","revision":0,"parent":null,"data":{"title":"Private note","owner":"someone-else","body":secret},"reason":"Test private workspace data"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let command: Operation = serde_json::from_value(command)?;
+        store::execute(
+            &w.pool,
+            &other,
+            "someone-else",
+            &format!("private-{index}"),
+            &command,
+        )
+        .await?;
+    }
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let bot = token["token"].as_str().unwrap();
+    let read = |workspace: String| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .post(format!("{}/mcp", w.root))
+                .bearer_auth(bot)
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":{"workspace":workspace}}}))
+                .send()
+                .await?;
+            ensure!(reply.status().is_success(), "{}", reply.status());
+            let reply: Value = reply.json().await?;
+            ensure!(reply.get("error").is_none(), "{reply}");
+            Ok::<_, anyhow::Error>(reply["result"].clone())
+        }
+    };
+    let allowed = read(w.ws.clone()).await?;
+    ensure!(allowed["isError"] != true, "{allowed}");
+    let allowed: Value = serde_json::from_str(
+        allowed["content"][0]["text"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("The allowed read has no document"))?,
+    )?;
+    ensure!(allowed["workspace"] == w.ws, "{allowed}");
+    let existing = read(other).await?;
+    let absent = read(format!("absent-{}", uuid::Uuid::new_v4().simple())).await?;
+    ensure!(existing == absent, "{existing} vs {absent}");
+    for denied in [existing, absent] {
+        ensure!(denied["isError"] == true, "{denied}");
+        ensure!(
+            denied["content"] == json!([{"type":"text","text":"Workspace not found"}]),
+            "{denied}"
+        );
+        ensure!(
+            !denied.to_string().contains(&secret),
+            "The refused read exposed the private note"
+        );
+        ensure!(
+            denied.get("structuredContent").is_none(),
+            "The refused read included document data: {denied}"
+        );
+    }
+    Ok(())
+}
+
 impl World {
     /// The error text of a command that must be refused.
     async fn refused(&self, command: Value) -> Result<String> {
