@@ -289,6 +289,444 @@ async fn planning_claim_refuses_junit_green_over_http_and_mcp_without_mutation()
     Ok(())
 }
 
+/// A planning workspace on the test server: spec:one with criteria a and b.
+/// The token member `agent` is P, and `other` is Q.
+struct Planning<'a> {
+    w: &'a World,
+    pool: deadpool_postgres::Pool,
+    ws: String,
+}
+
+async fn planning(w: &World) -> Result<Planning<'_>> {
+    let p = Planning {
+        w,
+        pool: store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?,
+        ws: format!("http-planning-{}", uuid::Uuid::new_v4().simple()),
+    };
+    store::execute_input(
+        &p.pool,
+        &p.ws,
+        "owner",
+        "workspace",
+        &json!({"op":"workspace","title":"Planning refusals"}),
+    )
+    .await?;
+    for actor in ["agent", "other"] {
+        p.write("owner", json!({"op":"member","id":actor,"role":"agent"}))
+            .await?;
+    }
+    let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
+    p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
+        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
+        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+    }})).await?;
+    p.save(
+        "spec:one",
+        None,
+        json!({"title":"One rule","body":"Implement the agreed rule","owner":"owner"}),
+        json!([]),
+    )
+    .await?;
+    for ac in ["criterion:a", "criterion:b"] {
+        p.save(
+            ac,
+            Some("spec:one"),
+            json!({"title":ac,"owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+    }
+    Ok(p)
+}
+
+impl Planning<'_> {
+    async fn write(&self, actor: &str, command: Value) -> Result<Value> {
+        store::execute_remote_input(
+            &self.pool,
+            &self.ws,
+            actor,
+            &uuid::Uuid::new_v4().to_string(),
+            &command,
+        )
+        .await
+    }
+    async fn read(&self, address: &str) -> Result<Value> {
+        store::read_objects(
+            &self.pool,
+            &self.ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some(address),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+    async fn revision(&self, address: &str) -> Result<u64> {
+        Ok(self.read(address).await?["current_revision"]
+            .as_u64()
+            .unwrap_or(0))
+    }
+    async fn save(&self, key: &str, parent: Option<&str>, data: Value, links: Value) -> Result<()> {
+        let (kind, id) = key.split_once(':').unwrap();
+        let revision = match self.read(key).await {
+            Ok(object) => object["current_revision"].as_u64().unwrap_or(0),
+            Err(_) => 0,
+        };
+        self.write("owner", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"links":links,"reason":"Set the contract"})).await?;
+        Ok(())
+    }
+    /// Confirm `req` and save each assessment.
+    async fn confirm(&self, req: &str, assessments: &[(&str, Value)]) -> Result<()> {
+        let revision = self.read(req).await?["process"]["revision"].clone();
+        self.write(
+            "owner",
+            json!({"op":"confirm","req":req,"revision":revision}),
+        )
+        .await?;
+        for (ac, assessment) in assessments {
+            self.write("owner", json!({"op":"assess","req":req,"revision":revision,"ac":ac,"assessment":assessment})).await?;
+        }
+        Ok(())
+    }
+    async fn ready(&self) -> Result<()> {
+        let ready = json!({"ready":true,"reason":"Known scope"});
+        self.confirm(
+            "spec:one",
+            &[("criterion:a", ready.clone()), ("criterion:b", ready)],
+        )
+        .await
+    }
+    /// Save prerequisite C in spec:two with `description` and keep it assessed ready.
+    async fn prerequisite(&self, description: &str) -> Result<u64> {
+        if self.revision("spec:two").await.unwrap_or(0) == 0 {
+            self.save(
+                "spec:two",
+                None,
+                json!({"title":"Prerequisite","body":"Deliver the prerequisite","owner":"owner"}),
+                json!([]),
+            )
+            .await?;
+        }
+        self.save(
+            "criterion:c",
+            Some("spec:two"),
+            json!({"title":"criterion:c","owner":"owner","description":description}),
+            json!([]),
+        )
+        .await?;
+        self.confirm(
+            "spec:two",
+            &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
+        )
+        .await?;
+        self.revision("criterion:c").await
+    }
+    /// A depends on C at `revision`.
+    async fn depend(&self, revision: u64, blocking: bool) -> Result<()> {
+        self.save("criterion:a", Some("spec:one"), json!({"title":"criterion:a","owner":"owner"}),
+            json!([{"target":"criterion:c","relation":"depends_on","revision":revision,"blocking":blocking}])).await
+    }
+    /// T0: an existing Task under A.
+    async fn t0(&self) -> Result<()> {
+        self.save("work:t0", Some("criterion:a"), json!({"title":"T0","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await
+    }
+    async fn claim(&self, actor: &str, ac: &str) -> Result<()> {
+        let revision = self.revision(ac).await?;
+        self.write(
+            actor,
+            json!({"op":"claim_planning","ac":ac,"revision":revision}),
+        )
+        .await?;
+        Ok(())
+    }
+    /// Committed rows of the workspace: documents, revisions, links, process data,
+    /// planning claims, receipts and the journal, each in a stable order.
+    async fn saved(&self) -> Result<Value> {
+        let client = self.pool.get().await?;
+        let mut saved = json!({});
+        for table in [
+            "events",
+            "objects",
+            "object_revisions",
+            "object_links",
+            "state_entries",
+            "state_revisions",
+            "board_cache",
+            "command_receipts",
+        ] {
+            let rows: String = client
+                .query_one(
+                    &format!("SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)),'[]')::text FROM joppa.{table} t WHERE workspace=$1"),
+                    &[&self.ws],
+                )
+                .await?
+                .get(0);
+            saved[table] = serde_json::from_str(&rows)?;
+        }
+        let position: i64 = client
+            .query_one(
+                "SELECT COALESCE(max(position),0) FROM joppa.events WHERE workspace=$1",
+                &[&self.ws],
+            )
+            .await?
+            .get(0);
+        saved["position"] = json!(position);
+        Ok(saved)
+    }
+    async fn saved_object(&self, address: &str) -> Result<Value> {
+        let saved = self.saved().await?;
+        Ok(saved["objects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["address"] == address)
+            .cloned()
+            .unwrap_or(Value::Null))
+    }
+    /// P sends the claim through HTTP and then MCP. Each refusal returns `expected`
+    /// and leaves the committed workspace rows unchanged.
+    async fn refuse(&self, case: &str, ac: &str, revision: u64, expected: &str) -> Result<()> {
+        let command = json!({"op":"claim_planning","ac":ac,"revision":revision});
+        let before = self.saved().await?;
+        let root = self.w.base.split("/api/").next().unwrap();
+        let reply = self
+            .w
+            .http
+            .post(format!("{root}/api/workspaces/{}/commands", self.ws))
+            .bearer_auth(&self.w.token)
+            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .send()
+            .await?;
+        let code = reply.status().as_u16();
+        let reply: Value = reply.json().await.unwrap_or(Value::Null);
+        ensure!(
+            (400..500).contains(&code) && reply["error"] == expected,
+            "{case} over HTTP: expected {expected:?}, got {code} {reply}"
+        );
+        ensure!(
+            self.saved().await? == before,
+            "{case}: the HTTP refusal changed saved state"
+        );
+        let response: Value = self.w.http.post(format!("{root}/mcp")).bearer_auth(&self.w.token)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{
+                "workspace":self.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}}}))
+            .send().await?.json().await?;
+        ensure!(
+            response["result"]["isError"] == true
+                && response["result"]["content"][0]["text"] == expected,
+            "{case} over MCP: expected {expected:?}, got {response}"
+        );
+        ensure!(
+            self.saved().await? == before,
+            "{case}: the MCP refusal changed saved state"
+        );
+        Ok(())
+    }
+}
+
+// planning-claim-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_state() -> Result<()>
+{
+    let w = world().await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    p.claim("other", "criterion:a").await?;
+    ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "other");
+    let revision = p.revision("criterion:a").await?;
+    p.refuse(
+        "claimed A",
+        "criterion:a",
+        revision,
+        "criterion is already claimed for planning",
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    p.claim("agent", "criterion:a").await?;
+    ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
+    let revision = p.revision("criterion:b").await?;
+    p.refuse(
+        "P holds A and claims B",
+        "criterion:b",
+        revision,
+        "agent already holds a planning claim in this workspace",
+    )
+    .await?;
+    let b = p.saved_object("criterion:b").await?;
+    ensure!(
+        b.is_object() && b["process"]["planning_claim"].is_null(),
+        "B must stay unclaimed: {b}"
+    );
+
+    let p = planning(&w).await?;
+    p.confirm(
+        "spec:one",
+        &[("criterion:b", json!({"ready":true,"reason":"Known scope"}))],
+    )
+    .await?;
+    let a = p.read("criterion:a").await?;
+    ensure!(a["process"]["assessment"]["state"] == "unassessed", "{a}");
+    p.refuse(
+        "unassessed A",
+        "criterion:a",
+        a["current_revision"].as_u64().unwrap(),
+        "criterion is not ready for planning",
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    p.confirm(
+        "spec:one",
+        &[
+            (
+                "criterion:a",
+                json!({"ready":false,"reason":"Unknown input","recipient":"owner"}),
+            ),
+            ("criterion:b", json!({"ready":true,"reason":"Known scope"})),
+        ],
+    )
+    .await?;
+    let a = p.read("criterion:a").await?;
+    ensure!(a["process"]["assessment"]["state"] == "waiting", "{a}");
+    p.refuse(
+        "waiting A",
+        "criterion:a",
+        a["current_revision"].as_u64().unwrap(),
+        "criterion is not ready for planning",
+    )
+    .await?;
+
+    // A blocks on C at C's current revision; C is assessed ready but not verified.
+    let p = planning(&w).await?;
+    let c = p.prerequisite("Prerequisite scope").await?;
+    p.depend(c, true).await?;
+    p.ready().await?;
+    let a = p.read("criterion:a").await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "ready"
+            && a["process"]["status"]["review_required"] == json!([])
+            && a["work_ready"] == false
+            && p.revision("criterion:c").await? == c,
+        "{a}"
+    );
+    p.refuse(
+        "dependency-blocked A",
+        "criterion:a",
+        a["current_revision"].as_u64().unwrap(),
+        "criterion is not ready for planning",
+    )
+    .await?;
+
+    // A's non-blocking dependency names an older revision of C; C stays assessed ready.
+    let p = planning(&w).await?;
+    let c = p.prerequisite("Prerequisite scope").await?;
+    p.depend(c, false).await?;
+    ensure!(p.prerequisite("Sharper prerequisite scope").await? > c);
+    p.ready().await?;
+    let a = p.read("criterion:a").await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "ready"
+            && a["process"]["status"]["review_required"] != json!([])
+            && a["work_ready"] == true,
+        "{a}"
+    );
+    p.refuse(
+        "A needs dependency review",
+        "criterion:a",
+        a["current_revision"].as_u64().unwrap(),
+        "criterion is not ready for planning",
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    p.write(
+        "agent",
+        json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Link the tests"}),
+    )
+    .await?;
+    let stamp = json!({"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
+    let root = w.base.split("/api/").next().unwrap();
+    let base = format!("{root}/api/workspaces/{}", p.ws);
+    w.http
+        .post(format!("{base}/reports"))
+        .bearer_auth(&w.token)
+        .json(&json!({"stamp":stamp,"junit":junit(&[("opens", "pass"), ("refuses", "pass")])}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let status: Value = w
+        .http
+        .get(format!("{base}/tests?ac=criterion:a"))
+        .bearer_auth(&w.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    ensure!(status["status"] == "green", "JUnit must be green: {status}");
+    let revision = p.revision("criterion:a").await?;
+    p.refuse(
+        "verified A",
+        "criterion:a",
+        revision,
+        "criterion is already verified",
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    while let n @ ..8 = p.revision("criterion:a").await? {
+        p.save(
+            "criterion:a",
+            Some("spec:one"),
+            json!({"title":"criterion:a","owner":"owner","description":format!("Draft {n}")}),
+            json!([]),
+        )
+        .await?;
+    }
+    p.ready().await?;
+    p.t0().await?;
+    ensure!(p.revision("criterion:a").await? == 8);
+    p.refuse(
+        "current revision 8, request revision 7",
+        "criterion:a",
+        7,
+        "stale object revision; read the object again",
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    ensure!(p.saved_object("criterion:missing").await?.is_null());
+    p.refuse("unknown A", "criterion:missing", 1, "unknown criterion")
+        .await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    let revision = p.revision("work:t0").await?;
+    ensure!(revision > 0);
+    p.refuse(
+        "object without the criterion role",
+        "work:t0",
+        revision,
+        "planning requires a criterion",
+    )
+    .await?;
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() -> Result<()> {
