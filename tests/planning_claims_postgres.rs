@@ -39,6 +39,51 @@ async fn save_work(
     write(pool, workspace, actor, json!({"op":"save_object","kind":"work","id":id,"revision":revision,"parent":"criterion:a", "data":{"title":id,"owner":"owner","contract":format!("Implement the agreed mechanism revision {revision}"),"purpose":"implementation"},"reason":"Set the work contract"})).await
 }
 
+/// Creates a workspace with ready, unverified criteria A and B under one confirmed spec.
+async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> Result<String> {
+    let workspace = format!("planning-{}", uuid::Uuid::new_v4().simple());
+    store::execute_input(
+        pool,
+        &workspace,
+        "owner",
+        "workspace",
+        &json!({"op":"workspace","title":"Planning claim checks"}),
+    )
+    .await?;
+    for actor in actors {
+        write(
+            pool,
+            &workspace,
+            "owner",
+            json!({"op":"member","id":actor,"role":"agent"}),
+        )
+        .await?;
+    }
+    let schema = store::tree_schema(pool, &workspace, "owner", None).await?;
+    write(pool, &workspace, "owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
+        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
+        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+    }})).await?;
+    write(pool, &workspace, "planner", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;
+    for id in ["a", "b"] {
+        write(pool, &workspace, "planner", json!({"op":"save_object","kind":"criterion","id":id,"revision":0,"parent":"spec:one","data":{"title":id,"owner":"owner"},"reason":"Set the criterion"})).await?;
+    }
+    let req = read(pool, &workspace, "spec:one").await?;
+    let revision = req["process"]["revision"].as_u64().unwrap();
+    write(
+        pool,
+        &workspace,
+        "owner",
+        json!({"op":"confirm","req":"spec:one","revision":revision}),
+    )
+    .await?;
+    for ac in ["criterion:a", "criterion:b"] {
+        write(pool, &workspace, "planner", json!({"op":"assess","req":"spec:one","revision":revision,"ac":ac,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    }
+    Ok(workspace)
+}
+
 // planning-claim-ac1 through planning-claim-ac5
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -55,71 +100,86 @@ async fn planning_race_publication_release_and_replay_use_the_store() -> Result<
         "isolated test database required"
     );
     store::migrate(&pool).await?;
-    let workspace = format!("planning-{}", uuid::Uuid::new_v4().simple());
-    store::execute_input(
+    let workspace = planning_workspace(
         &pool,
-        &workspace,
-        "owner",
-        "workspace",
-        &json!({"op":"workspace","title":"Planning claim checks"}),
+        &["planner", "other", "worker", "next-worker", "t0-worker"],
     )
     .await?;
-    for actor in ["planner", "other", "worker", "next-worker"] {
-        write(
-            &pool,
-            &workspace,
-            "owner",
-            json!({"op":"member","id":actor,"role":"agent"}),
-        )
-        .await?;
-    }
-    let schema = store::tree_schema(&pool, &workspace, "owner", None).await?;
-    write(&pool, &workspace, "owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
-    }})).await?;
-    write(&pool, &workspace, "planner", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;
-    for id in ["a", "b"] {
-        write(&pool, &workspace, "planner", json!({"op":"save_object","kind":"criterion","id":id,"revision":0,"parent":"spec:one","data":{"title":id,"owner":"owner"},"reason":"Set the criterion"})).await?;
-    }
-    let req = read(&pool, &workspace, "spec:one").await?;
-    let revision = req["process"]["revision"].as_u64().unwrap();
+    save_work(&pool, &workspace, "planner", "old", 0).await?;
+    save_work(&pool, &workspace, "planner", "t0", 0).await?;
+    let t0 = read(&pool, &workspace, "work:t0").await?;
     write(
         &pool,
         &workspace,
-        "owner",
-        json!({"op":"confirm","req":"spec:one","revision":revision}),
+        "t0-worker",
+        json!({"op":"claim_task","id":"work:t0","revision":t0["current_revision"]}),
     )
     .await?;
-    for ac in ["criterion:a", "criterion:b"] {
-        write(&pool, &workspace, "planner", json!({"op":"assess","req":"spec:one","revision":revision,"ac":ac,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
-    }
-    save_work(&pool, &workspace, "planner", "old", 0).await?;
+    let t0_before = read(&pool, &workspace, "work:t0").await?["process"].clone();
+    assert_eq!(t0_before["assignee"], "t0-worker");
     let ac = read(&pool, &workspace, "criterion:a").await?;
+    assert!(ac["process"]["planning_claim"].is_null());
     let command =
         json!({"op":"claim_planning","ac":"criterion:a","revision":ac["current_revision"]});
     let (left, right) = tokio::join!(
         write(&pool, &workspace, "planner", command.clone()),
         write(&pool, &workspace, "other", command)
     );
-    let holder = match (left, right) {
-        (Ok(_), Err(error)) => {
+    let (holder, claimed) = match (left, right) {
+        (Ok(claimed), Err(error)) => {
             assert_eq!(
                 error.to_string(),
                 "criterion is already claimed for planning"
             );
-            "planner"
+            ("planner", claimed)
         }
-        (Err(error), Ok(_)) => {
+        (Err(error), Ok(claimed)) => {
             assert_eq!(
                 error.to_string(),
                 "criterion is already claimed for planning"
             );
-            "other"
+            ("other", claimed)
         }
         (a, b) => anyhow::bail!("expected one planning holder, got {a:?} and {b:?}"),
     };
+    // The claim records the winner and its journal event; existing work keeps its state.
+    let claim = read(&pool, &workspace, "criterion:a").await?["process"]["planning_claim"].clone();
+    assert_eq!(
+        claim,
+        json!({"actor":holder,"position":claimed["position"]})
+    );
+    let events = pool
+        .get()
+        .await?
+        .query(
+            "SELECT position,actor FROM joppa.events WHERE workspace=$1 AND command->>'op'='claim_planning' AND command->>'ac'='criterion:a'",
+            &[&workspace],
+        )
+        .await?;
+    assert_eq!(events.len(), 1);
+    assert_eq!(json!(events[0].get::<_, i64>(0)), claim["position"]);
+    assert_eq!(events[0].get::<_, String>(1), holder);
+    let t0_after = read(&pool, &workspace, "work:t0").await?["process"].clone();
+    assert_eq!(t0_after["status"], t0_before["status"]);
+    assert_eq!(t0_after["assignee"], t0_before["assignee"]);
+    // The one-claim limit applies per workspace: the holder may claim B elsewhere.
+    let second = planning_workspace(&pool, &["planner", "other"]).await?;
+    let b = read(&pool, &second, "criterion:b").await?;
+    write(
+        &pool,
+        &second,
+        holder,
+        json!({"op":"claim_planning","ac":"criterion:b","revision":b["current_revision"]}),
+    )
+    .await?;
+    assert_eq!(
+        read(&pool, &second, "criterion:b").await?["process"]["planning_claim"]["actor"],
+        holder
+    );
+    assert_eq!(
+        read(&pool, &workspace, "criterion:a").await?["process"]["planning_claim"],
+        claim
+    );
     save_work(&pool, &workspace, holder, "new", 0).await?;
     let all = store::task_queue(&pool, &workspace, "worker", "all", 100, None).await?;
     let new = all["tasks"]
