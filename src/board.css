@@ -155,14 +155,15 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .object-collection-title{margin:0 0 .4em;font-size:1em;color:var(--muted)}
 .root-collection.object-collection>.object-collection-title{display:none}
 
-/* One row per object. The chevron opens it; children indent under a rule. */
-.common-object{--row-gap:.75rem;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
+/* One row per object. The chevron opens it; children indent inside the line of the open card. */
+.common-object{--row-gap:.75rem;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
 .common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
 .common-object>summary:hover{background:var(--hover)}
 .common-object[open]>summary{background:var(--selected)}.common-object[open]>summary:hover{background:var(--hover)}
-/* Наведение на раскрытую строку проявляет линию её детей. */
-.object-children{transition:border-color .12s}
-.common-object:has(>summary:hover)>.object-body>.object-children{border-left-color:var(--muted);border-left-style:solid}
+/* An open card draws one solid line in its schema colour along its full height.
+   The transparent bottom border keeps the closed separator width for the closing animation. */
+.common-object[open]{border-bottom-color:transparent;border-bottom-style:solid}
+.common-object[open]:before{content:'';position:absolute;z-index:1;top:0;bottom:0;left:0;border-left:2px solid var(--object-color,#63756b);pointer-events:none}
 /* Загрузка: точка превращается в крутилку, строка ещё закрыта. */
 .common-object.is-loading>summary{cursor:progress}
 .common-object.is-loading>summary .status-circle{background:none;box-sizing:border-box;border:1.5px solid var(--signal);border-right-color:transparent;animation:branch-spin .6s linear infinite}
@@ -186,7 +187,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .object-body,.common-object .object-body{padding:0 0 1.2em 0}
 .object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + var(--row-gap))}
-.object-children{margin:0 0 0 3px;padding-left:calc(4px + var(--row-gap));border-left:1px dashed var(--rule)}
+.object-children{margin:0 0 0 3px;padding-left:calc(4px + var(--row-gap));border-left:1px solid transparent}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
 

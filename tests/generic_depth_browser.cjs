@@ -13,8 +13,10 @@ const html=readFileSync(path.join(root,'src/board.html'),'utf8')
 const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epic','Epic','group'],
   ['outcome','Outcome','requirement'],['measure','Measure','ac'],['action','Action','task']];
 const types={};
+// Epic has no colour and Action has an invalid one: both fall back to the default line colour.
+const colors=['#8a4b2f','#2f6f8a',undefined,'#5a3f9a','#a0522d','not-a-colour'];
 chain.forEach(([kind,title,role],i)=>{types[kind]={title,role,index:i*10,root:i===0,
-  parents:i===0?[]:[chain[i-1][0]],title_size:[21,18,16,17,16,15][i]};});
+  parents:i===0?[]:[chain[i-1][0]],title_size:[21,18,16,17,16,15][i],...(colors[i]&&{color:colors[i]})};});
 types.intake={title:'Intake',role:'document',index:70,root:true,parents:[],inbox:true,
   description:'Customer input to review.'};
 const schema={workspace:'w',current_revision:3,schema:{revision:3,actor:'owner',
@@ -35,6 +37,8 @@ rows[0].verification_summary={total:2,passed:1};
 rows[1].verification_summary={total:2,passed:0};
 rows[4].signal={tone:'green',label:'Checks passed'};
 rows.push({...row(4),address:'measure:measure-2',id:'measure-2',title:'Failed condition',item_id:'W-MEASURE-2',signal:{tone:'red',label:'Checks failed'}});
+// A third criterion keeps measure-2 outside the last-child separator exception.
+rows.push({...row(4),address:'measure:measure-3',id:'measure-3',title:'Third condition',item_id:'W-MEASURE-3'});
 const find=a=>rows.find(r=>r.address===a);
 const document=a=>({workspace:'w',address:a,kind:find(a).kind,id:find(a).id,item_id:find(a).item_id,
   current_revision:1,revision_count:1,work_ready:true,review_required:false,
@@ -52,7 +56,8 @@ try{
   let holdInputReload=false,releaseInputReload,inputRequestStarted;
   const inputRequest=new Promise(resolve=>{inputRequestStarted=resolve;});
   await page.addInitScript(()=>{window.__copied=null;});
-  await page.route('http://joppa.test/**',async route=>{
+  const documentReads=[];
+  const serve=async route=>{
     const url=new URL(route.request().url());
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
     if(url.pathname==='/favicon.svg')return route.fulfill({contentType:'image/svg+xml',body:'<svg/>'});
@@ -65,6 +70,7 @@ try{
       capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
       launch:{configured:false,ready:false,blockers:[]},counts:{},system_ids:{}};
     else if(url.pathname.endsWith('/tree'))value=schema;
+    else if(url.pathname.endsWith('/tests'))value={items:[],tests:[]};
     else if(url.pathname.endsWith('/objects')){
       const a=url.searchParams.get('address');
       const related=url.searchParams.get('related_to');
@@ -72,6 +78,7 @@ try{
         holdInputReload=false;
         await new Promise(resolve=>{releaseInputReload=resolve;inputRequestStarted();});
       }
+      if(a)documentReads.push(a);
       value=a?document(a):{items:rows.filter(r=>{
         const parent=url.searchParams.get('parent');
         const kind=url.searchParams.get('kind');
@@ -83,7 +90,8 @@ try{
       }),next_cursor:null};
     }
     return route.fulfill({status:value?200:404,json:value||{error:'Unknown route'}});
-  });
+  };
+  await page.route('http://joppa.test/**',serve);
 
   await page.goto('http://joppa.test/');
 
@@ -286,6 +294,102 @@ try{
     '[ac:copy-feedback-ac4] a refused clipboard leaves the identifier readable for manual copying');
 
   assert.deepEqual(errors,[],'no page errors');
+
+  // 6. An open card draws one solid line in its schema colour along its full height.
+  const view2=await browser.newPage({viewport:{width:1280,height:900}});
+  view2.on('pageerror',e=>errors.push(e.message));
+  await view2.route('http://joppa.test/**',serve);
+  await view2.goto('http://joppa.test/');
+  const settle=()=>view2.waitForFunction(()=>document.getAnimations().length===0&&!document.querySelector('.is-loading'));
+  const cardOf=a=>view2.locator(`[data-object-address="${a}"]`);
+  const openCard=async a=>{await cardOf(a).locator(':scope > summary').click();
+    await cardOf(a).locator(':scope > .object-body > .object-secondary').waitFor();await settle();};
+  const X=address(3),Y=address(4),sibling='measure:measure-2',fallback='#63756b';
+  for(let i=0;i<=3;i++)await openCard(address(i));
+  await openCard(Y);await openCard(address(5));
+  const rgb=hex=>'rgb('+[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)).join(', ')+')';
+  const lineOf=a=>cardOf(a).evaluate(card=>{
+    const line=getComputedStyle(card,'::before'),style=getComputedStyle(card),box=card.getBoundingClientRect();
+    const summary=card.querySelector(':scope > summary').getBoundingClientRect();
+    const dashed=[card,card.querySelector(':scope > .object-body'),card.querySelector(':scope > .object-body > .object-children')]
+      .filter(Boolean).flatMap(e=>{const s=getComputedStyle(e);return ['Top','Right','Bottom','Left'].map(side=>s['border'+side+'Style']);})
+      .filter(s=>s==='dashed').length;
+    const top=box.top+parseFloat(style.borderTopWidth)+parseFloat(line.top);
+    return {content:line.content,style:line.borderLeftStyle,width:parseFloat(line.borderLeftWidth),color:line.borderLeftColor,
+      left:box.left+parseFloat(style.borderLeftWidth)+parseFloat(line.left),top,bottom:top+parseFloat(line.height),
+      summaryTop:summary.top,summaryMiddle:summary.top+summary.height/2,cardBottom:box.bottom,cardHeight:box.height,dashed,
+      bottomStyle:style.borderBottomStyle,bottomWidth:parseFloat(style.borderBottomWidth)};
+  });
+  // The painted pixel on the line inside the row proves that no row background covers it.
+  const pixelAt=async(x,y)=>{const png=await view2.screenshot({clip:{x:Math.floor(x),y:Math.floor(y),width:1,height:1}});
+    return view2.evaluate(async src=>{const image=new Image();image.src=src;await image.decode();
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const context=canvas.getContext('2d');
+      context.drawImage(image,0,0);return [...context.getImageData(0,0,1,1).data.slice(0,3)];},'data:image/png;base64,'+png.toString('base64'));};
+  const sameColor=(pixel,hex)=>[1,3,5].every((i,n)=>Math.abs(pixel[n]-parseInt(hex.slice(i,i+2),16))<=3);
+  const expected={[address(2)]:fallback,[X]:colors[3],[Y]:colors[4],[address(5)]:fallback};
+  const themes={};
+  for(const theme of ['light','dark']){
+    await view2.evaluate(t=>{document.documentElement.dataset.theme=t;},theme);
+    await view2.mouse.move(1270,890);await settle();
+    const lines={};
+    for(const [a,hex] of Object.entries(expected)){
+      const line=lines[a]=await lineOf(a);
+      assert.equal(line.style,'solid',`[ac:compact-open-object-ac2] ${theme}: the line of ${a} is solid`);
+      assert.ok(line.width>=1,`[ac:compact-open-object-ac2] ${theme}: the line of ${a} is at least 1 px wide`);
+      assert.equal(line.color,rgb(hex),`[ac:compact-open-object-ac2] ${theme}: the line of ${a} has its schema colour`);
+      assert.ok(Math.abs(line.top-line.summaryTop)<=1,`[ac:compact-open-object-ac2] ${theme}: the line of ${a} starts at the top of its row`);
+      assert.ok(Math.abs(line.bottom-line.cardBottom)<=2&&Math.abs(line.bottom-line.top-line.cardHeight)<=2,
+        `[ac:compact-open-object-ac2] ${theme}: the line of ${a} spans the open block within 2 px`);
+      assert.equal(line.dashed,0,`[ac:compact-open-object-ac2] ${theme}: open ${a}, its body and its children have no dashed border`);
+      assert.ok(sameColor(await pixelAt(line.left+line.width/2,line.summaryMiddle),hex),`[ac:compact-open-object-ac2] ${theme}: the selected row does not cover the line of ${a}`);
+    }
+    assert.ok(lines[Y].left>=lines[X].left+lines[X].width&&lines[Y].top>=lines[X].top&&lines[Y].bottom<=lines[X].bottom,
+      `[ac:compact-open-object-ac2] ${theme}: the line of Y lies inside the line of X`);
+    // Hover changes the row background only: no muted, dashed or second line appears.
+    await cardOf(X).locator(':scope > summary').hover();await settle();
+    const hovered=await lineOf(X);
+    assert.equal(hovered.color,rgb(colors[3]),`[ac:compact-open-object-ac2] ${theme}: hover keeps the schema colour`);
+    assert.equal(hovered.dashed,0,`[ac:compact-open-object-ac2] ${theme}: hover adds no dashed border`);
+    assert.ok(sameColor(await pixelAt(hovered.left+hovered.width/2,hovered.summaryMiddle),colors[3]),`[ac:compact-open-object-ac2] ${theme}: the hovered row does not cover the line`);
+    assert.deepEqual(await cardOf(X).evaluate(card=>{const children=getComputedStyle(card.querySelector(':scope > .object-body > .object-children'));
+      const summary=getComputedStyle(card.querySelector(':scope > summary'));
+      return [children.borderLeftColor,summary.borderLeftStyle,getComputedStyle(card,'::after').content];}),['rgba(0, 0, 0, 0)','none','none'],
+      `[ac:compact-open-object-ac2] ${theme}: hover adds no second line`);
+    // A closed sibling has no line and keeps its dashed separator.
+    const closed=await lineOf(sibling);
+    assert.equal(closed.content,'none',`[ac:compact-open-object-ac2] ${theme}: a closed card shows no line`);
+    assert.deepEqual([closed.bottomStyle,closed.bottomWidth],['dashed',1],`[ac:compact-open-object-ac2] ${theme}: a closed sibling keeps its dashed separator`);
+    themes[theme]=Object.fromEntries(Object.entries(lines).map(([a,l])=>[a,[l.style,l.width,l.color]]));
+  }
+  assert.deepEqual(themes.dark,themes.light,'[ac:compact-open-object-ac2] both themes show the same schema lines');
+  await view2.evaluate(()=>{document.documentElement.dataset.theme='light';});
+  await view2.mouse.move(1270,890);
+  // Closing ends on the settled closed height, with and without the separator.
+  const closeCard=a=>cardOf(a).evaluate(async card=>{
+    card.querySelector(':scope > summary').click();
+    const animation=card.getAnimations().find(a=>a.effect.getKeyframes().some(k=>k.height));
+    const target=parseFloat(animation.effect.getKeyframes().at(-1).height);
+    while(card.open)await new Promise(requestAnimationFrame);
+    return {target,settled:card.getBoundingClientRect().height,line:getComputedStyle(card,'::before').content,
+      bottom:getComputedStyle(card).borderBottomStyle+' '+getComputedStyle(card).borderBottomWidth};
+  });
+  await openCard(sibling);
+  const ordinary=await closeCard(sibling);
+  assert.ok(Math.abs(ordinary.target-ordinary.settled)<0.5,`[ac:compact-open-object-ac2] an ordinary card closes without a jump: ${JSON.stringify(ordinary)}`);
+  assert.deepEqual([ordinary.line,ordinary.bottom],['none','dashed 1px'],'[ac:compact-open-object-ac2] a closed ordinary card has no line and its separator');
+  await settle();
+  const readsBefore=documentReads.filter(a=>a===X).length;
+  const last=await closeCard(X);
+  assert.ok(Math.abs(last.target-last.settled)<0.5,`[ac:compact-open-object-ac2] a last child closes without a jump: ${JSON.stringify(last)}`);
+  assert.equal(last.line,'none','[ac:compact-open-object-ac2] closed X shows no line');
+  await settle();
+  await cardOf(X).locator(':scope > summary').click();await settle();
+  assert.equal(await cardOf(X).evaluate(card=>card.open),true);
+  assert.equal(documentReads.filter(a=>a===X).length,readsBefore,'Reopening X reuses its cached content');
+  assert.equal((await lineOf(X)).color,rgb(colors[3]),'[ac:compact-open-object-ac2] reopened X shows its line again');
+  await view2.screenshot({path:'/tmp/joppa-open-object-line.png',fullPage:true});
+  await view2.close();
+  assert.deepEqual(errors,[],'no page errors after the line checks');
   console.log('generic_depth_browser: ok');
 }finally{await browser.close();}
 })();
