@@ -446,6 +446,7 @@ impl Planning<'_> {
     async fn saved(&self) -> Result<Value> {
         let client = self.pool.get().await?;
         let mut saved = json!({});
+        // Table names are fixed literals; SQL cannot bind identifiers.
         for table in [
             "events",
             "objects",
