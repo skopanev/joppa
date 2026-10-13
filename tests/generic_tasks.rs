@@ -329,6 +329,54 @@ fn dependencies_pin_generic_task_completion_and_reject_parent_cycles() {
     w.no("agent",json!({"op":"save_object","kind":"task","id":"parent","revision":1,"parent":"spec:root","data":contract("Parent task"),"links":[{"target":"task:child","relation":"depends_on","revision":1,"blocking":true}],"reason":"Depend on the child"}));
 }
 
+// [ac:pins-ignore-process-events-ac1]
+#[test]
+fn claim_and_completion_keep_a_dependency_pin_current() {
+    let mut w = World::new();
+    w.ready();
+    tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
+    let pinned = |w: &mut World, source: &str, dependent: &str| {
+        save(w, source, Some("ac:ios"), contract("Source task"));
+        let pin = w.state.objects[source].current().revision;
+        let (kind, id) = dependent.split_once(':').unwrap();
+        w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":"ac:ios","data":contract("Dependent task"),"links":[{"target":source,"relation":"depends_on","revision":pin,"blocking":true}],"reason":"Depend on the source"}));
+        pin
+    };
+    let claimable = |w: &World, key: &str| {
+        tasks::claimable(&w.state, "agent", key, &w.state.task_process[key]).is_ok()
+    };
+    let pin = pinned(&mut w, "task:a", "task:b");
+    for key in ["task:a", "task:b"] {
+        assert!(tasks::readiness_blocker(&w.state, key).is_none());
+    }
+    assert!(claimable(&w, "task:a"));
+    assert!(!claimable(&w, "task:b"));
+    action(&mut w, "agent", "task:a", "claim_task", json!({}));
+    assert!(objects::review_links(&w.state, "task:b").is_empty());
+    action(
+        &mut w,
+        "agent",
+        "task:a",
+        "complete_task",
+        json!({"evidence":"The source is complete"}),
+    );
+    assert_eq!(objects::process(&w.state, "task:a")["status"], "done");
+    assert!(w.state.objects["task:a"].current().revision > pin);
+    assert!(objects::review_links(&w.state, "task:b").is_empty());
+    assert!(objects::work_ready(&w.state, "task:b"));
+    assert!(claimable(&w, "task:b"));
+    assert_eq!(
+        w.state.objects["task:b"].current().links[0].revision,
+        Some(pin)
+    );
+
+    pinned(&mut w, "task:c", "task:d");
+    let revision = w.state.objects["task:c"].current().revision;
+    w.ok("agent",json!({"op":"amend_task","id":"task:c","revision":revision,"title":"Changed source task","contract":"Implement the specified document behavior","projects":[],"reason":"Change the source"}));
+    assert!(!objects::review_links(&w.state, "task:d").is_empty());
+    assert!(!claimable(&w, "task:d"));
+}
+
 #[test]
 fn migration_preserves_old_task_history_and_uses_one_process() {
     let mut w = World::new();

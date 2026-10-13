@@ -1818,10 +1818,25 @@ pub fn save(
     Ok(())
 }
 
+/// A Task pin stays current across process events, which keep its authored origin revision.
+pub fn pin_current(w: &Workspace, target: &str, pin: Option<u32>) -> bool {
+    let key = resolve_address(w, target);
+    let (Some(pin), Some(o)) = (pin, w.objects.get(key)) else {
+        return false;
+    };
+    let current = o.current().revision;
+    o.current().present
+        && w.task_process.get(key).map_or(pin == current, |t| {
+            t.retired.is_none()
+                && t.origin_revision >= 1
+                && t.origin_revision <= pin
+                && pin <= current
+        })
+}
 pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
     w.objects.get(resolve_address(w, key)).map(|o|o.current().links.iter().filter_map(|link| {
         let current=w.objects.get(resolve_address(w, &link.target)).filter(|o|o.current().present).map(|o|o.current().revision);
-        (link.relation=="depends_on" && current!=link.revision).then(||json!({"target":link.target,"revision":link.revision,"current_revision":current}))
+        (link.relation=="depends_on" && !pin_current(w, &link.target, link.revision)).then(||json!({"target":link.target,"revision":link.revision,"current_revision":current}))
     }).collect()).unwrap_or_default()
 }
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
@@ -1831,15 +1846,10 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             return false;
         };
         if !o.current().present
-            || o.current().links.iter().any(|l| {
-                l.blocking
-                    && w.objects
-                        .get(resolve_address(w, &l.target))
-                        .is_none_or(|target| {
-                            !target.current().present
-                                || Some(target.current().revision) != l.revision
-                        })
-            })
+            || o.current()
+                .links
+                .iter()
+                .any(|l| l.blocking && !pin_current(w, &l.target, l.revision))
             || !stack.insert(key.into())
         {
             return false;
