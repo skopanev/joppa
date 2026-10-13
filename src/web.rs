@@ -253,6 +253,42 @@ async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::list(&app.pool, &actor).await)
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewWorkspace {
+    title: String,
+}
+/// A signed-in browser user creates a workspace and becomes its owner and only member.
+/// The server chooses both IDs, so a repeated request creates another workspace.
+/// Commands, batches and MCP keep the CLI-only creation refusal.
+async fn create_workspace(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(body): Json<NewWorkspace>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to create a workspace"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let workspace = uuid::Uuid::new_v4().to_string();
+    let command = Command::Workspace {
+        title: body.title.clone(),
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    result(
+        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
+            .await
+            .map(|_| json!({"id": workspace, "title": body.title})),
+    )
+}
+async fn settings_page() -> Html<String> {
+    Html(
+        include_str!("settings.html")
+            .replace("/* BOARD_STYLE */", include_str!("board.css"))
+            .replace("/* BRAND_STYLE */", include_str!("brand.css")),
+    )
+}
 async fn read(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -749,7 +785,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/auth/google/callback", get(google_callback))
         .route("/auth/logout", post(logout))
         .route("/api/me", get(me))
-        .route("/api/workspaces", get(list))
+        .route("/settings", get(settings_page))
+        .route("/api/workspaces", get(list).post(create_workspace))
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))

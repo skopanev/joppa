@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fffcf5">
+<title>Settings · Joppa</title>
+<link rel="icon" href="/favicon.svg">
+<style>/* BOARD_STYLE */
+/* BRAND_STYLE */</style>
+<body class="authenticated">
+<header class="app-header">
+  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong><span class="tagline">AI first product specification</span></a>
+</header>
+<main class="layout">
+  <h1>Settings</h1>
+  <form id="create-workspace" aria-labelledby="create-workspace-title">
+    <h2 id="create-workspace-title">Create a workspace</h2>
+    <label>Workspace title <input id="workspace-title" name="title" autocomplete="off"></label>
+    <button id="create-workspace-button" type="submit">Create</button>
+    <p id="create-workspace-error" role="alert"></p>
+  </form>
+</main>
+<script>
+const form=document.getElementById('create-workspace'),title=document.getElementById('workspace-title'),
+  create=document.getElementById('create-workspace-button'),error=document.getElementById('create-workspace-error');
+form.onsubmit=async event=>{
+  event.preventDefault();
+  if(create.disabled)return;
+  create.disabled=true;error.textContent='';
+  try{
+    const response=await fetch('/api/workspaces',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:title.value})});
+    const value=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(value.error||'Could not create the workspace.');
+    // The board opens the new workspace through its usual selection.
+    sessionStorage.setItem('joppa-workspace',value.id);
+    location.assign('/?workspace='+encodeURIComponent(value.id));
+  }catch(e){error.textContent=e.message;create.disabled=false;}
+};
+</script>
+</body>
+</html>

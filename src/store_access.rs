@@ -12,6 +12,7 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
+const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
 
 /// Resolve types for the authors of the records that this read returns.
 pub(super) async fn actor_types(
@@ -73,6 +74,10 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
     let mut allowed = BTreeSet::new();
     for name in rules.resolve(&email, hosted_domain.as_deref()) {
         allowed.insert(resolve_workspace(client, &name).await?);
+    }
+    // The owner keeps a workspace that the rules do not name. Membership is still checked.
+    for row in client.query(OWNED, &[&actor]).await? {
+        allowed.insert(row.get(0));
     }
     Ok(Some(allowed))
 }

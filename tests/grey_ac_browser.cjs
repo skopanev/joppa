@@ -484,6 +484,51 @@ test('removal-at-once-ac4: a removed member reloads without workspace data', asy
   } finally { await f.close(); }
 });
 
+test('create-workspace-ac1: alex creates Billing on the settings page and owns it', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const titles = async () => (await (await request.get(f.live.root + '/api/workspaces')).json()).map(w => w.title);
+    assert.ok(!(await titles()).includes('Billing'));
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const title = f.page.getByLabel('Workspace title'), create = f.page.getByRole('button', {name: 'Create'});
+    // A failed request keeps the form and shows the server error.
+    await title.fill('  ');
+    await create.click();
+    await f.page.getByRole('alert').filter({hasText: 'text must not be empty'}).waitFor();
+    assert.equal(await create.isDisabled(), false);
+    assert.equal(await title.inputValue(), '  ');
+    // Hold the creation to observe the pending state.
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    await f.page.route(f.live.root + '/api/workspaces', async route => { await held; await route.continue(); });
+    await title.fill('Billing');
+    await create.click();
+    assert.equal(await create.isDisabled(), true);
+    const board = f.page.waitForResponse(response => /\/api\/workspaces\/[^/]+\/board$/.test(response.url()));
+    release();
+    const opened = await board;
+    assert.equal(opened.status(), 200);
+    const id = new URL(f.page.url()).searchParams.get('workspace');
+    assert.ok(opened.url().endsWith('/api/workspaces/' + encodeURIComponent(id) + '/board'));
+    assert.notEqual(id, f.live.ws);
+    assert.equal(await f.page.locator('#workspaces').inputValue(), id);
+    // The access rules name only the fixture workspace, so ownership gives alex Billing.
+    const list = await (await request.get(f.live.root + '/api/workspaces')).json();
+    assert.deepEqual(list.filter(w => w.title === 'Billing'), [{id, title: 'Billing'}]);
+    const read = await request.get(f.live.root + '/api/workspaces/' + id);
+    assert.equal(read.status(), 200);
+    const index = (await read.json()).index;
+    assert.equal(index.owner, 'alex');
+    assert.deepEqual(Object.keys(index.members), ['alex']);
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + id + '/board')).status(), 200);
+    // The fixture owner is not a member of Billing.
+    const other = await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}});
+    assert.equal(other.status, 404);
+    assert.deepEqual(await other.json(), {error: 'Workspace not found'});
+  } finally { await f.close(); }
+});
+
 test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', async () => {
   const configured = {...types, ac: {...types.ac, title: 'Proofs'}};
   const f = await fixture({'domain:d': {title: 'Domain'},

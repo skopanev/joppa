@@ -464,16 +464,17 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         );
         let row = conn
             .query_one(
-                "SELECT first_view::text FROM joppa.board_cache WHERE workspace=$1",
+                "SELECT first_view::text,(SELECT value->>'admin' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key='') FROM joppa.board_cache WHERE workspace=$1",
                 &[&workspace],
             )
             .await?;
         let first: Value = serde_json::from_str(row.get(0))?;
+        let owner: Option<String> = row.get(1);
         drop(conn);
         drop(client);
         let roots = read_objects(pool, workspace, actor, &ObjectScope::default()).await?;
         return Ok(
-            json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"launch":first["launch"],"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
+            json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"owner":owner,"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"launch":first["launch"],"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
         );
     }
     if !scope.full {
