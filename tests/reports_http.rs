@@ -1640,10 +1640,10 @@ async fn an_agent_token_does_not_reach_another_workspace() -> Result<()> {
     Ok(())
 }
 
-/// Call one MCP tool; a JSON-RPC result without isError=true gives its decoded text content.
-async fn mcp_read(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Value> {
+/// Call one MCP tool and return the raw JSON-RPC reply. Transport and decoding errors fail here.
+async fn mcp(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Value> {
     let root = w.base.split("/api/").next().unwrap();
-    let reply: Value = w
+    Ok(w
         .http
         .post(format!("{root}/mcp"))
         .bearer_auth(token)
@@ -1651,12 +1651,25 @@ async fn mcp_read(w: &World, token: &str, tool: &str, arguments: Value) -> Resul
         .send()
         .await?
         .json()
-        .await?;
+        .await?)
+}
+
+/// A JSON-RPC result without isError=true gives its decoded text content.
+fn read_result(tool: &str, reply: &Value) -> Result<Value> {
     let result = &reply["result"];
-    let text = result["content"][0]["text"].as_str().unwrap_or("null");
     ensure!(result.is_object(), "{tool}: no result: {reply}");
-    ensure!(result["isError"] != true, "{tool}: {text}");
+    let text = result["content"][0]["text"].as_str();
+    ensure!(
+        result["isError"] != true,
+        "{tool}: {}",
+        text.unwrap_or_default()
+    );
+    let text = text.ok_or_else(|| anyhow::anyhow!("{tool}: no text: {reply}"))?;
     Ok(serde_json::from_str(text)?)
+}
+
+async fn mcp_read(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Value> {
+    read_result(tool, &mcp(w, token, tool, arguments).await?)
 }
 
 /// Every object address of joppa_objects with parent="*", one item per page.
@@ -1671,7 +1684,12 @@ async fn all_objects(w: &World, token: &str) -> Result<(Vec<String>, usize)> {
         let page = mcp_read(w, token, "joppa_objects", arguments).await?;
         pages += 1;
         for item in page["items"].as_array().into_iter().flatten() {
-            addresses.push(item["address"].as_str().unwrap_or_default().to_owned());
+            let address = item["address"].as_str();
+            addresses.push(
+                address
+                    .ok_or_else(|| anyhow::anyhow!("no address: {item}"))?
+                    .to_owned(),
+            );
         }
         match page["next_cursor"].as_str() {
             Some(next) => cursor = Some(next.to_owned()),
@@ -1680,32 +1698,20 @@ async fn all_objects(w: &World, token: &str) -> Result<(Vec<String>, usize)> {
     }
 }
 
-/// The four reads of read-only-agent-token-ac1 with valid arguments.
-async fn four_reads(w: &World, token: &str) -> Vec<(&'static str, Result<Value>)> {
+/// The four reads of read-only-agent-token-ac1 with valid arguments; joppa_objects reads its first page.
+fn four_reads(w: &World) -> [(&'static str, Value); 4] {
     let workspace = w.base.rsplit('/').next().unwrap();
-    vec![
+    [
         (
             "joppa_objects",
-            all_objects(w, token).await.map(|(a, _)| json!(a)),
+            json!({"workspace":workspace,"parent":"*","limit":1}),
         ),
         (
             "joppa_tests",
-            mcp_read(
-                w,
-                token,
-                "joppa_tests",
-                json!({"workspace":workspace,"ac":"ac:key-rights"}),
-            )
-            .await,
+            json!({"workspace":workspace,"ac":"ac:key-rights"}),
         ),
-        (
-            "joppa_tasks",
-            mcp_read(w, token, "joppa_tasks", json!({"workspace":workspace})).await,
-        ),
-        (
-            "joppa_tree",
-            mcp_read(w, token, "joppa_tree", json!({"workspace":workspace})).await,
-        ),
+        ("joppa_tasks", json!({"workspace":workspace})),
+        ("joppa_tree", json!({"workspace":workspace})),
     ]
 }
 
@@ -1730,6 +1736,7 @@ async fn an_agent_token_with_read_access_reads_the_workspace_as_the_owner() -> R
     // read-only-agent-token-ac1: owner S issues a read token for planner-reader in W.
     let w = world().await?;
     let reader = read_token(&w).await?;
+    // all_objects checks every joppa_objects page of the reader.
     let (read, pages) = all_objects(&w, &reader).await?;
     let (owned, _) = all_objects(&w, &w.owner).await?;
     ensure!(pages > 1, "joppa_objects needs more than one page: {pages}");
@@ -1740,8 +1747,8 @@ async fn an_agent_token_with_read_access_reads_the_workspace_as_the_owner() -> R
         "the fixture objects are listed: {read:?}"
     );
     ensure!(read == owned, "reader {read:?} owner {owned:?}");
-    for (tool, reply) in four_reads(&w, &reader).await {
-        reply.map_err(|e| anyhow::anyhow!("{tool} with a read token: {e}"))?;
+    for (tool, arguments) in four_reads(&w).into_iter().skip(1) {
+        mcp_read(&w, &reader, tool, arguments).await?;
     }
     Ok(())
 }
@@ -1753,8 +1760,19 @@ async fn the_read_check_fails_for_a_read_token_without_membership() -> Result<()
     let a = world().await?;
     let b = world().await?;
     let outsider = read_token(&b).await?;
-    for (tool, reply) in four_reads(&a, &outsider).await {
-        ensure!(reply.is_err(), "{tool} succeeded without membership");
+    for (tool, arguments) in four_reads(&a) {
+        let reply = mcp(&a, &outsider, tool, arguments).await?;
+        let result = &reply["result"];
+        ensure!(
+            result.is_object()
+                && result["isError"] == true
+                && result["content"][0]["text"] == "Workspace not found",
+            "{tool} without membership: {reply}"
+        );
+        ensure!(
+            read_result(tool, &reply).is_err(),
+            "the read check accepts {tool}: {reply}"
+        );
     }
     Ok(())
 }
