@@ -90,6 +90,8 @@ complete_task: revision, id, evidence; only the current holder completes claimed
       A decision Task under the default AC gate needs the actual specialist decision comment ID.
 review_task: revision, id, reason; Task owner or workspace owner confirms the current parent contract
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
+      The planning holder of the parent criterion can also retire a blocked child Task.
+      This authority applies only to blocked Tasks.
 review_coverage: req, revision, run, reason; REQ owner acknowledges checks removed or changed since the latest earlier plan
 define_verification_scope: req, revision, subject_keys:[component-id,...], scope, reason; REQ owner agrees the complete component set and check boundary before the first plan
 plan: req, revision, run, subject:{component:immutable-build-or-config-id},
@@ -459,6 +461,11 @@ They remain visible in `all`, with `waiting_reason="Task is awaiting planning pu
 Existing Tasks keep their ordinary gates and active worker assignments. Claimed criteria stay outside `work_filter=unstarted`.
 
 Finish requires a Task creation or revision by the holder after the claim. It validates dependency targets and reachable dependency cycles across the workspace.
-Finish removes only the planning gate. It does not change verification or ordinary dependency gates.
+Finish also checks each blocked, unretired child Task. It compares the current document with the document revision at the block event position.
+The compared contract contains the title, contract, projects and blocking dependency links. The order of links does not change the result.
+An unchanged blocked child Task makes finish fail with "blocked Task needs a new contract or retirement".
+This refusal takes precedence over "planning produced no Task changes". The failed finish keeps the planning claim and every block.
+A successful finish clears `process.blocked` for each changed blocked child Task in the same finish event.
+Finish removes only the planning gate and these blocks. It does not change verification or ordinary dependency gates.
 Only the holder can finish. The holder or workspace owner can release with a non-empty reason.
 Release preserves existing Tasks, their current documents, worker assignments, and history. Retired new Tasks retain their documents and history.

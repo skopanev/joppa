@@ -30,6 +30,15 @@ The MCP queue lists work that the authenticated actor can claim.
 `claim_task` and `claim_next_task` assign eligible work atomically.
 `release_task` returns unfinished work with a reason.
 An unmet gate or dependency prevents a claim. It does not create a Task work status named blocked.
+
+An explicit block records `process.blocked` on the Task and prevents a claim.
+A blocked Task has two exits. No timer clears a block.
+- The planning holder of the parent criterion changes the title, contract, projects or blocking dependency links. A successful finish then clears the block.
+- The Task owner, the workspace owner or that planning holder retires the Task.
+
+Finish fails when a blocked Task has no change to these four fields. The block stays.
+Dependency gates still apply after a block clears.
+
 Task completion records work evidence. It never supplies a passing criterion check.
 
 ## Discussion and corrections
