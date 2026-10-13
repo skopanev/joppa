@@ -362,27 +362,29 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
         .port();
     let root = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
-    let read = |point: &'static str| {
-        let (http, root, ws, token, blocks) = (&http, &root, &f.ws, &token, &blocks);
-        async move {
-            let mut out = BTreeMap::new();
-            for (transport, mcp) in [("HTTP", false), ("MCP", true)] {
-                let s = snapshot(http, root, ws, token, mcp).await?;
-                expect(point, transport, &s, blocks)?;
-                out.insert(transport, s);
-            }
-            ensure!(
-                out["HTTP"] == out["MCP"],
-                "{point}: HTTP {:#?} differs from MCP {:#?}",
-                out["HTTP"],
-                out["MCP"]
-            );
-            Ok::<_, anyhow::Error>(out)
+    let read = || async {
+        let mut out = BTreeMap::new();
+        for (transport, mcp) in [("HTTP", false), ("MCP", true)] {
+            out.insert(transport, snapshot(&http, &root, &f.ws, &token, mcp).await?);
         }
+        Ok::<_, anyhow::Error>(out)
+    };
+    let check = |point: &str, out: &BTreeMap<&str, Snapshot>| {
+        for (transport, s) in out {
+            expect(point, transport, s, &blocks)?;
+        }
+        ensure!(
+            out["HTTP"] == out["MCP"],
+            "{point}: HTTP {:#?} differs from MCP {:#?}",
+            out["HTTP"],
+            out["MCP"]
+        );
+        Ok::<_, anyhow::Error>(())
     };
 
     let server = start(&url, &tokens, port).await?;
-    let before = read("before the restart").await?;
+    let before = read().await?;
+    check("before the restart", &before)?;
     store::check_journal(&f.pool).await?;
     drop(server);
 
@@ -428,8 +430,9 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
             "startup did not rebuild the task_queue row of {name} {address}: {addresses:?}"
         );
     }
-    let after = read("after the restart").await?;
+    let after = read().await?;
     drop(server);
+    // Report a restart difference before the fixture values are checked again.
     for (transport, snapshot) in &before {
         for (name, fields) in snapshot {
             for (field, old) in fields.as_object().unwrap() {
@@ -441,6 +444,7 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
             }
         }
     }
+    check("after the restart", &after)?;
     store::check_journal(&f.pool).await?;
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
