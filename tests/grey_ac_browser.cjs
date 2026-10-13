@@ -17,7 +17,7 @@ const types = {
 let browser, helper;
 before(async () => {
   assert.ok(process.env.JOPPA_TEST_DATABASE_URL, 'isolated test database required');
-  const build = spawnSync('cargo', ['test', '--test', 'browser_server', '--no-run', '--message-format=json'],
+  const build = spawnSync('bun', ['run', 'test:rust', '--test', 'browser_server', '--no-run', '--message-format=json'],
     {cwd: root, encoding: 'utf8'});
   assert.equal(build.status, 0, build.stderr);
   const artifact = build.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line))

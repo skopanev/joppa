@@ -4,6 +4,11 @@
 //   JOPPA_TEST_DATABASE_URL=... bun scripts/joppa-report/joppa-run.ts
 import { writeFileSync } from "node:fs";
 
+if (process.env.JOPPA_BUILD_LOCKED !== "1") {
+  const locked = Bun.spawnSync(["bun", "run", "report"], { stdout: "inherit", stderr: "inherit" });
+  process.exit(locked.exitCode ?? 1);
+}
+
 const cargo = Bun.spawnSync(
   ["bun", "scripts/joppa-report/cargo-junit.ts", "--no-fail-fast", "--", "--include-ignored", "--test-threads=1"],
   { stdout: "inherit", stderr: "inherit" },
@@ -24,7 +29,7 @@ const probe = Bun.spawnSync(
 let browserFailed = false;
 if (probe.exitCode === 0) {
   const browser = Bun.spawnSync(
-    ["node", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs"],
+    ["bun", "run", "test:browser", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs"],
     { stdout: "inherit", stderr: "inherit", env },
   );
   browserFailed = browser.exitCode !== 0;

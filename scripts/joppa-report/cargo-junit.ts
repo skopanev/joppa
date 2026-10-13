@@ -76,7 +76,7 @@ export function junit(suites: Map<string, Case[]>): string {
 if (import.meta.main) {
   const args = Bun.argv.slice(2);
   // cargo prints "Running <file>" to stderr and results to stdout: merge them in order.
-  const run = Bun.spawnSync(["sh", "-c", 'exec cargo test "$@" 2>&1', "cargo-test", ...args], { stdout: "pipe" });
+  const run = Bun.spawnSync(["sh", "-c", 'exec bun run test:rust "$@" 2>&1', "cargo-test", ...args], { stdout: "pipe" });
   const output = run.stdout.toString();
   process.stdout.write(output);
   mkdirSync(".joppa", { recursive: true });

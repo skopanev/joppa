@@ -8,11 +8,18 @@
 # database. No credential is printed.
 set -eu
 env_file=${1:?usage: scripts/lane-test.sh ENV_FILE}
+if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
+  exec bun run test "$env_file"
+fi
 [ -r "$env_file" ] || { echo "lane-test: the env file is not readable" >&2; exit 2; }
 set -a
 . "$env_file"
 set +a
 : "${JOPPA_TEST_ADMIN_URL:?JOPPA_TEST_ADMIN_URL is missing in the env file}"
+if [ -f /.dockerenv ]; then
+  JOPPA_TEST_ADMIN_URL=$(printf '%s' "$JOPPA_TEST_ADMIN_URL" | sed \
+    -e 's/@127.0.0.1:/@host.docker.internal:/' -e 's/@localhost:/@host.docker.internal:/')
+fi
 case ${JOPPA_TEST_ADMIN_URL%%\?*} in
   *://*/*) ;;
   *) echo "lane-test: JOPPA_TEST_ADMIN_URL needs a database path" >&2; exit 2 ;;
@@ -34,7 +41,7 @@ trap drop EXIT
 trap 'drop; exit 130' INT
 trap 'drop; exit 143' TERM
 status=0
-cargo test --lib --tests -- --include-ignored --test-threads=1 || status=$?
+bun run test:rust --lib --tests -- --include-ignored --test-threads=1 || status=$?
 # The browser suite that the full run reports. The image sets PLAYWRIGHT_MODULE and NODE_PATH.
-node --test tests/grey_ac_browser.cjs || status=$?
+bun run test:browser --test tests/grey_ac_browser.cjs || status=$?
 exit "$status"
