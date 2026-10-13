@@ -113,7 +113,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     apply(&pool, &ws, "owner", scope(1)).await?;
     conn.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements", &[])
         .await?;
-    conn.query_one("SELECT pg_stat_statements_reset()", &[])
+    conn.query_one("SELECT pg_stat_statements_reset(0,(SELECT oid FROM pg_database WHERE datname=current_database()),0)", &[])
         .await?;
     let request = uuid::Uuid::new_v4().to_string();
     let command = bound("current", 1, &["job:one", "job:two"]);
@@ -181,7 +181,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     assert_eq!(task["verification"], "pass");
     assert_eq!(task["origin_revision"], 1);
     assert_eq!(task["status"], "done");
-    let journal:i64=conn.query_one(r#"SELECT COALESCE(SUM(calls),0)::bigint FROM pg_stat_statements WHERE query ~* '(FROM|JOIN)\s+joppa\.events'"#,&[]).await?.get(0);
+    let journal:i64=conn.query_one(r#"SELECT COALESCE(SUM(calls),0)::bigint FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query ~* '(FROM|JOIN)\s+joppa\.events'"#,&[]).await?.get(0);
     assert_eq!(
         journal, 0,
         "normal report and current read must not replay the journal"
