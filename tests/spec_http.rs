@@ -3098,7 +3098,7 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
             result["isError"] == true
                 && result["content"][0]["text"]
                     .as_str()
-                    .is_some_and(|t| t.contains("read-only grant")),
+                    .is_some_and(|t| t == "read-only token"),
             "{name}: {result}"
         );
     }
@@ -3129,7 +3129,9 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         let status = reply.status().as_u16();
         let text = reply.text().await?;
         ensure!(
-            status == 403 && text.contains("read-only grant"),
+            status == 403
+                && serde_json::from_str::<Value>(&text)
+                    .is_ok_and(|v| v["error"] == "read-only token"),
             "{path}: {status} {text}"
         );
     }

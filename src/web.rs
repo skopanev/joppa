@@ -36,6 +36,32 @@ async fn no_store(
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     response
 }
+/// A read grant never changes state. Every API request other than GET or HEAD,
+/// to a known route or not, is refused before routing reads or validates the body.
+/// Other credentials pass; the route checks them as before.
+async fn refuse_read_writes(
+    State(app): State<App>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::{http::Method, response::IntoResponse};
+    let write = !matches!(*request.method(), Method::GET | Method::HEAD);
+    if write && request.uri().path().starts_with("/api/") {
+        let token = request
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.strip_prefix("Bearer "));
+        if let Some(token) = token
+            && !app.identities.contains_key(token)
+            && let Ok(Some(grant)) = store::token_actor(&app.pool, token).await
+            && let Err(refusal) = refuse_read_grant(grant.access)
+        {
+            return refusal.into_response();
+        }
+    }
+    next.run(request).await
+}
 /// Приём файла: сырые байты, имя и тип — в заголовках.
 ///
 /// Ответ несёт отпечаток и размер; само вложение появляется в журнале
@@ -136,7 +162,7 @@ fn refuse_read_grant(access: store::Access) -> std::result::Result<(), (StatusCo
     if access == store::Access::Read {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error":"This token has a read-only grant."})),
+            Json(json!({"error": store::READ_ONLY_REFUSAL})),
         ));
     }
     Ok(())
@@ -677,6 +703,13 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     if let Some(embedder) = embedder.clone() {
         tokio::spawn(joppa::store::search::worker(pool.clone(), embedder));
     }
+    let state = App {
+        pool,
+        identities: Arc::new(identities),
+        login,
+        oauth_origin,
+        embedder,
+    };
     let app = Router::new()
         .merge(oauth::routes())
         .merge(mcp::routes())
@@ -745,13 +778,11 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             post(upload).layer(axum::extract::DefaultBodyLimit::max(store::ATTACHMENT_MAX)),
         )
         .route("/api/workspaces/{workspace}/blobs/{hash}", get(download))
-        .with_state(App {
-            pool,
-            identities: Arc::new(identities),
-            login,
-            oauth_origin,
-            embedder,
-        })
+        .with_state(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            refuse_read_writes,
+        ))
         .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     eprintln!("joppa: http://{host}:{port}");

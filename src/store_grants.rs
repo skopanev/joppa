@@ -7,6 +7,9 @@ fn token_hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
+/// The one reply to a write with a read grant, on MCP and HTTP.
+pub const READ_ONLY_REFUSAL: &str = "read-only token";
+
 /// What a token may do. Write is the default; a read grant permits only reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {

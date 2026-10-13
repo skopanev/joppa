@@ -100,7 +100,7 @@ async fn call(
     let name = msg["params"]["name"].as_str().unwrap_or("");
     // Refused before any store call.
     if access == store::Access::Read && !READ_TOOLS.contains(&name) {
-        anyhow::bail!("{name} is refused: this token has a read-only grant");
+        anyhow::bail!(store::READ_ONLY_REFUSAL);
     }
     match name {
         "joppa_list" => store::list(pool, actor).await,
