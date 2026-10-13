@@ -549,6 +549,39 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
   } finally { await f.close(); }
 });
 
+test('blocking-pins-revision-ac1: a blocking link pins the target revision', async () => {
+  const f = await fixture({'domain:t': {title: 'Target'}});
+  try {
+    for (const revision of [1, 2]) await f.save('domain:t', {title: 'Target', body: 'Target at revision ' + (revision + 1)}, revision);
+    const link = (id, revision, links) => f.command({op: 'save_object', kind: 'domain', id, revision, parent: null,
+      data: {title: 'Source ' + id, owner: 'owner', body: 'Linked source'}, links, reason: 'Link the target'});
+    await link('s', 0, [{target: 'domain:t', relation: 'depends_on', revision: 3, blocking: true}]);
+    await link('u', 0, [{target: 'domain:t', relation: 'related'}]);
+    await link('u', 1, [{target: 'domain:t', relation: 'depends_on', revision: 3}]);
+    const read = async suffix => {
+      const value = await f.api('/objects?address=' + suffix);
+      assert.equal(value.links.length, 1);
+      const [item] = value.links;
+      assert.deepEqual(item.link, value.document.links[0]);
+      assert.deepEqual([item.title, item.kind, item.present, item.metadata_scope], ['Target', 'domain', true, 'current']);
+      return value;
+    };
+    const pinned = await read('domain:s');
+    assert.deepEqual([pinned.links[0].blocking, pinned.links[0].revision, pinned.links[0].current_revision], [true, 3, 3]);
+    assert.equal(pinned.review_required, false);
+    const unpinned = await read('domain:u&revision=1');
+    assert.deepEqual([unpinned.historical, unpinned.links[0].blocking, unpinned.links[0].revision], [true, false, null]);
+    assert.deepEqual(unpinned.links[0].link, {target: 'domain:t', relation: 'related', revision: null, blocking: false});
+    const later = await read('domain:u');
+    assert.deepEqual([later.links[0].blocking, later.links[0].revision], [false, 3]);
+    await f.save('domain:t', {title: 'Target', body: 'Target at revision 4'}, 3);
+    const stale = await read('domain:s');
+    assert.deepEqual([stale.links[0].blocking, stale.links[0].revision, stale.links[0].current_revision], [true, 3, 4]);
+    assert.deepEqual(stale.document.links, pinned.document.links);
+    assert.equal(stale.review_required, true);
+  } finally { await f.close(); }
+});
+
 test('compact-open-object-ac2: an open object shows one solid line in its type colour', async () => {
   const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
   const C = '#aa3311', D = '#1166cc', fallback = rgb('#63756b');

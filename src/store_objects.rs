@@ -324,6 +324,8 @@ pub async fn read_objects(
                     .cloned()
                     .unwrap_or_else(|| json!({}));
                 item["link"] = link.clone();
+                item["blocking"] = json!(link["blocking"].as_bool().unwrap_or(false));
+                item["revision"] = link["revision"].clone();
                 item["metadata_scope"] = json!("current");
                 item
             })
