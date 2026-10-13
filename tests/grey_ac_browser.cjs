@@ -778,7 +778,7 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
 test('compact-open-object-ac3: the open-object line keeps 4 px from every status circle', async (t) => {
   const f = await fixture({'domain:X': {title: 'Parent X'}, 'capability:Y': {title: 'Child Y', parent: 'domain:X'}});
   const row = card => card.locator(':scope > summary');
-  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor();
+  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
   // A point on the title text, right of the status circle and away from the row controls.
   const titlePoint = card => row(card).evaluate(summary => {
     const title = summary.querySelector(':scope > .node-title'), range = document.createRange();
