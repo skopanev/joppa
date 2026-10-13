@@ -1418,7 +1418,38 @@ async fn a_report_from_a_feature_branch_does_not_change_status() -> Result<()> {
 async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
     // checks-listed-first-ac1: skopanev (the owner token) saves one address.
     let w = world().await?;
-    let command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["a.test.ts > login > ok"],"reason":"Link the test"});
+    // A fresh criterion, so it starts with no saved test list.
+    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"One more criterion","acs":[{"id":"key-rights","text":"Only read and verify before launch"},{"id":"key-audit","text":"Every key change is in the audit log"}]});
+    let reply = w
+        .http
+        .post(format!("{}/commands", w.base))
+        .bearer_auth(&w.owner)
+        .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+        .send()
+        .await?;
+    ensure!(
+        reply.status().is_success(),
+        "revise: {}",
+        reply.text().await?
+    );
+    let read = || async {
+        let s: Value = w
+            .http
+            .get(format!("{}/tests?ac=ac:key-audit", w.base))
+            .bearer_auth(&w.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        anyhow::Ok(s)
+    };
+    let s = read().await?;
+    ensure!(
+        s["tests"] == json!([]) && s["tests_saved_by"].is_null(),
+        "{s}"
+    );
+    let command = json!({"op":"set_ac_tests","target":"ac:key-audit","tests":["a.test.ts > login > ok"],"reason":"Link the test"});
     let reply = w
         .http
         .post(format!("{}/commands", w.base))
@@ -1427,7 +1458,7 @@ async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
         .send()
         .await?;
     ensure!(reply.status().is_success(), "{}", reply.text().await?);
-    let s = w.status().await?;
+    let s = read().await?;
     ensure!(
         s["tests"]
             .as_array()
