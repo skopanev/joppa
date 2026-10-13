@@ -37,7 +37,7 @@ async fn no_store(
     response
 }
 /// A read grant never changes state. Every API request other than GET or HEAD,
-/// to a known route or not, is refused before routing reads or validates the body.
+/// to a known route or not, is refused before the route reads or validates the body.
 /// Other credentials pass; the route checks them as before.
 async fn refuse_read_writes(
     State(app): State<App>,
@@ -149,7 +149,8 @@ async fn authenticate(
         .await
         .map(|(actor, _)| actor)
 }
-/// Routes that change state call this: a read grant is refused before any store call.
+/// Routes that change state call this. refuse_read_writes already refuses a read grant on
+/// /api/ writes; this is the second guard.
 async fn authenticate_write(
     app: &App,
     headers: &HeaderMap,
