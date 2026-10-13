@@ -1696,6 +1696,81 @@ async fn only_the_owner_creates_an_agent_token() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_owner_token_list_shows_the_access_of_each_token() -> Result<()> {
+    // read-only-agent-token-ac3: the list shows read for planner-reader and write for bot.
+    let w = world().await?;
+    let (code, reader) = post(
+        &w,
+        &w.owner,
+        "/agent-tokens",
+        json!({"agent":"planner-reader","access":"read"}),
+    )
+    .await?;
+    ensure!(
+        code == 200
+            && reader["access"] == "read"
+            && reader["token"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("jpt_")),
+        "{code} {reader}"
+    );
+    let (code, bot) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200 && bot["access"] == "write", "{code} {bot}");
+    let list = |token: &str| {
+        w.http
+            .get(format!("{}/agent-tokens", w.base))
+            .bearer_auth(token)
+            .send()
+    };
+    let reply = list(&w.owner).await?;
+    ensure!(reply.status().as_u16() == 200, "{}", reply.status());
+    let listed: Value = reply.json().await?;
+    // No token or token hash among the fields.
+    let fields = [
+        "access",
+        "agent",
+        "created_at",
+        "created_by",
+        "id",
+        "revoked",
+    ];
+    for (created, access) in [(&reader, "read"), (&bot, "write")] {
+        let agent = &created["agent"];
+        let item = listed["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|i| &i["agent"] == agent)
+            .ok_or_else(|| anyhow::anyhow!("{agent} not listed: {listed}"))?;
+        let mut keys: Vec<&str> = item
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(k, _)| k.as_str())
+            .collect();
+        keys.sort_unstable();
+        ensure!(
+            item["access"] == access
+                && item["id"] == created["id"]
+                && item["created_by"] == "owner"
+                && item["created_at"].is_string()
+                && item["revoked"] == false
+                && keys == fields,
+            "{item}"
+        );
+    }
+    let reply = list(&w.token).await?;
+    let code = reply.status().as_u16();
+    let refused: Value = reply.json().await?;
+    ensure!(
+        code == 409 && refused["error"] == "workspace owner required",
+        "{code} {refused}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_token_does_not_reach_another_workspace() -> Result<()> {
     // agent-needs-grant-ac3 shape: the token makes the agent a member of one workspace only.
     let a = world().await?;

@@ -150,13 +150,13 @@ pub async fn list_agent_tokens(pool: &Pool, workspace: &str, actor: &str) -> Res
     let items: Vec<Value> = conn
         .query(
             "SELECT t.id, t.agent, t.created_by, t.created_at::text,
-                    EXISTS(SELECT 1 FROM joppa.agent_token_revocations r WHERE r.token_id=t.id)
+                    EXISTS(SELECT 1 FROM joppa.agent_token_revocations r WHERE r.token_id=t.id), t.access
              FROM joppa.agent_tokens t WHERE t.workspace=$1 ORDER BY t.id",
             &[&workspace],
         )
         .await?
         .iter()
-        .map(|r| json!({"id": r.get::<_, i64>(0), "agent": r.get::<_, String>(1), "created_by": r.get::<_, String>(2), "created_at": r.get::<_, String>(3), "revoked": r.get::<_, bool>(4)}))
+        .map(|r| json!({"id": r.get::<_, i64>(0), "agent": r.get::<_, String>(1), "created_by": r.get::<_, String>(2), "created_at": r.get::<_, String>(3), "revoked": r.get::<_, bool>(4), "access": r.get::<_, String>(5)}))
         .collect();
     Ok(json!({"items": items}))
 }
