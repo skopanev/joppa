@@ -1640,6 +1640,125 @@ async fn an_agent_token_does_not_reach_another_workspace() -> Result<()> {
     Ok(())
 }
 
+/// Call one MCP tool; a JSON-RPC result without isError=true gives its decoded text content.
+async fn mcp_read(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Value> {
+    let root = w.base.split("/api/").next().unwrap();
+    let reply: Value = w
+        .http
+        .post(format!("{root}/mcp"))
+        .bearer_auth(token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let result = &reply["result"];
+    let text = result["content"][0]["text"].as_str().unwrap_or("null");
+    ensure!(result.is_object(), "{tool}: no result: {reply}");
+    ensure!(result["isError"] != true, "{tool}: {text}");
+    Ok(serde_json::from_str(text)?)
+}
+
+/// Every object address of joppa_objects with parent="*", one item per page.
+async fn all_objects(w: &World, token: &str) -> Result<(Vec<String>, usize)> {
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let (mut addresses, mut pages, mut cursor) = (vec![], 0, None::<String>);
+    loop {
+        let mut arguments = json!({"workspace":workspace,"parent":"*","limit":1});
+        if let Some(cursor) = &cursor {
+            arguments["cursor"] = json!(cursor);
+        }
+        let page = mcp_read(w, token, "joppa_objects", arguments).await?;
+        pages += 1;
+        for item in page["items"].as_array().into_iter().flatten() {
+            addresses.push(item["address"].as_str().unwrap_or_default().to_owned());
+        }
+        match page["next_cursor"].as_str() {
+            Some(next) => cursor = Some(next.to_owned()),
+            None => return Ok((addresses, pages)),
+        }
+    }
+}
+
+/// The four reads of read-only-agent-token-ac1 with valid arguments.
+async fn four_reads(w: &World, token: &str) -> Vec<(&'static str, Result<Value>)> {
+    let workspace = w.base.rsplit('/').next().unwrap();
+    vec![
+        (
+            "joppa_objects",
+            all_objects(w, token).await.map(|(a, _)| json!(a)),
+        ),
+        (
+            "joppa_tests",
+            mcp_read(
+                w,
+                token,
+                "joppa_tests",
+                json!({"workspace":workspace,"ac":"ac:key-rights"}),
+            )
+            .await,
+        ),
+        (
+            "joppa_tasks",
+            mcp_read(w, token, "joppa_tasks", json!({"workspace":workspace})).await,
+        ),
+        (
+            "joppa_tree",
+            mcp_read(w, token, "joppa_tree", json!({"workspace":workspace})).await,
+        ),
+    ]
+}
+
+async fn read_token(w: &World) -> Result<String> {
+    let (code, created) = post(
+        w,
+        &w.owner,
+        "/agent-tokens",
+        json!({"agent":"planner-reader","access":"read"}),
+    )
+    .await?;
+    ensure!(
+        code == 200 && created["access"] == "read" && created["agent"] == "planner-reader",
+        "{code} {created}"
+    );
+    Ok(created["token"].as_str().unwrap_or_default().to_owned())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_token_with_read_access_reads_the_workspace_as_the_owner() -> Result<()> {
+    // read-only-agent-token-ac1: owner S issues a read token for planner-reader in W.
+    let w = world().await?;
+    let reader = read_token(&w).await?;
+    let (read, pages) = all_objects(&w, &reader).await?;
+    let (owned, _) = all_objects(&w, &w.owner).await?;
+    ensure!(pages > 1, "joppa_objects needs more than one page: {pages}");
+    ensure!(
+        ["requirement:key", "ac:key-rights", "task:key/t1"]
+            .iter()
+            .all(|a| read.iter().any(|r| r == a)),
+        "the fixture objects are listed: {read:?}"
+    );
+    ensure!(read == owned, "reader {read:?} owner {owned:?}");
+    for (tool, reply) in four_reads(&w, &reader).await {
+        reply.map_err(|e| anyhow::anyhow!("{tool} with a read token: {e}"))?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_read_check_fails_for_a_read_token_without_membership() -> Result<()> {
+    // read-only-agent-token-ac1 control: planner-reader is a member of B only, so reads in A fail.
+    let a = world().await?;
+    let b = world().await?;
+    let outsider = read_token(&b).await?;
+    for (tool, reply) in four_reads(&a, &outsider).await {
+        ensure!(reply.is_err(), "{tool} succeeded without membership");
+    }
+    Ok(())
+}
+
 const NEEDS: &str = "acceptance needs a full run on the commit where every listed test passes";
 
 impl World {
