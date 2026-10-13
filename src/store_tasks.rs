@@ -225,11 +225,15 @@ pub(super) fn select_next(
             )
         })
         .collect();
+    let mut blocked = false;
     for (key, t) in &state.task_process {
         if project.is_some_and(|p| !task_in_project(state, key, t, p))
             || purpose.is_some_and(|p| t.purpose != p)
-            || crate::tasks::claimable(state, actor, key, t).is_err()
         {
+            continue;
+        }
+        if let Err(error) = crate::tasks::claimable(state, actor, key, t) {
+            blocked |= error.to_string() == crate::tasks::BLOCKED;
             continue;
         }
         choices.push((
@@ -240,6 +244,7 @@ pub(super) fn select_next(
             state.objects[key].current().revision,
         ));
     }
+    ensure!(!choices.is_empty() || !blocked, "{}", crate::tasks::BLOCKED);
     choices.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
     Ok(choices
         .into_iter()

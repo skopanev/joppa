@@ -282,6 +282,17 @@ pub struct Task {
     pub origin_revision: u32,
     #[serde(default)]
     pub retired: Option<String>,
+    /// A failed Task waits for planning; claims refuse it until planning clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<TaskBlock>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TaskBlock {
+    pub actor: String,
+    pub reason: String,
+    pub evidence: String,
+    pub position: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

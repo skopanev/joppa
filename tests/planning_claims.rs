@@ -447,3 +447,211 @@ fn an_active_planning_claim_prevents_archiving_the_criterion_or_its_ancestors() 
     let revision = w.state.objects["criterion:a"].current().revision;
     w.ok("owner", json!({"op":"archive_object","target":"criterion:a","revision":revision,"reason":"Archive after release"}));
 }
+
+const BLOCKED: &str = "Task is blocked for planning";
+
+fn task_command(w: &World, op: &str, key: &str, extra: Value) -> Value {
+    let mut cmd = json!({"op":op,"id":key,"revision":w.state.objects[key].current().revision});
+    for (field, value) in extra.as_object().unwrap() {
+        cmd[field] = value.clone();
+    }
+    cmd
+}
+fn block(w: &World, key: &str) -> Value {
+    task_command(
+        w,
+        "block_task",
+        key,
+        json!({"reason":"Verification failed","evidence":"test x failed on abc123"}),
+    )
+}
+/// Fixture 1: A is ready with valid dependencies, no verification and no planning claim.
+/// L (`worker`) holds T at revision 4.
+fn held() -> World {
+    let mut w = configured();
+    work(&mut w, "planner", "work:t");
+    for (op, extra) in [
+        ("claim_task", json!({})),
+        ("release_task", json!({"reason":"Return the Task"})),
+        ("claim_task", json!({})),
+    ] {
+        let cmd = task_command(&w, op, "work:t", extra);
+        w.ok("worker", cmd);
+    }
+    assert_eq!(w.state.objects["work:t"].current().revision, 4);
+    let a = objects::process(&w.state, "criterion:a");
+    assert_eq!(a["assessment"]["state"], "ready");
+    assert!(a["planning_claim"].is_null() && a["verification"] != "pass");
+    assert!(objects::work_ready(&w.state, "criterion:a"));
+    w
+}
+
+// failed-task-blocks-ac1
+#[test]
+fn holder_blocks_a_held_task_and_refusals_keep_state_and_position() {
+    let mut w = held();
+    let unblocked = objects::process(&w.state, "work:t");
+    assert!(unblocked.get("blocked").is_some_and(Value::is_null));
+    let mut stale = block(&w, "work:t");
+    stale["revision"] = json!(3);
+    refuse(
+        &mut w,
+        "worker",
+        stale,
+        "stale Task revision; read the Task again",
+    );
+    let cmd = block(&w, "work:t");
+    refuse(&mut w, "other", cmd, "workspace owner required");
+    for field in ["reason", "evidence"] {
+        let mut empty = block(&w, "work:t");
+        empty[field] = json!(" ");
+        refuse(&mut w, "worker", empty, "text must not be empty");
+    }
+    let mut unknown = block(&w, "work:t");
+    unknown["blocked"] = json!(true);
+    let before = serde_json::to_value(&w.state).unwrap();
+    let position = w.position;
+    assert!(w.apply("worker", unknown).is_err());
+    assert_eq!(
+        (w.position, serde_json::to_value(&w.state).unwrap()),
+        (position, before)
+    );
+
+    let before = w.state.clone();
+    let command = block(&w, "work:t");
+    w.ok("worker", command.clone());
+    let p = objects::process(&w.state, "work:t");
+    assert_eq!(p["status"], "open");
+    assert!(p["assignee"].is_null() && p.get("claim").is_none_or(Value::is_null));
+    assert_eq!(
+        p["blocked"],
+        json!({"actor":"worker","reason":"Verification failed","evidence":"test x failed on abc123","position":w.position})
+    );
+    assert_eq!(w.state.objects["work:t"].current().position, w.position);
+    assert_eq!(p["revision"], 5);
+
+    // Replay of the same event gives the same block and holder state.
+    let mut replayed = before;
+    let cmd: Command = serde_json::from_value(command).unwrap();
+    commands::apply_replay(
+        &mut replayed,
+        "worker",
+        &cmd,
+        w.position,
+        "2026-01-01T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(objects::process(&replayed, "work:t"), p);
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&w.state).unwrap()
+    );
+
+    // The former holder lost its authority with the claim.
+    let cmd = block(&w, "work:t");
+    refuse(&mut w, "worker", cmd, "workspace owner required");
+    let cmd = block(&w, "work:t");
+    refuse(&mut w, "owner", cmd, "Task is already blocked");
+}
+
+// failed-task-blocks-ac1
+#[test]
+fn owner_blocks_and_finished_tasks_cannot_be_blocked() {
+    let mut w = held();
+    work(&mut w, "planner", "work:u");
+    w.ok("other", task_command(&w, "claim_task", "work:u", json!({})));
+    w.ok("owner", block(&w, "work:u"));
+    let p = objects::process(&w.state, "work:u");
+    assert_eq!(
+        (p["status"].as_str(), p["blocked"]["actor"].as_str()),
+        (Some("open"), Some("owner"))
+    );
+    assert!(p["assignee"].is_null());
+
+    work(&mut w, "planner", "work:done");
+    w.ok(
+        "other",
+        task_command(&w, "claim_task", "work:done", json!({})),
+    );
+    w.ok(
+        "other",
+        task_command(
+            &w,
+            "complete_task",
+            "work:done",
+            json!({"evidence":"The work is complete"}),
+        ),
+    );
+    let cmd = block(&w, "work:done");
+    refuse(&mut w, "owner", cmd, "completed Task cannot be blocked");
+    work(&mut w, "planner", "work:retired");
+    w.ok(
+        "owner",
+        task_command(
+            &w,
+            "retire_task",
+            "work:retired",
+            json!({"reason":"The work is no longer required"}),
+        ),
+    );
+    let cmd = block(&w, "work:retired");
+    refuse(&mut w, "owner", cmd, "retired Task cannot be blocked");
+}
+
+// failed-task-blocks-ac1
+#[test]
+fn claims_refuse_a_blocked_task_and_documents_cannot_change_the_block() {
+    let mut w = held();
+    w.ok("worker", block(&w, "work:t"));
+    let blocked = objects::process(&w.state, "work:t")["blocked"].clone();
+    for actor in ["worker", "other"] {
+        let cmd = task_command(&w, "claim_task", "work:t", json!({}));
+        refuse(&mut w, actor, cmd, BLOCKED);
+        let t = &w.state.task_process["work:t"];
+        assert_eq!(
+            tasks::claimable(&w.state, actor, "work:t", t)
+                .unwrap_err()
+                .to_string(),
+            BLOCKED
+        );
+    }
+    // Membership comes before the block guard.
+    let t = &w.state.task_process["work:t"];
+    assert_eq!(
+        tasks::claimable(&w.state, "stranger", "work:t", t)
+            .unwrap_err()
+            .to_string(),
+        "claimant is not a workspace member"
+    );
+
+    // A document write can neither set nor clear the block.
+    let document = json!({"title":"work:t","owner":"owner","contract":"Implement this criterion","purpose":"implementation"});
+    for value in [Value::Null, json!({"actor":"owner"})] {
+        let mut data = document.clone();
+        data["blocked"] = value;
+        let before = serde_json::to_value(&w.state).unwrap();
+        let position = w.position;
+        let revision = w.state.objects["work:t"].current().revision;
+        assert!(w.apply("owner", json!({"op":"save_object","kind":"work","id":"t","revision":revision,"parent":"criterion:a","data":data,"reason":"Change the block"})).is_err());
+        assert_eq!(
+            (w.position, serde_json::to_value(&w.state).unwrap()),
+            (position, before)
+        );
+    }
+    let mut data = document;
+    data["contract"] = json!("Implement this criterion again");
+    save(&mut w, "owner", "work:t", Some("criterion:a"), data);
+    assert_eq!(objects::process(&w.state, "work:t")["blocked"], blocked);
+
+    // Publication comes before the block guard.
+    claim(&mut w, "planner", "criterion:a");
+    work(&mut w, "planner", "work:new");
+    w.ok("owner", block(&w, "work:new"));
+    let t = &w.state.task_process["work:new"];
+    assert_eq!(
+        tasks::claimable(&w.state, "other", "work:new", t)
+            .unwrap_err()
+            .to_string(),
+        "Task is awaiting planning publication"
+    );
+}

@@ -139,7 +139,7 @@ async fn download(
 #[serde(deny_unknown_fields)]
 struct Request {
     request_id: String,
-    command: Command,
+    command: Value,
 }
 async fn authenticate(
     app: &App,
@@ -516,7 +516,7 @@ async fn command(
             &workspace,
             &actor,
             &request.request_id,
-            &serde_json::to_value(&request.command).expect("validated command serializes"),
+            &request.command,
         )
         .await,
     )

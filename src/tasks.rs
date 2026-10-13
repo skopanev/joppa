@@ -25,6 +25,7 @@ pub fn task<'a>(w: &'a Workspace, key: &str) -> Option<&'a Task> {
 }
 
 pub const CLAIM_DURATION_MS: i64 = 30 * 60 * 1000;
+pub const BLOCKED: &str = "Task is blocked for planning";
 
 pub(crate) fn parse_time(at: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(at)
@@ -203,6 +204,7 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
         w.members.contains_key(actor),
         "claimant is not a workspace member"
     );
+    ensure!(t.blocked.is_none(), "{BLOCKED}");
     ensure!(holder(w, t).is_none(), "task is already claimed");
     ensure!(t.done.is_none(), "task is already completed");
     ensure!(t.retired.is_none(), "task is retired");
@@ -379,6 +381,7 @@ pub fn save(
         review_required: false,
         origin_revision: 1,
         retired: None,
+        blocked: None,
     });
     if let Some(old) = old {
         ensure!(
@@ -435,6 +438,7 @@ pub fn process(w: &Workspace, key: &str) -> Option<Value> {
     p["revision"] = json!(o.current().revision);
     p["review_required"] = json!(review_required(w, key, t));
     p["status"] = json!(status(t));
+    p["blocked"] = json!(t.blocked);
     p["assessment"] = json!(parent_assessment(w, key));
     p["readiness_blocker"] = json!(readiness_blocker(w, key));
     Some(p)
@@ -448,7 +452,9 @@ pub fn apply(
     at: &str,
 ) -> Result<bool> {
     let (req, revision, id) = match cmd {
-        Command::HeartbeatTask { revision, id } => (&String::new(), *revision, id),
+        Command::HeartbeatTask { revision, id } | Command::BlockTask { revision, id, .. } => {
+            (&String::new(), *revision, id)
+        }
         Command::ClaimTask { req, revision, id }
         | Command::AmendTask {
             req, revision, id, ..
@@ -527,18 +533,32 @@ pub fn apply(
         }
         Command::ReleaseTask { reason, .. } => {
             commands::nonempty(reason)?;
-            ensure!(
-                actor == w.admin
-                    || t.assignee.as_deref() == Some(actor)
-                    || w.replay_claims && !w.persistent_claims && authority,
-                "workspace owner required"
-            );
+            release_authority(w, actor, &t, authority)?;
             ensure!(
                 t.assignee.is_some() && t.done.is_none() && t.retired.is_none(),
                 "Task is not claimed unfinished work"
             );
             t.assignee = None;
             t.claim = None;
+            reason
+        }
+        Command::BlockTask {
+            reason, evidence, ..
+        } => {
+            commands::nonempty(reason)?;
+            commands::nonempty(evidence)?;
+            release_authority(w, actor, &t, authority)?;
+            ensure!(t.done.is_none(), "completed Task cannot be blocked");
+            ensure!(t.retired.is_none(), "retired Task cannot be blocked");
+            ensure!(t.blocked.is_none(), "Task is already blocked");
+            t.assignee = None;
+            t.claim = None;
+            t.blocked = Some(crate::model::TaskBlock {
+                actor: actor.into(),
+                reason: reason.clone(),
+                evidence: evidence.clone(),
+                position,
+            });
             reason
         }
         Command::CompleteTask { evidence, .. } => {
@@ -658,6 +678,17 @@ pub fn apply(
     w.task_process.insert(key.clone(), t);
     append(w, &key, r, actor, position, at, reason);
     Ok(true)
+}
+
+/// The holder or the workspace owner may take a Task out of active work.
+fn release_authority(w: &Workspace, actor: &str, t: &Task, authority: bool) -> Result<()> {
+    ensure!(
+        actor == w.admin
+            || t.assignee.as_deref() == Some(actor)
+            || w.replay_claims && !w.persistent_claims && authority,
+        "workspace owner required"
+    );
+    Ok(())
 }
 
 pub(crate) fn append(

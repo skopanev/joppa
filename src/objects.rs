@@ -1257,6 +1257,7 @@ pub(crate) fn process_field(field: &str) -> bool {
             | "planning_claim"
             | "done"
             | "retired"
+            | "blocked"
             | "review_required"
             | "verification"
             | "work_ready"

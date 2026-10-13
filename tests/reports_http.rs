@@ -486,22 +486,92 @@ impl Planning<'_> {
             .cloned()
             .unwrap_or(Value::Null))
     }
+    /// Fixture 1: A is ready and has no planning claim. L (`other`) holds the Task
+    /// at revision 4 and blocks it. Returns the position of the block event.
+    async fn blocked(&self, task: &str) -> Result<u64> {
+        self.ready().await?;
+        self.save(task, Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+        for (op, reason) in [
+            ("claim_task", None),
+            ("release_task", Some("Return the Task")),
+            ("claim_task", None),
+        ] {
+            let mut command = json!({"op":op,"id":task,"revision":self.revision(task).await?});
+            if let Some(reason) = reason {
+                command["reason"] = json!(reason);
+            }
+            self.write("other", command).await?;
+        }
+        ensure!(self.revision(task).await? == 4);
+        let reply = self.write("other", json!({"op":"block_task","id":task,"revision":4,"reason":"Verification failed","evidence":"test x failed on abc123"})).await?;
+        reply["position"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("block reply has no position: {reply}"))
+    }
     /// P sends the claim through HTTP and then MCP. Each refusal returns `expected`
     /// and leaves the committed workspace rows unchanged.
     async fn refuse(&self, case: &str, ac: &str, revision: u64, expected: &str) -> Result<()> {
         let command = json!({"op":"claim_planning","ac":ac,"revision":revision});
-        let before = self.saved().await?;
+        self.refuse_command(case, command, expected).await
+    }
+    /// P posts the request body to the HTTP command endpoint.
+    async fn http(&self, body: Value) -> Result<(u16, Value)> {
         let root = self.w.base.split("/api/").next().unwrap();
         let reply = self
             .w
             .http
             .post(format!("{root}/api/workspaces/{}/commands", self.ws))
             .bearer_auth(&self.w.token)
-            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .json(&body)
             .send()
             .await?;
         let code = reply.status().as_u16();
-        let reply: Value = reply.json().await.unwrap_or(Value::Null);
+        Ok((code, reply.json().await.unwrap_or(Value::Null)))
+    }
+    /// P calls one MCP tool in this workspace.
+    async fn mcp(&self, tool: &str, mut arguments: Value) -> Result<Value> {
+        let root = self.w.base.split("/api/").next().unwrap();
+        arguments["workspace"] = json!(self.ws);
+        Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(&self.w.token)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
+            .send().await?.json().await?)
+    }
+    /// P sends `command` through HTTP or MCP and gets the result or the error text.
+    async fn send(&self, mcp: bool, command: &Value) -> Result<std::result::Result<Value, String>> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        if mcp {
+            let response = self
+                .mcp(
+                    "joppa_command",
+                    json!({"request_id":request_id,"command":command}),
+                )
+                .await?;
+            let text = response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            return Ok(if response["result"]["isError"] == true {
+                Err(text)
+            } else {
+                Ok(serde_json::from_str(&text)?)
+            });
+        }
+        let (code, reply) = self
+            .http(json!({"request_id":request_id,"command":command}))
+            .await?;
+        Ok(if code == 200 {
+            Ok(reply)
+        } else {
+            Err(format!("{code} {reply}"))
+        })
+    }
+    /// P sends the command through HTTP and then MCP. Each refusal returns `expected`
+    /// and leaves the committed workspace rows unchanged.
+    async fn refuse_command(&self, case: &str, command: Value, expected: &str) -> Result<()> {
+        let before = self.saved().await?;
+        let (code, reply) = self
+            .http(json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .await?;
         ensure!(
             (400..500).contains(&code) && reply["error"] == expected,
             "{case} over HTTP: expected {expected:?}, got {code} {reply}"
@@ -510,10 +580,12 @@ impl Planning<'_> {
             self.saved().await? == before,
             "{case}: the HTTP refusal changed saved state"
         );
-        let response: Value = self.w.http.post(format!("{root}/mcp")).bearer_auth(&self.w.token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{
-                "workspace":self.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}}}))
-            .send().await?.json().await?;
+        let response = self
+            .mcp(
+                "joppa_command",
+                json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+            )
+            .await?;
         ensure!(
             response["result"]["isError"] == true
                 && response["result"]["content"][0]["text"] == expected,
@@ -2134,5 +2206,191 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
     ensure!(response.status().as_u16() == 409, "{}", response.status());
     let refused: Value = response.json().await?;
     ensure!(refused["error"] == "unknown task", "{refused}");
+    Ok(())
+}
+
+const BLOCKED: &str = "Task is blocked for planning";
+const NO_MATCH: &str = "no available Task matches this claim";
+
+// failed-task-blocks-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_blocked_task_refuses_claims_and_leaves_the_queue_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    let position = p.blocked("work:t").await?;
+    ensure!(p.saved().await?["position"] == position);
+    let block = json!({"actor":"other","reason":"Verification failed","evidence":"test x failed on abc123","position":position});
+    let t = p.read("work:t").await?;
+    ensure!(
+        t["current_revision"] == 5
+            && t["process"]["status"] == "open"
+            && t["process"]["assignee"].is_null()
+            && t["process"]["blocked"] == block,
+        "{t}"
+    );
+    ensure!(p.saved_object("work:t").await?["process"]["blocked"] == block);
+
+    p.refuse_command(
+        "claim_task on blocked T",
+        json!({"op":"claim_task","id":"work:t","revision":5}),
+        BLOCKED,
+    )
+    .await?;
+    p.refuse_command(
+        "claim_next_task with only blocked T",
+        json!({"op":"claim_next_task"}),
+        BLOCKED,
+    )
+    .await?;
+
+    let root = w.base.split("/api/").next().unwrap();
+    for view in ["available", "all"] {
+        let http: Value = w
+            .http
+            .get(format!("{root}/api/workspaces/{}/tasks?view={view}", p.ws))
+            .bearer_auth(&w.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let mcp = p.mcp("joppa_tasks", json!({"view":view})).await?;
+        let mcp: Value = serde_json::from_str(
+            mcp["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default(),
+        )?;
+        for (transport, page) in [("HTTP", http), ("MCP", mcp)] {
+            let tasks = page["tasks"].as_array().cloned().unwrap_or_default();
+            let t = tasks.iter().find(|t| t["address"] == "work:t");
+            if view == "available" {
+                ensure!(t.is_none(), "{transport} available lists T: {page}");
+            } else {
+                ensure!(
+                    t.is_some_and(|t| t["claimable"] == false && t["waiting_reason"] == BLOCKED),
+                    "{transport} all: {page}"
+                );
+            }
+        }
+    }
+
+    // The HTTP envelope keeps its checks; the raw command meets the shared validation.
+    let before = p.saved().await?;
+    let valid = json!({"op":"save_object","kind":"spec","id":"envelope","revision":0,"parent":null,"data":{"title":"Envelope","body":"Check the envelope","owner":"owner"},"reason":"Check the envelope"});
+    let id = || json!(uuid::Uuid::new_v4().to_string());
+    let mut with_actor = valid.clone();
+    with_actor["actor"] = json!("other");
+    let mut unknown_field = valid.clone();
+    unknown_field["extra"] = json!(true);
+    let mut missing_field = valid.clone();
+    missing_field.as_object_mut().unwrap().remove("reason");
+    for (case, body) in [
+        ("missing request_id", json!({"command":valid})),
+        ("missing command", json!({"request_id":id()})),
+        (
+            "unknown envelope field",
+            json!({"request_id":id(),"command":valid,"extra":true}),
+        ),
+        (
+            "envelope actor",
+            json!({"request_id":id(),"command":valid,"actor":"other"}),
+        ),
+        (
+            "command actor",
+            json!({"request_id":id(),"command":with_actor}),
+        ),
+        (
+            "unknown command field",
+            json!({"request_id":id(),"command":unknown_field}),
+        ),
+        (
+            "missing command field",
+            json!({"request_id":id(),"command":missing_field}),
+        ),
+        (
+            "unknown operation",
+            json!({"request_id":id(),"command":{"op":"unblock_task","id":"work:t","revision":5}}),
+        ),
+        (
+            "command is not an object",
+            json!({"request_id":id(),"command":"claim_next_task"}),
+        ),
+    ] {
+        let (code, reply) = p.http(body).await?;
+        ensure!((400..500).contains(&code), "{case}: {code} {reply}");
+        ensure!(
+            p.saved().await? == before,
+            "{case}: the refusal changed saved state"
+        );
+    }
+    let (code, reply) = p.http(json!({"request_id":id(),"command":valid})).await?;
+    ensure!(code == 200, "the valid envelope: {code} {reply}");
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// failed-task-blocks-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn claim_next_task_takes_the_ordinary_task_beside_a_blocked_one() -> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        let position = p.blocked("work:t").await?;
+        p.save("work:ordinary", Some("criterion:a"), json!({"title":"Ordinary","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+        let reply = p
+            .send(mcp, &json!({"op":"claim_next_task"}))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+        let ordinary = p.read("work:ordinary").await?;
+        ensure!(
+            ordinary["process"]["assignee"] == "agent",
+            "mcp={mcp}: {reply} {ordinary}"
+        );
+        let t = p.read("work:t").await?;
+        ensure!(
+            t["current_revision"] == 5
+                && t["process"]["assignee"].is_null()
+                && t["process"]["blocked"]["position"] == position,
+            "mcp={mcp}: {t}"
+        );
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// failed-task-blocks-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn claim_next_task_keeps_the_no_match_error_for_held_and_unpublished_tasks() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.t0().await?;
+    let revision = p.revision("work:t0").await?;
+    p.write(
+        "other",
+        json!({"op":"claim_task","id":"work:t0","revision":revision}),
+    )
+    .await?;
+    p.refuse_command(
+        "only T0, held by Q",
+        json!({"op":"claim_next_task"}),
+        NO_MATCH,
+    )
+    .await?;
+
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.claim("other", "criterion:a").await?;
+    p.write("other", json!({"op":"save_object","kind":"work","id":"new","revision":0,"parent":"criterion:a","data":{"title":"New","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+    p.refuse_command(
+        "only an unpublished Task",
+        json!({"op":"claim_next_task"}),
+        NO_MATCH,
+    )
+    .await?;
+    store::check_journal(&p.pool).await?;
     Ok(())
 }

@@ -329,6 +329,12 @@ pub enum Command {
         id: String,
         reason: String,
     },
+    BlockTask {
+        revision: u32,
+        id: String,
+        reason: String,
+        evidence: String,
+    },
     CompleteTask {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,

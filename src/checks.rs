@@ -327,6 +327,7 @@ pub fn apply(
                     review_required: false,
                     origin_revision: *n,
                     retired: None,
+                    blocked: None,
                 },
             );
         }

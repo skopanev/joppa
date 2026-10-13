@@ -496,19 +496,20 @@ pub async fn read_objects(
     };
     let query = format!(
         r#"
-        WITH RECURSIVE task_parents(task,address,status,verification) AS (
-            SELECT t.address,COALESCE(a.target,t.parent),COALESCE(t.process->>'status','open'),COALESCE(t.process->>'verification','unverified')
+        WITH RECURSIVE task_parents(task,address,status,verification,blocked) AS (
+            SELECT t.address,COALESCE(a.target,t.parent),COALESCE(t.process->>'status','open'),COALESCE(t.process->>'verification','unverified'),
+                COALESCE(jsonb_typeof(t.process->'blocked'),'null')='object'
             FROM joppa.objects t
             LEFT JOIN joppa.object_aliases a ON a.workspace=t.workspace AND a.address=t.parent
             WHERE $9::boolean AND t.workspace=$1 AND t.present AND t.parent IS NOT NULL
                 AND t.kind=ANY($10::text[])
             UNION
-            SELECT t.task,COALESCE(a.target,p.parent),t.status,t.verification
+            SELECT t.task,COALESCE(a.target,p.parent),t.status,t.verification,t.blocked
             FROM task_parents t JOIN joppa.objects p ON p.workspace=$1 AND p.address=t.address
             LEFT JOIN joppa.object_aliases a ON a.workspace=p.workspace AND a.address=p.parent
             WHERE p.parent IS NOT NULL AND p.kind<>ALL($11::text[]) AND p.kind<>ALL($12::text[])
         ), work_counts AS (
-            SELECT address,COUNT(*) FILTER (WHERE status NOT IN ('done','retired')) AS active,
+            SELECT address,COUNT(*) FILTER (WHERE status NOT IN ('done','retired') AND NOT blocked) AS active,
                 COUNT(*) FILTER (WHERE status='done') AS done,COUNT(*) FILTER (WHERE status='retired') AS retired,
                 COUNT(*) FILTER (WHERE status='done' AND verification='pass') AS done_pass,
                 COUNT(*) FILTER (WHERE status='done' AND verification='fail') AS done_fail,
