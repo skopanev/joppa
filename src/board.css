@@ -156,9 +156,11 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .root-collection.object-collection>.object-collection-title{display:none}
 
 /* One row per object. The chevron opens it; children indent inside the line of the open card. */
-.common-object{--row-gap:.75rem;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
+.common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
 .common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
 .common-object>summary:hover{background:var(--hover)}
+/* The row content starts after the 2 px open line and a 4 px gap; the row background still covers the line. */
+.common-object>summary>.node-title{margin-left:var(--row-inset)}
 .common-object[open]>summary{background:var(--selected)}.common-object[open]>summary:hover{background:var(--hover)}
 /* An open card draws one solid line in its schema colour along its full height.
    The transparent bottom border keeps the closed separator width for the closing animation. */
@@ -186,7 +188,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object .item-actions>button:hover{color:var(--link)}
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .object-body,.common-object .object-body{padding:0 0 1.2em 0}
-.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(8px + var(--row-gap))}
+.object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(var(--row-inset) + 8px + var(--row-gap))}
 .object-children{margin:0 0 0 3px;padding-left:calc(4px + var(--row-gap));border-left:1px solid transparent}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
@@ -311,7 +313,7 @@ dialog::backdrop{background:#22222240}
   .common-object>summary{flex-wrap:wrap;row-gap:.15em}
   .common-object>summary>.node-title{flex:1 1 100%}
   /* Align the second row with the title text. */
-  .common-object>summary{--second-line:calc(8px + var(--row-gap))}
+  .common-object>summary{--second-line:calc(var(--row-inset) + 8px + var(--row-gap))}
   .common-object>summary>.count-slot{display:none}
   .common-object>summary>.verification-chip{min-width:0}
   .common-object>summary>.node-title+.type-badge{margin-left:var(--second-line)}

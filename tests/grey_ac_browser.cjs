@@ -774,4 +774,71 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
     assert.equal(closedParent.line, 'none'); assert.equal(closedParent.border, 'dashed 1px');
   } finally { await f.close(); }
 });
+
+test('compact-open-object-ac3: the open-object line keeps 4 px from every status circle', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Parent X'}, 'capability:Y': {title: 'Child Y', parent: 'domain:X'}});
+  const row = card => card.locator(':scope > summary');
+  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor();
+  // A point on the title text, right of the status circle and away from the row controls.
+  const titlePoint = card => row(card).evaluate(summary => {
+    const title = summary.querySelector(':scope > .node-title'), range = document.createRange();
+    range.selectNodeContents(title.lastChild);
+    const text = range.getBoundingClientRect(), box = summary.getBoundingClientRect();
+    return {x: text.left + text.width / 2 - box.left, y: text.top + text.height / 2 - box.top};
+  });
+  const circle = async card => {
+    assert.equal(await card.evaluate(node => node.classList.contains('is-loading')), false, 'the status circle is still loading');
+    const images = row(card).locator('[role="img"][aria-label^="Status:"]');
+    assert.equal(await images.count(), 1, 'one status circle per row');
+    return images.evaluate(node => { const r = node.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; });
+  };
+  const line = card => card.evaluate(node => {
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
+    const left = box.left + parseFloat(style.left), top = box.top + parseFloat(style.top);
+    return {content: style.content, style: style.borderLeftStyle,
+      box: {left, right: left + parseFloat(style.borderLeftWidth), top, bottom: top + parseFloat(style.height)}};
+  });
+  const gap = (a, b) => {
+    const dx = Math.max(0, a.left - b.right, b.left - a.right), dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  const intersects = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  try {
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+    await X.waitFor();
+    await row(X).click({position: await titlePoint(X)}); await ready(X);
+    const Y = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]');
+    await Y.waitFor();
+    await row(Y).click({position: await titlePoint(Y)}); await ready(Y);
+    assert.equal(await X.getAttribute('open'), '', 'X opens'); assert.equal(await Y.getAttribute('open'), '', 'Y opens');
+    const cards = {X, Y}, failures = [];
+    for (const [width, height] of [[1280, 720], [390, 844]]) {
+      await f.page.setViewportSize({width, height});
+      for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
+        await f.page.emulateMedia({colorScheme: scheme});
+        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
+        for (const hover of ['none', 'X', 'Y']) {
+          if (hover === 'none') await f.page.mouse.move(0, 0);
+          else await row(cards[hover]).hover({position: await titlePoint(cards[hover])});
+          const lines = {}, circles = {};
+          for (const [name, card] of Object.entries(cards)) {
+            const measured = await line(card);
+            assert.notEqual(measured.content, 'none', 'line of ' + name + ' is drawn');
+            assert.equal(measured.style, 'solid', 'line of ' + name + ' is solid');
+            lines[name] = measured.box; circles[name] = await circle(card);
+          }
+          for (const owner of ['X', 'Y']) for (const target of ['X', 'Y']) {
+            const a = lines[owner], b = circles[target], distance = gap(a, b);
+            const message = 'line ' + owner + ' / circle ' + target + ', width ' + width + ', ' + scheme + ', hover ' + hover +
+              ': gap ' + distance.toFixed(2) + ' px, line ' + JSON.stringify(a) + ', circle ' + JSON.stringify(b);
+            t.diagnostic(message);
+            if (intersects(a, b) || distance < 4) failures.push(message);
+          }
+        }
+      }
+    }
+    assert.deepEqual(failures, [], 'every line keeps 4 px from every status circle');
+  } finally { await f.close(); }
+});
 });
