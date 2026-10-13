@@ -257,7 +257,7 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
         .await?;
     let second_id = second["id"].as_str().unwrap().to_owned();
     assert_ne!(second_id, billing);
-    assert_ne!(receipt(second_id).await?.1, request_id);
+    assert_ne!(receipt(second_id.clone()).await?.1, request_id);
 
     // Step 6: alex owns Billing although the rules do not name it.
     let list = get("/api/workspaces".into(), &alex_cookie)
@@ -308,6 +308,40 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
         .json::<Value>()
         .await?;
     assert_eq!(sam_list, json!([{"id":base,"title":base}]));
+    // Ownership does not replace membership. No public command removes the owner's
+    // membership, so the fixture deletes that row from the second owned workspace.
+    let removed = pool
+        .get()
+        .await?
+        .execute(
+            "DELETE FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2",
+            &[&second_id, &alex],
+        )
+        .await?;
+    assert_eq!(removed, 1);
+    let list = get("/api/workspaces".into(), &alex_cookie)
+        .await?
+        .json::<Value>()
+        .await?;
+    assert!(
+        !list
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["id"] == second_id)
+    );
+    assert!(list.as_array().unwrap().iter().any(|w| w["id"] == billing));
+    for path in [
+        format!("/api/workspaces/{second_id}"),
+        format!("/api/workspaces/{second_id}/board"),
+    ] {
+        let response = get(path, &alex_cookie).await?;
+        assert_eq!(response.status(), 404);
+        assert_eq!(
+            response.json::<Value>().await?,
+            json!({"error":"Workspace not found"})
+        );
+    }
 
     // Step 3: the commands route keeps its refusals.
     let response = client
