@@ -1736,6 +1736,97 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()> {
+    // all-bound-checks-pass-ac2: complete_task finished T; a newer commit makes A red.
+    let w = world().await?;
+    for (token, command) in [
+        (
+            &w.owner,
+            json!({"op":"save_object","kind":"task","id":"finished","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion evidence"}),
+        ),
+        (
+            &w.token,
+            json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
+        ),
+        (
+            &w.token,
+            json!({"op":"claim_task","id":"task:finished","revision":1}),
+        ),
+        (
+            &w.token,
+            json!({"op":"complete_task","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
+        ),
+    ] {
+        let (code, reply) = post(
+            &w,
+            token,
+            "/commands",
+            json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+        )
+        .await?;
+        ensure!(code == 200, "{command}: {code} {reply}");
+    }
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    for (commit, order, verification, status, cases) in [
+        (
+            "c1c1c1c",
+            1,
+            "passed",
+            "green",
+            [("opens", "pass"), ("refuses", "pass")],
+        ),
+        (
+            "c2c2c2c",
+            2,
+            "failed",
+            "red",
+            [("opens", "fail"), ("refuses", "pass")],
+        ),
+    ] {
+        w.upload(commit, order, true, junit(&cases)).await?;
+        let response = w
+            .http
+            .get(format!("{}/tests?task=task:finished", w.base))
+            .bearer_auth(bot)
+            .send()
+            .await?;
+        let code = response.status().as_u16();
+        let http: Value = response.json().await?;
+        ensure!(code == 200, "HTTP {commit}: {code} {http}");
+        let mcp = mcp_read(
+            &w,
+            bot,
+            "joppa_tests",
+            json!({"workspace":workspace,"task":"task:finished"}),
+        )
+        .await?;
+        for (via, t) in [("HTTP", &http), ("MCP", &mcp)] {
+            ensure!(
+                t["done"] == true
+                    && t["verification"] == verification
+                    && t["criterion"]["address"] == "ac:key-rights"
+                    && t["criterion"]["status"] == status
+                    && t["criterion"]["commit"] == commit,
+                "{via} {commit}: {t}"
+            );
+        }
+    }
+    let object = mcp_read(
+        &w,
+        bot,
+        "joppa_objects",
+        json!({"workspace":workspace,"address":"task:finished"}),
+    )
+    .await?;
+    ensure!(object["process"]["status"] == "done", "{object}");
+    Ok(())
+}
+
 async fn post(w: &World, token: &str, path: &str, body: Value) -> Result<(u16, Value)> {
     let reply = w
         .http
