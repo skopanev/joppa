@@ -126,22 +126,25 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
     Ok(json!({"items": items}))
 }
 
-/// A task has no test status of its own: it is done while its criterion is green.
+/// A task has no test status of its own. Only complete_task sets done; verification
+/// follows the status of its criterion.
 pub async fn task_status(pool: &Pool, workspace: &str, actor: &str, task: &str) -> Result<Value> {
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    let criterion: String = conn
+    let row = conn
         .query_opt(
-            "SELECT o.parent FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.address=$2 AND b.first_view->'object_types'->o.kind->>'role'='task'",
+            "SELECT o.parent,COALESCE(jsonb_typeof(o.process->'done'),'null')='string' FROM joppa.objects o JOIN joppa.board_cache b ON b.workspace=o.workspace WHERE o.workspace=$1 AND o.address=$2 AND b.first_view->'object_types'->o.kind->>'role'='task'",
             &[&workspace, &task],
         )
-        .await?
-        .and_then(|row| row.get(0))
+        .await?;
+    let (criterion, done): (String, bool) = row
+        .and_then(|row| Some((row.get::<_, Option<String>>(0)?, row.get(1))))
         .context("unknown task")?;
     drop(conn);
     let status = criterion_tests(pool, &workspace, actor, &criterion).await?;
-    // One field for the task and the Agents domain: done means its verification passed.
+    // Two independent values: done is the complete_task evidence in the Task process,
+    // verification is the criterion status. A green criterion does not complete a Task.
     let verification = match status["status"].as_str() {
         Some("green") => "passed",
         Some("red") => "failed",
@@ -150,7 +153,7 @@ pub async fn task_status(pool: &Pool, workspace: &str, actor: &str, task: &str) 
     Ok(json!({
         "address": task,
         "verification": verification,
-        "done": verification == "passed",
+        "done": done,
         "criterion": {"address": criterion, "status": status["status"], "commit": status["commit"]},
     }))
 }

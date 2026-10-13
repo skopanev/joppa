@@ -1558,8 +1558,8 @@ async fn task(w: &World) -> Result<Value> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_task_is_done_when_its_criterion_is_green() -> Result<()> {
-    // all-bound-checks-pass-ac1: the agent reads task T under criterion A.
+async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
+    // all-bound-checks-pass-ac1: an agent bot reads open task T under green criterion A.
     let w = world().await?;
     ensure!(
         task(&w).await?["done"] == false,
@@ -1572,12 +1572,135 @@ async fn a_task_is_done_when_its_criterion_is_green() -> Result<()> {
         junit(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    let t = task(&w).await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let t = mcp_read(
+        &w,
+        bot,
+        "joppa_tests",
+        json!({"workspace":workspace,"task":"task:key/t1"}),
+    )
+    .await?;
     ensure!(
-        t["done"] == true
+        t["done"] == false
+            && t["verification"] == "passed"
             && t["criterion"]["address"] == "ac:key-rights"
-            && t["criterion"]["status"] == "green",
+            && t["criterion"]["status"] == "green"
+            && t["criterion"]["commit"] == "c1c1c1c",
         "{t}"
+    );
+    let object = mcp_read(
+        &w,
+        bot,
+        "joppa_objects",
+        json!({"workspace":workspace,"address":"task:key/t1"}),
+    )
+    .await?;
+    ensure!(object["process"]["status"] == "open", "{object}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn only_complete_task_marks_a_task_done() -> Result<()> {
+    let w = world().await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
+    let workspace = w.base.rsplit('/').next().unwrap();
+    for (token, command) in [
+        (
+            &w.owner,
+            json!({"op":"save_object","kind":"task","id":"finished","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion evidence"}),
+        ),
+        (
+            &w.token,
+            json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
+        ),
+        (
+            &w.token,
+            json!({"op":"claim_task","id":"task:finished","revision":1}),
+        ),
+        (
+            &w.token,
+            json!({"op":"complete_task","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
+        ),
+    ] {
+        let (code, reply) = post(
+            &w,
+            token,
+            "/commands",
+            json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+        )
+        .await?;
+        ensure!(code == 200, "{command}: {code} {reply}");
+    }
+    let read = |address: &'static str| {
+        mcp_read(
+            &w,
+            bot,
+            "joppa_tests",
+            json!({"workspace":workspace,"task":address}),
+        )
+    };
+    for (commit, order, verification, cases) in [
+        (None, 0, "unverified", vec![]),
+        (
+            Some("c1c1c1c"),
+            1,
+            "failed",
+            vec![("opens", "fail"), ("refuses", "pass")],
+        ),
+        (
+            Some("c2c2c2c"),
+            2,
+            "passed",
+            vec![("opens", "pass"), ("refuses", "pass")],
+        ),
+    ] {
+        if let Some(commit) = commit {
+            w.upload(commit, order, true, junit(&cases)).await?;
+        }
+        let finished = read("task:finished").await?;
+        ensure!(
+            finished["done"] == true && finished["verification"] == verification,
+            "{finished}"
+        );
+        let open = read("task:key/t1").await?;
+        ensure!(
+            open["done"] == false && open["verification"] == verification,
+            "{open}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_joppa_tests_tool_states_that_only_complete_task_sets_done() -> Result<()> {
+    let w = world().await?;
+    let root = w.base.split("/api/").next().unwrap();
+    let reply: Value = w
+        .http
+        .post(format!("{root}/mcp"))
+        .bearer_auth(&w.token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let description = reply["result"]["tools"]
+        .as_array()
+        .and_then(|tools| tools.iter().find(|t| t["name"] == "joppa_tests"))
+        .and_then(|t| t["description"].as_str())
+        .ok_or_else(|| anyhow::anyhow!("no joppa_tests: {reply}"))?;
+    ensure!(
+        description.contains("Only complete_task sets done")
+            && description.contains("verification follows the criterion status")
+            && !description.contains("while its criterion is green"),
+        "{description}"
     );
     Ok(())
 }
@@ -1594,7 +1717,7 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
         junit(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    ensure!(task(&w).await?["done"] == true, "done on c1");
+    ensure!(task(&w).await?["done"] == false, "not completed on c1");
     w.upload(
         "c2c2c2c",
         2,
@@ -1605,6 +1728,7 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     let t = task(&w).await?;
     ensure!(
         t["done"] == false
+            && t["verification"] == "failed"
             && t["criterion"]["status"] == "red"
             && t["criterion"]["commit"] == "c2c2c2c",
         "{t}"
@@ -2264,7 +2388,7 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
             ensure!(
                 status["address"] == address
                     && status["verification"] == verification
-                    && status["done"] == (expected == "green")
+                    && status["done"] == false
                     && status["criterion"]["address"] == criterion
                     && status["criterion"]["status"] == expected
                     && status["criterion"]["commit"] == json!(commit),
