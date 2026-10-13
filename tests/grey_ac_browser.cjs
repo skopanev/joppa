@@ -548,4 +548,123 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
     assert.equal(content, body);
   } finally { await f.close(); }
 });
+
+test('compact-open-object-ac2: an open object shows one solid line in its type colour', async () => {
+  const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
+  const C = '#aa3311', D = '#1166cc', fallback = rgb('#63756b');
+  const configured = {
+    record: {title: 'Records', role: 'document', root: true, parents: [], color: C},
+    part: {title: 'Parts', role: 'document', parents: ['record', 'part'], color: D},
+    loose: {title: 'Loose notes', role: 'document', parents: ['record', 'part']},
+  };
+  const f = await fixture({'record:X': {title: 'Parent X'}, 'part:Y': {title: 'Child Y', parent: 'record:X'},
+    'loose:S': {title: 'Sibling S', parent: 'record:X'}, 'part:W': {title: 'Sibling W', parent: 'record:X'},
+    'loose:Z': {title: 'Grandchild Z', parent: 'part:Y'}}, configured);
+  const child = (parent, address) => parent.locator(':scope > .object-body > .object-children > .common-object[data-object-address="' + address + '"]');
+  const row = card => card.locator(':scope > summary');
+  const toggle = card => row(card).click({position: {x: 4, y: 4}});
+  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor();
+  const line = card => card.evaluate(node => {
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
+    return {content: style.content, style: style.borderLeftStyle, width: parseFloat(style.borderLeftWidth), color: style.borderLeftColor,
+      top: box.top + parseFloat(style.top), height: parseFloat(style.height), left: box.left + parseFloat(style.left),
+      rowTop: node.querySelector(':scope > summary').getBoundingClientRect().top, box: {top: box.top, bottom: box.bottom, height: box.height}};
+  });
+  const dashed = card => card.evaluate(node => [node, node.querySelector(':scope > .object-body'), node.querySelector(':scope > .object-body > .object-children')]
+    .filter(Boolean).flatMap(element => ['Top', 'Right', 'Bottom', 'Left'].map(side => getComputedStyle(element)['border' + side + 'Style']))
+    .filter(style => style === 'dashed').length);
+  // The painted pixel on the row shows whether the row background covers the line.
+  const pixel = async (card, x) => {
+    const summary = row(card), png = (await summary.screenshot()).toString('base64');
+    const left = (await summary.boundingBox()).x;
+    return f.page.evaluate(async ([source, offset]) => {
+      const image = new Image(); image.src = 'data:image/png;base64,' + source; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+      const [r, g, b] = context.getImageData(offset, Math.floor(image.height / 2), 1, 1).data;
+      return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+    }, [png, Math.floor(x - left) + 1]);
+  };
+  const detailRequests = address => f.requests.filter(r => {
+    const params = new URL(r.url).searchParams;
+    return params.get('address') === address || params.get('parent') === address;
+  }).length;
+  try {
+    const X = await f.open('record:X'), Y = child(X, 'part:Y');
+    await Y.waitFor();
+    // The server rejects an invalid colour, so the renderer receives one only through its loaded schema.
+    await f.page.evaluate(() => { data.objectTypes.loose.color = 'not-a-colour'; });
+    await toggle(Y); await ready(Y);
+    const Z = child(Y, 'loose:Z');
+    await toggle(Z); await ready(Z);
+    await X.locator(':scope > .object-body > .object-secondary > .object-details > summary').click();
+    assert.equal(await X.locator(':scope > .object-body > .object-secondary > .object-details').getAttribute('open'), '');
+    const closedSibling = X.locator(':scope > .object-body > .object-children > .common-object:not([open]):not(:last-child)').first();
+    for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
+      await f.page.emulateMedia({colorScheme: scheme});
+      assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
+      const parent = await line(X), nested = await line(Y), invalid = await line(Z);
+      assert.equal(parent.style, 'solid'); assert.ok(parent.width >= 1);
+      assert.equal(parent.color, rgb(C));
+      assert.ok(Math.abs(parent.top - parent.rowTop) <= 2 && Math.abs(parent.top - parent.box.top) <= 2);
+      assert.ok(Math.abs(parent.height - parent.box.height) <= 2, JSON.stringify(parent));
+      assert.equal(nested.style, 'solid'); assert.equal(nested.color, rgb(D));
+      assert.ok(Math.abs(nested.height - nested.box.height) <= 2, JSON.stringify(nested));
+      assert.ok(nested.left > parent.left + parent.width, 'the child line lies to the right of the parent line');
+      assert.ok(nested.top >= parent.top && nested.top + nested.height <= parent.top + parent.height);
+      // A child type without a valid colour shows the fallback, not the colour of its parent.
+      assert.equal(invalid.style, 'solid'); assert.equal(invalid.color, fallback);
+      assert.equal(await dashed(X), 0); assert.equal(await dashed(Y), 0); assert.equal(await dashed(Z), 0);
+      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node).borderBottomStyle), 'dashed');
+      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node, '::before').content), 'none');
+      assert.equal(await pixel(X, parent.left), rgb(C));
+      await row(X).hover({position: {x: 200, y: 4}});
+      assert.equal(await pixel(X, parent.left), rgb(C));
+      assert.equal(await dashed(X), 0);
+      assert.equal(await X.locator(':scope > .object-body > .object-children').evaluate(node => getComputedStyle(node).borderLeftColor), 'rgba(0, 0, 0, 0)');
+      assert.equal(await row(X).evaluate(node => getComputedStyle(node).borderLeftStyle), 'none');
+      await f.page.mouse.move(0, 0);
+    }
+    // A closed card loads once, then reopens from its cached content.
+    await Promise.all(f.requests.map(entry => entry.body));
+    const S = child(X, 'loose:S');
+    assert.equal(await S.getAttribute('open'), null);
+    assert.equal(detailRequests('loose:S'), 0);
+    await toggle(S); await ready(S);
+    await Promise.all(f.requests.map(entry => entry.body));
+    assert.equal(detailRequests('loose:S'), 2);
+    assert.equal((await line(S)).color, fallback);
+    await toggle(S);
+    assert.equal(await S.getAttribute('open'), null);
+    assert.equal(await S.evaluate(node => getComputedStyle(node, '::before').content), 'none');
+    await toggle(S);
+    assert.equal(await S.getAttribute('open'), '');
+    assert.equal(await S.locator(':scope > .object-body .object-content').innerText(), 'Current source');
+    assert.equal(detailRequests('loose:S'), 2);
+    // The closing animation ends at the closed height, with the closed-row border, and without a line.
+    await f.page.emulateMedia({reducedMotion: 'no-preference'});
+    const closeAnimated = async card => {
+      await card.evaluate(node => {
+        const animate = node.animate.bind(node);
+        node.animate = (frames, options) => { node.closingFrames = frames; return animate(frames, options); };
+      });
+      await toggle(card);
+      await card.evaluate(node => new Promise(resolve => { const wait = () => node.open ? requestAnimationFrame(wait) : resolve(); wait(); }));
+      return card.evaluate(node => ({target: node.closingFrames && parseFloat(node.closingFrames.at(-1).height),
+        height: node.getBoundingClientRect().height, line: getComputedStyle(node, '::before').content,
+        border: getComputedStyle(node).borderBottomStyle + ' ' + getComputedStyle(node).borderBottomWidth}));
+    };
+    const last = X.locator(':scope > .object-body > .object-children > .common-object:last-child');
+    if (await last.getAttribute('open') === null) { await toggle(last); await ready(last); }
+    await f.page.waitForFunction(() => !document.getAnimations().length);
+    const closedLast = await closeAnimated(last);
+    assert.ok(Number.isFinite(closedLast.target), 'the last child closes with a height animation');
+    assert.ok(Math.abs(closedLast.target - closedLast.height) < 0.5, JSON.stringify(closedLast));
+    assert.equal(closedLast.line, 'none'); assert.equal(closedLast.border, 'none 0px');
+    const closedParent = await closeAnimated(X);
+    assert.ok(Number.isFinite(closedParent.target), 'the parent closes with a height animation');
+    assert.ok(Math.abs(closedParent.target - closedParent.height) < 0.5, JSON.stringify(closedParent));
+    assert.equal(closedParent.line, 'none'); assert.equal(closedParent.border, 'dashed 1px');
+  } finally { await f.close(); }
+});
 });
