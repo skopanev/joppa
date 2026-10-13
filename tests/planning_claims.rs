@@ -655,3 +655,268 @@ fn claims_refuse_a_blocked_task_and_documents_cannot_change_the_block() {
         "Task is awaiting planning publication"
     );
 }
+
+const NEEDS_CONTRACT: &str = "blocked Task needs a new contract or retirement";
+const OWNER_REQUIRED: &str = "active Task owner required";
+
+fn finish() -> Value {
+    json!({"op":"finish_planning","ac":"criterion:a","reason":"Plan complete"})
+}
+/// L blocks T under ready A. P (`planner`) then claims A.
+fn blocked_plan() -> World {
+    let mut w = held();
+    w.ok("worker", block(&w, "work:t"));
+    claim(&mut w, "planner", "criterion:a");
+    w
+}
+/// `actor` saves T with `data` and `links`.
+fn save_t(w: &mut World, actor: &str, data: Value, links: Value) {
+    let revision = w.state.objects["work:t"].current().revision;
+    w.ok(actor, json!({"op":"save_object","kind":"work","id":"t","revision":revision,"parent":"criterion:a","data":data,"links":links,"reason":"Change the contract"}));
+}
+fn t_document() -> Value {
+    json!({"title":"work:t","owner":"owner","contract":"Implement this criterion","purpose":"implementation"})
+}
+fn dependency(target: &str) -> Value {
+    json!({"target":target,"relation":"depends_on","revision":1,"blocking":true})
+}
+/// P finishes A. Replay of the finish event gives the same state.
+fn finish_and_replay(w: &mut World) {
+    let before = w.state.clone();
+    w.ok("planner", finish());
+    let mut replayed = before;
+    let cmd: Command = serde_json::from_value(finish()).unwrap();
+    commands::apply_replay(
+        &mut replayed,
+        "planner",
+        &cmd,
+        w.position,
+        "2026-01-01T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&w.state).unwrap()
+    );
+    assert!(objects::process(&w.state, "criterion:a")["planning_claim"].is_null());
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn finish_refuses_an_unchanged_blocked_task_and_keeps_the_claim_and_block() {
+    let mut w = blocked_plan();
+    let blocked = objects::process(&w.state, "work:t")["blocked"].clone();
+    // Fixture 3: this refusal comes before "planning produced no Task changes".
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    // An identical save and a change to other fields are not a new contract.
+    save_t(&mut w, "planner", t_document(), json!([]));
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    let mut described = t_document();
+    described["description"] = json!("Explain the failed verification");
+    save_t(&mut w, "planner", described, json!([]));
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    // A new unrelated Task does not change T.
+    work(&mut w, "planner", "work:new");
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    assert_eq!(w.state.planning_claims["criterion:a"].actor, "planner");
+    assert_eq!(objects::process(&w.state, "work:t")["blocked"], blocked);
+    // Release, amendment and document saves keep the block.
+    w.ok(
+        "planner",
+        json!({"op":"release_planning","ac":"criterion:a","reason":"Plan withdrawn"}),
+    );
+    assert_eq!(objects::process(&w.state, "work:t")["blocked"], blocked);
+    let cmd = task_command(
+        &w,
+        "amend_task",
+        "work:t",
+        json!({"title":"work:t","contract":"Implement the criterion again","projects":[],"reason":"Amend the contract"}),
+    );
+    w.ok("owner", cmd);
+    assert_eq!(objects::process(&w.state, "work:t")["blocked"], blocked);
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn finish_clears_the_block_after_a_new_title_or_contract() {
+    for field in ["title", "contract"] {
+        let mut w = blocked_plan();
+        // Fixture 1: P amends the T contract.
+        let mut amend = json!({"title":"work:t","contract":"Implement this criterion","projects":[],"reason":"Amend the contract"});
+        amend[field] = json!("Implement the criterion with a new fix");
+        let cmd = task_command(&w, "amend_task", "work:t", amend);
+        w.ok("planner", cmd);
+        finish_and_replay(&mut w);
+        assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
+        let t = &w.state.task_process["work:t"];
+        assert!(tasks::claimable(&w.state, "other", "work:t", t).is_ok());
+    }
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn finish_clears_the_block_after_a_new_dependency_and_names_it_in_the_waiting_reason() {
+    let mut w = blocked_plan();
+    // Fixture 2: P adds Task C under A and a blocking link from T to C.
+    work(&mut w, "planner", "work:c");
+    save_t(
+        &mut w,
+        "planner",
+        t_document(),
+        json!([dependency("work:c")]),
+    );
+    finish_and_replay(&mut w);
+    assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
+    let t = &w.state.task_process["work:t"];
+    let reason = tasks::claimable(&w.state, "other", "work:t", t)
+        .unwrap_err()
+        .to_string();
+    assert!(reason.contains("work:c") && reason != BLOCKED, "{reason}");
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn blocked_contract_ignores_link_order_and_starts_at_the_block() {
+    let mut w = held();
+    for id in ["work:x", "work:y"] {
+        work(&mut w, "planner", id);
+    }
+    let links = json!([dependency("work:x"), dependency("work:y")]);
+    save_t(&mut w, "owner", t_document(), links);
+    w.ok("worker", block(&w, "work:t"));
+    claim(&mut w, "planner", "criterion:a");
+    let reordered = json!([dependency("work:y"), dependency("work:x")]);
+    save_t(&mut w, "planner", t_document(), reordered);
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    save_t(
+        &mut w,
+        "planner",
+        t_document(),
+        json!([dependency("work:x")]),
+    );
+    finish_and_replay(&mut w);
+    assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
+
+    // A contract change after the block and before the claim also counts.
+    let mut w = held();
+    w.ok("worker", block(&w, "work:t"));
+    let mut data = t_document();
+    data["contract"] = json!("Implement the criterion with a new fix");
+    save_t(&mut w, "owner", data.clone(), json!([]));
+    claim(&mut w, "planner", "criterion:a");
+    refuse(
+        &mut w,
+        "planner",
+        finish(),
+        "planning produced no Task changes",
+    );
+    save_t(&mut w, "planner", data, json!([]));
+    finish_and_replay(&mut w);
+    assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn finish_checks_every_blocked_task_and_keeps_blocks_on_other_refusals() {
+    let mut w = held();
+    work(&mut w, "planner", "work:u");
+    w.ok("other", task_command(&w, "claim_task", "work:u", json!({})));
+    w.ok("owner", block(&w, "work:u"));
+    w.ok("worker", block(&w, "work:t"));
+    claim(&mut w, "planner", "criterion:a");
+    let mut data = t_document();
+    data["contract"] = json!("Implement the criterion with a new fix");
+    save_t(&mut w, "planner", data, json!([]));
+    refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
+    // A failed dependency check keeps both blocks.
+    w.state
+        .objects
+        .get_mut("work:t")
+        .unwrap()
+        .revisions
+        .last_mut()
+        .unwrap()
+        .links = vec![objects::ObjectLink {
+        target: "work:missing".into(),
+        relation: "depends_on".into(),
+        revision: Some(1),
+        blocking: true,
+    }];
+    let cmd = task_command(
+        &w,
+        "retire_task",
+        "work:u",
+        json!({"reason":"The work is no longer required"}),
+    );
+    w.ok("planner", cmd);
+    refuse(
+        &mut w,
+        "planner",
+        finish(),
+        "planning dependency target is missing",
+    );
+    assert!(!objects::process(&w.state, "work:t")["blocked"].is_null());
+}
+
+// failed-task-blocks-ac3
+#[test]
+fn planner_retires_a_blocked_task_and_others_cannot() {
+    let mut w = held();
+    work(&mut w, "owner", "work:u");
+    w.ok("worker", block(&w, "work:t"));
+    claim(&mut w, "planner", "criterion:a");
+    let retire = |w: &World, key: &str| {
+        task_command(
+            w,
+            "retire_task",
+            key,
+            json!({"reason":"The planned work replaces this Task"}),
+        )
+    };
+    let cmd = retire(&w, "work:t");
+    refuse(&mut w, "other", cmd, OWNER_REQUIRED);
+    let cmd = retire(&w, "work:u");
+    refuse(&mut w, "planner", cmd, OWNER_REQUIRED);
+
+    // Fixture 4: P retires blocked T and finishes.
+    let block_position = w.state.task_process["work:t"]
+        .blocked
+        .as_ref()
+        .unwrap()
+        .position;
+    let before = w.state.clone();
+    let cmd = retire(&w, "work:t");
+    w.ok("planner", cmd.clone());
+    let mut replayed = before;
+    let cmd: Command = serde_json::from_value(cmd).unwrap();
+    commands::apply_replay(
+        &mut replayed,
+        "planner",
+        &cmd,
+        w.position,
+        "2026-01-01T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&w.state).unwrap()
+    );
+    assert_eq!(objects::process(&w.state, "work:t")["status"], "retired");
+    let history = &w.state.objects["work:t"].revisions;
+    assert_eq!(history.len(), 6);
+    assert!(
+        history
+            .iter()
+            .any(|r| r.position == block_position && r.reason == "Verification failed")
+    );
+    let cmd = retire(&w, "work:t");
+    refuse(&mut w, "planner", cmd, OWNER_REQUIRED);
+    finish_and_replay(&mut w);
+    assert_eq!(objects::process(&w.state, "work:t")["status"], "retired");
+
+    // The planner authority ends with the claim.
+    let mut w = held();
+    w.ok("worker", block(&w, "work:t"));
+    let cmd = retire(&w, "work:t");
+    refuse(&mut w, "planner", cmd, OWNER_REQUIRED);
+}

@@ -5,6 +5,7 @@ use crate::{
     objects, tasks,
 };
 use anyhow::{Context, Result, ensure};
+use serde_json::Value;
 use std::collections::BTreeSet;
 
 fn criterion(w: &Workspace, ac: &str) -> Result<String> {
@@ -76,6 +77,39 @@ pub fn awaiting_publication(w: &Workspace, key: &str, t: &Task) -> bool {
     w.planning_claims
         .get(objects::resolve_address(w, parent))
         .is_some_and(|claim| new_task(t, claim))
+}
+
+/// Blocking links by relation, target and revision pin, in any order.
+type Links<'a> = BTreeSet<(&'a str, &'a str, Option<u32>)>;
+
+/// The Task contract: title, contract, projects and blocking links.
+fn contract(r: &objects::ObjectRevision) -> (&Value, &Value, &Value, Links<'_>) {
+    (
+        &r.data["title"],
+        &r.data["contract"],
+        &r.data["projects"],
+        r.links
+            .iter()
+            .filter(|l| l.blocking)
+            .map(|l| (l.relation.as_str(), l.target.as_str(), l.revision))
+            .collect(),
+    )
+}
+
+/// A blocked Task leaves planning only with a new contract or by retirement.
+fn validate_blocked(w: &Workspace, key: &str, position: u64) -> Result<()> {
+    let o = &w.objects[key];
+    let baseline = o
+        .revisions
+        .iter()
+        .rev()
+        .find(|r| r.position <= position)
+        .context("blocked Task revision is missing")?;
+    ensure!(
+        contract(baseline) != contract(o.current()),
+        "blocked Task needs a new contract or retirement"
+    );
+    Ok(())
 }
 
 fn validate_dependencies(w: &Workspace, roots: &[String]) -> Result<()> {
@@ -167,6 +201,17 @@ pub fn apply(
     match command {
         Command::FinishPlanning { .. } => {
             ensure!(claim.actor == actor, "planning holder required");
+            let blocked: Vec<String> = children
+                .iter()
+                .filter(|k| {
+                    let t = &w.task_process[*k];
+                    t.blocked.is_some() && t.retired.is_none()
+                })
+                .cloned()
+                .collect();
+            for k in &blocked {
+                validate_blocked(w, k, w.task_process[k].blocked.as_ref().unwrap().position)?;
+            }
             ensure!(
                 children.iter().any(|k| {
                     new_task(&w.task_process[k], &claim)
@@ -178,6 +223,9 @@ pub fn apply(
                 "planning produced no Task changes"
             );
             validate_dependencies(w, &children)?;
+            for k in &blocked {
+                w.task_process.get_mut(k).unwrap().blocked = None;
+            }
         }
         Command::ReleasePlanning { reason, .. } => {
             ensure!(

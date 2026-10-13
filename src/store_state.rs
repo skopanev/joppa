@@ -335,7 +335,15 @@ pub(super) async fn hydrate_command(
                 })
                 .cloned()
                 .collect();
-            for row in client.query("SELECT address,document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=ANY($2) AND (document->>'position')::bigint>$3 ORDER BY address,revision", &[&workspace, &keys, &(claim.position as i64)]).await? {
+            // A blocked Task also needs its document revision at the block position.
+            let (blocked, positions): (Vec<String>, Vec<i64>) = keys
+                .iter()
+                .filter_map(|key| {
+                    let block = state.task_process[key].blocked.as_ref()?;
+                    Some((key.clone(), block.position as i64))
+                })
+                .unzip();
+            for row in client.query("SELECT address,document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=ANY($2) AND ((document->>'position')::bigint>$3 OR (address,(document->>'position')::bigint) IN (SELECT * FROM unnest($4::text[],$5::bigint[]))) ORDER BY address,revision", &[&workspace, &keys, &(claim.position as i64), &blocked, &positions]).await? {
                     let key: String = row.get(0);
                     let revision: crate::objects::ObjectRevision = serde_json::from_str(row.get(1))?;
                     let object = state.objects.get_mut(&key).context("unknown Task")?;

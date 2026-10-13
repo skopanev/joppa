@@ -1873,6 +1873,23 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
     visit(w, key, &mut BTreeSet::new())
 }
 
+/// The first direct blocking dependency that keeps the object out of work.
+pub fn unready_dependency(w: &Workspace, key: &str) -> Option<String> {
+    let o = w.objects.get(resolve_address(w, key))?;
+    o.current()
+        .links
+        .iter()
+        .filter(|l| l.blocking)
+        .find(|l| {
+            !pin_current(w, &l.target, l.revision)
+                || w.objects
+                    .get(resolve_address(w, &l.target))
+                    .is_none_or(|t| !verified(w, &address(&t.kind, &t.id)))
+                || !work_ready(w, &l.target)
+        })
+        .map(|l| resolve_address(w, &l.target).to_owned())
+}
+
 fn legacy_task_binding(w: &Workspace, obj: &Object) -> bool {
     obj.kind == "task"
         && obj.id.split_once('/').is_some_and(|(req, id)| {

@@ -624,3 +624,34 @@ async fn a_blocked_task_does_not_keep_its_criterion_out_of_unstarted_work() -> a
     store::check_journal(&pool).await?;
     Ok(())
 }
+
+// failed-task-blocks-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_workspace_owner_retires_a_blocked_task_without_a_planning_claim() -> anyhow::Result<()>
+{
+    // Fixture 5: T is blocked at revision 5 and A has no planning claim.
+    let (pool, ws) = blocked_fixture(false).await?;
+    apply(&pool, &ws, "owner", json!({"op":"retire_task","id":"work:t","revision":5,"reason":"The blocked work is no longer required"})).await?;
+    assert_eq!(
+        task_detail(&pool, &ws, "work:t").await?["process"]["status"],
+        "retired"
+    );
+    let block = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &ObjectScope {
+            address: Some("work:t"),
+            revision: Some(5),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(block["document"]["reason"], "Verification failed");
+    let page = candidates(&pool, &ws).await?;
+    assert_eq!(criteria(&page), vec!["criterion:a"]);
+    assert!(task_detail(&pool, &ws, "criterion:a").await?["process"]["planning_claim"].is_null());
+    store::check_journal(&pool).await?;
+    Ok(())
+}

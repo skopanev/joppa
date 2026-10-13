@@ -216,10 +216,11 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
         !t.contract.trim().is_empty(),
         "Task needs a technical contract before claim"
     );
-    ensure!(
-        objects::work_ready(w, key),
-        "Task has an unmet dependency or a changed dependency revision"
-    );
+    if !objects::work_ready(w, key) {
+        let target = objects::unready_dependency(w, key)
+            .map_or_else(String::new, |target| format!(": {target}"));
+        anyhow::bail!("Task has an unmet dependency or a changed dependency revision{target}");
+    }
     check_projects(
         w,
         w.objects[key].current().parent.as_deref(),
@@ -663,8 +664,15 @@ pub fn apply(
         }
         Command::RetireTask { reason, .. } => {
             commands::nonempty(reason)?;
+            // The planning holder of the parent criterion may retire a blocked child Task.
+            let planner = t.blocked.is_some()
+                && o.current().parent.as_deref().is_some_and(|p| {
+                    w.planning_claims
+                        .get(objects::resolve_address(w, p))
+                        .is_some_and(|c| c.actor == actor)
+                });
             ensure!(
-                authority && t.retired.is_none(),
+                (authority || planner) && t.retired.is_none(),
                 "active Task owner required"
             );
             t.review_required = false;
