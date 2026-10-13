@@ -7,12 +7,44 @@ fn token_hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
-/// The agent behind a token: Ok(None) for an unknown token, an error for a revoked one.
-pub async fn token_actor(pool: &Pool, token: &str) -> Result<Option<String>> {
+/// What a token may do. Write is the default; a read grant permits only reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    Write,
+    Read,
+}
+impl Access {
+    /// A missing value means write. Any value other than write or read is refused.
+    pub fn parse(value: Option<&str>) -> Result<Self> {
+        match value {
+            None | Some("write") => Ok(Self::Write),
+            Some("read") => Ok(Self::Read),
+            Some(_) => Err(commands::ClientField("access must be write or read").into()),
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Write => "write",
+            Self::Read => "read",
+        }
+    }
+}
+
+/// An authenticated agent token: its agent, its workspace and its access grant.
+#[derive(Clone, Debug)]
+pub struct TokenGrant {
+    pub agent: String,
+    pub workspace: String,
+    pub access: Access,
+}
+
+/// The grant behind a token: Ok(None) for an unknown token, an error for a revoked one.
+pub async fn token_actor(pool: &Pool, token: &str) -> Result<Option<TokenGrant>> {
     let conn = pool.get().await?;
     let Some(row) = conn
         .query_opt(
-            "SELECT t.agent, EXISTS(SELECT 1 FROM joppa.agent_token_revocations r WHERE r.token_id=t.id)
+            "SELECT t.agent, EXISTS(SELECT 1 FROM joppa.agent_token_revocations r WHERE r.token_id=t.id),
+                    t.workspace, t.access
              FROM joppa.agent_tokens t WHERE t.token_hash=$1",
             &[&token_hash(token)],
         )
@@ -21,7 +53,11 @@ pub async fn token_actor(pool: &Pool, token: &str) -> Result<Option<String>> {
         return Ok(None);
     };
     ensure!(!row.get::<_, bool>(1), "token revoked");
-    Ok(Some(row.get(0)))
+    Ok(Some(TokenGrant {
+        agent: row.get(0),
+        workspace: row.get(2),
+        access: Access::parse(Some(row.get::<_, &str>(3)))?,
+    }))
 }
 
 async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
@@ -33,13 +69,16 @@ async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
 }
 
 /// The owner creates a token for an agent. The agent becomes a member with role agent.
-/// The raw token is returned once.
+/// A missing access means write. The raw token is returned once.
 pub async fn create_agent_token(
     pool: &Pool,
     workspace: &str,
     actor: &str,
     agent: &str,
+    access: Option<&str>,
 ) -> Result<Value> {
+    // Checked before enrollment, so a refused request stores nothing.
+    let access = Access::parse(access)?;
     commands::identifier(agent)?;
     let workspace = owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
@@ -69,12 +108,12 @@ pub async fn create_agent_token(
     let conn = pool.get().await?;
     let id: i64 = conn
         .query_one(
-            "INSERT INTO joppa.agent_tokens(token_hash,agent,workspace,created_by) VALUES($1,$2,$3,$4) RETURNING id",
-            &[&token_hash(&token), &agent, &workspace, &actor],
+            "INSERT INTO joppa.agent_tokens(token_hash,agent,workspace,created_by,access) VALUES($1,$2,$3,$4,$5) RETURNING id",
+            &[&token_hash(&token), &agent, &workspace, &actor, &access.as_str()],
         )
         .await?
         .get(0);
-    Ok(json!({"id": id, "agent": agent, "token": token}))
+    Ok(json!({"id": id, "agent": agent, "access": access.as_str(), "token": token}))
 }
 
 /// The owner revokes a token. The next call with it is refused.

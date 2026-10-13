@@ -49,7 +49,7 @@ async fn upload(
     body: axum::body::Bytes,
 ) -> ApiResult {
     require_write_credential(&headers)?;
-    let actor = authenticate(&app, &headers).await?;
+    let actor = authenticate_write(&app, &headers).await?;
     // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
     // хранилище, ничего не имея в воркспейсе.
     let _ = result(
@@ -119,6 +119,34 @@ async fn authenticate(
     app: &App,
     headers: &HeaderMap,
 ) -> std::result::Result<String, (StatusCode, Json<Value>)> {
+    authenticate_grant(app, headers)
+        .await
+        .map(|(actor, _)| actor)
+}
+/// Routes that change state call this: a read grant is refused before any store call.
+async fn authenticate_write(
+    app: &App,
+    headers: &HeaderMap,
+) -> std::result::Result<String, (StatusCode, Json<Value>)> {
+    let (actor, access) = authenticate_grant(app, headers).await?;
+    refuse_read_grant(access)?;
+    Ok(actor)
+}
+fn refuse_read_grant(access: store::Access) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    if access == store::Access::Read {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"This token has a read-only grant."})),
+        ));
+    }
+    Ok(())
+}
+/// The actor and its access grant. Service credentials and browser sessions write;
+/// the browser write restriction is require_write_credential.
+async fn authenticate_grant(
+    app: &App,
+    headers: &HeaderMap,
+) -> std::result::Result<(String, store::Access), (StatusCode, Json<Value>)> {
     let actor = if headers.contains_key(header::AUTHORIZATION) {
         let token = headers
             .get(header::AUTHORIZATION)
@@ -126,9 +154,9 @@ async fn authenticate(
             .and_then(|s| s.strip_prefix("Bearer "));
         match token {
             Some(t) => match app.identities.get(t) {
-                Some(actor) => Some(actor.clone()),
+                Some(actor) => Some((actor.clone(), store::Access::Write)),
                 None => match store::token_actor(&app.pool, t).await {
-                    Ok(actor) => actor,
+                    Ok(grant) => grant.map(|g| (g.agent, g.access)),
                     Err(e) => {
                         return Err((
                             StatusCode::UNAUTHORIZED,
@@ -140,12 +168,15 @@ async fn authenticate(
             None => None,
         }
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
-        sessions::actor(&app.pool, token).await.map_err(|_| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({"error":"Could not check your session. Please retry."})),
-            )
-        })?
+        sessions::actor(&app.pool, token)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({"error":"Could not check your session. Please retry."})),
+                )
+            })?
+            .map(|actor| (actor, store::Access::Write))
     } else {
         None
     };
@@ -333,10 +364,11 @@ async fn upload_report(
     if !headers.contains_key(header::AUTHORIZATION) {
         return Err(unauthorized("token required"));
     }
-    let actor = authenticate(&app, &headers)
+    let (actor, access) = authenticate_grant(&app, &headers)
         .await
         .map_err(|_| unauthorized("token is not valid"))?;
     require_write_credential(&headers)?;
+    refuse_read_grant(access)?;
     let upload: store::ReportUpload = serde_json::from_slice(&body).map_err(|e| {
         (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -382,6 +414,8 @@ async fn criterion_tests(
 #[serde(deny_unknown_fields)]
 struct AgentTokenRequest {
     agent: String,
+    /// write (the default) or read.
+    access: Option<String>,
 }
 /// The workspace owner creates an agent token; the raw token is in this reply only.
 async fn create_agent_token(
@@ -390,15 +424,24 @@ async fn create_agent_token(
     headers: HeaderMap,
     Json(body): Json<AgentTokenRequest>,
 ) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
-    result(store::create_agent_token(&app.pool, &workspace, &actor, &body.agent).await)
+    let actor = authenticate_write(&app, &headers).await?;
+    result(
+        store::create_agent_token(
+            &app.pool,
+            &workspace,
+            &actor,
+            &body.agent,
+            body.access.as_deref(),
+        )
+        .await,
+    )
 }
 async fn revoke_agent_token(
     State(app): State<App>,
     Path((workspace, id)): Path<(String, i64)>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
+    let actor = authenticate_write(&app, &headers).await?;
     result(store::revoke_agent_token(&app.pool, &workspace, &actor, id).await)
 }
 async fn list_agent_tokens(
@@ -428,7 +471,7 @@ async fn command(
     Json(request): Json<Value>,
 ) -> ApiResult {
     require_write_credential(&headers)?;
-    let actor = authenticate(&app, &headers).await?;
+    let actor = authenticate_write(&app, &headers).await?;
     if let Err(error) = joppa::commands::reject_actor_field(&request)
         .and_then(|()| joppa::commands::reject_actor_field(&request["command"]))
     {
@@ -467,7 +510,7 @@ async fn reorder(
     Json(request): Json<OrderRequest>,
 ) -> ApiResult {
     require_write_credential(&headers)?;
-    let actor = authenticate(&app, &headers).await?;
+    let actor = authenticate_write(&app, &headers).await?;
     // Legacy integration endpoint; browser sessions cannot reorder the tree.
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let command = Command::ReorderTree {

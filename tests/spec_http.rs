@@ -352,8 +352,8 @@ async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
 async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     // old-agent-locked-out-ac1
     let w = world().await?;
-    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
-    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2").await?;
+    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
     let bot = first["token"].as_str().unwrap();
     let bot2 = second["token"].as_str().unwrap();
     w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
@@ -490,7 +490,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
 async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
     // done-is-not-green-ac2
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -603,7 +603,7 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
 async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
     // no-shared-credentials-ac1
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let error = "actor comes from the identity, not the request";
     let command = json!({"op":"save_object","kind":"note","id":"identity-guard","revision":0,"parent":null,"data":{"title":"Identity guard","owner":"owner","body":"Business context","actor":"business actor","source":{"actor":"skopanev"}},"reason":"Keep the authenticated author"});
@@ -740,7 +740,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
         )?)
     }
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -819,7 +819,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
 async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> Result<()> {
     // returned-work-kept-ac1
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
     let bot2 = token["token"].as_str().unwrap();
     w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
@@ -1536,7 +1536,7 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
         )
         .await?;
     }
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let read = |workspace: String| {
         let w = &w;
@@ -1625,7 +1625,7 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
         history["document"] == original["document"],
         "The source rule changed a historical revision: {history}"
     );
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = grant["token"].as_str().unwrap();
     for kind in ["note", "feedback"] {
         for transport in ["http", "mcp"] {
@@ -1875,7 +1875,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             && archived["document"]["data"]["description"] == "Original text",
         "The rule changed archived data: {archived}"
     );
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = grant["token"].as_str().unwrap();
     for kind in ["ac", "observation"] {
         let parent = if kind == "ac" {
@@ -2067,7 +2067,7 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
 async fn the_inbox_lists_undecided_inputs_before_decided_inputs() -> Result<()> {
     // undecided-first-ac1
     let w = world().await?;
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let token = grant["token"].as_str().unwrap();
     for id in ["a-decided", "b-decided", "z-undecided"] {
         w.note(id, 0, id, "Input", json!([])).await?;
@@ -2395,7 +2395,7 @@ async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
 async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> {
     // agent-acts-within-grant-ac1
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let request_id = uuid::Uuid::new_v4().to_string();
     let command = json!({"op":"save_object","kind":"note","id":"agent-author","revision":0,"parent":null,"data":{"title":"The granted agent writes as itself","owner":"owner","body":"The owner and author have separate meanings","source":{"actor":"business source"}},"reason":"Record the authenticated agent author"});
@@ -2488,7 +2488,7 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
         )?)
     }
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -2950,5 +2950,306 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
         "help does not advertise heartbeat writes"
     );
     store::check_journal(&w.pool).await?;
+    Ok(())
+}
+
+/// One MCP tools/call; returns the JSON-RPC result.
+async fn mcp_call(w: &World, token: &str, name: &str, arguments: Value) -> Result<Value> {
+    let reply: Value = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(token)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    ensure!(reply.get("error").is_none(), "{reply}");
+    Ok(reply["result"].clone())
+}
+
+/// Counts of everything a write can change: journal events, tokens, files and reports.
+async fn stored_counts(w: &World) -> Result<Vec<i64>> {
+    let conn = w.pool.get().await?;
+    let row = conn
+        .query_one(
+            "SELECT (SELECT count(*) FROM joppa.events WHERE workspace=$1),
+                    (SELECT count(*) FROM joppa.agent_tokens),
+                    (SELECT count(*) FROM joppa.agent_token_revocations),
+                    (SELECT count(*) FROM joppa.blobs),
+                    (SELECT count(*) FROM joppa.test_reports),
+                    (SELECT count(*) FROM joppa.command_receipts)",
+            &[&w.ws],
+        )
+        .await?;
+    Ok((0..6).map(|i| row.get(i)).collect())
+}
+
+/// Every joppa_objects page with parent=*, following next_cursor to the end.
+async fn all_object_pages(w: &World, token: &str) -> Result<Vec<Value>> {
+    let mut items = vec![];
+    let mut cursor: Option<String> = None;
+    let mut pages = 0;
+    loop {
+        let mut arguments = json!({"workspace":w.ws,"parent":"*","limit":2});
+        if let Some(cursor) = &cursor {
+            arguments["cursor"] = json!(cursor);
+        }
+        let result = mcp_call(w, token, "joppa_objects", arguments).await?;
+        ensure!(result["isError"] != true, "{result}");
+        let page: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap_or(""))?;
+        items.extend(page["items"].as_array().cloned().unwrap_or_default());
+        pages += 1;
+        match page["next_cursor"].as_str() {
+            Some(next) => cursor = Some(next.to_owned()),
+            None => break,
+        }
+    }
+    ensure!(pages > 1, "the fixture must fill more than one page");
+    Ok(items)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
+    // read-only-agent-token-ac1
+    let w = world().await?;
+    for id in ["first", "second", "third"] {
+        w.note(id, 0, id, "Input", json!([])).await?;
+    }
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{}/agent-tokens", w.root, w.ws))
+        .bearer_auth(&w.owner)
+        .json(&json!({"agent":"planner-reader","access":"read"}))
+        .send()
+        .await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let created: Value = reply.json().await?;
+    ensure!(created["access"] == "read", "{created}");
+    let reader = created["token"].as_str().unwrap().to_owned();
+    ensure!(reader.starts_with("jpt_"), "{created}");
+    let role: Option<String> = w
+        .pool
+        .get()
+        .await?
+        .query_opt(
+            "SELECT value#>>'{}' FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key='planner-reader'",
+            &[&w.ws],
+        )
+        .await?
+        .map(|row| row.get(0));
+    ensure!(role.as_deref() == Some("agent"), "{role:?}");
+    let grant = store::token_actor(&w.pool, &reader).await?.unwrap();
+    ensure!(
+        grant.agent == "planner-reader"
+            && grant.workspace == w.ws
+            && grant.access == store::Access::Read,
+        "{grant:?}"
+    );
+
+    // Every allowlisted tool reads and stores nothing.
+    let before = stored_counts(&w).await?;
+    for (name, arguments) in [
+        ("joppa_list", json!({})),
+        (
+            "joppa_search",
+            json!({"workspace":w.ws,"query":"Key rights"}),
+        ),
+        ("joppa_read", json!({"workspace":w.ws})),
+        (
+            "joppa_tests",
+            json!({"workspace":w.ws,"ac":"ac:key-rights"}),
+        ),
+        ("joppa_tree", json!({"workspace":w.ws})),
+        ("joppa_objects", json!({"workspace":w.ws,"parent":"*"})),
+        ("joppa_tasks", json!({"workspace":w.ws})),
+        ("joppa_help", json!({})),
+        ("joppa_help", json!({"workspace":w.ws})),
+        ("joppa_model_docs", json!({})),
+    ] {
+        let result = mcp_call(&w, &reader, name, arguments).await?;
+        ensure!(result["isError"] != true, "{name}: {result}");
+    }
+    let owner_items = all_object_pages(&w, &w.owner).await?;
+    let reader_items = all_object_pages(&w, &reader).await?;
+    ensure!(
+        owner_items == reader_items,
+        "{owner_items:?} / {reader_items:?}"
+    );
+    ensure!(stored_counts(&w).await? == before, "a read stored data");
+
+    // Write tools and unknown tools are refused before any store call.
+    for (name, arguments) in [
+        (
+            "joppa_command",
+            json!({"workspace":w.ws,"request_id":"read-only-command","command":{"op":"save_object","kind":"note","id":"refused","revision":0,"parent":null,"data":{"title":"Refused","owner":"owner","body":"Input"},"reason":"Save"}}),
+        ),
+        (
+            "joppa_batch",
+            json!({"workspace":w.ws,"request_id":"read-only-batch","operations":[{"command":{"op":"save_object","kind":"note","id":"refused","revision":0,"parent":null,"data":{"title":"Refused","owner":"owner","body":"Input"},"reason":"Save"}}]}),
+        ),
+        ("joppa_unknown", json!({"workspace":w.ws})),
+    ] {
+        let result = mcp_call(&w, &reader, name, arguments).await?;
+        ensure!(
+            result["isError"] == true
+                && result["content"][0]["text"]
+                    .as_str()
+                    .is_some_and(|t| t.contains("read-only grant")),
+            "{name}: {result}"
+        );
+    }
+    ensure!(
+        stored_counts(&w).await? == before,
+        "a refused tool stored data"
+    );
+
+    // Every HTTP route that changes state refuses the read grant.
+    let id = created["id"].as_i64().unwrap();
+    let api = format!("{}/api/workspaces/{}", w.root, w.ws);
+    for (path, body) in [
+        ("/commands".to_owned(), json!({"request_id":"read-only-http","command":{"op":"save_object","kind":"note","id":"refused","revision":0,"parent":null,"data":{"title":"Refused","owner":"owner","body":"Input"},"reason":"Save"}}).to_string()),
+        ("/order".to_owned(), json!({"request_id":"read-only-order","kind":"note","parent":null,"expected":[],"ids":[]}).to_string()),
+        ("/agent-tokens".to_owned(), json!({"agent":"another-reader"}).to_string()),
+        (format!("/agent-tokens/{id}/revoke"), String::new()),
+        ("/blobs".to_owned(), "file body".to_owned()),
+        ("/reports".to_owned(), "{}".to_owned()),
+    ] {
+        let reply = w
+            .http
+            .post(format!("{api}{path}"))
+            .bearer_auth(&reader)
+            .header("content-type", "application/json")
+            .body(body)
+            .send()
+            .await?;
+        let status = reply.status().as_u16();
+        let text = reply.text().await?;
+        ensure!(
+            status == 403 && text.contains("read-only grant"),
+            "{path}: {status} {text}"
+        );
+    }
+    ensure!(
+        stored_counts(&w).await? == before,
+        "a refused route stored data"
+    );
+    let read = w
+        .http
+        .get(format!("{api}/objects?parent=*"))
+        .bearer_auth(&reader)
+        .send()
+        .await?;
+    ensure!(read.status().is_success(), "{}", read.status());
+
+    // A revoked read token is refused.
+    let reply = w
+        .http
+        .post(format!("{api}/agent-tokens/{id}/revoke"))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let reply = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(&reader)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tree","arguments":{"workspace":w.ws}}}))
+        .send()
+        .await?;
+    let status = reply.status().as_u16();
+    let text = reply.text().await?;
+    ensure!(
+        status == 401 && text.contains("token revoked"),
+        "{status} {text}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_token_without_access_writes_and_an_invalid_access_stores_nothing() -> Result<()> {
+    let w = world().await?;
+    let issue = |body: Value| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .post(format!("{}/api/workspaces/{}/agent-tokens", w.root, w.ws))
+                .bearer_auth(&w.owner)
+                .json(&body)
+                .send()
+                .await?;
+            let code = reply.status().as_u16();
+            let text = reply.text().await?;
+            Ok::<_, anyhow::Error>((code, serde_json::from_str(&text).unwrap_or(json!(text))))
+        }
+    };
+    let (code, created) = issue(json!({"agent":"bot"})).await?;
+    ensure!(
+        code == 200 && created["access"] == "write",
+        "{code} {created}"
+    );
+    let token = created["token"].as_str().unwrap();
+    ensure!(
+        store::token_actor(&w.pool, token).await?.unwrap().access == store::Access::Write,
+        "a token without access writes"
+    );
+    w.command_as(token, json!({"op":"save_object","kind":"note","id":"from-bot","revision":0,"parent":null,"data":{"title":"From bot","owner":"owner","body":"Input"},"reason":"Save"})).await?;
+    let (code, created) = issue(json!({"agent":"bot","access":"write"})).await?;
+    ensure!(
+        code == 200 && created["access"] == "write",
+        "{code} {created}"
+    );
+
+    let before = stored_counts(&w).await?;
+    let (code, reply) = issue(json!({"agent":"stranger","access":"admin"})).await?;
+    ensure!(code == 422, "{code} {reply}");
+    let (code, reply) = issue(json!({"agent":"stranger","role":"read"})).await?;
+    ensure!((400..500).contains(&code), "{code} {reply}");
+    let refused = store::create_agent_token(&w.pool, &w.ws, "owner", "stranger", Some("admin"))
+        .await
+        .unwrap_err();
+    ensure!(refused.is::<joppa::commands::ClientField>(), "{refused:#}");
+    ensure!(
+        stored_counts(&w).await? == before,
+        "a refused issuance stored data"
+    );
+    let conn = w.pool.get().await?;
+    let stranger: i64 = conn
+        .query_one(
+            "SELECT (SELECT count(*) FROM joppa.agent_tokens WHERE agent='stranger')
+                  + (SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key='stranger')",
+            &[],
+        )
+        .await?
+        .get(0);
+    ensure!(stranger == 0, "the refused agent must not be stored");
+
+    // A token row without access, as before the migration, reads as write and stays append-only.
+    use sha2::{Digest, Sha256};
+    let raw = format!("jpt_{}", uuid::Uuid::new_v4().simple());
+    let id: i64 = conn
+        .query_one(
+            "INSERT INTO joppa.agent_tokens(token_hash,agent,workspace,created_by) VALUES($1,'bot',$2,'owner') RETURNING id",
+            &[&format!("{:x}", Sha256::digest(raw.as_bytes())), &w.ws],
+        )
+        .await?
+        .get(0);
+    let grant = store::token_actor(&w.pool, &raw).await?.unwrap();
+    ensure!(
+        grant.agent == "bot" && grant.workspace == w.ws && grant.access == store::Access::Write,
+        "{grant:?}"
+    );
+    let update = conn
+        .execute(
+            "UPDATE joppa.agent_tokens SET access='read' WHERE id=$1",
+            &[&id],
+        )
+        .await;
+    ensure!(update.is_err(), "agent tokens must stay append-only");
     Ok(())
 }

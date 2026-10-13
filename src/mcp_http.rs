@@ -5,7 +5,11 @@ use axum::response::{IntoResponse, Response};
 pub(super) fn routes() -> Router<App> {
     Router::new().route("/mcp", post(endpoint).get(get_endpoint))
 }
-async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String, Response> {
+/// The actor and its access grant. Service credentials and OAuth identities write.
+async fn identity(
+    app: &App,
+    headers: &HeaderMap,
+) -> std::result::Result<(String, store::Access), Response> {
     if headers.contains_key(header::ORIGIN) {
         let origin = headers.get(header::ORIGIN).and_then(|s| s.to_str().ok());
         if origin != app.oauth_origin.as_deref() {
@@ -25,7 +29,7 @@ async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String,
     };
     if token.starts_with("jpa_") {
         return match oauth::actor(app, token).await {
-            Ok(Some(a)) => Ok(a),
+            Ok(Some(a)) => Ok((a, store::Access::Write)),
             Ok(None) => Err(oauth::challenge(app)),
             Err(_) => Err((
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -36,11 +40,11 @@ async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String,
     }
     // Private service credentials remain available to unattended integrations.
     if let Some(actor) = app.identities.get(token) {
-        return Ok(actor.clone());
+        return Ok((actor.clone(), store::Access::Write));
     }
     // Agent tokens that the workspace owner created; a revoked one is refused.
     match store::token_actor(&app.pool, token).await {
-        Ok(Some(actor)) => Ok(actor),
+        Ok(Some(grant)) => Ok((grant.agent, grant.access)),
         Ok(None) => Err(oauth::challenge(app)),
         Err(e) => Err((
             StatusCode::UNAUTHORIZED,
@@ -60,14 +64,15 @@ async fn endpoint(
     headers: HeaderMap,
     Json(message): Json<Value>,
 ) -> Response {
-    let actor = match identity(&app, &headers).await {
+    let (actor, access) = match identity(&app, &headers).await {
         Ok(a) => a,
         Err(e) => return e,
     };
     if message["jsonrpc"] != "2.0" || !message["method"].is_string() || !message.is_object() {
         return (StatusCode::BAD_REQUEST,Json(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid request"}}))).into_response();
     }
-    match crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref()).await {
+    match crate::protocol::handle(&app.pool, &actor, access, &message, app.embedder.as_ref()).await
+    {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),
     }

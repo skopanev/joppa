@@ -8,6 +8,7 @@ const AUTHORING_TEXT: &str = "Prefer English. Follow ASD-STE100 Issue 9 in at le
 pub async fn handle(
     pool: &Pool,
     actor: &str,
+    access: store::Access,
     msg: &Value,
     embedder: Option<&joppa::embeddings::Embedder>,
 ) -> Option<Value> {
@@ -38,7 +39,7 @@ pub async fn handle(
             tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
             tool("joppa_help", "Get operation shapes and writing rules. Read before authoring commands. Supply workspace to read schema questions. Check the title and description, then resend save_object with question_checked equal to the question.", json!({"workspace":{"type":"string"}}), json!([]))
         ]})),
-        "tools/call" => call(pool, actor, msg, embedder)
+        "tools/call" => call(pool, actor, access, msg, embedder)
             .await
             .map(|v| json!({"content":[{"type":"text","text":v.to_string()}]})),
         _ => {
@@ -75,15 +76,33 @@ fn authoring_command_schema() -> Value {
         }
     })
 }
+/// The only tools a read grant may call. Any other tool, known or not, is refused.
+const READ_TOOLS: &[&str] = &[
+    "joppa_list",
+    "joppa_search",
+    "joppa_read",
+    "joppa_tests",
+    "joppa_tree",
+    "joppa_objects",
+    "joppa_tasks",
+    "joppa_help",
+    "joppa_model_docs",
+];
 async fn call(
     pool: &Pool,
     actor: &str,
+    access: store::Access,
     msg: &Value,
     embedder: Option<&joppa::embeddings::Embedder>,
 ) -> anyhow::Result<Value> {
     let a = &msg["params"]["arguments"];
     let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
-    match msg["params"]["name"].as_str().unwrap_or("") {
+    let name = msg["params"]["name"].as_str().unwrap_or("");
+    // Refused before any store call.
+    if access == store::Access::Read && !READ_TOOLS.contains(&name) {
+        anyhow::bail!("{name} is refused: this token has a read-only grant");
+    }
+    match name {
         "joppa_list" => store::list(pool, actor).await,
         "joppa_search" => {
             let limit = match a.get("limit") {
