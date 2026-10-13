@@ -16,10 +16,10 @@ impl Drop for Server {
     }
 }
 
-#[tokio::test]
+// [ac:atomic-claim-ac1]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
-    // atomic-claim-ac1
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let name: String = pool
         .get()
@@ -81,13 +81,28 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
     for run in 0..50 {
         let task = store::execute_remote_input(&pool,&ws,"owner",&format!("task-{run}"),&json!({"op":"save_object","kind":"task","revision":0,"parent":"spec:root","data":{"title":"Implement","owner":"owner","contract":"Implement the specification","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
         let claim = json!({"op":"claim_task","id":task["object"]["address"],"revision":task["object"]["revision"]});
-        let (ra, rb) = (format!("a-{run}"), format!("b-{run}"));
-        let (a, b) = tokio::join!(
-            store::execute_remote_input(&pool, &ws, "bot1", &ra, &claim),
-            store::execute_remote_input(&pool, &ws, "bot2", &rb, &claim)
-        );
-        let (won, lost) = match (a, b) {
-            (Ok(won), Err(lost)) | (Err(lost), Ok(won)) => (won, lost),
+        for bot in ["bot1", "bot2"] {
+            let mine = store::task_queue(&pool, &ws, bot, "mine", 10, None).await?;
+            ensure!(
+                mine["total"] == 0,
+                "run {run}: {bot} mine total {}",
+                mine["total"]
+            );
+        }
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+        let [a, b] =
+            [("bot1", format!("a-{run}")), ("bot2", format!("b-{run}"))].map(|(bot, request)| {
+                let (pool, ws, claim, barrier) =
+                    (pool.clone(), ws.clone(), claim.clone(), barrier.clone());
+                tokio::spawn(async move {
+                    barrier.wait().await;
+                    store::execute_remote_input(&pool, &ws, bot, &request, &claim).await
+                })
+            });
+        let (a, b) = (a.await, b.await);
+        let (winner, won, lost) = match (a, b) {
+            (Ok(Ok(won)), Ok(Err(lost))) => ("bot1", won, lost),
+            (Ok(Err(lost)), Ok(Ok(won))) => ("bot2", won, lost),
             (a, b) => anyhow::bail!("run {run}: {a:?} / {b:?}"),
         };
         ensure!(won["command"]["op"] == "claim_task", "run {run}: {won}");
@@ -106,7 +121,38 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
             },
         )
         .await?;
+        ensure!(
+            current["process"]["assignee"] == winner,
+            "run {run}: winner {winner}, assignee {}",
+            current["process"]["assignee"]
+        );
+        ensure!(
+            current["process"]["status"] == "in_progress",
+            "run {run}: status {}",
+            current["process"]["status"]
+        );
         store::execute_remote_input(&pool, &ws, "owner", &format!("release-{run}"), &json!({"op":"release_task","id":address,"revision":current["document"]["revision"],"reason":"Reset the race fixture"})).await?;
+        let released = store::read_objects(
+            &pool,
+            &ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some(address),
+                ..Default::default()
+            },
+        )
+        .await?;
+        ensure!(
+            released["process"]["assignee"].is_null(),
+            "run {run}: assignee after release {}",
+            released["process"]["assignee"]
+        );
+        let mine = store::task_queue(&pool, &ws, winner, "mine", 10, None).await?;
+        ensure!(
+            mine["total"] == 0,
+            "run {run}: {winner} mine total after release {}",
+            mine["total"]
+        );
     }
     Ok(())
 }
