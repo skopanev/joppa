@@ -802,6 +802,8 @@ test('compact-open-object-ac3: the open-object line keeps 4 px from every status
     const dx = Math.max(0, a.left - b.right, b.left - a.right), dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
     return Math.sqrt(dx * dx + dy * dy);
   };
+  // A box with a missing or empty coordinate fails instead of passing an undefined comparison.
+  const valid = box => Object.values(box).every(Number.isFinite) && box.right > box.left && box.bottom > box.top;
   const intersects = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   try {
     await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
@@ -833,7 +835,7 @@ test('compact-open-object-ac3: the open-object line keeps 4 px from every status
             const message = 'line ' + owner + ' / circle ' + target + ', width ' + width + ', ' + scheme + ', hover ' + hover +
               ': gap ' + distance.toFixed(2) + ' px, line ' + JSON.stringify(a) + ', circle ' + JSON.stringify(b);
             t.diagnostic(message);
-            if (intersects(a, b) || distance < 4) failures.push(message);
+            if (!valid(a) || !valid(b) || !Number.isFinite(distance) || intersects(a, b) || distance < 4) failures.push(message);
           }
         }
       }
