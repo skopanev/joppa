@@ -676,7 +676,14 @@ function commonObjectCard(item,loadedDetail,parentTitle){
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
-  const history=button('Revisions',()=>showObjectRevisions(item.address),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});actions.append(copy,history);summary.append(actions);card.append(summary);
+  const history=button('Revisions',()=>showObjectRevisions(item.address),'history-button');history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+  // The fields open and close from the row. The object stays open or closed.
+  const fieldsToggle=button('Fields',()=>{
+    const shown=fieldsToggle.getAttribute('aria-expanded')!=='true';fieldsToggle.setAttribute('aria-expanded',String(shown));
+    const fields=body.querySelector(':scope > .object-secondary > .object-details');if(fields)resizeBranch(card,()=>{fields.hidden=!shown;});
+  },'fields-button');
+  fieldsToggle.setAttribute('aria-expanded','false');fieldsToggle.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
+  actions.append(fieldsToggle,copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   // Fill the body with the document and its children. Both requests run at once.
   const fill=async()=>{
@@ -770,7 +777,9 @@ function fillCommonObject(body,detail){
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current tree.','dependency-review'));
   const secondary=E('div',undefined,'object-secondary');
-  const fields=objectSection('Details','object-details');
+  // A view without the row Fields button, such as the revision dialog, always shows the fields.
+  const fields=E('div',undefined,'object-details'),fieldsToggle=body.parentElement?.querySelector(':scope > summary .fields-button');
+  fields.hidden=!!fieldsToggle&&fieldsToggle.getAttribute('aria-expanded')!=='true';
   const meta=E('div',undefined,'object-meta');
   meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));fields.append(meta);
   if(full)fields.append(full);

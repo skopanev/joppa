@@ -215,6 +215,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .object-secondary>.object-section:first-child>summary{margin-left:calc(-1.2em - 1.5px)}
 .object-section[open]>summary{margin-bottom:.4em}
 .object-secondary .object-meta{margin-top:0}
+.object-secondary>.object-details{flex-basis:100%;min-width:0}
 .object-loading{padding:.6em 0;color:var(--muted);font-size:.85em}
 .object-page-navigation{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1.2em;margin-bottom:1.2em;font-size:.85em}
 .object-page-navigation>.hint{margin-left:auto}

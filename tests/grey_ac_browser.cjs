@@ -106,7 +106,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
     const response = await page.goto(live.root + '/?' + (selectWorkspace ? 'workspace=' + live.ws + '&' : '') + 'object=' + encodeURIComponent(address));
     assert.equal(response.status(), 200);
     const card = page.locator('.object-page > .common-object[data-object-address="' + address + '"]');
-    await card.locator(':scope > .object-body > .object-secondary').waitFor();
+    await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
     await Promise.all(requests.map(entry => entry.body));
     return card;
   };
@@ -438,7 +438,7 @@ test('stable-url-ac1: the original URL keeps the item ID after rename and move',
     const response = await f.page.goto(originalUrl);
     assert.equal(response.status(), 200);
     card = f.page.locator('.object-page > .common-object[data-object-address="requirement:r"]');
-    await card.locator(':scope > .object-body > .object-secondary').waitFor();
+    await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
     assert.equal(await card.locator(':scope > summary .node-title').innerText(), 'Renamed requirement');
     await card.locator(':scope > summary .copy').click();
     assert.deepEqual(await f.page.evaluate(() => window.copiedIds), [original.item_id]);
@@ -535,13 +535,13 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
     assert.equal(saved.object.revision, 5);
     await f.page.reload();
     const card = f.page.locator('.object-page > .common-object[data-object-address="domain:d"]');
-    await card.locator(':scope > .object-body > .object-secondary').waitFor();
+    await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
     const content = await card.locator('.object-content').innerText();
     const current = await f.api('/objects?address=domain:d');
     const mcp = await f.mcp('joppa_read', {item_id: current.item_id});
     assert.equal(mcp.current_revision, 5);
     const fields = card.locator('.object-details');
-    await fields.locator(':scope > summary').click();
+    await card.locator(':scope > summary').getByRole('button', {name: 'Fields', exact: true}).click();
     assert.match(await fields.innerText(), /Revision 5/);
     const hash = value => createHash('sha256').update(value).digest('hex');
     assert.equal(hash(content), hash(mcp.document.data.body));
@@ -582,6 +582,80 @@ test('blocking-pins-revision-ac1: a blocking link pins the target revision', asy
   } finally { await f.close(); }
 });
 
+test('compact-open-object-ac1: the object row holds the control for its fields', async () => {
+  const title = 'Release plan outline';
+  assert.equal(title.length, 20);
+  const f = await fixture({'domain:X': {title}, 'capability:a': {title: 'First child', parent: 'domain:X'},
+    'capability:b': {title: 'Second child', parent: 'domain:X'}});
+  const consoleErrors = [];
+  f.page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  try {
+    await f.command({op: 'save_object', kind: 'domain', id: 'X', revision: 1, parent: null,
+      data: {title, owner: 'owner', body: 'Current source', scope: 'Field scope value'}, reason: 'Add a document field'});
+    const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+    const row = X.locator(':scope > summary');
+    const control = row.getByRole('button', {name: 'Fields', exact: true});
+    const fields = X.locator(':scope > .object-body > .object-secondary > .object-details');
+    const children = X.locator(':scope > .object-body > .object-children > .common-object');
+    for (const viewport of [null, {width: 390, height: 844}]) {
+      if (viewport) await f.page.setViewportSize(viewport);
+      await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      await row.waitFor();
+      if (await X.getAttribute('open') === null) await row.click({position: {x: 4, y: 4}});
+      await children.nth(1).waitFor();
+      assert.equal(await X.getAttribute('open'), '');
+      assert.equal(await control.count(), 1);
+      assert.equal(await control.evaluate(node => node.tagName + ' ' + node.type), 'BUTTON button');
+      // Copy and Revisions stay the last two controls of the row.
+      assert.deepEqual((await row.locator('button').evaluateAll(nodes => nodes.map(node => node.className))).slice(-3),
+        ['fields-button', 'copy', 'history-button']);
+      assert.equal(await X.locator(':scope > .object-body .object-details > summary').count(), 0);
+      assert.equal(await fields.evaluate(node => node.tagName), 'DIV');
+      assert.deepEqual((await X.locator(':scope > .object-body > .object-secondary > details > summary').allTextContents())
+        .filter(text => /details|fields/i.test(text)), []);
+      // The control adds no line to the row.
+      const shown = (await row.boundingBox()).height;
+      // A role query skips a hidden button, so the class selects it while it is hidden.
+      const plain = row.locator('.fields-button');
+      await plain.evaluate(node => { node.style.display = 'none'; });
+      const without = (await row.boundingBox()).height;
+      await plain.evaluate(node => { node.style.display = ''; });
+      assert.ok(Math.abs(shown - without) <= 1, JSON.stringify({viewport, shown, without}));
+      assert.equal(await fields.isVisible(), false);
+      assert.equal(await control.getAttribute('aria-expanded'), 'false');
+      for (const activate of [() => control.click(), () => control.focus().then(() => f.page.keyboard.press('Enter')),
+        () => control.focus().then(() => f.page.keyboard.press('Space'))]) {
+        const before = await fields.isVisible();
+        await activate();
+        assert.equal(await X.getAttribute('open'), '');
+        assert.equal(await children.count(), 2);
+        assert.equal(await children.nth(0).isVisible(), true);
+        assert.equal(await children.nth(1).isVisible(), true);
+        assert.equal(await fields.isVisible(), !before);
+        assert.equal(await control.getAttribute('aria-expanded'), String(!before));
+      }
+      assert.equal(await fields.isVisible(), true);
+      assert.match(await fields.innerText(), /Revision 2/);
+      assert.match(await fields.innerText(), /Field scope value/);
+    }
+    // The revision dialog has no row control and always shows the fields.
+    await row.locator('.history-button').click();
+    const dialog = f.page.locator('dialog.notes-dialog');
+    const dialogFields = dialog.locator('.object-details');
+    await dialogFields.waitFor();
+    assert.equal(await X.getAttribute('open'), '');
+    assert.equal(await dialog.locator('.object-details > summary').count(), 0);
+    assert.equal(await dialogFields.isVisible(), true);
+    assert.match(await dialogFields.innerText(), /Revision 2/);
+    assert.match(await dialogFields.innerText(), /Field scope value/);
+    await dialog.locator('select').selectOption('1');
+    await f.page.waitForFunction(() => /Revision 1/.test(document.querySelector('dialog.notes-dialog .object-details')?.innerText));
+    assert.equal(await dialogFields.isVisible(), true);
+    await dialog.locator('.history-close').click();
+    assert.deepEqual(consoleErrors, []);
+  } finally { await f.close(); }
+});
+
 test('compact-open-object-ac2: an open object shows one solid line in its type colour', async () => {
   const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
   const C = '#aa3311', D = '#1166cc', fallback = rgb('#63756b');
@@ -596,7 +670,7 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
   const child = (parent, address) => parent.locator(':scope > .object-body > .object-children > .common-object[data-object-address="' + address + '"]');
   const row = card => card.locator(':scope > summary');
   const toggle = card => row(card).click({position: {x: 4, y: 4}});
-  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor();
+  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
   const line = card => card.evaluate(node => {
     const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
     return {content: style.content, style: style.borderLeftStyle, width: parseFloat(style.borderLeftWidth), color: style.borderLeftColor,
@@ -630,8 +704,8 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
     await toggle(Y); await ready(Y);
     const Z = child(Y, 'loose:Z');
     await toggle(Z); await ready(Z);
-    await X.locator(':scope > .object-body > .object-secondary > .object-details > summary').click();
-    assert.equal(await X.locator(':scope > .object-body > .object-secondary > .object-details').getAttribute('open'), '');
+    await row(X).getByRole('button', {name: 'Fields', exact: true}).click();
+    assert.equal(await X.locator(':scope > .object-body > .object-secondary > .object-details').isVisible(), true);
     const closedSibling = X.locator(':scope > .object-body > .object-children > .common-object:not([open]):not(:last-child)').first();
     for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
       await f.page.emulateMedia({colorScheme: scheme});
