@@ -335,6 +335,12 @@ pub enum Command {
         reason: String,
         evidence: String,
     },
+    UnblockTask {
+        revision: u32,
+        id: String,
+        reason: String,
+        evidence: String,
+    },
     CompleteTask {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         req: String,
@@ -601,6 +607,11 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op(
         "block_task",
+        &["revision", "id", "reason", "evidence"],
+        HOLDER_OR_OWNER,
+    ),
+    op(
+        "unblock_task",
         &["revision", "id", "reason", "evidence"],
         HOLDER_OR_OWNER,
     ),

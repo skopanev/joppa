@@ -453,9 +453,9 @@ pub fn apply(
     at: &str,
 ) -> Result<bool> {
     let (req, revision, id) = match cmd {
-        Command::HeartbeatTask { revision, id } | Command::BlockTask { revision, id, .. } => {
-            (&String::new(), *revision, id)
-        }
+        Command::HeartbeatTask { revision, id }
+        | Command::BlockTask { revision, id, .. }
+        | Command::UnblockTask { revision, id, .. } => (&String::new(), *revision, id),
         Command::ClaimTask { req, revision, id }
         | Command::AmendTask {
             req, revision, id, ..
@@ -562,6 +562,20 @@ pub fn apply(
             });
             reason
         }
+        Command::UnblockTask {
+            reason, evidence, ..
+        } => {
+            commands::nonempty(reason)?;
+            commands::nonempty(evidence)?;
+            ensure!(t.retired.is_none(), "retired Task cannot be unblocked");
+            ensure!(t.blocked.is_some(), "Task is not blocked");
+            ensure!(
+                actor == w.admin || parent_planner(w, o, actor),
+                "planning holder or workspace owner required"
+            );
+            t.blocked = None;
+            reason
+        }
         Command::CompleteTask { evidence, .. } => {
             commands::nonempty(evidence)?;
             ensure!(
@@ -665,12 +679,7 @@ pub fn apply(
         Command::RetireTask { reason, .. } => {
             commands::nonempty(reason)?;
             // The planning holder of the parent criterion may retire a blocked child Task.
-            let planner = t.blocked.is_some()
-                && o.current().parent.as_deref().is_some_and(|p| {
-                    w.planning_claims
-                        .get(objects::resolve_address(w, p))
-                        .is_some_and(|c| c.actor == actor)
-                });
+            let planner = t.blocked.is_some() && parent_planner(w, o, actor);
             ensure!(
                 (authority || planner) && t.retired.is_none(),
                 "active Task owner required"
@@ -686,6 +695,15 @@ pub fn apply(
     w.task_process.insert(key.clone(), t);
     append(w, &key, r, actor, position, at, reason);
     Ok(true)
+}
+
+/// The actor holds the planning claim on the parent criterion of the Task.
+fn parent_planner(w: &Workspace, o: &objects::Object, actor: &str) -> bool {
+    o.current().parent.as_deref().is_some_and(|p| {
+        w.planning_claims
+            .get(objects::resolve_address(w, p))
+            .is_some_and(|c| c.actor == actor)
+    })
 }
 
 /// The holder or the workspace owner may take a Task out of active work.

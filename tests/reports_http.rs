@@ -2771,7 +2771,7 @@ async fn a_blocked_task_refuses_claims_and_leaves_the_queue_over_http_and_mcp() 
         ),
         (
             "unknown operation",
-            json!({"request_id":id(),"command":{"op":"unblock_task","id":"work:t","revision":5}}),
+            json!({"request_id":id(),"command":{"op":"made_up_task_operation","id":"work:t","revision":5}}),
         ),
         (
             "command is not an object",
@@ -3040,6 +3040,239 @@ async fn the_planner_retires_a_blocked_task_and_other_actors_cannot_over_http_an
         block["document"]["position"] == position
             && block["document"]["reason"] == "Verification failed",
         "{block}"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+const UNBLOCK_REASON: &str = "Startup failure; checkout discarded";
+const PLANNER_OR_OWNER: &str = "planning holder or workspace owner required";
+
+impl Planning<'_> {
+    /// Fixture 1 of failed-task-blocks-ac5: L blocks T under A, and U under B
+    /// depends on T with a blocking link pinned to the current T revision.
+    async fn blocked_dependency(&self) -> Result<()> {
+        self.blocked("work:t").await?;
+        let pin = self.revision("work:t").await?;
+        self.save("work:u", Some("criterion:b"), json!({"title":"U","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+            json!([{"target":"work:t","relation":"depends_on","revision":pin,"blocking":true}])).await
+    }
+    /// P sends unblock_task for T and finish_planning for A in one MCP batch.
+    async fn unblock_and_finish(&self) -> Result<Value> {
+        let revision = self.revision("work:t").await?;
+        self.mcp(
+            "joppa_batch",
+            json!({"request_id":uuid::Uuid::new_v4().to_string(),"operations":[
+                {"command":unblock_t(revision)},{"command":finish_command()}
+            ]}),
+        )
+        .await
+    }
+}
+
+fn unblock_t(revision: u64) -> Value {
+    json!({"op":"unblock_task","id":"work:t","revision":revision,"reason":UNBLOCK_REASON,"evidence":"Run: r1"})
+}
+
+// failed-task-blocks-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn unblock_task_refuses_a_member_and_a_stale_revision_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    // Q holds the planning claim on A. The token member is M without a claim.
+    let p = planning(&w).await?;
+    p.blocked_dependency().await?;
+    p.claim("other", "criterion:a").await?;
+    let revision = p.revision("work:t").await?;
+    p.refuse_command("M unblocks T", unblock_t(revision), PLANNER_OR_OWNER)
+        .await?;
+    // The token member is P with the planning claim on A.
+    let p = planning(&w).await?;
+    p.blocked_dependency().await?;
+    p.claim("agent", "criterion:a").await?;
+    let revision = p.revision("work:t").await?;
+    p.refuse_command(
+        "P unblocks T at a stale revision",
+        unblock_t(revision - 1),
+        "stale Task revision; read the Task again",
+    )
+    .await?;
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// failed-task-blocks-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_planner_unblocks_a_task_and_finishes_planning_in_one_batch() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.blocked_dependency().await?;
+    p.claim("agent", "criterion:a").await?;
+    let t0 = p.read("work:t").await?;
+    let u0 = p.read("work:u").await?;
+    let block = t0["process"]["blocked"].clone();
+    let response = p.unblock_and_finish().await?;
+    ensure!(response["result"]["isError"] != true, "{response}");
+
+    let t = p.read("work:t").await?;
+    let revision = t0["current_revision"].as_u64().unwrap() + 1;
+    ensure!(
+        t["process"]["blocked"].is_null()
+            && t["current_revision"] == revision
+            && t["address"] == t0["address"]
+            && t["document"]["data"] == t0["document"]["data"]
+            && t["document"]["parent"] == t0["document"]["parent"]
+            && t["document"]["links"] == t0["document"]["links"]
+            && t["process"]["origin_revision"] == t0["process"]["origin_revision"]
+            && t["process"]["assignee"].is_null()
+            && t["process"]["status"] == "open",
+        "T changed beyond its block: {t0} {t}"
+    );
+    let u = p.read("work:u").await?;
+    ensure!(
+        u["review_required"] == false
+            && u["process"]["review_required"] == false
+            && u["document"]["links"] == u0["document"]["links"],
+        "U needs review: {u}"
+    );
+    let a = p.read("criterion:a").await?;
+    ensure!(a["process"]["planning_claim"].is_null(), "{a}");
+
+    // T is claimable through HTTP and MCP.
+    let root = w.base.split("/api/").next().unwrap();
+    let http: Value = w
+        .http
+        .get(format!("{root}/api/workspaces/{}/tasks?view=all", p.ws))
+        .bearer_auth(&w.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let mcp = p.mcp("joppa_tasks", json!({"view":"all"})).await?;
+    let mcp: Value = serde_json::from_str(
+        mcp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default(),
+    )?;
+    for (transport, page) in [("HTTP", http), ("MCP", mcp)] {
+        let tasks = page["tasks"].as_array().cloned().unwrap_or_default();
+        ensure!(
+            tasks
+                .iter()
+                .any(|t| t["address"] == "work:t" && t["claimable"] == true),
+            "{transport} all: {page}"
+        );
+    }
+
+    // The T history keeps the block and records the unblock with P, reason and evidence.
+    let read = async |revision: u64| {
+        store::read_objects(
+            &p.pool,
+            &p.ws,
+            "owner",
+            &store::ObjectScope {
+                address: Some("work:t"),
+                revision: Some(revision as u32),
+                ..Default::default()
+            },
+        )
+        .await
+    };
+    let blocked = read(revision - 1).await?;
+    let unblocked = read(revision).await?;
+    ensure!(
+        blocked["document"]["position"] == block["position"]
+            && blocked["document"]["reason"] == "Verification failed"
+            && unblocked["document"]["actor"] == "agent"
+            && unblocked["document"]["reason"] == UNBLOCK_REASON,
+        "{blocked} {unblocked}"
+    );
+    let history = store::read(&p.pool, &p.ws, "owner", &store::Scope::full()).await?;
+    let event = history["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["position"] == unblocked["document"]["position"])
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        event["actor"] == "agent"
+            && event["command"]["op"] == "unblock_task"
+            && event["command"]["reason"] == UNBLOCK_REASON
+            && event["command"]["evidence"] == "Run: r1",
+        "{event}"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// failed-task-blocks-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_refused_finish_rolls_back_the_unblock_in_the_same_batch() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.blocked_dependency().await?;
+    // Fixture 2: a second unchanged blocked Task V under A.
+    p.save("work:v", Some("criterion:a"), json!({"title":"V","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    let revision = p.revision("work:v").await?;
+    p.write(
+        "other",
+        json!({"op":"claim_task","id":"work:v","revision":revision}),
+    )
+    .await?;
+    p.write("other", json!({"op":"block_task","id":"work:v","revision":revision + 1,"reason":"Verification failed","evidence":"test y failed on abc123"})).await?;
+    p.claim("agent", "criterion:a").await?;
+    let before = p.saved().await?;
+    let response = p.unblock_and_finish().await?;
+    ensure!(
+        response["result"]["isError"] == true
+            && response["result"]["content"][0]["text"]
+                .as_str()
+                .is_some_and(|e| e.contains(NEEDS_CONTRACT)),
+        "{response}"
+    );
+    ensure!(
+        p.saved().await? == before,
+        "the refused batch changed saved state"
+    );
+    let a = p.read("criterion:a").await?;
+    let t = p.read("work:t").await?;
+    ensure!(
+        a["process"]["planning_claim"]["actor"] == "agent" && !t["process"]["blocked"].is_null(),
+        "{a} {t}"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// failed-task-blocks-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_workspace_owner_unblocks_without_a_claim_and_the_journal_replays() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.blocked_dependency().await?;
+    let revision = p.revision("work:t").await?;
+    p.write("owner", unblock_t(revision)).await?;
+    let t = p.read("work:t").await?;
+    ensure!(
+        t["process"]["blocked"].is_null() && t["current_revision"] == revision + 1,
+        "{t}"
+    );
+    let before = p.saved().await?;
+    let refused = p.write("owner", unblock_t(revision + 1)).await;
+    ensure!(
+        refused
+            .as_ref()
+            .is_err_and(|e| e.to_string() == "Task is not blocked"),
+        "{refused:?}"
+    );
+    ensure!(
+        p.saved().await? == before,
+        "the refusal changed saved state"
     );
     store::check_journal(&p.pool).await?;
     Ok(())

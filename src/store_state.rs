@@ -282,6 +282,7 @@ pub(super) async fn hydrate_command(
             "claim_task"
                 | "release_task"
                 | "block_task"
+                | "unblock_task"
                 | "complete_task"
                 | "review_task"
                 | "retire_task"

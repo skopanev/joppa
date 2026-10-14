@@ -4600,6 +4600,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     )
     .await?;
     covered.push(check_callers(&w, &help, bot, json!({"op":"block_task","id":"job:a","revision":revision("job:a").await?,"reason":"The test fails","evidence":"test a failed at commit c1"}), &w.bot, owner_only).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"unblock_task","id":"job:a","revision":revision("job:a").await?,"reason":"The failure was outside the Task","evidence":"Run: r1"}), &w.owner, "planning holder or workspace owner required").await?);
     w.command_as(
         &w.bot,
         json!({"op":"claim_task","id":"job:b","revision":revision("job:b").await?}),
