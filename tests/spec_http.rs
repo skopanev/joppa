@@ -3624,7 +3624,9 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
             .await?;
         ensure!(response.status() == reqwest::StatusCode::OK);
         ensure!(response.bytes().await?.as_ref() == contents[0]);
-        w.command_as(&w.alex, json!({"op":"save_object","kind":object["kind"],"id":object["id"],"revision":1,"parent":object["document"]["parent"],"data":object["document"]["data"],"reason":"Create a later document revision"})).await?;
+        let mut data = object["document"]["data"].clone();
+        data["title"] = json!(format!("{} revised", data["title"].as_str().unwrap()));
+        w.command_as(&w.alex, json!({"op":"save_object","kind":object["kind"],"id":object["id"],"revision":1,"parent":object["document"]["parent"],"data":data,"reason":"Create a later document revision"})).await?;
         let historical = w.get(&format!("address={address}&revision=1")).await?;
         ensure!(
             historical["historical"] == true && historical.get("files").is_none(),
