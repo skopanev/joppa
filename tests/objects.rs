@@ -999,3 +999,53 @@ fn custom_group_fields_survive_archive() {
     assert_eq!(w.state.document_overrides, overrides);
     assert!(w.state.archived_objects.is_empty());
 }
+
+// check-list-frozen-ac2
+#[test]
+fn a_criterion_change_keeps_sibling_readiness_and_an_identical_requirement_save_keeps_all() {
+    let mut w = World::new();
+    w.ready();
+    let state = |w: &World, ac: &str| objects::assessment(&w.state, ac).unwrap()["state"].clone();
+    let req = w.state.objects["requirement:r"].current().clone();
+    save(
+        &mut w,
+        "requirement:r",
+        req.parent.as_deref(),
+        req.data,
+        req.links,
+    );
+    assert_eq!(state(&w, "ac:ios"), "ready");
+    assert_eq!(state(&w, "ac:key"), "ready");
+    assert!(w.state.criterion_boundaries.is_empty());
+    let mut ios = w.state.objects["ac:ios"].current().data.clone();
+    ios["title"] = json!("On iOS paid access survives every login");
+    save(&mut w, "ac:ios", Some("requirement:r"), ios, vec![]);
+    assert_eq!(state(&w, "ac:ios"), "unassessed");
+    assert_eq!(
+        state(&w, "ac:key"),
+        "ready",
+        "a sibling keeps its readiness"
+    );
+    assert_eq!(
+        w.state.criterion_boundaries.keys().collect::<Vec<_>>(),
+        vec!["ac:ios"]
+    );
+}
+
+// check-list-frozen-ac2
+#[test]
+fn a_reset_never_moves_a_boundary_back_in_time() {
+    let mut w = World::new();
+    let boundary = |w: &World, ac: &str| w.state.criterion_boundaries[ac].clone();
+    objects::reset_criteria(&mut w.state, "domain:d", "2026-01-01T12:00:00Z").unwrap();
+    // An older reset of an overlapping root keeps the later boundary.
+    objects::reset_criteria(&mut w.state, "requirement:r", "2026-01-01T11:00:00Z").unwrap();
+    // An equal time in another format keeps the stored one.
+    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01 12:00:00+00").unwrap();
+    for ac in ["ac:ios", "ac:key"] {
+        assert_eq!(boundary(&w, ac), "2026-01-01T12:00:00Z");
+    }
+    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01T13:00:00Z").unwrap();
+    assert_eq!(boundary(&w, "ac:ios"), "2026-01-01T13:00:00Z");
+    assert_eq!(boundary(&w, "ac:key"), "2026-01-01T12:00:00Z");
+}

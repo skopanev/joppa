@@ -1205,6 +1205,30 @@ fn fresh_acs(r: &Revision) -> Vec<Ac> {
         })
         .collect()
 }
+/// The adapter writes a whole requirement revision, which starts without assessments.
+/// Each criterion whose record did not change keeps its readiness; `reset_changed`
+/// clears the criteria below a changed title, text, link or parent.
+fn keep_assessments(w: &mut Workspace, req: &str) {
+    let Some([.., previous, current]) = w
+        .requirements
+        .get_mut(req)
+        .map(|q| q.revisions.as_mut_slice())
+    else {
+        return;
+    };
+    for ac in &mut current.acs {
+        if let Some(old) = previous.acs.iter().find(|old| {
+            old.id == ac.id
+                && old.text == ac.text
+                && old.description == ac.description
+                && old.depends_on == ac.depends_on
+                && old.owner == ac.owner
+                && old.before_launch == ac.before_launch
+        }) {
+            ac.assessment = old.assessment.clone();
+        }
+    }
+}
 fn revise(
     req: &str,
     r: &Revision,
@@ -1672,6 +1696,9 @@ fn saved(
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             candidate.document_overrides.remove(&key);
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
+            if let Command::Revise { req, .. } = &cmd {
+                keep_assessments(&mut candidate, req);
+            }
             sync(&mut candidate, actor, &cmd, position, at);
         } else {
             candidate.document_overrides.insert(key.clone());
@@ -1918,7 +1945,17 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
                 r.acceptance = None;
             }
         }
-        w.criterion_boundaries.insert(key, at.into());
+        // An earlier or equal time keeps the stored boundary.
+        let later = w.criterion_boundaries.get(&key).is_some_and(|old| {
+            use crate::ac_tests::Boundary;
+            matches!(
+                (Boundary::read(Some(old)), Boundary::read(Some(at))),
+                (Boundary::After(old), Boundary::After(new)) if old >= new
+            )
+        });
+        if !later {
+            w.criterion_boundaries.insert(key, at.into());
+        }
     }
     Ok(())
 }
