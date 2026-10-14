@@ -310,6 +310,7 @@ pub fn save(
     data: &Value,
     parent: Option<&str>,
     position: u64,
+    unchanged: impl Fn(&Value) -> bool,
 ) -> Result<Value> {
     let mut data = data.clone();
     let old = w.objects.get(key);
@@ -391,6 +392,12 @@ pub fn save(
             "unknown Task document field {field}; use process commands for evidence"
         );
     }
+    let title = string("title")?.to_owned();
+    let contract = string("contract")?.to_owned();
+    data["owner"] = json!(owner);
+    if !w.schema_migrated {
+        data["projects"] = json!(projects);
+    }
     let mut t = task(w, key).cloned().unwrap_or_else(|| Task {
         claim: None,
         title: String::new(),
@@ -409,7 +416,7 @@ pub fn save(
     });
     if let Some(old) = old {
         ensure!(
-            t.done.is_none() && t.retired.is_none(),
+            unchanged(&data) || (t.done.is_none() && t.retired.is_none()),
             "completed or retired Task cannot be amended"
         );
         ensure!(
@@ -429,14 +436,10 @@ pub fn save(
         );
         ensure!(t.purpose == purpose, "task purpose cannot change");
     }
-    t.title = string("title")?.into();
-    t.contract = string("contract")?.into();
-    t.projects = projects.clone();
+    t.title = title;
+    t.contract = contract;
+    t.projects = projects;
     t.acs.clear();
-    data["owner"] = json!(owner);
-    if !w.schema_migrated {
-        data["projects"] = json!(projects);
-    }
     t.origin_revision = old.map_or(1, |o| o.current().revision + 1);
     if old.is_none() {
         let pin = parent.and_then(|p| {
@@ -677,7 +680,9 @@ pub fn apply(
                 );
             }
             let parent = o.current().parent.clone();
-            let data = save(w, actor, &key, &data, parent.as_deref(), position)?;
+            let data = save(w, actor, &key, &data, parent.as_deref(), position, |_| {
+                false
+            })?;
             let mut r = w.objects[&key].current().clone();
             r.data = data;
             append(w, &key, r, actor, position, at, reason);

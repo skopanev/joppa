@@ -804,6 +804,9 @@ pub fn apply(
     position: u64,
     recorded_at: &str,
 ) -> Result<()> {
+    if unchanged_save(w, actor, command, position, recorded_at)? {
+        return Ok(());
+    }
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
     w.replay_claims = false;
     ensure!(
@@ -832,6 +835,23 @@ pub fn apply(
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);
     Ok(())
+}
+
+/// A live save_object that changes nothing succeeds without a revision or journal event.
+pub fn unchanged_save(
+    w: &Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<bool> {
+    if !matches!(command, Command::SaveObject { .. }) {
+        return Ok(false);
+    }
+    crate::objects::validate_current(w, command)?;
+    identifier(actor)?;
+    ensure!(w.members.contains_key(actor), "not a workspace member");
+    crate::objects::unchanged_save(w, actor, command, position, recorded_at)
 }
 
 pub fn apply_replay(

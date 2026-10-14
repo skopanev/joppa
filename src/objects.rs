@@ -1548,6 +1548,29 @@ pub fn save(
     position: u64,
     at: &str,
 ) -> Result<()> {
+    if let Some(candidate) = saved(w, actor, command, position, at, false)? {
+        *w = candidate;
+    }
+    Ok(())
+}
+/// A live save whose normalized data, parent and links equal the current revision changes nothing.
+pub fn unchanged_save(
+    w: &Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+) -> Result<bool> {
+    Ok(saved(w, actor, command, position, at, true)?.is_none())
+}
+fn saved(
+    w: &Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+    accept_unchanged: bool,
+) -> Result<Option<Workspace>> {
     let Command::SaveObject {
         id,
         kind,
@@ -1620,6 +1643,13 @@ pub fn save(
     let unchanged = old
         .as_ref()
         .is_some_and(|o| o.current().data == *data && o.current().parent == *parent);
+    let same = |saved: &Value| {
+        accept_unchanged
+            && old.as_ref().is_some_and(|o| {
+                let r = o.current();
+                r.data == *saved && r.parent == *parent && r.links == *links
+            })
+    };
     let mut candidate = w.clone();
     let generic_task = schema(w).types[kind].role == "task" && w.tasks_migrated;
     let task_data = if generic_task {
@@ -1630,6 +1660,7 @@ pub fn save(
             data,
             parent.as_deref(),
             position,
+            same,
         )?)
     } else {
         None
@@ -1787,6 +1818,9 @@ pub fn save(
             saved_data["status"] = json!("unprocessed");
         }
     }
+    if same(&saved_data) {
+        return Ok(None);
+    }
     object.parent_override = document_rows(&candidate)
         .get(&key)
         .is_none_or(|(_, p, _)| p != parent);
@@ -1815,8 +1849,7 @@ pub fn save(
             );
         }
     }
-    *w = candidate;
-    Ok(())
+    Ok(Some(candidate))
 }
 
 /// A Task pin stays current across process events, which keep its authored origin revision.

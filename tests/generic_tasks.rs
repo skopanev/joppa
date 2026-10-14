@@ -329,6 +329,40 @@ fn dependencies_pin_generic_task_completion_and_reject_parent_cycles() {
     w.no("agent",json!({"op":"save_object","kind":"task","id":"parent","revision":1,"parent":"spec:root","data":contract("Parent task"),"links":[{"target":"task:child","relation":"depends_on","revision":1,"blocking":true}],"reason":"Depend on the child"}));
 }
 
+// edit-makes-revision-ac3
+#[test]
+fn an_identical_save_keeps_the_workspace_and_a_change_adds_one_revision() {
+    let mut w = configured();
+    save(&mut w, "work:source", None, contract("Source task"));
+    w.ok("agent",json!({"op":"save_object","kind":"task","id":"dependent","revision":0,"parent":"spec:root","data":contract("Dependent task"),"links":[{"target":"work:source","relation":"depends_on","revision":1,"blocking":true}],"reason":"Depend on the source"}));
+    let before = format!("{:?}", w.state);
+    save(&mut w, "work:source", None, contract("Source task"));
+    assert_eq!(format!("{:?}", w.state), before);
+    let mut changed = contract("Source task");
+    changed["contract"] = json!("Implement the changed document behavior");
+    save(&mut w, "work:source", None, changed);
+    assert_eq!(w.state.objects["work:source"].revisions.len(), 2);
+    assert!(!objects::review_links(&w.state, "task:dependent").is_empty());
+
+    let linked = |revision: u32, links: Value| json!({"op":"save_object","kind":"spec","id":"child","revision":revision,"parent":"spec:root","data":document("Nested specification"),"links":links,"reason":"Relate the specification"});
+    w.ok("agent", linked(1, json!([])));
+    assert_eq!(w.state.objects["spec:child"].revisions.len(), 1);
+    w.ok(
+        "agent",
+        linked(1, json!([{"target":"spec:root","relation":"related"}])),
+    );
+    assert_eq!(w.state.objects["spec:child"].revisions.len(), 2);
+
+    // A stored identical save still adds its historical revision on replay.
+    let cmd: Command = serde_json::from_value(linked(
+        2,
+        json!([{"target":"spec:root","relation":"related"}]),
+    ))
+    .unwrap();
+    commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "later").unwrap();
+    assert_eq!(w.state.objects["spec:child"].revisions.len(), 3);
+}
+
 // [ac:pins-ignore-process-events-ac1]
 #[test]
 fn claim_and_completion_keep_a_dependency_pin_current() {

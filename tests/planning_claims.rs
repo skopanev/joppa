@@ -257,7 +257,13 @@ fn finish_requires_changes_and_accepts_updates_without_new_tasks() {
         json!({"op":"finish_planning","ac":"criterion:a","reason":"Plan complete"}),
         "planning produced no Task changes",
     );
-    work(&mut w, "planner", "work:old");
+    save(
+        &mut w,
+        "planner",
+        "work:old",
+        Some("criterion:a"),
+        json!({"title":"work:old","owner":"owner","contract":"Implement the changed criterion","purpose":"implementation"}),
+    );
     w.ok(
         "planner",
         json!({"op":"finish_planning","ac":"criterion:a","reason":"Plan complete"}),
@@ -859,7 +865,7 @@ fn blocked_contract_ignores_link_order_and_starts_at_the_block() {
     w.ok("worker", block(&w, "work:t"));
     let mut data = t_document();
     data["contract"] = json!("Implement the criterion with a new fix");
-    save_t(&mut w, "owner", data.clone(), json!([]));
+    save_t(&mut w, "owner", data, json!([]));
     claim(&mut w, "planner", "criterion:a");
     refuse(
         &mut w,
@@ -867,7 +873,7 @@ fn blocked_contract_ignores_link_order_and_starts_at_the_block() {
         finish(),
         "planning produced no Task changes",
     );
-    save_t(&mut w, "planner", data, json!([]));
+    work(&mut w, "planner", "work:z");
     finish_and_replay(&mut w);
     assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
 }

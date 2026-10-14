@@ -4907,6 +4907,116 @@ async fn ready_task(w: &World, id: &str, ac: &str) -> Result<String> {
     Ok(format!("task:{id}"))
 }
 
+async fn journal_position(w: &World) -> Result<i64> {
+    let conn = w.pool.get().await?;
+    let row = conn
+        .query_one(
+            "SELECT COALESCE(max(position),0) FROM joppa.events WHERE workspace=$1",
+            &[&w.ws],
+        )
+        .await?;
+    Ok(row.get(0))
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
+    // edit-makes-revision-ac3
+    let w = world().await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let t = ready_task(&w, "t", "key-rights").await?;
+    let save = |revision: u32, title: &str| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":title,"owner":"owner","contract":"Implement the changed criterion and record the result","purpose":"implementation","projects":[]},"reason":"Save the work contract"});
+    let title = "Implement the specified work";
+    w.command(save(1, title)).await?;
+    let read = async |address: &str| w.get(&format!("address={address}")).await;
+    let revisions = async || w.get("address=task:t&history=true").await;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":t,"revision":read(&t).await?["current_revision"]}),
+    )
+    .await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","id":t,"revision":read(&t).await?["current_revision"],"evidence":"Implemented the contract"})).await?;
+    let done = read(&t).await?;
+    ensure!(
+        done["current_revision"] == 4
+            && done["process"]["status"] == "done"
+            && done["process"]["assignee"] == "bot",
+        "{done}"
+    );
+    w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","contract":"Use the completed work and record the result","purpose":"implementation","projects":[]},"links":[{"target":t,"relation":"depends_on","revision":4,"blocking":true}],"reason":"Depend on the completed work"})).await?;
+    let position = journal_position(&w).await?;
+
+    let http = w.command_as(&w.bot, save(4, title)).await?;
+    ensure!(
+        http["object"] == json!({"address":t,"revision":4}),
+        "{http}"
+    );
+    let mcp = mcp_value(&w, "joppa_command", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":save(4, title)})).await?;
+    ensure!(mcp["object"] == json!({"address":t,"revision":4}), "{mcp}");
+    let task = revisions().await?;
+    ensure!(
+        task["current_revision"] == 4 && task["revision_count"] == 4,
+        "{task}"
+    );
+    let u = read("task:u").await?;
+    ensure!(
+        u["review_required"] == false
+            && u["document"]["links"][0]["revision"] == task["current_revision"],
+        "{u}"
+    );
+    let available = mcp_value(
+        &w,
+        "joppa_tasks",
+        json!({"workspace":w.ws,"view":"available"}),
+    )
+    .await?;
+    ensure!(
+        available["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["address"] == "task:u" && row["claimable"] == true),
+        "{available}"
+    );
+    ensure!(journal_position(&w).await? == position);
+
+    for (token, command, error) in [
+        (
+            &w.bot,
+            save(4, "Implement other work"),
+            "completed or retired Task cannot be amended",
+        ),
+        (
+            &w.bot,
+            save(3, title),
+            "stale object revision; read the object again",
+        ),
+        (
+            &w.maria,
+            save(4, title),
+            "Task owner, assignee or unclaimed creator required",
+        ),
+    ] {
+        let reply = w
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+            .bearer_auth(token)
+            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .send()
+            .await?;
+        ensure!(!reply.status().is_success(), "{command}");
+        let reply: Value = reply.json().await?;
+        ensure!(reply["error"] == error, "{command}: {reply}");
+    }
+    let task = revisions().await?;
+    ensure!(
+        task["current_revision"] == 4 && task["revision_count"] == 4,
+        "{task}"
+    );
+    ensure!(journal_position(&w).await? == position);
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Result<()> {

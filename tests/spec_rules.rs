@@ -27,7 +27,9 @@ fn a_save_on_a_stale_object_revision_is_refused() {
     // edit-makes-revision-ac2
     let mut w = World::new();
     w.ok("agent", note("a", 0, json!([])));
-    w.ok("agent", note("a", 1, json!([])));
+    let mut changed = note("a", 1, json!([]));
+    changed["data"]["body"] = json!("Changed signal");
+    w.ok("agent", changed);
     refused(
         &mut w,
         "agent",

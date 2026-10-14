@@ -254,7 +254,8 @@ fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
 #[test]
 fn a_legacy_req_move_updates_the_common_parent_once() {
     let mut w = World::new();
-    let data = w.state.objects["requirement:r"].current().data.clone();
+    let mut data = w.state.objects["requirement:r"].current().data.clone();
+    data["title"] = json!("Paid access survives login");
     save(&mut w, "requirement:r", Some("capability:c"), data, vec![]);
     assert_eq!(w.state.objects["requirement:r"].revisions.len(), 2);
     w.ok(
