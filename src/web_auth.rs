@@ -26,6 +26,25 @@ pub struct Login {
     google: Option<Google>,
     pending: Arc<Mutex<BTreeMap<String, Pending>>>,
 }
+/// A verified Google email that no grant, rule or user entry admits.
+#[derive(Debug)]
+struct NoAccess;
+impl std::fmt::Display for NoAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("No workspace access")
+    }
+}
+impl std::error::Error for NoAccess {}
+/// Error details never include Google's tokens or the authorization code.
+fn outcome(result: Result<String>, cancelled: bool) -> std::result::Result<String, String> {
+    result.map_err(|e| {
+        if cancelled || e.is::<NoAccess>() {
+            e.to_string()
+        } else {
+            "Sign-in could not be completed. Check your account has access, then try again.".into()
+        }
+    })
+}
 fn random() -> String {
     format!(
         "{}{}",
@@ -171,17 +190,8 @@ impl Login {
         } else {
             Err(anyhow::anyhow!("Google did not return a sign-in code"))
         };
-        // Error details never include Google's tokens or the authorization code.
-        let outcome = result.map_err(|e| {
-            if cancelled {
-                e.to_string()
-            } else {
-                "Sign-in could not be completed. Check your account has access, then try again."
-                    .into()
-            }
-        });
         if let Some(p) = self.pending.lock().unwrap().get_mut(id) {
-            p.result = Some(outcome);
+            p.result = Some(outcome(result, cancelled));
         }
         Ok(())
     }
@@ -199,7 +209,7 @@ impl Login {
                     || !rules
                         .resolve(&identity.email, identity.hd.as_deref())
                         .is_empty(),
-                "This account has no workspace access."
+                NoAccess
             );
             return Ok(self
                 .users
@@ -210,7 +220,7 @@ impl Login {
         match self.users.get(&identity.email.to_ascii_lowercase()) {
             Some(actor) => Ok(actor.clone()),
             None if granted => Ok(derived()),
-            None => anyhow::bail!("This account has no access to Joppa."),
+            None => Err(NoAccess.into()),
         }
     }
     async fn enroll(&self, pool: &deadpool_postgres::Pool, identity: &Identity) -> Result<String> {
@@ -325,7 +335,7 @@ impl Login {
         id: &str,
         identity: &Identity,
     ) {
-        let outcome = self.enroll(pool, identity).await.map_err(|e| e.to_string());
+        let outcome = outcome(self.enroll(pool, identity).await, false);
         self.pending.lock().unwrap().get_mut(id).unwrap().result = Some(outcome);
     }
 }
@@ -421,6 +431,44 @@ mod tests {
         assert!(l.admit(&maria, false).is_err());
         assert!(l.admit(&maria, true).unwrap().starts_with("user-"));
         std::fs::remove_file(path).unwrap();
+    }
+    #[tokio::test]
+    async fn failed_exchange_and_unverified_identity_keep_the_generic_sign_in_error() {
+        use axum::{Router, routing::post};
+        let generic =
+            "Sign-in could not be completed. Check your account has access, then try again.";
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let router = Router::new().route(
+            "/token",
+            post(|| async {
+                (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    r#"{"error":"invalid_grant","id_token":"leaked-id-token"}"#,
+                )
+            }),
+        );
+        let server = tokio::spawn(async { axum::serve(listener, router).await.unwrap() });
+        let mut l = login();
+        l.google = l.google.map(|g| g.with_token_url(format!("{base}/token")));
+        let pool = joppa::store::pool(joppa::store::DEFAULT_URL).unwrap();
+        let (id, _) = l.start(None).await.unwrap();
+        let state = l.pending.lock().unwrap()[&id].state.clone();
+        l.callback(&pool, &id, &state, Some("one-time-code"), false)
+            .await
+            .unwrap();
+        let error = l.poll(&id).await.unwrap_err().to_string();
+        assert_eq!(error, generic);
+        assert!(!error.contains("one-time-code") && !error.contains("leaked-id-token"));
+        server.abort();
+        // An unverified identity is refused before any grant lookup, with the same text.
+        let unverified = serde_json::from_value::<Identity>(
+            json!({"sub":"google-1","email":"owner@example.test","email_verified":false,"nonce":"n"}),
+        )
+        .unwrap();
+        let (id, _) = l.start(None).await.unwrap();
+        l.verified_for_tests(&pool, &id, &unverified).await;
+        assert_eq!(l.poll(&id).await.unwrap_err().to_string(), generic);
     }
     #[test]
     fn verified_google_email_requires_an_explicit_joppa_invitation() {

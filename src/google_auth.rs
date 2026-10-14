@@ -145,6 +145,12 @@ impl Google {
             .await?;
         verify(&token.id_token, &self.config.client_id, nonce, &keys)
     }
+    /// Exchanges codes at a local test token endpoint.
+    #[cfg(test)]
+    pub(crate) fn with_token_url(mut self, url: String) -> Self {
+        self.token_url = url;
+        self
+    }
 }
 fn verify(token: &str, client_id: &str, nonce: &str, keys: &Keys) -> Result<Identity> {
     let header = decode_header(token)?;
