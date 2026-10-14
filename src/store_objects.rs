@@ -688,12 +688,18 @@ async fn add_verification_summaries(
             child.insert(criterion);
         }
     }
-    let statuses = super::reports::criterion_test_statuses(
+    let statuses = match super::reports::criterion_test_statuses(
         client,
         workspace,
         &targets.into_iter().collect::<Vec<_>>(),
     )
-    .await?;
+    .await
+    {
+        Ok(statuses) => statuses,
+        // Without branch summaries, a Task keeps its bound-run verdict when no status is read.
+        Err(_) if addresses.is_empty() => return Ok(()),
+        Err(error) => return Err(error),
+    };
     for item in items {
         // A saved test list makes the criterion status the Task verification.
         if let Some(status) = task_parent(item)
