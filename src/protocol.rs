@@ -145,7 +145,7 @@ async fn call(
                 return store::task_status(pool, workspace, actor, task).await;
             }
             let mut items = vec![];
-            for target in field("ac")?.split(',').filter(|a| !a.is_empty()).take(100) {
+            for target in field("ac")?.split(',').filter(|a| !a.is_empty()) {
                 items.push(store::criterion_tests(pool, workspace, actor, target).await?);
             }
             Ok(if items.len() == 1 {

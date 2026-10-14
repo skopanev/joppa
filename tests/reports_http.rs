@@ -1957,6 +1957,119 @@ async fn mcp_returns_each_test_with_status_and_commit() -> Result<()> {
     Ok(())
 }
 
+/// Workspace W with criteria A1 to A101, and the token that the owner created for agent bot.
+async fn many_criteria() -> Result<(World, String, Vec<String>)> {
+    let w = world().await?;
+    let mut acs = vec![json!({"id":"key-rights","text":"Only read and verify before launch"})];
+    acs.extend(
+        (1..=101).map(|i| json!({"id":format!("a{i}"),"text":format!("Criterion A{i} holds")})),
+    );
+    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Many criteria","acs":acs});
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+    )
+    .await?;
+    ensure!(code == 200, "revise: {code} {reply}");
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap().to_owned();
+    let addresses = (1..=101).map(|i| format!("ac:a{i}")).collect();
+    Ok((w, bot, addresses))
+}
+
+fn item_addresses(reply: &Value) -> Vec<&str> {
+    reply["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["address"].as_str())
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn http_status_read_returns_all_101_criteria_in_request_order() -> Result<()> {
+    // old-results-history-ac4: agent bot reads A1 to A101 in one HTTP request.
+    let (w, bot, addresses) = many_criteria().await?;
+    let reply = w
+        .http
+        .get(format!("{}/tests?ac={}", w.base, addresses.join(",")))
+        .bearer_auth(&bot)
+        .send()
+        .await?;
+    let code = reply.status().as_u16();
+    let reply: Value = reply.json().await?;
+    ensure!(code == 200, "{code} {reply}");
+    ensure!(
+        reply["items"].as_array().map(Vec::len) == Some(101),
+        "item count: {reply}"
+    );
+    ensure!(item_addresses(&reply) == addresses, "{reply}");
+
+    // Control: an unknown address at position 101 returns its error and no items.
+    let mut listed = addresses[..100].to_vec();
+    listed.push("ac:missing".into());
+    let reply = w
+        .http
+        .get(format!("{}/tests?ac={}", w.base, listed.join(",")))
+        .bearer_auth(&bot)
+        .send()
+        .await?;
+    let code = reply.status().as_u16();
+    let reply: Value = reply.json().await?;
+    ensure!(
+        code != 200
+            && reply["items"].is_null()
+            && reply["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("unknown criterion ac:missing")),
+        "{code} {reply}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn mcp_status_read_returns_all_101_criteria_in_request_order() -> Result<()> {
+    // old-results-history-ac4: agent bot calls joppa_tests for A1 to A101 in one request.
+    let (w, bot, addresses) = many_criteria().await?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let reply = mcp_read(
+        &w,
+        &bot,
+        "joppa_tests",
+        json!({"workspace":workspace,"ac":addresses.join(",")}),
+    )
+    .await?;
+    ensure!(
+        reply["items"].as_array().map(Vec::len) == Some(101),
+        "item count: {reply}"
+    );
+    ensure!(item_addresses(&reply) == addresses, "{reply}");
+
+    // Control: an unknown address at position 101 returns its error and no items.
+    let mut listed = addresses[..100].to_vec();
+    listed.push("ac:missing".into());
+    let reply = mcp(
+        &w,
+        &bot,
+        "joppa_tests",
+        json!({"workspace":workspace,"ac":listed.join(",")}),
+    )
+    .await?;
+    ensure!(
+        reply["result"]["isError"] == true
+            && reply["result"]["content"][0]["text"]
+                .as_str()
+                .is_some_and(|e| e.contains("unknown criterion ac:missing")),
+        "{reply}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {

@@ -176,7 +176,7 @@ pub async fn criterion_tests(
     )
     .await?
     .remove(target)
-    .context("unknown criterion")
+    .with_context(|| format!("unknown criterion {target}"))
 }
 
 /// Read test evidence once for the criteria in the requested tree branches.
