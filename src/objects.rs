@@ -1991,9 +1991,14 @@ fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {
     for (kind, title) in titles {
         if let Some(title) = title.and_then(Value::as_str) {
             let limit = limit(kind);
+            let article = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "an"
+            } else {
+                "a"
+            };
             ensure!(
                 title.chars().count() <= limit,
-                "a {kind} title is at most {limit} characters; put the details in the text"
+                "{article} {kind} title is at most {limit} characters; put the details in the text"
             );
         }
     }

@@ -3711,3 +3711,94 @@ async fn an_agent_token_without_access_writes_and_an_invalid_access_stores_nothi
     ensure!(update.is_err(), "agent tokens must stay append-only");
     Ok(())
 }
+
+// [ac:criterion-checkable-ac1]
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_bot_criterion_title_over_64_characters_is_refused() -> Result<()> {
+    let w = world().await?;
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{}/agent-tokens", w.root, w.ws))
+        .bearer_auth(&w.owner)
+        .json(&json!({"agent":"bot","access":"write"}))
+        .send()
+        .await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let created: Value = reply.json().await?;
+    ensure!(created["access"] == "write", "{created}");
+    let token = created["token"].as_str().unwrap().to_owned();
+    let grant = store::token_actor(&w.pool, &token).await?.unwrap();
+    ensure!(
+        grant.agent == "bot" && grant.workspace == w.ws && grant.access == store::Access::Write,
+        "{grant:?}"
+    );
+    let read = |address: &'static str| {
+        let (w, token) = (&w, &token);
+        async move {
+            let reply = w
+                .http
+                .get(format!("{}/api/workspaces/{}/objects", w.root, w.ws))
+                .bearer_auth(token)
+                .query(&[("address", address)])
+                .send()
+                .await?;
+            let status = reply.status().as_u16();
+            Ok::<_, anyhow::Error>((status, reply.json::<Value>().await?))
+        }
+    };
+    let criterion = |id: &str, title: String| json!({"op":"save_object","kind":"ac","id":id,"revision":0,"parent":"requirement:key","data":{"title":title,"owner":"owner","description":"Given: a requirement.\nWhen: bot saves a criterion.\nThen: the title fits.\nEvidence: the saved criterion."},"reason":"Check the title length"});
+
+    let (status, saved) = text_rule_request(
+        &w,
+        &token,
+        "fits-title",
+        criterion("fits", "a".repeat(64)),
+        "http",
+    )
+    .await?;
+    ensure!(status == 200, "{status}: {saved}");
+    let (status, fits) = read("ac:fits").await?;
+    ensure!(
+        status == 200 && fits["document"]["data"]["title"] == "a".repeat(64),
+        "{status}: {fits}"
+    );
+
+    let conn = w.pool.get().await?;
+    let counts = || async {
+        let row = conn
+            .query_one(
+                "SELECT (SELECT count(*) FROM joppa.events WHERE workspace=$1),
+                        (SELECT count(*) FROM joppa.object_revisions WHERE workspace=$1),
+                        (SELECT count(*) FROM joppa.command_receipts WHERE workspace=$1)",
+                &[&w.ws],
+            )
+            .await?;
+        Ok::<_, anyhow::Error>((0..3).map(|i| row.get(i)).collect::<Vec<i64>>())
+    };
+    let before = counts().await?;
+    let (status, denied) = text_rule_request(
+        &w,
+        &token,
+        "long-title",
+        criterion("long", "a".repeat(65)),
+        "http",
+    )
+    .await?;
+    ensure!(
+        !(200..300).contains(&status)
+            && denied["error"]
+                == "an ac title is at most 64 characters; put the details in the text",
+        "{status}: {denied}"
+    );
+    ensure!(
+        counts().await? == before,
+        "a refused title stored an event, revision or receipt"
+    );
+    let (status, missing) = read("ac:long").await?;
+    ensure!(
+        !(200..300).contains(&status) && missing == json!({"error":"unknown object"}),
+        "the refused criterion is readable: {status}: {missing}"
+    );
+    Ok(())
+}
