@@ -2563,6 +2563,73 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
         error.contains("unknown linked object in this workspace"),
         "{error}"
     );
+
+    // links-in-workspace-ac1: the bot holds a write grant for workspace A only.
+    let grant = store::create_agent_token(&a.pool, &a.ws, "owner", "bot", Some("write")).await?;
+    let bot = grant["token"].as_str().unwrap();
+    let stored = store::token_actor(&a.pool, bot).await?.unwrap();
+    ensure!(
+        stored.agent == "bot" && stored.workspace == a.ws && stored.access == store::Access::Write,
+        "{stored:?}"
+    );
+    a.note("also-a", 0, "Also A", "lives in A", json!([]))
+        .await?;
+    let link = |revision: u32, target: &'static str| {
+        let a = &a;
+        async move {
+            let reply = a
+                .http
+                .post(format!("{}/api/workspaces/{}/commands", a.root, a.ws))
+                .bearer_auth(bot)
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"links":[{"target":target,"relation":"related"}],"reason":"Link"}}))
+                .send()
+                .await?;
+            let status = reply.status();
+            let text = reply.text().await?;
+            Ok::<_, anyhow::Error>((status, serde_json::from_str(&text).unwrap_or(json!(text))))
+        }
+    };
+
+    // The control: the same credential links two objects inside A.
+    let (status, reply) = link(1, "note:also-a").await?;
+    ensure!(status.is_success(), "control link: {status} {reply}");
+    let before = saved_rows(&a).await?;
+    ensure!(
+        before["object_links"].as_array().is_some_and(|links| links
+            .iter()
+            .any(|l| l["source"] == "note:a"
+                && l["target"] == "note:also-a"
+                && l["relation"] == "related")),
+        "{}",
+        before["object_links"]
+    );
+    ensure!(
+        before["objects"]
+            .as_array()
+            .is_some_and(|objects| objects.iter().all(|o| o["address"] != "note:only-b")),
+        "note:only-b must exist only in workspace B: {}",
+        before["objects"]
+    );
+
+    // The link to the address that exists only in B is refused and changes nothing in A.
+    let (status, reply) = link(2, "note:only-b").await?;
+    ensure!(
+        !status.is_success(),
+        "cross-workspace link: {status} {reply}"
+    );
+    ensure!(
+        reply["error"] == "unknown linked object in this workspace",
+        "{status} {reply}"
+    );
+    let after = saved_rows(&a).await?;
+    for table in ["objects", "object_revisions", "object_links"] {
+        ensure!(
+            after[table] == before[table],
+            "{table} changed after the refusal: {} -> {}",
+            before[table],
+            after[table]
+        );
+    }
     Ok(())
 }
 
