@@ -9,7 +9,9 @@
 //! and todo results count only in full runs; a partial run did not run those tests.
 //! A change above a criterion sets its boundary. Reports received at or before it do
 //! not count, and after it only one clean full run where every listed test passes
-//! gives green: partial runs no longer combine.
+//! gives green: partial runs no longer combine. An identical repeat of a report is a
+//! new receipt of it, and its latest receipt decides whether it came after the change.
+//! After a change, an eligible full run decides even when the list is a draft.
 use super::TestResult;
 use serde::Serialize;
 
@@ -20,7 +22,10 @@ pub struct Report {
     /// First-parent position on the default branch. Higher is newer.
     pub order: i64,
     pub full: bool,
+    /// First receipt; it orders reports with the same commit order.
     pub received_us: i64,
+    /// Latest receipt, including identical repeats; it is compared with the boundary.
+    pub receipt_us: i64,
 }
 
 /// The latest change at or above a criterion, from `Workspace::criterion_boundaries`.
@@ -153,7 +158,7 @@ pub fn criterion_status(
         .iter()
         .filter(|r| match boundary {
             Boundary::None => true,
-            Boundary::After(at) => r.received_us > at,
+            Boundary::After(at) => r.receipt_us > at,
             Boundary::Unreadable => false,
         })
         .cloned()
@@ -163,9 +168,11 @@ pub fn criterion_status(
         .iter()
         .map(|t| test_status(t, reports, results))
         .collect();
+    let decided_after_change =
+        matches!(boundary, Boundary::After(_)) && reports.iter().any(|r| r.full);
     let (status, reason) = if tests.is_empty() {
         ("grey", Some("no tests"))
-    } else if draft {
+    } else if draft && !decided_after_change {
         ("grey", Some("tests_draft"))
     } else if boundary == Boundary::Unreadable {
         ("grey", Some("the reset time cannot be read"))

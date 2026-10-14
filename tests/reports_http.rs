@@ -1381,6 +1381,147 @@ async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> 
     Ok(())
 }
 
+/// The test list fields that a report must not change.
+fn saved_list(status: &Value) -> Value {
+    json!([
+        addresses(status),
+        status["tests_revision"],
+        status["tests_saved_by"]
+    ])
+}
+
+/// Report and result rows of this workspace.
+async fn report_rows(w: &World) -> Result<(i64, i64)> {
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let row = pool.get().await?.query_one("SELECT (SELECT count(*) FROM joppa.test_reports WHERE workspace=$1),(SELECT count(*) FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1)", &[&workspace]).await?;
+    Ok((row.get(0), row.get(1)))
+}
+
+/// A clean full C1 report passes every test of A, then the text of A changes: A is grey.
+async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
+    let (code, first) = w
+        .raw_upload(Some(&w.token), stamp("c1c1c1c", 1, false), passing())
+        .await?;
+    ensure!(code == 200 && first["replayed"] == false, "{code} {first}");
+    ensure!(
+        w.status().await?["status"] == "green",
+        "green before the text change"
+    );
+    w.revise_text(1, "Only read and verify until launch")
+        .await?;
+    let s = w.status().await?;
+    ensure!(s["status"] == "grey", "before the upload: {s}");
+    Ok((first, s))
+}
+
+fn passing() -> String {
+    junit(&[("opens", "pass"), ("refuses", "pass")])
+}
+
+// check-list-frozen-ac4, fixture 1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() -> Result<()> {
+    let w = world().await?;
+    let (first, before) = changed_after_c1(&w).await?;
+    let rows = report_rows(&w).await?;
+    let (code, again) = w
+        .raw_upload(Some(&w.token), stamp("c1c1c1c", 1, false), passing())
+        .await?;
+    ensure!(
+        code == 200 && again["report"] == first["report"] && again["replayed"] == true,
+        "{code} {again}"
+    );
+    ensure!(
+        report_rows(&w).await? == rows,
+        "the repeat copied report rows or results"
+    );
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "green" && saved_list(&s) == saved_list(&before),
+        "after the upload: {s}"
+    );
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let mcp = mcp_read(
+        &w,
+        &w.token,
+        "joppa_tests",
+        json!({"workspace":workspace,"ac":"ac:key-rights"}),
+    )
+    .await?;
+    ensure!(mcp["status"] == "green", "MCP joppa_tests: {mcp}");
+    Ok(())
+}
+
+// check-list-frozen-ac4, fixture 2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_new_c2_report_after_a_text_change_turns_the_criterion_green() -> Result<()> {
+    let w = world().await?;
+    let (_, before) = changed_after_c1(&w).await?;
+    w.upload("c2c2c2c", 2, true, passing()).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "green" && saved_list(&s) == saved_list(&before),
+        "after the upload: {s}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac4
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterion_grey()
+-> Result<()> {
+    let w = world().await?;
+    let (_, before) = changed_after_c1(&w).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "grey" && saved_list(&s) == saved_list(&before),
+        "without a new report: {s}"
+    );
+    w.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
+        .await?;
+    w.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
+        .await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "grey" && saved_list(&s) == saved_list(&before),
+        "after partial reports: {s}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac4
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_draft_list_without_a_boundary_stays_grey_after_a_full_report() -> Result<()> {
+    let w = world().await?;
+    let (_, before) = changed_after_c1(&w).await?;
+    // A criterion whose list became a draft before boundaries were stored has none.
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let removed = pool
+        .get()
+        .await?
+        .execute(
+            "DELETE FROM joppa.state_entries WHERE workspace=$1 AND section='criterion_boundaries'",
+            &[&workspace],
+        )
+        .await?;
+    ensure!(removed == 1, "the text change stored no boundary");
+    w.upload("c2c2c2c", 2, true, passing()).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "grey"
+            && s["reason"] == "tests_draft"
+            && saved_list(&s) == saved_list(&before),
+        "a draft without a boundary: {s}"
+    );
+    Ok(())
+}
+
 /// G holds R with criterion A and child group G2 with criterion A2. Sibling group H
 /// holds criterion D. Each criterion lists A and B, one clean full run passes both,
 /// and each criterion is assessed ready.

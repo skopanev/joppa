@@ -58,6 +58,7 @@ fn report(id: i64, commit: &str, order: i64, full: bool, received_us: i64) -> Re
         order,
         full,
         received_us,
+        receipt_us: received_us,
     }
 }
 fn result(id: i64, address: &str, status: &str) -> (i64, TestResult) {
@@ -392,18 +393,30 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         criterion_status(&both, false, at, &full, &pass(5)).status,
         "green"
     );
-    // An eligible failure stays red, and a draft stays a draft.
+    // An eligible failure stays red, also on a draft list.
     let failed = [result(5, "x", "fail"), result(5, "y", "pass")];
     assert_eq!(
         criterion_status(&both, false, at, &full, &failed).status,
         "red"
     );
     assert_eq!(
-        criterion_status(&both, true, at, &full, &pass(5))
-            .reason
-            .as_deref(),
-        Some("tests_draft")
+        criterion_status(&both, true, at, &full, &failed).status,
+        "red"
     );
+    // check-list-frozen-ac4: an eligible full run decides a draft list after the change.
+    let s = criterion_status(&both, true, at, &full, &pass(5));
+    assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
+    // Without an eligible full run, or without a boundary, a draft stays a draft.
+    let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
+    let s = criterion_status(&both, true, at, &partial, &rows);
+    assert_eq!(s.reason.as_deref(), Some("tests_draft"));
+    let s = criterion_status(&both, true, Boundary::None, &full, &pass(5));
+    assert_eq!(s.reason.as_deref(), Some("tests_draft"));
+    // A report first received before the boundary counts after an identical repeat.
+    let mut repeated = report(1, "c1", 1, true, 99);
+    repeated.receipt_us = 101;
+    let s = criterion_status(&both, true, at, &[repeated], &pass(1));
+    assert_eq!(s.status, "green");
     // A boundary that cannot be read gives grey, whatever the reports say.
     assert_eq!(Boundary::read(Some("not a time")), Boundary::Unreadable);
     let s = criterion_status(&both, false, Boundary::Unreadable, &full, &pass(5));

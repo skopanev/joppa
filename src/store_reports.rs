@@ -73,6 +73,15 @@ pub async fn upload_report(
     ).await?;
     let Some(row) = inserted else {
         let id: i64 = tx.query_one("SELECT id FROM joppa.test_reports WHERE workspace=$1 AND commit_sha=$2 AND stamp_hash=$3", &[&workspace,&stamp.commit,&stamp_hash]).await?.get(0);
+        // A clean repeat is a new receipt of the same report: it counts as received now.
+        if !stamp.dirty {
+            tx.execute(
+                "INSERT INTO joppa.test_report_receipts(report_id) VALUES($1)",
+                &[&id],
+            )
+            .await?;
+            tx.commit().await?;
+        }
         return Ok(json!({"report": id, "tests": results.len(), "replayed": true}));
     };
     let id: i64 = row.get(0);
@@ -247,8 +256,8 @@ async fn statuses_for_criteria(
         .flat_map(|current| current.tests.iter().cloned())
         .collect();
     let reports: Vec<Report> = client
-        .query("SELECT id,commit_sha,commit_order,full_run,(extract(epoch FROM received_at)*1000000)::bigint FROM joppa.test_reports WHERE workspace=$1 AND default_branch AND NOT dirty", &[&workspace])
-        .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_us:r.get(4) }).collect();
+        .query("SELECT r.id,r.commit_sha,r.commit_order,r.full_run,(extract(epoch FROM r.received_at)*1000000)::bigint,(extract(epoch FROM greatest(r.received_at,(SELECT max(c.received_at) FROM joppa.test_report_receipts c WHERE c.report_id=r.id)))*1000000)::bigint FROM joppa.test_reports r WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty", &[&workspace])
+        .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_us:r.get(4),receipt_us:r.get(5) }).collect();
     let tests: Vec<String> = tests.into_iter().collect();
     let results: Vec<(i64,TestResult)> = client
         .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
