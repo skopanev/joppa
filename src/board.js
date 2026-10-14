@@ -652,6 +652,25 @@ function openBranches(){try{return new Set(JSON.parse(sessionStorage.getItem(ope
 function rememberBranch(address,open){
   try{const set=openBranches();if(open)set.add(address);else set.delete(address);sessionStorage.setItem(openKey(),JSON.stringify([...set]));}catch{}
 }
+// Object text is Markdown. Line breaks stay, active HTML is removed, and external links open safely.
+const markdownSafe=(()=>{
+  if(!window.DOMPurify||!window.marked)return null;
+  DOMPurify.addHook('afterSanitizeAttributes',node=>{
+    if(node.tagName==='A'){
+      const href=node.getAttribute('href')||'';
+      if(/^\s*(javascript|data|vbscript):/i.test(href))node.removeAttribute('href');
+      else if(/^https?:/i.test(href)){node.setAttribute('target','_blank');node.setAttribute('rel','noopener noreferrer');}
+    }
+    if(node.tagName==='INPUT')node.setAttribute('disabled','');
+  });
+  return text=>DOMPurify.sanitize(marked.parse(text,{gfm:true,breaks:true}),
+    {FORBID_TAGS:['style','iframe','svg','math','form','object','embed'],FORBID_ATTR:['style']});
+})();
+function markdownBlock(text,cls){
+  const box=E('div',undefined,'markdown '+cls);
+  if(markdownSafe)box.innerHTML=markdownSafe(text);else{box.textContent=text;box.classList.add('markdown-raw');}
+  return box;
+}
 function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
@@ -791,7 +810,7 @@ function fillCommonObject(body,detail){
   if(!historical&&assessment)fields.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   const contentKey=['body','description','contract'].find(key=>typeof d[key]==='string'&&d[key].trim());
-  if(contentKey)body.append(E('p',d[contentKey],'object-content node-description'));
+  if(contentKey)body.append(markdownBlock(d[contentKey],'object-content node-description'));
   for(const [key,value] of Object.entries(d)){
     if(['title','owner',contentKey].includes(key)||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
     const field=E('div',undefined,'object-field');
@@ -827,7 +846,7 @@ function fillCommonObject(body,detail){
   const comments=Object.values(annotations.comments||{}).filter(comment=>!comment.withdrawn);
   if(comments.length){
     const group=objectSection(comments.length+' '+(comments.length===1?'comment':'comments'),'object-comments');
-    for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),E('p',comment.text,'note-text'));group.append(row);}
+    for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),markdownBlock(comment.text,'note-text'));group.append(row);}
     secondary.append(group);
   }
   const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}

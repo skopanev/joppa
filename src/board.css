@@ -157,18 +157,16 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 
 /* One row per object. The chevron opens it; children indent inside the line of the open card. */
 .common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px solid var(--rule);background:none}
-/* The row highlight starts 4 px after the card edge: the 2 px open line and a 2 px gap stay uncovered. */
+/* The row highlight fills the whole row. */
 @property --row-highlight{syntax:'<color>';inherits:false;initial-value:transparent}
 .common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;
-  background:linear-gradient(var(--row-highlight),var(--row-highlight)) calc(.6rem + 4px) 0/100% 100% no-repeat;transition:--row-highlight .12s}
+  background:var(--row-highlight);transition:--row-highlight .12s}
 .common-object>summary:hover{--row-highlight:var(--hover)}
-/* The row content starts after the 2 px open line and a 4 px gap. */
 .common-object>summary>.node-title{margin-left:var(--row-inset)}
 .common-object[open]>summary{--row-highlight:var(--selected)}.common-object[open]>summary:hover{--row-highlight:var(--hover)}
-/* An open card draws one solid line in its schema colour along its full height.
+/* An open card has no side line; the indent alone shows nesting.
    The transparent bottom border keeps the closed separator width for the closing animation. */
 .common-object[open]{border-bottom-color:transparent;border-bottom-style:solid}
-.common-object[open]:before{content:'';position:absolute;z-index:1;top:0;bottom:0;left:0;border-left:2px solid var(--object-color,#63756b);pointer-events:none}
 /* Загрузка: точка превращается в крутилку, строка ещё закрыта. */
 .common-object.is-loading>summary{cursor:progress}
 .common-object.is-loading>summary .status-circle{background:none;box-sizing:border-box;border:1.5px solid var(--signal);border-right-color:transparent;animation:branch-spin .6s linear infinite}
@@ -192,7 +190,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-state{flex:none;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .object-body,.common-object .object-body{padding:0 0 1.2em 0}
 .object-body>:not(.object-children):not(.note-section):not(.object-loading){margin-left:calc(var(--row-inset) + 8px + var(--row-gap))}
-.object-children{margin:0 0 0 3px;padding-left:calc(4px + var(--row-gap));border-left:1px solid transparent}
+.object-children{margin:0 0 0 3px;padding-left:calc(4px + var(--row-gap))}
 .object-children:empty{display:none}
 .object-children>.common-object:last-child{border-bottom:0}
 
@@ -324,3 +322,23 @@ dialog::backdrop{background:#22222240}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}#toast{transform:none}.theme-icon{transition:none}.theme-icon:hover{transform:none}}
+
+/* Markdown text. */
+.markdown{white-space:normal;overflow-wrap:anywhere;line-height:1.55}
+.markdown.markdown-raw{white-space:pre-wrap}
+.markdown>:first-child{margin-top:0}.markdown>:last-child{margin-bottom:0}
+.markdown p,.markdown ul,.markdown ol,.markdown blockquote,.markdown pre,.markdown table{margin:.5em 0}
+.markdown h1,.markdown h2,.markdown h3,.markdown h4{margin:.9em 0 .4em;color:var(--heading);font-weight:600;line-height:1.3}
+.markdown h1{font-size:1.25em}.markdown h2{font-size:1.15em}.markdown h3,.markdown h4{font-size:1em}
+.markdown ul,.markdown ol{padding-left:1.4em}.markdown li{margin:.15em 0}
+.markdown li>input[type=checkbox]{margin:0 .4em 0 -1.2em;vertical-align:middle}
+.markdown a{color:var(--link)}
+.markdown blockquote{margin-left:0;padding:.1em 0 .1em .9em;color:var(--muted);border-left:3px solid var(--rule)}
+.markdown code{font:.88em/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--hover);padding:.1em .3em;border-radius:3px}
+.markdown pre{max-width:100%;overflow-x:auto;padding:.7em .9em;background:var(--hover);border-radius:4px}
+.markdown pre code{background:none;padding:0;white-space:pre}
+.markdown table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}
+.markdown th,.markdown td{padding:.3em .6em;border:1px solid var(--rule);text-align:left;vertical-align:top}
+.markdown th{color:var(--heading);font-weight:600}
+.markdown img{max-width:100%}
+.markdown hr{border:0;border-top:1px solid var(--rule);margin:1em 0}

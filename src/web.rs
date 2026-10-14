@@ -769,6 +769,18 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
                 )
             }),
         )
+        .route(
+            "/vendor/markdown.js",
+            get(|| async {
+                (
+                    [
+                        (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+                        (header::CACHE_CONTROL, "public, max-age=86400"),
+                    ],
+                    concat!(include_str!("vendor/marked.umd.js"), "\n", include_str!("vendor/purify.min.js")),
+                )
+            }),
+        )
         .route("/tree", get(|| async { Html(tree_page()) }))
         .route(
             "/guide",

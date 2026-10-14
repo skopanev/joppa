@@ -719,124 +719,6 @@ test('compact-open-object-ac1: the object row holds the control for its fields',
   } finally { await f.close(); }
 });
 
-test('compact-open-object-ac2: an open object shows one solid line in its type colour', async () => {
-  const rgb = hex => 'rgb(' + [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16)).join(', ') + ')';
-  const C = '#aa3311', D = '#1166cc', fallback = rgb('#63756b');
-  const configured = {
-    record: {title: 'Records', role: 'document', root: true, parents: [], color: C},
-    part: {title: 'Parts', role: 'document', parents: ['record', 'part'], color: D},
-    loose: {title: 'Loose notes', role: 'document', parents: ['record', 'part']},
-  };
-  const f = await fixture({'record:X': {title: 'Parent X'}, 'part:Y': {title: 'Child Y', parent: 'record:X'},
-    'loose:S': {title: 'Sibling S', parent: 'record:X'}, 'part:W': {title: 'Sibling W', parent: 'record:X'},
-    'loose:Z': {title: 'Grandchild Z', parent: 'part:Y'}}, configured);
-  const child = (parent, address) => parent.locator(':scope > .object-body > .object-children > .common-object[data-object-address="' + address + '"]');
-  const row = card => card.locator(':scope > summary');
-  const toggle = card => row(card).click({position: {x: 4, y: 4}});
-  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
-  const line = card => card.evaluate(node => {
-    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
-    return {content: style.content, style: style.borderLeftStyle, width: parseFloat(style.borderLeftWidth), color: style.borderLeftColor,
-      top: box.top + parseFloat(style.top), height: parseFloat(style.height), left: box.left + parseFloat(style.left),
-      rowTop: node.querySelector(':scope > summary').getBoundingClientRect().top, box: {top: box.top, bottom: box.bottom, height: box.height}};
-  });
-  const dashed = card => card.evaluate(node => [node, node.querySelector(':scope > .object-body'), node.querySelector(':scope > .object-body > .object-children')]
-    .filter(Boolean).flatMap(element => ['Top', 'Right', 'Bottom', 'Left'].map(side => getComputedStyle(element)['border' + side + 'Style']))
-    .filter(style => style === 'dashed').length);
-  // The painted pixel on the row shows whether the row background covers the line.
-  const pixel = async (card, x) => {
-    const summary = row(card), png = (await summary.screenshot()).toString('base64');
-    const left = (await summary.boundingBox()).x;
-    return f.page.evaluate(async ([source, offset]) => {
-      const image = new Image(); image.src = 'data:image/png;base64,' + source; await image.decode();
-      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
-      const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
-      const [r, g, b] = context.getImageData(offset, Math.floor(image.height / 2), 1, 1).data;
-      return 'rgb(' + r + ', ' + g + ', ' + b + ')';
-    }, [png, Math.floor(x - left) + 1]);
-  };
-  const detailRequests = address => f.requests.filter(r => {
-    const params = new URL(r.url).searchParams;
-    return params.get('address') === address || params.get('parent') === address;
-  }).length;
-  try {
-    const X = await f.open('record:X'), Y = child(X, 'part:Y');
-    await Y.waitFor();
-    // The server rejects an invalid colour, so the renderer receives one only through its loaded schema.
-    await f.page.evaluate(() => { data.objectTypes.loose.color = 'not-a-colour'; });
-    await toggle(Y); await ready(Y);
-    const Z = child(Y, 'loose:Z');
-    await toggle(Z); await ready(Z);
-    await row(X).getByRole('button', {name: 'Fields', exact: true}).click();
-    assert.equal(await X.locator(':scope > .object-body > .object-secondary > .object-details').isVisible(), true);
-    const closedSibling = X.locator(':scope > .object-body > .object-children > .common-object:not([open]):not(:last-child)').first();
-    for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
-      await f.page.emulateMedia({colorScheme: scheme});
-      assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
-      const parent = await line(X), nested = await line(Y), invalid = await line(Z);
-      assert.equal(parent.style, 'solid'); assert.ok(parent.width >= 1);
-      assert.equal(parent.color, rgb(C));
-      assert.ok(Math.abs(parent.top - parent.rowTop) <= 2 && Math.abs(parent.top - parent.box.top) <= 2);
-      assert.ok(Math.abs(parent.height - parent.box.height) <= 2, JSON.stringify(parent));
-      assert.equal(nested.style, 'solid'); assert.equal(nested.color, rgb(D));
-      assert.ok(Math.abs(nested.height - nested.box.height) <= 2, JSON.stringify(nested));
-      assert.ok(nested.left > parent.left + parent.width, 'the child line lies to the right of the parent line');
-      assert.ok(nested.top >= parent.top && nested.top + nested.height <= parent.top + parent.height);
-      // A child type without a valid colour shows the fallback, not the colour of its parent.
-      assert.equal(invalid.style, 'solid'); assert.equal(invalid.color, fallback);
-      assert.equal(await dashed(X), 0); assert.equal(await dashed(Y), 0); assert.equal(await dashed(Z), 0);
-      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node).borderBottomStyle + ' ' + getComputedStyle(node).borderBottomWidth), 'solid 1px');
-      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node, '::before').content), 'none');
-      assert.equal(await pixel(X, parent.left), rgb(C));
-      await row(X).hover({position: {x: 200, y: 4}});
-      assert.equal(await pixel(X, parent.left), rgb(C));
-      assert.equal(await dashed(X), 0);
-      assert.equal(await X.locator(':scope > .object-body > .object-children').evaluate(node => getComputedStyle(node).borderLeftColor), 'rgba(0, 0, 0, 0)');
-      assert.equal(await row(X).evaluate(node => getComputedStyle(node).borderLeftStyle), 'none');
-      await f.page.mouse.move(0, 0);
-    }
-    // A closed card loads once, then reopens from its cached content.
-    await Promise.all(f.requests.map(entry => entry.body));
-    const S = child(X, 'loose:S');
-    assert.equal(await S.getAttribute('open'), null);
-    assert.equal(detailRequests('loose:S'), 0);
-    await toggle(S); await ready(S);
-    await Promise.all(f.requests.map(entry => entry.body));
-    assert.equal(detailRequests('loose:S'), 2);
-    assert.equal((await line(S)).color, fallback);
-    await toggle(S);
-    assert.equal(await S.getAttribute('open'), null);
-    assert.equal(await S.evaluate(node => getComputedStyle(node, '::before').content), 'none');
-    await toggle(S);
-    assert.equal(await S.getAttribute('open'), '');
-    assert.equal(await S.locator(':scope > .object-body .object-content').innerText(), 'Current source');
-    assert.equal(detailRequests('loose:S'), 2);
-    // The closing animation ends at the closed height, with the closed-row border, and without a line.
-    await f.page.emulateMedia({reducedMotion: 'no-preference'});
-    const closeAnimated = async card => {
-      await card.evaluate(node => {
-        const animate = node.animate.bind(node);
-        node.animate = (frames, options) => { node.closingFrames = frames; return animate(frames, options); };
-      });
-      await toggle(card);
-      await card.evaluate(node => new Promise(resolve => { const wait = () => node.open ? requestAnimationFrame(wait) : resolve(); wait(); }));
-      return card.evaluate(node => ({target: node.closingFrames && parseFloat(node.closingFrames.at(-1).height),
-        height: node.getBoundingClientRect().height, line: getComputedStyle(node, '::before').content,
-        border: getComputedStyle(node).borderBottomStyle + ' ' + getComputedStyle(node).borderBottomWidth}));
-    };
-    const last = X.locator(':scope > .object-body > .object-children > .common-object:last-child');
-    if (await last.getAttribute('open') === null) { await toggle(last); await ready(last); }
-    await f.page.waitForFunction(() => !document.getAnimations().length);
-    const closedLast = await closeAnimated(last);
-    assert.ok(Number.isFinite(closedLast.target), 'the last child closes with a height animation');
-    assert.ok(Math.abs(closedLast.target - closedLast.height) < 0.5, JSON.stringify(closedLast));
-    assert.equal(closedLast.line, 'none'); assert.equal(closedLast.border, 'none 0px');
-    const closedParent = await closeAnimated(X);
-    assert.ok(Number.isFinite(closedParent.target), 'the parent closes with a height animation');
-    assert.ok(Math.abs(closedParent.target - closedParent.height) < 0.5, JSON.stringify(closedParent));
-    assert.equal(closedParent.line, 'none'); assert.equal(closedParent.border, 'solid 1px');
-  } finally { await f.close(); }
-});
 
 // A point on the title text, right of the status circle and away from the row controls.
 const titlePoint = card => card.locator(':scope > summary').evaluate(summary => {
@@ -846,65 +728,138 @@ const titlePoint = card => card.locator(':scope > summary').evaluate(summary => 
   return {x: text.left + text.width / 2 - box.left, y: text.top + text.height / 2 - box.top};
 });
 
-test('compact-open-object-ac3: the open-object line keeps 4 px from every status circle', async (t) => {
-  const f = await fixture({'domain:X': {title: 'Parent X'}, 'capability:Y': {title: 'Child Y', parent: 'domain:X'}});
+
+test('compact-open-object-ac2: an open object shows no side line', async () => {
+  const f = await fixture({'domain:X': {title: 'Parent X'}, 'capability:Y': {title: 'Child Y', parent: 'domain:X'},
+    'requirement:Z': {title: 'Grandchild Z', parent: 'capability:Y'}});
   const row = card => card.locator(':scope > summary');
   const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
-  const circle = async card => {
-    assert.equal(await card.evaluate(node => node.classList.contains('is-loading')), false, 'the status circle is still loading');
-    const images = row(card).locator('[role="img"][aria-label^="Status:"]');
-    assert.equal(await images.count(), 1, 'one status circle per row');
-    return images.evaluate(node => { const r = node.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; });
-  };
-  const line = card => card.evaluate(node => {
-    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
-    const left = box.left + parseFloat(style.left), top = box.top + parseFloat(style.top);
-    return {content: style.content, style: style.borderLeftStyle,
-      box: {left, right: left + parseFloat(style.borderLeftWidth), top, bottom: top + parseFloat(style.height)}};
-  });
-  const gap = (a, b) => {
-    const dx = Math.max(0, a.left - b.right, b.left - a.right), dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-  // A box with a missing or empty coordinate fails instead of passing an undefined comparison.
-  const valid = box => Object.values(box).every(Number.isFinite) && box.right > box.left && box.bottom > box.top;
-  const intersects = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  try {
-    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
-    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
-    await X.waitFor();
-    await row(X).click({position: await titlePoint(X)}); await ready(X);
-    const Y = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]');
-    await Y.waitFor();
-    await row(Y).click({position: await titlePoint(Y)}); await ready(Y);
-    assert.equal(await X.getAttribute('open'), '', 'X opens'); assert.equal(await Y.getAttribute('open'), '', 'Y opens');
-    const cards = {X, Y}, failures = [];
-    for (const [width, height] of [[1280, 720], [390, 844]]) {
-      await f.page.setViewportSize({width, height});
-      for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
-        await f.page.emulateMedia({colorScheme: scheme});
-        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
-        for (const hover of ['none', 'X', 'Y']) {
-          if (hover === 'none') await f.page.mouse.move(0, 0);
-          else await row(cards[hover]).hover({position: await titlePoint(cards[hover])});
-          const lines = {}, circles = {};
-          for (const [name, card] of Object.entries(cards)) {
-            const measured = await line(card);
-            assert.notEqual(measured.content, 'none', 'line of ' + name + ' is drawn');
-            assert.equal(measured.style, 'solid', 'line of ' + name + ' is solid');
-            lines[name] = measured.box; circles[name] = await circle(card);
-          }
-          for (const owner of ['X', 'Y']) for (const target of ['X', 'Y']) {
-            const a = lines[owner], b = circles[target], distance = gap(a, b);
-            const message = 'line ' + owner + ' / circle ' + target + ', width ' + width + ', ' + scheme + ', hover ' + hover +
-              ': gap ' + distance.toFixed(2) + ' px, line ' + JSON.stringify(a) + ', circle ' + JSON.stringify(b);
-            t.diagnostic(message);
-            if (!valid(a) || !valid(b) || !Number.isFinite(distance) || intersects(a, b) || distance < 4) failures.push(message);
-          }
-        }
+  // Every vertical line source that a stylesheet could draw on the left of an open block.
+  const lines = card => card.evaluate(node => {
+    const found = [];
+    const targets = [node, node.querySelector(':scope > summary'), node.querySelector(':scope > .object-body'),
+      node.querySelector(':scope > .object-body > .object-children')].filter(Boolean);
+    for (const element of targets) {
+      const style = getComputedStyle(element);
+      if (style.borderLeftStyle !== 'none' && parseFloat(style.borderLeftWidth) > 0 && style.borderLeftColor !== 'rgba(0, 0, 0, 0)')
+        found.push(element.className + ' border-left');
+      if (style.boxShadow !== 'none') found.push(element.className + ' box-shadow');
+      if (style.backgroundImage !== 'none') found.push(element.className + ' background-image');
+      for (const pseudo of ['::before', '::after']) {
+        const p = getComputedStyle(element, pseudo);
+        if (p.content !== 'none' && p.content !== 'normal') found.push(element.className + pseudo);
       }
     }
-    assert.deepEqual(failures, [], 'every line keeps 4 px from every status circle');
+    const box = node.getBoundingClientRect();
+    for (const element of node.querySelectorAll('*')) {
+      const r = element.getBoundingClientRect(), style = getComputedStyle(element);
+      const painted = style.backgroundColor !== 'rgba(0, 0, 0, 0)' || style.backgroundImage !== 'none';
+      if (painted && r.width > 0 && r.width < 4 && r.height > box.height / 2) found.push(element.tagName + ' thin line');
+    }
+    return found;
+  });
+  try {
+    for (const [width, height] of [[1280, 720], [390, 844]]) {
+      await f.page.setViewportSize({width, height});
+      await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+      await X.waitFor();
+      if (await X.getAttribute('open') === null) await row(X).click({position: {x: 4, y: 4}});
+      await ready(X);
+      const Y = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]');
+      await Y.waitFor();
+      if (await Y.getAttribute('open') === null) await row(Y).click({position: {x: 4, y: 4}});
+      await ready(Y);
+      for (const scheme of ['light', 'dark']) {
+        await f.page.emulateMedia({colorScheme: scheme});
+        assert.deepEqual(await lines(X), [], 'X has no side line at ' + width + ' px, ' + scheme);
+        assert.deepEqual(await lines(Y), [], 'Y has no side line at ' + width + ' px, ' + scheme);
+        const xLeft = (await row(X).boundingBox()).x, yLeft = (await row(Y).boundingBox()).x;
+        assert.ok(yLeft > xLeft, 'the indent shows that Y is inside X: ' + yLeft + ' > ' + xLeft);
+      }
+    }
+  } finally { await f.close(); }
+});
+
+const markdownTypes = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+const markdownBody = ['## Plan', '', '- first', '- second', '', '- [x] done item', '- [ ] open item', '',
+  '| Name | Value |', '|---|---|', '| a | b |', '', 'See [docs](https://example.com/docs).', '', '> quoted', '',
+  'Use `inline` code.', '', '```', 'let x = 1;', '```', '', 'Given: a', 'When: b'].join('\n');
+
+test('markdown-text-ac1: object text renders as Markdown and titles stay plain', async () => {
+  const f = await fixture({'domain:X': {title: '<b>x</b> plan', body: markdownBody},
+    'capability:C': {title: 'C', parent: 'domain:X'}, 'requirement:R': {title: 'R', parent: 'capability:C'},
+    'ac:A': {title: 'A', parent: 'requirement:R'}}, markdownTypes);
+  try {
+    await f.api('/commands', {request_id: crypto.randomUUID(), command: {op: 'note', target: 'domain:X', id: 'c1', text: '- one\n- two'}}, f.live.alex);
+    await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
+      data: {title: 'T', owner: 'owner', contract: 'Run:\n\n```\ncargo test\n```', purpose: 'implementation'}, reason: 'Fixture Task'});
+    const X = await f.open('domain:X');
+    const text = X.locator(':scope > .object-body .object-content');
+    assert.equal(await text.locator('h2').count(), 1);
+    assert.ok(await text.locator('ul > li').count() >= 2);
+    const boxes = text.locator('input[type="checkbox"]');
+    assert.equal(await boxes.count(), 2);
+    assert.equal(await boxes.nth(0).isChecked(), true);
+    assert.equal(await boxes.nth(0).isDisabled(), true);
+    assert.equal(await text.locator('table th').count(), 2);
+    assert.equal(await text.locator('a').first().getAttribute('href'), 'https://example.com/docs');
+    assert.equal(await text.locator('blockquote').count(), 1);
+    assert.equal(await text.locator('p > code').count(), 1);
+    assert.equal(await text.locator('pre > code').count(), 1);
+    const plain = await text.innerText();
+    assert.ok(!plain.includes('##') && !plain.includes('|---|'), plain);
+    const lines = await text.evaluate(node => [...node.querySelectorAll('p')].find(p => p.textContent.includes('Given: a')).innerHTML);
+    assert.match(lines, /Given: a<br>\s*When: b/);
+    assert.equal(await X.locator(':scope > summary .node-title').innerText(), '<b>x</b> plan');
+    assert.equal(await X.locator(':scope > .object-body .note-text ul > li').count(), 2);
+    const stored = await f.api('/objects?address=domain:X');
+    assert.equal(stored.document.data.body, markdownBody);
+    const T = await f.open('task:T');
+    assert.equal(await T.locator(':scope > .object-body .object-content pre > code').count(), 1);
+  } finally { await f.close(); }
+});
+
+test('markdown-text-ac2: active HTML in Markdown stays inert', async () => {
+  const hostile = ['<script>window.pwned=1</script>', '<img src=x onerror="window.pwned=2">', '<svg onload="window.pwned=4"></svg>',
+    '[run](javascript:window.pwned=3)', '[data](data:text/html,<b>x</b>)', '<iframe src="https://example.com"></iframe>',
+    '<style>body{display:none}</style>', '[ext](https://example.com/page)'].join('\n\n');
+  const f = await fixture({'domain:H': {title: 'Hostile', body: hostile}});
+  try {
+    const H = await f.open('domain:H');
+    const text = H.locator(':scope > .object-body .object-content');
+    for (const link of await text.locator('a').all()) await link.click({modifiers: ['Meta']}).catch(() => {});
+    assert.equal(await f.page.evaluate(() => window.pwned), undefined);
+    assert.equal(await text.locator('script, iframe, style, svg, [onerror], [onload]').count(), 0);
+    const hrefs = await text.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
+    assert.ok(hrefs.every(href => href === null || !/^(javascript|data):/i.test(href)), JSON.stringify(hrefs));
+    const external = text.locator('a[href="https://example.com/page"]');
+    assert.equal(await external.getAttribute('rel'), 'noopener noreferrer');
+  } finally { await f.close(); }
+});
+
+test('markdown-text-ac3: the renderer loads once and long content scrolls in its own box', async () => {
+  const records = {};
+  for (let i = 0; i < 20; i++) records['domain:D' + i] = {title: 'Domain ' + i, body: markdownBody + '\n\n| ' + 'wide '.repeat(60) + '|\n|---|\n| x |'};
+  const f = await fixture(records, types, {viewport: {width: 390, height: 844}});
+  const scripts = [];
+  f.page.on('request', request => { if (new URL(request.url()).pathname === '/vendor/markdown.js') scripts.push(request.url()); });
+  try {
+    for (const scheme of ['light', 'dark']) {
+      scripts.length = 0;
+      await f.page.emulateMedia({colorScheme: scheme});
+      await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      for (let i = 0; i < 20; i++) {
+        const card = f.page.locator('#collection-domain .common-object[data-object-address="domain:D' + i + '"]');
+        await card.waitFor();
+        if (await card.getAttribute('open') === null) await card.locator(':scope > summary').click({position: {x: 4, y: 4}});
+        await card.locator(':scope > .object-body .object-content h2').waitFor();
+      }
+      assert.equal(scripts.length, 1, 'one renderer request per page load: ' + scripts.length);
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'the page does not scroll sideways');
+      const table = f.page.locator('.object-content table').first();
+      assert.equal(await table.evaluate(node => getComputedStyle(node).overflowX), 'auto');
+    }
   } finally { await f.close(); }
 });
 
@@ -1115,129 +1070,4 @@ test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour 
   } finally { await f.close(); }
 });
 
-test('compact-open-object-ac6: the row highlight starts 2 px right of the open-object line', async (t) => {
-  const f = await fixture({'domain:X': {title: 'Parent X'}});
-  const row = card => card.locator(':scope > summary');
-  // The theme colours, the line of X, and the row box in page pixels.
-  const geometry = card => card.evaluate(node => {
-    const colour = value => {
-      const probe = document.createElement('div'); probe.style.color = value; document.body.append(probe);
-      const resolved = getComputedStyle(probe).color; probe.remove(); return resolved;
-    };
-    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
-    const summary = node.querySelector(':scope > summary'), rowBox = summary.getBoundingClientRect(), left = box.left + parseFloat(style.left);
-    return {content: style.content, hovered: summary.matches(':hover'), open: node.open, scale: devicePixelRatio,
-      colours: {page: getComputedStyle(document.body).backgroundColor, line: style.borderLeftColor, hover: colour('var(--hover)'), selected: colour('var(--selected)')},
-      line: {left, right: left + parseFloat(style.borderLeftWidth)},
-      row: {left: rowBox.left, right: rowBox.right, top: rowBox.top, bottom: rowBox.bottom}};
-  });
-  // Every pixel row of the captured region: the line pixels and the leftmost painted pixel outside the line.
-  // The row box paints the pixel rows between its rounded edges; a boundary row outside them may show the neighbour.
-  const scan = (png, region, measured, highlight) => f.page.evaluate(async ([source, region, measured, highlight]) => {
-    const image = new Image(); image.src = 'data:image/png;base64,' + source; await image.decode();
-    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
-    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
-    const data = context.getImageData(0, 0, image.width, image.height).data;
-    const rgb = value => value.match(/\d+/g).slice(0, 3).map(Number);
-    const page = rgb(measured.colours.page), line = rgb(measured.colours.line), paint = rgb(highlight);
-    const at = (x, y) => [...data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 3)];
-    const same = (a, b) => a.every((value, index) => value === b[index]);
-    // Columns that the line touches, and the columns it covers fully. A touched column shows the line or the page.
-    const first = Math.floor(measured.line.left) - region.x, end = Math.ceil(measured.line.right) - region.x;
-    const fullFirst = Math.ceil(measured.line.left) - region.x, fullEnd = Math.floor(measured.line.right) - region.x;
-    const top = Math.round(measured.row.top) - region.y, bottom = Math.round(measured.row.bottom) - region.y;
-    const result = {width: image.width, height: image.height, first, end, full: Math.max(0, fullEnd - fullFirst), rows: 0, painted: null,
-      inside: Math.max(0, Math.min(bottom, image.height) - Math.max(top, 0)), boundary: 0, boundaryHighlight: null,
-      lineRight: null, highlightLeft: null, unmatched: 0, covered: [], recoloured: []};
-    for (let y = 0; y < image.height; y++) {
-      const inside = y >= top && y < bottom;
-      for (let x = first; x < end; x++) {
-        const value = at(x, y);
-        if (same(value, line)) result.lineRight = Math.max(result.lineRight ?? x + 1, x + 1);
-        else if (same(value, paint)) result.covered.push({x: region.x + x, y: region.y + y, value});
-        else if (inside && ((x >= fullFirst && x < fullEnd) || !same(value, page))) result.recoloured.push({x: region.x + x, y: region.y + y, value});
-      }
-      // A boundary row may hold no highlight, but any highlight pixel in it must keep the gap too.
-      if (!inside) {
-        result.boundary++;
-        for (let x = 0; x < image.width; x++) if (same(at(x, y), paint)) {
-          result.boundaryHighlight = Math.min(result.boundaryHighlight ?? x, x); break;
-        }
-        continue;
-      }
-      let painted = null, matched = null;
-      for (let x = 0; x < image.width && (painted === null || matched === null); x++) {
-        if (x >= first && x < end) continue;
-        const value = at(x, y);
-        if (painted === null && !same(value, page)) painted = x;
-        if (matched === null && same(value, paint)) matched = x;
-      }
-      // A row without the highlight colour, or with other paint before the highlight, cannot prove the highlight edge.
-      if (painted === null || matched === null || matched > painted + 1) { result.unmatched++; continue; }
-      result.rows++;
-      result.painted = Math.min(result.painted ?? painted, painted);
-      result.highlightLeft = Math.min(result.highlightLeft ?? matched, matched);
-    }
-    if (result.painted !== null) result.painted += region.x;
-    if (result.lineRight !== null) result.lineRight += region.x;
-    if (result.highlightLeft !== null) result.highlightLeft += region.x;
-    if (result.boundaryHighlight !== null) result.boundaryHighlight += region.x;
-    result.covered = result.covered.slice(0, 5); result.recoloured = result.recoloured.slice(0, 5);
-    return result;
-  }, [png.toString('base64'), region, measured, highlight]);
-  try {
-    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
-    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
-    await X.waitFor();
-    await row(X).click({position: await titlePoint(X)});
-    await X.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
-    assert.equal(await X.getAttribute('open'), '', 'X opens');
-    const failures = [];
-    let measurements = 0;
-    for (const [width, height] of [[1280, 720], [390, 844]]) {
-      await f.page.setViewportSize({width, height});
-      for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
-        await f.page.emulateMedia({colorScheme: scheme});
-        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
-        for (const state of ['hovered', 'selected']) {
-          if (state === 'hovered') await row(X).hover({position: await titlePoint(X)});
-          else await f.page.mouse.move(0, 0);
-          const where = 'width ' + width + ', ' + scheme + ', ' + state;
-          const measured = await geometry(X);
-          assert.equal(measured.open, true, 'X stays open, ' + where);
-          assert.equal(measured.hovered, state === 'hovered', 'the pointer state of X, ' + where);
-          assert.notEqual(measured.content, 'none', 'the line of X is drawn, ' + where);
-          assert.equal(measured.scale, 1, 'one screenshot pixel per CSS pixel, ' + where);
-          const highlight = measured.colours[state === 'hovered' ? 'hover' : 'selected'];
-          assert.notEqual(highlight, measured.colours.page, 'the highlight differs from the page, ' + where);
-          assert.notEqual(highlight, measured.colours.line, 'the highlight differs from the line, ' + where);
-          // The region spans the whole row box, also its area left of the line, and every pixel row that the row box touches.
-          const region = {x: Math.max(0, Math.floor(Math.min(measured.row.left, measured.line.left))), y: Math.floor(measured.row.top)};
-          region.width = Math.min(width, Math.ceil(measured.row.right)) - region.x;
-          region.height = Math.ceil(measured.row.bottom) - region.y;
-          const png = await f.page.screenshot({clip: region});
-          const result = await scan(png, region, measured, highlight);
-          measurements++;
-          const gap = result.painted === null || result.lineRight === null ? NaN : result.painted - result.lineRight;
-          const message = where + ': highlight ' + highlight + ' from x ' + result.painted + ', line ' + measured.colours.line + ' ' +
-            JSON.stringify(measured.line) + ' painted to x ' + result.lineRight + ', gap ' + gap + ' px, ' + result.rows + '/' + result.inside +
-            ' pixel rows measured, ' + result.boundary + ' boundary rows with highlight from x ' + result.boundaryHighlight;
-          t.diagnostic(message);
-          if (result.width !== region.width || result.height !== region.height || result.height < 1)
-            failures.push(where + ': the capture is ' + result.width + 'x' + result.height + ', not ' + region.width + 'x' + region.height);
-          if (result.first < 0 || result.end > result.width || result.full < 1)
-            failures.push(where + ': the capture ' + JSON.stringify(region) + ' does not hold the line ' + JSON.stringify(measured.line));
-          if (result.inside < 1 || result.rows !== result.inside) failures.push(message + ': ' + result.unmatched + ' pixel rows lack a measurable highlight edge');
-          if (!(gap >= 2)) failures.push(message + ': the highlight starts less than 2 px right of the line');
-          if (result.boundaryHighlight !== null && !(result.boundaryHighlight - result.lineRight >= 2))
-            failures.push(message + ': a boundary pixel row has the highlight less than 2 px right of the line');
-          if (result.covered.length) failures.push(where + ': line pixels have the highlight colour ' + JSON.stringify(result.covered));
-          if (result.recoloured.length) failures.push(where + ': line pixels lost the line colour ' + JSON.stringify(result.recoloured));
-        }
-      }
-    }
-    assert.equal(measurements, 8, 'both widths, both themes, both states');
-    assert.deepEqual(failures, [], 'the highlight starts 2 px right of the line and leaves every line pixel visible');
-  } finally { await f.close(); }
-});
 });
