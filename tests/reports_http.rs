@@ -1901,14 +1901,27 @@ const FAILING_REFUSES: &str = r#"<testsuites><testsuite name="tests/auth/login.t
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
-    // old-results-history-ac1: the agent token reads A.
+    // old-results-history-ac1: agent bot reads A over HTTP with its own token.
     let w = world().await?;
     upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
-    let s = w.status().await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
+    let reply = w
+        .http
+        .get(format!("{}/tests?ac=ac:key-rights", w.base))
+        .bearer_auth(bot)
+        .send()
+        .await?;
+    let code = reply.status();
+    let text = reply.text().await?;
+    ensure!(code.is_success(), "{code} {text}");
+    let s: Value = serde_json::from_str(&text)?;
     ensure!(
         s["tests"][0]["status"] == "pass"
             && s["tests"][0]["commit"] == "c1c1c1c"
             && s["tests"][1]["status"] == "fail"
+            && s["tests"][1]["commit"] == "c1c1c1c"
             && s["tests"][1]["message"] == "expected 403, got 200",
         "{s}"
     );
