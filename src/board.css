@@ -157,11 +157,14 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 
 /* One row per object. The chevron opens it; children indent inside the line of the open card. */
 .common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px solid var(--rule);background:none}
-.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
-.common-object>summary:hover{background:var(--hover)}
-/* The row content starts after the 2 px open line and a 4 px gap; the row background still covers the line. */
+/* The row highlight starts 4 px after the card edge: the 2 px open line and a 2 px gap stay uncovered. */
+@property --row-highlight{syntax:'<color>';inherits:false;initial-value:transparent}
+.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;
+  background:linear-gradient(var(--row-highlight),var(--row-highlight)) calc(.6rem + 4px) 0/100% 100% no-repeat;transition:--row-highlight .12s}
+.common-object>summary:hover{--row-highlight:var(--hover)}
+/* The row content starts after the 2 px open line and a 4 px gap. */
 .common-object>summary>.node-title{margin-left:var(--row-inset)}
-.common-object[open]>summary{background:var(--selected)}.common-object[open]>summary:hover{background:var(--hover)}
+.common-object[open]>summary{--row-highlight:var(--selected)}.common-object[open]>summary:hover{--row-highlight:var(--hover)}
 /* An open card draws one solid line in its schema colour along its full height.
    The transparent bottom border keeps the closed separator width for the closing animation. */
 .common-object[open]{border-bottom-color:transparent;border-bottom-style:solid}

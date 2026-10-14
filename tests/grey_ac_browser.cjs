@@ -820,17 +820,18 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
   } finally { await f.close(); }
 });
 
+// A point on the title text, right of the status circle and away from the row controls.
+const titlePoint = card => card.locator(':scope > summary').evaluate(summary => {
+  const title = summary.querySelector(':scope > .node-title'), range = document.createRange();
+  range.selectNodeContents(title.lastChild);
+  const text = range.getBoundingClientRect(), box = summary.getBoundingClientRect();
+  return {x: text.left + text.width / 2 - box.left, y: text.top + text.height / 2 - box.top};
+});
+
 test('compact-open-object-ac3: the open-object line keeps 4 px from every status circle', async (t) => {
   const f = await fixture({'domain:X': {title: 'Parent X'}, 'capability:Y': {title: 'Child Y', parent: 'domain:X'}});
   const row = card => card.locator(':scope > summary');
   const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
-  // A point on the title text, right of the status circle and away from the row controls.
-  const titlePoint = card => row(card).evaluate(summary => {
-    const title = summary.querySelector(':scope > .node-title'), range = document.createRange();
-    range.selectNodeContents(title.lastChild);
-    const text = range.getBoundingClientRect(), box = summary.getBoundingClientRect();
-    return {x: text.left + text.width / 2 - box.left, y: text.top + text.height / 2 - box.top};
-  });
   const circle = async card => {
     assert.equal(await card.evaluate(node => node.classList.contains('is-loading')), false, 'the status circle is still loading');
     const images = row(card).locator('[role="img"][aria-label^="Status:"]');
@@ -992,6 +993,116 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
     }
     t.diagnostic(failures.length + ' dashed or invalid styles in ' + scans + ' element and pseudo-element states over ' + steps + ' focus steps');
     assert.deepEqual(failures, [], 'no board element or pseudo-element shows a dashed line');
+  } finally { await f.close(); }
+});
+
+test('compact-open-object-ac6: the row highlight starts 2 px right of the open-object line', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Parent X'}});
+  const row = card => card.locator(':scope > summary');
+  // The theme colours, the line of X, and the row box in page pixels.
+  const geometry = card => card.evaluate(node => {
+    const colour = value => {
+      const probe = document.createElement('div'); probe.style.color = value; document.body.append(probe);
+      const resolved = getComputedStyle(probe).color; probe.remove(); return resolved;
+    };
+    const box = node.getBoundingClientRect(), style = getComputedStyle(node, '::before');
+    const summary = node.querySelector(':scope > summary'), rowBox = summary.getBoundingClientRect(), left = box.left + parseFloat(style.left);
+    return {content: style.content, hovered: summary.matches(':hover'), open: node.open, scale: devicePixelRatio,
+      colours: {page: getComputedStyle(document.body).backgroundColor, line: style.borderLeftColor, hover: colour('var(--hover)'), selected: colour('var(--selected)')},
+      line: {left, right: left + parseFloat(style.borderLeftWidth)},
+      row: {left: rowBox.left, right: rowBox.right, top: rowBox.top, bottom: rowBox.bottom}};
+  });
+  // Every pixel row of the captured region: the line pixels and the leftmost painted pixel outside the line.
+  const scan = (png, region, measured, highlight) => f.page.evaluate(async ([source, region, measured, highlight]) => {
+    const image = new Image(); image.src = 'data:image/png;base64,' + source; await image.decode();
+    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+    const data = context.getImageData(0, 0, image.width, image.height).data;
+    const rgb = value => value.match(/\d+/g).slice(0, 3).map(Number);
+    const page = rgb(measured.colours.page), line = rgb(measured.colours.line), paint = rgb(highlight);
+    const at = (x, y) => [...data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 3)];
+    const same = (a, b) => a.every((value, index) => value === b[index]);
+    // Columns that the line touches, and the columns it covers fully. A touched column shows the line or the page.
+    const first = Math.floor(measured.line.left) - region.x, end = Math.ceil(measured.line.right) - region.x;
+    const fullFirst = Math.ceil(measured.line.left) - region.x, fullEnd = Math.floor(measured.line.right) - region.x;
+    const result = {width: image.width, height: image.height, first, end, full: Math.max(0, fullEnd - fullFirst), rows: 0, painted: null,
+      lineRight: null, highlightLeft: null, unmatched: 0, covered: [], recoloured: []};
+    for (let y = 0; y < image.height; y++) {
+      for (let x = first; x < end; x++) {
+        const value = at(x, y);
+        if (same(value, line)) result.lineRight = Math.max(result.lineRight ?? x + 1, x + 1);
+        else if (same(value, paint)) result.covered.push({x: region.x + x, y: region.y + y, value});
+        else if ((x >= fullFirst && x < fullEnd) || !same(value, page)) result.recoloured.push({x: region.x + x, y: region.y + y, value});
+      }
+      let painted = null, matched = null;
+      for (let x = 0; x < image.width && (painted === null || matched === null); x++) {
+        if (x >= first && x < end) continue;
+        const value = at(x, y);
+        if (painted === null && !same(value, page)) painted = x;
+        if (matched === null && same(value, paint)) matched = x;
+      }
+      // A row without the highlight colour, or with other paint before the highlight, cannot prove the highlight edge.
+      if (painted === null || matched === null || matched > painted + 1) { result.unmatched++; continue; }
+      result.rows++;
+      result.painted = Math.min(result.painted ?? painted, painted);
+      result.highlightLeft = Math.min(result.highlightLeft ?? matched, matched);
+    }
+    if (result.painted !== null) result.painted += region.x;
+    if (result.lineRight !== null) result.lineRight += region.x;
+    if (result.highlightLeft !== null) result.highlightLeft += region.x;
+    result.covered = result.covered.slice(0, 5); result.recoloured = result.recoloured.slice(0, 5);
+    return result;
+  }, [png.toString('base64'), region, measured, highlight]);
+  try {
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+    await X.waitFor();
+    await row(X).click({position: await titlePoint(X)});
+    await X.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
+    assert.equal(await X.getAttribute('open'), '', 'X opens');
+    const failures = [];
+    let measurements = 0;
+    for (const [width, height] of [[1280, 720], [390, 844]]) {
+      await f.page.setViewportSize({width, height});
+      for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
+        await f.page.emulateMedia({colorScheme: scheme});
+        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background);
+        for (const state of ['hovered', 'selected']) {
+          if (state === 'hovered') await row(X).hover({position: await titlePoint(X)});
+          else await f.page.mouse.move(0, 0);
+          const where = 'width ' + width + ', ' + scheme + ', ' + state;
+          const measured = await geometry(X);
+          assert.equal(measured.open, true, 'X stays open, ' + where);
+          assert.equal(measured.hovered, state === 'hovered', 'the pointer state of X, ' + where);
+          assert.notEqual(measured.content, 'none', 'the line of X is drawn, ' + where);
+          assert.equal(measured.scale, 1, 'one screenshot pixel per CSS pixel, ' + where);
+          const highlight = measured.colours[state === 'hovered' ? 'hover' : 'selected'];
+          assert.notEqual(highlight, measured.colours.page, 'the highlight differs from the page, ' + where);
+          assert.notEqual(highlight, measured.colours.line, 'the highlight differs from the line, ' + where);
+          // The region spans the whole row box, also its area left of the line, and whole pixel rows inside the row.
+          const region = {x: Math.max(0, Math.floor(Math.min(measured.row.left, measured.line.left))), y: Math.ceil(measured.row.top)};
+          region.width = Math.min(width, Math.ceil(measured.row.right)) - region.x;
+          region.height = Math.floor(measured.row.bottom) - region.y;
+          const png = await f.page.screenshot({clip: region});
+          const result = await scan(png, region, measured, highlight);
+          measurements++;
+          const gap = result.painted === null || result.lineRight === null ? NaN : result.painted - result.lineRight;
+          const message = where + ': highlight ' + highlight + ' from x ' + result.painted + ', line ' + measured.colours.line + ' ' +
+            JSON.stringify(measured.line) + ' painted to x ' + result.lineRight + ', gap ' + gap + ' px, ' + result.rows + '/' + result.height + ' pixel rows measured';
+          t.diagnostic(message);
+          if (result.width !== region.width || result.height !== region.height || result.height < 1)
+            failures.push(where + ': the capture is ' + result.width + 'x' + result.height + ', not ' + region.width + 'x' + region.height);
+          if (result.first < 0 || result.end > result.width || result.full < 1)
+            failures.push(where + ': the capture ' + JSON.stringify(region) + ' does not hold the line ' + JSON.stringify(measured.line));
+          if (result.rows !== result.height) failures.push(message + ': ' + result.unmatched + ' pixel rows lack a measurable highlight edge');
+          if (!(gap >= 2)) failures.push(message + ': the highlight starts less than 2 px right of the line');
+          if (result.covered.length) failures.push(where + ': line pixels have the highlight colour ' + JSON.stringify(result.covered));
+          if (result.recoloured.length) failures.push(where + ': line pixels lost the line colour ' + JSON.stringify(result.recoloured));
+        }
+      }
+    }
+    assert.equal(measurements, 8, 'both widths, both themes, both states');
+    assert.deepEqual(failures, [], 'the highlight starts 2 px right of the line and leaves every line pixel visible');
   } finally { await f.close(); }
 });
 });
