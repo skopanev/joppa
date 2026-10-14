@@ -231,7 +231,7 @@ async fn ensure_notes(
     }
     Ok(changed)
 }
-pub(super) const BOARD_PROJECTION_VERSION: &str = "7";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "8";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 /// Refresh current assessment and verification metadata without reading journal history.

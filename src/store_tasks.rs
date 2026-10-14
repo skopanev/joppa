@@ -365,7 +365,8 @@ pub(super) fn queue_entries(
                     "ac_text":ac.map(|a| &a.text),"title":task.title,"contract":task.contract,
                     "purpose":task.purpose,"projects":task.projects,"assignee":task.assignee,
                     "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
-                    "confirmed":revision.confirmed,"created_at":task.created_at
+                    "confirmed":revision.confirmed,"created_at":task.created_at,
+                    "claim_req":crate::tasks::requirement(state,&format!("task:{req}/{id}"))
                 }),
             ));
         }
@@ -407,7 +408,8 @@ pub(super) fn queue_entries(
             "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
             "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at,
             "claim":t.claim,"unclaimed_eligible":unclaimed_error.is_none(),"unclaimed_error":unclaimed_error,
-            "origin_revision":t.origin_revision,"verification":crate::objects::verification(state,key),"signal":crate::objects::signal(state,key)
+            "origin_revision":t.origin_revision,"verification":crate::objects::verification(state,key),"signal":crate::objects::signal(state,key),
+            "claim_req":crate::tasks::requirement(state,key)
         })));
     }
     Ok(entries)

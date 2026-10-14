@@ -4900,3 +4900,120 @@ async fn help_required_fields_pass_the_live_field_checks() -> Result<()> {
     }
     Ok(())
 }
+
+/// Create one ready implementation Task under an AC of a REQ.
+async fn ready_task(w: &World, id: &str, ac: &str) -> Result<String> {
+    w.command(json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Plan the criterion"})).await?;
+    Ok(format!("task:{id}"))
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Result<()> {
+    // one-task-per-agent-ac3
+    let w = world().await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let mut tasks = vec![];
+    for id in ["t1", "t2", "t3"] {
+        tasks.push(ready_task(&w, id, "key-rights").await?);
+    }
+    let read = async |address: &str| w.get(&format!("address={address}")).await;
+    let claims: Vec<Value> = tasks
+        .iter()
+        .map(|id| json!({"command":{"op":"claim_task","id":id,"revision":1}}))
+        .collect();
+    mcp_value(
+        &w,
+        "joppa_batch",
+        json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"operations":claims}),
+    )
+    .await?;
+    let mut completions = vec![];
+    for id in &tasks {
+        let task = read(id).await?;
+        ensure!(
+            task["process"]["assignee"] == "bot" && task["process"]["status"] == "in_progress",
+            "{task}"
+        );
+        completions.push(json!({"command":{"op":"complete_task","id":id,"revision":task["current_revision"],"evidence":"Implemented the criterion and ran its checks"}}));
+    }
+    mcp_value(&w, "joppa_batch", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"operations":completions})).await?;
+    let mut done = vec![];
+    for id in &tasks {
+        let task = read(id).await?;
+        ensure!(
+            task["process"]["assignee"] == "bot" && task["process"]["status"] == "done",
+            "{task}"
+        );
+        done.push(task);
+    }
+    w.pool
+        .get()
+        .await?
+        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&w.ws])
+        .await?;
+    store::migrate(&w.pool).await?;
+    for (id, before) in tasks.iter().zip(&done) {
+        let after = read(id).await?;
+        ensure!(
+            after["process"] == before["process"],
+            "journal replay changed {id}: {before} / {after}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<()> {
+    let w = world().await?;
+    w.command(json!({"op":"revise","req":"other","expected_revision":0,"capability":"restrict","title":"Other rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"other-rights","text":"Only write after review"}]})).await?;
+    for (req, ac) in [("key", "key-rights"), ("other", "other-rights")] {
+        w.command_as(&w.bot, json!({"op":"assess","req":req,"revision":1,"ac":ac,"assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    }
+    let held = ready_task(&w, "a1", "key-rights").await?;
+    let same = ready_task(&w, "a2", "key-rights").await?;
+    let other = ready_task(&w, "b1", "other-rights").await?;
+    w.command_as(&w.bot, json!({"op":"claim_task","id":held,"revision":1}))
+        .await?;
+    let queue = async |view: &str| {
+        mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":view})).await
+    };
+    let available = queue("available").await?;
+    ensure!(
+        available["tasks"].as_array().unwrap().len() == 1
+            && available["tasks"][0]["address"] == same
+            && available["tasks"][0]["claimable"] == true,
+        "{available}"
+    );
+    let waiting = queue("waiting").await?;
+    let reason = format!("agent already holds task {held}");
+    ensure!(
+        waiting["tasks"].as_array().unwrap().len() == 1
+            && waiting["tasks"][0]["address"] == other
+            && waiting["tasks"][0]["claimable"] == false
+            && waiting["tasks"][0]["waiting_reason"] == reason,
+        "{waiting}"
+    );
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(&w.bot)
+        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"claim_task","id":other,"revision":1}}))
+        .send()
+        .await?;
+    ensure!(
+        reply.status() == reqwest::StatusCode::CONFLICT,
+        "{}",
+        reply.status()
+    );
+    let reply: Value = reply.json().await?;
+    ensure!(reply["error"] == reason, "{reply}");
+    let refused = w.get(&format!("address={other}")).await?;
+    ensure!(refused["process"]["assignee"].is_null(), "{refused}");
+    let next = w
+        .command_as(&w.bot, json!({"op":"claim_next_task"}))
+        .await?;
+    ensure!(next["command"]["id"] == same, "{next}");
+    Ok(())
+}

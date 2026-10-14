@@ -202,7 +202,7 @@ pub fn claimable(
     task: &Task,
 ) -> Result<()> {
     validate_claim(w, actor, req, id, r, task)?;
-    crate::tasks::ensure_agent_available(w, actor)
+    crate::tasks::ensure_agent_available(w, actor, &crate::tasks::address(req, id))
 }
 
 // Existing journal claims can predate the limit on active work.

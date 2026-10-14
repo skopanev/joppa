@@ -815,14 +815,17 @@ pub fn apply(
         Command::ClaimTask { req, id, .. } => {
             let key = crate::tasks::address(req, id);
             if crate::tasks::task(w, &key).is_some_and(|t| crate::tasks::holder(w, t).is_none()) {
-                crate::tasks::ensure_agent_available(w, actor)?;
+                crate::tasks::ensure_agent_available(w, actor, &key)?;
             }
         }
         Command::Task {
+            req,
             assignee: Some(assignee),
             ..
         } => {
-            crate::tasks::ensure_agent_available(w, assignee)?;
+            // The assigned Task may not exist yet; its REQ is named by the command.
+            let req = crate::objects::requirement_address(req);
+            crate::tasks::ensure_agent_available(w, assignee, &req)?;
         }
         _ => {}
     }

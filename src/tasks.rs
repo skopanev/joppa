@@ -164,23 +164,46 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
     Ok(())
 }
 
-pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str) -> Result<()> {
+/// The REQ above a Task, found through its configured parents.
+pub(crate) fn requirement(w: &Workspace, key: &str) -> Option<String> {
+    let types = objects::schema(w).types;
+    let mut current = Some(objects::resolve_address(w, key));
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(key) = current {
+        if !seen.insert(key) {
+            return None;
+        }
+        let o = w.objects.get(key)?;
+        if types.get(&o.kind).is_some_and(|t| t.role == "requirement") {
+            return Some(key.into());
+        }
+        current = o
+            .current()
+            .parent
+            .as_deref()
+            .map(|parent| objects::resolve_address(w, parent));
+    }
+    None
+}
+
+/// An agent may hold several Tasks only when they all belong to the REQ of the candidate.
+pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str, candidate: &str) -> Result<()> {
     if w.members.get(actor).is_none_or(|role| role != "agent") {
         return Ok(());
     }
+    let req = requirement(w, candidate);
     let active = |t: &Task| holder(w, t) == Some(actor) && t.done.is_none() && t.retired.is_none();
-    if let Some((key, _)) = w
-        .task_process
-        .iter()
-        .find(|(key, t)| active(t) && w.objects.get(*key).is_some_and(|o| o.current().present))
-    {
+    let conflict = |key: &str| req.is_none() || requirement(w, key) != req;
+    if let Some((key, _)) = w.task_process.iter().find(|(key, t)| {
+        active(t) && w.objects.get(*key).is_some_and(|o| o.current().present) && conflict(key)
+    }) {
         anyhow::bail!("agent already holds task {key}");
     }
     for (req, requirement) in &w.requirements {
         if let Some(revision) = requirement.revisions.last() {
             for (id, task) in &revision.tasks {
                 let key = address(req, id);
-                if !w.task_process.contains_key(&key) && active(task) {
+                if !w.task_process.contains_key(&key) && active(task) && conflict(&key) {
                     anyhow::bail!("agent already holds task {key}");
                 }
             }
@@ -191,7 +214,7 @@ pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str) -> Result<()> {
 
 pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
     validate_claim(w, actor, key, t)?;
-    ensure_agent_available(w, actor)
+    ensure_agent_available(w, actor, key)
 }
 
 // Existing journal claims can predate the limit on active work.
