@@ -289,6 +289,77 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()> {
+    // done-is-not-green-ac3
+    let w = world().await?;
+    let mcp = |name: &str, arguments: Value| {
+        let w = &w;
+        let name = name.to_owned();
+        async move {
+            let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex)
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .send().await?.error_for_status()?.json().await?;
+            ensure!(response["result"]["isError"] != true, "{response}");
+            Ok::<Value, anyhow::Error>(serde_json::from_str(
+                response["result"]["content"][0]["text"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("MCP result needs text"))?,
+            )?)
+        }
+    };
+    let task = "task:checked";
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights"],"reason":"Bind the checked test"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion under a green criterion"})).await?;
+    w.command_as(&w.bot, json!({"op":"claim_task","id":task,"revision":1}))
+        .await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"complete_task","id":task,"revision":2,"evidence":"Implemented the contract"}),
+    )
+    .await?;
+    let stamp = json!({"commit":"c3c3c3c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
+    w.http
+        .post(format!("{}/api/workspaces/{}/reports", w.root, w.ws))
+        .bearer_auth(&w.bot)
+        .json(&json!({"stamp":stamp,"junit":r#"<testsuites><testsuite name="checks.rs"><testcase name="key rights" /></testsuite></testsuites>"#}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let object = mcp("joppa_objects", json!({"workspace":w.ws,"address":task})).await?;
+    ensure!(
+        object["process"]["status"] == "done"
+            && object["process"]["verification"] == "pass"
+            && object["signal"]["tone"] == "green"
+            && object["signal"]["label"] == "Work complete · Checks passed",
+        "{object}"
+    );
+    let tests = mcp("joppa_tests", json!({"workspace":w.ws,"task":task})).await?;
+    ensure!(
+        tests["verification"] == "passed" && tests["criterion"]["status"] == "green",
+        "{tests}"
+    );
+    let list = mcp(
+        "joppa_objects",
+        json!({"workspace":w.ws,"parent":"ac:key-rights"}),
+    )
+    .await?;
+    let row = list["items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["address"] == task))
+        .ok_or_else(|| anyhow::anyhow!("the list needs the task: {list}"))?;
+    ensure!(
+        row["process"]["status"] == "done"
+            && row["process"]["verification"] == "pass"
+            && row["signal"]["tone"] == "green"
+            && row["signal"]["label"] == "Work complete · Checks passed",
+        "{row}"
+    );
+    Ok(())
+}
+
 // [ac:completion-record-ac1]
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]

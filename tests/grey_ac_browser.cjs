@@ -462,6 +462,24 @@ test('time-not-stale-ac2: the oldest test commit shows five newer commits', asyn
   } finally { await f.close(); }
 });
 
+test('done-is-not-green-ac3: a done Task under a green criterion shows Checks passed', async () => {
+  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const f = await fixture(criterionRecords, configured);
+  try {
+    await f.bind('ac:A', ['X']);
+    await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
+      data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
+      reason: 'Check completion under a green criterion'});
+    await f.command({op: 'claim_task', id: 'task:T', revision: 1});
+    await f.command({op: 'complete_task', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});
+    await f.upload('dddddddddddddddddddddddddddddddddddddddd', 1, [['X']]);
+    const card = await f.open('ac:A');
+    const circle = card.locator('.common-object[data-object-address="task:T"] > summary .status-circle');
+    assert.equal(await circle.getAttribute('data-tone'), 'green');
+    assert.match(await circle.getAttribute('data-hint'), /^Status: Work complete · Checks passed(\n|$)/);
+  } finally { await f.close(); }
+});
+
 test('removal-at-once-ac4: a removed member reloads without workspace data', async () => {
   const secret = 'Private source for the browser member';
   const f = await fixture({'domain:d': {title: 'Private domain', body: secret}});

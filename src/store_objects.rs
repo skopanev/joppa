@@ -567,6 +567,7 @@ pub async fn read_objects(
     for (item, row) in items.iter_mut().zip(rows.iter()) {
         if criterion_kinds
             .iter()
+            .chain(&task_kinds)
             .any(|kind| item["kind"] == kind.as_str())
         {
             item["process"] = serde_json::from_str::<Value>(row.get(16))?;
@@ -596,6 +597,7 @@ pub async fn read_objects(
     Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
 }
 
+/// Branch summaries and Task verification share one read of the criterion statuses.
 async fn add_verification_summaries(
     client: &impl GenericClient,
     workspace: &str,
@@ -603,6 +605,16 @@ async fn add_verification_summaries(
     types: &std::collections::BTreeMap<String, objects::TreeType>,
 ) -> Result<()> {
     use std::collections::{BTreeMap, BTreeSet};
+    let task_parent = |item: &Value| {
+        types
+            .get(item["kind"].as_str()?)
+            .filter(|t| t.role == "task" && item["process"].is_object())?;
+        item["parent"]
+            .as_str()
+            .or(item["document"]["parent"].as_str())
+            .map(String::from)
+    };
+    let task_parents: BTreeSet<String> = items.iter().filter_map(task_parent).collect();
     let criteria: Vec<String> = types
         .iter()
         .filter(|(_, t)| t.role == "ac")
@@ -636,13 +648,16 @@ async fn add_verification_summaries(
         })
         .filter_map(|i| i["address"].as_str().map(String::from))
         .collect();
-    if addresses.is_empty() {
+    if addresses.is_empty() && task_parents.is_empty() {
         return Ok(());
     }
     let branches: Vec<String> = branches.into_iter().collect();
-    let rows = client
-        .query(
-            r#"
+    let rows = if addresses.is_empty() {
+        vec![]
+    } else {
+        client
+            .query(
+                r#"
         WITH RECURSIVE descendants(root,child,address) AS (
             SELECT p.address,c.address,c.address FROM joppa.objects p
             JOIN joppa.objects c ON c.workspace=p.workspace AND c.parent=p.address AND c.present
@@ -656,11 +671,12 @@ async fn add_verification_summaries(
         SELECT d.root,d.child,CASE WHEN c.kind=ANY($4) THEN c.address END
         FROM descendants d JOIN joppa.objects c ON c.workspace=$1 AND c.address=d.address
     "#,
-            &[&workspace, &addresses, &branches, &criteria],
-        )
-        .await?;
+                &[&workspace, &addresses, &branches, &criteria],
+            )
+            .await?
+    };
     let mut children = BTreeMap::<String, BTreeMap<String, BTreeSet<String>>>::new();
-    let mut targets = BTreeSet::new();
+    let mut targets = task_parents;
     for row in rows {
         let child = children
             .entry(row.get(0))
@@ -679,6 +695,28 @@ async fn add_verification_summaries(
     )
     .await?;
     for item in items {
+        // A saved test list makes the criterion status the Task verification.
+        if let Some(status) = task_parent(item)
+            .and_then(|parent| statuses.get(&parent))
+            .filter(|s| !s["tests_revision"].is_null())
+            && let Some(verification) = match status["status"].as_str() {
+                Some("green") => Some("pass"),
+                Some("red") => Some("fail"),
+                Some("grey") => Some("unverified"),
+                _ => None,
+            }
+        {
+            // Earlier signal rules, such as retirement or review, keep their signal.
+            let task_rule = objects::task_signal(&item["process"]);
+            let decided =
+                item["signal"]["tone"] == task_rule.0 && item["signal"]["label"] == task_rule.1;
+            item["process"]["verification"] = json!(verification);
+            if decided {
+                let (tone, label) = objects::task_signal(&item["process"]);
+                item["signal"]["tone"] = json!(tone);
+                item["signal"]["label"] = json!(label);
+            }
+        }
         let Some(address) = item["address"]
             .as_str()
             .filter(|a| addresses.iter().any(|v| v == a))

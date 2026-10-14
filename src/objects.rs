@@ -2431,18 +2431,7 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         .get(&o.kind)
         .is_some_and(|t| t.role == "task")
     {
-        match p["status"].as_str() {
-            Some("done") if p["verification"] == "pass" => {
-                ("green", "Work complete · Checks passed")
-            }
-            Some("done") if p["verification"] == "fail" => ("red", "Work complete · Checks failed"),
-            Some("done") => ("grey", "Work complete · Unverified"),
-            Some("in_progress") => ("yellow", "Task in progress"),
-            _ if p["readiness_blocker"].is_object() => {
-                ("yellow", "Task waits for parent readiness")
-            }
-            _ => ("grey", "Task open"),
-        }
+        task_signal(&p)
     } else {
         ("grey", "Current document")
     };
@@ -2453,6 +2442,18 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         }
     }
     signal
+}
+
+/// Tone and label of a Task whose signal is not decided by an earlier rule.
+pub fn task_signal(p: &Value) -> (&'static str, &'static str) {
+    match p["status"].as_str() {
+        Some("done") if p["verification"] == "pass" => ("green", "Work complete · Checks passed"),
+        Some("done") if p["verification"] == "fail" => ("red", "Work complete · Checks failed"),
+        Some("done") => ("grey", "Work complete · Unverified"),
+        Some("in_progress") => ("yellow", "Task in progress"),
+        _ if p["readiness_blocker"].is_object() => ("yellow", "Task waits for parent readiness"),
+        _ => ("grey", "Task open"),
+    }
 }
 
 pub fn archive(
