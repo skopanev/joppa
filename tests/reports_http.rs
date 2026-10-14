@@ -1470,6 +1470,32 @@ async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_owner_cannot_save_a_test_address_without_a_file() -> Result<()> {
+    // checks-listed-first-ac2: skopanev (the owner token) saves "login > ok" with no file.
+    let w = world().await?;
+    let before = w.status().await?;
+    let command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["login > ok"],"reason":"Link the test"});
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
+    )
+    .await?;
+    ensure!(
+        code == 409 && reply["error"] == "a test address needs file > name at least",
+        "{code} {reply}"
+    );
+    let after = w.status().await?;
+    ensure!(
+        after["tests"] == before["tests"] && after["tests_saved_by"] == before["tests_saved_by"],
+        "{before} {after}"
+    );
+    Ok(())
+}
+
 const FAILING_REFUSES: &str = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses"><failure message="expected 403, got 200" /></testcase></testsuite></testsuite></testsuites>"#;
 
 #[tokio::test]
