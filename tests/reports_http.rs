@@ -1451,6 +1451,34 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
+    // missing-is-not-pass-ac3: X passes on C1; the later full report for C2 has X as todo.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
+        "{s}"
+    );
+    upload_xml(&w, "c1c1c1c", 1, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /></testsuite></testsuite></testsuites>"#).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A
+            && s["tests"][0]["status"] == "pass"
+            && s["status"] == "green",
+        "{s}"
+    );
+    upload_xml(&w, "c2c2c2c", 2, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens"><skipped message="TODO"/></testcase></testsuite></testsuite></testsuites>"#).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A && s["tests"][0]["status"] == "todo" && s["status"] == "grey",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_report_from_a_feature_branch_does_not_change_status() -> Result<()> {
     // result-names-subject-ac1: the criterion is grey; a passing report arrives from branch "feat".
     let w = world().await?;
