@@ -80,12 +80,14 @@ async function copyAction(trigger,text){
   toast('Copied '+text);
   return true;
 }
-function historyIcon(){
+function lineIcon(paths){
   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'14',height:'14',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
-  for(const d of ['M3 12a9 9 0 1 0 3-6.7','M3 4v4h4','M12 7v5l3 2']){const path=document.createElementNS(ns,'path');path.setAttribute('d',d);svg.append(path);}
+  for(const d of paths){const path=document.createElementNS(ns,'path');path.setAttribute('d',d);svg.append(path);}
   return svg;
 }
+const historyIcon=()=>lineIcon(['M3 12a9 9 0 1 0 3-6.7','M3 4v4h4','M12 7v5l3 2']);
+const propertiesIcon=()=>lineIcon(['M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0','M12 16v-5','M12 8h.01']);
 function copyButton(text){
   const control=button('',()=>copyAction(control,text),'copy');control.type='button';control.dataset.copyState='ready';
   control.title='Copy ID for agent';control.setAttribute('aria-label','Copy ID for agent');
@@ -704,11 +706,12 @@ function commonObjectCard(item,loadedDetail,parentTitle){
   const history=button('',()=>showObjectRevisions(item.address),'history-button');history.type='button';
   history.title='Revisions';history.setAttribute('aria-label','Revisions');history.append(historyIcon());
   history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
-  // The fields open and close from the row. The object stays open or closed.
-  const fieldsToggle=button('Fields',()=>{
+  // The properties open and close from the row. The object stays open or closed.
+  const fieldsToggle=button('',()=>{
     const shown=fieldsToggle.getAttribute('aria-expanded')!=='true';fieldsToggle.setAttribute('aria-expanded',String(shown));
     const fields=body.querySelector(':scope > .object-secondary > .object-details');if(fields)resizeBranch(card,()=>{fields.hidden=!shown;});
   },'fields-button');
+  fieldsToggle.type='button';fieldsToggle.title='Properties';fieldsToggle.setAttribute('aria-label','Properties');fieldsToggle.append(propertiesIcon());
   fieldsToggle.setAttribute('aria-expanded','false');fieldsToggle.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   actions.append(fieldsToggle,copy,history);summary.append(actions);card.append(summary);
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;

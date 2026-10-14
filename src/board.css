@@ -345,6 +345,6 @@ dialog::backdrop{background:#22222240}
 
 /* Row controls are icons at the right end of the row. */
 .common-object>summary>.item-actions{margin-left:auto}
-.history-button{display:inline-block;line-height:inherit;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
-.history-button:hover{color:var(--link)}
-.history-button svg{display:inline-block;width:13px;height:13px;vertical-align:middle;position:relative;top:.5px}
+.history-button,.fields-button{display:inline-block;line-height:inherit;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
+.history-button:hover,.fields-button:hover,.fields-button[aria-expanded=true]{color:var(--link)}
+.history-button svg,.fields-button svg{display:inline-block;width:13px;height:13px;vertical-align:middle;position:relative;top:.5px}

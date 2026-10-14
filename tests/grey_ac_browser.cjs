@@ -637,7 +637,7 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
     const mcp = await f.mcp('joppa_read', {item_id: current.item_id});
     assert.equal(mcp.current_revision, 5);
     const fields = card.locator('.object-details');
-    await card.locator(':scope > summary').getByRole('button', {name: 'Fields', exact: true}).click();
+    await card.locator(':scope > summary').getByRole('button', {name: 'Properties', exact: true}).click();
     assert.match(await fields.innerText(), /Revision 5/);
     const hash = value => createHash('sha256').update(value).digest('hex');
     assert.equal(hash(content), hash(mcp.document.data.body));
@@ -690,7 +690,7 @@ test('compact-open-object-ac1: the object row holds the control for its fields',
       data: {title, owner: 'owner', body: 'Current source', scope: 'Field scope value'}, reason: 'Add a document field'});
     const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
     const row = X.locator(':scope > summary');
-    const control = row.getByRole('button', {name: 'Fields', exact: true});
+    const control = row.getByRole('button', {name: 'Properties', exact: true});
     const fields = X.locator(':scope > .object-body > .object-secondary > .object-details');
     const children = X.locator(':scope > .object-body > .object-children > .common-object');
     for (const viewport of [null, {width: 390, height: 844}]) {
