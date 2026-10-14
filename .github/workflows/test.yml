@@ -1,5 +1,7 @@
 name: test
-on: [push, pull_request]
+# Lanes run the same checks locally with bun run gate before a push, and the
+# report goes to Joppa. This workflow runs only on a manual start.
+on: workflow_dispatch
 jobs:
   verify:
     runs-on: ubuntu-latest
