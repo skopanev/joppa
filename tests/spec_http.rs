@@ -5077,6 +5077,62 @@ async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Resu
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_batch_claim_with_a_held_task_changes_nothing() -> Result<()> {
+    // one-task-per-agent-ac4
+    let w = world().await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let mut tasks = vec![];
+    for id in ["t1", "t2", "t3"] {
+        tasks.push(ready_task(&w, id, "key-rights").await?);
+    }
+    let other = store::create_agent_token(&w.pool, &w.ws, "owner", "other", None).await?;
+    let other = other["token"].as_str().unwrap();
+    w.command_as(other, json!({"op":"claim_task","id":tasks[2],"revision":1}))
+        .await?;
+    let read = async |address: &str| w.get(&format!("address={address}")).await;
+    let mut claims = vec![];
+    for id in &tasks {
+        let task = read(id).await?;
+        claims.push(
+            json!({"command":{"op":"claim_task","id":id,"revision":task["current_revision"]}}),
+        );
+    }
+    let position = journal_position(&w).await?;
+    let before = saved_rows(&w).await?;
+
+    let batch = mcp_call(
+        &w,
+        &w.bot,
+        "joppa_batch",
+        json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"operations":claims}),
+    )
+    .await?;
+    ensure!(batch["isError"] == true, "{batch}");
+    for id in &tasks[..2] {
+        let task = read(id).await?;
+        ensure!(task["process"]["assignee"].is_null(), "{task}");
+    }
+    let held = read(&tasks[2]).await?;
+    ensure!(held["process"]["assignee"] == "other", "{held}");
+    ensure!(journal_position(&w).await? == position);
+    ensure!(
+        saved_rows(&w).await? == before,
+        "a refused batch changed state"
+    );
+
+    let t1 = read(&tasks[0]).await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":tasks[0],"revision":t1["current_revision"]}),
+    )
+    .await?;
+    let t1 = read(&tasks[0]).await?;
+    ensure!(t1["process"]["assignee"] == "bot", "{t1}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<()> {
     let w = world().await?;
     w.command(json!({"op":"revise","req":"other","expected_revision":0,"capability":"restrict","title":"Other rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"other-rights","text":"Only write after review"}]})).await?;
