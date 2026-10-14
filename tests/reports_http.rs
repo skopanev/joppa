@@ -1319,6 +1319,203 @@ async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
     Ok(())
 }
 
+const STALE_LIST: &str = "stale test list revision; read the tests again";
+
+/// Save the list of ac:key-rights over HTTP as the agent, with an optional list revision.
+async fn save_list(w: &World, tests: &[&str], revision: Option<u32>) -> Result<(u16, Value)> {
+    let mut command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Link the tests"});
+    if let Some(revision) = revision {
+        command["revision"] = json!(revision);
+    }
+    post(
+        w,
+        &w.token,
+        "/commands",
+        json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
+    )
+    .await
+}
+
+/// The listed test addresses of one test status read.
+fn listed(status: &Value) -> Vec<&str> {
+    status["tests"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| t["address"].as_str())
+        .collect()
+}
+
+async fn journal_count(pool: &deadpool_postgres::Pool, workspace: &str) -> Result<i64> {
+    Ok(pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT count(*) FROM joppa.events WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?
+        .get(0))
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_stale_test_list_save_is_refused_and_a_current_or_absent_revision_saves() -> Result<()> {
+    // checks-listed-first-ac4: criterion C has [A] at tests_revision 2.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    let s = w.status().await?;
+    ensure!(listed(&s) == [A] && s["tests_revision"] == 2, "{s}");
+    let (code, reply) = save_list(&w, &[A, B], Some(1)).await?;
+    ensure!(
+        code == 409 && reply["error"] == STALE_LIST,
+        "{code} {reply}"
+    );
+    let s = w.status().await?;
+    ensure!(listed(&s) == [A] && s["tests_revision"] == 2, "{s}");
+    let (code, reply) = save_list(&w, &[A, B], Some(2)).await?;
+    ensure!(code == 200, "{code} {reply}");
+    let s = w.status().await?;
+    ensure!(listed(&s) == [A, B] && s["tests_revision"] == 3, "{s}");
+    let (code, reply) = save_list(&w, &[B], None).await?;
+    ensure!(code == 200, "{code} {reply}");
+    let s = w.status().await?;
+    ensure!(listed(&s) == [B] && s["tests_revision"] == 4, "{s}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn concurrent_first_test_list_saves_with_revision_zero_accept_exactly_one() -> Result<()> {
+    // checks-listed-first-ac4: criterion D has no saved list; agents P and Q save at the same time.
+    let w = world().await?;
+    let p = planning(&w).await?;
+    let root = w.base.split("/api/").next().unwrap();
+    let read = || async {
+        w.http
+            .get(format!(
+                "{root}/api/workspaces/{}/tests?ac=criterion:a",
+                p.ws
+            ))
+            .bearer_auth(&w.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<Value>()
+            .await
+    };
+    let s = read().await?;
+    ensure!(
+        listed(&s).is_empty() && s["tests_revision"].is_null(),
+        "{s}"
+    );
+    let save = |actor: &'static str, tests: Value| {
+        p.write(
+            actor,
+            json!({"op":"set_ac_tests","target":"criterion:a","tests":tests,"revision":0,"reason":"Link the tests"}),
+        )
+    };
+    let (first, second) = tokio::join!(save("agent", json!([A])), save("other", json!([B])));
+    let (winner, refusal) = match (first, second) {
+        (Ok(_), Err(e)) => (A, e),
+        (Err(e), Ok(_)) => (B, e),
+        (first, second) => anyhow::bail!("expected one success: {first:?} / {second:?}"),
+    };
+    ensure!(format!("{refusal:#}") == STALE_LIST, "{refusal:#}");
+    let s = read().await?;
+    ensure!(listed(&s) == [winner] && s["tests_revision"] == 1, "{s}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_batch_with_a_stale_test_list_save_changes_nothing() -> Result<()> {
+    // checks-listed-first-ac4: a valid command and a stale list save in one batch.
+    let w = world().await?;
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let objects = || async {
+        w.http
+            .get(format!("{}/objects?parent=*&limit=100", w.base))
+            .bearer_auth(&w.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<Value>()
+            .await
+    };
+    let objects_before = objects().await?;
+    let status_before = w.status().await?;
+    let count_before = journal_count(&pool, workspace).await?;
+    ensure!(status_before["tests_revision"] == 1, "{status_before}");
+    let reply = planning_batch(&w, json!([
+        {"command":{"op":"save_object","kind":"note","id":"batch-note","revision":0,"parent":null,"data":{"title":"batch-note","owner":"owner","body":"Signal"},"links":[],"reason":"Save"}},
+        {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A],"revision":0,"reason":"Stale list"}}
+    ])).await?;
+    ensure!(
+        reply["result"]["isError"] == true
+            && reply["result"]["content"][0]["text"]
+                .as_str()
+                .is_some_and(|error| error.ends_with(STALE_LIST)),
+        "{reply}"
+    );
+    let objects_after = objects().await?;
+    ensure!(
+        objects_after == objects_before,
+        "{objects_before} / {objects_after}"
+    );
+    ensure!(
+        !objects_after.to_string().contains("batch-note"),
+        "{objects_after}"
+    );
+    let status_after = w.status().await?;
+    ensure!(
+        status_after == status_before,
+        "{status_before} / {status_after}"
+    );
+    ensure!(journal_count(&pool, workspace).await? == count_before);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_journal_of_test_list_saves_without_revision_replays_to_the_same_lists() -> Result<()> {
+    // checks-listed-first-ac4: the journal holds list saves with no revision field.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    w.list(&[B, A]).await?;
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let conn = pool.get().await?;
+    let saves: i64 = conn
+        .query_one(
+            "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND command->>'op'='set_ac_tests' AND NOT command ? 'revision'",
+            &[&workspace],
+        )
+        .await?
+        .get(0);
+    ensure!(saves == 3, "{saves} list saves without revision");
+    let before = w.status().await?;
+    ensure!(
+        listed(&before) == [B, A] && before["tests_revision"] == 3,
+        "{before}"
+    );
+    // Remove the stored lists and the board, then rebuild the workspace from its journal.
+    for statement in [
+        "DELETE FROM joppa.state_entries WHERE workspace=$1 AND section='ac_tests'",
+        "DELETE FROM joppa.board_cache WHERE workspace=$1",
+    ] {
+        conn.execute(statement, &[&workspace]).await?;
+    }
+    store::backfill_board(&pool).await?;
+    let after = w.status().await?;
+    ensure!(
+        listed(&after) == listed(&before) && after["tests_revision"] == before["tests_revision"],
+        "{before} / {after}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_dirty_failure_on_a_newer_commit_does_not_turn_green_red() -> Result<()> {

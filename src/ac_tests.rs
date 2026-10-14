@@ -64,11 +64,14 @@ pub fn text_hash(data: &serde_json::Value) -> String {
 }
 
 /// Apply `set_ac_tests`: validate the target and the addresses, then append a list revision.
+/// A supplied `expected` revision must equal the current list revision, or 0 without a list.
+#[allow(clippy::too_many_arguments)]
 pub fn set(
     w: &mut Workspace,
     actor: &str,
     target: &str,
     tests: &[String],
+    expected: Option<u32>,
     reason: &str,
     position: u64,
     at: &str,
@@ -99,6 +102,15 @@ pub fn set(
         ensure!(seen.insert(test), "test \"{test}\" is listed twice");
     }
     let text_hash = text_hash(&object.current().data);
+    let current = w
+        .ac_tests
+        .get(&address)
+        .and_then(AcTests::current)
+        .map_or(0, |r| r.revision);
+    ensure!(
+        expected.is_none_or(|expected| expected == current),
+        "stale test list revision; read the tests again"
+    );
     let entry = w.ac_tests.entry(address).or_default();
     let revision = entry.revisions.len() as u32 + 1;
     entry.revisions.push(AcTestsRevision {

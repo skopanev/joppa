@@ -44,6 +44,9 @@ pub enum Command {
     SetAcTests {
         target: String,
         tests: Vec<String>,
+        /// The list revision the author read; 0 means no saved list. Absent skips the check.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revision: Option<u32>,
         reason: String,
     },
     /// Decide an Inbox signal: changed_spec, needs_information, rejected or duplicate.
@@ -945,8 +948,18 @@ pub(crate) fn apply_inner(
         Command::SetAcTests {
             target,
             tests,
+            revision,
             reason,
-        } => crate::ac_tests::set(w, actor, target, tests, reason, position, recorded_at)?,
+        } => crate::ac_tests::set(
+            w,
+            actor,
+            target,
+            tests,
+            *revision,
+            reason,
+            position,
+            recorded_at,
+        )?,
         Command::DecideNote {
             target,
             revision,
