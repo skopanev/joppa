@@ -762,7 +762,7 @@ test('compact-open-object-ac2: an open object shows no side line', async () => {
     for (const [width, height] of [[1280, 720], [390, 844]]) {
       await f.page.setViewportSize({width, height});
       await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
-      const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+      const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
       await X.waitFor();
       if (await X.getAttribute('open') === null) await row(X).click({position: {x: 4, y: 4}});
       await ready(X);
@@ -863,6 +863,46 @@ test('markdown-text-ac3: the renderer loads once and long content scrolls in its
   } finally { await f.close(); }
 });
 
+test('compact-open-object-ac4: copy and revisions are icons at the right end of the row', async () => {
+  const f = await fixture({'domain:X': {title: 'Release plan outline'}});
+  try {
+    for (const [width, height] of [[1280, 720], [390, 844]]) {
+      await f.page.setViewportSize({width, height});
+      for (const scheme of ['light', 'dark']) {
+        await f.page.emulateMedia({colorScheme: scheme});
+        await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+        const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+        await X.waitFor();
+        const row = X.locator(':scope > summary');
+        const controls = await row.locator('button').evaluateAll(nodes => nodes.map(node => ({cls: node.className, text: node.innerText.trim(),
+          name: node.getAttribute('aria-label'), title: node.getAttribute('title')})));
+        const [copy, history] = controls.slice(-2);
+        assert.match(copy.cls, /\bcopy\b/); assert.match(history.cls, /\bhistory-button\b/);
+        assert.deepEqual([copy.text, history.text], ['', '']);
+        assert.deepEqual([copy.name, copy.title], ['Copy ID for agent', 'Copy ID for agent']);
+        assert.deepEqual([history.name, history.title], ['Revisions', 'Revisions']);
+        const rowBox = await row.boundingBox(), historyBox = await row.locator('.history-button').boundingBox();
+        assert.ok(rowBox.x + rowBox.width - (historyBox.x + historyBox.width) <= 8, JSON.stringify({rowBox, historyBox}));
+        const lineHeight = await row.evaluate(node => { const before = node.getBoundingClientRect().height;
+          const actions = node.querySelector('.item-actions'); actions.style.display = 'none';
+          const without = node.getBoundingClientRect().height; actions.style.display = ''; return [before, without]; });
+        assert.ok(Math.abs(lineHeight[0] - lineHeight[1]) <= 1, 'the controls add no line: ' + lineHeight);
+      }
+    }
+    const row = f.page.locator('#tree .common-object[data-object-address="domain:X"] > summary');
+    await row.locator('.copy').click();
+    const itemId = (await f.api('/objects?address=domain:X')).item_id;
+    assert.ok((await f.page.evaluate(() => window.copiedIds)).includes(itemId));
+    await row.locator('.copy').focus(); await f.page.keyboard.press('Enter');
+    assert.ok((await f.page.evaluate(() => window.copiedIds)).filter(id => id === itemId).length >= 2);
+    await row.locator('.history-button').click();
+    await f.page.locator('dialog.notes-dialog').waitFor();
+    await f.page.locator('dialog.notes-dialog .history-close').click();
+    await row.locator('.history-button').focus(); await f.page.keyboard.press('Enter');
+    await f.page.locator('dialog.notes-dialog').waitFor();
+  } finally { await f.close(); }
+});
+
 test('compact-open-object-ac5: rows are separated without dashed lines', async (t) => {
   const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'},
     'requirement:R1': {title: 'Requirement one', parent: 'capability:Y'}, 'requirement:R2': {title: 'Requirement two', parent: 'capability:Y'},
@@ -872,7 +912,7 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
   const rules = {light: 'rgb(217, 211, 199)', dark: 'rgb(68, 73, 81)'};
   try {
     await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
-    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+    const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
     await X.waitFor();
     await row(X).click({position: {x: 4, y: 4}}); await ready(X);
     const Y = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]');
@@ -972,7 +1012,7 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
 test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour on the board and the tree', async (t) => {
   const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'}});
   const themes = {light: {background: 'rgb(255, 252, 245)', link: 'rgb(0, 92, 239)'}, dark: {background: 'rgb(25, 28, 32)', link: 'rgb(140, 181, 255)'}};
-  const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+  const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
   const pages = {
     board: {path: '/?workspace=', mouse: X.locator(':scope > summary .copy'), ready: async () => {
       await X.waitFor();

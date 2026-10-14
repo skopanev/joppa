@@ -159,7 +159,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px solid var(--rule);background:none}
 /* The row highlight fills the whole row. */
 @property --row-highlight{syntax:'<color>';inherits:false;initial-value:transparent}
-.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;
+.common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .4rem .85em .6rem;min-width:0;
   background:var(--row-highlight);transition:--row-highlight .12s}
 .common-object>summary:hover{--row-highlight:var(--hover)}
 .common-object>summary>.node-title{margin-left:var(--row-inset)}
@@ -342,3 +342,9 @@ dialog::backdrop{background:#22222240}
 .markdown th{color:var(--heading);font-weight:600}
 .markdown img{max-width:100%}
 .markdown hr{border:0;border-top:1px solid var(--rule);margin:1em 0}
+
+/* Row controls are icons at the right end of the row. */
+.common-object>summary>.item-actions{margin-left:auto}
+.history-button{display:inline-block;line-height:inherit;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
+.history-button:hover{color:var(--link)}
+.history-button svg{display:inline-block;width:13px;height:13px;vertical-align:middle;position:relative;top:.5px}
