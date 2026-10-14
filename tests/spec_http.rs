@@ -1681,6 +1681,72 @@ async fn rename_and_move_keep_the_address_and_the_item_id() -> Result<()> {
     Ok(())
 }
 
+// [ac:id-survives-move-ac2]
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_move_under_a_domain_is_refused_and_changes_nothing() -> Result<()> {
+    let w = world().await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", Some("write")).await?;
+    let bot = grant["token"].as_str().unwrap();
+    let read = || async {
+        let reply = w
+            .http
+            .get(format!(
+                "{}/api/workspaces/{}/objects?address=requirement:key",
+                w.root, w.ws
+            ))
+            .bearer_auth(bot)
+            .send()
+            .await?;
+        ensure!(reply.status() == 200, "read: {}", reply.text().await?);
+        Ok::<Value, anyhow::Error>(reply.json().await?)
+    };
+    let move_to = |current: &Value, parent: &str| json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"requirement","id":"key","revision":current["document"]["revision"],"parent":parent,"data":current["document"]["data"],"links":[],"reason":"Move"}});
+    let commands = format!("{}/api/workspaces/{}/commands", w.root, w.ws);
+    let start = read().await?;
+    let reply = w
+        .http
+        .post(&commands)
+        .bearer_auth(bot)
+        .json(&move_to(&start, "capability:empty"))
+        .send()
+        .await?;
+    let status = reply.status();
+    ensure!(
+        status == 200,
+        "control move: {status} {}",
+        reply.text().await?
+    );
+    let before = read().await?;
+    ensure!(
+        before["item_id"].as_str().is_some_and(|id| !id.is_empty())
+            && before["document"]["parent"] == "capability:empty",
+        "{before}"
+    );
+    let reply = w
+        .http
+        .post(&commands)
+        .bearer_auth(bot)
+        .json(&move_to(&before, "domain:security"))
+        .send()
+        .await?;
+    let status = reply.status();
+    let body: Value = reply.json().await?;
+    ensure!(
+        status == 409 && body["error"] == "parent type is not permitted by the tree schema",
+        "refused move: {status} {body}"
+    );
+    let after = read().await?;
+    ensure!(
+        after["address"] == before["address"]
+            && after["item_id"] == before["item_id"]
+            && after["document"]["parent"] == before["document"]["parent"]
+            && after["document"]["revision"] == before["document"]["revision"],
+        "{before} -> {after}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_blocking_link_pins_the_target_revision_and_asks_for_review() -> Result<()> {
