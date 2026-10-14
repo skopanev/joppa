@@ -2429,6 +2429,54 @@ async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_account_without_membership_cannot_save_a_test_list_over_http() -> Result<()> {
+    // eve learns nothing about the workspace, and the saved test list stays as it was.
+    let w = world().await?;
+    let list = || async {
+        let status: Value = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tests", w.root, w.ws))
+            .bearer_auth(&w.owner)
+            .query(&[("ac", "ac:key-rights")])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok::<_, anyhow::Error>((status["tests"].clone(), status["tests_saved_by"].clone()))
+    };
+    let before = list().await?;
+    let save = |ws: String| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .post(format!("{}/api/workspaces/{ws}/commands", w.root))
+                .bearer_auth(&w.eve)
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"set_ac_tests","target":"ac:key-rights","tests":["a.test.ts > login > ok"],"reason":"Check refusal"}}))
+                .send()
+                .await?;
+            Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
+        }
+    };
+    let member_only = save(w.ws.clone()).await?;
+    let absent = save(format!("absent-{}", uuid::Uuid::new_v4().simple())).await?;
+    ensure!(
+        member_only.0 == 404 && absent.0 == 404,
+        "{member_only:?} vs {absent:?}"
+    );
+    ensure!(
+        member_only.1.contains("Workspace not found") && absent.1.contains("Workspace not found"),
+        "{member_only:?} vs {absent:?}"
+    );
+    ensure!(member_only.1 == absent.1, "{member_only:?} vs {absent:?}");
+    let after = list().await?;
+    ensure!(after == before, "{before:?} vs {after:?}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_redacted_fragment_cannot_be_read_anywhere() -> Result<()> {
     // owner-redacts-secret-ac1
     let w = world().await?;
