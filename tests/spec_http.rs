@@ -1622,6 +1622,37 @@ async fn bot_finds_a_requirement_by_a_word_from_its_body() -> Result<()> {
     Ok(())
 }
 
+// [ac:full-text-search-ac2]
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn bot_finds_a_requirement_by_a_word_from_its_title() -> Result<()> {
+    let w = world().await?;
+    w.command(json!({"op":"revise","req":"recovery","expected_revision":0,"capability":"restrict","title":"Recover a passkey","body":"Users regain access","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"recovery-works","text":"Only members recover access"}]}))
+        .await?;
+    let result = mcp_call(
+        &w,
+        &w.bot,
+        "joppa_search",
+        json!({"workspace":w.ws,"query":"passkey"}),
+    )
+    .await?;
+    ensure!(result["isError"] != true, "{result}");
+    let found: Value =
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap_or("null"))?;
+    let addresses: Vec<String> = found["results"]
+        .as_array()
+        .or(found["items"].as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|r| Some(format!("{}:{}", r["kind"].as_str()?, r["id"].as_str()?)))
+        .collect();
+    ensure!(
+        addresses.contains(&"requirement:recovery".into()),
+        "{addresses:?} in {found}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn search_omits_archived_objects() -> Result<()> {
