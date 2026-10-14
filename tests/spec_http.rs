@@ -699,6 +699,136 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_released_holder_cannot_complete_open_or_reclaimed_work() -> Result<()> {
+    // old-agent-locked-out-ac1
+    // A Task owner must be a human member, so P is alex in the variant where P owns the Task.
+    for (holder, owner_releases) in [
+        ("bot", false),
+        ("bot", true),
+        ("alex", false),
+        ("alex", true),
+    ] {
+        released_holder_cannot_complete(holder, owner_releases)
+            .await
+            .map_err(|e| e.context(format!("holder {holder}, owner releases: {owner_releases}")))?;
+    }
+    Ok(())
+}
+
+/// P (`holder`) claims T, then P or the workspace owner releases it; P's completion is refused
+/// while T is open and after Q claims it, then Q completes T. Alex as P owns the Task document.
+async fn released_holder_cannot_complete(holder: &str, owner_releases: bool) -> Result<()> {
+    let w = world().await?;
+    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
+    let bot = first["token"].as_str().unwrap();
+    let bot2 = second["token"].as_str().unwrap();
+    let (p, document_owner) = if holder == "alex" {
+        (w.alex.as_str(), "alex")
+    } else {
+        (bot, "owner")
+    };
+    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"released","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":document_owner,"contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for release"})).await?;
+    w.command_as(
+        p,
+        json!({"op":"claim_task","id":"task:released","revision":1}),
+    )
+    .await?;
+    let claimed = w.get("address=task:released").await?;
+    ensure!(
+        claimed["process"]["assignee"] == holder
+            && claimed["document"]["data"]["owner"] == document_owner,
+        "{claimed}"
+    );
+    let release_token = if owner_releases { &w.owner } else { p };
+    w.command_as(release_token, json!({"op":"release_task","id":"task:released","revision":2,"reason":"Return the unfinished work"})).await?;
+    for mcp in [false, true] {
+        let open = refused_completion(&w, p, "task:released", mcp).await?;
+        ensure!(
+            open["process"]["status"] == "open"
+                && open["process"]["assignee"].is_null()
+                && open["process"]["done"].is_null(),
+            "{open}"
+        );
+    }
+    w.command_as(
+        bot2,
+        json!({"op":"claim_task","id":"task:released","revision":3}),
+    )
+    .await?;
+    for mcp in [false, true] {
+        let claimed = refused_completion(&w, p, "task:released", mcp).await?;
+        ensure!(
+            claimed["process"]["status"] == "in_progress"
+                && claimed["process"]["assignee"] == "bot2"
+                && claimed["process"]["done"].is_null(),
+            "{claimed}"
+        );
+    }
+    w.command_as(bot2, json!({"op":"complete_task","id":"task:released","revision":4,"evidence":"Implemented the contract and recorded checks"})).await?;
+    let done = w.get("address=task:released").await?;
+    ensure!(
+        done["current_revision"] == 5
+            && done["document"]["actor"] == "bot2"
+            && done["process"]["done"].is_string(),
+        "{done}"
+    );
+    Ok(())
+}
+
+/// One completion by `token` over HTTP or MCP at the current revision; checks the exact refusal
+/// and that the Task and every stored row, including the journal position, are unchanged.
+/// Returns the Task as read before the attempt.
+async fn refused_completion(w: &World, token: &str, address: &str, mcp: bool) -> Result<Value> {
+    let task = w.get(&format!("address={address}")).await?;
+    let saved = saved_rows(w).await?;
+    let complete = json!({"op":"complete_task","id":address,"revision":task["current_revision"],"evidence":"Implemented the contract and recorded checks"});
+    let request = json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":complete});
+    let error = if mcp {
+        let result = mcp_call(
+            w,
+            token,
+            "joppa_command",
+            json!({"workspace":w.ws,"request_id":request["request_id"],"command":complete}),
+        )
+        .await?;
+        ensure!(result["isError"] == true, "{result}");
+        result["content"][0]["text"].clone()
+    } else {
+        let response = w
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .await?;
+        ensure!(
+            response.status() == reqwest::StatusCode::CONFLICT,
+            "{}",
+            response.status()
+        );
+        response.json::<Value>().await?["error"].clone()
+    };
+    ensure!(error == "Task is not claimed unfinished work", "{error}");
+    let unchanged = w.get(&format!("address={address}")).await?;
+    ensure!(
+        unchanged["current_revision"] == task["current_revision"]
+            && unchanged["process"]["verification"] == task["process"]["verification"]
+            && unchanged["process"] == task["process"]
+            && unchanged["document"] == task["document"],
+        "The refused completion changed the Task: {unchanged}"
+    );
+    let rows = saved_rows(w).await?;
+    ensure!(
+        rows["position"] == saved["position"] && rows == saved,
+        "The refused completion changed stored rows"
+    );
+    Ok(task)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn blank_completion_evidence_is_refused_over_http_and_mcp() -> Result<()> {
     // completion-record-ac3
     let w = world().await?;
