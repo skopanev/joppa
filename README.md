@@ -136,7 +136,7 @@ requires an HTTPS proxy; see [server deployment](server/README.md).
 
 ## Connect MCP
 
-**One endpoint: `https://YOUR_JOPPA_DOMAIN/mcp`.**
+**One endpoint: `https://YOUR_JOPPA_DOMAIN/mcp`.** Our instance: `https://joppa.otion.us/mcp`.
 Use HTTP (Streamable HTTP). No local Joppa client binary is needed. Add the server,
 start authentication, sign in with Google and approve access. The client stores
 and refreshes its OAuth credentials.
@@ -179,6 +179,34 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 ```json
 {"mcp":{"joppa":{"type":"remote","url":"https://YOUR_JOPPA_DOMAIN/mcp","enabled":true}}}
 ```
+
+### Connect an agent with a token
+
+An agent that runs without a browser uses an agent token instead of OAuth.
+
+1. The workspace owner opens **Settings** in the name menu, selects the workspace and issues a token for the agent.
+   Select read access for an agent that only reads, for example a planner.
+2. Copy the token once. Joppa does not show it again.
+3. Keep the token in a file or an environment variable with access for the agent only. Never put it in a repository.
+4. Send it as `Authorization: Bearer <token>` to the same endpoint.
+
+Claude Code:
+
+```sh
+claude mcp add --transport http --scope user joppa https://YOUR_JOPPA_DOMAIN/mcp \
+  --header "Authorization: Bearer $JOPPA_TOKEN"
+```
+
+Codex, in `config.toml`:
+
+```toml
+[mcp_servers.joppa]
+url = "https://YOUR_JOPPA_DOMAIN/mcp"
+bearer_token_env_var = "JOPPA_TOKEN"
+```
+
+A read token gets the error `read-only token` on every write. The owner revokes a token in **Settings**; the next call
+with it gets HTTP 401 `token revoked`.
 
 | Tool | Purpose |
 |---|---|
