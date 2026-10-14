@@ -346,7 +346,7 @@ mod state_rows;
 #[path = "store_write.rs"]
 mod write;
 pub use write::{
-    BatchOperation, execute, execute_batch, execute_input, execute_remote_batch,
+    BatchOperation, check_fields, execute, execute_batch, execute_input, execute_remote_batch,
     execute_remote_input,
 };
 fn summaries(state: &Workspace) -> Value {

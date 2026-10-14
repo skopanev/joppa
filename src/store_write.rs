@@ -369,6 +369,42 @@ async fn item_ids(
     Ok(ids)
 }
 
+/// Public writes accept only catalog operations, before alias resolution and any write.
+/// Remote workspace creation and heartbeat_task keep their own refusals.
+fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
+    fn op(operation: &BatchOperation) -> Option<&str> {
+        operation.command["op"].as_str()
+    }
+    ensure!(
+        operations.iter().all(|o| op(o) != Some("workspace")),
+        "workspace creation is available only through the server CLI"
+    );
+    for (index, operation) in operations.iter().enumerate() {
+        let admitted = match op(operation) {
+            Some("heartbeat_task") => Err(anyhow::anyhow!("heartbeat_task is no longer supported")),
+            Some(name) if commands::operation(name).is_some() => Ok(()),
+            _ => Err(anyhow::anyhow!("unknown operation")),
+        };
+        if batch {
+            admitted.with_context(|| format!("operation {}", index + 1))?;
+        } else {
+            admitted?;
+        }
+    }
+    Ok(())
+}
+
+/// Field validation of one public command: generated fields, then the command shape.
+/// claim_next_task has only optional filters; the write path checks them under the lock.
+pub fn check_fields(command: &Value) -> Result<()> {
+    let mut value = command.clone();
+    generate(&mut value)?;
+    if value["op"] != "claim_next_task" {
+        serde_json::from_value::<Command>(value)?;
+    }
+    Ok(())
+}
+
 async fn write(
     pool: &Pool,
     workspace: &str,
@@ -385,12 +421,7 @@ async fn write(
         "supply between 1 and 100 operations"
     );
     if !allow_workspace_create {
-        ensure!(
-            operations.iter().all(|operation| operation.command["op"]
-                .as_str()
-                .is_some_and(|op| op != "workspace")),
-            "workspace creation is available only through the server CLI"
-        );
+        admit(operations, batch)?;
     }
     let input = json!({"batch":batch, "operations":operations});
     let mut conn = pool.get().await?;

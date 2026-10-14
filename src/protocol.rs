@@ -65,6 +65,7 @@ fn authoring_command_schema() -> Value {
         "additionalProperties":true,
         "description":"Operation fields depend on op. Read joppa_help.operations. Apply joppa_help.writing to new technical text.",
         "properties":{
+            "op":{"type":"string","enum":joppa::commands::OPERATIONS.iter().map(|o| o.name).collect::<Vec<_>>(),"description":"Operation name. Read joppa_help.operations for its required fields and callers."},
             "question_checked":{"type":"string","description":"For save_object, use the exact configured type question after checking that the title and description answer it. Read joppa_help with workspace first."},
             "revision":{"description":"For save_object, archive_object, restore_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
             "title":text(), "body":text(), "text":text(), "description":text(),
@@ -278,7 +279,16 @@ async fn call(
                 .into())
         }
         "joppa_help" => {
-            let mut help = json!({"operations":include_str!("../docs/api.md"),"search":include_str!("../docs/search.md"),"writing":WRITING_RULES,"objects":include_str!("../docs/objects.md")});
+            let operations: serde_json::Map<String, Value> = joppa::commands::OPERATIONS
+                .iter()
+                .map(|o| {
+                    (
+                        o.name.to_owned(),
+                        json!({"required":o.required,"callers":o.callers}),
+                    )
+                })
+                .collect();
+            let mut help = json!({"operations":operations,"search":include_str!("../docs/search.md"),"writing":WRITING_RULES,"objects":include_str!("../docs/objects.md")});
             if a.get("workspace").is_some() {
                 help["tree"] = store::tree_schema(pool, field("workspace")?, actor, None).await?;
             }

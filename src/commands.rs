@@ -438,6 +438,197 @@ pub enum Command {
     },
 }
 
+/// One public operation of joppa_command and joppa_batch.
+/// `required` lists the fields that the caller must send. Generated identifiers,
+/// optional fields and fields with defaults are absent from it.
+/// `callers` uses member, agent, holder and workspace owner. Value checks, such as
+/// REQ ownership or a person decision, still apply inside each category.
+pub struct Operation {
+    pub name: &'static str,
+    pub required: &'static [&'static str],
+    pub callers: &'static [&'static str],
+}
+
+const MEMBER: &[&str] = &["member"];
+const OWNER: &[&str] = &["workspace owner"];
+const AGENT_OR_OWNER: &[&str] = &["agent", "workspace owner"];
+const HOLDER: &[&str] = &["holder"];
+const HOLDER_OR_OWNER: &[&str] = &["holder", "workspace owner"];
+
+const fn op(
+    name: &'static str,
+    required: &'static [&'static str],
+    callers: &'static [&'static str],
+) -> Operation {
+    Operation {
+        name,
+        required,
+        callers,
+    }
+}
+
+/// The public operation catalog. Help, the command schemas and remote admission use it.
+/// Internal, retired and CLI-only operations are absent.
+pub const OPERATIONS: &[Operation] = &[
+    op(
+        "set_tree_schema",
+        &["revision", "types", "reason"],
+        AGENT_OR_OWNER,
+    ),
+    op(
+        "save_object",
+        &["kind", "revision", "data", "reason"],
+        MEMBER,
+    ),
+    op(
+        "archive_object",
+        &["target", "revision", "reason"],
+        AGENT_OR_OWNER,
+    ),
+    op(
+        "restore_object",
+        &["target", "revision", "reason"],
+        AGENT_OR_OWNER,
+    ),
+    op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
+    op(
+        "decide_note",
+        &["target", "revision", "outcome", "reason"],
+        MEMBER,
+    ),
+    op("accept_commit", &["target", "revision"], MEMBER),
+    op("redact_object", &["target", "fragment", "reason"], OWNER),
+    op(
+        "set_note_status",
+        &["target", "revision", "status", "reason"],
+        MEMBER,
+    ),
+    op("rename_workspace", &["title", "reason"], OWNER),
+    op("reorder_tree", &["kind", "expected", "ids"], OWNER),
+    op("member", &["id", "role"], OWNER),
+    op("consumer", &["title", "owner"], MEMBER),
+    op(
+        "edit_consumer",
+        &["id", "title", "description", "owner", "reason"],
+        MEMBER,
+    ),
+    op("domain", &["title", "owner"], MEMBER),
+    op("capability", &["title"], MEMBER),
+    op("set_domain_archived", &["id", "archived", "reason"], OWNER),
+    op("confirm_tree", &[], OWNER),
+    op(
+        "edit_domain",
+        &["id", "title", "owner", "reason"],
+        AGENT_OR_OWNER,
+    ),
+    op(
+        "edit_capability",
+        &["id", "title", "reason"],
+        AGENT_OR_OWNER,
+    ),
+    op(
+        "withdraw_decision",
+        &["req", "revision", "comment", "reason"],
+        MEMBER,
+    ),
+    op("project", &["repository"], MEMBER),
+    op(
+        "revise",
+        &[
+            "expected_revision",
+            "title",
+            "body",
+            "owner",
+            "reason",
+            "acs",
+        ],
+        MEMBER,
+    ),
+    op(
+        "review_coverage",
+        &["req", "revision", "run", "reason"],
+        MEMBER,
+    ),
+    op(
+        "define_verification_scope",
+        &["req", "revision", "subject_keys", "scope", "reason"],
+        MEMBER,
+    ),
+    op(
+        "link_source",
+        &["req", "revision", "kind", "version", "relation"],
+        MEMBER,
+    ),
+    op(
+        "withdraw_source",
+        &["req", "revision", "id", "reason"],
+        MEMBER,
+    ),
+    op("confirm", &["req", "revision"], MEMBER),
+    op("comment", &["req", "revision", "text", "kind"], MEMBER),
+    op("describe", &["target", "text", "reason"], MEMBER),
+    op("note", &["target", "id", "text"], MEMBER),
+    op("withdraw_note", &["target", "id", "reason"], MEMBER),
+    op(
+        "attach",
+        &["target", "id", "name", "content_type", "size", "hash"],
+        MEMBER,
+    ),
+    op("detach", &["target", "id", "reason"], MEMBER),
+    op("assess", &["req", "revision", "ac", "assessment"], MEMBER),
+    op(
+        "task",
+        &["req", "revision", "title", "acs", "projects", "purpose"],
+        MEMBER,
+    ),
+    op("claim_planning", &["ac", "revision"], MEMBER),
+    op("finish_planning", &["ac", "reason"], HOLDER),
+    op("release_planning", &["ac", "reason"], HOLDER_OR_OWNER),
+    op("claim_task", &["revision", "id"], MEMBER),
+    // Public alias: the server resolves it to claim_task under the write lock.
+    op("claim_next_task", &[], MEMBER),
+    op(
+        "amend_task",
+        &["revision", "id", "title", "contract", "projects", "reason"],
+        MEMBER,
+    ),
+    op(
+        "release_task",
+        &["revision", "id", "reason"],
+        HOLDER_OR_OWNER,
+    ),
+    op(
+        "block_task",
+        &["revision", "id", "reason", "evidence"],
+        HOLDER_OR_OWNER,
+    ),
+    op("complete_task", &["revision", "id", "evidence"], HOLDER),
+    op("review_task", &["revision", "id", "reason"], MEMBER),
+    op("retire_task", &["revision", "id", "reason"], MEMBER),
+    op(
+        "plan",
+        &[
+            "req",
+            "revision",
+            "subject",
+            "scope",
+            "discovery_complete",
+            "checks",
+        ],
+        MEMBER,
+    ),
+    op("result", &["req", "revision", "run", "evidence"], MEMBER),
+    op("finish", &["req", "revision", "run"], MEMBER),
+    op("accept", &["req", "revision", "run"], MEMBER),
+    op("revoke", &["req", "revision", "reason"], MEMBER),
+    op("issue", &["req", "revision", "ac", "comment"], MEMBER),
+    op("resolve", &["req", "revision", "id", "comment"], MEMBER),
+];
+
+pub fn operation(name: &str) -> Option<&'static Operation> {
+    OPERATIONS.iter().find(|o| o.name == name)
+}
+
 fn verification_identifier(w: &Workspace, id: &str, role: &str) -> Result<()> {
     if let Some((kind, local)) = id.split_once(':') {
         identifier(kind)?;

@@ -3312,7 +3312,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     );
     let generic_help = call("joppa_help", json!({})).await?;
     ensure!(
-        generic_help.get("tree").is_none() && generic_help["operations"].is_string(),
+        generic_help.get("tree").is_none() && generic_help["operations"].is_object(),
         "{generic_help}"
     );
     for kind in ["observation", "record"] {
@@ -3525,9 +3525,9 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
     let help = read_mcp("joppa_help", json!({"workspace":w.ws})).await?;
     ensure!(
         !help["operations"]
-            .as_str()
+            .as_object()
             .unwrap()
-            .contains("heartbeat_task"),
+            .contains_key("heartbeat_task"),
         "help does not advertise heartbeat writes"
     );
     store::check_journal(&w.pool).await?;
@@ -4109,6 +4109,360 @@ async fn a_bot_criterion_title_over_64_characters_is_refused() -> Result<()> {
     ensure!(
         !(200..300).contains(&status) && missing == json!({"error":"unknown object"}),
         "the refused criterion is readable: {status}: {missing}"
+    );
+    Ok(())
+}
+
+/// One REST command; returns whether it succeeded and the reply body.
+async fn send_as(w: &World, token: &str, command: &Value) -> Result<(bool, Value)> {
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(token)
+        .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
+        .send()
+        .await?;
+    Ok((reply.status().is_success(), reply.json().await?))
+}
+
+/// The JSON value of one successful MCP tools/call.
+async fn mcp_value(w: &World, name: &str, arguments: Value) -> Result<Value> {
+    let result = mcp_call(w, &w.bot, name, arguments).await?;
+    ensure!(result["isError"] != true, "{result}");
+    Ok(serde_json::from_str(
+        result["content"][0]["text"].as_str().unwrap_or("null"),
+    )?)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn help_operations_equal_the_command_op_enum() -> Result<()> {
+    use std::collections::BTreeSet;
+    let w = world().await?;
+    let reply: Value = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(&w.bot)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let tools = reply["result"]["tools"].as_array().unwrap();
+    let schema = |name: &str| {
+        tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .map(|t| t["inputSchema"].clone())
+            .unwrap_or_default()
+    };
+    let names = |command: &Value| -> BTreeSet<String> {
+        command["properties"]["op"]["enum"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    };
+    let command = names(&schema("joppa_command")["properties"]["command"]);
+    let batch =
+        names(&schema("joppa_batch")["properties"]["operations"]["items"]["properties"]["command"]);
+    ensure!(
+        !command.is_empty() && batch == command,
+        "{command:?} / {batch:?}"
+    );
+    for name in [
+        "heartbeat_task",
+        "workspace",
+        "enroll_member",
+        "migrate_persistent_claims",
+        "migrate_notes",
+        "migrate_tasks",
+        "migrate_schema",
+        "migrate_documents",
+        "migrate_task_claims",
+    ] {
+        ensure!(!command.contains(name), "{name} is in the op enum");
+    }
+    for arguments in [json!({}), json!({"workspace":w.ws})] {
+        let help = mcp_value(&w, "joppa_help", arguments.clone()).await?;
+        let operations = help["operations"].as_object().unwrap();
+        let keys: BTreeSet<String> = operations.keys().cloned().collect();
+        ensure!(keys == command, "help {keys:?} / enum {command:?}");
+        for (name, entry) in operations {
+            let callers = entry["callers"].as_array().unwrap();
+            ensure!(
+                !callers.is_empty()
+                    && callers.iter().all(|c| {
+                        ["member", "agent", "holder", "workspace owner"]
+                            .contains(&c.as_str().unwrap_or(""))
+                    })
+                    && entry["required"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(Value::is_string),
+                "{name}: {entry}"
+            );
+        }
+        ensure!(
+            help["search"].is_string()
+                && help["writing"].is_string()
+                && help["objects"].is_string()
+                && help.get("tree").is_some() == arguments.get("workspace").is_some(),
+            "other help fields stay"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<()> {
+    let w = world().await?;
+    let before = saved_rows(&w).await?;
+    let valid = json!({"op":"member","id":"should-not-exist","role":"agent"});
+    for command in [
+        json!({"op":"made_up_operation","id":"x"}),
+        json!({"op":"migrate_notes"}),
+        json!({"op":"enroll_member","id":"intruder"}),
+    ] {
+        let (ok, http) = send_as(&w, &w.owner, &command).await?;
+        ensure!(!ok && http["error"] == "unknown operation", "{http}");
+        let single = mcp_call(
+            &w,
+            &w.owner,
+            "joppa_command",
+            json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+        )
+        .await?;
+        ensure!(
+            single["isError"] == true && single["content"][0]["text"] == "unknown operation",
+            "{single}"
+        );
+        let batch = mcp_call(
+            &w,
+            &w.owner,
+            "joppa_batch",
+            json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"operations":[{"command":valid},{"command":command}]}),
+        )
+        .await?;
+        ensure!(
+            batch["isError"] == true
+                && batch["content"][0]["text"]
+                    .as_str()
+                    .is_some_and(|t| t.contains("unknown operation")),
+            "{batch}"
+        );
+    }
+    ensure!(
+        saved_rows(&w).await? == before,
+        "a refused operation changed state"
+    );
+    let members = store::read(&w.pool, &w.ws, "owner", &store::Scope::full()).await?;
+    ensure!(
+        !members.to_string().contains("should-not-exist"),
+        "the batch applied its valid operation"
+    );
+    Ok(())
+}
+
+/// Each caller that the help entry does not name is refused and changes nothing.
+/// Then a named caller sends the same command and succeeds.
+async fn check_callers(
+    w: &World,
+    help: &Value,
+    holder: Option<&str>,
+    command: Value,
+    allowed: &str,
+    refusal: &str,
+) -> Result<String> {
+    let name = command["op"].as_str().unwrap().to_owned();
+    let callers: Vec<&str> = help["operations"][&name]["callers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    let named = |token: &str| {
+        let mut categories = vec!["member"];
+        if token == w.bot {
+            categories.push("agent");
+        }
+        if token == w.owner {
+            categories.push("workspace owner");
+        }
+        if Some(token) == holder {
+            categories.push("holder");
+        }
+        categories.iter().any(|c| callers.contains(c))
+    };
+    ensure!(named(allowed), "{name}: the allowed caller is not named");
+    let before = saved_rows(w).await?;
+    let mut refused = 0;
+    for token in [&w.owner, &w.alex, &w.maria, &w.bot] {
+        if named(token) {
+            continue;
+        }
+        refused += 1;
+        let (ok, reply) = send_as(w, token, &command).await?;
+        ensure!(
+            !ok && reply["error"].as_str().is_some_and(|e| e.contains(refusal)),
+            "{name}: {reply}"
+        );
+    }
+    ensure!(refused > 0, "{name} has no unnamed caller");
+    ensure!(
+        saved_rows(w).await? == before,
+        "{name}: a refusal changed state"
+    );
+    let (ok, reply) = send_as(w, allowed, &command).await?;
+    ensure!(ok, "{name}: {reply}");
+    Ok(name)
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Result<()> {
+    let w = world().await?;
+    let help = mcp_value(&w, "joppa_help", json!({})).await?;
+    let revision = async |address: &str| -> Result<Value> {
+        Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
+    };
+    let owner_only = "workspace owner required";
+    let agent_or_owner = "workspace owner or agent required";
+    let mut covered = vec![];
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    covered.push(check_callers(&w, &help, None, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"}), &w.bot, agent_or_owner).await?);
+    for id in ["a", "b", "c"] {
+        w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+    }
+    w.note("secret", 0, "Secret note", "Token s3cr3t", json!([]))
+        .await?;
+    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.owner, owner_only).await?);
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"rename_workspace","title":"Spec over HTTP again","reason":"Rename"}),
+            &w.owner,
+            "workspace owner renames the workspace",
+        )
+        .await?,
+    );
+    covered.push(check_callers(&w, &help, None, json!({"op":"reorder_tree","kind":"job","parent":null,"expected":["a","b","c"],"ids":["c","b","a"]}), &w.owner, "workspace owner reorders the tree").await?);
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"member","id":"newcomer","role":"agent"}),
+            &w.owner,
+            owner_only,
+        )
+        .await?,
+    );
+    w.command(json!({"op":"domain","id":"spare","title":"Spare","owner":"owner"}))
+        .await?;
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"set_domain_archived","id":"spare","archived":true,"reason":"Unused"}),
+            &w.owner,
+            "workspace owner archives domains",
+        )
+        .await?,
+    );
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"confirm_tree"}),
+            &w.owner,
+            "workspace owner confirms the tree",
+        )
+        .await?,
+    );
+    covered.push(check_callers(&w, &help, None, json!({"op":"edit_domain","id":"security","title":"Security rules","owner":"owner","reason":"Clarify"}), &w.owner, "only the workspace owner edits confirmed domains").await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"edit_capability","id":"restrict","title":"Restrict all access","reason":"Clarify"}), &w.owner, "only the workspace owner edits confirmed capabilities").await?);
+    // alex owns each job. The Task owner is neither the holder nor the workspace owner.
+    let bot = Some(w.bot.as_str());
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"job:a","revision":revision("job:a").await?}),
+    )
+    .await?;
+    covered.push(check_callers(&w, &help, bot, json!({"op":"block_task","id":"job:a","revision":revision("job:a").await?,"reason":"The test fails","evidence":"test a failed at commit c1"}), &w.bot, owner_only).await?);
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"job:b","revision":revision("job:b").await?}),
+    )
+    .await?;
+    check_callers(&w, &help, bot, json!({"op":"block_task","id":"job:b","revision":revision("job:b").await?,"reason":"The test fails","evidence":"test b failed at commit c1"}), &w.owner, owner_only).await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"job:c","revision":revision("job:c").await?}),
+    )
+    .await?;
+    covered.push(check_callers(&w, &help, bot, json!({"op":"release_task","id":"job:c","revision":revision("job:c").await?,"reason":"Return the work"}), &w.bot, owner_only).await?);
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"job:c","revision":revision("job:c").await?}),
+    )
+    .await?;
+    covered.push(check_callers(&w, &help, bot, json!({"op":"complete_task","id":"job:c","revision":revision("job:c").await?,"evidence":"Implemented and checked"}), &w.bot, "Task is not claimed unfinished work").await?);
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            bot,
+            json!({"op":"release_planning","ac":"ac:key-rights","reason":"Plan later"}),
+            &w.bot,
+            owner_only,
+        )
+        .await?,
+    );
+    w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
+    w.command_as(&w.bot, json!({"op":"save_object","kind":"task","id":"planned","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Plan the work"})).await?;
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            bot,
+            json!({"op":"finish_planning","ac":"ac:key-rights","reason":"The plan is complete"}),
+            &w.bot,
+            "planning holder required",
+        )
+        .await?,
+    );
+    let mut restricted: Vec<String> = help["operations"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(_, entry)| {
+            !entry["callers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("member"))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    restricted.sort();
+    covered.sort();
+    ensure!(
+        covered == restricted,
+        "covered {covered:?} / restricted {restricted:?}"
     );
     Ok(())
 }
