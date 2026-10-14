@@ -676,7 +676,7 @@ async fn add_verification_summaries(
             .await?
     };
     let mut children = BTreeMap::<String, BTreeMap<String, BTreeSet<String>>>::new();
-    let mut targets = task_parents;
+    let mut targets = BTreeSet::new();
     for row in rows {
         let child = children
             .entry(row.get(0))
@@ -688,10 +688,14 @@ async fn add_verification_summaries(
             child.insert(criterion);
         }
     }
+    // A Task parent that no summary needs keeps the bound-run verdict when unreadable.
+    let optional: BTreeSet<String> = task_parents.difference(&targets).cloned().collect();
+    targets.extend(task_parents);
     let statuses = match super::reports::criterion_test_statuses(
         client,
         workspace,
         &targets.into_iter().collect::<Vec<_>>(),
+        &optional,
     )
     .await
     {

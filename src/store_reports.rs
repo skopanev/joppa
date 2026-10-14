@@ -168,25 +168,37 @@ pub async fn criterion_tests(
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    criterion_test_statuses(&**conn, &workspace, &[target.to_owned()])
-        .await?
-        .remove(target)
-        .context("unknown criterion")
+    criterion_test_statuses(
+        &**conn,
+        &workspace,
+        &[target.to_owned()],
+        &Default::default(),
+    )
+    .await?
+    .remove(target)
+    .context("unknown criterion")
 }
 
 /// Read test evidence once for the criteria in the requested tree branches.
+/// A target in `optional` with an unreadable saved list is left out of the result.
 pub(super) async fn criterion_test_statuses(
     client: &impl GenericClient,
     workspace: &str,
     targets: &[String],
+    optional: &std::collections::BTreeSet<String>,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     let rows = client.query("SELECT o.address,o.title,o.description,a.value::text FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
     let mut criteria = vec![];
     for row in rows {
-        let saved: Option<AcTests> = row
+        let saved: Option<AcTests> = match row
             .get::<_, Option<String>>(3)
             .map(|s| serde_json::from_str(&s))
-            .transpose()?;
+            .transpose()
+        {
+            Ok(saved) => saved,
+            Err(_) if optional.contains(row.get::<_, &str>(0)) => continue,
+            Err(error) => return Err(error.into()),
+        };
         let data =
             json!({"title":row.get::<_,String>(1),"description":row.get::<_,Option<String>>(2)});
         criteria.push((row.get::<_, String>(0), data, saved));

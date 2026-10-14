@@ -385,6 +385,62 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_unreadable_task_criterion_keeps_a_mixed_list_readable() -> Result<()> {
+    // done-is-not-green-ac3: the bound-run verdict stays when the criterion status cannot be read.
+    let w = world().await?;
+    w.command(json!({"op":"revise","req":"aaa","expected_revision":0,"capability":"restrict","title":"Other rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"aaa-rule","text":"Keep the other rule"}]})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"aaa","revision":1,"ac":"aaa-rule","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:aaa-rule","tests":["checks.rs > other rule"],"reason":"Bind the checked test"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:aaa-rule","data":{"title":"Implement the other rule","owner":"owner","contract":"Implement the other rule and record the result","purpose":"implementation","projects":[]},"reason":"Check completion under an unreadable criterion"})).await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"task:checked","revision":1}),
+    )
+    .await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","id":"task:checked","revision":2,"evidence":"Implemented the contract"})).await?;
+    let all = w.get("parent=*&limit=100").await?;
+    let addresses: Vec<&str> = all["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["address"].as_str())
+        .collect();
+    let at = addresses
+        .iter()
+        .position(|a| *a == "requirement:key")
+        .ok_or_else(|| anyhow::anyhow!("{all}"))?;
+    ensure!(
+        at > 0 && addresses[at - 1] == "requirement:aaa",
+        "{addresses:?}"
+    );
+    let broken = w.pool.get().await?.execute(
+        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='ac_tests' AND key='ac:aaa-rule'",
+        &[&w.ws],
+    ).await?;
+    ensure!(broken == 1, "the saved list must exist");
+    // The page holds requirement:key with its summary and the Task, but not requirement:aaa.
+    let page = w
+        .get(&format!(
+            "parent=*&limit=2&cursor={}:requirement:aaa",
+            all["position"]
+        ))
+        .await?;
+    let (summary, task) = (&page["items"][0], &page["items"][1]);
+    ensure!(
+        summary["address"] == "requirement:key"
+            && summary["verification_summary"]["total"] == 1
+            && task["address"] == "task:checked"
+            && task["process"]["status"] == "done"
+            && task["process"]["verification"] == "unverified"
+            && task["signal"]["tone"] == "grey"
+            && task["signal"]["label"] == "Work complete · Unverified",
+        "{page}"
+    );
+    Ok(())
+}
+
 // [ac:completion-record-ac1]
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
