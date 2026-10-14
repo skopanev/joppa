@@ -27,6 +27,84 @@ fn native() -> World {
     );
     w
 }
+fn claim(w: &mut World, actor: &str, key: &str) -> anyhow::Result<()> {
+    let revision = w.state.objects[key].current().revision;
+    w.apply(
+        actor,
+        json!({"op":"claim_task","id":key,"revision":revision}),
+    )
+}
+fn refuse_claim(w: &mut World, key: &str) -> String {
+    let error = claim(w, "bot", key).unwrap_err().to_string();
+    assert!(w.state.task_process[key].assignee.is_none());
+    error
+}
+
+// [no-work-before-ready-ac1]
+#[test]
+fn tasks_under_not_ready_criteria_cannot_be_claimed() {
+    let mut w = World::new();
+    w.ok("owner", json!({"op":"member","id":"bot","role":"agent"}));
+    w.ok("owner", json!({"op":"member","id":"alex","role":"human"}));
+    let access = |expected: u32| {
+        json!({"op":"revise","req":"access","expected_revision":expected,"capability":"c",
+            "consumers":["customer"],"title":"Access","body":"Scope","owner":"owner",
+            "reason":"Agreed wording","acs":[{"id":"a1","text":"First"},
+            {"id":"a2","text":"Second"},{"id":"a3","text":"Third"}]})
+    };
+    w.ok("owner", access(0));
+    tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    for (task, ac) in [
+        ("task:t1", "ac:a1"),
+        ("task:t2", "ac:a2"),
+        ("task:t3", "ac:a3"),
+    ] {
+        save(
+            &mut w,
+            task,
+            Some(ac),
+            work("Implement access", "implementation"),
+        );
+    }
+    w.ok(
+        "agent",
+        json!({"op":"assess","req":"access","revision":1,"ac":"a3","assessment":{
+            "ready":true,"reason":"Known scope","recipient":null,"decision":null}}),
+    );
+    w.ok("owner", access(1));
+    let assess_access = |ac: &str, ready: bool, reason: &str, recipient: Option<&str>| {
+        json!({"op":"assess","req":"access","revision":2,"ac":ac,"assessment":{
+            "ready":ready,"reason":reason,"recipient":recipient,"decision":null}})
+    };
+    w.ok(
+        "agent",
+        assess_access("a2", false, "Which permissions?", Some("alex")),
+    );
+    assert_eq!(
+        refuse_claim(&mut w, "task:t1"),
+        "Criterion a1 has no readiness assessment"
+    );
+    assert_eq!(
+        refuse_claim(&mut w, "task:t2"),
+        "Which permissions? · Recipient: alex"
+    );
+    assert_eq!(
+        refuse_claim(&mut w, "task:t3"),
+        "Criterion a3 has no readiness assessment"
+    );
+    w.ok("agent", assess_access("a3", true, "Known scope", None));
+    save(
+        &mut w,
+        "task:t4",
+        Some("ac:a3"),
+        work("Implement access", "implementation"),
+    );
+    claim(&mut w, "bot", "task:t4").unwrap();
+    assert_eq!(
+        w.state.task_process["task:t4"].assignee.as_deref(),
+        Some("bot")
+    );
+}
 
 // [open-questions-visible-ac2]
 #[test]
@@ -113,7 +191,7 @@ fn revision_reset_removes_the_old_question_without_removing_history() {
     let task = objects::process(&w.state, "task:work");
     assert_eq!(task["assessment"], current["assessment"]);
     assert_eq!(task["review_required"], true);
-    assert!(
+    assert_eq!(
         tasks::claimable(
             &w.state,
             "agent",
@@ -121,9 +199,15 @@ fn revision_reset_removes_the_old_question_without_removing_history() {
             &w.state.task_process["task:work"]
         )
         .unwrap_err()
-        .to_string()
-        .contains("owner review")
+        .to_string(),
+        "Criterion ios has no readiness assessment"
     );
+    let mut ready = assess("ios", true);
+    ready["revision"] = json!(2);
+    w.ok("agent", ready);
+    let error = claim(&mut w, "agent", "task:work").unwrap_err().to_string();
+    assert!(error.contains("owner review"));
+    assert!(w.state.task_process["task:work"].assignee.is_none());
 }
 
 #[test]

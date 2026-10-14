@@ -208,6 +208,7 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
     ensure!(holder(w, t).is_none(), "task is already claimed");
     ensure!(t.done.is_none(), "task is already completed");
     ensure!(t.retired.is_none(), "task is retired");
+    parent_ready(w, actor, key, &t.purpose)?;
     ensure!(
         !review_required(w, key, t),
         "task needs owner review after its parent revision changed"
@@ -226,7 +227,6 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
         w.objects[key].current().parent.as_deref(),
         &subjects(w, key)?,
     )?;
-    parent_ready(w, actor, key, &t.purpose)?;
     if t.purpose == "decision" {
         commands::human(w, actor)?;
         ensure!(
