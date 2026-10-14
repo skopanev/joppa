@@ -55,12 +55,12 @@ button:disabled{opacity:.45;cursor:default;text-decoration:none}
 button[hidden]{display:none}
 button svg{display:block}
 button,a,input,select,textarea,summary{-webkit-tap-highlight-color:transparent}
-button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:1px solid var(--heading);outline-offset:3px}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:1px solid var(--link);outline-offset:3px}
 summary{cursor:pointer;list-style:none}
 summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}
-summary:focus-visible:before{outline:1px solid var(--heading);outline-offset:2px}
-.common-object>summary:focus-visible>.node-title{text-decoration:underline solid;text-underline-offset:4px}
+summary:focus-visible:before{outline:1px solid var(--link);outline-offset:2px}
+.common-object>summary:focus-visible{outline:1px solid var(--link);outline-offset:-1px}
 .common-object>summary:hover>.node-title{color:var(--heading)}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
 input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
@@ -118,7 +118,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #sun-svg,#theme[data-dark=true] #moon-svg{display:none}
 #moon-svg,#theme[data-dark=true] #sun-svg{display:block}
 #identity{color:var(--muted)}
-#identity:focus-visible{outline:1px solid var(--heading);outline-offset:3px}
+#identity:focus-visible{outline:1px solid var(--link);outline-offset:3px}
 #account-menu{position:relative}
 .account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
 #account-menu:not([open])>.account-options{display:none}
@@ -184,7 +184,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:color-mix(in srgb,var(--object-color,var(--muted)) var(--badge-share),var(--heading));text-decoration:none;cursor:help}
 .common-object>summary>.type-badge{min-width:2.8rem;text-align:left}
-.type-badge:focus-visible{outline:1px solid currentColor;outline-offset:3px}
+.type-badge:focus-visible{outline:1px solid var(--link);outline-offset:3px}
 .type-question{position:fixed;inset:auto;margin:0;max-width:min(420px,calc(100vw - 16px));max-height:calc(100svh - 16px);overflow:auto;padding:.7rem 1rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font-size:.9rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}

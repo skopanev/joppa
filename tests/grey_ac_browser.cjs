@@ -1014,6 +1014,107 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
   } finally { await f.close(); }
 });
 
+test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour on the board and the tree', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'}});
+  const themes = {light: {background: 'rgb(255, 252, 245)', link: 'rgb(0, 92, 239)'}, dark: {background: 'rgb(25, 28, 32)', link: 'rgb(140, 181, 255)'}};
+  const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+  const pages = {
+    board: {path: '/?workspace=', mouse: X.locator(':scope > summary .copy'), ready: async () => {
+      await X.waitFor();
+      if (await X.getAttribute('open') === null) await X.locator(':scope > summary').click({position: {x: 4, y: 4}});
+      await X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]').waitFor();
+    }},
+    tree: {path: '/tree?workspace=', mouse: f.page.locator('#types .type[data-kind="capability"]'),
+      ready: () => f.page.locator('#types .type[data-kind="ac"]').waitFor()},
+  };
+  const install = () => {
+    const name = node => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') + [...node.classList].map(value => '.' + value).join('') +
+      (node.dataset?.objectAddress ? '[' + node.dataset.objectAddress + ']' : '') + (node.dataset?.kind ? '[' + node.dataset.kind + ']' : '');
+    const colour = value => {
+      const probe = document.createElement('div'); probe.style.color = value; document.body.append(probe);
+      const resolved = getComputedStyle(probe).color; probe.remove(); return resolved;
+    };
+    // A pseudo-element without content draws nothing, so it cannot show focus.
+    const parts = node => ['', '::before', '::after'].map(pseudo => [pseudo, getComputedStyle(node, pseudo || null)])
+      .filter(([pseudo, style]) => !pseudo || !['none', 'normal'].includes(style.content));
+    const measure = style => ({outline: style.outlineStyle + ' ' + style.outlineWidth + ' ' + style.outlineColor, boxShadow: style.boxShadow,
+      border: ['Top', 'Right', 'Bottom', 'Left'].map(side => style['border' + side + 'Style']).join(' '),
+      textDecoration: style.textDecorationLine + ' ' + style.textDecorationStyle + ' ' + style.textDecorationColor});
+    const shadow = (style, link) => style.boxShadow !== 'none' && style.boxShadow.split(/,(?![^(]*\))/).some(part =>
+      part.includes(link) && (part.replace(link, '').match(/-?[\d.]+px/g) || []).some(length => parseFloat(length) !== 0));
+    const mark = (node, link) => parts(node).map(([pseudo, style]) =>
+      style.outlineStyle === 'solid' && parseFloat(style.outlineWidth) >= 1 && style.outlineColor === link ? pseudo + ' solid outline' :
+      shadow(style, link) ? pseudo + ' solid box-shadow' : null).find(Boolean) || null;
+    window.ac2 = {visited: [],
+      link: () => colour('var(--link)'),
+      focus: () => {
+        const node = document.activeElement;
+        if (!node || node === document.body) return null;
+        const repeat = ac2.visited.includes(node), first = ac2.visited[0] === node;
+        if (!repeat) ac2.visited.push(node);
+        const link = ac2.link(), measured = parts(node).map(([pseudo, style]) => ({pseudo, ...measure(style)}));
+        const dashed = parts(node).flatMap(([pseudo, style]) => [['outline', style.outlineStyle], ['text-decoration', style.textDecorationStyle],
+          ...['Top', 'Right', 'Bottom', 'Left'].map(side => ['border-' + side.toLowerCase(), style['border' + side + 'Style']])]
+          .filter(([, value]) => value === 'dashed').map(([property]) => pseudo + ' ' + property + ' dashed'));
+        return {name: name(node), repeat, first, link, mark: mark(node, link), measured, dashed};
+      },
+      visits: selector => [...document.querySelectorAll(selector)].map(node => ({name: name(node), visited: ac2.visited.includes(node)})),
+      missing: () => [...document.querySelectorAll('a[href],button,input,select,textarea,summary,[tabindex]')]
+        .filter(node => node.tabIndex >= 0 && !node.disabled && !node.closest('[inert]') && node.checkVisibility() && !ac2.visited.includes(node)).map(name),
+      pointer: () => {
+        const node = document.activeElement, link = ac2.link();
+        return {name: name(node), visible: node.matches(':focus-visible'), mark: mark(node, link),
+          outline: parts(node).some(([, style]) => style.outlineStyle !== 'none' || style.boxShadow !== 'none'), measured: measure(getComputedStyle(node))};
+      }};
+  };
+  try {
+    const failures = [];
+    let steps = 0;
+    for (const [page, setup] of Object.entries(pages)) {
+      const response = await f.page.goto(f.live.root + setup.path + f.live.ws);
+      assert.equal(response.status(), 200, page);
+      await setup.ready();
+      await Promise.all(f.requests.map(entry => entry.body));
+      await f.page.evaluate(install);
+      for (const [scheme, theme] of Object.entries(themes)) {
+        const where = page + ', ' + scheme;
+        await f.page.evaluate(scheme => { document.documentElement.dataset.theme = scheme; document.activeElement?.blur(); ac2.visited = []; }, scheme);
+        await f.page.mouse.move(0, 0);
+        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), theme.background, 'the ' + where + ' theme is active');
+        assert.equal(await f.page.evaluate(() => ac2.link()), theme.link, 'the --link colour of the ' + where + ' theme');
+        // Tab from the page start until the focus returns to the first control.
+        let focused = 0, returned = false;
+        for (let press = 0; press < 400; press++) {
+          await f.page.keyboard.press('Tab');
+          const state = await f.page.evaluate(() => ac2.focus());
+          if (!state) continue;
+          if (state.repeat) { returned = state.first; if (!returned) failures.push(where + ': the focus returns to ' + state.name + ', not the first control'); break; }
+          focused++; steps++;
+          const text = where + ', focus ' + state.name + ': ' + JSON.stringify(state.measured);
+          t.diagnostic(text + (state.mark ? ', ' + state.mark : ''));
+          if (!state.mark) failures.push(text + ': no solid outline or solid box-shadow in ' + state.link);
+          if (state.dashed.length) failures.push(text + ': ' + state.dashed.join(', '));
+        }
+        assert.ok(focused > 0, 'Tab reaches a control, ' + where);
+        assert.ok(returned, 'the focus returns to the first control, ' + where);
+        assert.deepEqual(await f.page.evaluate(() => ac2.missing()), [], 'Tab visits every focusable control, ' + where);
+        if (page === 'tree') {
+          const visits = await f.page.evaluate(() => ac2.visits('.schema-scroll, #types .type'));
+          assert.ok(visits.length >= 6, 'the tree shows the diagram and its type cards, ' + where);
+          assert.deepEqual(visits.filter(visit => !visit.visited), [], 'Tab visits the diagram and every type card, ' + where);
+        }
+        // Mouse focus shows no mark.
+        await setup.mouse.click();
+        const pointer = await f.page.evaluate(() => ac2.pointer());
+        t.diagnostic(where + ', mouse focus ' + JSON.stringify(pointer));
+        if (pointer.visible || pointer.mark || pointer.outline) failures.push(where + ': mouse focus on ' + pointer.name + ' shows a mark ' + JSON.stringify(pointer.measured));
+      }
+    }
+    t.diagnostic(failures.length + ' focus defects over ' + steps + ' focus steps');
+    assert.deepEqual(failures, [], 'every keyboard focus shows a solid mark in the link colour and no dashed line');
+  } finally { await f.close(); }
+});
+
 test('compact-open-object-ac6: the row highlight starts 2 px right of the open-object line', async (t) => {
   const f = await fixture({'domain:X': {title: 'Parent X'}});
   const row = card => card.locator(':scope > summary');
