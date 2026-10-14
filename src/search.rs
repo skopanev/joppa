@@ -224,19 +224,20 @@ pub async fn find(
         semantic = "pending";
     }
     let mut scores = BTreeMap::<(String, String), f64>::new();
-    let mut exact = BTreeMap::<(String, String), bool>::new();
+    // (exact ID or address, matched by item ID): a kept item ID is reported as queried.
+    let mut exact = BTreeMap::<(String, String), (bool, bool)>::new();
     let rows=tx.query("WITH q AS (SELECT websearch_to_tsquery('simple',$2) || websearch_to_tsquery('english',$2) || websearch_to_tsquery('russian',$2) AS terms), matches AS (
-      SELECT d.kind,d.local_id,false AS exact,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
+      SELECT d.kind,d.local_id,false AS exact,false AS item,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
       WHERE d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3) AND d.terms @@ q.terms
       UNION ALL
-      SELECT d.kind,d.local_id,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
+      SELECT d.kind,d.local_id,true,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
       ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
       WHERE i.id=$2 AND d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3)
       UNION ALL
-      SELECT d.kind,d.local_id,true,0::real FROM joppa.search_documents d
+      SELECT d.kind,d.local_id,true,false,0::real FROM joppa.search_documents d
       WHERE d.workspace=$1 AND ($3::text IS NULL OR d.kind=$3)
         AND d.kind||':'||d.local_id=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2))
-      SELECT kind,local_id,bool_or(exact) AS exact FROM matches GROUP BY kind,local_id
+      SELECT kind,local_id,bool_or(exact) AS exact,bool_or(item) AS item FROM matches GROUP BY kind,local_id
       ORDER BY exact DESC,max(rank) DESC,kind,local_id LIMIT 100", &[&workspace,&query,&kind]).await?;
     for (rank, row) in rows.iter().enumerate() {
         let key = (row.get(0), row.get(1));
@@ -249,7 +250,7 @@ pub async fn find(
                 1.0 / (61.0 + rank as f64)
             },
         );
-        exact.insert(key, is_exact);
+        exact.insert(key, (is_exact, row.get(3)));
     }
     if let Some(vector) = &vector {
         // Restrict the candidate set by workspace before exact cosine ranking.
@@ -264,20 +265,20 @@ pub async fn find(
         .into_iter()
         .take(limit as usize)
         .map(|((kind, id), score)| {
-            let exact = exact
+            let (exact, item) = exact
                 .get(&(kind.clone(), id.clone()))
                 .copied()
-                .unwrap_or(false);
-            json!({"kind":kind,"id":id,"score":score,"exact":exact})
+                .unwrap_or_default();
+            json!({"kind":kind,"id":id,"score":score,"exact":exact,"item":item})
         })
         .collect::<Vec<_>>();
-    let rows = tx.query("SELECT d.kind,d.local_id,d.title,left(d.content,600),d.req,d.revision,i.id,k.score,k.exact
-      FROM jsonb_to_recordset($3::text::jsonb) AS k(kind text,id text,score double precision,exact boolean)
+    let rows = tx.query("SELECT d.kind,d.local_id,d.title,left(d.content,600),d.req,d.revision,i.id,k.score,k.exact,k.item
+      FROM jsonb_to_recordset($3::text::jsonb) AS k(kind text,id text,score double precision,exact boolean,item boolean)
       JOIN joppa.search_documents d ON d.workspace=$1 AND d.kind=k.kind AND d.local_id=k.id
       LEFT JOIN joppa.object_aliases a ON a.workspace=d.workspace AND a.target=d.kind||':'||d.local_id
       JOIN joppa.item_ids i ON i.workspace=d.workspace AND i.kind=COALESCE(split_part(a.address,':',1),d.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),d.local_id) AND i.namespace=$2
       ORDER BY k.score DESC,d.kind,d.local_id", &[&workspace,&prefix,&serde_json::to_string(&selected)?]).await?;
-    let items = rows.iter().map(|row|json!({"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"system_id":row.get::<_,String>(6),"title":row.get::<_,String>(2),"excerpt":row.get::<_,String>(3),"req":row.get::<_,Option<String>>(4),"revision":row.get::<_,Option<i32>>(5),"score":row.get::<_,f64>(7),"exact_id":row.get::<_,bool>(8)})).collect::<Vec<_>>();
+    let items = rows.iter().map(|row|json!({"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"system_id":if row.get(9) {query.to_owned()} else {row.get::<_,String>(6)},"title":row.get::<_,String>(2),"excerpt":row.get::<_,String>(3),"req":row.get::<_,Option<String>>(4),"revision":row.get::<_,Option<i32>>(5),"score":row.get::<_,f64>(7),"exact_id":row.get::<_,bool>(8)})).collect::<Vec<_>>();
     tx.commit().await?;
     Ok(
         json!({"workspace":canonical,"position":position,"mode":if vector.is_some() && embedded>0 {"hybrid"} else {"full_text"},"semantic_status":semantic,"indexed":total,"embedded":embedded,"items":items}),

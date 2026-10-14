@@ -2931,6 +2931,52 @@ async fn an_item_id_and_an_address_find_their_object_first() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_agent_bot_finds_an_object_first_by_its_current_and_kept_item_ids() -> Result<()> {
+    // lookup-by-id-ac1
+    let w = world().await?;
+    w.note("first", 0, "Passkey plan", "passkey for first", json!([]))
+        .await?;
+    w.note(
+        "second",
+        0,
+        "Passkey rollout",
+        "passkey for second",
+        json!([]),
+    )
+    .await?;
+    let current = w.get("address=note:second").await?["item_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    ensure!(!current.is_empty(), "the note needs an item ID");
+    bot_finds_first(&w, &current).await?;
+    let prefix = format!("renamed-{}", uuid::Uuid::new_v4().simple());
+    w.command(json!({"op":"rename_workspace","title":"Spec over HTTP","reason":"New prefix","reference_prefix":prefix}))
+        .await?;
+    let renamed = w.get("address=note:second").await?["item_id"].clone();
+    ensure!(
+        renamed.as_str().is_some_and(|id| id.starts_with(&prefix)),
+        "{renamed}"
+    );
+    bot_finds_first(&w, &current).await
+}
+
+/// The agent bot's search for an item ID returns note:second first, with that ID as an exact match.
+async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
+    let found = mcp_value(w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
+    let first = &found["items"][0];
+    ensure!(
+        first["kind"] == "note"
+            && first["id"] == "second"
+            && first["system_id"] == query
+            && first["exact_id"] == true,
+        "{query}: {found}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
     // signal-records-source-ac1
     let w = world().await?;
