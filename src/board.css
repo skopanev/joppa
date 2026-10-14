@@ -1,6 +1,6 @@
 /* BRAND_STYLE */
 /* Joppa board. Plain text on a warm page, after kopanev.me (Bear Blog).
-   No cards, shadows or tinted surfaces: rows, dashed rules and small caps. */
+   No cards, shadows or tinted surfaces: rows, solid muted rules and small caps. */
 :root{
   color-scheme:light;
   --width:1100px;
@@ -43,7 +43,7 @@ p{margin:.8em 0;white-space:pre-wrap;overflow-wrap:anywhere}
 strong,b{color:var(--heading)}
 a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
 small,.muted{color:var(--muted);font-size:.8em}
-hr{border:0;border-top:1px dashed var(--rule)}
+hr{border:0;border-top:1px solid var(--rule)}
 code,pre{font-family:ui-monospace,monospace}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.8em;background:var(--code-bg);padding:.8em 1em;border-radius:3px}
 
@@ -55,12 +55,12 @@ button:disabled{opacity:.45;cursor:default;text-decoration:none}
 button[hidden]{display:none}
 button svg{display:block}
 button,a,input,select,textarea,summary{-webkit-tap-highlight-color:transparent}
-button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:1px dashed var(--heading);outline-offset:3px}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:1px solid var(--heading);outline-offset:3px}
 summary{cursor:pointer;list-style:none}
 summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}
-summary:focus-visible:before{outline:1px dashed var(--heading);outline-offset:2px}
-.common-object>summary:focus-visible>.node-title{text-decoration:underline dashed;text-underline-offset:4px}
+summary:focus-visible:before{outline:1px solid var(--heading);outline-offset:2px}
+.common-object>summary:focus-visible>.node-title{text-decoration:underline solid;text-underline-offset:4px}
 .common-object>summary:hover>.node-title{color:var(--heading)}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
 input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
@@ -68,7 +68,7 @@ textarea{min-height:88px;resize:vertical}
 /* Height and size stay usable on touch screens and prevent iOS zoom. */
 select{appearance:none;-webkit-appearance:none;height:44px;min-height:44px;width:100%;min-width:0;
   padding:7px 24px 7px 0;font-size:16px;font-weight:400;line-height:1.4;color:var(--heading);
-  border:0;border-bottom:1px dashed var(--rule);border-radius:0;background-color:transparent;cursor:pointer;
+  border:0;border-bottom:1px solid var(--rule);border-radius:0;background-color:transparent;cursor:pointer;
   background-image:var(--select-arrow);
   background-repeat:no-repeat;background-position:right 4px center;background-size:10px 6px}
 select:hover:not(:disabled){border-bottom-color:var(--text)}
@@ -102,7 +102,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #login-cancel{font-size:.8em;color:var(--muted);margin-top:.4em}
 
 /* Header: the brand, its line, the workspace and text links. */
-.app-header{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1em;padding:.2em 0 .8em;margin-bottom:1.4em;border-bottom:1px dashed var(--rule)}
+.app-header{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1em;padding:.2em 0 .8em;margin-bottom:1.4em;border-bottom:1px solid var(--rule)}
 .brand{display:flex;align-items:center;gap:.6em;font-weight:normal}
 .brand-word{font-size:1.6em}
 .workspace-label{display:flex;align-items:center;gap:.5em;margin:0;flex:none}
@@ -118,7 +118,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #sun-svg,#theme[data-dark=true] #moon-svg{display:none}
 #moon-svg,#theme[data-dark=true] #sun-svg{display:block}
 #identity{color:var(--muted)}
-#identity:focus-visible{outline:1px dashed var(--heading);outline-offset:3px}
+#identity:focus-visible{outline:1px solid var(--heading);outline-offset:3px}
 #account-menu{position:relative}
 .account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
 #account-menu:not([open])>.account-options{display:none}
@@ -150,13 +150,13 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .collection-description{font-size:.8rem;color:var(--muted)}
 .collection-label{color:var(--muted)}
 #tree:has(>.collection-tabs:not([hidden])) .root-collection>.collection-heading .collection-title{display:none}
-.collection-items{border-top:1px dashed var(--rule)}
+.collection-items{border-top:1px solid var(--rule)}
 .object-collection{margin:2em 0 0}
 .object-collection-title{margin:0 0 .4em;font-size:1em;color:var(--muted)}
 .root-collection.object-collection>.object-collection-title{display:none}
 
 /* One row per object. The chevron opens it; children indent inside the line of the open card. */
-.common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px dashed var(--rule);background:none}
+.common-object{--row-gap:.75rem;--row-inset:6px;--object-color:initial;position:relative;margin:0;border:0;border-bottom:1px solid var(--rule);background:none}
 .common-object>summary{display:flex;align-items:baseline;gap:var(--row-gap);margin:0 -.6rem;padding:.85em .6rem;min-width:0;transition:background-color .12s}
 .common-object>summary:hover{background:var(--hover)}
 /* The row content starts after the 2 px open line and a 4 px gap; the row background still covers the line. */
@@ -181,7 +181,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:color-mix(in srgb,var(--object-color,var(--muted)) var(--badge-share),var(--heading));text-decoration:none;cursor:help}
 .common-object>summary>.type-badge{min-width:2.8rem;text-align:left}
-.type-badge:focus-visible{outline:1px dashed currentColor;outline-offset:3px}
+.type-badge:focus-visible{outline:1px solid currentColor;outline-offset:3px}
 .type-question{position:fixed;inset:auto;margin:0;max-width:min(420px,calc(100vw - 16px));max-height:calc(100svh - 16px);overflow:auto;padding:.7rem 1rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font-size:.9rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
@@ -242,7 +242,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
 .verification-chip.has-failures{color:var(--fail)}
 .verification-chip.has-passes{color:var(--pass)}
-.ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px dashed var(--rule)}
+.ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px solid var(--rule)}
 .ac-check{padding:.3em 0}
 .ac-check-heading{display:flex;align-items:baseline;margin:0;font-size:.85em;color:var(--heading)}
 .ac-check .detail-fact{padding-left:1.3em;font-size:.8em}
@@ -257,7 +257,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .note-all{display:flex;align-items:center;gap:.4em;margin:0;white-space:nowrap;font-size:inherit;color:var(--muted)}
 .note-all input{width:auto;margin:0;accent-color:var(--muted)}
 .object-body>.note-section{margin:0}
-.note{padding:.6em 0;border-top:1px dashed var(--rule)}
+.note{padding:.6em 0;border-top:1px solid var(--rule)}
 .note-meta{display:flex;align-items:baseline;gap:.6em;font-size:.8em;color:var(--muted)}
 .note-text{margin:.3em 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
@@ -277,7 +277,7 @@ dialog::backdrop{background:#22222240}
 .copy-dialog h2{margin-top:0}
 .copy-dialog input{font:.85em/1.5 ui-monospace,monospace}
 .copy-dialog button{margin-top:.8em}
-.history-dialog-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:1em;padding:1em 1.2em;border-bottom:1px dashed var(--rule);position:sticky;top:0;background:var(--bg);z-index:1}
+.history-dialog-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:1em;padding:1em 1.2em;border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--bg);z-index:1}
 .history-dialog-header>div{min-width:0}
 .history-dialog-header>div:focus{outline:none}
 .history-dialog-header small{color:var(--muted)}
@@ -288,7 +288,7 @@ dialog::backdrop{background:#22222240}
 .dialog-revisions select{margin:0}
 .notes-body{padding:.4em 1.2em 1.2em;overflow:auto;min-width:0}
 .files-list{list-style:none;margin:0;padding:.4em 1.2em 1.2em}
-.files-list li+li{border-top:1px dashed var(--rule)}
+.files-list li+li{border-top:1px solid var(--rule)}
 .file-link{display:flex;align-items:center;gap:.8em;padding:.7em 0;color:var(--link)}
 .file-icon{display:grid;place-items:center;flex:none;color:var(--muted)}
 .file-info{flex:1;min-width:0}

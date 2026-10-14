@@ -767,7 +767,7 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
       // A child type without a valid colour shows the fallback, not the colour of its parent.
       assert.equal(invalid.style, 'solid'); assert.equal(invalid.color, fallback);
       assert.equal(await dashed(X), 0); assert.equal(await dashed(Y), 0); assert.equal(await dashed(Z), 0);
-      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node).borderBottomStyle), 'dashed');
+      assert.equal(await closedSibling.evaluate(node => getComputedStyle(node).borderBottomStyle + ' ' + getComputedStyle(node).borderBottomWidth), 'solid 1px');
       assert.equal(await closedSibling.evaluate(node => getComputedStyle(node, '::before').content), 'none');
       assert.equal(await pixel(X, parent.left), rgb(C));
       await row(X).hover({position: {x: 200, y: 4}});
@@ -816,7 +816,7 @@ test('compact-open-object-ac2: an open object shows one solid line in its type c
     const closedParent = await closeAnimated(X);
     assert.ok(Number.isFinite(closedParent.target), 'the parent closes with a height animation');
     assert.ok(Math.abs(closedParent.target - closedParent.height) < 0.5, JSON.stringify(closedParent));
-    assert.equal(closedParent.line, 'none'); assert.equal(closedParent.border, 'dashed 1px');
+    assert.equal(closedParent.line, 'none'); assert.equal(closedParent.border, 'solid 1px');
   } finally { await f.close(); }
 });
 
@@ -886,6 +886,112 @@ test('compact-open-object-ac3: the open-object line keeps 4 px from every status
       }
     }
     assert.deepEqual(failures, [], 'every line keeps 4 px from every status circle');
+  } finally { await f.close(); }
+});
+
+test('compact-open-object-ac5: rows are separated without dashed lines', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'},
+    'requirement:R1': {title: 'Requirement one', parent: 'capability:Y'}, 'requirement:R2': {title: 'Requirement two', parent: 'capability:Y'},
+    'requirement:R3': {title: 'Requirement three', parent: 'capability:Y'}});
+  const row = card => card.locator(':scope > summary');
+  const ready = card => card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
+  const rules = {light: 'rgb(217, 211, 199)', dark: 'rgb(68, 73, 81)'};
+  try {
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    const X = f.page.locator('#collection-domain .common-object[data-object-address="domain:X"]');
+    await X.waitFor();
+    await row(X).click({position: {x: 4, y: 4}}); await ready(X);
+    const Y = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]');
+    await Y.waitFor();
+    await row(Y).click({position: {x: 4, y: 4}}); await ready(Y);
+    const requirements = Y.locator(':scope > .object-body > .object-children > .common-object[data-object-address^="requirement:"]');
+    await requirements.nth(2).waitFor();
+    await Promise.all(f.requests.map(entry => entry.body));
+    await f.page.evaluate(() => {
+      const name = node => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') + [...node.classList].map(value => '.' + value).join('') +
+        (node.dataset?.objectAddress ? '[' + node.dataset.objectAddress + ']' : '');
+      const lines = [...['Top', 'Right', 'Bottom', 'Left'].map(side => ['border-' + side.toLowerCase() + '-style', 'border' + side + 'Style', 'border' + side + 'Width']),
+        ['outline-style', 'outlineStyle', 'outlineWidth'], ['text-decoration-style', 'textDecorationStyle', 'textDecorationThickness']];
+      // A pseudo-element without content draws nothing, so its outline cannot show focus.
+      const drawn = (style, pseudo) => !pseudo || !['none', 'normal'].includes(style.content);
+      const indicator = (node, pseudo) => {
+        const style = getComputedStyle(node, pseudo || null), label = name(node) + pseudo;
+        if (!drawn(style, pseudo)) return null;
+        if (style.outlineStyle === 'solid' && parseFloat(style.outlineWidth) >= 1) return label + ' solid outline';
+        if (style.textDecorationLine.includes('underline') && style.textDecorationStyle === 'solid') return label + ' solid underline';
+        return null;
+      };
+      window.ac5 = {visited: new Set(),
+        // Every element and pseudo-element on the page in its current focus state.
+        scan: where => {
+          const found = []; let checked = 0;
+          for (const node of document.querySelectorAll('*')) for (const pseudo of ['', '::before', '::after', '::marker']) {
+            const style = getComputedStyle(node, pseudo || null); checked++;
+            for (const [property, key, width] of lines) if (style[key] === 'dashed') found.push(where + ': ' + name(node) + pseudo + ' ' + property + ' dashed ' + style[width]);
+          }
+          return {found, checked};
+        },
+        focus: () => {
+          const node = document.activeElement;
+          if (!node || node === document.body) return null;
+          const repeat = ac5.visited.has(node); ac5.visited.add(node);
+          const candidates = [[node, ''], [node, '::before'], [node, '::after'], ...[...node.querySelectorAll(':scope > .node-title')].map(title => [title, ''])];
+          return {name: name(node), repeat, indicator: candidates.map(([element, pseudo]) => indicator(element, pseudo)).find(Boolean) || null};
+        },
+        missing: () => [...document.querySelectorAll('a[href],button,input,select,textarea,summary,[tabindex]')]
+          .filter(node => node.tabIndex >= 0 && !node.disabled && !node.closest('[inert]') && node.checkVisibility() && !ac5.visited.has(node)).map(name),
+        separators: () => {
+          const probe = document.createElement('div'); probe.style.color = 'var(--rule)'; document.body.append(probe);
+          const rule = getComputedStyle(probe).color; probe.remove();
+          return {rule, rows: [...document.querySelectorAll('.common-object[data-object-address^="requirement:"]')].map(node => {
+            const style = getComputedStyle(node);
+            return {name: name(node), open: node.open, style: style.borderBottomStyle, width: parseFloat(style.borderBottomWidth), color: style.borderBottomColor};
+          })};
+        }};
+    });
+    const failures = [];
+    let scans = 0, steps = 0;
+    for (const [width, height] of [[1280, 720], [390, 844]]) {
+      await f.page.setViewportSize({width, height});
+      for (const [scheme, background] of [['light', 'rgb(255, 252, 245)'], ['dark', 'rgb(25, 28, 32)']]) {
+        const where = 'width ' + width + ', ' + scheme;
+        await f.page.emulateMedia({colorScheme: scheme});
+        await f.page.mouse.move(0, 0);
+        assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background, where);
+        assert.equal(await X.getAttribute('open'), '', 'X is open, ' + where); assert.equal(await Y.getAttribute('open'), '', 'Y is open, ' + where);
+        const separators = await f.page.evaluate(() => ac5.separators());
+        assert.equal(separators.rule, rules[scheme], 'the --rule colour of the ' + where + ' theme');
+        assert.equal(separators.rows.length, 3, where);
+        for (const separator of separators.rows) {
+          const text = where + ': ' + separator.name + ' bottom border ' + separator.style + ' ' + separator.width + 'px ' + separator.color;
+          t.diagnostic(text);
+          if (separator.open || !(separator.style === 'none' ||
+            (separator.style === 'solid' && separator.width <= 1 && separator.color === separators.rule))) failures.push(text);
+        }
+        const idle = await f.page.evaluate(where => ac5.scan(where), where);
+        failures.push(...idle.found); scans += idle.checked;
+        // Tab from the current position until the focus returns to a visited element.
+        await f.page.evaluate(() => { ac5.visited.clear(); });
+        let focused = 0;
+        for (let press = 0; press < 400; press++) {
+          await f.page.keyboard.press('Tab');
+          const state = await f.page.evaluate(() => ac5.focus());
+          if (!state) continue;
+          if (state.repeat) break;
+          focused++; steps++;
+          const text = where + ', focus ' + state.name;
+          if (!state.indicator) failures.push(text + ': no solid outline or solid underline');
+          else t.diagnostic(text + ': ' + state.indicator);
+          const scan = await f.page.evaluate(where => ac5.scan(where), text);
+          failures.push(...scan.found); scans += scan.checked;
+        }
+        assert.ok(focused > 0, 'Tab reaches the board, ' + where);
+        assert.deepEqual(await f.page.evaluate(() => ac5.missing()), [], 'Tab visits every focusable board element, ' + where);
+        await f.page.evaluate(() => document.activeElement?.blur());
+      }
+    }
+    t.diagnostic(failures.length + ' dashed or invalid styles in ' + scans + ' element and pseudo-element states over ' + steps + ' focus steps');
+    assert.deepEqual(failures, [], 'no board element or pseudo-element shows a dashed line');
   } finally { await f.close(); }
 });
 });
