@@ -20,7 +20,7 @@ filter=${JOPPA_TEST_FILTER:-}
 case "$filter" in -*) echo 'lane-test: filter must be a test name' >&2; exit 2 ;; esac
 if [ "$(uname -s)" != Linux ] || { [ -n "$filter" ] && [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; }; then
   if [ -n "$filter" ]; then
-    exec env JOPPA_LANE_TEST_ENV="$env_file" bun run test:only "$filter"
+    exec env JOPPA_LANE_TEST_ENV="$env_file" bun run test:only "$filter" ${JOPPA_TEST_TARGET:+"$JOPPA_TEST_TARGET"}
   fi
   exec bun run test "$env_file"
 fi
@@ -89,7 +89,8 @@ status=0
 if [ -n "$filter" ]; then
   database focused
   export JOPPA_TEST_DATABASE_URL="$database_url"
-  setsid bun run test:rust --lib --tests "$filter" -- --include-ignored --test-threads=1 > "$scratch/focused.log" 2>&1 &
+  if [ -n "${JOPPA_TEST_TARGET:-}" ]; then targets=(--test "$JOPPA_TEST_TARGET"); else targets=(--lib --tests); fi
+  setsid bun run test:rust "${targets[@]}" "$filter" -- --include-ignored --test-threads=1 > "$scratch/focused.log" 2>&1 &
   pids+=("$!")
   wait "${pids[0]}" || status=$?
   cat "$scratch/focused.log"

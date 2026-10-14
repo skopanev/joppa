@@ -125,7 +125,14 @@ case ${1:-} in
         discover_tests
         ;;
     test-only)
-        [ "$#" -eq 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || { echo 'usage: bun run test:only FILTER' >&2; exit 2; }
+        # An optional test file builds only that target, not every test binary.
+        { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } && [ -n "$2" ] && [[ "$2" != -* ]] \
+            || { echo 'usage: bun run test:only FILTER [TEST_FILE]' >&2; exit 2; }
+        if [ "$#" -eq 3 ]; then
+            [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ] \
+                || { echo "build: no test file tests/$3.rs" >&2; exit 2; }
+            export JOPPA_TEST_TARGET="$3"
+        fi
         export JOPPA_TEST_FILTER="$2"
         exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
         ;;
