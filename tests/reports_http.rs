@@ -1132,11 +1132,17 @@ fn stamp(commit: &str, order: i64, dirty: bool) -> Value {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn every_report_records_its_commit_and_uploader() -> Result<()> {
-    // no-manual-pass-ac1: the agent token uploads; the stored report names the commit and the agent.
+    // no-manual-pass-ac1: bot's own token uploads; the stored report names the commit and bot.
     let w = world().await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(
+        code == 200 && created["token"].as_str().is_some_and(|t| !t.is_empty()),
+        "{code} {created}"
+    );
+    let bot = created["token"].as_str().unwrap();
     let (code, reply) = w
         .raw_upload(
-            Some(&w.token),
+            Some(bot),
             stamp("c1c1c1c", 1, false),
             junit(&[("opens", "pass")]),
         )
@@ -1144,9 +1150,23 @@ async fn every_report_records_its_commit_and_uploader() -> Result<()> {
     ensure!(
         code == 200
             && reply["commit"] == "c1c1c1c"
-            && reply["uploader"] == "agent"
+            && reply["uploader"] == "bot"
             && reply["report"].is_i64(),
         "{reply}"
+    );
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let row = pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT commit_sha, uploader FROM joppa.test_reports WHERE id=$1",
+            &[&reply["report"].as_i64().unwrap()],
+        )
+        .await?;
+    let (commit, uploader): (String, String) = (row.get(0), row.get(1));
+    ensure!(
+        commit == "c1c1c1c" && uploader == "bot",
+        "{commit} {uploader}"
     );
     Ok(())
 }
