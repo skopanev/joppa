@@ -1125,6 +1125,28 @@ async fn a_partial_run_updates_only_the_tests_it_ran() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_full_run_absence_beats_a_partial_pass_on_the_same_commit() -> Result<()> {
+    // no-mixed-subjects-ac2: opens is listed; the full run of C omits it, a partial run of C passes it.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    w.upload("c1c1c1c", 1, true, junit(&[("refuses", "pass")]))
+        .await?;
+    w.upload("c1c1c1c", 1, false, junit(&[("opens", "pass")]))
+        .await?;
+    let s = w.status().await?;
+    let x = s["tests"]
+        .as_array()
+        .and_then(|tests| tests.iter().find(|t| t["address"] == A));
+    ensure!(
+        x.is_some_and(|x| x["status"] == "missing" && x["commit"] == "c1c1c1c")
+            && s["status"] == "red",
+        "{s}"
+    );
+    Ok(())
+}
+
 fn stamp(commit: &str, order: i64, dirty: bool) -> Value {
     json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":dirty,"full":true})
 }
