@@ -1013,6 +1013,7 @@ test('compact-open-object-ac6: the row highlight starts 2 px right of the open-o
       row: {left: rowBox.left, right: rowBox.right, top: rowBox.top, bottom: rowBox.bottom}};
   });
   // Every pixel row of the captured region: the line pixels and the leftmost painted pixel outside the line.
+  // The row box paints the pixel rows between its rounded edges; a boundary row outside them may show the neighbour.
   const scan = (png, region, measured, highlight) => f.page.evaluate(async ([source, region, measured, highlight]) => {
     const image = new Image(); image.src = 'data:image/png;base64,' + source; await image.decode();
     const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
@@ -1025,14 +1026,25 @@ test('compact-open-object-ac6: the row highlight starts 2 px right of the open-o
     // Columns that the line touches, and the columns it covers fully. A touched column shows the line or the page.
     const first = Math.floor(measured.line.left) - region.x, end = Math.ceil(measured.line.right) - region.x;
     const fullFirst = Math.ceil(measured.line.left) - region.x, fullEnd = Math.floor(measured.line.right) - region.x;
+    const top = Math.round(measured.row.top) - region.y, bottom = Math.round(measured.row.bottom) - region.y;
     const result = {width: image.width, height: image.height, first, end, full: Math.max(0, fullEnd - fullFirst), rows: 0, painted: null,
+      inside: Math.max(0, Math.min(bottom, image.height) - Math.max(top, 0)), boundary: 0, boundaryHighlight: null,
       lineRight: null, highlightLeft: null, unmatched: 0, covered: [], recoloured: []};
     for (let y = 0; y < image.height; y++) {
+      const inside = y >= top && y < bottom;
       for (let x = first; x < end; x++) {
         const value = at(x, y);
         if (same(value, line)) result.lineRight = Math.max(result.lineRight ?? x + 1, x + 1);
         else if (same(value, paint)) result.covered.push({x: region.x + x, y: region.y + y, value});
-        else if ((x >= fullFirst && x < fullEnd) || !same(value, page)) result.recoloured.push({x: region.x + x, y: region.y + y, value});
+        else if (inside && ((x >= fullFirst && x < fullEnd) || !same(value, page))) result.recoloured.push({x: region.x + x, y: region.y + y, value});
+      }
+      // A boundary row may hold no highlight, but any highlight pixel in it must keep the gap too.
+      if (!inside) {
+        result.boundary++;
+        for (let x = 0; x < image.width; x++) if (same(at(x, y), paint)) {
+          result.boundaryHighlight = Math.min(result.boundaryHighlight ?? x, x); break;
+        }
+        continue;
       }
       let painted = null, matched = null;
       for (let x = 0; x < image.width && (painted === null || matched === null); x++) {
@@ -1050,6 +1062,7 @@ test('compact-open-object-ac6: the row highlight starts 2 px right of the open-o
     if (result.painted !== null) result.painted += region.x;
     if (result.lineRight !== null) result.lineRight += region.x;
     if (result.highlightLeft !== null) result.highlightLeft += region.x;
+    if (result.boundaryHighlight !== null) result.boundaryHighlight += region.x;
     result.covered = result.covered.slice(0, 5); result.recoloured = result.recoloured.slice(0, 5);
     return result;
   }, [png.toString('base64'), region, measured, highlight]);
@@ -1079,23 +1092,26 @@ test('compact-open-object-ac6: the row highlight starts 2 px right of the open-o
           const highlight = measured.colours[state === 'hovered' ? 'hover' : 'selected'];
           assert.notEqual(highlight, measured.colours.page, 'the highlight differs from the page, ' + where);
           assert.notEqual(highlight, measured.colours.line, 'the highlight differs from the line, ' + where);
-          // The region spans the whole row box, also its area left of the line, and whole pixel rows inside the row.
-          const region = {x: Math.max(0, Math.floor(Math.min(measured.row.left, measured.line.left))), y: Math.ceil(measured.row.top)};
+          // The region spans the whole row box, also its area left of the line, and every pixel row that the row box touches.
+          const region = {x: Math.max(0, Math.floor(Math.min(measured.row.left, measured.line.left))), y: Math.floor(measured.row.top)};
           region.width = Math.min(width, Math.ceil(measured.row.right)) - region.x;
-          region.height = Math.floor(measured.row.bottom) - region.y;
+          region.height = Math.ceil(measured.row.bottom) - region.y;
           const png = await f.page.screenshot({clip: region});
           const result = await scan(png, region, measured, highlight);
           measurements++;
           const gap = result.painted === null || result.lineRight === null ? NaN : result.painted - result.lineRight;
           const message = where + ': highlight ' + highlight + ' from x ' + result.painted + ', line ' + measured.colours.line + ' ' +
-            JSON.stringify(measured.line) + ' painted to x ' + result.lineRight + ', gap ' + gap + ' px, ' + result.rows + '/' + result.height + ' pixel rows measured';
+            JSON.stringify(measured.line) + ' painted to x ' + result.lineRight + ', gap ' + gap + ' px, ' + result.rows + '/' + result.inside +
+            ' pixel rows measured, ' + result.boundary + ' boundary rows with highlight from x ' + result.boundaryHighlight;
           t.diagnostic(message);
           if (result.width !== region.width || result.height !== region.height || result.height < 1)
             failures.push(where + ': the capture is ' + result.width + 'x' + result.height + ', not ' + region.width + 'x' + region.height);
           if (result.first < 0 || result.end > result.width || result.full < 1)
             failures.push(where + ': the capture ' + JSON.stringify(region) + ' does not hold the line ' + JSON.stringify(measured.line));
-          if (result.rows !== result.height) failures.push(message + ': ' + result.unmatched + ' pixel rows lack a measurable highlight edge');
+          if (result.inside < 1 || result.rows !== result.inside) failures.push(message + ': ' + result.unmatched + ' pixel rows lack a measurable highlight edge');
           if (!(gap >= 2)) failures.push(message + ': the highlight starts less than 2 px right of the line');
+          if (result.boundaryHighlight !== null && !(result.boundaryHighlight - result.lineRight >= 2))
+            failures.push(message + ': a boundary pixel row has the highlight less than 2 px right of the line');
           if (result.covered.length) failures.push(where + ': line pixels have the highlight colour ' + JSON.stringify(result.covered));
           if (result.recoloured.length) failures.push(where + ': line pixels lost the line colour ' + JSON.stringify(result.recoloured));
         }
