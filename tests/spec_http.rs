@@ -1758,6 +1758,41 @@ async fn the_children_api_returns_one_level_only() -> Result<()> {
         .filter_map(|i| i["kind"].as_str())
         .collect();
     ensure!(kinds == vec!["requirement"], "{kinds:?}");
+    let seed =
+        json!({"op":"capability","id":"wide","title":"Twenty requirements","domain":"security"});
+    let seed: Operation = serde_json::from_value(seed)?;
+    store::execute(&w.pool, &w.ws, "owner", "wide", &seed).await?;
+    let mut expected = std::collections::BTreeSet::new();
+    for i in 0..20 {
+        let req = format!("wide-{i:02}");
+        let op = json!({"op":"revise","req":req,"expected_revision":0,"capability":"wide","title":format!("Rule {i}"),"body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":format!("{req}-a"),"text":"First check"},{"id":format!("{req}-b"),"text":"Second check"}]});
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "owner", &req, &op).await?;
+        expected.insert(format!("requirement:{req}"));
+    }
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let reply = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{}/objects?limit=50&parent=capability:wide",
+            w.root, w.ws
+        ))
+        .bearer_auth(grant["token"].as_str().unwrap())
+        .send()
+        .await?;
+    ensure!(reply.status() == 200, "bot list: {}", reply.text().await?);
+    let list: Value = reply.json().await?;
+    let items = list["items"].as_array().unwrap();
+    let criteria = items.iter().filter(|i| i["kind"] == "ac").count();
+    let requirements = items.iter().filter(|i| i["kind"] == "requirement").count();
+    let addresses: std::collections::BTreeSet<String> = items
+        .iter()
+        .filter_map(|i| i["address"].as_str().map(str::to_string))
+        .collect();
+    ensure!(
+        items.len() == 20 && requirements == 20 && criteria == 0 && addresses == expected,
+        "{list}"
+    );
     Ok(())
 }
 
