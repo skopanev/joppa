@@ -155,10 +155,9 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
         }
         request.send()
     };
-    let list_before = get("/api/workspaces".into(), &alex_cookie)
-        .await?
-        .json::<Value>()
-        .await?;
+    let response = get("/api/workspaces".into(), &alex_cookie).await?;
+    assert!(response.status().is_success());
+    let list_before = response.json::<Value>().await?;
     assert_eq!(list_before, json!([{"id":base,"title":base}]));
     let unchanged = snapshot(&pool).await?;
 
@@ -201,13 +200,9 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
         json!({"error":"text must not be empty"})
     );
     assert_eq!(snapshot(&pool).await?, unchanged);
-    assert_eq!(
-        get("/api/workspaces".into(), &alex_cookie)
-            .await?
-            .json::<Value>()
-            .await?,
-        list_before
-    );
+    let response = get("/api/workspaces".into(), &alex_cookie).await?;
+    assert!(response.status().is_success());
+    assert_eq!(response.json::<Value>().await?, list_before);
 
     // Steps 3 and 5: one Workspace operation creates Billing; the reply names it.
     let response = create(json!({"title":"Billing"}), Some(&alex_cookie), Some(&root)).await?;
