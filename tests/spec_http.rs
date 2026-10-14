@@ -2004,9 +2004,7 @@ async fn an_account_without_an_invite_cannot_read_an_object_over_http() -> Resul
     .await?;
     for reply in [&member_only, &absent] {
         ensure!(
-            reply.0 == 404
-                && serde_json::from_str::<Value>(&reply.1)?
-                    == json!({"error":"Workspace not found"}),
+            reply.0 == 404 && reply.1 == r#"{"error":"Workspace not found"}"#,
             "{member_only:?} vs {absent:?}"
         );
         ensure!(
