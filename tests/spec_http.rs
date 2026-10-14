@@ -1631,16 +1631,46 @@ async fn the_children_api_returns_one_level_only() -> Result<()> {
     Ok(())
 }
 
+// [ac:id-survives-move-ac1]
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn rename_and_move_keep_the_address_and_the_item_id() -> Result<()> {
-    // id-survives-move-ac1
     let w = world().await?;
-    let before = w.get("address=requirement:key").await?;
+    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", Some("write")).await?;
+    let bot = grant["token"].as_str().unwrap();
+    let read = || async {
+        let reply = w
+            .http
+            .get(format!(
+                "{}/api/workspaces/{}/objects?address=requirement:key",
+                w.root, w.ws
+            ))
+            .bearer_auth(bot)
+            .send()
+            .await?;
+        ensure!(reply.status() == 200, "read: {}", reply.text().await?);
+        Ok::<Value, anyhow::Error>(reply.json().await?)
+    };
+    let before = read().await?;
+    ensure!(
+        before["item_id"].as_str().is_some_and(|id| !id.is_empty()),
+        "{before}"
+    );
+    ensure!(
+        before["document"]["parent"] != "capability:empty",
+        "{before}"
+    );
     let mut data = before["document"]["data"].clone();
     data["title"] = json!("Key rights, renamed");
-    w.command(json!({"op":"save_object","kind":"requirement","id":"key","revision":before["document"]["revision"],"parent":"capability:empty","data":data,"links":[],"reason":"Rename and move"})).await?;
-    let after = w.get("address=requirement:key").await?;
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+        .bearer_auth(bot)
+        .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"requirement","id":"key","revision":before["document"]["revision"],"parent":"capability:empty","data":data,"links":[],"reason":"Rename and move"}}))
+        .send()
+        .await?;
+    ensure!(reply.status() == 200, "write: {}", reply.text().await?);
+    let after = read().await?;
     ensure!(
         after["address"] == before["address"]
             && after["item_id"] == before["item_id"]
