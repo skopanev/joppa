@@ -176,7 +176,11 @@ async fn authorize(State(app): State<App>, Query(a): Query<Authorization>) -> OA
             (header::REFERRER_POLICY, "no-referrer"),
             (header::X_FRAME_OPTIONS, "DENY"),
         ],
-        Html(include_str!("oauth.html")),
+        Html(
+            include_str!("oauth.html")
+                .replace("/* BOARD_STYLE */", include_str!("board.css"))
+                .replace("/* BRAND_STYLE */", include_str!("brand.css")),
+        ),
     )
         .into_response())
 }
@@ -342,7 +346,7 @@ pub(super) async fn actor(app: &App, token: &str) -> Result<Option<String>> {
     Ok(app.pool.get().await?.query_opt("SELECT actor FROM joppa.oauth_tokens t WHERE hash=$1 AND kind='access' AND resource=$2 AND expires_at>clock_timestamp() AND NOT EXISTS(SELECT 1 FROM joppa.oauth_revoked r WHERE r.family=t.family)",&[&hash(token),&resource]).await?.map(|r|r.get(0)))
 }
 pub(super) fn challenge(app: &App) -> Response {
-    let mut r=(StatusCode::UNAUTHORIZED,Json(json!({"error":"unauthorized","error_description":"Sign in with your MCP client. Codex CLI: run `codex mcp login joppa` with the same Codex configuration, finish browser sign-in with Return to app, then reconnect MCP. Codex app: MCP server settings > Authenticate. Claude Code or agy: /mcp > joppa > Authenticate. Use the configured server name if renamed. Do not request API keys or implement OAuth with curl."}))).into_response();
+    let mut r=(StatusCode::UNAUTHORIZED,Json(json!({"error":"unauthorized","error_description":"Sign in with your MCP client. Codex CLI: run `codex mcp login joppa` with the same Codex configuration, finish browser sign-in with Allow access, then reconnect MCP. Codex app: MCP server settings > Authenticate. Claude Code or agy: /mcp > joppa > Authenticate. Use the configured server name if renamed. Do not request API keys or implement OAuth with curl."}))).into_response();
     if let Some(base) = &app.oauth_origin {
         r.headers_mut().insert(header::WWW_AUTHENTICATE,format!("Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource/mcp\", scope=\"joppa\", error_description=\"Sign in with your MCP client. Codex CLI: codex mcp login joppa\"").parse().unwrap());
     }

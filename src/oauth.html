@@ -1,26 +1,53 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>joppa</title><link rel="icon" href="/favicon.svg">
-<style>
-:root{font:14px/1.6 Verdana,sans-serif;color:#444;background:#fffcf5}*{box-sizing:border-box}body{margin:0 auto;max-width:720px;min-height:100dvh;display:flex;align-items:center;padding:20px}main{width:min(100%,440px)}.brand{display:flex;align-items:baseline;gap:.8em;font-size:2em;color:#222;letter-spacing:-.02em;line-height:1.2}.brand img{display:none}.tagline{display:block;margin-top:.3em;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#8a8478}h1{font-size:1.2em;line-height:1.35;font-weight:normal;color:#222;margin:2em 0 1em}p{color:#444}button{width:100%;border:1px solid #444;border-radius:0;background:none;color:#222;padding:.7em 1em;font:inherit;cursor:pointer}button:hover{background:#fff}button:disabled{opacity:.45;cursor:default;background:none}button:focus-visible{outline:1px dashed #222;outline-offset:3px}#account,#callback{font-size:.8em;overflow-wrap:anywhere}#status{font-size:.85em;min-height:1.6em}a{color:#0062ff;text-decoration:none}a:hover{text-decoration:underline}.client{padding:.2em 0 .2em 1em;border-left:1px dashed #d9d3c7;margin:1.4em 0;overflow-wrap:anywhere}.client strong{display:block;font-weight:normal;color:#222}textarea{width:100%;padding:.8em;border:1px solid #d9d3c7;border-radius:0;background:transparent;color:#222;font:.85em/1.6 ui-monospace,monospace;resize:none;overflow-wrap:anywhere;margin:0 0 1em}small{display:block;color:#8a8478;font-size:.8em}
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#fffcf5">
+<script>try{const t=localStorage.getItem('theme')??localStorage.getItem('joppa-theme');document.documentElement.dataset.theme=['light','dark'].includes(t)?t:'system';}catch{document.documentElement.dataset.theme='system';}</script>
+<title>Connect to Joppa</title><link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>/* BOARD_STYLE */
+/* BRAND_STYLE */
+/* Agent sign-in: the board sign-in screen with one client and one action. */
+body{max-width:none}
+#login-screen{min-height:100svh;justify-content:center;padding:20px 0}
+main.login-content{width:min(100%,420px)}
+.oauth-title{font-size:1.3em;font-weight:normal;color:var(--heading);margin:1.8em 0 .2em;line-height:1.35}.oauth-title>span{color:#4b7858}
+.client{display:flex;flex-direction:column;gap:.1em;width:100%;margin:1em 0 .4em;padding:.8em 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+.client strong{font-weight:normal;color:var(--heading)}
+#callback,#account{font-size:.8em;color:var(--muted);overflow-wrap:anywhere}
+#description{margin:.6em 0;color:var(--text)}#account{margin:0 0 1.2em}
+#connect{display:inline-flex;align-items:center;justify-content:center;gap:.7em;width:100%;padding:.7em 1em;border:1px solid var(--text);color:var(--heading)}
+#connect:hover:not(:disabled){background:var(--control-hover);text-decoration:none}
+#status{font-size:.8em;color:var(--muted);min-height:1.6em;margin:1em 0 0;white-space:normal}
+main.login-content>a{font-size:.85em;color:var(--muted);margin-top:1.4em}main.login-content>a:hover{color:var(--link)}
+textarea{width:100%;min-height:0;padding:.8em;border:1px solid var(--rule);border-radius:0;background:transparent;color:var(--heading);font:.85em/1.6 ui-monospace,monospace;resize:none;overflow-wrap:anywhere;margin:0 0 1em}
 </style>
-<main><div><div class="brand"><img src="/favicon.svg" alt="">joppa.</div><span class="tagline">AI first product specification</span></div><h1>Connect to Joppa.</h1><div class="client"><strong id="client">Your MCP client</strong><small id="callback"></small></div><p id="description">Your agent will be able to read and update your workspaces on your behalf.</p><p id="account"></p><button id="connect" disabled>Checking sign-in…</button><p id="status" role="status" aria-live="polite"></p><a href="/">Cancel</a></main>
+<body>
+<section id="login-screen" aria-labelledby="oauth-title">
+<main class="login-content">
+<div class="login-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+<span class="login-brand">joppa</span>
+<span class="tagline">AI first product specification</span>
+<h1 class="oauth-title" id="oauth-title">Connect to Joppa<span>.</span></h1>
+<div class="client"><strong id="client">Your MCP client</strong><small id="callback"></small></div>
+<p id="description">Your agent will be able to read and update your workspaces on your behalf.</p>
+<p id="account"></p>
+<button id="connect" disabled>Checking sign-in…</button>
+<p id="status" role="status" aria-live="polite"></p>
+<a href="/">Cancel</a>
+</main>
+</section>
 <script>
 const button=document.getElementById('connect'),status=document.getElementById('status'),params=Object.fromEntries(new URLSearchParams(location.search));let signedIn=false;
 async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error_description||data.error||'Please try again.');return data;}
 async function check(){try{const me=await api('/api/me');signedIn=true;document.getElementById('account').textContent='Signed in as '+(me.email||me.actor);button.textContent='Allow access';}catch{signedIn=false;button.textContent='Continue with Google';}button.disabled=false;}
 button.onclick=async()=>{button.disabled=true;status.textContent='';let popup;try{
  if(!signedIn){popup=window.open('about:blank','joppa-google','popup,width=520,height=700');if(!popup)throw Error('Allow the sign-in window, then try again.');popup.opener=null;const start=await api('/auth/login',{});popup.location=start.verification_url;status.textContent='Complete sign-in in the Google window.';const deadline=Date.now()+start.expires_in*1000;while(Date.now()<deadline){await new Promise(r=>setTimeout(r,1500));const result=await api('/auth/poll',{});if(result.status==='ready'){popup.close();await check();status.textContent='Approve access to return to your agent.';return;}}throw Error('Sign-in expired. Please try again.');}
- const result=await api('/oauth/approve',params);if(result.code||result.copy_link){showCompletion(result);return;}button.textContent='Connected';status.textContent='Returning to your agent…';location.assign(result.redirect);
+ const result=await api('/oauth/approve',params);if(result.code){showCompletion(result);return;}button.textContent='Connected';status.textContent=result.copy_link?'Returning to your agent. If the browser cannot open the page, copy its address into your agent.':'Returning to your agent…';location.assign(result.redirect);
 }catch(e){popup?.close();status.textContent=e.message;button.disabled=false;}};
 function showCompletion(result){
- const isLink=Boolean(result.copy_link),kind=isLink?'link':'code';
- document.querySelector('h1').textContent='Finish connecting.';document.getElementById('description').textContent=isLink?'Copy this sign-in link and paste it into your agent’s pending authorization prompt. Paste the entire link, including code and state.':'Copy this one-time code and paste it into the authorization code field in Antigravity.';
- const field=document.createElement('textarea');field.readOnly=true;field.rows=isLink?5:3;field.value=isLink?result.redirect:result.code;field.setAttribute('aria-label',isLink?'Sign-in link':'Authorization code');field.spellcheck=false;button.before(field);
- button.textContent=isLink?'Copy sign-in link':'Copy code';button.disabled=false;status.textContent='Valid for 5 minutes, for one use. Keep this page open until your agent connects.';
- let returnLink;
- if(isLink){const hint=document.createElement('p');returnLink=document.createElement('a');returnLink.href=result.redirect;returnLink.textContent='Return to app';hint.append(returnLink,document.createTextNode(' if your app completes sign-in automatically.'));status.after(hint);}
- button.onclick=async()=>{try{await navigator.clipboard.writeText(field.value);button.textContent='Copied';status.textContent=isLink?'Paste the entire link into your agent’s authorization prompt.':'Paste the code into Antigravity and press Enter.';}catch{field.focus();field.select();status.textContent=isLink?'Copy the selected link, then paste it into your agent’s authorization prompt.':'Copy the selected code, then paste it into Antigravity.';}};
+ document.querySelector('h1').firstChild.textContent='Finish connecting';document.getElementById('description').textContent='Copy this one-time code and paste it into the authorization code field in Antigravity.';
+ const field=document.createElement('textarea');field.readOnly=true;field.rows=3;field.value=result.code;field.setAttribute('aria-label','Authorization code');field.spellcheck=false;button.before(field);
+ button.textContent='Copy code';button.disabled=false;status.textContent='Valid for 5 minutes, for one use. Keep this page open until your agent connects.';
+ button.onclick=async()=>{try{await navigator.clipboard.writeText(field.value);button.textContent='Copied';status.textContent='Paste the code into Antigravity and press Enter.';}catch{field.focus();field.select();status.textContent='Copy the selected code, then paste it into Antigravity.';}};
  const link=document.querySelector('main > a');link.textContent='Back to your workspace';
- setTimeout(()=>{field.value='';button.disabled=true;button.textContent=isLink?'Link expired':'Code expired';returnLink?.removeAttribute('href');status.textContent='Choose Authenticate in your agent again to get a fresh '+kind+'.';},Math.min(result.expires_in||300,300)*1000);
+ setTimeout(()=>{field.value='';button.disabled=true;button.textContent='Code expired';status.textContent='Choose Authenticate in your agent again to get a fresh code.';},Math.min(result.expires_in||300,300)*1000);
 }
-(async()=>{try{const info=await api('/oauth/details'+location.search);document.getElementById('client').textContent=info.client_name;document.getElementById('callback').textContent=info.manual?'Finish by pasting a code into Antigravity':info.copy_link?'Finish with a sign-in link':'Return to '+new URL(info.redirect_uri).host;await check();}catch(e){button.textContent='Connection unavailable';status.textContent=e.message;}})();
+(async()=>{try{const info=await api('/oauth/details'+location.search);document.getElementById('client').textContent=info.client_name;document.getElementById('callback').textContent=info.manual?'Finish by pasting a code into Antigravity':'Return to '+new URL(info.redirect_uri).host;await check();}catch(e){button.textContent='Connection unavailable';status.textContent=e.message;}})();
 </script></html>

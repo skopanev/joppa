@@ -144,11 +144,12 @@ and refreshes its OAuth credentials.
 In agy: `/mcp` → joppa → Authenticate. After approval Joppa displays **Copy code**;
 paste it into agy. The external Antigravity callback page is not needed.
 
-For a localhost callback, Joppa displays **Copy sign-in link**. Paste the entire
-link into your client's pending authorization prompt, including `code` and
-`state`. Clients with a local callback listener can use **Return to app**.
-The link is single-use and expires after five minutes; start authentication
-again if it expires. Hosted HTTPS callbacks still return directly to the client.
+After approval, Joppa sends the browser to the client's callback, local
+(`127.0.0.1`, `localhost`) or hosted. A client with a local listener, such as
+Codex, gets the code at once. If the client runs in a container and the browser
+cannot open the local address, copy the whole address from the browser into the
+client's pending authorization prompt. The code is single-use and expires after
+five minutes.
 
 Claude Code, globally:
 
@@ -164,9 +165,8 @@ url = "https://YOUR_JOPPA_DOMAIN/mcp"
 ```
 
 Then run `codex mcp login joppa` in a terminal with the same Codex configuration.
-Complete browser sign-in and choose **Return to app**, then reconnect MCP.
-The browser must be able to reach Codex's local callback; containers need that
-callback exposed. In the Codex app, use MCP server settings → **Authenticate**.
+Complete browser sign-in and choose **Allow access**. The browser returns to
+Codex, which stores the credentials. Then reconnect MCP. In the Codex app, use MCP server settings → **Authenticate**.
 
 agy, globally:
 
