@@ -1437,7 +1437,7 @@ pub(crate) fn apply_inner(
                     }
                 }
             }
-            let acs = acs
+            let mut acs: Vec<Ac> = acs
                 .iter()
                 .cloned()
                 .map(|mut ac| {
@@ -1445,6 +1445,20 @@ pub(crate) fn apply_inner(
                     ac
                 })
                 .collect();
+            // readiness-resets-ac1: a new revision resets readiness. When it changes some
+            // criteria, the others keep theirs; reset_changed clears the changed branches.
+            let previous = r
+                .revisions
+                .last()
+                .map(|old| old.acs.as_slice())
+                .unwrap_or_default();
+            if previous.len() != acs.len()
+                || acs
+                    .iter()
+                    .any(|ac| !previous.iter().any(|old| same_criterion(old, ac)))
+            {
+                carry_assessments(previous, &mut acs);
+            }
             r.revisions.push(Revision {
                 number: expected_revision + 1,
                 capability: capability.clone(),
@@ -1856,6 +1870,25 @@ fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
         visit(&a.id, acs, &mut BTreeSet::new(), &mut done)?;
     }
     Ok(())
+}
+
+/// The revision kept the criterion record, apart from its assessment.
+fn same_criterion(old: &Ac, new: &Ac) -> bool {
+    old.id == new.id
+        && old.text == new.text
+        && old.description == new.description
+        && old.depends_on == new.depends_on
+        && old.owner == new.owner
+        && old.before_launch == new.before_launch
+}
+
+/// Each criterion that `previous` holds unchanged keeps its assessment.
+pub(crate) fn carry_assessments(previous: &[Ac], acs: &mut [Ac]) {
+    for ac in acs {
+        if let Some(old) = previous.iter().find(|old| same_criterion(old, ac)) {
+            ac.assessment = old.assessment.clone();
+        }
+    }
 }
 
 pub fn ready(r: &Revision, id: &str) -> bool {

@@ -1216,18 +1216,7 @@ fn keep_assessments(w: &mut Workspace, req: &str) {
     else {
         return;
     };
-    for ac in &mut current.acs {
-        if let Some(old) = previous.acs.iter().find(|old| {
-            old.id == ac.id
-                && old.text == ac.text
-                && old.description == ac.description
-                && old.depends_on == ac.depends_on
-                && old.owner == ac.owner
-                && old.before_launch == ac.before_launch
-        }) {
-            ac.assessment = old.assessment.clone();
-        }
-    }
+    commands::carry_assessments(&previous.acs, &mut current.acs);
 }
 fn revise(
     req: &str,

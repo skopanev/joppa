@@ -1049,3 +1049,47 @@ fn a_reset_never_moves_a_boundary_back_in_time() {
     assert_eq!(boundary(&w, "ac:ios"), "2026-01-01T13:00:00Z");
     assert_eq!(boundary(&w, "ac:key"), "2026-01-01T12:00:00Z");
 }
+
+// check-list-frozen-ac2
+#[test]
+fn a_native_revise_of_one_criterion_keeps_sibling_readiness_live_and_on_replay() {
+    let mut changed = revision(1);
+    changed["acs"][0]["text"] = json!("On iOS paid access survives every login");
+    let steps: Vec<(&str, Value)> = setup()
+        .into_iter()
+        .map(|command| ("owner", command))
+        .chain([
+            ("owner", json!({"op":"confirm","req":"r","revision":1})),
+            ("agent", assess("ios", true)),
+            ("agent", assess("key", true)),
+            ("owner", changed),
+        ])
+        .collect();
+    let mut live = World {
+        state: Default::default(),
+        position: 0,
+    };
+    for (actor, command) in &steps {
+        live.ok(actor, command.clone());
+    }
+    let mut replayed = joppa::model::Workspace::default();
+    for (position, (actor, command)) in steps.iter().enumerate() {
+        joppa::commands::apply_replay(
+            &mut replayed,
+            actor,
+            &serde_json::from_value(command.clone()).unwrap(),
+            position as u64 + 1,
+            "2026-01-01T00:00:00Z",
+        )
+        .unwrap();
+    }
+    for w in [&live.state, &replayed] {
+        let state = |ac: &str| objects::assessment(w, ac).unwrap()["state"].clone();
+        assert_eq!(state("ac:ios"), "unassessed");
+        assert_eq!(state("ac:key"), "ready", "a sibling keeps its readiness");
+        assert_eq!(
+            w.criterion_boundaries.keys().collect::<Vec<_>>(),
+            vec!["ac:ios"]
+        );
+    }
+}
