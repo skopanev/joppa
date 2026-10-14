@@ -1654,30 +1654,27 @@ async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn mcp_returns_each_test_with_status_and_commit() -> Result<()> {
-    // old-results-history-ac3: the agent calls the MCP tool joppa_tests.
+    // old-results-history-ac3: agent bot calls the MCP tool joppa_tests with its own token.
     let w = world().await?;
     upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
-    let root = w.base.split("/api/").next().unwrap();
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
     let workspace = w.base.rsplit('/').next().unwrap();
-    let reply: Value = w
-        .http
-        .post(format!("{root}/mcp"))
-        .bearer_auth(&w.token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"workspace":workspace,"ac":"ac:key-rights"}}}))
-        .send()
-        .await?
-        .json()
-        .await?;
-    let s: Value = serde_json::from_str(
-        reply["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap_or("null"),
-    )?;
+    let reply = mcp(
+        &w,
+        bot,
+        "joppa_tests",
+        json!({"workspace":workspace,"ac":"ac:key-rights"}),
+    )
+    .await?;
+    let s = read_result("joppa_tests", &reply)?;
     ensure!(
         s["tests"][0]["status"] == "pass"
             && s["tests"][0]["commit"] == "c1c1c1c"
             && s["tests"][1]["status"] == "fail"
-            && s["tests"][1]["commit"] == "c1c1c1c",
+            && s["tests"][1]["commit"] == "c1c1c1c"
+            && s["tests"][1]["message"] == "expected 403, got 200",
         "{reply}"
     );
     Ok(())
