@@ -42,6 +42,32 @@ if [ "$(uname -s)" != Linux ]; then
         --env "MEDULLA_RUN_ID=${MEDULLA_RUN_ID:-host_$(date +%s)_$$}" \
         --entrypoint bun "${JOPPA_BUILD_IMAGE:-medulla-crew-joppa:latest}" run "$name" "$@"
 fi
+if [ "${JOPPA_TEST_EXECUTION_ONLY:-0}" = 1 ]; then
+    case "${1:-}" in
+        browser) shift; exec node "$@" ;;
+        test)
+            if [ "$#" -eq 5 ] && [ "$2" = --test ] && [ "$3" = browser_server ] \
+                && [ "$4" = --no-run ] && [ "$5" = --message-format=json ]; then
+                # The browser asks for its helper path. Return the frozen build result.
+                exec bun -e 'const a = await Bun.file(process.env.JOPPA_TEST_ARTIFACTS).json();
+                    const matches = a.filter(x => x.target.name === "browser_server");
+                    if (matches.length !== 1) throw new Error("browser helper discovery is incomplete");
+                    console.log(JSON.stringify(matches[0]));'
+            fi
+            ;;
+    esac
+    echo 'build: compilation is forbidden during isolated test execution' >&2
+    exit 2
+fi
+if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
+    case ${1:-} in
+        gate|lane-tests)
+            export JOPPA_TEST_GATE=$([ "$1" = gate ] && echo 1 || echo 0)
+            unset JOPPA_TEST_FILTER
+            exec bash scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
+            ;;
+    esac
+fi
 if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
     [ -d "$lock_dir" ] || { echo 'build: shared lock directory is not mounted' >&2; exit 2; }
     echo 'build: waiting for the shared Rust lock' >&2
@@ -66,23 +92,42 @@ if [ "${1:-}" != browser ] && [ -n "${1:-}" ]; then
         printf '%s\n' "$lock_hash" > "$CARGO_TARGET_DIR/.joppa-lock-sha256"
     fi
 fi
+discover_tests() {
+    : "${JOPPA_TEST_ARTIFACTS:?test artifact destination is required}"
+    if ! cargo test --no-run --lib --tests --message-format=json > "$JOPPA_TEST_ARTIFACTS.raw"; then
+        cat "$JOPPA_TEST_ARTIFACTS.raw" >&2
+        return 1
+    fi
+    bun -e 'const raw = await Bun.file(process.env.JOPPA_TEST_ARTIFACTS + ".raw").text();
+        const artifacts = raw.trim().split("\n").map(x => JSON.parse(x))
+            .filter(x => x.reason === "compiler-artifact" && x.profile.test && x.executable);
+        if (!artifacts.length) throw new Error("Cargo discovered no test executables");
+        const paths = new Set();
+        for (const item of artifacts) {
+            if (paths.has(item.executable)) throw new Error("duplicate Cargo test executable");
+            if (!item.executable.startsWith(process.env.CARGO_TARGET_DIR + "/") ||
+                !item.target?.src_path || /[\r\n]/.test(item.executable + item.target.src_path))
+                throw new Error("invalid Cargo test executable");
+            paths.add(item.executable);
+        }
+        await Bun.write(process.env.JOPPA_TEST_ARTIFACTS, JSON.stringify(artifacts));'
+}
 case ${1:-} in
     gate)
         unset JOPPA_TEST_FILTER
         env_file=${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}
         cargo fmt --check
         cargo clippy --all-targets -- -D warnings
-        cargo build --all-targets
-        exec sh scripts/lane-test.sh "$env_file"
+        discover_tests
         ;;
     lane-tests)
         unset JOPPA_TEST_FILTER
-        exec sh scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
+        discover_tests
         ;;
     test-only)
         [ "$#" -eq 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || { echo 'usage: bun run test:only FILTER' >&2; exit 2; }
         export JOPPA_TEST_FILTER="$2"
-        exec sh scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
+        exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
         ;;
     lint)
         cargo fmt --check
