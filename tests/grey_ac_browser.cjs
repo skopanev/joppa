@@ -547,6 +547,39 @@ test('create-workspace-ac1: alex creates Billing on the settings page and owns i
   } finally { await f.close(); }
 });
 
+test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace in Settings', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Team space'}});
+    assert.equal(created.status(), 200);
+    const {id} = await created.json();
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const workspace = f.page.getByLabel('Owned workspace'), email = f.page.getByLabel('Google email');
+    const add = f.page.getByRole('button', {name: 'Add person'});
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    // Only owned workspaces are offered; the owner of the fixture workspace is not alex.
+    const offered = await workspace.locator('option').evaluateAll(options => options.map(option => option.value));
+    assert.ok(!offered.includes(f.live.ws));
+    await workspace.selectOption(id);
+    // A failed request shows the server error.
+    await email.fill('not-an-email');
+    await add.click();
+    await f.page.getByRole('alert').filter({hasText: 'email must be an email address'}).waitFor();
+    assert.equal(await add.isDisabled(), false);
+    await email.fill('maria@example.com');
+    const granted = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants') && response.request().method() === 'POST');
+    await add.click();
+    assert.equal((await granted).status(), 200);
+    const emails = f.page.locator('#grant-emails li');
+    await emails.filter({hasText: 'maria@example.com'}).waitFor();
+    assert.deepEqual(await emails.allInnerTexts(), ['maria@example.com']);
+    assert.equal(await workspace.inputValue(), id);
+    const listed = (await (await request.get(f.live.root + '/api/email-grants')).json()).items.filter(item => item.id === id);
+    assert.deepEqual(listed, [{id, title: 'Team space', emails: ['maria@example.com']}]);
+  } finally { await f.close(); }
+});
+
 test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', async () => {
   const configured = {...types, ac: {...types.ac, title: 'Proofs'}};
   const f = await fixture({'domain:d': {title: 'Domain'},

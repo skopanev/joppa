@@ -185,40 +185,56 @@ impl Login {
         }
         Ok(())
     }
-    fn admit(&self, identity: &Identity) -> Result<String> {
+    /// A rule, a user entry or an owner email grant admits a verified Google identity.
+    fn admit(&self, identity: &Identity, granted: bool) -> Result<String> {
         ensure!(
             identity.email_verified && !identity.sub.is_empty(),
             "Unverified Google identity"
         );
+        let derived = || format!("user-{:x}", Sha256::digest(identity.sub.as_bytes()));
         if let Some(path) = &self.rules {
             let rules = joppa::access::Rules::read(path)?;
             ensure!(
-                !rules
-                    .resolve(&identity.email, identity.hd.as_deref())
-                    .is_empty(),
+                granted
+                    || !rules
+                        .resolve(&identity.email, identity.hd.as_deref())
+                        .is_empty(),
                 "This account has no workspace access."
             );
             return Ok(self
                 .users
                 .get(&identity.email.to_ascii_lowercase())
                 .cloned()
-                .unwrap_or_else(|| format!("user-{:x}", Sha256::digest(identity.sub.as_bytes()))));
+                .unwrap_or_else(derived));
         }
-        self.users
-            .get(&identity.email.to_ascii_lowercase())
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("This account has no access to Joppa."))
+        match self.users.get(&identity.email.to_ascii_lowercase()) {
+            Some(actor) => Ok(actor.clone()),
+            None if granted => Ok(derived()),
+            None => anyhow::bail!("This account has no access to Joppa."),
+        }
     }
     async fn enroll(&self, pool: &deadpool_postgres::Pool, identity: &Identity) -> Result<String> {
-        let actor = self.admit(identity)?;
-        if let Some(path) = &self.rules {
-            let workspaces =
-                joppa::access::Rules::read(path)?.resolve(&identity.email, identity.hd.as_deref());
+        let email = identity.email.to_ascii_lowercase();
+        // Grants are read only for a verified email; admit refuses any other.
+        let granted = if identity.email_verified {
+            joppa::store::granted_workspaces(pool, &email).await?
+        } else {
+            Default::default()
+        };
+        let actor = self.admit(identity, !granted.is_empty())?;
+        let mut workspaces = match &self.rules {
+            Some(path) => {
+                joppa::access::Rules::read(path)?.resolve(&identity.email, identity.hd.as_deref())
+            }
+            None => Default::default(),
+        };
+        workspaces.extend(granted);
+        if self.rules.is_some() || !workspaces.is_empty() {
             joppa::store::enroll(
                 pool,
                 &actor,
                 &identity.sub,
-                &identity.email.to_ascii_lowercase(),
+                &email,
                 identity.hd.as_deref(),
                 &workspaces,
             )
@@ -285,9 +301,9 @@ pub fn check_origin(headers: &HeaderMap) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    fn login() -> Login {
+impl Login {
+    /// One invited user and no rules file.
+    pub(crate) fn for_tests() -> Self {
         Login {
             users: BTreeMap::from([("owner@example.test".into(), "owner".into())]),
             rules: None,
@@ -301,6 +317,24 @@ mod tests {
             ),
             pending: Default::default(),
         }
+    }
+    /// The callback step after Google verified the identity.
+    pub(crate) async fn verified_for_tests(
+        &self,
+        pool: &deadpool_postgres::Pool,
+        id: &str,
+        identity: &Identity,
+    ) {
+        let outcome = self.enroll(pool, identity).await.map_err(|e| e.to_string());
+        self.pending.lock().unwrap().get_mut(id).unwrap().result = Some(outcome);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn login() -> Login {
+        Login::for_tests()
     }
     #[tokio::test]
     async fn state_is_browser_bound_and_single_use() {
@@ -358,33 +392,34 @@ mod tests {
             .unwrap()
         };
         let a = l
-            .admit(&identity(
-                "google-alpha",
-                "same@alpha.example",
-                Some("alpha.example"),
-            ))
+            .admit(
+                &identity("google-alpha", "same@alpha.example", Some("alpha.example")),
+                false,
+            )
             .unwrap();
         let b = l
-            .admit(&identity(
-                "google-beta",
-                "same@beta.example",
-                Some("beta.example"),
-            ))
+            .admit(
+                &identity("google-beta", "same@beta.example", Some("beta.example")),
+                false,
+            )
             .unwrap();
         assert_ne!(a, b);
         assert_eq!(
             a,
-            l.admit(&identity(
-                "google-alpha",
-                "same@alpha.example",
-                Some("alpha.example")
-            ))
+            l.admit(
+                &identity("google-alpha", "same@alpha.example", Some("alpha.example")),
+                false
+            )
             .unwrap()
         );
         assert!(
-            l.admit(&identity("personal", "same@alpha.example", None))
+            l.admit(&identity("personal", "same@alpha.example", None), false)
                 .is_err()
         );
+        // A grant admits an email that the rules file does not name.
+        let maria = identity("google-maria", "maria@example.com", None);
+        assert!(l.admit(&maria, false).is_err());
+        assert!(l.admit(&maria, true).unwrap().starts_with("user-"));
         std::fs::remove_file(path).unwrap();
     }
     #[test]
@@ -397,10 +432,27 @@ mod tests {
             .unwrap()
         };
         assert_eq!(
-            l.admit(&identity("OWNER@example.test", true)).unwrap(),
+            l.admit(&identity("OWNER@example.test", true), false)
+                .unwrap(),
             "owner"
         );
-        assert!(l.admit(&identity("outsider@example.test", true)).is_err());
-        assert!(l.admit(&identity("owner@example.test", false)).is_err());
+        assert!(
+            l.admit(&identity("outsider@example.test", true), false)
+                .is_err()
+        );
+        assert!(
+            l.admit(&identity("owner@example.test", false), false)
+                .is_err()
+        );
+        // An owner email grant admits a verified email that no user entry names.
+        assert!(
+            l.admit(&identity("outsider@example.test", true), true)
+                .unwrap()
+                .starts_with("user-")
+        );
+        assert!(
+            l.admit(&identity("outsider@example.test", false), true)
+                .is_err()
+        );
     }
 }

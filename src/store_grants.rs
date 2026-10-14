@@ -63,7 +63,7 @@ pub async fn token_actor(pool: &Pool, token: &str) -> Result<Option<TokenGrant>>
     }))
 }
 
-async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
+pub(super) async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     let (state, _) = state_rows::current(&**conn, &workspace).await?;

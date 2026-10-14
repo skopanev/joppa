@@ -12,6 +12,7 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
+const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1";
 const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
 
 /// Resolve types for the authors of the records that this read returns.
@@ -68,12 +69,20 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
         };
         (email, None)
     };
-    let path = std::env::var_os("JOPPA_ACCESS_RULES_FILE").ok_or(AccessDenied)?;
-    let rules =
-        crate::access::Rules::read(std::path::Path::new(&path)).map_err(|_| AccessDenied)?;
     let mut allowed = BTreeSet::new();
-    for name in rules.resolve(&email, hosted_domain.as_deref()) {
-        allowed.insert(resolve_workspace(client, &name).await?);
+    if let Some(path) = std::env::var_os("JOPPA_ACCESS_RULES_FILE") {
+        let rules =
+            crate::access::Rules::read(std::path::Path::new(&path)).map_err(|_| AccessDenied)?;
+        for name in rules.resolve(&email, hosted_domain.as_deref()) {
+            allowed.insert(resolve_workspace(client, &name).await?);
+        }
+    }
+    // Owner email grants add workspaces, also without a rules file.
+    for row in client
+        .query(GRANTED, &[&email.to_ascii_lowercase()])
+        .await?
+    {
+        allowed.insert(row.get(0));
     }
     // The owner keeps a workspace that the rules do not name. Membership is still checked.
     for row in client.query(OWNED, &[&actor]).await? {
@@ -204,4 +213,57 @@ pub async fn update_identity_name(
     )
     .await?;
     Ok(())
+}
+
+/// The workspaces that owners granted to this email.
+pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<String>> {
+    let conn = pool.get().await?;
+    Ok(conn
+        .query(GRANTED, &[&email.to_ascii_lowercase()])
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect())
+}
+
+/// The owner grants a workspace to an email. A refused request stores nothing.
+pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str) -> Result<Value> {
+    let email = email.trim().to_ascii_lowercase();
+    if email.len() > 254
+        || !email.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && !domain.is_empty() && !domain.contains('@')
+        })
+        || email.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err(commands::ClientField("email must be an email address").into());
+    }
+    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let conn = pool.get().await?;
+    conn.execute(
+        "INSERT INTO joppa.email_grants(workspace,email,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        &[&workspace, &email, &actor],
+    )
+    .await?;
+    Ok(json!({"workspace": workspace, "email": email}))
+}
+
+/// The workspaces that this actor owns, each with its granted emails.
+pub async fn list_email_grants(pool: &Pool, actor: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let items: Vec<Value> = conn
+        .query(
+            "SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
+                    COALESCE(array_agg(g.email ORDER BY g.email) FILTER (WHERE g.email IS NOT NULL), '{}')
+             FROM joppa.state_entries s
+             LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
+             LEFT JOIN joppa.email_grants g ON g.workspace=s.workspace
+             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
+             GROUP BY 1,2 ORDER BY 2,1",
+            &[&actor],
+        )
+        .await?
+        .iter()
+        .map(|r| json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1), "emails": r.get::<_, Vec<String>>(2)}))
+        .collect();
+    Ok(json!({"items": items}))
 }
