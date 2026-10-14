@@ -58,6 +58,30 @@ fn configured() -> World {
     for ac in ["criterion:a", "criterion:b"] {
         w.ok("planner", json!({"op":"assess","req":"spec:one","revision":revision,"ac":ac,"assessment":{"ready":true,"reason":"Known scope"}}));
     }
+    save(
+        &mut w,
+        "planner",
+        "spec:two",
+        None,
+        json!({"title":"Two rule","body":"Implement the second rule","owner":"owner"}),
+    );
+    save(
+        &mut w,
+        "planner",
+        "criterion:c",
+        Some("spec:two"),
+        json!({"title":"criterion:c","owner":"owner"}),
+    );
+    let revision = w.state.requirements["spec:two"]
+        .revisions
+        .last()
+        .unwrap()
+        .number;
+    w.ok(
+        "owner",
+        json!({"op":"confirm","req":"spec:two","revision":revision}),
+    );
+    w.ok("planner", json!({"op":"assess","req":"spec:two","revision":revision,"ac":"criterion:c","assessment":{"ready":true,"reason":"Known scope"}}));
     w
 }
 fn save(w: &mut World, actor: &str, key: &str, parent: Option<&str>, data: Value) {
@@ -123,16 +147,49 @@ fn claim_guards_are_atomic_and_existing_work_does_not_block() {
         json!({"op":"claim_planning","ac":"criterion:a","revision":revision}),
         "criterion is already claimed for planning",
     );
-    let revision = w.state.objects["criterion:b"].current().revision;
+    let revision = w.state.objects["criterion:c"].current().revision;
     refuse(
         &mut w,
         "planner",
-        json!({"op":"claim_planning","ac":"criterion:b","revision":revision}),
+        json!({"op":"claim_planning","ac":"criterion:c","revision":revision}),
         "agent already holds a planning claim in this workspace",
     );
-    assert!(objects::process(&w.state, "criterion:b")["planning_claim"].is_null());
+    assert!(objects::process(&w.state, "criterion:c")["planning_claim"].is_null());
     let mut other_workspace = configured();
-    claim(&mut other_workspace, "planner", "criterion:b");
+    claim(&mut other_workspace, "planner", "criterion:c");
+}
+
+// planning-claim-ac8
+#[test]
+fn one_planner_claims_and_finishes_every_criterion_of_one_req() {
+    let mut w = configured();
+    claim(&mut w, "planner", "criterion:a");
+    claim(&mut w, "planner", "criterion:b");
+    for ac in ["criterion:a", "criterion:b"] {
+        assert_eq!(
+            objects::process(&w.state, ac)["planning_claim"]["actor"],
+            "planner"
+        );
+    }
+    for (id, ac) in [("work:a", "criterion:a"), ("work:b", "criterion:b")] {
+        save(
+            &mut w,
+            "planner",
+            id,
+            Some(ac),
+            json!({"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+        );
+    }
+    for ac in ["criterion:a", "criterion:b"] {
+        w.ok(
+            "planner",
+            json!({"op":"finish_planning","ac":ac,"reason":"Plan complete"}),
+        );
+        assert!(objects::process(&w.state, ac)["planning_claim"].is_null());
+    }
+    for id in ["work:a", "work:b"] {
+        assert!(tasks::claimable(&w.state, "worker", id, &w.state.task_process[id]).is_ok());
+    }
 }
 
 // planning-claim-ac2, planning-claim-ac3

@@ -623,20 +623,22 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
     let p = planning(&w).await?;
     p.ready().await?;
     p.t0().await?;
+    p.prerequisite("Given: a ready criterion of another REQ.\nWhen: it is planned.\nThen: it has a plan.\nEvidence: a Task.")
+        .await?;
     p.claim("agent", "criterion:a").await?;
     ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
-    let revision = p.revision("criterion:b").await?;
+    let revision = p.revision("criterion:c").await?;
     p.refuse(
-        "P holds A and claims B",
-        "criterion:b",
+        "P holds A and claims C of another REQ",
+        "criterion:c",
         revision,
         "agent already holds a planning claim in this workspace",
     )
     .await?;
-    let b = p.saved_object("criterion:b").await?;
+    let c = p.saved_object("criterion:c").await?;
     ensure!(
-        b.is_object() && b["process"]["planning_claim"].is_null(),
-        "B must stay unclaimed: {b}"
+        c.is_object() && c["process"]["planning_claim"].is_null(),
+        "C must stay unclaimed: {c}"
     );
 
     let p = planning(&w).await?;

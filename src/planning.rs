@@ -36,8 +36,11 @@ pub(crate) fn validate_claim(
         !w.planning_claims.contains_key(&key),
         "criterion is already claimed for planning"
     );
+    // A planner may hold claims on several criteria of one REQ, so it plans the whole REQ.
+    let req = crate::tasks::requirement(w, &key);
     ensure!(
-        !w.planning_claims.values().any(|c| c.actor == actor),
+        !w.planning_claims.iter().any(|(held, c)| c.actor == actor
+            && (req.is_none() || crate::tasks::requirement(w, held) != req)),
         "agent already holds a planning claim in this workspace"
     );
     ensure!(
