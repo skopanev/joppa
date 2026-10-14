@@ -215,6 +215,7 @@ pub fn apply(
             for k in &blocked {
                 validate_blocked(w, k, w.task_process[k].blocked.as_ref().unwrap().position)?;
             }
+            // A holder's test-list save after the claim also counts: the plan binds existing tests.
             ensure!(
                 children.iter().any(|k| {
                     new_task(&w.task_process[k], &claim)
@@ -222,6 +223,10 @@ pub fn apply(
                             .revisions
                             .iter()
                             .any(|r| r.actor == actor && r.position > claim.position)
+                }) || w.ac_tests.get(&key).is_some_and(|t| {
+                    t.revisions
+                        .iter()
+                        .any(|r| r.actor == actor && r.position > claim.position)
                 }),
                 "planning produced no Task changes"
             );
