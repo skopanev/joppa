@@ -5,6 +5,7 @@
     "build": "bash scripts/build.sh build",
     "lint": "bash scripts/build.sh lint",
     "test": "bash scripts/build.sh lane-tests",
+    "test:only": "bash scripts/build.sh test-only",
     "report": "bash scripts/build.sh report",
     "test:rust": "bash scripts/build.sh test",
     "test:browser": "bash scripts/build.sh browser",

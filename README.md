@@ -334,14 +334,21 @@ guess owners or confirm actual business rules.
 
 ## Verify
 
+Use the public Bun commands. They hold the shared Rust lock.
+The gate uses a fresh test database and runs all Rust and reported browser tests.
+
 ```sh
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-docker exec joppa-db createdb -U postgres joppa_test_local
-JOPPA_TEST_DATABASE_URL=postgresql://postgres:joppa@127.0.0.1:55433/joppa_test_local \
-  cargo test --test postgres --test references --test authoring -- --ignored
+bun run gate /absolute/source/.local/lane-test.env
+bun run test:only test_name_substring
 ```
+
+`test:only` runs matching Rust tests on a fresh database. It fails when no tests match.
+It does not run the browser suite. `test:browser` remains the public browser runner.
+Set `JOPPA_LANE_TEST_ENV` to the private environment file when the default path does not apply.
+The file sets `JOPPA_TEST_ADMIN_URL` for the disposable test server. Keep it outside Git.
+Each invocation drops only its own test database when it exits.
+The build wrapper clears only its private `target` directory when the `Cargo.lock` fingerprint changes.
+It logs shared lock waiting in seconds. Browser-only commands do not clear compiled artifacts.
 
 Integration tests require an isolated database whose name starts with
 `joppa_test`. They exercise concurrent changes/results/acceptance, workspace

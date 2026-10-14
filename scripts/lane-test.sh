@@ -8,7 +8,12 @@
 # database. No credential is printed.
 set -eu
 env_file=${1:?usage: scripts/lane-test.sh ENV_FILE}
+filter=${2:-}
+case "$filter" in -*) echo 'lane-test: filter must be a test name' >&2; exit 2 ;; esac
 if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
+  if [ -n "$filter" ]; then
+    exec env JOPPA_LANE_TEST_ENV="$env_file" bun run test:only "$filter"
+  fi
   exec bun run test "$env_file"
 fi
 [ -r "$env_file" ] || { echo "lane-test: the env file is not readable" >&2; exit 2; }
@@ -25,7 +30,7 @@ case ${JOPPA_TEST_ADMIN_URL%%\?*} in
   *) echo "lane-test: JOPPA_TEST_ADMIN_URL needs a database path" >&2; exit 2 ;;
 esac
 lane=$(printf '%s' "${MEDULLA_RUN_ID:?MEDULLA_RUN_ID is required so lanes never share a database}" | tr -c 'a-zA-Z0-9_' '_' | cut -c1-40)
-name="joppa_test_${lane}"
+name="joppa_test_${lane}_$$"
 PGOPTIONS="-c client_min_messages=warning" psql "$JOPPA_TEST_ADMIN_URL" -v ON_ERROR_STOP=1 -q \
   -c "DROP DATABASE IF EXISTS \"$name\" WITH (FORCE)" \
   -c "CREATE DATABASE \"$name\"" >/dev/null
@@ -41,6 +46,17 @@ trap drop EXIT
 trap 'drop; exit 130' INT
 trap 'drop; exit 143' TERM
 status=0
+if [ -n "$filter" ]; then
+  log=$(mktemp)
+  trap 'rm -f "$log"; drop' EXIT
+  bun run test:rust --lib --tests "$filter" -- --include-ignored --test-threads=1 > "$log" 2>&1 || status=$?
+  cat "$log"
+  if [ "$status" -eq 0 ] && ! grep -Eq '^test .+ \.\.\. (ok|FAILED)' "$log"; then
+    echo "lane-test: no Rust tests match the supplied filter" >&2
+    status=2
+  fi
+  exit "$status"
+fi
 bun run test:rust --lib --tests -- --include-ignored --test-threads=1 || status=$?
 # The browser suite that the full run reports. The image sets PLAYWRIGHT_MODULE and NODE_PATH.
 bun run test:browser --test tests/grey_ac_browser.cjs || status=$?

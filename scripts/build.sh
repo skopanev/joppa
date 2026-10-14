@@ -24,6 +24,7 @@ if [ "$(uname -s)" != Linux ]; then
     fi
     case ${1:-} in
         lane-tests) name=test; shift ;;
+        test-only) name=test:only; shift ;;
         test) name=test:rust; shift ;;
         browser) name=test:browser; shift ;;
         build|lint|report|gate) name=$1; shift ;;
@@ -44,7 +45,26 @@ fi
 if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
     [ -d "$lock_dir" ] || { echo 'build: shared lock directory is not mounted' >&2; exit 2; }
     echo 'build: waiting for the shared Rust lock' >&2
-    exec flock --exclusive --close "$lock_dir/cargo.lock" env JOPPA_BUILD_LOCKED=1 bash "$root/scripts/build.sh" "$@"
+    exec flock --exclusive --close "$lock_dir/cargo.lock" env JOPPA_BUILD_LOCKED=1 \
+        JOPPA_BUILD_WAIT_STARTED="$(date +%s)" bash "$root/scripts/build.sh" "$@"
+fi
+if [[ ${JOPPA_BUILD_WAIT_STARTED:-} =~ ^[0-9]+$ ]]; then
+    echo "build: shared Rust lock acquired; wait $(($(date +%s) - JOPPA_BUILD_WAIT_STARTED))s" >&2
+    unset JOPPA_BUILD_WAIT_STARTED
+fi
+if [ "${1:-}" != browser ] && [ -n "${1:-}" ]; then
+    [ ! -L "$root/target" ] || { echo 'build: private target must not be a symlink' >&2; exit 2; }
+    export CARGO_TARGET_DIR="$root/target"
+    lock_hash=$(sha256sum Cargo.lock | cut -d ' ' -f 1)
+    previous=$(cat "$CARGO_TARGET_DIR/.joppa-lock-sha256" 2>/dev/null || true)
+    if [ "$previous" != "$lock_hash" ]; then
+        if [ -d "$CARGO_TARGET_DIR" ]; then
+            echo 'build: Cargo.lock fingerprint changed; clear private build artifacts' >&2
+            cargo clean --target-dir "$CARGO_TARGET_DIR"
+        fi
+        mkdir -p "$CARGO_TARGET_DIR"
+        printf '%s\n' "$lock_hash" > "$CARGO_TARGET_DIR/.joppa-lock-sha256"
+    fi
 fi
 case ${1:-} in
     gate)
@@ -56,6 +76,10 @@ case ${1:-} in
         ;;
     lane-tests)
         exec sh scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
+        ;;
+    test-only)
+        [ "$#" -eq 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || { echo 'usage: bun run test:only FILTER' >&2; exit 2; }
+        exec sh scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}" "$2"
         ;;
     lint)
         cargo fmt --check
