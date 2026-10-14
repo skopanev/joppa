@@ -1454,6 +1454,14 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
 async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
     // missing-is-not-pass-ac3: X passes on C1; the later full report for C2 has X as todo.
     let w = world().await?;
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"confirm","req":"key","revision":1}}),
+    )
+    .await?;
+    ensure!(code == 200, "{code} {reply}");
     w.list(&[A]).await?;
     let s = w.status().await?;
     ensure!(
