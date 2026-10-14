@@ -3044,6 +3044,41 @@ async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_agent_bot_finds_an_object_first_by_its_address() -> Result<()> {
+    // lookup-by-id-ac2
+    let w = world().await?;
+    w.note("first", 0, "Passkey plan", "passkey for first", json!([]))
+        .await?;
+    w.note(
+        "second",
+        0,
+        "Passkey rollout",
+        "passkey for second",
+        json!([]),
+    )
+    .await?;
+    let query = "note:second";
+    let found = mcp_value(&w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
+    let first = &found["items"][0];
+    ensure!(
+        first["kind"] == "note" && first["id"] == "second" && first["exact_id"] == true,
+        "{query}: {found}"
+    );
+    for (name, arguments) in [
+        ("joppa_search", json!({"workspace":w.ws,"query":query})),
+        ("joppa_objects", json!({"workspace":w.ws,"address":query})),
+    ] {
+        let denied = mcp_call(&w, &w.eve, name, arguments).await?;
+        ensure!(
+            denied["isError"] == true && !denied.to_string().contains("Passkey rollout"),
+            "{name} {query}: {denied}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
     // signal-records-source-ac1
     let w = world().await?;
