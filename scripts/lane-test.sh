@@ -8,7 +8,7 @@
 # database. No credential is printed.
 set -eu
 env_file=${1:?usage: scripts/lane-test.sh ENV_FILE}
-filter=${2:-}
+filter=${JOPPA_TEST_FILTER:-}
 case "$filter" in -*) echo 'lane-test: filter must be a test name' >&2; exit 2 ;; esac
 if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
   if [ -n "$filter" ]; then

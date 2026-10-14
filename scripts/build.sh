@@ -68,6 +68,7 @@ if [ "${1:-}" != browser ] && [ -n "${1:-}" ]; then
 fi
 case ${1:-} in
     gate)
+        unset JOPPA_TEST_FILTER
         env_file=${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}
         cargo fmt --check
         cargo clippy --all-targets -- -D warnings
@@ -75,11 +76,13 @@ case ${1:-} in
         exec sh scripts/lane-test.sh "$env_file"
         ;;
     lane-tests)
+        unset JOPPA_TEST_FILTER
         exec sh scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
         ;;
     test-only)
         [ "$#" -eq 2 ] && [ -n "$2" ] && [[ "$2" != -* ]] || { echo 'usage: bun run test:only FILTER' >&2; exit 2; }
-        exec sh scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}" "$2"
+        export JOPPA_TEST_FILTER="$2"
+        exec sh scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
         ;;
     lint)
         cargo fmt --check
