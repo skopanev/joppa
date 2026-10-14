@@ -1046,27 +1046,55 @@ async fn a_test_absent_from_a_full_run_is_missing() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn every_case_of_a_shared_address_must_pass() -> Result<()> {
-    // missing-is-not-pass-ac2: real bun 1.4.2 output of test.each with one name, one case fails.
+    // missing-is-not-pass-ac2: bun 1.4.2 output of test.each with one name and three cases.
+    // A green baseline where all three pass, then a later report where exactly one fails.
     let w = world().await?;
     let same = "tests/auth/login.test.ts > login > passkey > same name";
     w.list(&[same]).await?;
-    let bun = r#"<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="bun test" tests="2" assertions="2" failures="1" skipped="0" time="0.04">
-  <testsuite name="tests/auth/login.test.ts" file="tests/auth/login.test.ts" tests="2">
-    <testsuite name="login" file="tests/auth/login.test.ts" line="2" tests="2">
-      <testsuite name="passkey" file="tests/auth/login.test.ts" line="3" tests="2">
-        <testcase name="same name" classname="passkey &gt; login" time="0.000075" file="tests/auth/login.test.ts" line="5" assertions="1" />
-        <testcase name="same name" classname="passkey &gt; login" time="0.000794" file="tests/auth/login.test.ts" line="5" assertions="1">
+    let s = w.status().await?;
+    ensure!(
+        s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
+        "{s}"
+    );
+    let bun = |failing: bool| {
+        let pass = r#"<testcase name="same name" classname="passkey &gt; login" time="0.000075" file="tests/auth/login.test.ts" line="5" assertions="1" />"#;
+        let last = if failing {
+            r#"<testcase name="same name" classname="passkey &gt; login" time="0.000794" file="tests/auth/login.test.ts" line="5" assertions="1">
           <failure type="AssertionError" message="Expected: 3&#10;Received: 2&#10;">AssertionError</failure>
-        </testcase>
+        </testcase>"#
+        } else {
+            pass
+        };
+        let failures = u8::from(failing);
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="3" assertions="3" failures="{failures}" skipped="0" time="0.04">
+  <testsuite name="tests/auth/login.test.ts" file="tests/auth/login.test.ts" tests="3">
+    <testsuite name="login" file="tests/auth/login.test.ts" line="2" tests="3">
+      <testsuite name="passkey" file="tests/auth/login.test.ts" line="3" tests="3">
+        {pass}
+        {pass}
+        {last}
       </testsuite>
     </testsuite>
   </testsuite>
-</testsuites>"#;
-    w.upload("c1c1c1c", 1, true, bun.into()).await?;
+</testsuites>"#
+        )
+    };
+    w.upload("c1c1c1c", 1, true, bun(false)).await?;
     let s = w.status().await?;
     ensure!(
-        s["status"] == "red" && s["tests"][0]["status"] == "fail",
+        s["tests"][0]["address"] == same
+            && s["tests"][0]["status"] == "pass"
+            && s["status"] == "green",
+        "{s}"
+    );
+    w.upload("c2c2c2c", 2, true, bun(true)).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == same
+            && s["tests"][0]["status"] == "fail"
+            && s["status"] == "red",
         "{s}"
     );
     Ok(())
