@@ -1968,6 +1968,58 @@ async fn another_workspace_answers_exactly_like_an_absent_one() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_account_without_an_invite_cannot_read_an_object_over_http() -> Result<()> {
+    // [ac:invited-people-only-ac1] eve reads an object and gets the absent-workspace reply.
+    let w = world().await?;
+    let id = uuid::Uuid::new_v4().simple();
+    let title = format!("Private title {id}");
+    let body = format!("Private body {id}");
+    w.note("eve-target", 0, &title, &body, json!([])).await?;
+    let read = |ws: String, token: String| {
+        let w = &w;
+        async move {
+            let reply = w
+                .http
+                .get(format!(
+                    "{}/api/workspaces/{ws}/objects?address=note:eve-target",
+                    w.root
+                ))
+                .bearer_auth(token)
+                .send()
+                .await?;
+            Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
+        }
+    };
+    let owner = read(w.ws.clone(), w.owner.clone()).await?;
+    let saved: Value = serde_json::from_str(&owner.1)?;
+    ensure!(
+        owner.0 == 200 && saved["document"]["data"]["title"] == title.as_str(),
+        "{owner:?}"
+    );
+    let member_only = read(w.ws.clone(), w.eve.clone()).await?;
+    let absent = read(
+        format!("absent-{}", uuid::Uuid::new_v4().simple()),
+        w.eve.clone(),
+    )
+    .await?;
+    for reply in [&member_only, &absent] {
+        ensure!(
+            reply.0 == 404
+                && serde_json::from_str::<Value>(&reply.1)?
+                    == json!({"error":"Workspace not found"}),
+            "{member_only:?} vs {absent:?}"
+        );
+        ensure!(
+            !reply.1.contains(&title) && !reply.1.contains(&body),
+            "{member_only:?} vs {absent:?}"
+        );
+    }
+    ensure!(member_only == absent, "{member_only:?} vs {absent:?}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Result<()> {
     // agent-needs-grant-ac1
     let w = world().await?;
