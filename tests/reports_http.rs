@@ -1241,6 +1241,71 @@ async fn an_upload_with_an_invalid_token_is_refused() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
+    // no-manual-pass-ac4: bot saves A with a verification or a passing list; X stays not_run.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    let x_status = |s: &Value| {
+        s["tests"]
+            .as_array()
+            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
+            .map(|x| x["status"].clone())
+    };
+    let s = w.status().await?;
+    ensure!(x_status(&s) == Some(json!("not_run")), "{s}");
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(
+        code == 200 && created["token"].as_str().is_some_and(|t| !t.is_empty()),
+        "{code} {created}"
+    );
+    let bot = created["token"].as_str().unwrap().to_owned();
+    let save = |data: Value, criterion: Value| {
+        let command = json!({"op":"save_object","kind":"ac","id":"key-rights","revision":criterion["current_revision"],"parent":criterion["document"]["parent"],"data":data,"links":criterion["document"]["links"],"reason":"Save the criterion"});
+        post(
+            &w,
+            &bot,
+            "/commands",
+            json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
+        )
+    };
+    // Control: a valid data change saves.
+    let criterion = planning_criterion(&w).await?;
+    let mut data = criterion["document"]["data"].clone();
+    data["description"] =
+        json!("Given: a key.\nWhen: bot reads.\nThen: bot can read.\nEvidence: the test report.");
+    let (code, reply) = save(data, criterion).await?;
+    ensure!(code == 200, "control save: {code} {reply}");
+    let before = w.status().await?;
+    // Fixture 1: data.verification="passed" is refused.
+    let criterion = planning_criterion(&w).await?;
+    let mut data = criterion["document"]["data"].clone();
+    data["verification"] = json!("passed");
+    let (code, reply) = save(data, criterion).await?;
+    ensure!(
+        code != 200 && reply["error"] == "verification comes from test reports",
+        "fixture 1: {code} {reply}"
+    );
+    let after = w.status().await?;
+    ensure!(
+        after == before && x_status(&after) == Some(json!("not_run")),
+        "fixture 1: {before} {after}"
+    );
+    // Fixture 2: an extra field that lists X as passing may save or be refused.
+    let before = w.status().await?;
+    let criterion = planning_criterion(&w).await?;
+    let mut data = criterion["document"]["data"].clone();
+    data["test_results"] = json!([{"address": A, "status": "pass"}]);
+    let (code, reply) = save(data, criterion).await?;
+    let after = w.status().await?;
+    ensure!(
+        after == before && x_status(&after) == Some(json!("not_run")),
+        "fixture 2 ({code} {reply}): {before} {after}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_dirty_run_is_stored_but_does_not_count() -> Result<()> {
     // result-has-output-ac2: opens failed on C; a dirty run at C says it passes.
     let w = world().await?;
