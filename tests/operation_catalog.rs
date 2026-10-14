@@ -1,7 +1,10 @@
 //! The public operation catalog matches the accepted commands and their required fields.
 use joppa::{commands, store};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeSet;
+
+#[path = "common/operation_samples.rs"]
+mod operation_samples;
 
 /// Command variants that public writes refuse: internal events, retired inputs and CLI-only creation.
 const NOT_PUBLIC: &[&str] = &[
@@ -77,27 +80,10 @@ fn every_catalog_entry_names_known_callers() {
     assert_eq!(block.callers, ["holder", "workspace owner"]);
 }
 
-fn sample(op: &str, field: &str) -> Value {
-    match field {
-        "revision" | "expected_revision" | "size" => json!(0),
-        "types" | "subject" | "data" => json!({}),
-        "tests" | "expected" | "ids" | "subject_keys" | "projects" | "acs" | "checks" => json!([]),
-        "archived" | "discovery_complete" => json!(false),
-        "assessment" => json!({"ready":true,"reason":"The contract is clear"}),
-        "evidence" if op == "result" => {
-            json!({"check":"c1","outcome":"pass","observed":["Seen"],"note":"Checked"})
-        }
-        _ => json!("value"),
-    }
-}
-
 #[test]
 fn help_required_fields_match_field_validation() {
     for o in commands::OPERATIONS {
-        let mut command = json!({"op":o.name});
-        for field in o.required {
-            command[*field] = sample(o.name, field);
-        }
+        let command = operation_samples::call(o.name, o.required);
         if let Err(error) = store::check_fields(&command) {
             panic!("{}: help-required fields fail validation: {error}", o.name);
         }

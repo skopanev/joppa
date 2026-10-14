@@ -496,7 +496,7 @@ pub const OPERATIONS: &[Operation] = &[
         &["target", "revision", "outcome", "reason"],
         MEMBER,
     ),
-    op("accept_commit", &["target", "revision"], MEMBER),
+    op("accept_commit", &["target", "revision", "commit"], MEMBER),
     op("redact_object", &["target", "fragment", "reason"], OWNER),
     op(
         "set_note_status",
@@ -578,7 +578,9 @@ pub const OPERATIONS: &[Operation] = &[
     op("assess", &["req", "revision", "ac", "assessment"], MEMBER),
     op(
         "task",
-        &["req", "revision", "title", "acs", "projects", "purpose"],
+        &[
+            "req", "revision", "title", "acs", "projects", "purpose", "contract",
+        ],
         MEMBER,
     ),
     op("claim_planning", &["ac", "revision"], MEMBER),

@@ -394,15 +394,29 @@ fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
     Ok(())
 }
 
-/// Field validation of one public command: generated fields, then the command shape.
+/// Field validation of one command after generated fields, before state checks.
+/// Historical events keep their serde defaults; current writes must send these fields.
 /// claim_next_task has only optional filters; the write path checks them under the lock.
+fn fields(value: &Value) -> Result<()> {
+    for (op, field, refusal) in [
+        ("accept_commit", "commit", "acceptance needs a commit"),
+        ("task", "contract", "Task needs a technical contract"),
+    ] {
+        if value["op"] == op && value.get(field).is_none_or(Value::is_null) {
+            anyhow::bail!("missing field `{field}`: {refusal}");
+        }
+    }
+    if value["op"] != "claim_next_task" {
+        serde_json::from_value::<Command>(value.clone())?;
+    }
+    Ok(())
+}
+
+/// The field validation of the write path for one public command.
 pub fn check_fields(command: &Value) -> Result<()> {
     let mut value = command.clone();
     generate(&mut value)?;
-    if value["op"] != "claim_next_task" {
-        serde_json::from_value::<Command>(value)?;
-    }
-    Ok(())
+    fields(&value)
 }
 
 async fn write(
@@ -501,6 +515,7 @@ async fn write(
             }
             let mut value = resolve(&operation.command, &refs)?;
             generate(&mut value)?;
+            fields(&value)?;
             if value["op"] == "claim_next_task" {
                 state.claim_time_ms = Some(tx.query_one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint", &[]).await?.get(0));
             }
