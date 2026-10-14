@@ -130,4 +130,4 @@ mod junit;
 pub use junit::{TestResult, parse_junit};
 #[path = "ac_tests_status.rs"]
 mod status;
-pub use status::{CriterionStatus, Report, TestStatus, criterion_status};
+pub use status::{Boundary, CriterionStatus, Report, TestStatus, criterion_status};

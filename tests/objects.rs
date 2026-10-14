@@ -197,6 +197,8 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
         ac.clone(),
         vec![link("note:n", Some(1), false)],
     );
+    // check-list-frozen-ac2: the link change resets readiness, so assess it again.
+    w.ok("agent", assess("ios", true));
     save(
         &mut w,
         "note:n",
@@ -237,6 +239,11 @@ fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
         domain,
         vec![link("ac:ios", Some(1), false)],
     );
+    // check-list-frozen-ac2: the domain link change resets readiness below it.
+    assert!(!objects::work_ready(&w.state, "ac:key"));
+    for ac in ["ios", "key"] {
+        w.ok("agent", assess(ac, true));
+    }
     assert!(
         objects::work_ready(&w.state, "ac:key"),
         "unrelated metadata keeps evidence"

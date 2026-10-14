@@ -1,6 +1,8 @@
 //! JUnit report upload and the test status of one criterion.
 use super::*;
-use crate::ac_tests::{AcTests, Report, TestResult, criterion_status, parse_junit, text_hash};
+use crate::ac_tests::{
+    AcTests, Boundary, Report, TestResult, criterion_status, parse_junit, text_hash,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -187,7 +189,7 @@ pub(super) async fn criterion_test_statuses(
     targets: &[String],
     optional: &std::collections::BTreeSet<String>,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
-    let rows = client.query("SELECT o.address,o.title,o.description,a.value::text FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
+    let rows = client.query("SELECT o.address,o.title,o.description,a.value::text,b.value#>>'{}' FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address LEFT JOIN joppa.state_entries b ON b.workspace=o.workspace AND b.section='criterion_boundaries' AND b.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
     let mut criteria = vec![];
     for row in rows {
         let saved: Option<AcTests> = match row
@@ -201,7 +203,8 @@ pub(super) async fn criterion_test_statuses(
         };
         let data =
             json!({"title":row.get::<_,String>(1),"description":row.get::<_,Option<String>>(2)});
-        criteria.push((row.get::<_, String>(0), data, saved));
+        let boundary = Boundary::read(row.get::<_, Option<&str>>(4));
+        criteria.push((row.get::<_, String>(0), data, saved, boundary));
     }
     statuses_for_criteria(client, workspace, criteria).await
 }
@@ -214,10 +217,16 @@ pub(super) async fn planning_criterion_status(
     target: &str,
 ) -> Result<Value> {
     let data = state.objects[target].current().data.clone();
+    let boundary = Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
     statuses_for_criteria(
         client,
         workspace,
-        vec![(target.to_owned(), data, state.ac_tests.get(target).cloned())],
+        vec![(
+            target.to_owned(),
+            data,
+            state.ac_tests.get(target).cloned(),
+            boundary,
+        )],
     )
     .await?
     .remove(target)
@@ -227,29 +236,30 @@ pub(super) async fn planning_criterion_status(
 async fn statuses_for_criteria(
     client: &impl GenericClient,
     workspace: &str,
-    criteria: Vec<(String, Value, Option<AcTests>)>,
+    criteria: Vec<(String, Value, Option<AcTests>, Boundary)>,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     if criteria.is_empty() {
         return Ok(Default::default());
     }
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
-        .filter_map(|(_, _, saved)| saved.as_ref().and_then(AcTests::current))
+        .filter_map(|(_, _, saved, _)| saved.as_ref().and_then(AcTests::current))
         .flat_map(|current| current.tests.iter().cloned())
         .collect();
     let reports: Vec<Report> = client
-        .query("SELECT id,commit_sha,commit_order,full_run,(extract(epoch FROM received_at)*1000)::bigint FROM joppa.test_reports WHERE workspace=$1 AND default_branch AND NOT dirty", &[&workspace])
-        .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_ms:r.get(4) }).collect();
+        .query("SELECT id,commit_sha,commit_order,full_run,(extract(epoch FROM received_at)*1000000)::bigint FROM joppa.test_reports WHERE workspace=$1 AND default_branch AND NOT dirty", &[&workspace])
+        .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),full:r.get(3),received_us:r.get(4) }).collect();
     let tests: Vec<String> = tests.into_iter().collect();
     let results: Vec<(i64,TestResult)> = client
         .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
         .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4) })).collect();
     let mut statuses = std::collections::BTreeMap::new();
-    for (address, data, saved) in criteria {
+    for (address, data, saved, boundary) in criteria {
         let current = saved.as_ref().and_then(AcTests::current);
         let tests = current.map(|r| r.tests.as_slice()).unwrap_or_default();
         let draft = current.is_some_and(|r| r.text_hash != text_hash(&data));
-        let mut status = serde_json::to_value(criterion_status(tests, draft, &reports, &results))?;
+        let mut status =
+            serde_json::to_value(criterion_status(tests, draft, boundary, &reports, &results))?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

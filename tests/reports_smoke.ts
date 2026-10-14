@@ -113,7 +113,10 @@ try {
   check(s.status === "grey" && s.reason === "tests_draft" && s.tests_draft, s);
   await ok({ op: "set_ac_tests", target: "ac:key-rights", tests: [A, B], reason: "Still proves it" }, agent);
   s = await status();
-  check(s.status === "green" && s.tests_revision === 2, s);
+  // Reports before the text change no longer count; a new full run makes it green.
+  check(s.status === "grey" && s.tests_revision === 2, s);
+  await upload("b8b8b8b", 7, [["opens", "pass"], ["refuses", "pass"]]);
+  check((await status()).status === "green", "a full run after the change");
 
   const [bad, body] = await call("/commands", { request_id: crypto.randomUUID(), command: { op: "set_ac_tests", target: "ac:key-rights", tests: ["login ok"], reason: "Bad" } }, agent);
   check(bad === 409 && JSON.stringify(body).includes("file > name at least"), body);

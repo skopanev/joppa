@@ -568,6 +568,9 @@ impl std::fmt::Display for RequiredField {
 }
 impl std::error::Error for RequiredField {}
 
+/// The document fields that hold the title and the text of an object.
+const TEXT_FIELDS: [&str; 4] = ["title", "body", "description", "contract"];
+
 /// Validate current writes without applying new gates to journal replay.
 pub fn validate_authoring_questions(w: &Workspace, command: &Command, position: u64) -> Result<()> {
     if matches!(command, Command::SaveObject { .. }) {
@@ -584,7 +587,7 @@ pub fn validate_authoring_questions(w: &Workspace, command: &Command, position: 
         }
         let previous = o.revisions.iter().rev().find(|r| r.position < position);
         // Inbox decisions skip this gate only when the title and description stay unchanged.
-        let changed = ["title", "body", "description", "contract"]
+        let changed = TEXT_FIELDS
             .iter()
             .any(|field| previous.and_then(|r| r.data.get(field)) != o.current().data.get(field));
         if changed {
@@ -1850,6 +1853,74 @@ fn saved(
         }
     }
     Ok(Some(candidate))
+}
+
+/// Reset the criteria below each object whose revision at `position` changed its title,
+/// text, links or parent. Task and inbox revisions reset nothing.
+pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
+    let types = schema(w).types;
+    let changed: Vec<String> = w
+        .objects
+        .iter()
+        .filter(|(_, o)| {
+            o.current().position == position
+                && types.get(&o.kind).is_some_and(|t| t.role != "task")
+                && !input_type(w, &o.kind)
+        })
+        .filter(|(_, o)| {
+            let current = o.current();
+            o.revisions
+                .iter()
+                .rev()
+                .find(|r| r.position < position)
+                .is_some_and(|before| {
+                    before.parent != current.parent
+                        || before.links != current.links
+                        || TEXT_FIELDS
+                            .iter()
+                            .any(|field| before.data.get(field) != current.data.get(field))
+                })
+        })
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in changed {
+        reset_criteria(w, &key, at)?;
+    }
+    Ok(())
+}
+
+/// Reset each present criterion at and below `root` after a change recorded at `at`.
+/// Reports received at or before `at` stop counting for it, and its readiness
+/// assessment is cleared. A later boundary replaces an earlier one.
+pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
+    let root = resolve_address(w, root).to_owned();
+    let types = schema(w).types;
+    let criteria: Vec<String> = w
+        .objects
+        .iter()
+        .filter(|(key, o)| {
+            o.current().present
+                && types.get(&o.kind).is_some_and(|t| t.role == "ac")
+                && within(w, key, &root)
+        })
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in criteria {
+        if let Some((req, r, ac)) = criterion_context(w, &key) {
+            let (req, number, id) = (req.to_owned(), r.number, ac.id.clone());
+            let r = commands::revision(w, &req, number, true)?;
+            let ac = r
+                .acs
+                .iter_mut()
+                .find(|a| a.id == id)
+                .context("unknown AC")?;
+            if ac.assessment.take().is_some() {
+                r.acceptance = None;
+            }
+        }
+        w.criterion_boundaries.insert(key, at.into());
+    }
+    Ok(())
 }
 
 /// A Task pin stays current across process events, which keep its authored origin revision.

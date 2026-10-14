@@ -1,7 +1,7 @@
 mod common;
 
 use common::World;
-use joppa::ac_tests::{Report, TestResult, criterion_status, parse_junit};
+use joppa::ac_tests::{Boundary, Report, TestResult, criterion_status, parse_junit};
 use serde_json::json;
 
 // Real output of `bun test` 1.4 with `[test.reporter] junit` in bunfig.toml.
@@ -51,13 +51,13 @@ fn bun_junit_becomes_file_describe_name_addresses() {
     assert!(parse_junit("<testsuite><testcase").is_err());
 }
 
-fn report(id: i64, commit: &str, order: i64, full: bool, received_ms: i64) -> Report {
+fn report(id: i64, commit: &str, order: i64, full: bool, received_us: i64) -> Report {
     Report {
         id,
         commit: commit.into(),
         order,
         full,
-        received_ms,
+        received_us,
     }
 }
 fn result(id: i64, address: &str, status: &str) -> (i64, TestResult) {
@@ -84,7 +84,7 @@ fn each_test_counts_with_its_latest_result() {
         result(1, "y", "pass"),
         result(2, "x", "pass"),
     ];
-    let s = criterion_status(&tests(&["x", "y"]), false, &reports, &rows);
+    let s = criterion_status(&tests(&["x", "y"]), false, Boundary::None, &reports, &rows);
     assert_eq!(s.status, "green");
     assert_eq!(s.commit.as_deref(), Some("c1"));
     assert_eq!(s.commits_behind, Some(1));
@@ -92,7 +92,7 @@ fn each_test_counts_with_its_latest_result() {
     let late_old = [report(1, "c2", 2, false, 10), report(2, "c1", 1, false, 20)];
     let rows = [result(1, "x", "fail"), result(2, "x", "pass")];
     assert_eq!(
-        criterion_status(&tests(&["x"]), false, &late_old, &rows).status,
+        criterion_status(&tests(&["x"]), false, Boundary::None, &late_old, &rows).status,
         "red"
     );
 }
@@ -100,18 +100,31 @@ fn each_test_counts_with_its_latest_result() {
 #[test]
 fn full_run_absence_is_missing_and_red_wins_on_one_commit() {
     let reports = [report(1, "c1", 1, false, 10), report(2, "c2", 2, true, 20)];
-    let s = criterion_status(&tests(&["y"]), false, &reports, &[result(1, "y", "pass")]);
+    let s = criterion_status(
+        &tests(&["y"]),
+        false,
+        Boundary::None,
+        &reports,
+        &[result(1, "y", "pass")],
+    );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("red", "missing")
     );
     let same = [report(1, "c", 1, true, 10), report(2, "c", 1, false, 20)];
-    let s = criterion_status(&tests(&["x"]), false, &same, &[result(2, "x", "pass")]);
+    let s = criterion_status(
+        &tests(&["x"]),
+        false,
+        Boundary::None,
+        &same,
+        &[result(2, "x", "pass")],
+    );
     assert_eq!(s.tests[0].status, "missing");
     let cases = [report(1, "c", 1, false, 10)];
     let s = criterion_status(
         &tests(&["x"]),
         false,
+        Boundary::None,
         &cases,
         &[result(1, "x", "pass"), result(1, "x", "fail")],
     );
@@ -125,19 +138,25 @@ fn full_run_absence_is_missing_and_red_wins_on_one_commit() {
 fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
     let reports = [report(1, "c", 1, false, 10)];
     assert_eq!(
-        criterion_status(&[], false, &reports, &[])
+        criterion_status(&[], false, Boundary::None, &reports, &[])
             .reason
             .as_deref(),
         Some("no tests")
     );
-    let s = criterion_status(&tests(&["x"]), false, &reports, &[]);
+    let s = criterion_status(&tests(&["x"]), false, Boundary::None, &reports, &[]);
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "not_run")
     );
     let full = [report(1, "c", 1, true, 10)];
     for skipped in ["skipped", "todo"] {
-        let s = criterion_status(&tests(&["x"]), false, &full, &[result(1, "x", skipped)]);
+        let s = criterion_status(
+            &tests(&["x"]),
+            false,
+            Boundary::None,
+            &full,
+            &[result(1, "x", skipped)],
+        );
         assert_eq!(s.status, "grey");
     }
     // `bun test -t other` marks x skipped in a partial run: x keeps its earlier pass.
@@ -145,6 +164,7 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
     let s = criterion_status(
         &tests(&["x"]),
         false,
+        Boundary::None,
         &filtered,
         &[result(1, "x", "pass"), result(2, "x", "skipped")],
     );
@@ -152,7 +172,13 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
         (s.status.as_str(), s.commit.as_deref()),
         ("green", Some("c1"))
     );
-    let s = criterion_status(&tests(&["x"]), true, &reports, &[result(1, "x", "pass")]);
+    let s = criterion_status(
+        &tests(&["x"]),
+        true,
+        Boundary::None,
+        &reports,
+        &[result(1, "x", "pass")],
+    );
     assert_eq!(
         (s.status.as_str(), s.reason.as_deref()),
         ("grey", Some("tests_draft"))
@@ -259,6 +285,7 @@ fn bun_each_cases_share_or_split_addresses_and_paths_stay_relative() {
     let s = criterion_status(
         &tests(&["tests/auth/login.test.ts > login > passkey > same name"]),
         false,
+        Boundary::None,
         &reports,
         &rows,
     );
@@ -278,10 +305,17 @@ fn clock_time_alone_never_changes_status() {
     // time-not-stale-ac3: the same reports, read seven days apart, give the same status.
     const DAY_MS: i64 = 24 * 60 * 60 * 1000;
     let rows = [result(1, "x", "pass")];
-    let now = criterion_status(&tests(&["x"]), false, &[report(1, "c", 1, true, 10)], &rows);
+    let now = criterion_status(
+        &tests(&["x"]),
+        false,
+        Boundary::None,
+        &[report(1, "c", 1, true, 10)],
+        &rows,
+    );
     let later = criterion_status(
         &tests(&["x"]),
         false,
+        Boundary::None,
         &[report(1, "c", 1, true, 10 + 7 * DAY_MS)],
         &rows,
     );
@@ -322,5 +356,61 @@ fn a_task_has_no_test_list_of_its_own() {
         e.to_string()
             .contains("tests are listed on criteria, not on tasks"),
         "{e}"
+    );
+}
+
+#[test]
+fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combine() {
+    // check-list-frozen-ac2: the criterion was reset at 100.
+    let at = Boundary::After(100);
+    let both = tests(&["x", "y"]);
+    let pass = |id| [result(id, "x", "pass"), result(id, "y", "pass")];
+    let old = [report(1, "c1", 1, true, 99), report(2, "c1", 1, true, 100)];
+    let rows: Vec<_> = pass(1).into_iter().chain(pass(2)).collect();
+    let s = criterion_status(&both, false, Boundary::None, &old, &rows);
+    assert_eq!(s.status, "green", "without a boundary every report counts");
+    let s = criterion_status(&both, false, at, &old, &rows);
+    assert_eq!(
+        (s.status.as_str(), s.tests[0].status.as_str()),
+        ("grey", "not_run")
+    );
+    // Two partial runs after the boundary pass every test together: still grey.
+    let partial = [
+        report(3, "c2", 2, false, 101),
+        report(4, "c3", 3, false, 102),
+    ];
+    let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
+    assert_eq!(
+        criterion_status(&both, false, Boundary::None, &partial, &rows).status,
+        "green"
+    );
+    let s = criterion_status(&both, false, at, &partial, &rows);
+    assert_eq!(s.status, "grey");
+    // One clean full run after the boundary that passes every test is green.
+    let full = [report(5, "c4", 4, true, 101)];
+    assert_eq!(
+        criterion_status(&both, false, at, &full, &pass(5)).status,
+        "green"
+    );
+    // An eligible failure stays red, and a draft stays a draft.
+    let failed = [result(5, "x", "fail"), result(5, "y", "pass")];
+    assert_eq!(
+        criterion_status(&both, false, at, &full, &failed).status,
+        "red"
+    );
+    assert_eq!(
+        criterion_status(&both, true, at, &full, &pass(5))
+            .reason
+            .as_deref(),
+        Some("tests_draft")
+    );
+    // A boundary that cannot be read gives grey, whatever the reports say.
+    assert_eq!(Boundary::read(Some("not a time")), Boundary::Unreadable);
+    let s = criterion_status(&both, false, Boundary::Unreadable, &full, &pass(5));
+    assert_eq!(s.status, "grey");
+    assert_eq!(Boundary::read(None), Boundary::None);
+    assert_eq!(
+        Boundary::read(Some("2026-10-14 18:20:01.000123+00")),
+        Boundary::After(1_792_002_001_000_123)
     );
 }

@@ -1362,9 +1362,284 @@ async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> 
     );
     w.list(&[A, B]).await?;
     let s = w.status().await?;
+    // check-list-frozen-ac2: the report before the text change no longer counts.
     ensure!(
-        s["status"] == "green" && s["tests_draft"] == false && s["tests_revision"] == 2,
+        s["status"] == "grey" && s["tests_draft"] == false && s["tests_revision"] == 2,
         "{s}"
+    );
+    w.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "a new full run after the change is green"
+    );
+    Ok(())
+}
+
+/// G holds R with criterion A and child group G2 with criterion A2. Sibling group H
+/// holds criterion D. Each criterion lists A and B, one clean full run passes both,
+/// and each criterion is assessed ready.
+async fn branches(w: &World) -> Result<Planning<'_>> {
+    let p = Planning {
+        w,
+        pool: store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?,
+        ws: format!("http-branches-{}", uuid::Uuid::new_v4().simple()),
+    };
+    store::execute_input(
+        &p.pool,
+        &p.ws,
+        "owner",
+        "workspace",
+        &json!({"op":"workspace","title":"Branch reset"}),
+    )
+    .await?;
+    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
+        .await?;
+    let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
+    p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure nested groups","types":{
+        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+    }})).await?;
+    for (key, parent) in [
+        ("area:g", None),
+        ("area:g2", Some("area:g")),
+        ("area:h", None),
+    ] {
+        p.save(
+            key,
+            parent,
+            json!({"title":key,"body":"Group scope","owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+    }
+    for (spec, area, criterion) in BRANCH_CRITERIA {
+        p.save(
+            spec,
+            Some(area),
+            json!({"title":spec,"body":"Implement the rule","owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+        p.save(
+            criterion,
+            Some(spec),
+            json!({"title":criterion,"owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+        p.write(
+            "agent",
+            json!({"op":"set_ac_tests","target":criterion,"tests":[A,B],"reason":"Bind the tests"}),
+        )
+        .await?;
+    }
+    p.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    for (spec, _, criterion) in BRANCH_CRITERIA {
+        p.confirm(
+            spec,
+            &[(criterion, json!({"ready":true,"reason":"Known scope"}))],
+        )
+        .await?;
+    }
+    Ok(p)
+}
+
+const BRANCH_CRITERIA: [(&str, &str, &str); 3] = [
+    ("spec:r", "area:g", "criterion:a"),
+    ("spec:r2", "area:g2", "criterion:a2"),
+    ("spec:rh", "area:h", "criterion:d"),
+];
+
+impl Planning<'_> {
+    async fn upload(&self, commit: &str, order: i64, full: bool, junit: String) -> Result<()> {
+        let root = self.w.base.split("/api/").next().unwrap();
+        let stamp = json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":full});
+        self.w
+            .http
+            .post(format!("{root}/api/workspaces/{}/reports", self.ws))
+            .bearer_auth(&self.w.token)
+            .json(&json!({"stamp": stamp, "junit": junit}))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+    /// GET one path of this workspace over HTTP.
+    async fn get(&self, path: String) -> Result<Value> {
+        let root = self.w.base.split("/api/").next().unwrap();
+        Ok(self
+            .w
+            .http
+            .get(format!("{root}/api/workspaces/{}{path}", self.ws))
+            .bearer_auth(&self.w.token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+    /// The owner saves `key` over HTTP with its current parent and no links.
+    async fn owner_save(&self, key: &str, parent: Option<&str>, data: Value) -> Result<()> {
+        let (kind, id) = key.split_once(':').unwrap();
+        let root = self.w.base.split("/api/").next().unwrap();
+        let command = json!({"op":"save_object","kind":kind,"id":id,"revision":self.revision(key).await?,"parent":parent,"data":data,"links":[],"reason":"Change the group"});
+        self.w
+            .http
+            .post(format!("{root}/api/workspaces/{}/commands", self.ws))
+            .bearer_auth(&self.w.owner)
+            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+    /// The parsed text of one MCP tool result.
+    async fn mcp_read(&self, tool: &str, arguments: Value) -> Result<Value> {
+        let reply = self.mcp(tool, arguments).await?;
+        Ok(serde_json::from_str(
+            reply["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?)
+    }
+    async fn boundaries(&self) -> Result<Vec<(String, String)>> {
+        Ok(self.pool.get().await?.query("SELECT key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section='criterion_boundaries' ORDER BY key", &[&self.ws]).await?
+            .iter().map(|r| (r.get(0), r.get(1))).collect())
+    }
+}
+
+fn addresses(status: &Value) -> Vec<Value> {
+    status["tests"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|t| t["address"].clone())
+        .collect()
+}
+
+// check-list-frozen-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = branches(&w).await?;
+    let tests = |ac: &str| p.get(format!("/tests?ac={ac}"));
+    let object = |address: &str| p.get(format!("/objects?address={address}"));
+    let mut before = std::collections::BTreeMap::new();
+    for (_, _, ac) in BRANCH_CRITERIA {
+        let s = tests(ac).await?;
+        ensure!(s["status"] == "green", "{ac} before the change: {s}");
+        before.insert(ac, s);
+    }
+    let g = object("area:g").await?;
+    ensure!(
+        g["verification_summary"]["passed"].as_u64() > Some(0),
+        "{g}"
+    );
+    let d_readiness = object("criterion:d").await?["process"]["assessment"].clone();
+    let h_summary = object("area:h").await?["verification_summary"].clone();
+
+    // Owner S changes only the text of G.
+    p.owner_save(
+        "area:g",
+        None,
+        json!({"title":"area:g","body":"Changed group scope","owner":"owner"}),
+    )
+    .await?;
+    for ac in ["criterion:a", "criterion:a2"] {
+        let s = tests(ac).await?;
+        let old = &before[ac];
+        ensure!(
+            s["status"] == "grey"
+                && addresses(&s) == addresses(old)
+                && s["tests_revision"] == old["tests_revision"]
+                && s["tests_saved_by"] == old["tests_saved_by"],
+            "{ac} after the change: {s}"
+        );
+        let readiness = object(ac).await?["process"]["assessment"]["state"].clone();
+        ensure!(readiness == "unassessed", "{ac} readiness: {readiness}");
+    }
+    let mcp = p
+        .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
+        .await?;
+    ensure!(mcp["status"] == "grey", "MCP joppa_tests: {mcp}");
+    let d = tests("criterion:d").await?;
+    ensure!(d["status"] == "green", "{d}");
+    ensure!(
+        object("criterion:d").await?["process"]["assessment"] == d_readiness,
+        "the readiness of D changed"
+    );
+    let g = p
+        .mcp_read("joppa_objects", json!({"address":"area:g"}))
+        .await?;
+    ensure!(g["verification_summary"]["passed"] == 0, "{g}");
+    ensure!(
+        object("area:h").await?["verification_summary"] == h_summary,
+        "the summary of H changed"
+    );
+
+    // Partial runs after the change do not combine; one new clean full run does.
+    p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
+        .await?;
+    p.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
+        .await?;
+    let s = tests("criterion:a").await?;
+    ensure!(s["status"] == "grey", "after partial runs: {s}");
+    p.upload(
+        "c4c4c4c",
+        4,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let s = tests("criterion:a").await?;
+    ensure!(s["status"] == "green", "after a full run: {s}");
+    ensure!(
+        tests("criterion:d").await?["status"] == "green"
+            && object("criterion:d").await?["process"]["assessment"] == d_readiness,
+        "D changed"
+    );
+
+    // An identical revision of G stores no boundary; only a readiness write changes A.
+    let revision = p.read("spec:r").await?["process"]["revision"].clone();
+    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    let boundaries = p.boundaries().await?;
+    let readiness = object("criterion:a").await?["process"]["assessment"].clone();
+    p.owner_save(
+        "area:g",
+        None,
+        json!({"title":"area:g","body":"Changed group scope","owner":"owner"}),
+    )
+    .await?;
+    ensure!(
+        p.boundaries().await? == boundaries,
+        "an identical revision stored a boundary"
+    );
+    ensure!(
+        tests("criterion:a").await?["status"] == "green"
+            && object("criterion:a").await?["process"]["assessment"] == readiness,
+        "an identical revision changed A"
+    );
+    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":false,"reason":"Which scope?","recipient":"owner"}})).await?;
+    let a = object("criterion:a").await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "waiting"
+            && tests("criterion:a").await?["status"] == "green"
+            && p.boundaries().await? == boundaries,
+        "{a}"
     );
     Ok(())
 }

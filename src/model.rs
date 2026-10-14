@@ -72,6 +72,10 @@ pub struct Workspace {
     /// Tests that prove each criterion, by criterion address, with their own history.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ac_tests: BTreeMap<String, crate::ac_tests::AcTests>,
+    /// The journal time of the latest change above or on each criterion.
+    /// Reports received at or before it do not count for the criterion.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub criterion_boundaries: BTreeMap<String, String>,
 }
 /// Всё, что человек навесил на объект сверх его собственных полей.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
