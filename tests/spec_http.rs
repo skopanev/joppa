@@ -2317,10 +2317,12 @@ async fn search_omits_archived_objects() -> Result<()> {
     // search-respects-access-ac1
     let w = world().await?;
     w.note("old", 0, "Legacy flow", "legacy", json!([])).await?;
+    let (live, reply) = bot_search(&w, "legacy").await?;
+    ensure!(live.contains(&"note:old".into()), "{reply}");
     let read = w.get("address=note:old").await?;
     w.command(json!({"op":"archive_object","target":"note:old","revision":read["document"]["revision"],"reason":"Cut"})).await?;
-    let found = w.search("legacy").await?;
-    ensure!(!found.contains(&"note:old".into()), "{found:?}");
+    let (found, reply) = bot_search(&w, "legacy").await?;
+    ensure!(!found.contains(&"note:old".into()), "{reply}");
     Ok(())
 }
 
@@ -4745,6 +4747,55 @@ async fn mcp_value(w: &World, name: &str, arguments: Value) -> Result<Value> {
     Ok(serde_json::from_str(
         result["content"][0]["text"].as_str().unwrap_or("null"),
     )?)
+}
+
+/// Bot search over MCP; fails on HTTP, JSON-RPC or tool errors. Returns addresses and the reply.
+async fn bot_search(w: &World, query: &str) -> Result<(Vec<String>, Value)> {
+    let result = mcp_call(
+        w,
+        &w.bot,
+        "joppa_search",
+        json!({"workspace":w.ws,"query":query}),
+    )
+    .await?;
+    search_addresses(&result)
+}
+
+/// Addresses of a joppa_search tool result; a tool error or a reply without a result array fails.
+fn search_addresses(result: &Value) -> Result<(Vec<String>, Value)> {
+    ensure!(result["isError"] != true, "tool error: {result}");
+    let text = result["content"][0]["text"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no text: {result}"))?;
+    let found: Value = serde_json::from_str(text).map_err(|e| anyhow::anyhow!("{e}: {result}"))?;
+    let rows = found["items"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("no result array: {result}"))?;
+    let addresses = rows
+        .iter()
+        .map(|r| match (r["kind"].as_str(), r["id"].as_str()) {
+            (Some(kind), Some(id)) => Ok(format!("{kind}:{id}")),
+            _ => anyhow::bail!("result without an address: {result}"),
+        })
+        .collect::<Result<_>>()?;
+    Ok((addresses, found))
+}
+
+#[test]
+fn search_addresses_rejects_a_tool_error_with_the_reply() {
+    let reply = json!({"isError":true,"content":[{"type":"text","text":"search failed"}]});
+    let err = search_addresses(&reply).unwrap_err().to_string();
+    assert!(err.contains("search failed"), "{err}");
+}
+
+#[test]
+fn search_addresses_rejects_a_reply_without_a_result_array() {
+    let reply = json!({"content":[{"type":"text","text":"{\"mode\":\"full_text\"}"}]});
+    let err = search_addresses(&reply).unwrap_err().to_string();
+    assert!(
+        err.contains("no result array") && err.contains("full_text"),
+        "{err}"
+    );
 }
 
 #[tokio::test]
