@@ -1453,6 +1453,69 @@ async fn a_default_branch_push_uploads_the_report_of_its_commit() -> Result<()> 
     Ok(())
 }
 
+// runner-executed-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_default_branch_push_with_the_report_of_another_commit_uploads_nothing() -> Result<()> {
+    // X shows B; alex keeps the report for B and pushes the newer commit C.
+    let w = world().await?;
+    let member = json!({"op":"member","id":"alex","role":"human"});
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":member}),
+    )
+    .await?;
+    ensure!(code == 200, "{code} {reply}");
+    let repo = PushRepo::new(&w)?;
+    let b = repo.git(&["rev-parse", "HEAD"])?;
+    let stamp = repo.bun_test()?;
+    ensure!(
+        stamp["commit"] == b.as_str() && stamp["full"] == true,
+        "{stamp}"
+    );
+    let (code, out) = repo.push(&w.alex, &["master"])?;
+    ensure!(code == 0, "git push: {out}");
+    let commit_of_x = |s: &Value| {
+        s["tests"]
+            .as_array()
+            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
+            .map(|x| x["commit"].clone())
+    };
+    let s = w.status().await?;
+    ensure!(commit_of_x(&s) == Some(json!(b)), "X is not at {b}: {s}");
+    // C comes without a new run: the stamp and the report stay for B.
+    repo.git(&["commit", "-q", "--allow-empty", "-m", "C"])?;
+    let c = repo.git(&["rev-parse", "HEAD"])?;
+    let (code, out) = repo.push(&w.alex, &["master"])?;
+    ensure!(code == 0, "git push: {out}");
+    ensure!(
+        repo.remote_head()? == c,
+        "the remote default branch is not at {c}"
+    );
+    let refused =
+        "joppa report: the report is not for the pushed default-branch commit, nothing uploaded";
+    ensure!(
+        out.lines().any(|line| line == refused),
+        "no \"{refused}\" in: {out}"
+    );
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let stored: i64 = pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT count(*) FROM joppa.test_reports WHERE commit_sha=$1",
+            &[&c],
+        )
+        .await?
+        .get(0);
+    ensure!(stored == 0, "{stored} reports stored for {c}");
+    let s = w.status().await?;
+    ensure!(commit_of_x(&s) == Some(json!(b)), "X is not at {b}: {s}");
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_upload_without_a_token_is_refused() -> Result<()> {
