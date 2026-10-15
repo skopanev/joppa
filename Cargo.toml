@@ -23,3 +23,11 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-postgres = "0.7"
 quick-xml = "0.42.0"
+
+# Test binaries keep file and line in backtraces, without full debug info.
+# Full DWARF made 48 test binaries 5.4 GB and slowed every link.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
