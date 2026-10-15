@@ -9,7 +9,7 @@ if [ "${1:-}" = --worker ]; then
   while IFS= read -r executable; do
     IFS= read -r source || { echo 'lane-test: incomplete worker queue' >&2; exit 2; }
     [ -x "$executable" ] || { echo "lane-test: missing executable: $executable" >&2; exit 2; }
-    printf '     Running %s (%s)\n' "$source" "$executable"
+    printf '     Running %s (%s)\n' "${source#"$PWD"/}" "$executable"
     "$executable" --include-ignored --test-threads=1 || status=1
   done < "$queue"
   exit "$status"
@@ -101,6 +101,8 @@ if [ -n "$filter" ]; then
   exit "$status"
 fi
 
+# A full run writes the report for the pre-push hook. Old parts never mix with it.
+rm -f .joppa/junit.xml .joppa/stamp.json .joppa/*.junit.xml .joppa/*.stamp.json
 export JOPPA_TEST_ARTIFACTS="$scratch/artifacts.json"
 phase=lane-tests
 [ "${JOPPA_TEST_GATE:-0}" != 1 ] || phase=gate
@@ -130,10 +132,15 @@ for worker in 0 1; do
   cat "$scratch/worker-$worker.log"
 done
 pids=()
+bun scripts/joppa-report/lane-junit.ts "$scratch/worker-0.log" "$scratch/worker-1.log" || status=1
+bun test scripts/joppa-report --reporter=junit --reporter-outfile=.joppa/bun.junit.xml || status=1
+printf '{"full":true}\n' > .joppa/bun.stamp.json
 # Browser checks use a third database and the helper from the same frozen build.
 database browser
 export JOPPA_TEST_DATABASE_URL="$database_url"
-setsid bun run test:browser --test tests/grey_ac_browser.cjs &
+setsid bun run test:browser --test --test-reporter=junit --test-reporter-destination=.joppa/browser.junit.xml \
+  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs &
 pids+=("$!")
 wait "${pids[0]}" || status=1
+printf '{"full":true}\n' > .joppa/browser.stamp.json
 exit "$status"
