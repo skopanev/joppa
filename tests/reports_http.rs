@@ -5091,7 +5091,6 @@ async fn planning_batch_in(p: &Planning<'_>, operations: Value) -> Result<Value>
     .await
 }
 
-
 /// The failing check that red sibling B lists in the frozen fixtures.
 const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
 
