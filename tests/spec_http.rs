@@ -29,6 +29,29 @@ struct World {
     http: reqwest::Client,
 }
 
+/// Create a workspace with the shared spec setup, then run `extra` as (actor, command).
+async fn seed(pool: &deadpool_postgres::Pool, ws: &str, extra: Vec<(&str, Value)>) -> Result<()> {
+    let setup = [
+        json!({"op":"workspace","title":"Spec over HTTP"}),
+        json!({"op":"member","id":"alex","role":"human"}),
+        json!({"op":"member","id":"maria","role":"human"}),
+        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
+        json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
+        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+        json!({"op":"capability","id":"empty","title":"Nothing below","domain":"security"}),
+        json!({"op":"revise","req":"key","expected_revision":0,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]}),
+    ]
+    .into_iter()
+    .map(|op| ("owner", op))
+    .chain(extra);
+    for (i, (actor, op)) in setup.enumerate() {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(pool, ws, actor, &format!("setup-{i}"), &op).await?;
+    }
+    Ok(())
+}
+
 async fn world() -> Result<World> {
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
     ensure!(
@@ -41,23 +64,7 @@ async fn world() -> Result<World> {
     static MIGRATED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
     MIGRATED.get_or_try_init(|| store::migrate(&pool)).await?;
     let ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
-    for (i, op) in [
-        json!({"op":"workspace","title":"Spec over HTTP"}),
-        json!({"op":"member","id":"alex","role":"human"}),
-        json!({"op":"member","id":"maria","role":"human"}),
-        json!({"op":"member","id":"bot","role":"agent"}),
-        json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
-        json!({"op":"capability","id":"empty","title":"Nothing below","domain":"security"}),
-        json!({"op":"revise","req":"key","expected_revision":0,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]}),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let op: Operation = serde_json::from_value(op)?;
-        store::execute(&pool, &ws, "owner", &format!("setup-{i}"), &op).await?;
-    }
+    seed(&pool, &ws, vec![]).await?;
     let dir = std::env::temp_dir().join(format!("joppa-spec-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
@@ -4905,8 +4912,12 @@ async fn help_required_fields_pass_the_live_field_checks() -> Result<()> {
 
 /// Create one ready implementation Task under an AC of a REQ.
 async fn ready_task(w: &World, id: &str, ac: &str) -> Result<String> {
-    w.command(json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Plan the criterion"})).await?;
+    w.command(ready_task_command(id, ac)).await?;
     Ok(format!("task:{id}"))
+}
+
+fn ready_task_command(id: &str, ac: &str) -> Value {
+    json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Plan the criterion"})
 }
 
 async fn journal_position(w: &World) -> Result<i64> {
@@ -5183,5 +5194,58 @@ async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<
         .command_as(&w.bot, json!({"op":"claim_next_task"}))
         .await?;
     ensure!(next["command"]["id"] == same, "{next}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_holding_a_task_claims_a_task_in_another_workspace() -> Result<()> {
+    // one-task-per-agent-ac2
+    let w = world().await?;
+    let assess = json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}});
+    w.command_as(&w.bot, assess.clone()).await?;
+    let t1 = ready_task(&w, "t1", "key-rights").await?;
+    w.command_as(&w.bot, json!({"op":"claim_task","id":t1,"revision":1}))
+        .await?;
+    let w2 = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    seed(
+        &w.pool,
+        &w2,
+        vec![
+            ("bot", assess),
+            ("owner", ready_task_command("t3", "key-rights")),
+        ],
+    )
+    .await?;
+    let t3 = "task:t3";
+
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{w2}/commands", w.root))
+        .bearer_auth(&w.bot)
+        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"claim_task","id":t3,"revision":1}}))
+        .send()
+        .await?;
+    let status = reply.status();
+    let body = reply.text().await?;
+    let read_t3 = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{w2}/objects?address={t3}",
+            w.root
+        ))
+        .bearer_auth(&w.owner)
+        .send()
+        .await?;
+    ensure!(read_t3.status().is_success(), "{}", read_t3.text().await?);
+    let t3: Value = read_t3.json().await?;
+    let t1 = w.get(&format!("address={t1}")).await?;
+    let states = format!("reply {status} {body}; T3 {t3}; T1 {t1}");
+    ensure!(status == reqwest::StatusCode::OK, "{states}");
+    ensure!(
+        t3["process"]["assignee"] == "bot" && t3["process"]["status"] == "in_progress",
+        "{states}"
+    );
+    ensure!(t1["process"]["assignee"] == "bot", "{states}");
     Ok(())
 }
