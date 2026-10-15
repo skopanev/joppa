@@ -89,7 +89,11 @@ status=0
 if [ -n "$filter" ]; then
   database focused
   export JOPPA_TEST_DATABASE_URL="$database_url"
-  if [ -n "${JOPPA_TEST_TARGET:-}" ]; then targets=(--test "$JOPPA_TEST_TARGET"); else targets=(--lib --tests); fi
+  case ${JOPPA_TEST_TARGET:-} in
+    '') targets=(--lib --tests) ;;
+    lib) targets=(--lib) ;;
+    *) targets=(--test "$JOPPA_TEST_TARGET") ;;
+  esac
   setsid bun run test:rust "${targets[@]}" "$filter" -- --include-ignored --test-threads=1 > "$scratch/focused.log" 2>&1 &
   pids+=("$!")
   wait "${pids[0]}" || status=$?

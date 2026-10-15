@@ -345,7 +345,8 @@ bun run test:only test_name_substring planning_claims
 `test:only` runs matching Rust tests on a fresh database. It fails when no tests match.
 Name the test file (`planning_claims` for `tests/planning_claims.rs`) as the second
 argument. Then Cargo builds only that test, not every test binary: about 26 s instead
-of about 300 s after a source change. Without the file it builds all tests.
+of about 300 s after a source change. Use `lib` for a unit test in `src`; then Cargo
+builds only the library tests. Without a file it builds all tests.
 The gate runs the full suite in two workers, each with its own database.
 It does not run the browser suite. `test:browser` remains the public browser runner.
 Set `JOPPA_LANE_TEST_ENV` to the private environment file when the default path does not apply.

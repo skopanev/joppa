@@ -68,6 +68,12 @@ if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
             ;;
     esac
 fi
+# Browser checks build their helper through test:rust, which takes the lock for that compile.
+# The browser run itself holds no lock.
+if [ "${1:-}" = browser ]; then
+    shift
+    exec node "$@"
+fi
 if [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
     [ -d "$lock_dir" ] || { echo 'build: shared lock directory is not mounted' >&2; exit 2; }
     echo 'build: waiting for the shared Rust lock' >&2
@@ -127,9 +133,10 @@ case ${1:-} in
     test-only)
         # An optional test file builds only that target, not every test binary.
         { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } && [ -n "$2" ] && [[ "$2" != -* ]] \
-            || { echo 'usage: bun run test:only FILTER [TEST_FILE]' >&2; exit 2; }
+            || { echo 'usage: bun run test:only FILTER [TEST_FILE|lib]' >&2; exit 2; }
         if [ "$#" -eq 3 ]; then
-            [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ] \
+            # "lib" names the unit tests in src; any other name is a file in tests.
+            { [ "$3" = lib ] || { [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ]; }; } \
                 || { echo "build: no test file tests/$3.rs" >&2; exit 2; }
             export JOPPA_TEST_TARGET="$3"
         fi
