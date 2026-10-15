@@ -2634,7 +2634,7 @@ pub fn archive(
         o.current().parent.as_ref() == Some(&target)
             && o.current().present
             && crate::tasks::task(w, &address(&o.kind, &o.id))
-                .is_none_or(|task| task.retired.is_none())
+                .is_none_or(|task| task.retired.is_none() && task.done.is_none())
     });
     ensure!(
         !has_live_children,

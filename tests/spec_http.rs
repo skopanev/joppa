@@ -1772,6 +1772,79 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<()> {
+    // removal-is-archiving-ac6
+    for mcp in [false, true] {
+        let w = world().await?;
+        w.command(json!({"op":"revise","req":"arch","expected_revision":0,"capability":"restrict","title":"Archive rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"arch-a","text":"Criterion A"},{"id":"arch-b","text":"Criterion B"},{"id":"arch-c","text":"Criterion C"}]})).await?;
+        w.command_as(&w.bot, json!({"op":"assess","req":"arch","revision":1,"ac":"arch-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+        let done = ready_task(&w, "a-done", "arch-a").await?;
+        w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
+            .await?;
+        w.command_as(&w.bot, json!({"op":"complete_task","id":done,"revision":2,"evidence":"Implemented the contract"})).await?;
+        let retired = ready_task(&w, "a-retired", "arch-a").await?;
+        w.command(json!({"op":"retire_task","id":retired,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+        ready_task(&w, "b-open", "arch-b").await?;
+        let blocked = ready_task(&w, "c-blocked", "arch-c").await?;
+        w.command(json!({"op":"block_task","id":blocked,"revision":1,"reason":"Verification failed","evidence":"test x failed on abc123"})).await?;
+        let blocked = w.get(&format!("address={blocked}")).await?;
+        ensure!(blocked["process"]["blocked"].is_object(), "{blocked}");
+        let tasks_before = [
+            w.get(&format!("address={done}")).await?,
+            w.get(&format!("address={retired}")).await?,
+        ];
+        ensure!(
+            tasks_before[0]["process"]["status"] == "done"
+                && tasks_before[1]["process"]["status"] == "retired",
+            "{tasks_before:?}"
+        );
+        let archive = async |criterion: &str| -> Result<Value> {
+            let before = w.get(&format!("address={criterion}")).await?;
+            Ok(
+                json!({"op":"archive_object","target":criterion,"revision":before["current_revision"],"reason":"Remove the criterion"}),
+            )
+        };
+
+        let reply = send_over(&w, mcp, &w.owner, &archive("ac:arch-a").await?).await?;
+        ensure!(reply.is_ok(), "mcp={mcp}: {reply:?}");
+        let a = mcp_value(
+            &w,
+            "joppa_objects",
+            json!({"workspace":w.ws,"address":"ac:arch-a"}),
+        )
+        .await?;
+        ensure!(a["document"]["present"] == false, "mcp={mcp}: {a}");
+
+        for criterion in ["ac:arch-b", "ac:arch-c"] {
+            refused_without_change(
+                &w,
+                mcp,
+                &w.owner,
+                archive(criterion).await?,
+                "cannot archive an object with active children",
+            )
+            .await?;
+            let after = w.get(&format!("address={criterion}")).await?;
+            ensure!(after["document"]["present"] == true, "mcp={mcp}: {after}");
+        }
+
+        for before in &tasks_before {
+            let after = w
+                .get(&format!("address={}", before["address"].as_str().unwrap()))
+                .await?;
+            ensure!(
+                after["document"] == before["document"]
+                    && after["process"]["status"] == before["process"]["status"],
+                "mcp={mcp}: archive changed {before} -> {after}"
+            );
+        }
+        store::check_journal(&w.pool).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_children_api_returns_one_level_only() -> Result<()> {
     // lazy-children-ac2
     let w = world().await?;
