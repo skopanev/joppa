@@ -127,7 +127,8 @@ if [ "${1:-}" != browser ] && [ -n "${1:-}" ]; then
 fi
 discover_tests() {
     : "${JOPPA_TEST_ARTIFACTS:?test artifact destination is required}"
-    if ! cargo test --no-run --lib --tests --message-format=json > "$JOPPA_TEST_ARTIFACTS.raw"; then
+    # --bins brings the unit tests of src/main.rs (web::tests and others) into the full run.
+    if ! cargo test --no-run --lib --bins --tests --message-format=json > "$JOPPA_TEST_ARTIFACTS.raw"; then
         cat "$JOPPA_TEST_ARTIFACTS.raw" >&2
         return 1
     fi
