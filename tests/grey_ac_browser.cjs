@@ -713,6 +713,26 @@ test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', a
   } finally { await f.close(); }
 });
 
+test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey, not yellow', async () => {
+  const f = await fixture({...criterionRecords,
+    'ac:B': {title: 'Red sibling', parent: 'requirement:r'},
+    'requirement:mixed': {title: 'Mixed requirement', parent: 'capability:c'},
+    'ac:M1': {title: 'Passing criterion', parent: 'requirement:mixed'},
+    'ac:M2': {title: 'Criterion without tests', parent: 'requirement:mixed'}});
+  try {
+    await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
+    await f.upload('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 1, [['X'], ['Y', 'failed check']]);
+    await f.command({op: 'archive_object', target: 'ac:B', revision: 1, reason: 'Drop the red criterion'});
+    const card = await f.open('capability:c');
+    const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
+    assert.equal(await r.locator('.verification-chip').innerText(), '1 Criteria');
+    assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'grey');
+    const mixed = card.locator('.common-object[data-object-address="requirement:mixed"] > summary');
+    assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 Criteria');
+    assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'yellow');
+  } finally { await f.close(); }
+});
+
 test('comments-on-object-ac2: a comment shows its author and server time', async () => {
   const configured = {record: {title: 'Records', role: 'document', root: true, parents: []}};
   const address = 'record:one', text = 'Clarify this object boundary';

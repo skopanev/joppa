@@ -1,6 +1,7 @@
-//! A change of a group resets the criteria below it in the store: in the same batch,
-//! after journal replay, and not at all when the command fails. An identical repeat
-//! of a clean report after the change is a new receipt that counts after it.
+//! A change of a group, a test-list save and a spec archive reset the criteria below
+//! them in the store: in the same batch, after journal replay, and not at all when the
+//! command fails. An identical repeat of a clean report after the change is a new
+//! receipt that counts after it.
 use anyhow::{Result, ensure};
 use joppa::store::{self, BatchOperation};
 use serde_json::{Value, json};
@@ -171,6 +172,8 @@ async fn a_group_change_reaches_the_batch_planning_read_and_survives_replay() ->
         refused.is_err_and(|e| format!("{e:#}").contains("criterion is already verified")),
         "a green criterion must refuse planning"
     );
+    // The list save of D stored its boundary; the change of G must keep it.
+    let d = snapshot(&pool, &ws).await?["boundaries"]["criterion:d"].clone();
     let g = read(&pool, &ws, "area:g").await?["current_revision"].clone();
     let operations: Vec<BatchOperation> = [
         save_g(&g, "Changed group scope"),
@@ -198,7 +201,7 @@ async fn a_group_change_reaches_the_batch_planning_read_and_survives_replay() ->
         live["criterion:a"]["status"]["status"] == "grey"
             && live["criterion:d"]["status"]["status"] == "green"
             && live["boundaries"].get("criterion:a").is_some()
-            && live["boundaries"].get("criterion:d").is_none(),
+            && live["boundaries"]["criterion:d"] == d,
         "{live}"
     );
     // Replay the journal into a new projection of the workspace.
@@ -249,6 +252,133 @@ async fn a_failed_boundary_write_rejects_the_group_change() -> Result<()> {
     );
     ensure!(
         events(pool.clone(), ws.clone()).await? == count,
+        "the journal has a new entry"
+    );
+    let after = snapshot(&pool, &ws).await?;
+    ensure!(after == before, "after: {after}\nbefore: {before}");
+    ensure!(
+        after["criterion:a"]["status"]["status"] == "green"
+            && after["criterion:a"]["assessment"]["state"] == "ready",
+        "{after}"
+    );
+    Ok(())
+}
+
+/// Replay the journal into a new projection of the workspace and return its snapshot.
+async fn replay(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
+    pool.get()
+        .await?
+        .execute("DELETE FROM joppa.state_entries WHERE workspace=$1", &[&ws])
+        .await?;
+    pool.get()
+        .await?
+        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws])
+        .await?;
+    store::migrate(pool).await?;
+    snapshot(pool, ws).await
+}
+
+/// The number of journal events of the workspace.
+async fn events(pool: &deadpool_postgres::Pool, ws: &str) -> Result<i64> {
+    Ok(pool
+        .get()
+        .await?
+        .query_one(
+            "SELECT count(*) FROM joppa.events WHERE workspace=$1",
+            &[&ws],
+        )
+        .await?
+        .get(0))
+}
+
+/// A full run that passes A and B and fails the check of red criterion B.
+async fn upload_full(
+    pool: &deadpool_postgres::Pool,
+    ws: &str,
+    commit: &str,
+    order: i64,
+) -> Result<Value> {
+    let junit = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses" /><testcase name="rejects"><failure message="boom"/></testcase></testsuite></testsuite></testsuites>"#;
+    store::upload_report(
+        pool,
+        ws,
+        "planner",
+        serde_json::from_value(json!({"stamp":{"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}))?,
+    )
+    .await
+}
+
+fn resave_a() -> Value {
+    json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Save the list again"})
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
+    let pool = pool().await?;
+    let ws = branches(&pool).await?;
+    // Red criterion B is a sibling of A under R.
+    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"b","revision":0,"parent":"spec:r","data":{"title":"b","owner":"owner"},"reason":"Create the criterion"})).await?;
+    write(&pool, &ws, "planner", json!({"op":"set_ac_tests","target":"criterion:b","tests":["tests/auth/login.test.ts > login > rejects"],"reason":"Bind the tests"})).await?;
+    upload_full(&pool, &ws, "c2c2c2c", 2).await?;
+    let b = status(&pool, &ws, "criterion:b").await?;
+    ensure!(b["status"] == "red", "{b}");
+    // Fixture 5: the planner saves the identical list of A.
+    write(&pool, &ws, "planner", resave_a()).await?;
+    let live = snapshot(&pool, &ws).await?;
+    ensure!(
+        live["criterion:a"]["status"]["status"] == "grey"
+            && live["criterion:a"]["assessment"]["state"] == "unassessed"
+            && live["criterion:d"]["status"]["status"] == "green",
+        "{live}"
+    );
+    ensure!(
+        replay(&pool, &ws).await? == live,
+        "replay after the list save"
+    );
+    // A turns green and ready again; fixture 6: the owner archives B.
+    let req = read(&pool, &ws, "spec:r").await?["process"]["revision"].clone();
+    write(&pool, &ws, "planner", json!({"op":"assess","req":"spec:r","revision":req,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    upload_full(&pool, &ws, "c3c3c3c", 3).await?;
+    ensure!(
+        status(&pool, &ws, "criterion:a").await?["status"] == "green",
+        "A must be green before the archive"
+    );
+    let b = read(&pool, &ws, "criterion:b").await?["current_revision"].clone();
+    write(&pool, &ws, "owner", json!({"op":"archive_object","target":"criterion:b","revision":b,"reason":"Drop the red criterion"})).await?;
+    let live = snapshot(&pool, &ws).await?;
+    ensure!(
+        live["criterion:a"]["status"]["status"] == "grey"
+            && live["criterion:a"]["assessment"]["state"] == "unassessed"
+            && live["criterion:d"]["status"]["status"] == "green",
+        "{live}"
+    );
+    let replayed = replay(&pool, &ws).await?;
+    ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_failed_reset_rejects_the_list_save() -> Result<()> {
+    let pool = pool().await?;
+    let ws = branches(&pool).await?;
+    let before = snapshot(&pool, &ws).await?;
+    let count = events(&pool, &ws).await?;
+    let conn = pool.get().await?;
+    conn.batch_execute("CREATE OR REPLACE FUNCTION joppa.test_list_reset_fails() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'list reset failed'; END $$;").await?;
+    conn.batch_execute(&format!("CREATE TRIGGER test_list_reset_fails BEFORE INSERT OR UPDATE ON joppa.state_entries FOR EACH ROW WHEN (NEW.workspace='{ws}' AND NEW.section='criterion_boundaries') EXECUTE FUNCTION joppa.test_list_reset_fails()")).await?;
+    let result = write(&pool, &ws, "planner", resave_a()).await;
+    conn.batch_execute("DROP TRIGGER test_list_reset_fails ON joppa.state_entries")
+        .await?;
+    ensure!(
+        result.is_err_and(|e| format!("{e:#}").contains("list reset failed")),
+        "the list save must be rejected"
+    );
+    ensure!(
+        events(&pool, &ws).await? == count,
         "the journal has a new entry"
     );
     let after = snapshot(&pool, &ws).await?;

@@ -241,8 +241,8 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
     types["job"] = types["task"].clone();
     types["job"]["title"] = json!("Job");
     w.command(json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":types,"reason":"Check another configured work type"})).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["tests/spec_http.rs > completing_a_task_without_a_report_keeps_it_unverified"],"reason":"Wait for real test evidence"})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     for kind in ["task", "job"] {
         let address = format!("{kind}:unverified");
         w.command(json!({"op":"save_object","kind":kind,"id":"unverified","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion before any report"})).await?;
@@ -317,8 +317,8 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         }
     };
     let task = "task:checked";
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights"],"reason":"Bind the checked test"})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check completion under a green criterion"})).await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":task,"revision":1}))
         .await?;
@@ -398,8 +398,8 @@ async fn an_unreadable_task_criterion_keeps_a_mixed_list_readable() -> Result<()
     // done-is-not-green-ac3: the bound-run verdict stays when the criterion status cannot be read.
     let w = world().await?;
     w.command(json!({"op":"revise","req":"aaa","expected_revision":0,"capability":"restrict","title":"Other rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"aaa-rule","text":"Keep the other rule"}]})).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"aaa","revision":1,"ac":"aaa-rule","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:aaa-rule","tests":["checks.rs > other rule"],"reason":"Bind the checked test"})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"aaa","revision":1,"ac":"aaa-rule","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:aaa-rule","data":{"title":"Implement the other rule","owner":"owner","contract":"Implement the other rule and record the result","purpose":"implementation","projects":[]},"reason":"Check completion under an unreadable criterion"})).await?;
     w.command_as(
         &w.bot,
