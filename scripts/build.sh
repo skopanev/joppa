@@ -66,7 +66,24 @@ if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
             unset JOPPA_TEST_FILTER
             exec bash scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
             ;;
+        test-only)
+            # An optional test file builds only that target, not every test binary.
+            { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } && [ -n "$2" ] && [[ "$2" != -* ]] \
+                || { echo 'usage: bun run test:only FILTER [TEST_FILE|lib]' >&2; exit 2; }
+            if [ "$#" -eq 3 ]; then
+                # "lib" names the unit tests in src; any other name is a file in tests.
+                { [ "$3" = lib ] || { [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ]; }; } \
+                    || { echo "build: no test file tests/$3.rs" >&2; exit 2; }
+                export JOPPA_TEST_TARGET="$3"
+            fi
+            export JOPPA_TEST_FILTER="$2"
+            exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
+            ;;
     esac
+fi
+# Format errors need no compile, so they fail before the wait for the lock.
+if [ "${1:-}" = lint ] && [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
+    cargo fmt --check
 fi
 # Browser checks build their helper through test:rust, which takes the lock for that compile.
 # The browser run itself holds no lock.
@@ -129,19 +146,6 @@ case ${1:-} in
     lane-tests)
         unset JOPPA_TEST_FILTER
         discover_tests
-        ;;
-    test-only)
-        # An optional test file builds only that target, not every test binary.
-        { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } && [ -n "$2" ] && [[ "$2" != -* ]] \
-            || { echo 'usage: bun run test:only FILTER [TEST_FILE|lib]' >&2; exit 2; }
-        if [ "$#" -eq 3 ]; then
-            # "lib" names the unit tests in src; any other name is a file in tests.
-            { [ "$3" = lib ] || { [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ]; }; } \
-                || { echo "build: no test file tests/$3.rs" >&2; exit 2; }
-            export JOPPA_TEST_TARGET="$3"
-        fi
-        export JOPPA_TEST_FILTER="$2"
-        exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
         ;;
     lint)
         cargo fmt --check

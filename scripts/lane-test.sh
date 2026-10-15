@@ -26,7 +26,8 @@ fi
 env_file=${1:?usage: scripts/lane-test.sh ENV_FILE}
 filter=${JOPPA_TEST_FILTER:-}
 case "$filter" in -*) echo 'lane-test: filter must be a test name' >&2; exit 2 ;; esac
-if [ "$(uname -s)" != Linux ] || { [ -n "$filter" ] && [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; }; then
+# Outside Linux the run moves into the project container through bun run.
+if [ "$(uname -s)" != Linux ]; then
   if [ -n "$filter" ]; then
     exec env JOPPA_LANE_TEST_ENV="$env_file" bun run test:only "$filter" ${JOPPA_TEST_TARGET:+"$JOPPA_TEST_TARGET"}
   fi
@@ -102,7 +103,10 @@ if [ -n "$filter" ]; then
     lib) targets=(--lib) ;;
     *) targets=(--test "$JOPPA_TEST_TARGET") ;;
   esac
-  setsid bun run test:rust "${targets[@]}" "$filter" -- --include-ignored --test-threads=1 > "$scratch/focused.log" 2>&1 &
+  # Compile under the shared lock, then run the tests of the fresh build without it.
+  bun run test:rust --no-run "${targets[@]}" || exit $?
+  setsid env JOPPA_BUILD_LOCKED=1 bun run test:rust "${targets[@]}" "$filter" -- --include-ignored --test-threads=1 \
+    > "$scratch/focused.log" 2>&1 &
   pids+=("$!")
   wait "${pids[0]}" || status=$?
   cat "$scratch/focused.log"
