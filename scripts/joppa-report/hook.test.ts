@@ -92,9 +92,16 @@ test("a run on a dirty tree is stamped dirty", () => {
 });
 
 test("a filtered run is stamped partial", () => {
-  // result-has-output-ac5
-  expect(bunTest({ JOPPA_FULL_RUN: "1" }, ["-t", "opens"]).code).toBe(0);
-  expect(stamp().full).toBe(false);
+  // result-has-output-ac5: restore the fixture first, an earlier test may have failed before its cleanup.
+  git("checkout", "--", ".");
+  expect(git("status", "--porcelain", "--untracked-files=no").out).toBe("");
+  const file = join(repo, ".joppa/stamp.json");
+  rmSync(file, { force: true });
+  const r = bunTest({}, ["-t", "login"]);
+  const seen = `stamp: ${existsSync(file) ? readFileSync(file, "utf8") : "missing"}\nrun:\n${r.out}`;
+  expect(r.code, seen).toBe(0);
+  expect(r.out, seen).toMatch(/\b[1-9]\d* pass/);
+  expect(stamp(), seen).toMatchObject({ dirty: false, full: false });
 });
 
 test("a run of one test file is stamped partial", () => {
