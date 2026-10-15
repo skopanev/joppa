@@ -1,7 +1,7 @@
 // The report kit end to end on a fixture git repository: a real `bun test` with the
 // stamp preload, then a real `git push` through the pre-push hook to a fake Joppa.
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -54,7 +54,7 @@ beforeAll(() => {
   writeFileSync(join(repo, ".gitignore"), ".joppa/junit.xml\n.joppa/stamp.json\n");
   writeFileSync(
     join(repo, "login.test.ts"),
-    `import { describe, expect, test } from "bun:test";\ndescribe("login", () => {\n  test("opens", () => expect(1).toBe(1));\n  test("refuses", () => expect(2).toBe(2));\n});\n`,
+    `import { describe, expect, test } from "bun:test";\ndescribe("login", () => {\n  test("opens", () => expect(1).toBe(1));\n  test("refuses", () => expect(2).toBe(2));\n  test("remembers", () => expect(3).toBe(3));\n});\n`,
   );
   Bun.spawnSync(["mkdir", "-p", join(repo, ".joppa")]);
   writeFileSync(join(repo, ".joppa/config.json"), JSON.stringify({ url: `http://127.0.0.1:${server.port}`, workspace: "fixture", default_branch: "master" }));
@@ -70,9 +70,11 @@ afterAll(() => {
 
 test("a normal test run writes one testcase per test", () => {
   // result-has-output-ac1
-  expect(bunTest().code).toBe(0);
-  const junit = readFileSync(join(repo, ".joppa/junit.xml"), "utf8");
-  expect(junit.match(/<testcase /g)?.length).toBe(2);
+  const r = bunTest();
+  expect(r.code, r.out).toBe(0);
+  const report = join(repo, ".joppa/junit.xml");
+  if (!existsSync(report)) throw new Error(`no .joppa/junit.xml after bun test:\n${r.out}`);
+  expect(readFileSync(report, "utf8").match(/<testcase /g)?.length ?? 0, r.out).toBe(3);
 });
 
 test("a clean run stamps its commit as clean and full", () => {
