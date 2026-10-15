@@ -1042,6 +1042,65 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
   } finally { await f.close(); }
 });
 
+test('no-dashed-focus-ac1: a mouse click leaves no mark on the history Close button and a board dropdown', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'}});
+  const themes = {light: 'rgb(255, 252, 245)', dark: 'rgb(25, 28, 32)'};
+  const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+  const row = X.locator(':scope > summary');
+  const dialog = f.page.locator('dialog.notes-dialog');
+  const dropdown = f.page.locator('#tree .filter-fields select[aria-label="Object status"]');
+  const failures = [];
+  const check = (where, state) => {
+    t.diagnostic(where + ': ' + JSON.stringify(state));
+    if (!state) return failures.push(where + ': no styles were read');
+    if (!state.connected) failures.push(where + ': the control is detached');
+    if (!state.outline || !state.decoration) failures.push(where + ': an empty style value');
+    if (state.outline !== 'none') failures.push(where + ': outline-style ' + state.outline);
+    if (state.decoration === 'dashed') failures.push(where + ': text-decoration-style dashed');
+  };
+  const read = () => dropdown.evaluate(node => {
+    const style = getComputedStyle(node);
+    return {connected: node.isConnected, focused: document.activeElement === node, outline: style.outlineStyle, decoration: style.textDecorationStyle};
+  });
+  try {
+    for (const [scheme, background] of Object.entries(themes)) {
+      await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      await row.waitFor();
+      await f.page.evaluate(scheme => { document.documentElement.dataset.theme = scheme; }, scheme);
+      assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background, 'the ' + scheme + ' theme is active');
+      // The board removes the dialog on close, so the click copies the Close styles while the button is connected.
+      await f.page.evaluate(() => {
+        window.ac1Close = null;
+        addEventListener('click', event => {
+          const node = event.target.closest?.('.history-close');
+          if (!node) return;
+          const style = getComputedStyle(node);
+          window.ac1Close = {connected: node.isConnected, outline: style.outlineStyle, decoration: style.textDecorationStyle};
+        }, true);
+      });
+      if (await X.getAttribute('open') === null) await row.click({position: {x: 4, y: 4}});
+      await row.locator('.history-button').click();
+      await dialog.locator('.history-close').click();
+      await dialog.waitFor({state: 'detached'});
+      check(scheme + ', history Close click', await f.page.evaluate(() => window.ac1Close));
+      // A native select list takes no page mouse events. selectOption sends the same input and change events without a key press.
+      await dropdown.click();
+      const opened = await read();
+      assert.equal(opened.focused, true, 'the mouse click focuses the dropdown, ' + scheme);
+      check(scheme + ', dropdown open click', opened);
+      await dropdown.selectOption('green');
+      const selected = await read();
+      assert.equal(selected.focused, true, 'the dropdown keeps the focus after the selection, ' + scheme);
+      check(scheme + ', dropdown value selection', selected);
+      await f.page.waitForFunction(() => !document.querySelector('#tree .object-loading'));
+      assert.equal(await f.page.evaluate(() => document.elementFromPoint(2, 2)?.tagName), 'HTML', 'the outside point has no control');
+      await f.page.mouse.click(2, 2);
+      check(scheme + ', click outside the dropdown', await read());
+    }
+    assert.deepEqual(failures, [], 'a mouse click leaves no focus mark and no dashed line');
+  } finally { await f.close(); }
+});
+
 test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour on the board and the tree', async (t) => {
   const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'}});
   const themes = {light: {background: 'rgb(255, 252, 245)', link: 'rgb(0, 92, 239)'}, dark: {background: 'rgb(25, 28, 32)', link: 'rgb(140, 181, 255)'}};

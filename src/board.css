@@ -56,6 +56,7 @@ button[hidden]{display:none}
 button svg{display:block}
 button,a,input,select,textarea,summary{-webkit-tap-highlight-color:transparent}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:1px solid var(--link);outline-offset:3px}
+:root[data-input=mouse] select:focus-visible{outline:none}
 summary{cursor:pointer;list-style:none}
 summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}

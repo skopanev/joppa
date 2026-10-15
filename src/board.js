@@ -36,6 +36,9 @@ window.addEventListener('pageshow',closeAccountMenu);
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&$('account-menu').open){$('account-menu').open=false;$('identity').focus();}
 });
+// The last input method decides the select focus mark: a pointer press hides it, a key press restores it.
+document.addEventListener('pointerdown',()=>{document.documentElement.dataset.input='mouse';},true);
+document.addEventListener('keydown',()=>{delete document.documentElement.dataset.input;},true);
 let toastTimer;
 function toast(message,failed=false){
   let host=document.querySelector('#toast');
