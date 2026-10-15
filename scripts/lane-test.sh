@@ -101,6 +101,7 @@ if [ -n "$filter" ]; then
   case ${JOPPA_TEST_TARGET:-} in
     '') targets=(--lib --tests) ;;
     lib) targets=(--lib) ;;
+    bin) targets=(--bins) ;;
     *) targets=(--test "$JOPPA_TEST_TARGET") ;;
   esac
   # Compile under the shared lock, then run the tests of the fresh build without it.

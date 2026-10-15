@@ -67,15 +67,21 @@ if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
             exec bash scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
             ;;
         test-only)
-            # An optional test file builds only that target, not every test binary.
-            { [ "$#" -eq 2 ] || [ "$#" -eq 3 ]; } && [ -n "$2" ] && [[ "$2" != -* ]] \
-                || { echo 'usage: bun run test:only FILTER [TEST_FILE|lib]' >&2; exit 2; }
-            if [ "$#" -eq 3 ]; then
-                # "lib" names the unit tests in src; any other name is a file in tests.
-                { [ "$3" = lib ] || { [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ]; }; } \
-                    || { echo "build: no test file tests/$3.rs" >&2; exit 2; }
-                export JOPPA_TEST_TARGET="$3"
+            # A focused run names its target, so it never compiles every test binary:
+            # lib for unit tests in src/lib.rs, bin for unit tests in src/main.rs
+            # (such as web::tests), or a file name in tests.
+            if [ "$#" -ne 3 ] || [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo 'usage: bun run test:only FILTER lib|bin|TEST_FILE' >&2
+                if [ -n "${2:-}" ] && [[ "$2" != -* ]]; then
+                    files=$(grep -l -- "${2##*::}" tests/*.rs 2>/dev/null | sed 's#tests/##; s#\.rs$##' | tr '\n' ' ')
+                    [ -z "$files" ] || echo "build: tests/ files that mention it: $files" >&2
+                    if grep -rqs -- "${2##*::}" src/main.rs src/web*.rs; then echo 'build: src/main.rs code mentions it: try bin' >&2; fi
+                fi
+                exit 2
             fi
+            { [ "$3" = lib ] || [ "$3" = bin ] || { [[ "$3" =~ ^[a-z0-9_]+$ ]] && [ -f "tests/$3.rs" ]; }; } \
+                || { echo "build: no test file tests/$3.rs (use lib, bin or a tests/ file name)" >&2; exit 2; }
+            export JOPPA_TEST_TARGET="$3"
             export JOPPA_TEST_FILTER="$2"
             exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
             ;;
