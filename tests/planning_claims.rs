@@ -564,7 +564,7 @@ fn holder_blocks_a_held_task_and_refusals_keep_state_and_position() {
         "stale Task revision; read the Task again",
     );
     let cmd = block(&w, "work:t");
-    refuse(&mut w, "other", cmd, "workspace owner required");
+    refuse(&mut w, "other", cmd, "Task holder required");
     for field in ["reason", "evidence"] {
         let mut empty = block(&w, "work:t");
         empty[field] = json!(" ");
@@ -612,7 +612,7 @@ fn holder_blocks_a_held_task_and_refusals_keep_state_and_position() {
 
     // The former holder lost its authority with the claim.
     let cmd = block(&w, "work:t");
-    refuse(&mut w, "worker", cmd, "workspace owner required");
+    refuse(&mut w, "worker", cmd, "Task is not claimed unfinished work");
     let cmd = block(&w, "work:t");
     refuse(&mut w, "owner", cmd, "Task is already blocked");
 }

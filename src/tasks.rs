@@ -561,6 +561,7 @@ pub fn apply(
         Command::ReleaseTask { reason, .. } => {
             commands::nonempty(reason)?;
             release_authority(w, actor, &t, authority)?;
+            ensure!(t.blocked.is_none(), BLOCKED);
             ensure!(
                 t.assignee.is_some() && t.done.is_none() && t.retired.is_none(),
                 "Task is not claimed unfinished work"
@@ -574,7 +575,15 @@ pub fn apply(
         } => {
             commands::nonempty(reason)?;
             commands::nonempty(evidence)?;
-            release_authority(w, actor, &t, authority)?;
+            let legacy = w.replay_claims && !w.persistent_claims && authority;
+            ensure!(
+                t.assignee.is_some() || actor == w.admin || legacy,
+                "Task is not claimed unfinished work"
+            );
+            ensure!(
+                actor == w.admin || t.assignee.as_deref() == Some(actor) || legacy,
+                "Task holder required"
+            );
             ensure!(t.done.is_none(), "completed Task cannot be blocked");
             ensure!(t.retired.is_none(), "retired Task cannot be blocked");
             ensure!(t.blocked.is_none(), "Task is already blocked");
