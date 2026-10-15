@@ -100,6 +100,15 @@ test("a run of one test file is stamped partial", () => {
   expect(stamp().full).toBe(false);
 });
 
+test("a run of a file filter after -- is stamped partial", () => {
+  // The filter starts with "-", so only the "--" separator shows that it is not a flag.
+  writeFileSync(join(repo, "-extra.test.ts"), `import { test } from "bun:test";\ntest("extra", () => {});\n`);
+  const r = bunTest({}, ["--", "-extra"]);
+  rmSync(join(repo, "-extra.test.ts"));
+  expect(r.code).toBe(0);
+  expect(stamp().full).toBe(false);
+});
+
 test("a run with --only is stamped partial", () => {
   expect(bunTest({}, ["--only"]).code).toBe(0);
   expect(stamp().full).toBe(false);

@@ -28,9 +28,9 @@ function testArgs(): string[] | undefined {
 }
 
 // Any argument that is not a flag is a path, a file or a flag value; a flag value
-// only makes the run partial, never full.
+// only makes the run partial, never full. Every argument after `--` is a file filter.
 const isFull = (args: string[] | undefined) =>
   args !== undefined &&
-  args.every((a) => a.startsWith("-") && !/^(-t|--test-name-pattern)/.test(a) && a !== "--only");
+  args.every((a, i) => a.startsWith("-") && !/^(-t|--test-name-pattern)/.test(a) && a !== "--only" && args[i - 1] !== "--");
 
 writeStamp(isFull(testArgs()));
