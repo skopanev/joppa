@@ -1143,4 +1143,62 @@ test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour 
   } finally { await f.close(); }
 });
 
+test('no-dashed-focus-ac1: a mouse click leaves no focus mark on the history Close button or a board dropdown', async (t) => {
+  const f = await fixture({'domain:X': {title: 'Domain X'}});
+  const themes = {light: 'rgb(255, 252, 245)', dark: 'rgb(25, 28, 32)'};
+  const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+  const dialog = f.page.locator('dialog.notes-dialog');
+  const status = f.page.locator('#tree .filter-fields select[aria-label="Object status"]');
+  const install = () => {
+    const read = node => { const style = getComputedStyle(node); return {outlineStyle: style.outlineStyle, textDecorationStyle: style.textDecorationStyle}; };
+    window.ac1 = {read, closes: []};
+    // Close removes the dialog, so a capturing listener reads the button before its own click handler runs.
+    document.addEventListener('click', event => {
+      const close = event.target.closest?.('dialog.notes-dialog .history-close');
+      if (close) ac1.closes.push(read(close));
+    }, true);
+  };
+  const failures = [];
+  const check = (where, measured) => {
+    t.diagnostic(where + ': ' + JSON.stringify(measured));
+    if (!measured?.outlineStyle || !measured.textDecorationStyle) failures.push(where + ': empty style ' + JSON.stringify(measured));
+    else if (measured.outlineStyle !== 'none' || measured.textDecorationStyle === 'dashed') failures.push(where + ': focus mark ' + JSON.stringify(measured));
+  };
+  try {
+    for (const [scheme, background] of Object.entries(themes)) {
+      const response = await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      assert.equal(response.status(), 200, scheme);
+      await X.waitFor();
+      await Promise.all(f.requests.map(entry => entry.body));
+      await f.page.evaluate(install);
+      await f.page.evaluate(scheme => { document.documentElement.dataset.theme = scheme; }, scheme);
+      assert.equal(await f.page.evaluate(() => getComputedStyle(document.body).backgroundColor), background, 'the ' + scheme + ' theme is active');
+      // The history dialog opens and closes with mouse clicks.
+      await X.locator(':scope > summary .history-button').click();
+      await dialog.waitFor();
+      await dialog.locator('.history-close').click();
+      await dialog.waitFor({state: 'detached'});
+      const closes = await f.page.evaluate(() => ac1.closes);
+      assert.equal(closes.length, 1, 'the click listener reads the Close button once, ' + scheme);
+      check(scheme + ', history Close click', closes[0]);
+      // The status dropdown opens, takes an option and loses focus with mouse clicks.
+      assert.equal(await status.inputValue(), '', scheme);
+      await status.click();
+      assert.equal(await status.evaluate(node => node.matches(':open')), true, 'the status list opens, ' + scheme);
+      check(scheme + ', dropdown open click', await status.evaluate(node => ac1.read(node)));
+      const option = await status.locator('option[value="green"]').boundingBox();
+      assert.ok(option?.width && option?.height, 'the mouse reaches a status option, ' + scheme + ': ' + JSON.stringify(option));
+      await f.page.mouse.click(option.x + option.width / 2, option.y + option.height / 2);
+      assert.equal(await status.inputValue(), 'green', 'the option click changes the status value, ' + scheme);
+      assert.equal(await status.evaluate(node => node.matches(':open')), false, 'the status list closes, ' + scheme);
+      check(scheme + ', dropdown option click', await status.evaluate(node => ac1.read(node)));
+      await f.page.waitForFunction(() => !document.querySelector('#tree .object-filter-results .object-loading'));
+      await Promise.all(f.requests.map(entry => entry.body));
+      await f.page.locator('.app-header .brand').click();
+      check(scheme + ', outside click', await status.evaluate(node => ac1.read(node)));
+    }
+    assert.deepEqual(failures, [], 'a mouse click leaves no focus mark');
+  } finally { await f.close(); }
+});
+
 });
