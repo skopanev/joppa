@@ -22,6 +22,8 @@ struct World {
     base: String,
     token: String,
     owner: String,
+    /// The token of the member `other`, who is Q in the planning tests.
+    other: String,
     http: reqwest::Client,
 }
 
@@ -60,10 +62,12 @@ async fn world() -> Result<World> {
     std::fs::create_dir_all(&dir)?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     let owner = uuid::Uuid::new_v4().simple().to_string();
+    let other = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ token.clone(): "agent", owner.clone(): "owner" }).to_string(),
+        json!({ token.clone(): "agent", owner.clone(): "owner", other.clone(): "other" })
+            .to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
@@ -92,6 +96,7 @@ async fn world() -> Result<World> {
                 base: format!("{root}/api/workspaces/{ws}"),
                 token,
                 owner,
+                other,
                 http: reqwest::Client::new(),
             };
             world.list(&[A, B]).await?;
@@ -516,12 +521,16 @@ impl Planning<'_> {
     }
     /// P posts the request body to the HTTP command endpoint.
     async fn http(&self, body: Value) -> Result<(u16, Value)> {
+        self.http_as(&self.w.token, body).await
+    }
+    /// The `token` member posts the request body to the HTTP command endpoint.
+    async fn http_as(&self, token: &str, body: Value) -> Result<(u16, Value)> {
         let root = self.w.base.split("/api/").next().unwrap();
         let reply = self
             .w
             .http
             .post(format!("{root}/api/workspaces/{}/commands", self.ws))
-            .bearer_auth(&self.w.token)
+            .bearer_auth(token)
             .json(&body)
             .send()
             .await?;
@@ -529,19 +538,33 @@ impl Planning<'_> {
         Ok((code, reply.json().await.unwrap_or(Value::Null)))
     }
     /// P calls one MCP tool in this workspace.
-    async fn mcp(&self, tool: &str, mut arguments: Value) -> Result<Value> {
+    async fn mcp(&self, tool: &str, arguments: Value) -> Result<Value> {
+        self.mcp_as(&self.w.token, tool, arguments).await
+    }
+    /// The `token` member calls one MCP tool in this workspace.
+    async fn mcp_as(&self, token: &str, tool: &str, mut arguments: Value) -> Result<Value> {
         let root = self.w.base.split("/api/").next().unwrap();
         arguments["workspace"] = json!(self.ws);
-        Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(&self.w.token)
+        Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(token)
             .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
             .send().await?.json().await?)
     }
     /// P sends `command` through HTTP or MCP and gets the result or the error text.
     async fn send(&self, mcp: bool, command: &Value) -> Result<std::result::Result<Value, String>> {
+        self.send_as(&self.w.token, mcp, command).await
+    }
+    /// The `token` member sends `command` through HTTP or MCP.
+    async fn send_as(
+        &self,
+        token: &str,
+        mcp: bool,
+        command: &Value,
+    ) -> Result<std::result::Result<Value, String>> {
         let request_id = uuid::Uuid::new_v4().to_string();
         if mcp {
             let response = self
-                .mcp(
+                .mcp_as(
+                    token,
                     "joppa_command",
                     json!({"request_id":request_id,"command":command}),
                 )
@@ -557,7 +580,7 @@ impl Planning<'_> {
             });
         }
         let (code, reply) = self
-            .http(json!({"request_id":request_id,"command":command}))
+            .http_as(token, json!({"request_id":request_id,"command":command}))
             .await?;
         Ok(if code == 200 {
             Ok(reply)
@@ -568,9 +591,23 @@ impl Planning<'_> {
     /// P sends the command through HTTP and then MCP. Each refusal returns `expected`
     /// and leaves the committed workspace rows unchanged.
     async fn refuse_command(&self, case: &str, command: Value, expected: &str) -> Result<()> {
+        self.refuse_command_as(&self.w.token, case, command, expected)
+            .await
+    }
+    /// The `token` member sends the command through HTTP and then MCP, with the same checks.
+    async fn refuse_command_as(
+        &self,
+        token: &str,
+        case: &str,
+        command: Value,
+        expected: &str,
+    ) -> Result<()> {
         let before = self.saved().await?;
         let (code, reply) = self
-            .http(json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .http_as(
+                token,
+                json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+            )
             .await?;
         ensure!(
             (400..500).contains(&code) && reply["error"] == expected,
@@ -581,7 +618,8 @@ impl Planning<'_> {
             "{case}: the HTTP refusal changed saved state"
         );
         let response = self
-            .mcp(
+            .mcp_as(
+                token,
                 "joppa_command",
                 json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
             )
@@ -4290,4 +4328,691 @@ async fn ac6_fixture4_a_refused_batch_rolls_back_the_save_and_the_finish() -> Re
     ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
     ensure!(listed(&p.tests().await?) == [A]);
     Ok(())
+}
+
+const AWAITING: &str = "Task is awaiting planning publication";
+const HOLDER_REQUIRED: &str = "planning holder required";
+const NO_CLAIM: &str = "criterion has no planning claim";
+const EMPTY_TEXT: &str = "text must not be empty";
+
+impl Planning<'_> {
+    /// The `token` member reads `path` over HTTP and through the MCP `tool`.
+    async fn reads(
+        &self,
+        token: &str,
+        path: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<[(&'static str, Value); 2]> {
+        let root = self.w.base.split("/api/").next().unwrap();
+        let http: Value = self
+            .w
+            .http
+            .get(format!("{root}/api/workspaces/{}/{path}", self.ws))
+            .bearer_auth(token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let mcp = self.mcp_as(token, tool, arguments).await?;
+        ensure!(mcp["result"]["isError"] != true, "MCP {tool}: {mcp}");
+        let mcp = serde_json::from_str(
+            mcp["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        Ok([("HTTP", http), ("MCP", mcp)])
+    }
+    /// One Task view of the `token` member over HTTP and MCP.
+    async fn view(&self, token: &str, view: &str) -> Result<[(&'static str, Value); 2]> {
+        self.reads(
+            token,
+            &format!("tasks?view={view}&limit=100"),
+            "joppa_tasks",
+            json!({"view":view,"limit":100}),
+        )
+        .await
+    }
+    /// The view=all entry of `address` for the `token` member over HTTP and MCP.
+    async fn entry(&self, token: &str, address: &str) -> Result<[(&'static str, Value); 2]> {
+        let [(http, h), (mcp, m)] = self.view(token, "all").await?;
+        let find = |page: Value| {
+            queued(&page, address)
+                .ok_or_else(|| anyhow::anyhow!("{address} is missing in view=all: {page}"))
+        };
+        Ok([(http, find(h)?), (mcp, find(m)?)])
+    }
+    /// One object read of the `token` member over HTTP and MCP.
+    async fn object(&self, token: &str, address: &str) -> Result<[(&'static str, Value); 2]> {
+        self.reads(
+            token,
+            &format!("objects?address={address}"),
+            "joppa_objects",
+            json!({"address":address}),
+        )
+        .await
+    }
+    /// `actor` sends `command` through the store and gets its journal position.
+    async fn position(&self, actor: &str, command: Value) -> Result<u64> {
+        let reply = self.write(actor, command).await?;
+        reply["position"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("reply has no position: {reply}"))
+    }
+    /// The saved revisions of `address`, in revision order.
+    async fn history(&self, address: &str) -> Result<Vec<Value>> {
+        let mut rows: Vec<Value> = self.saved().await?["object_revisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["address"] == address)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|r| r["revision"].as_u64());
+        Ok(rows)
+    }
+    /// The workspace owner saves A with `description` and confirms it ready again.
+    async fn revise_a(&self, description: &str) -> Result<u64> {
+        self.save(
+            "criterion:a",
+            Some("spec:one"),
+            json!({"title":"criterion:a","owner":"owner","description":description}),
+            json!([]),
+        )
+        .await?;
+        self.ready().await?;
+        self.revision("criterion:a").await
+    }
+    /// The view=all values of T for P: each transport must satisfy `check`.
+    async fn expect_t(&self, point: &str, check: impl Fn(&Value) -> bool) -> Result<()> {
+        for (transport, t) in self.entry(&self.w.token, "work:t").await? {
+            ensure!(check(&t), "{point} {transport}: {t}");
+        }
+        Ok(())
+    }
+    /// AC7 fixture: T with `links` is planned at A revision 4. A is at revision 5,
+    /// so T needs review. P claims A and saves T with a new contract.
+    async fn replanned(&self, links: Value) -> Result<()> {
+        let mut revision = self.revision("criterion:a").await?;
+        while revision < 4 {
+            revision = self.revise_a(&format!("Wording {revision}")).await?;
+        }
+        ensure!(revision == 4, "A revision {revision}");
+        self.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), links.clone()).await?;
+        self.expect_t("at A revision 4", |t| t["review_required"] == false)
+            .await?;
+        ensure!(self.revise_a("Fifth wording").await? == 5);
+        self.expect_t("at A revision 5", |t| t["review_required"] == true)
+            .await?;
+        self.claim("agent", "criterion:a").await?;
+        self.expect_t("after the claim", |t| t["review_required"] == true)
+            .await?;
+        self.plan_task(
+            "work:t",
+            "Implement the criterion with a new contract",
+            links,
+        )
+        .await?;
+        self.expect_t("after the holder save", |t| t["review_required"] == true)
+            .await
+    }
+    /// AC3 fixture: W (`worker`) holds T0 under ready A, and P holds A.
+    async fn held_t0(&self) -> Result<()> {
+        self.ready().await?;
+        self.t0().await?;
+        self.write("owner", json!({"op":"member","id":"worker","role":"agent"}))
+            .await?;
+        let revision = self.revision("work:t0").await?;
+        self.write(
+            "worker",
+            json!({"op":"claim_task","id":"work:t0","revision":revision}),
+        )
+        .await?;
+        self.claim("agent", "criterion:a").await
+    }
+    /// P saves T0 of W with a new contract.
+    async fn update_t0(&self) -> Result<()> {
+        let revision = self.revision("work:t0").await?;
+        self.write("agent", json!({"op":"save_object","kind":"work","id":"t0","revision":revision,"parent":"criterion:a","data":{"title":"T0","owner":"owner","contract":"Implement the updated plan","purpose":"implementation"},"reason":"Update the older work"})).await?;
+        Ok(())
+    }
+    /// The planning claim of `ac` on both transports.
+    async fn planning_claims(&self, ac: &str) -> Result<Vec<(&'static str, Value)>> {
+        Ok(self
+            .object(&self.w.token, ac)
+            .await?
+            .into_iter()
+            .map(|(transport, a)| (transport, a["process"]["planning_claim"].clone()))
+            .collect())
+    }
+    /// P still holds A, and each new Task is unavailable for publication.
+    async fn unpublished(&self, tasks: &[&str]) -> Result<()> {
+        for (transport, claim) in self.planning_claims("criterion:a").await? {
+            ensure!(claim["actor"] == "agent", "{transport}: {claim}");
+        }
+        for task in tasks {
+            for (transport, t) in self.entry(&self.w.token, task).await? {
+                ensure!(
+                    t["claimable"] == false && t["waiting_reason"] == AWAITING,
+                    "{transport} {task}: {t}"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The entry of `address` on one Task view page.
+fn queued(page: &Value, address: &str) -> Option<Value> {
+    page["tasks"]
+        .as_array()
+        .and_then(|tasks| tasks.iter().find(|t| t["address"] == address))
+        .cloned()
+}
+
+fn release_command(reason: &str) -> Value {
+    json!({"op":"release_planning","ac":"criterion:a","reason":reason})
+}
+
+/// Delete the board cache and rebuild the projections from the journal.
+async fn rebuild(p: &Planning<'_>) -> Result<()> {
+    p.pool
+        .get()
+        .await?
+        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&p.ws])
+        .await?;
+    store::migrate(&p.pool).await
+}
+
+// planning-claim-ac7
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac7_a_replanned_task_follows_the_current_criterion_revision_after_finish() -> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.replanned(json!([])).await?;
+        p.finish(mcp).await?;
+        let published = |t: &Value| {
+            t["review_required"] == false && t["claimable"] == true && t["waiting_reason"].is_null()
+        };
+        p.expect_t("after finish", published).await?;
+        store::check_journal(&p.pool).await?;
+        rebuild(&p).await?;
+        p.expect_t("after replay", published).await?;
+        ensure!(p.revise_a("Sixth wording").await? == 6);
+        p.expect_t("at A revision 6", |t| t["review_required"] == true)
+            .await?;
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac7
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result<()> {
+    let w = world().await?;
+    let dependency = |contract: &str| json!({"title":"D","owner":"owner","contract":contract,"purpose":"implementation"});
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.save(
+            "work:d",
+            Some("criterion:b"),
+            dependency("Deliver the dependency"),
+            json!([]),
+        )
+        .await?;
+        p.replanned(
+            json!([{"target":"work:d","relation":"depends_on","revision":1,"blocking":true}]),
+        )
+        .await?;
+        p.save(
+            "work:d",
+            Some("criterion:b"),
+            dependency("Deliver the changed dependency"),
+            json!([]),
+        )
+        .await?;
+        let before = p.object(&w.token, "work:t").await?;
+        for (transport, t) in &before {
+            ensure!(t["review_required"] == true, "{transport}: {t}");
+        }
+        p.finish(mcp).await?;
+        p.expect_t("after finish", |t| {
+            t["review_required"] == false
+                && t["claimable"] == false
+                && t["waiting_reason"]
+                    == "Task has an unmet dependency or a changed dependency revision: work:d"
+                && t["signal"]["label"] == "Dependency revision changed"
+        })
+        .await?;
+        // Finish keeps the dependency pin and the dependency review.
+        let after = p.object(&w.token, "work:t").await?;
+        for ((transport, old), (_, new)) in before.iter().zip(&after) {
+            ensure!(
+                new["document"]["links"] == old["document"]["links"]
+                    && new["review_required"] == true
+                    && new["signal"]["label"] == "Dependency revision changed",
+                "{transport}: {old} {new}"
+            );
+        }
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac7
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac7_a_refused_finish_and_a_release_keep_the_old_criterion_pin() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.replanned(json!([])).await?;
+    // The refusal compares every saved row, the journal position included.
+    p.refuse_command_as(&w.other, "Q finishes A", finish_command(), HOLDER_REQUIRED)
+        .await?;
+    p.expect_t("after the refused finish", |t| t["review_required"] == true)
+        .await?;
+    for (transport, claim) in p.planning_claims("criterion:a").await? {
+        ensure!(claim["actor"] == "agent", "{transport}: {claim}");
+    }
+    p.send(false, &release_command("Plan withdrawn"))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    p.expect_t("after the release", |t| t["review_required"] == true)
+        .await?;
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// planning-claim-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac2_planning_hides_only_the_new_tasks_of_its_holder_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.ready().await?;
+        p.t0().await?;
+        let revision = p.revision("criterion:a").await?;
+        let claim = p
+            .position(
+                "agent",
+                json!({"op":"claim_planning","ac":"criterion:a","revision":revision}),
+            )
+            .await?;
+        let mut created = vec![];
+        for id in ["t1", "t2"] {
+            let position = p.position("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+            created.push((format!("work:{id}"), position));
+        }
+        ensure!(claim < created[0].1 && created[0].1 < created[1].1);
+
+        // Q reads all and available Tasks.
+        for view in ["all", "available"] {
+            for (transport, page) in p.view(&w.other, view).await? {
+                for (task, _) in &created {
+                    let t = queued(&page, task);
+                    if view == "available" {
+                        ensure!(t.is_none(), "{transport} available lists {task}: {page}");
+                    } else {
+                        ensure!(
+                            t.as_ref().is_some_and(|t| t["status"] == "open"
+                                && t["assignee"].is_null()
+                                && t["claimable"] == false
+                                && t["waiting_reason"] == AWAITING),
+                            "{transport} all {task}: {page}"
+                        );
+                    }
+                }
+                ensure!(
+                    queued(&page, "work:t0").is_some_and(|t| t["claimable"] == true),
+                    "{transport} {view} T0: {page}"
+                );
+            }
+        }
+        for (task, _) in &created {
+            let revision = p.revision(task).await?;
+            p.refuse_command_as(
+                &w.other,
+                &format!("Q claims {task}"),
+                json!({"op":"claim_task","id":task,"revision":revision}),
+                AWAITING,
+            )
+            .await?;
+        }
+
+        // claim_next_task selects T0, and then no Task is left.
+        p.send_as(&w.other, mcp, &json!({"op":"claim_next_task"}))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+        for (transport, t0) in p.object(&w.other, "work:t0").await? {
+            ensure!(
+                t0["process"]["status"] == "in_progress" && t0["process"]["assignee"] == "other",
+                "mcp={mcp} {transport}: {t0}"
+            );
+        }
+        p.refuse_command_as(
+            &w.other,
+            "claim_next_task with only T1 and T2",
+            json!({"op":"claim_next_task"}),
+            NO_MATCH,
+        )
+        .await?;
+
+        for (task, position) in &created {
+            for (transport, t) in p.object(&w.other, task).await? {
+                ensure!(
+                    t["process"]["status"] == "open"
+                        && t["process"]["assignee"].is_null()
+                        && t["process"]["created_by"] == "agent"
+                        && t["process"]["created_at"] == *position
+                        && t["document"]["parent"] == "criterion:a",
+                    "{transport} {task}: {t}"
+                );
+            }
+        }
+        for (transport, planning_claim) in p.planning_claims("criterion:a").await? {
+            ensure!(
+                planning_claim == json!({"actor":"agent","position":claim}),
+                "{transport}: {planning_claim}"
+            );
+        }
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac3_a_valid_creation_plan_publishes_its_tasks_and_each_refusal_keeps_the_claim()
+-> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.held_t0().await?;
+        p.plan_task("work:t1", "Implement this criterion", json!([]))
+            .await?;
+        p.plan_task(
+            "work:t2",
+            "Implement the dependent work",
+            json!([{"target":"work:t1","relation":"depends_on","revision":1,"blocking":true}]),
+        )
+        .await?;
+        let verification = p.read("criterion:a").await?["process"]["verification"].clone();
+        let new = ["work:t1", "work:t2"];
+        p.refuse_command_as(&w.other, "Q finishes A", finish_command(), HOLDER_REQUIRED)
+            .await?;
+        p.unpublished(&new).await?;
+        let blank = json!({"op":"finish_planning","ac":"criterion:a","reason":" "});
+        p.refuse_command("blank reason", blank, EMPTY_TEXT).await?;
+        p.unpublished(&new).await?;
+
+        p.finish(mcp).await?;
+        for (transport, claim) in p.planning_claims("criterion:a").await? {
+            ensure!(claim.is_null(), "mcp={mcp} {transport}: {claim}");
+        }
+        ensure!(p.read("criterion:a").await?["process"]["verification"] == verification);
+        for (transport, t0) in p.object(&w.token, "work:t0").await? {
+            ensure!(
+                t0["process"]["status"] == "in_progress" && t0["process"]["assignee"] == "worker",
+                "{transport}: {t0}"
+            );
+        }
+        for (transport, t) in p.entry(&w.token, "work:t1").await? {
+            ensure!(
+                t["claimable"] == true && t["waiting_reason"].is_null(),
+                "{transport}: {t}"
+            );
+        }
+        for (transport, t) in p.entry(&w.token, "work:t2").await? {
+            ensure!(
+                t["claimable"] == false
+                    && t["waiting_reason"]
+                        == "Task has an unmet dependency or a changed dependency revision: work:t1",
+                "{transport}: {t}"
+            );
+        }
+        for (transport, page) in p.view(&w.token, "available").await? {
+            ensure!(
+                queued(&page, "work:t1").is_some() && queued(&page, "work:t2").is_none(),
+                "{transport} available: {page}"
+            );
+        }
+        p.refuse_command("no active claim", finish_command(), NO_CLAIM)
+            .await?;
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac3_an_update_only_plan_finishes_and_a_plan_without_changes_is_refused() -> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.held_t0().await?;
+        p.refuse_command("no holder changes", finish_command(), NO_TASK_CHANGES)
+            .await?;
+        for (transport, claim) in p.planning_claims("criterion:a").await? {
+            ensure!(claim["actor"] == "agent", "{transport}: {claim}");
+        }
+        let verification = p.read("criterion:a").await?["process"]["verification"].clone();
+        p.update_t0().await?;
+        p.finish(mcp).await?;
+        for (transport, claim) in p.planning_claims("criterion:a").await? {
+            ensure!(claim.is_null(), "mcp={mcp} {transport}: {claim}");
+        }
+        ensure!(p.read("criterion:a").await?["process"]["verification"] == verification);
+        for (transport, t0) in p.object(&w.token, "work:t0").await? {
+            ensure!(
+                t0["process"]["status"] == "in_progress"
+                    && t0["process"]["assignee"] == "worker"
+                    && t0["document"]["data"]["contract"] == "Implement the updated plan",
+                "{transport}: {t0}"
+            );
+        }
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac4
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac4_a_holder_release_retires_only_the_new_tasks_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let fields = |t: &Value| {
+        json!([
+            t["process"]["status"],
+            t["process"]["assignee"],
+            t["current_revision"],
+            t["document"]
+        ])
+    };
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.held_t0().await?;
+        for task in ["work:t1", "work:t2"] {
+            p.plan_task(task, "Implement this criterion", json!([]))
+                .await?;
+        }
+        p.update_t0().await?;
+        let t0 = p.object(&w.token, "work:t0").await?;
+        let history = p.history("work:t0").await?;
+        for (transport, t) in &t0 {
+            ensure!(
+                t["process"]["status"] == "in_progress"
+                    && t["process"]["assignee"] == "worker"
+                    && t["document"]["actor"] == "agent"
+                    && history.len() as u64 == t["current_revision"].as_u64().unwrap(),
+                "{transport}: {t}"
+            );
+        }
+
+        p.send(mcp, &release_command("Plan withdrawn"))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+        for (transport, claim) in p.planning_claims("criterion:a").await? {
+            ensure!(claim.is_null(), "mcp={mcp} {transport}: {claim}");
+        }
+        for task in ["work:t1", "work:t2"] {
+            for (transport, t) in p.object(&w.token, task).await? {
+                ensure!(
+                    t["process"]["status"] == "retired"
+                        && t["process"]["retired"] == "Plan withdrawn"
+                        && t["process"]["assignee"].is_null()
+                        && t["document"]["present"] == true,
+                    "{transport} {task}: {t}"
+                );
+            }
+        }
+        for ((transport, old), (_, new)) in t0.iter().zip(p.object(&w.token, "work:t0").await?) {
+            ensure!(fields(old) == fields(&new), "{transport}: {old} {new}");
+        }
+        ensure!(p.history("work:t0").await? == history, "T0 history changed");
+        let saved = p.saved().await?;
+        let event = saved["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .max_by_key(|e| e["position"].as_i64())
+            .cloned()
+            .unwrap_or_default();
+        ensure!(
+            event["actor"] == "agent"
+                && event["command"]["op"] == "release_planning"
+                && event["command"]["reason"] == "Plan withdrawn",
+            "{event}"
+        );
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+// planning-claim-ac4
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac4_an_empty_release_succeeds_and_each_release_refusal_changes_nothing() -> Result<()> {
+    let w = world().await?;
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.ready().await?;
+        p.claim("agent", "criterion:a").await?;
+        p.refuse_command_as(
+            &w.other,
+            "Q releases A",
+            release_command("Plan withdrawn"),
+            "workspace owner required",
+        )
+        .await?;
+        p.refuse_command("blank reason", release_command(" "), EMPTY_TEXT)
+            .await?;
+        let objects = p.addresses().await?;
+        p.send(mcp, &release_command("Plan withdrawn"))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+        for (transport, claim) in p.planning_claims("criterion:a").await? {
+            ensure!(claim.is_null(), "mcp={mcp} {transport}: {claim}");
+        }
+        ensure!(p.addresses().await? == objects, "release changed objects");
+        p.refuse_command(
+            "no active claim",
+            release_command("Plan withdrawn"),
+            NO_CLAIM,
+        )
+        .await?;
+        store::check_journal(&p.pool).await?;
+    }
+    Ok(())
+}
+
+/// One MCP joppa_batch operation for each criterion.
+fn per_criterion(command: impl Fn(&str) -> Value) -> Value {
+    json!(["criterion:a", "criterion:b"].map(|ac| json!({"command":command(ac)})))
+}
+
+// planning-claim-ac8
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac8_a_planner_claims_and_finishes_two_criteria_of_a_req_in_one_mcp_batch() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.ready().await?;
+    let response = planning_batch_in(&p, claim_batch(&p).await?).await?;
+    ensure!(response["result"]["isError"] != true, "{response}");
+    for ac in ["criterion:a", "criterion:b"] {
+        for (transport, claim) in p.planning_claims(ac).await? {
+            ensure!(claim["actor"] == "agent", "{transport} {ac}: {claim}");
+        }
+    }
+    for (id, ac) in [("a1", "criterion:a"), ("b1", "criterion:b")] {
+        p.write("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":ac,"data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+    }
+    let finish =
+        per_criterion(|ac| json!({"op":"finish_planning","ac":ac,"reason":"Plan complete"}));
+    let response = planning_batch_in(&p, finish).await?;
+    ensure!(response["result"]["isError"] != true, "{response}");
+    for ac in ["criterion:a", "criterion:b"] {
+        for (transport, claim) in p.planning_claims(ac).await? {
+            ensure!(claim.is_null(), "{transport} {ac}: {claim}");
+        }
+    }
+    for task in ["work:a1", "work:b1"] {
+        for (transport, t) in p.entry(&w.token, task).await? {
+            ensure!(t["claimable"] == true, "{transport} {task}: {t}");
+        }
+    }
+    store::check_journal(&p.pool).await?;
+
+    // Q holds B: the whole claim batch of P is refused.
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.claim("other", "criterion:b").await?;
+    let claims = claim_batch(&p).await?;
+    let before = p.saved().await?;
+    let response = planning_batch_in(&p, claims).await?;
+    ensure!(
+        response["result"]["isError"] == true
+            && response["result"]["content"][0]["text"]
+                .as_str()
+                .is_some_and(|e| e.ends_with("criterion is already claimed for planning")),
+        "{response}"
+    );
+    let after = p.saved().await?;
+    ensure!(
+        after == before && after["position"] == before["position"],
+        "the refused batch changed saved state"
+    );
+    for (transport, claim) in p.planning_claims("criterion:a").await? {
+        ensure!(claim.is_null(), "{transport}: {claim}");
+    }
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+/// claim_planning for A and B at their current revisions.
+async fn claim_batch(p: &Planning<'_>) -> Result<Value> {
+    let (a, b) = (
+        p.revision("criterion:a").await?,
+        p.revision("criterion:b").await?,
+    );
+    Ok(per_criterion(|ac| {
+        let revision = if ac == "criterion:a" { a } else { b };
+        json!({"op":"claim_planning","ac":ac,"revision":revision})
+    }))
+}
+
+/// P sends one MCP joppa_batch in the planning workspace.
+async fn planning_batch_in(p: &Planning<'_>, operations: Value) -> Result<Value> {
+    p.mcp(
+        "joppa_batch",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"operations":operations}),
+    )
+    .await
 }
