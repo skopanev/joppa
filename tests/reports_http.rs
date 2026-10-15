@@ -806,8 +806,8 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() -> Result<()> {
     let w = world().await?;
-    ready_for_planning(&w).await?;
     w.list(&[A]).await?;
+    ready_for_planning(&w).await?;
     w.upload(
         "c1c1c1c",
         1,
@@ -819,20 +819,23 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
         w.status().await?["status"] == "green",
         "the stored list must be green"
     );
+    // check-list-frozen-ac3: each list save resets the criterion, so the batch assesses it again.
+    let assess = json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"Known work scope"}});
     let before = planning_criterion(&w).await?;
     let claim =
         json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
     let reply = planning_batch(&w, json!([
         {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A,B],"reason":"Include the failing check"}},
+        {"command":assess},
         {"command":claim}
     ])).await?;
     ensure!(
         reply["result"]["isError"] != true && reply.get("error").is_none(),
-        "current red list must permit planning: {reply}"
+        "current grey list must permit planning: {reply}"
     );
     ensure!(
-        w.status().await?["status"] == "red",
-        "the new list must be red"
+        w.status().await?["status"] == "grey",
+        "the new list must be grey"
     );
     ensure!(
         planning_criterion(&w).await?["process"]["planning_claim"]["actor"] == "agent",
@@ -842,30 +845,24 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
         "op":"release_planning","ac":"ac:key-rights","reason":"Check the opposite batch transition"}})).await?;
     ensure!(code == 200, "{code} {reply}");
     let before = planning_criterion(&w).await?;
-    let status_before = w.status().await?;
     let claim =
         json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
     let reply = planning_batch(&w, json!([
         {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A],"reason":"Use the passing check"}},
+        {"command":assess},
         {"command":claim}
     ])).await?;
     ensure!(
-        reply["result"]["isError"] == true
-            && reply["result"]["content"][0]["text"]
-                .as_str()
-                .is_some_and(|error| error.ends_with("criterion is already verified")),
-        "current green list must refuse planning: {reply}"
-    );
-    let after = planning_criterion(&w).await?;
-    ensure!(
-        after["document"] == before["document"]
-            && after["process"] == before["process"]
-            && after["position"] == before["position"],
-        "rejected batch changed the criterion or journal position"
+        reply["result"]["isError"] != true && reply.get("error").is_none(),
+        "the earlier passing report must not refuse planning: {reply}"
     );
     ensure!(
-        w.status().await? == status_before,
-        "rejected batch changed the saved test list"
+        w.status().await?["status"] == "grey",
+        "the earlier report must not count after the list save"
+    );
+    ensure!(
+        planning_criterion(&w).await?["process"]["planning_claim"]["actor"] == "agent",
+        "claim missing"
     );
     Ok(())
 }
@@ -985,8 +982,9 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
         .await?
         .json()
         .await?;
+    // check-list-frozen-ac3: the archive resets every criterion below bundle:root.
     ensure!(
-        after["verification_summary"] == json!({"total":2,"passed":1,"failed":1}),
+        after["verification_summary"] == json!({"total":2,"passed":0,"failed":0}),
         "{after}"
     );
     Ok(())
@@ -4101,4 +4099,371 @@ async fn the_workspace_owner_unblocks_without_a_claim_and_the_journal_replays() 
     );
     store::check_journal(&p.pool).await?;
     Ok(())
+}
+
+/// The failing check that red sibling B lists in the frozen fixtures.
+const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
+
+/// check-list-frozen-ac3: area G holds R with criterion A and red sibling B; area H is
+/// another parent. A lists A and B, B lists a failing check, both are assessed ready,
+/// and one clean full run makes A green. With `plan`, the agent claims A for planning
+/// and saves draft Task work:t before the run.
+async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
+    let p = Planning {
+        w,
+        pool: store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?,
+        ws: format!("http-frozen-{}", uuid::Uuid::new_v4().simple()),
+    };
+    store::execute_input(
+        &p.pool,
+        &p.ws,
+        "owner",
+        "workspace",
+        &json!({"op":"workspace","title":"Every change resets"}),
+    )
+    .await?;
+    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
+        .await?;
+    let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
+    p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
+        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
+        "work":{"title":"Work","role":"task","parents":["criterion"]},
+        "signal":{"title":"Signal","role":"document","root":true,"parents":["*"],"inbox":true}
+    }})).await?;
+    for key in ["area:g", "area:h"] {
+        p.save(
+            key,
+            None,
+            json!({"title":key,"body":"Group scope","owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+    }
+    p.save(
+        "spec:r",
+        Some("area:g"),
+        json!({"title":"R","body":"Implement the rule","owner":"owner"}),
+        json!([]),
+    )
+    .await?;
+    for (ac, tests) in [("criterion:a", vec![A, B]), ("criterion:b", vec![REJECTS])] {
+        p.save(
+            ac,
+            Some("spec:r"),
+            json!({"title":ac,"owner":"owner"}),
+            json!([]),
+        )
+        .await?;
+        p.write(
+            "agent",
+            json!({"op":"set_ac_tests","target":ac,"tests":tests,"reason":"Bind the tests"}),
+        )
+        .await?;
+    }
+    let ready = json!({"ready":true,"reason":"Known scope"});
+    p.confirm(
+        "spec:r",
+        &[("criterion:a", ready.clone()), ("criterion:b", ready)],
+    )
+    .await?;
+    if plan {
+        p.claim("agent", "criterion:a").await?;
+        p.write("agent", json!({"op":"save_object","kind":"work","id":"t","revision":0,"parent":"criterion:a","data":{"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"links":[],"reason":"Plan the criterion"})).await?;
+    }
+    p.upload("c1c1c1c", 1, true, frozen_run()).await?;
+    let (a, b) = (p.tests("criterion:a").await?, p.tests("criterion:b").await?);
+    ensure!(
+        a["status"] == "green" && b["status"] == "red",
+        "A must start green and B red: {a} {b}"
+    );
+    Ok(p)
+}
+
+/// A full run that passes both tests of A and fails the test of B.
+fn frozen_run() -> String {
+    junit(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "fail")])
+}
+
+impl Planning<'_> {
+    async fn tests(&self, ac: &str) -> Result<Value> {
+        self.get(format!("/tests?ac={ac}")).await
+    }
+    async fn assessment(&self, ac: &str) -> Result<Value> {
+        Ok(self.get(format!("/objects?address={ac}")).await?["process"]["assessment"].clone())
+    }
+    /// `token` posts `command` to the HTTP command endpoint with a new request ID.
+    async fn post_command(&self, token: &str, command: Value) -> Result<()> {
+        let root = self.w.base.split("/api/").next().unwrap();
+        let reply = self
+            .w
+            .http
+            .post(format!("{root}/api/workspaces/{}/commands", self.ws))
+            .bearer_auth(token)
+            .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}))
+            .send()
+            .await?;
+        let code = reply.status();
+        ensure!(code.is_success(), "{code} {}", reply.text().await?);
+        Ok(())
+    }
+    /// Owner S saves R over HTTP with `parent`, `title` and `links`.
+    async fn save_r(&self, parent: &str, title: &str, links: Value) -> Result<()> {
+        let revision = self.revision("spec:r").await?;
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"links":links,"reason":"Change R"})).await
+    }
+    /// Agent bot saves the identical test list of A over HTTP.
+    async fn resave_a(&self) -> Result<()> {
+        self.post_command(&self.w.token, json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Save the list again"})).await
+    }
+    /// Owner S saves inbox signal s under R over HTTP.
+    async fn signal(&self) -> Result<()> {
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":"spec:r","data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[],"reason":"Record the signal"})).await
+    }
+    /// A is grey with the test list of `before` and has no readiness assessment.
+    async fn reset(&self, before: &Value) -> Result<()> {
+        let s = self.tests("criterion:a").await?;
+        ensure!(
+            s["status"] == "grey" && addresses(&s) == addresses(before),
+            "A after the change: {s}"
+        );
+        let readiness = self.assessment("criterion:a").await?;
+        ensure!(
+            readiness["state"] == "unassessed",
+            "A readiness: {readiness}"
+        );
+        Ok(())
+    }
+    /// A is still green with the test list of `before` and the readiness `assessment`.
+    async fn kept(&self, before: &Value, assessment: &Value) -> Result<()> {
+        let s = self.tests("criterion:a").await?;
+        ensure!(
+            s["status"] == "green" && addresses(&s) == addresses(before),
+            "A after the change: {s}"
+        );
+        ensure!(
+            self.assessment("criterion:a").await? == *assessment,
+            "the readiness of A changed"
+        );
+        Ok(())
+    }
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    p.save_r("area:g", "R renamed", json!([])).await?;
+    p.reset(&before).await?;
+    let mcp = p
+        .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
+        .await?;
+    ensure!(mcp["status"] == "grey", "MCP joppa_tests: {mcp}");
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    p.save_r(
+        "area:g",
+        "R",
+        json!([{"target":"area:h","relation":"related"}]),
+    )
+    .await?;
+    p.reset(&before).await
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f3_a_move_of_r_makes_a_grey() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    p.save_r("area:h", "R", json!([])).await?;
+    p.reset(&before).await
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f4_a_comment_on_r_keeps_a_green() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let (before, assessment) = (
+        p.tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
+    p.post_command(
+        &w.owner,
+        json!({"op":"note","target":"spec:r","id":"context","text":"Keep this context"}),
+    )
+    .await?;
+    p.kept(&before, &assessment).await
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f5_an_identical_list_save_makes_a_grey_and_unassessed() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    let r = p.read("spec:r").await?;
+    ensure!(
+        p.assessment("criterion:a").await?["state"] == "ready",
+        "A must start ready"
+    );
+    p.resave_a().await?;
+    p.reset(&before).await?;
+    let after = p.read("spec:r").await?;
+    ensure!(
+        after["current_revision"] == r["current_revision"]
+            && after["process"]["revision"] == r["process"]["revision"],
+        "R has a new revision: {after}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f6_an_archived_red_sibling_makes_a_and_r_grey() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    let r = p.get("/objects?address=spec:r".into()).await?;
+    ensure!(r["verification_summary"]["passed"] == 1, "{r}");
+    let revision = p.revision("criterion:b").await?;
+    p.post_command(&w.owner, json!({"op":"archive_object","target":"criterion:b","revision":revision,"reason":"Drop the red criterion"})).await?;
+    p.reset(&before).await?;
+    let r = p
+        .mcp_read("joppa_objects", json!({"address":"spec:r"}))
+        .await?;
+    ensure!(
+        r["verification_summary"] == json!({"total":1,"passed":0,"failed":0}),
+        "MCP joppa_objects R: {r}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f6_control_an_archived_inbox_signal_keeps_a_green() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    p.signal().await?;
+    let (before, assessment) = (
+        p.tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
+    p.post_command(
+        &w.owner,
+        json!({"op":"archive_object","target":"signal:s","revision":1,"reason":"Drop the signal"}),
+    )
+    .await?;
+    p.kept(&before, &assessment).await
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    p.resave_a().await?;
+    p.reset(&before).await?;
+    let revision = p.read("spec:r").await?["process"]["revision"].clone();
+    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    let readiness = p.assessment("criterion:a").await?;
+    let s = p.tests("criterion:a").await?;
+    ensure!(
+        readiness["state"] == "ready" && s["status"] == "grey",
+        "{readiness} {s}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f8_only_a_full_report_after_the_change_makes_a_green() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let before = p.tests("criterion:a").await?;
+    let b = (
+        p.tests("criterion:b").await?,
+        p.assessment("criterion:b").await?,
+    );
+    p.resave_a().await?;
+    // Control: the clean full report from before the change does not count.
+    p.reset(&before).await?;
+    // Control: partial reports after the change do not combine.
+    p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
+        .await?;
+    p.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
+        .await?;
+    let s = p.tests("criterion:a").await?;
+    ensure!(s["status"] == "grey", "after partial reports: {s}");
+    p.upload("c4c4c4c", 4, true, frozen_run()).await?;
+    let s = p.tests("criterion:a").await?;
+    ensure!(s["status"] == "green", "after the full report: {s}");
+    let mcp = p
+        .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
+        .await?;
+    ensure!(mcp["status"] == "green", "MCP joppa_tests: {mcp}");
+    let after = (
+        p.tests("criterion:b").await?,
+        p.assessment("criterion:b").await?,
+    );
+    ensure!(
+        after.0["status"] == b.0["status"] && after.1 == b.1,
+        "sibling B changed: {after:?}"
+    );
+    Ok(())
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f9_finish_planning_under_green_a_keeps_a_green() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, true).await?;
+    let (before, assessment) = (
+        p.tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
+    p.post_command(
+        &w.token,
+        json!({"op":"finish_planning","ac":"criterion:a","reason":"Plan complete"}),
+    )
+    .await?;
+    let a = p.read("criterion:a").await?;
+    ensure!(a["process"]["planning_claim"].is_null(), "{a}");
+    p.kept(&before, &assessment).await
+}
+
+// check-list-frozen-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    let (before, assessment) = (
+        p.tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
+    p.signal().await?;
+    p.kept(&before, &assessment).await
 }

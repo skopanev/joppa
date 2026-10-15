@@ -2650,9 +2650,15 @@ pub fn archive(
     next.reason = reason.clone();
     next.at = at.to_owned();
 
+    let parent = next.parent.clone();
+    let inbox = input_type(w, kind);
     w.objects.get_mut(&target).unwrap().revisions.push(next);
     w.archived_objects.insert(target.clone());
-    Ok(())
+    // An archived spec object resets the criteria at and below its parent.
+    match parent {
+        Some(parent) if !inbox => reset_criteria(w, &parent, at),
+        _ => Ok(()),
+    }
 }
 
 pub fn restore(

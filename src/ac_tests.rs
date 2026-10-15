@@ -2,7 +2,8 @@
 //!
 //! A criterion lists its tests by address: the file, the describe blocks and the
 //! test name joined by " > ". The list keeps its own history, apart from the
-//! requirement revision, so saving it never resets readiness or acceptance.
+//! requirement revision. Each save, also an identical one, resets the criterion:
+//! earlier reports stop counting and its readiness is cleared.
 //! A change of the criterion text makes the saved list a draft until it is saved again.
 use crate::model::Workspace;
 use anyhow::{Context, Result, ensure};
@@ -63,7 +64,8 @@ pub fn text_hash(data: &serde_json::Value) -> String {
     format!("{:x}", Sha256::digest(text.as_bytes()))
 }
 
-/// Apply `set_ac_tests`: validate the target and the addresses, then append a list revision.
+/// Apply `set_ac_tests`: validate the target and the addresses, append a list revision
+/// and reset the criterion at the save time.
 /// A supplied `expected` revision must equal the current list revision, or 0 without a list.
 #[allow(clippy::too_many_arguments)]
 pub fn set(
@@ -111,7 +113,7 @@ pub fn set(
         expected.is_none_or(|expected| expected == current),
         "stale test list revision; read the tests again"
     );
-    let entry = w.ac_tests.entry(address).or_default();
+    let entry = w.ac_tests.entry(address.clone()).or_default();
     let revision = entry.revisions.len() as u32 + 1;
     entry.revisions.push(AcTestsRevision {
         revision,
@@ -122,7 +124,7 @@ pub fn set(
         position,
         reason: reason.into(),
     });
-    Ok(())
+    crate::objects::reset_criteria(w, &address, at)
 }
 
 #[path = "ac_tests_junit.rs"]
