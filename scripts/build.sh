@@ -27,7 +27,7 @@ if [ "$(uname -s)" != Linux ]; then
         test-only) name=test:only; shift ;;
         test) name=test:rust; shift ;;
         browser) name=test:browser; shift ;;
-        build|lint|report|gate) name=$1; shift ;;
+        build|lint|report|gate|fmt) name=$1; shift ;;
         *) echo 'build: use a configured bun run command' >&2; exit 2 ;;
     esac
     database=${JOPPA_TEST_DATABASE_URL:-}
@@ -80,6 +80,10 @@ if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
             exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
             ;;
     esac
+fi
+# Formatting needs no compile and no lock.
+if [ "${1:-}" = fmt ]; then
+    exec cargo fmt
 fi
 # Format errors need no compile, so they fail before the wait for the lock.
 if [ "${1:-}" = lint ] && [ "${JOPPA_BUILD_LOCKED:-0}" != 1 ]; then
