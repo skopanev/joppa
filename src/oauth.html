@@ -16,6 +16,8 @@ main.login-content{width:min(100%,420px)}
 #connect:hover:not(:disabled){background:var(--control-hover);text-decoration:none}
 #status{font-size:.8em;color:var(--muted);min-height:1.6em;margin:1em 0 0;white-space:normal}
 main.login-content>a{font-size:.85em;color:var(--muted);margin-top:1.4em}main.login-content>a:hover{color:var(--link)}
+a.return-app{display:block;width:100%;text-align:center;padding:.7em 1em;margin:0 0 1em;border:1px solid var(--text);color:var(--heading);text-decoration:none}
+a.return-app:hover{background:var(--control-hover)}
 textarea{width:100%;min-height:0;padding:.8em;border:1px solid var(--rule);border-radius:0;background:transparent;color:var(--heading);font:.85em/1.6 ui-monospace,monospace;resize:none;overflow-wrap:anywhere;margin:0 0 1em}
 </style>
 <body>
@@ -39,15 +41,20 @@ async function api(path,body){const r=await fetch(path,{method:body===undefined?
 async function check(){try{const me=await api('/api/me');signedIn=true;document.getElementById('account').textContent='Signed in as '+(me.email||me.actor);button.textContent='Allow access';}catch{signedIn=false;button.textContent='Continue with Google';}button.disabled=false;}
 button.onclick=async()=>{button.disabled=true;status.textContent='';let popup;try{
  if(!signedIn){popup=window.open('about:blank','joppa-google','popup,width=520,height=700');if(!popup)throw Error('Allow the sign-in window, then try again.');popup.opener=null;const start=await api('/auth/login',{});popup.location=start.verification_url;status.textContent='Complete sign-in in the Google window.';const deadline=Date.now()+start.expires_in*1000;while(Date.now()<deadline){await new Promise(r=>setTimeout(r,1500));const result=await api('/auth/poll',{});if(result.status==='ready'){popup.close();await check();status.textContent='Approve access to return to your agent.';return;}}throw Error('Sign-in expired. Please try again.');}
- const result=await api('/oauth/approve',params);if(result.code){showCompletion(result);return;}button.textContent='Connected';status.textContent=result.copy_link?'Returning to your agent. If the browser cannot open the page, copy its address into your agent.':'Returning to your agent…';location.assign(result.redirect);
+ const result=await api('/oauth/approve',params);if(result.code||result.copy_link){showCompletion(result);return;}button.textContent='Connected';status.textContent='Returning to your agent…';location.assign(result.redirect);
 }catch(e){popup?.close();status.textContent=e.message;button.disabled=false;}};
 function showCompletion(result){
- document.querySelector('h1').firstChild.textContent='Finish connecting';document.getElementById('description').textContent='Copy this one-time code and paste it into the authorization code field in Antigravity.';
- const field=document.createElement('textarea');field.readOnly=true;field.rows=3;field.value=result.code;field.setAttribute('aria-label','Authorization code');field.spellcheck=false;button.before(field);
- button.textContent='Copy code';button.disabled=false;status.textContent='Valid for 5 minutes, for one use. Keep this page open until your agent connects.';
- button.onclick=async()=>{try{await navigator.clipboard.writeText(field.value);button.textContent='Copied';status.textContent='Paste the code into Antigravity and press Enter.';}catch{field.focus();field.select();status.textContent='Copy the selected code, then paste it into Antigravity.';}};
- const link=document.querySelector('main > a');link.textContent='Back to your workspace';
- setTimeout(()=>{field.value='';button.disabled=true;button.textContent='Code expired';status.textContent='Choose Authenticate in your agent again to get a fresh code.';},Math.min(result.expires_in||300,300)*1000);
+ // A local callback gets a link: Return to app on this computer, or copy it to an agent elsewhere.
+ const isLink=Boolean(result.copy_link),kind=isLink?'link':'code';
+ document.querySelector('h1').firstChild.textContent='Finish connecting';
+ document.getElementById('description').textContent=isLink?'If your agent runs on this computer, choose Return to app. If it runs elsewhere, copy the sign-in link and give it to the agent.':'Copy this one-time code and paste it into the authorization code field in Antigravity.';
+ let returnLink;
+ if(isLink){returnLink=document.createElement('a');returnLink.className='return-app';returnLink.href=result.redirect;returnLink.textContent='Return to app';button.before(returnLink);}
+ const field=document.createElement('textarea');field.readOnly=true;field.rows=isLink?5:3;field.value=isLink?result.redirect:result.code;field.setAttribute('aria-label',isLink?'Sign-in link':'Authorization code');field.spellcheck=false;button.before(field);
+ button.textContent=isLink?'Copy sign-in link':'Copy code';button.disabled=false;status.textContent='Valid for 5 minutes, for one use. Keep this page open until your agent connects.';
+ button.onclick=async()=>{try{await navigator.clipboard.writeText(field.value);button.textContent='Copied';status.textContent=isLink?'Give the whole link to your agent.':'Paste the code into Antigravity and press Enter.';}catch{field.focus();field.select();status.textContent=isLink?'Copy the selected link, then give it to your agent.':'Copy the selected code, then paste it into Antigravity.';}};
+ const link=document.querySelector('main > a:last-of-type');link.textContent='Back to your workspace';
+ setTimeout(()=>{field.value='';button.disabled=true;button.textContent=isLink?'Link expired':'Code expired';returnLink?.removeAttribute('href');status.textContent='Choose Authenticate in your agent again to get a fresh '+kind+'.';},Math.min(result.expires_in||300,300)*1000);
 }
-(async()=>{try{const info=await api('/oauth/details'+location.search);document.getElementById('client').textContent=info.client_name;document.getElementById('callback').textContent=info.manual?'Finish by pasting a code into Antigravity':'Return to '+new URL(info.redirect_uri).host;await check();}catch(e){button.textContent='Connection unavailable';status.textContent=e.message;}})();
+(async()=>{try{const info=await api('/oauth/details'+location.search);document.getElementById('client').textContent=info.client_name;document.getElementById('callback').textContent=info.manual?'Finish by pasting a code into Antigravity':info.copy_link?'Finish with Return to app or a sign-in link':'Return to '+new URL(info.redirect_uri).host;await check();}catch(e){button.textContent='Connection unavailable';status.textContent=e.message;}})();
 </script></html>

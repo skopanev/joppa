@@ -23,12 +23,12 @@ const path=require('node:path');
    await page.route('http://localhost:45678/**',route=>route.fulfill({body:'Authentication complete'}));
    await page.goto('https://joppa.example/oauth/authorize');
    await page.getByRole('button',{name:'Allow access',exact:true}).click();
-   if(mode!=='code'){
-    // A loopback callback, as Codex uses, gets the code at once, like a hosted one.
-    await page.waitForURL(mode==='link'?callback:'https://client.example/callback');
+   if(mode==='redirect'){
+    await page.waitForURL('https://client.example/callback');
    }else{
-    const expected='test-only-code';
-    const button=page.getByRole('button',{name:'Copy code',exact:true});
+    // A loopback callback, as Codex uses, gets Return to app and a link to copy to an agent elsewhere.
+    const expected=mode==='link'?callback:'test-only-code';
+    const button=page.getByRole('button',{name:mode==='link'?'Copy sign-in link':'Copy code',exact:true});
     await button.waitFor();
     assert.equal(await page.locator('textarea').inputValue(),expected);
     assert.equal(page.url(),'https://joppa.example/oauth/authorize','local callback must not auto-navigate');
@@ -40,14 +40,15 @@ const path=require('node:path');
     assert.equal(await page.locator('textarea').evaluate(e=>e.selectionEnd-e.selectionStart),expected.length);
     assert(await page.getByRole('status').textContent().then(t=>t.startsWith('Copy the selected')));
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no mobile overflow');
+    if(mode==='link')assert.equal(await page.getByRole('link',{name:'Return to app'}).getAttribute('href'),callback);
     await page.clock.fastForward(300001);
     assert.equal(await page.locator('textarea').inputValue(),'');
-    assert(await page.getByRole('button',{name:'Code expired'}).isDisabled());
+    assert(await page.getByRole('button',{name:mode==='link'?'Link expired':'Code expired'}).isDisabled());
     assert.equal(await page.locator('a[href^="http://localhost"]').count(),0);
    }
    assert.deepEqual(errors,[]);
    await page.close();
   }
-  console.log('OAuth browser: loopback and hosted redirect, code copy, clipboard fallback, expiry and mobile layout passed');
+  console.log('OAuth browser: link and code copy, Return to app, clipboard fallback, expiry, hosted redirect and mobile layout passed');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
