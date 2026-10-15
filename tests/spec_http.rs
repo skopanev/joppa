@@ -1794,6 +1794,33 @@ async fn an_archived_capability_leaves_the_list_when_done_and_retired_tasks_rema
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_requirement_with_no_live_criteria_archives_over_http() -> Result<()> {
+    // removal-is-archiving-ac2: skopanev (the owner token) archives a requirement whose
+    // criteria are all archived, and a requirement with no criteria.
+    let w = world().await?;
+    let before = w.get("address=ac:key-rights").await?;
+    w.command(json!({"op":"archive_object","target":"ac:key-rights","revision":before["current_revision"],"reason":"Cut"})).await?;
+    w.command(json!({"op":"save_object","kind":"requirement","id":"bare","revision":0,"parent":"capability:empty","data":{"title":"No criteria","body":"Scope","owner":"owner","consumers":["customer"]},"reason":"Define"})).await?;
+    for target in ["requirement:key", "requirement:bare"] {
+        let before = w.get(&format!("address={target}")).await?;
+        let reply = w
+            .http
+            .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
+            .bearer_auth(&w.owner)
+            .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"archive_object","target":target,"revision":before["current_revision"],"reason":"Cut"}}))
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status == 200, "{target}: {status} {body}");
+        let read = w.get(&format!("address={target}")).await?;
+        ensure!(read["document"]["present"] == false, "{target}: {read}");
+    }
+    Ok(())
+}
+
 async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<String>> {
     let list = w
         .get_as(token, &format!("limit=100&parent={parent}"))
