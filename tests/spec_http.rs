@@ -1921,8 +1921,9 @@ async fn a_move_under_a_domain_is_refused_and_changes_nothing() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_blocking_link_pins_the_target_revision_and_asks_for_review() -> Result<()> {
-    // blocking-pins-revision-ac1
+async fn a_stored_revision_on_an_ordering_link_asks_for_no_review() -> Result<()> {
+    // blocking-pins-revision-ac1, narrowed by dependencies-before-priority: only a Task
+    // dependency pins its target. A note keeps the stored revision, and it gates nothing.
     let w = world().await?;
     w.note("target", 0, "Target", "v1", json!([])).await?;
     w.note(
@@ -1938,7 +1939,7 @@ async fn a_blocking_link_pins_the_target_revision_and_asks_for_review() -> Resul
     ensure!(
         source["document"]["links"][0]["revision"] == 1
             && source["document"]["links"][0]["blocking"] == true
-            && source["review_required"] == true,
+            && source["review_required"] == false,
         "{source}"
     );
     Ok(())

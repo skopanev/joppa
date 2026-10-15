@@ -582,6 +582,53 @@ async fn command(
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct DependencyRequest {
+    request_id: String,
+    source: String,
+    target: String,
+    action: String,
+}
+/// A signed-in member adds or removes one blocking dependency from the board. Only a
+/// browser session from this origin with a write grant may; commands and reorder stay
+/// closed to cookie sessions.
+async fn dependency(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<DependencyRequest>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error(
+            "Sign in with the browser to change a dependency",
+        ));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let add = match request.action.as_str() {
+        "add" => true,
+        "remove" => false,
+        _ => {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({"error":"action must be add or remove"})),
+            ));
+        }
+    };
+    result(
+        store::save_dependency(
+            &app.pool,
+            &workspace,
+            &actor,
+            &request.request_id,
+            &request.source,
+            &request.target,
+            add,
+        )
+        .await,
+    )
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OrderRequest {
     request_id: String,
     kind: String,
@@ -852,6 +899,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         )
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
+        .route("/api/workspaces/{workspace}/dependencies", post(dependency))
         // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с
         // невнятным 413 раньше, чем дойдёт до нашей проверки предела.
         .route(

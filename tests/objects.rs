@@ -206,15 +206,17 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
         json!({"title":"Context","body":"Second","owner":"owner"}),
         vec![],
     );
-    assert_eq!(objects::review_links(&w.state, "ac:ios").len(), 1);
+    // dependencies-before-priority: an ordering link of a criterion pins nothing.
+    assert!(objects::review_links(&w.state, "ac:ios").is_empty());
     assert!(objects::work_ready(&w.state, "ac:ios"));
     let r = w.state.requirements["r"].revisions.last().unwrap();
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());
     assert_eq!(r.number, 1, "a link does not rewrite the test contract");
 }
-// [ac:dependency-evidence-ac1]
+// [ac:dependency-evidence-ac1], narrowed by dependencies-before-priority: a criterion's
+// blocking link orders work. Its wait reads test status in the store; it pins nothing here.
 #[test]
-fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
+fn criterion_dependencies_keep_evidence_and_pin_no_revision() {
     let mut w = World::new();
     w.ready();
     let key = w.state.objects["ac:key"].current().data.clone();
@@ -225,9 +227,13 @@ fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
         key.clone(),
         vec![link("ac:ios", Some(1), true)],
     );
-    assert!(!objects::work_ready(&w.state, "ac:key"));
-    w.run("green", "pass");
     assert!(objects::work_ready(&w.state, "ac:key"));
+    assert_eq!(
+        objects::assessment(&w.state, "ac:key").unwrap()["state"],
+        "ready",
+        "a blocking link change resets nothing"
+    );
+    w.run("green", "pass");
     let prior = w.state.requirements["r"].revisions[0].runs["green"]
         .results
         .clone();
@@ -240,23 +246,27 @@ fn blocking_dependencies_require_tests_and_recheck_changed_revisions() {
         vec![link("ac:ios", Some(1), false)],
     );
     // check-list-frozen-ac2: the domain link change resets readiness below it.
-    assert!(!objects::work_ready(&w.state, "ac:key"));
+    assert_eq!(
+        objects::assessment(&w.state, "ac:key").unwrap()["state"],
+        "unassessed"
+    );
     for ac in ["ios", "key"] {
         w.ok("agent", assess(ac, true));
     }
-    assert!(
-        objects::work_ready(&w.state, "ac:key"),
-        "unrelated metadata keeps evidence"
-    );
     w.ok("agent", revision(1));
-    assert!(!objects::work_ready(&w.state, "ac:key"));
+    assert!(objects::work_ready(&w.state, "ac:key"));
     assert_eq!(
         w.state.requirements["r"].revisions[0].runs["green"]
             .results
             .len(),
-        prior.len()
+        prior.len(),
+        "unrelated metadata keeps evidence"
     );
-    assert!(!objects::review_links(&w.state, "ac:key").is_empty());
+    assert!(objects::review_links(&w.state, "ac:key").is_empty());
+    assert_eq!(
+        w.state.objects["ac:key"].current().links,
+        vec![link("ac:ios", Some(1), true)]
+    );
 }
 #[test]
 fn a_legacy_req_move_updates_the_common_parent_once() {

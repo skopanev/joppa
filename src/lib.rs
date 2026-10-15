@@ -3,6 +3,7 @@ pub mod acceptance;
 pub mod access;
 pub mod checks;
 pub mod commands;
+pub mod dependencies;
 pub mod embeddings;
 pub mod inbox;
 mod intake;

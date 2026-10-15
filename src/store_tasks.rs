@@ -196,20 +196,25 @@ fn object_rank(
         .unwrap_or(priorities.len())
 }
 
+/// The next claimable Task. A Task under waiting work is skipped; when only waiting
+/// Tasks match, the refusal names the dependency of the first one.
 pub(super) fn select_next(
     state: &Workspace,
     actor: &str,
     project: Option<&str>,
     purpose: Option<&str>,
     priorities: &[String],
+    waits: &std::collections::BTreeMap<String, String>,
 ) -> Result<Option<(String, u32, String)>> {
     let priorities = validate_selection(state, project, purpose, priorities)?;
+    let mut waiting = None;
     let mut choices: Vec<(usize, u64, String, String, u32)> = state
         .requirements
         .iter()
         .filter_map(|(req, q)| q.revisions.last().map(|r| (req, q, r)))
         .flat_map(|(req, q, r)| r.tasks.iter().map(move |(id, t)| (req, q, r, id, t)))
         .filter(|(req, _, _, id, _)| !state.task_process.contains_key(&format!("task:{req}/{id}")))
+        .filter(|(req, _, _, id, _)| !waits.contains_key(&format!("task:{req}/{id}")))
         .filter(|(_, _, _, _, t)| {
             project.is_none_or(|p| t.projects.iter().any(|id| id == p))
                 && purpose.is_none_or(|p| t.purpose == p)
@@ -236,6 +241,10 @@ pub(super) fn select_next(
             blocked |= error.to_string() == crate::tasks::BLOCKED;
             continue;
         }
+        if let Some(target) = waits.get(key) {
+            waiting.get_or_insert_with(|| crate::dependencies::reason(target));
+            continue;
+        }
         choices.push((
             object_rank(state, key, t, &priorities),
             t.created_at,
@@ -245,6 +254,9 @@ pub(super) fn select_next(
         ));
     }
     ensure!(!choices.is_empty() || !blocked, "{}", crate::tasks::BLOCKED);
+    if let Some(reason) = waiting.filter(|_| choices.is_empty()) {
+        anyhow::bail!("{reason}");
+    }
     choices.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
     Ok(choices
         .into_iter()

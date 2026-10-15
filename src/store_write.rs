@@ -102,6 +102,55 @@ pub async fn execute_remote_input(
     )
     .await
 }
+/// A member adds or removes one blocking dependency of `source` on `target`. The ordinary
+/// save writes the current document with only this link changed; an added link pins nothing.
+pub async fn save_dependency(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    source: &str,
+    target: &str,
+    add: bool,
+) -> Result<Value> {
+    let scope = super::ObjectScope {
+        address: Some(source),
+        ..Default::default()
+    };
+    let object = super::read_objects(pool, workspace, actor, &scope).await?;
+    let document = &object["document"];
+    let mut links: Vec<crate::objects::ObjectLink> =
+        serde_json::from_value(document["links"].clone())?;
+    let dependency =
+        |l: &crate::objects::ObjectLink| l.relation == "depends_on" && l.target == target;
+    let before = links.len();
+    if add {
+        links.retain(|l| !dependency(l));
+        links.push(crate::objects::ObjectLink {
+            target: target.into(),
+            relation: "depends_on".into(),
+            revision: None,
+            blocking: true,
+        });
+    } else {
+        links.retain(|l| !(dependency(l) && l.blocking));
+        ensure!(links.len() < before, "unknown dependency");
+    }
+    let kind = object["kind"].as_str().context("object has no kind")?;
+    let reason = if add {
+        format!("Depend on {target}")
+    } else {
+        format!("Remove the dependency on {target}")
+    };
+    let mut command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
+        "parent":document["parent"],"data":document["data"],"links":links,"reason":reason});
+    // Only a link changes, so the title and the description still answer the type question.
+    let schema = super::tree_schema(pool, workspace, actor, None).await?;
+    if let Some(question) = schema["schema"]["types"][kind]["question"].as_str() {
+        command["question_checked"] = json!(question);
+    }
+    execute_remote_input(pool, workspace, actor, request_id, &command).await
+}
 pub async fn execute_batch(
     pool: &Pool,
     workspace: &str,
@@ -242,7 +291,12 @@ fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
     Ok(())
 }
 
-fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Result<()> {
+fn resolve_claim_next(
+    value: &mut Value,
+    state: &Workspace,
+    actor: &str,
+    waits: &BTreeMap<String, String>,
+) -> Result<()> {
     if value["op"] != "claim_next_task" {
         return Ok(());
     }
@@ -276,6 +330,7 @@ fn resolve_claim_next(value: &mut Value, state: &Workspace, actor: &str) -> Resu
         project,
         purpose,
         &priorities.unwrap_or_default(),
+        waits,
     )?
     .context("no available Task matches this claim")?;
     *value = json!({"op":"claim_task","revision":chosen.1,"id":chosen.2});
@@ -520,7 +575,13 @@ async fn write(
                 state.claim_time_ms = Some(tx.query_one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint", &[]).await?.get(0));
             }
             resolve_task(&mut value, &state)?;
-            resolve_claim_next(&mut value, &state, actor)?;
+            // Work waits for its unsatisfied ordering dependencies; the wait is never stored.
+            let waits = if matches!(value["op"].as_str(), Some("claim_next_task" | "claim_task" | "claim_planning")) {
+                super::waits::live(&*tx, &workspace, &state).await?
+            } else {
+                BTreeMap::new()
+            };
+            resolve_claim_next(&mut value, &state, actor, &waits)?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let command: Command = serde_json::from_value(value)?;
@@ -548,6 +609,9 @@ async fn write(
                 let target = crate::planning::validate_claim(&state, actor, ac, *revision)?;
                 let status = super::reports::planning_criterion_status(&*tx, &workspace, &state, &target).await?;
                 ensure!(status["status"] != "green", "criterion is already verified");
+                if let Some(dependency) = waits.get(&target) {
+                    anyhow::bail!("{}", crate::dependencies::reason(dependency));
+                }
             }
             if let Command::Task { acs, contract, .. } = &command {
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
@@ -573,6 +637,12 @@ async fn write(
                 let payload = serde_json::to_string(&command)?;
                 let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,$2,$3,$4,$5::text::jsonb FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace)]).await?.get(0);
                 commands::apply(&mut state, actor, &command, position, &recorded_at)?;
+                // The Task pin, block and hold refusals come first; the refused write rolls back.
+                if let Command::ClaimTask { req, id, .. } = &command
+                    && let Some(dependency) = waits.get(crate::objects::resolve_address(&state, &crate::tasks::address(req, id)))
+                {
+                    anyhow::bail!("{}", crate::dependencies::reason(dependency));
+                }
                 crate::objects::validate_authoring_questions(&state, &command, position)?;
                 crate::objects::validate_tree(&state)?;
                 events.push(Event{position,actor:actor.to_owned(),actor_type:crate::inbox::actor_type(&state, actor).into(),recorded_at,command:command.clone()});
