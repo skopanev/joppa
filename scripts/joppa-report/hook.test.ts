@@ -70,34 +70,44 @@ afterAll(() => {
 
 test("a normal test run writes one testcase per test", () => {
   // result-has-output-ac1
-  expect(bunTest({ JOPPA_FULL_RUN: "1" }).code).toBe(0);
+  expect(bunTest().code).toBe(0);
   const junit = readFileSync(join(repo, ".joppa/junit.xml"), "utf8");
   expect(junit.match(/<testcase /g)?.length).toBe(2);
 });
 
 test("a clean run stamps its commit as clean and full", () => {
   // result-has-output-ac3
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  expect(bunTest().code).toBe(0);
   expect(stamp()).toMatchObject({ commit: head(), dirty: false, full: true, branch: "master" });
 });
 
 test("a run on a dirty tree is stamped dirty", () => {
   // result-has-output-ac4
   writeFileSync(join(repo, "login.test.ts"), readFileSync(join(repo, "login.test.ts"), "utf8") + "// edit\n");
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   expect(stamp().dirty).toBe(true);
   git("checkout", "--", "login.test.ts");
 });
 
 test("a filtered run is stamped partial", () => {
   // result-has-output-ac5
-  bunTest({}, ["-t", "opens"]);
+  expect(bunTest({ JOPPA_FULL_RUN: "1" }, ["-t", "opens"]).code).toBe(0);
+  expect(stamp().full).toBe(false);
+});
+
+test("a run of one test file is stamped partial", () => {
+  expect(bunTest({}, ["./login.test.ts"]).code).toBe(0);
+  expect(stamp().full).toBe(false);
+});
+
+test("a run with --only is stamped partial", () => {
+  expect(bunTest({}, ["--only"]).code).toBe(0);
   expect(stamp().full).toBe(false);
 });
 
 test("a push uploads the report of the pushed commit", async () => {
   // runner-executed-ac1
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   uploads.length = 0;
   expect((await push()).code).toBe(0);
   expect(uploads.length).toBe(1);
@@ -109,7 +119,7 @@ test("a push uploads the report of the pushed commit", async () => {
 
 test("a push with an old report uploads nothing", async () => {
   // runner-executed-ac2
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   git("commit", "-q", "--allow-empty", "-m", "New commit without a test run");
   uploads.length = 0;
   const pushed = await push();
@@ -121,7 +131,7 @@ test("a push with an old report uploads nothing", async () => {
 test("a push with --no-verify uploads nothing", async () => {
   // runner-executed-ac3
   git("commit", "-q", "--allow-empty", "-m", "Another commit");
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   uploads.length = 0;
   expect((await push("--no-verify")).code).toBe(0);
   expect(uploads.length).toBe(0);
@@ -129,11 +139,11 @@ test("a push with --no-verify uploads nothing", async () => {
 
 test("extra reports of the same run join the upload", async () => {
   // The Joppa kit runs cargo and bun tests; the hook sends both in one report.
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   writeFileSync(join(repo, ".joppa/extra.junit.xml"), '<testsuites><testsuite name="tests/extra.rs"><testcase name="extra_case" /></testsuite></testsuites>');
   writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: true }));
   git("commit", "-q", "--allow-empty", "-m", "Merge check");
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   uploads.length = 0;
   expect((await push()).code).toBe(0);
   expect(uploads.length).toBe(1);
@@ -145,7 +155,7 @@ test("extra reports of the same run join the upload", async () => {
 test("a merged report is full only when every part is full", async () => {
   writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: false }));
   git("commit", "-q", "--allow-empty", "-m", "Partial extra");
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   uploads.length = 0;
   expect((await push()).code).toBe(0);
   expect(uploads.length).toBe(1);
@@ -158,7 +168,7 @@ test("a push to another branch uploads nothing", async () => {
   // runner-executed: only the default branch counts, even with a fresh full report.
   git("checkout", "-q", "-b", "feature/x");
   git("commit", "-q", "--allow-empty", "-m", "Feature work");
-  bunTest({ JOPPA_FULL_RUN: "1" });
+  bunTest();
   uploads.length = 0;
   const p = Bun.spawn(["git", "push", "origin", "feature/x"], {
     cwd: repo, env: { ...process.env, JOPPA_REPORT_TOKEN: "fixture-token" }, stdout: "pipe", stderr: "pipe",
