@@ -83,7 +83,7 @@ pub struct SchemaRevision {
     pub position: u64,
     pub reason: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectLink {
     pub target: String,
@@ -92,6 +92,27 @@ pub struct ObjectLink {
     pub revision: Option<u32>,
     #[serde(default)]
     pub blocking: bool,
+}
+/// An ordering dependency stores no revision field. Other links keep their stored null,
+/// so the documents saved before ordering links serialize as they were stored.
+impl Serialize for ObjectLink {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let unpinned = self.relation == "depends_on" && self.revision.is_none();
+        let mut link = serializer.serialize_struct("ObjectLink", 4)?;
+        link.serialize_field("target", &self.target)?;
+        link.serialize_field("relation", &self.relation)?;
+        if unpinned {
+            link.skip_field("revision")?;
+        } else {
+            link.serialize_field("revision", &self.revision)?;
+        }
+        link.serialize_field("blocking", &self.blocking)?;
+        link.end()
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObjectRevision {
@@ -1074,6 +1095,10 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
 
 fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> {
     let mut unique = BTreeSet::new();
+    // A Task dependency pins its target contract; another node orders work without a pin.
+    let task = key
+        .split_once(':')
+        .is_some_and(|(kind, _)| task_kind(w, kind));
     for link in links {
         ensure!(
             ["related", "depends_on"].contains(&link.relation.as_str()),
@@ -1097,7 +1122,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
                 "unknown linked revision"
             );
         }
-        if link.relation == "depends_on" {
+        if task && link.relation == "depends_on" {
             ensure!(
                 link.revision.is_some(),
                 "dependency needs a target revision"
@@ -1872,9 +1897,17 @@ fn saved(
 }
 
 /// Reset the criteria below each object whose revision at `position` changed its title,
-/// text, links or parent. Task and inbox revisions reset nothing.
+/// text, links or parent. Task and inbox revisions reset nothing. A blocking dependency
+/// only orders work, so a change of those links alone resets nothing.
 pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
     let types = schema(w).types;
+    let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
+        links
+            .iter()
+            .filter(|l| !(l.blocking && l.relation == "depends_on"))
+            .cloned()
+            .collect()
+    };
     let changed: Vec<String> = w
         .objects
         .iter()
@@ -1891,7 +1924,7 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
                 .find(|r| r.position < position)
                 .is_some_and(|before| {
                     before.parent != current.parent
-                        || before.links != current.links
+                        || content(&before.links) != content(&current.links)
                         || TEXT_FIELDS
                             .iter()
                             .any(|field| before.data.get(field) != current.data.get(field))
@@ -1964,43 +1997,57 @@ pub fn pin_current(w: &Workspace, target: &str, pin: Option<u32>) -> bool {
                 && pin <= current
         })
 }
+/// A Task type: its dependencies pin the target contract.
+pub fn task_kind(w: &Workspace, kind: &str) -> bool {
+    schema(w).types.get(kind).is_some_and(|t| t.role == "task")
+}
+/// The Task dependencies whose pinned revision is no longer current. The dependencies of
+/// another node order work and pin nothing, so a stored revision there needs no review.
 pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
-    w.objects.get(resolve_address(w, key)).map(|o|o.current().links.iter().filter_map(|link| {
+    w.objects.get(resolve_address(w, key)).filter(|o| task_kind(w, &o.kind)).map(|o|o.current().links.iter().filter_map(|link| {
         let current=w.objects.get(resolve_address(w, &link.target)).filter(|o|o.current().present).map(|o|o.current().revision);
         (link.relation=="depends_on" && !pin_current(w, &link.target, link.revision)).then(||json!({"target":link.target,"revision":link.revision,"current_revision":current}))
     }).collect()).unwrap_or_default()
 }
+/// Task dependency pins of the object and its ancestors. The ordering links of other nodes
+/// wait at read time and in live writes, where the test status of their targets is known.
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
-    fn visit(w: &Workspace, key: &str, stack: &mut BTreeSet<String>) -> bool {
+    fn visit(
+        w: &Workspace,
+        key: &str,
+        types: &BTreeMap<String, TreeType>,
+        stack: &mut BTreeSet<String>,
+    ) -> bool {
         let key = resolve_address(w, key);
         let Some(o) = w.objects.get(resolve_address(w, key)) else {
             return false;
         };
+        let task = types.get(&o.kind).is_some_and(|t| t.role == "task");
+        let mut links = o.current().links.iter().filter(|l| task && l.blocking);
         if !o.current().present
-            || o.current()
-                .links
-                .iter()
-                .any(|l| l.blocking && !pin_current(w, &l.target, l.revision))
+            || links
+                .clone()
+                .any(|l| !pin_current(w, &l.target, l.revision))
             || !stack.insert(key.into())
         {
             return false;
         }
-        let links_ready = o.current().links.iter().filter(|l| l.blocking).all(|l| {
+        let links_ready = links.all(|l| {
             let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
             let evidence = verified(w, &address(&target.kind, &target.id));
-            evidence && visit(w, &l.target, stack)
+            evidence && visit(w, &l.target, types, stack)
         });
         let parent_ready = o
             .current()
             .parent
             .as_deref()
-            .is_none_or(|p| visit(w, p, stack));
+            .is_none_or(|p| visit(w, p, types, stack));
         stack.remove(key);
         links_ready && parent_ready
     }
-    visit(w, key, &mut BTreeSet::new())
+    visit(w, key, &schema(w).types, &mut BTreeSet::new())
 }
 
 /// The first direct blocking dependency that keeps the object out of work.

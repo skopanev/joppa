@@ -170,20 +170,24 @@ pub(super) async fn read(
                 .all(|r| r.get::<_, Option<&str>>(1) == Some(req.as_str()))
         });
     let restricted = "($6::text IS NOT NULL AND NOT COALESCE(data->>'claim_req'=$7::text,false))";
+    // A Task under waiting work is not available; the wait is read now, not projected.
+    let types = serde_json::from_str(row.get(2))?;
+    let waits = super::waits::read(client, workspace, &types).await?;
+    let waiting: Vec<String> = waits.keys().cloned().collect();
     let filter = format!(
-        "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND NOT {restricted}) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR {restricted})))"
+        "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND NOT {restricted} AND NOT address=ANY($8)) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR {restricted} OR address=ANY($8))))"
     );
     let total: i64 = client
         .query_one(
             &format!("SELECT count(*) FROM joppa.task_queue WHERE {filter}"),
             &[
-                &workspace, &actor, &project, &purpose, &view, &held, &held_req,
+                &workspace, &actor, &project, &purpose, &view, &held, &held_req, &waiting,
             ],
         )
         .await?
         .get(0);
     ensure!(offset <= total, "invalid task cursor offset");
-    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($8::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($8)+1),created_at,sort_req,sort_id LIMIT $9 OFFSET $10"), &[&workspace,&actor,&project,&purpose,&view,&held,&held_req,&targets,&(limit as i64),&offset]).await?;
+    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($9::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($9)+1),created_at,sort_req,sort_id LIMIT $10 OFFSET $11"), &[&workspace,&actor,&project,&purpose,&view,&held,&held_req,&waiting,&targets,&(limit as i64),&offset]).await?;
     let mut items: Vec<Value> = rows
         .iter()
         .map(|r| serde_json::from_str(r.get(0)))
@@ -198,6 +202,19 @@ pub(super) async fn read(
         {
             item["claimable"] = json!(false);
             item["waiting_reason"] = json!(format!("agent already holds task {held}"));
+        }
+        let address = item["address"].as_str().map(str::to_owned).or_else(|| {
+            Some(format!(
+                "task:{}/{}",
+                item["req"].as_str()?,
+                item["id"].as_str()?
+            ))
+        });
+        if item["claimable"] == true
+            && let Some(target) = address.and_then(|a| waits.get(&a))
+        {
+            item["claimable"] = json!(false);
+            item["waiting_reason"] = json!(crate::dependencies::reason(target));
         }
     }
     let next = (offset + (items.len() as i64) < total)

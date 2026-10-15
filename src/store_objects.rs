@@ -411,6 +411,15 @@ pub async fn read_objects(
                 &selected,
             )
             .await?;
+            let waits = super::waits::read(&*conn, &workspace, &selected).await?;
+            add_waits(
+                &*conn,
+                &workspace,
+                std::slice::from_mut(&mut item),
+                &waits,
+                &criterion_kinds,
+            )
+            .await?;
         }
         return Ok(item);
     }
@@ -488,6 +497,9 @@ pub async fn read_objects(
     } else {
         None
     };
+    // Waiting criteria leave the unstarted list inside the query, before its limit.
+    let waits = super::waits::read(&*conn, &workspace, &selected).await?;
+    let waiting: Vec<String> = waits.keys().cloned().collect();
     let (after_filter, order) = if inbox {
         (
             "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text)",
@@ -561,7 +573,8 @@ pub async fn read_objects(
                 AND COALESCE(o.process->>'verification','unverified')<>'pass'
                 AND NOT o.address=ANY($14::text[])
                 AND COALESCE(w.active,0)=0
-                AND COALESCE(jsonb_typeof(o.process->'planning_claim'),'null')<>'object'))
+                AND COALESCE(jsonb_typeof(o.process->'planning_claim'),'null')<>'object'
+                AND NOT o.address=ANY($15::text[])))
         ORDER BY {order} LIMIT $5
     "#
     );
@@ -583,6 +596,7 @@ pub async fn read_objects(
                 &specification_kinds,
                 &after_processed,
                 &green,
+                &waiting,
             ],
         )
         .await?;
@@ -606,6 +620,7 @@ pub async fn read_objects(
         }
     }
     add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
+    add_waits(&*conn, &workspace, &mut items, &waits, &criterion_kinds).await?;
     let next = more.then(|| {
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();
@@ -619,6 +634,50 @@ pub async fn read_objects(
         }
     });
     Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
+}
+
+/// Waiting work reads work_ready=false and names its first unsatisfied target with its
+/// title. A waiting criterion without an assessment blocker reads the dependency as its
+/// readiness blocker.
+async fn add_waits(
+    client: &impl GenericClient,
+    workspace: &str,
+    items: &mut [Value],
+    waits: &std::collections::BTreeMap<String, String>,
+    criteria: &[String],
+) -> Result<()> {
+    let targets: Vec<&String> = items
+        .iter()
+        .filter_map(|item| waits.get(item["address"].as_str()?))
+        .collect();
+    if targets.is_empty() {
+        return Ok(());
+    }
+    let titles: std::collections::BTreeMap<String, String> = client
+        .query(
+            "SELECT address,title FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
+            &[&workspace, &targets],
+        )
+        .await?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    for item in items {
+        let Some(target) = item["address"].as_str().and_then(|a| waits.get(a)) else {
+            continue;
+        };
+        let reason = crate::dependencies::reason(target);
+        item["work_ready"] = json!(false);
+        item["waits_for"] = json!({"address":target,"title":titles.get(target),"reason":reason});
+        if criteria.iter().any(|kind| item["kind"] == kind.as_str())
+            && item["process"].is_object()
+            && item["process"]["readiness_blocker"].is_null()
+        {
+            item["process"]["readiness_blocker"] =
+                json!({"state":"dependency","target":target,"reason":reason});
+        }
+    }
+    Ok(())
 }
 
 /// Branch summaries and Task verification share one read of the criterion statuses.
