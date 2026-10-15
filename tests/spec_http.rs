@@ -1821,6 +1821,24 @@ async fn a_requirement_with_no_live_criteria_archives_over_http() -> Result<()> 
     Ok(())
 }
 
+// removal-is-archiving-ac3
+// alex is a human member in the workspace of skopanev (the owner token).
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
+    let w = world().await?;
+    let cap = w.get("address=capability:empty").await?;
+    let archive = json!({"op":"archive_object","target":"capability:empty","revision":cap["current_revision"],"reason":"Cut"});
+    let (ok, reply) = send_as(&w, &w.alex, &archive).await?;
+    ensure!(
+        !ok && reply["error"] == "workspace owner or agent required",
+        "{reply}"
+    );
+    let read = w.get("address=capability:empty").await?;
+    ensure!(read["document"]["present"] == true, "{read}");
+    Ok(())
+}
+
 async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<String>> {
     let list = w
         .get_as(token, &format!("limit=100&parent={parent}"))
