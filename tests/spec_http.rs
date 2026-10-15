@@ -1833,15 +1833,29 @@ async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<Stri
         .collect())
 }
 
+// removal-is-archiving-ac4
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_archived_object_still_reads_by_address() -> Result<()> {
-    // removal-is-archiving-ac4
     let w = world().await?;
     let cap = w.get("address=capability:empty").await?;
     w.command(json!({"op":"archive_object","target":"capability:empty","revision":cap["document"]["revision"],"reason":"Cut"})).await?;
     let read = w.get("address=capability:empty").await?;
     ensure!(read["document"]["present"] == false, "{read}");
+    let reply = w
+        .http
+        .get(format!(
+            "{}/api/workspaces/{}/objects?address=capability:empty",
+            w.root, w.ws
+        ))
+        .bearer_auth(&w.bot)
+        .send()
+        .await?;
+    let status = reply.status();
+    let body = reply.text().await?;
+    ensure!(status == 200, "{status} {body}");
+    let read: Value = serde_json::from_str(&body)?;
+    ensure!(read["document"]["present"] == false, "{status} {body}");
     Ok(())
 }
 
