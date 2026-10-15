@@ -5598,7 +5598,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
 }
 
 /// dependencies-before-priority: capability C holds specification B with criterion B1.
-/// Specification A sits under `a_parent` with `a_criteria`.
+/// Specification A sits under `a_parent` with `a_criteria`; capability D exists for AC7.
 /// Each criterion is assessed ready and has no test report yet, so each one is grey.
 async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Result<Planning<'a>> {
     let p = Planning {
@@ -5625,6 +5625,7 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     }})).await?;
     for (key, parent) in [
         ("cap:c", None),
+        ("cap:d", None),
         ("spec:a", Some(a_parent)),
         ("spec:b", Some("cap:c")),
     ] {
@@ -5724,6 +5725,16 @@ impl Planning<'_> {
         self.owner_command(json!({"op":"save_object","kind":kind,"id":id,"revision":object["current_revision"],
             "parent":document["parent"],"data":document["data"],"links":links,"reason":"Order the work"}))
             .await
+    }
+    /// Readiness without the revision number of the specification.
+    async fn readiness(&self, ac: &str) -> Result<Value> {
+        let a = &self.read(ac).await?["process"]["assessment"];
+        Ok(json!([
+            a["state"],
+            a["reason"],
+            a["recipient"],
+            a["decision"]
+        ]))
     }
 }
 
@@ -5847,6 +5858,91 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
         "{dependent}"
     );
     ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// dependencies-before-priority-ac7
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() -> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:d", &["criterion:a1"]).await?;
+    p.write(
+        "agent",
+        json!({"op":"set_ac_tests","target":"criterion:b1","tests":[A],"reason":"Bind the test"}),
+    )
+    .await?;
+    // check-list-frozen-ac3: the list save clears readiness, so B1 is assessed after it.
+    let ready = json!({"ready":true,"reason":"Known scope"});
+    p.confirm("spec:b", &[("criterion:b1", ready)]).await?;
+    p.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(p.status("criterion:b1").await?["status"] == "green");
+    ensure!(p.status("criterion:a1").await?["status"] == "grey");
+    let readiness = p.readiness("criterion:b1").await?;
+    ensure!(readiness[0] == "ready", "{readiness}");
+    let before = p.saved().await?["position"].as_i64().unwrap();
+
+    // P adds a blocking link from B to A without a revision.
+    p.link("spec:b", ordering_link("spec:a")).await?;
+    ensure!(p.status("criterion:b1").await?["status"] == "green");
+    ensure!(p.readiness("criterion:b1").await? == readiness);
+    let b = p.read("spec:b").await?;
+    let stored = &b["document"]["links"][0];
+    ensure!(
+        stored["target"] == "spec:a"
+            && stored["blocking"] == true
+            && stored.get("revision").is_none(),
+        "{b}"
+    );
+    let events = p.saved().await?["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["position"].as_i64() > Some(before))
+        .cloned()
+        .collect::<Vec<_>>();
+    ensure!(
+        events.len() == 1
+            && events[0]["actor"] == "owner"
+            && events[0]["command"]["op"] == "save_object"
+            && events[0]["command"]["kind"] == "spec"
+            && events[0]["command"]["id"] == "b"
+            && events[0]["command"]["reason"] == "Order the work"
+            && events[0]["command"]["links"][0].get("revision").is_none(),
+        "{events:?}"
+    );
+    // The timeline reader is absent from this checkout, so its HTTP and MCP check is pending.
+
+    let b1 = p.object_both("criterion:b1").await?;
+    ensure!(waits_for(&b1, "spec:a"), "{b1}");
+    // P archives A1, so A has no live criterion and still holds B1. Then P archives A.
+    for (target, held) in [("criterion:a1", true), ("spec:a", false)] {
+        let revision = p.revision(target).await?;
+        p.owner_command(json!({"op":"archive_object","target":target,"revision":revision,"reason":"Retire the scope"}))
+            .await?;
+        let b1 = p.object_both("criterion:b1").await?;
+        let free = b1["work_ready"] == true
+            && b1["process"]["readiness_blocker"].is_null()
+            && b1.get("waits_for").is_none();
+        ensure!(
+            if held { waits_for(&b1, "spec:a") } else { free },
+            "after archiving {target}: {b1}"
+        );
+    }
+
+    // A text change of B is a change of B. A link to the archived A cannot be saved again.
+    let object = p.read("spec:b").await?;
+    p.owner_command(json!({"op":"save_object","kind":"spec","id":"b","revision":object["current_revision"],"parent":"cap:c",
+        "data":{"title":"spec:b","body":"Deliver the sharper rule","owner":"owner"},"links":[],"reason":"Sharpen the rule"}))
+        .await?;
+    ensure!(p.status("criterion:b1").await?["status"] == "grey");
     store::check_journal(&p.pool).await?;
     Ok(())
 }
