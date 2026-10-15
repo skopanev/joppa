@@ -67,6 +67,9 @@ pub async fn upload_report(
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &workspace, actor, false).await?;
+    if stamp.dirty {
+        return Err(commands::ClientField("a dirty run cannot be uploaded").into());
+    }
     let inserted = tx.query_opt(
         "INSERT INTO joppa.test_reports(workspace,commit_sha,commit_time,commit_order,branch,default_branch,dirty,full_run,uploader,stamp_hash,junit) VALUES($1,$2,$3::text::timestamptz,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (workspace,commit_sha,stamp_hash) DO NOTHING RETURNING id",
         &[&workspace,&stamp.commit,&stamp.commit_time,&stamp.order,&stamp.branch,&stamp.default_branch,&stamp.dirty,&stamp.full,&actor,&stamp_hash,&upload.junit],
@@ -74,14 +77,12 @@ pub async fn upload_report(
     let Some(row) = inserted else {
         let id: i64 = tx.query_one("SELECT id FROM joppa.test_reports WHERE workspace=$1 AND commit_sha=$2 AND stamp_hash=$3", &[&workspace,&stamp.commit,&stamp_hash]).await?.get(0);
         // A clean repeat is a new receipt of the same report: it counts as received now.
-        if !stamp.dirty {
-            tx.execute(
-                "INSERT INTO joppa.test_report_receipts(report_id) VALUES($1)",
-                &[&id],
-            )
-            .await?;
-            tx.commit().await?;
-        }
+        tx.execute(
+            "INSERT INTO joppa.test_report_receipts(report_id) VALUES($1)",
+            &[&id],
+        )
+        .await?;
+        tx.commit().await?;
         return Ok(json!({"report": id, "tests": results.len(), "replayed": true}));
     };
     let id: i64 = row.get(0);

@@ -87,7 +87,9 @@ try {
   check(s.status === "green" && s.commit === "a1a1a1a" && s.commits_behind === 0, s);
 
   // Dirty runs and other branches never change the status.
-  await upload("b2b2b2b", 2, [["refuses", "fail"]], { dirty: true });
+  // result-has-output-ac6
+  const [dirtyCode, dirty] = await upload("b2b2b2b", 2, [["refuses", "fail"]], { dirty: true });
+  check(dirtyCode === 422 && dirty.error === "a dirty run cannot be uploaded", dirty);
   await upload("c3c3c3c", 2, [["refuses", "fail"]], { default_branch: false });
   check((await status()).status === "green", "filters");
 

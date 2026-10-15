@@ -1627,9 +1627,10 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
     Ok(())
 }
 
+// result-has-output-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_dirty_run_is_stored_but_does_not_count() -> Result<()> {
+async fn a_dirty_run_is_refused_and_does_not_count() -> Result<()> {
     // result-has-output-ac2: opens failed on C; a dirty run at C says it passes.
     let w = world().await?;
     w.upload(
@@ -1647,13 +1648,83 @@ async fn a_dirty_run_is_stored_but_does_not_count() -> Result<()> {
         )
         .await?;
     ensure!(
-        code == 200 && reply["replayed"] == false,
-        "the dirty report is stored: {reply}"
+        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
+        "the dirty report is refused: {code} {reply}"
     );
     let s = w.status().await?;
     ensure!(
         s["status"] == "red" && s["tests"][0]["status"] == "fail",
         "{s}"
+    );
+    Ok(())
+}
+
+// result-has-output-ac6
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_server_refuses_a_dirty_upload_from_an_agent_write_token() -> Result<()> {
+    // A lists X, X is red on C; bot's write token posts a dirty run of C where X passes.
+    let w = world().await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(
+        code == 200 && created["access"] == "write",
+        "{code} {created}"
+    );
+    let bot = created["token"].as_str().context("no token")?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    let x_status = |s: &Value| {
+        s["tests"]
+            .as_array()
+            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
+            .map(|x| x["status"].clone())
+    };
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let workspace = w.base.rsplit('/').next().unwrap();
+    let stored = || async {
+        let conn = pool.get().await?;
+        let reports: Vec<(i64, bool, String)> = conn
+            .query(
+                "SELECT id, dirty, stamp_hash FROM joppa.test_reports WHERE workspace=$1 AND commit_sha='c1c1c1c' ORDER BY id",
+                &[&workspace],
+            )
+            .await?
+            .iter()
+            .map(|r| (r.get(0), r.get(1), r.get(2)))
+            .collect();
+        let row = conn.query_one("SELECT (SELECT count(*) FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1),(SELECT count(*) FROM joppa.test_report_receipts c JOIN joppa.test_reports r ON r.id=c.report_id WHERE r.workspace=$1)", &[&workspace]).await?;
+        anyhow::Ok((reports, row.get::<_, i64>(0), row.get::<_, i64>(1)))
+    };
+    let before = w.status().await?;
+    let rows = stored().await?;
+    ensure!(
+        x_status(&before) == Some(json!("fail")) && rows.0.len() == 1,
+        "before: {before} {rows:?}"
+    );
+    let (code, reply) = w
+        .raw_upload(
+            Some(bot),
+            stamp("c1c1c1c", 1, true),
+            junit(&[("opens", "pass"), ("refuses", "pass")]),
+        )
+        .await?;
+    ensure!(
+        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
+        "{code} {reply}"
+    );
+    let after = w.status().await?;
+    ensure!(
+        x_status(&after) == Some(json!("fail")) && x_status(&after) == x_status(&before),
+        "before: {before} after: {after}"
+    );
+    ensure!(
+        stored().await? == rows,
+        "the refused upload stored a report, result or receipt"
     );
     Ok(())
 }
@@ -2320,6 +2391,7 @@ async fn a_journal_of_test_list_saves_without_revision_replays_to_the_same_lists
     Ok(())
 }
 
+// result-has-output-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_dirty_failure_on_a_newer_commit_does_not_turn_green_red() -> Result<()> {
@@ -2332,14 +2404,17 @@ async fn a_dirty_failure_on_a_newer_commit_does_not_turn_green_red() -> Result<(
         junit(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    let (code, _) = w
+    let (code, reply) = w
         .raw_upload(
             Some(&w.token),
             stamp("c2c2c2c", 2, true),
             junit(&[("opens", "fail"), ("refuses", "pass")]),
         )
         .await?;
-    ensure!(code == 200, "the dirty report is stored");
+    ensure!(
+        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
+        "the dirty report is refused: {code} {reply}"
+    );
     let s = w.status().await?;
     ensure!(s["status"] == "green" && s["commit"] == "c1c1c1c", "{s}");
     Ok(())
