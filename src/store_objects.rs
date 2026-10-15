@@ -496,6 +496,28 @@ pub async fn read_objects(
     } else {
         ("o.address>$2 AND NOT $13::boolean", "o.address")
     };
+    // A criterion that is green by its test reports has nothing left to plan.
+    // It leaves the unstarted list before LIMIT, so pages stay full.
+    let green: Vec<String> = if unstarted {
+        let targets: Vec<String> = conn
+            .query(
+                "SELECT address FROM joppa.objects WHERE workspace=$1 AND present AND kind=ANY($2)",
+                &[&workspace, &criterion_kinds],
+            )
+            .await?
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        let optional = targets.iter().cloned().collect();
+        super::reports::criterion_test_statuses(&*conn, &workspace, &targets, &optional)
+            .await?
+            .into_iter()
+            .filter(|(_, status)| status["status"] == "green")
+            .map(|(address, _)| address)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let query = format!(
         r#"
         WITH RECURSIVE task_parents(task,address,status,verification,blocked) AS (
@@ -537,6 +559,7 @@ pub async fn read_objects(
                 AND o.process->'assessment'->>'state'='ready' AND o.work_ready AND NOT o.review_required
                 AND COALESCE(jsonb_typeof(o.process->'readiness_blocker'),'null')<>'object'
                 AND COALESCE(o.process->>'verification','unverified')<>'pass'
+                AND NOT o.address=ANY($14::text[])
                 AND COALESCE(w.active,0)=0
                 AND COALESCE(jsonb_typeof(o.process->'planning_claim'),'null')<>'object'))
         ORDER BY {order} LIMIT $5
@@ -559,6 +582,7 @@ pub async fn read_objects(
                 &criterion_kinds,
                 &specification_kinds,
                 &after_processed,
+                &green,
             ],
         )
         .await?;

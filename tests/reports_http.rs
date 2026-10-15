@@ -236,6 +236,55 @@ async fn planning_batch(w: &World, operations: Value) -> Result<Value> {
         .send().await?.json().await?)
 }
 
+// The planner's unstarted list leaves out a criterion that is green by its test reports.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_green_criterion_leaves_the_unstarted_list() -> Result<()> {
+    let w = world().await?;
+    ready_for_planning(&w).await?;
+    // The fixture Task t1 is open work, so retire it: unstarted lists criteria without active work.
+    let retire = json!({"op":"retire_task","req":"key","revision":1,"id":"t1","reason":"Fixture work no longer applies"});
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":retire}),
+    )
+    .await?;
+    ensure!(code == 200, "{code} {reply}");
+    let unstarted = || async {
+        let reply: Value = w
+            .http
+            .get(format!("{}/objects?work_filter=unstarted", w.base))
+            .bearer_auth(&w.token)
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok::<_, anyhow::Error>(
+            reply["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|item| item["address"] == "ac:key-rights"),
+        )
+    };
+    ensure!(unstarted().await?, "a grey ready criterion is unstarted");
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(
+        w.status().await?["status"] == "green",
+        "JUnit must be green"
+    );
+    ensure!(!unstarted().await?, "a green criterion is not unstarted");
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn planning_claim_refuses_junit_green_over_http_and_mcp_without_mutation() -> Result<()> {
