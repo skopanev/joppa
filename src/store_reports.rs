@@ -225,21 +225,34 @@ pub(super) async fn planning_criterion_status(
     state: &crate::model::Workspace,
     target: &str,
 ) -> Result<Value> {
-    let data = state.objects[target].current().data.clone();
-    let boundary = Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
-    statuses_for_criteria(
-        client,
-        workspace,
-        vec![(
-            target.to_owned(),
-            data,
-            state.ac_tests.get(target).cloned(),
-            boundary,
-        )],
-    )
-    .await?
-    .remove(target)
-    .context("unknown criterion")
+    state_criterion_statuses(client, workspace, state, &[target.to_owned()])
+        .await?
+        .remove(target)
+        .context("unknown criterion")
+}
+
+/// Statuses of the criteria from the current transaction's texts and test lists.
+pub(super) async fn state_criterion_statuses(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &crate::model::Workspace,
+    targets: &[String],
+) -> Result<std::collections::BTreeMap<String, Value>> {
+    let criteria = targets
+        .iter()
+        .filter_map(|target| {
+            let data = state.objects.get(target)?.current().data.clone();
+            let boundary =
+                Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
+            Some((
+                target.clone(),
+                data,
+                state.ac_tests.get(target).cloned(),
+                boundary,
+            ))
+        })
+        .collect();
+    statuses_for_criteria(client, workspace, criteria).await
 }
 
 async fn statuses_for_criteria(

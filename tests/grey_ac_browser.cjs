@@ -785,7 +785,9 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
   } finally { await f.close(); }
 });
 
-test('blocking-pins-revision-ac1: a blocking link pins the target revision', async () => {
+// dependencies-before-priority narrows the pin to Task links: a domain keeps the stored
+// revision of its blocking link, and the revision gates nothing.
+test('blocking-pins-revision-ac1: a blocking link keeps its stored target revision', async () => {
   const f = await fixture({'domain:t': {title: 'Target'}});
   try {
     for (const revision of [1, 2]) await f.save('domain:t', {title: 'Target', body: 'Target at revision ' + (revision + 1)}, revision);
@@ -814,7 +816,7 @@ test('blocking-pins-revision-ac1: a blocking link pins the target revision', asy
     const stale = await read('domain:s');
     assert.deepEqual([stale.links[0].blocking, stale.links[0].revision, stale.links[0].current_revision], [true, 3, 4]);
     assert.deepEqual(stale.document.links, pinned.document.links);
-    assert.equal(stale.review_required, true);
+    assert.equal(stale.review_required, false);
   } finally { await f.close(); }
 });
 

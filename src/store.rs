@@ -36,6 +36,8 @@ pub use reports::{
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
+#[path = "store_waits.rs"]
+mod waits;
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 pub fn pool(url: &str) -> Result<Pool> {
