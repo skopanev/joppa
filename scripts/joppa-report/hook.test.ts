@@ -169,3 +169,23 @@ test("a push to another branch uploads nothing", async () => {
   expect(out).toContain("not for the pushed default-branch commit");
   git("checkout", "-q", "master");
 });
+
+// A lane that uploads after its push needs an exit code that proves the upload.
+async function upload(env: Record<string, string>) {
+  const p = Bun.spawn(["bun", join(KIT, "pre-push"), "origin", "x"], {
+    cwd: repo, env: { ...process.env, JOPPA_REPORT_TOKEN: "", ...env }, stdin: "pipe", stdout: "pipe", stderr: "pipe",
+  });
+  p.stdin.write(`refs/heads/master ${head()} refs/heads/master ${"0".repeat(40)}\n`);
+  p.stdin.end();
+  return await p.exited;
+}
+
+test("strict upload exits 0 only when the report is stored", async () => {
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  expect(await upload({ JOPPA_REPORT_STRICT: "1", JOPPA_REPORT_TOKEN: "fixture-token" })).toBe(0);
+  expect(uploads.length).toBe(1);
+  expect(await upload({ JOPPA_REPORT_STRICT: "1" })).toBe(1);
+  expect(await upload({})).toBe(0);
+  expect(uploads.length).toBe(1);
+});

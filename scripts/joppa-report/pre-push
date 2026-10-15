@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 
 const say = (text: string) => console.error(`joppa report: ${text}`);
 
-async function main() {
+async function main(): Promise<boolean> {
   let config, stamp, junit;
   try {
     config = JSON.parse(readFileSync(".joppa/config.json", "utf8"));
@@ -29,16 +29,25 @@ async function main() {
       if (!full) stamp.full = false;
     }
   } catch {
-    return say("no report or config, nothing uploaded");
+    say("no report or config, nothing uploaded");
+    return false;
   }
   const tokenFile = `${homedir()}/.config/joppa/report-token`;
   const token = process.env.JOPPA_REPORT_TOKEN || (existsSync(tokenFile) ? readFileSync(tokenFile, "utf8").trim() : "");
-  if (!token) return say("no token, nothing uploaded");
+  if (!token) {
+    say("no token, nothing uploaded");
+    return false;
+  }
   const target = `refs/heads/${config.default_branch ?? "master"}`;
   const pushed = (await Bun.stdin.text()).split("\n").filter(Boolean).map((l) => l.split(" "));
-  if (!pushed.some((p) => p.length === 4 && p[2] === target && p[1] === stamp.commit))
-    return say("the report is not for the pushed default-branch commit, nothing uploaded");
-  if (stamp.dirty) return say("the run was on a dirty tree, nothing uploaded");
+  if (!pushed.some((p) => p.length === 4 && p[2] === target && p[1] === stamp.commit)) {
+    say("the report is not for the pushed default-branch commit, nothing uploaded");
+    return false;
+  }
+  if (stamp.dirty) {
+    say("the run was on a dirty tree, nothing uploaded");
+    return false;
+  }
   try {
     const reply = await fetch(`${config.url.replace(/\/$/, "")}/api/workspaces/${config.workspace}/reports`, {
       method: "POST",
@@ -47,10 +56,13 @@ async function main() {
     });
     const result = await reply.json();
     say(reply.ok ? `uploaded ${result.tests} results for ${stamp.commit.slice(0, 7)}` : `upload refused: ${result.error ?? reply.status}`);
+    return reply.ok;
   } catch (error) {
     say(`upload failed: ${error}`);
+    return false;
   }
 }
 
-await main();
-process.exit(0);
+const uploaded = await main();
+// As a Git hook it never blocks a push. JOPPA_REPORT_STRICT=1 makes the exit code show the upload.
+process.exit(process.env.JOPPA_REPORT_STRICT === "1" && !uploaded ? 1 : 0);
