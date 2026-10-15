@@ -4174,7 +4174,9 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         .bearer_auth(&w.owner)
         .send()
         .await?;
-    ensure!(reply.status().is_success(), "{}", reply.text().await?);
+    let status = reply.status().as_u16();
+    let text = reply.text().await?;
+    ensure!(status == 200, "revoke: {status} {text}");
     let reply = w
         .http
         .post(format!("{}/mcp", w.root))
@@ -4185,7 +4187,8 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
     let status = reply.status().as_u16();
     let text = reply.text().await?;
     ensure!(
-        status == 401 && text.contains("token revoked"),
+        status == 401
+            && serde_json::from_str::<Value>(&text).is_ok_and(|v| v["error"] == "token revoked"),
         "{status} {text}"
     );
     Ok(())
