@@ -1,6 +1,6 @@
 //! Test reports over HTTP: a real server, a member token and uploaded JUnit.
 //! Each test proves one Evidence criterion through the endpoints, not the status function.
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};
 use std::{
@@ -24,6 +24,8 @@ struct World {
     owner: String,
     /// The token of the member `other`, who is Q in the planning tests.
     other: String,
+    /// The token of alex, a person who pushes in the hook tests.
+    alex: String,
     http: reqwest::Client,
 }
 
@@ -63,10 +65,11 @@ async fn world() -> Result<World> {
     let token = uuid::Uuid::new_v4().simple().to_string();
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let other = uuid::Uuid::new_v4().simple().to_string();
+    let alex = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ token.clone(): "agent", owner.clone(): "owner", other.clone(): "other" })
+        json!({ token.clone(): "agent", owner.clone(): "owner", other.clone(): "other", alex.clone(): "alex" })
             .to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
@@ -97,6 +100,7 @@ async fn world() -> Result<World> {
                 token,
                 owner,
                 other,
+                alex,
                 http: reqwest::Client::new(),
             };
             world.list(&[A, B]).await?;
@@ -202,6 +206,123 @@ fn junit(cases: &[(&str, &str)]) -> String {
     format!(
         r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login">{rows}</testsuite></testsuite></testsuites>"#
     )
+}
+
+/// A Git repository with the report kit of scripts/joppa-report, its bare remote and the
+/// server of a World: `bun test` runs with the stamp preload, `git push` runs the real hook.
+/// Its first commit holds tests/auth/login.test.ts with A and B, both passing.
+struct PushRepo {
+    repo: std::path::PathBuf,
+    remote: std::path::PathBuf,
+}
+
+/// Run a tool in `dir`; returns the exit code, stdout and stderr. A missing tool fails clearly.
+fn tool(
+    dir: &std::path::Path,
+    program: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<(i32, String, String)> {
+    let out = Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .envs(envs.iter().copied())
+        // A test run inside a Git hook must not touch the outer repository.
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("the push tests need {program} on PATH"))?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    ))
+}
+
+impl PushRepo {
+    fn new(w: &World) -> Result<Self> {
+        let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/joppa-report");
+        let root =
+            std::env::temp_dir().join(format!("joppa-push-{}", uuid::Uuid::new_v4().simple()));
+        let (repo, remote) = (root.join("repo"), root.join("remote.git"));
+        std::fs::create_dir_all(repo.join("tests/auth"))?;
+        std::fs::create_dir_all(repo.join(".joppa"))?;
+        let this = Self { repo, remote };
+        for args in [
+            vec![
+                "init",
+                "-q",
+                "--bare",
+                "-b",
+                "master",
+                this.remote.to_str().unwrap(),
+            ],
+            vec!["init", "-q", "-b", "master", this.repo.to_str().unwrap()],
+        ] {
+            let (code, _, err) = tool(&root, "git", &args, &[])?;
+            ensure!(code == 0, "git init: {err}");
+        }
+        std::fs::write(
+            this.repo.join("bunfig.toml"),
+            format!(
+                "[test]\npreload = [\"{kit}/stamp.ts\"]\n[test.reporter]\njunit = \".joppa/junit.xml\"\n"
+            ),
+        )?;
+        std::fs::write(this.repo.join(".gitignore"), ".joppa/\n")?;
+        std::fs::write(
+            this.repo.join("tests/auth/login.test.ts"),
+            "import { describe, expect, test } from \"bun:test\";\ndescribe(\"login\", () => {\n  test(\"opens\", () => expect(1).toBe(1));\n  test(\"refuses\", () => expect(2).toBe(2));\n});\n",
+        )?;
+        let (url, workspace) = w.base.split_once("/api/workspaces/").unwrap();
+        std::fs::write(
+            this.repo.join(".joppa/config.json"),
+            json!({"url": url, "workspace": workspace, "default_branch": "master"}).to_string(),
+        )?;
+        std::os::unix::fs::symlink(
+            format!("{kit}/pre-push"),
+            this.repo.join(".git/hooks/pre-push"),
+        )?;
+        this.git(&["config", "user.email", "alex@example.test"])?;
+        this.git(&["config", "user.name", "Alex"])?;
+        this.git(&["remote", "add", "origin", this.remote.to_str().unwrap()])?;
+        this.git(&["add", "."])?;
+        // The workspace name keeps the commit unique across test runs on one database.
+        this.git(&["commit", "-q", "-m", &format!("Fixture for {workspace}")])?;
+        Ok(this)
+    }
+    /// Run git in the repository; returns its trimmed stdout.
+    fn git(&self, args: &[&str]) -> Result<String> {
+        let (code, out, err) = tool(&self.repo, "git", args, &[])?;
+        ensure!(code == 0, "git {}: {err}", args.join(" "));
+        Ok(out.trim().to_owned())
+    }
+    /// `bun test` without a filter; returns the stamp it wrote.
+    fn bun_test(&self) -> Result<Value> {
+        let (code, out, err) = tool(&self.repo, "bun", &["test"], &[])?;
+        ensure!(code == 0, "bun test: {out}{err}");
+        Ok(serde_json::from_str(&std::fs::read_to_string(
+            self.repo.join(".joppa/stamp.json"),
+        )?)?)
+    }
+    /// The number of testcases in the JUnit report of the last run.
+    fn testcases(&self) -> Result<usize> {
+        let junit = std::fs::read_to_string(self.repo.join(".joppa/junit.xml"))?;
+        Ok(junit.matches("<testcase ").count())
+    }
+    /// `git push origin <args>` with `token` for the hook; returns the exit code and stderr.
+    fn push(&self, token: &str, args: &[&str]) -> Result<(i32, String)> {
+        let args = [&["push", "origin"], args].concat();
+        let (code, _, err) = tool(&self.repo, "git", &args, &[("JOPPA_REPORT_TOKEN", token)])?;
+        Ok((code, err))
+    }
+    /// The commit of the remote default branch.
+    fn remote_head(&self) -> Result<String> {
+        let (code, out, err) = tool(&self.remote, "git", &["rev-parse", "HEAD"], &[])?;
+        ensure!(code == 0, "remote HEAD: {err}");
+        Ok(out.trim().to_owned())
+    }
 }
 
 async fn ready_for_planning(w: &World) -> Result<Value> {
@@ -1274,6 +1395,61 @@ async fn every_report_records_its_commit_and_uploader() -> Result<()> {
         commit == "c1c1c1c" && uploader == "bot",
         "{commit} {uploader}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_default_branch_push_uploads_the_report_of_its_commit() -> Result<()> {
+    // runner-executed-ac1: A lists X; alex runs the full suite on a clean C and pushes C.
+    let w = world().await?;
+    let member = json!({"op":"member","id":"alex","role":"human"});
+    let (code, reply) = post(
+        &w,
+        &w.owner,
+        "/commands",
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":member}),
+    )
+    .await?;
+    ensure!(code == 200, "{code} {reply}");
+    let repo = PushRepo::new(&w)?;
+    let c = repo.git(&["rev-parse", "HEAD"])?;
+    let stamp = repo.bun_test()?;
+    ensure!(
+        stamp["commit"] == c.as_str() && stamp["dirty"] == false && stamp["full"] == true,
+        "{stamp}"
+    );
+    let n = repo.testcases()?;
+    let (code, out) = repo.push(&w.alex, &["master"])?;
+    ensure!(code == 0, "git push: {out}");
+    ensure!(
+        repo.remote_head()? == c,
+        "the remote default branch is not at {c}"
+    );
+    let uploaded = format!("joppa report: uploaded {n} results for {}", &c[..7]);
+    ensure!(
+        out.lines().any(|line| line == uploaded),
+        "no \"{uploaded}\" in: {out}"
+    );
+    let s = w.status().await?;
+    let x = s["tests"]
+        .as_array()
+        .and_then(|tests| tests.iter().find(|t| t["address"] == A))
+        .with_context(|| format!("no {A} in {s}"))?;
+    ensure!(x["status"] == "pass" && x["commit"] == c.as_str(), "{s}");
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let uploaders: Vec<String> = pool
+        .get()
+        .await?
+        .query(
+            "SELECT uploader FROM joppa.test_reports WHERE commit_sha=$1",
+            &[&c],
+        )
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    ensure!(uploaders == ["alex"], "{uploaders:?}");
     Ok(())
 }
 
