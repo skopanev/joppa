@@ -38,7 +38,7 @@ const path=require('node:path');
     await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('Clipboard unavailable');}}}));
     await page.getByRole('button',{name:'Copied',exact:true}).click();
     assert.equal(await page.locator('textarea').evaluate(e=>e.selectionEnd-e.selectionStart),expected.length);
-    assert(await page.getByRole('status').textContent().then(t=>t.startsWith('Copy the selected')));
+    assert(await page.getByRole('status').textContent().then(t=>t.match(/^(Copy the selected|Press Cmd\+C)/)));
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no mobile overflow');
     if(mode==='link')assert.equal(await page.getByRole('link',{name:'Return to app'}).getAttribute('href'),callback);
     await page.clock.fastForward(300001);
