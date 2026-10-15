@@ -1249,11 +1249,43 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> Result<()> {
+async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent_after_holder_release()
+-> Result<()> {
     // returned-work-kept-ac1
+    returned_work_handover(false).await
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent_after_owner_release()
+-> Result<()> {
+    // returned-work-kept-ac1
+    returned_work_handover(true).await
+}
+
+/// One object read through MCP as `token`: the current revision, or exactly `revision`.
+async fn object_as(w: &World, token: &str, address: &str, revision: Option<u32>) -> Result<Value> {
+    let mut arguments = json!({"workspace":w.ws,"address":address});
+    if let Some(revision) = revision {
+        arguments["revision"] = json!(revision);
+    }
+    let result = mcp_call(w, token, "joppa_objects", arguments).await?;
+    ensure!(result["isError"] != true, "{result}");
+    Ok(serde_json::from_str(
+        result["content"][0]["text"].as_str().unwrap_or("null"),
+    )?)
+}
+
+/// P (bot) holds T with two notes and a partial run at def456. P or the workspace owner
+/// releases T; Q (bot2) claims it and reads the same notes, commit and earlier revisions.
+async fn returned_work_handover(owner_release: bool) -> Result<()> {
     let w = world().await?;
     let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
     let bot2 = token["token"].as_str().unwrap();
+    let notes = [
+        ("first", "The first boundary is clear"),
+        ("second", "The second boundary still needs work"),
+    ];
     w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
     w.command_as(
@@ -1261,10 +1293,7 @@ async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> R
         json!({"op":"claim_task","id":"task:handover","revision":1}),
     )
     .await?;
-    for (id, text) in [
-        ("first", "The first boundary is clear"),
-        ("second", "The second boundary still needs work"),
-    ] {
+    for (id, text) in notes {
         w.command_as(
             &w.bot,
             json!({"op":"note","target":"task:handover","id":id,"text":text}),
@@ -1279,60 +1308,99 @@ async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent() -> R
         json!({"op":"result","req":"key","revision":1,"run":"partial","evidence":partial}),
     )
     .await?;
-    let before = w.get("address=task:handover").await?;
-    w.command_as(&w.bot, json!({"op":"release_task","id":"task:handover","revision":before["current_revision"],"reason":"Return the remaining boundary to the queue"})).await?;
-    let available = w
-        .http
-        .post(format!("{}/mcp", w.root))
-        .bearer_auth(bot2)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tasks","arguments":{"workspace":w.ws,"view":"available"}}}))
-        .send()
-        .await?;
-    ensure!(
-        available.status().is_success(),
-        "{}: {}",
-        available.status(),
-        available.text().await?
-    );
-    let reply: Value = available.json().await?;
-    ensure!(reply["result"]["isError"] != true, "{reply}");
-    let available: Value = serde_json::from_str(
-        reply["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap_or("null"),
-    )?;
+
+    let before = object_as(&w, bot2, "task:handover", None).await?;
+    let n = before["current_revision"].as_u64().unwrap() as u32;
+    let mut history = Vec::new();
+    for revision in 1..=n {
+        history
+            .push(object_as(&w, bot2, "task:handover", Some(revision)).await?["document"].clone());
+    }
+    let (releaser, actor, reason) = if owner_release {
+        (&w.owner, "owner", "The worker is unavailable")
+    } else {
+        (&w.bot, "bot", "Return the remaining boundary to the queue")
+    };
+    w.command_as(
+        releaser,
+        json!({"op":"release_task","id":"task:handover","revision":n,"reason":reason}),
+    )
+    .await?;
+    let available = mcp_call(
+        &w,
+        bot2,
+        "joppa_tasks",
+        json!({"workspace":w.ws,"view":"available"}),
+    )
+    .await?;
+    ensure!(available["isError"] != true, "{available}");
+    let available: Value =
+        serde_json::from_str(available["content"][0]["text"].as_str().unwrap_or("null"))?;
     ensure!(
         available["tasks"]
             .as_array()
             .is_some_and(|tasks| tasks.iter().any(|task| task["address"] == "task:handover")),
         "{available}"
     );
-    let returned = w.get("address=task:handover").await?;
     w.command_as(
         bot2,
-        json!({"op":"claim_task","id":"task:handover","revision":returned["current_revision"]}),
+        json!({"op":"claim_task","id":"task:handover","revision":n + 1}),
     )
     .await?;
 
-    let reply = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot2).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"task:handover"}}})).send().await?;
-    ensure!(reply.status().is_success(), "{}", reply.text().await?);
-    let reply: Value = reply.json().await?;
-    ensure!(reply["result"]["isError"] != true, "{reply}");
-    let task: Value = serde_json::from_str(
-        reply["result"]["content"][0]["text"]
-            .as_str()
-            .unwrap_or("null"),
-    )?;
+    let task = object_as(&w, bot2, "task:handover", None).await?;
     ensure!(task["process"]["assignee"] == "bot2", "{task}");
     ensure!(task["process"]["status"] == "in_progress", "{task}");
+    ensure!(
+        task["document"]["data"] == before["document"]["data"],
+        "the handover changed the document: {task}"
+    );
+    let comments = &task["annotations"]["comments"];
+    for (id, text) in notes {
+        let note = &before["annotations"]["comments"][id];
+        ensure!(
+            comments[id] == *note,
+            "note {id} changed: {note} became {}",
+            comments[id]
+        );
+        ensure!(
+            note["author"] == "bot" && note["text"] == text,
+            "note {id} lost its author or text: {note}"
+        );
+    }
     ensure!(
         task["annotations"] == before["annotations"],
         "the handover changed the original notes: {task}"
     );
-    let notes = task["annotations"]["comments"].as_object().unwrap();
+
     ensure!(
-        notes.len() == 2 && notes.values().all(|note| note["author"] == "bot"),
-        "{notes:?}"
+        task["current_revision"] == n + 2,
+        "expected revision {} after the release and claim: {task}",
+        n + 2
+    );
+    for (revision, captured) in (1..=n).zip(&history) {
+        let read = object_as(&w, bot2, "task:handover", Some(revision)).await?;
+        ensure!(
+            read["document"] == *captured,
+            "revision {revision} changed: {captured} became {}",
+            read["document"]
+        );
+    }
+    let released = object_as(&w, bot2, "task:handover", Some(n + 1)).await?["document"].clone();
+    ensure!(
+        released["actor"] == actor
+            && released["reason"] == reason
+            && released["data"] == before["document"]["data"],
+        "revision {} is not the release: {released}",
+        n + 1
+    );
+    let claimed = object_as(&w, bot2, "task:handover", Some(n + 2)).await?["document"].clone();
+    ensure!(
+        claimed["actor"] == "bot2"
+            && claimed["reason"] == "Task claimed"
+            && claimed["data"] == before["document"]["data"],
+        "revision {} is not the claim by bot2: {claimed}",
+        n + 2
     );
 
     let evidence = w
