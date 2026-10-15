@@ -27,6 +27,14 @@
     <p id="grant-email-error" role="alert"></p>
     <ul id="grant-emails" aria-label="Emails with access"></ul>
   </form>
+  <form id="grant-domain" aria-labelledby="grant-domain-title">
+    <h2 id="grant-domain-title">Add an email domain to a workspace</h2>
+    <label>Workspace for the domain <select id="grant-domain-workspace" name="workspace"></select></label>
+    <label>Email domain <input id="grant-domain-name" name="domain" autocomplete="off"></label>
+    <button id="grant-domain-button" type="submit">Add domain</button>
+    <p id="grant-domain-error" role="alert"></p>
+    <ul id="grant-domains" aria-label="Domains with access"></ul>
+  </form>
 </main>
 <script>
 const form=document.getElementById('create-workspace'),title=document.getElementById('workspace-title'),
@@ -45,40 +53,45 @@ form.onsubmit=async event=>{
   }catch(e){error.textContent=e.message;create.disabled=false;}
 };
 // Only workspaces that the server reports as owned are offered.
-const grantForm=document.getElementById('grant-email'),grantWorkspace=document.getElementById('grant-workspace'),
-  grantEmail=document.getElementById('grant-email-address'),grantButton=document.getElementById('grant-email-button'),
-  grantError=document.getElementById('grant-email-error'),grantList=document.getElementById('grant-emails');
-let owned=[];
-const showGrants=()=>{
-  const workspace=owned.find(w=>w.id===grantWorkspace.value);
-  grantList.replaceChildren(...(workspace?.emails||[]).map(email=>{const li=document.createElement('li');li.textContent=email;return li;}));
-};
-const loadGrants=async selected=>{
-  const response=await fetch('/api/email-grants');
-  const value=await response.json().catch(()=>({}));
-  if(!response.ok)throw Error(value.error||'Could not load owned workspaces.');
-  owned=value.items;
-  grantWorkspace.replaceChildren(...owned.map(w=>new Option(w.title,w.id)));
-  if(owned.some(w=>w.id===selected))grantWorkspace.value=selected;
-  grantButton.disabled=!owned.length;
-  showGrants();
-};
-grantWorkspace.onchange=showGrants;
-grantForm.onsubmit=async event=>{
-  event.preventDefault();
-  if(grantButton.disabled)return;
-  grantButton.disabled=true;grantError.textContent='';
-  const workspace=grantWorkspace.value;
-  try{
-    const response=await fetch('/api/email-grants',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspace,email:grantEmail.value})});
+// The email and domain forms differ only in their elements, endpoint and field.
+const grantForm=(ids,endpoint,field,failure)=>{
+  const [form,select,input,button,error,list]=ids.map(id=>document.getElementById(id));
+  let owned=[];
+  const show=()=>{
+    const workspace=owned.find(w=>w.id===select.value);
+    list.replaceChildren(...(workspace?.[field+'s']||[]).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+  };
+  const load=async selected=>{
+    const response=await fetch(endpoint);
     const value=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(value.error||'Could not add the person.');
-    grantEmail.value='';
-    await loadGrants(workspace);
-  }catch(e){grantError.textContent=e.message;grantButton.disabled=false;}
+    if(!response.ok)throw Error(value.error||'Could not load owned workspaces.');
+    owned=value.items;
+    select.replaceChildren(...owned.map(w=>new Option(w.title,w.id)));
+    if(owned.some(w=>w.id===selected))select.value=selected;
+    button.disabled=!owned.length;
+    show();
+  };
+  select.onchange=show;
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    if(button.disabled)return;
+    button.disabled=true;error.textContent='';
+    const workspace=select.value;
+    try{
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspace,[field]:input.value})});
+      const value=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(value.error||failure);
+      input.value='';
+      await load(workspace);
+    }catch(e){error.textContent=e.message;button.disabled=false;}
+  };
+  button.disabled=true;
+  load().catch(e=>{error.textContent=e.message;});
 };
-grantButton.disabled=true;
-loadGrants().catch(e=>{grantError.textContent=e.message;});
+grantForm(['grant-email','grant-workspace','grant-email-address','grant-email-button','grant-email-error','grant-emails'],
+  '/api/email-grants','email','Could not add the person.');
+grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-domain-button','grant-domain-error','grant-domains'],
+  '/api/domain-grants','domain','Could not add the domain.');
 </script>
 </body>
 </html>

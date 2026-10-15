@@ -11,7 +11,8 @@ use tokio_postgres::GenericClient;
 #[path = "store_access.rs"]
 mod access;
 pub use access::{
-    AccessDenied, enroll, grant_email, granted_workspaces, list_email_grants, update_identity_name,
+    AccessDenied, enroll, enroll_granted, grant_domain, grant_email, granted_workspaces,
+    list_domain_grants, list_email_grants, update_identity_name,
 };
 #[path = "store_board.rs"]
 mod board;
@@ -120,6 +121,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
     tx.batch_execute(include_str!("../migrations/022_email_grants.sql"))
         .await?;
     tx.batch_execute(include_str!("../migrations/023_test_report_receipts.sql"))
+        .await?;
+    tx.batch_execute(include_str!("../migrations/024_domain_grants.sql"))
         .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);

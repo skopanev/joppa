@@ -12,7 +12,9 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
-const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1";
+/// Owner grants for a lowercase email: its email grants and the grants of its domain.
+const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
+     UNION SELECT workspace FROM joppa.domain_grants WHERE domain=split_part($1,'@',2)";
 const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
 
 /// Resolve types for the authors of the records that this read returns.
@@ -77,7 +79,7 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
             allowed.insert(resolve_workspace(client, &name).await?);
         }
     }
-    // Owner email grants add workspaces, also without a rules file.
+    // Owner email and domain grants add workspaces, also without a rules file.
     for row in client
         .query(GRANTED, &[&email.to_ascii_lowercase()])
         .await?
@@ -215,7 +217,7 @@ pub async fn update_identity_name(
     Ok(())
 }
 
-/// The workspaces that owners granted to this email.
+/// The workspaces that owners granted to this email or to its domain.
 pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<String>> {
     let conn = pool.get().await?;
     Ok(conn
@@ -224,6 +226,47 @@ pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<Str
         .iter()
         .map(|row| row.get(0))
         .collect())
+}
+
+/// A browser session with a bound Google identity joins each workspace granted since its
+/// sign-in. Without a bound identity or a new grant, nothing is written.
+pub async fn enroll_granted(pool: &Pool, actor: &str) -> Result<()> {
+    let conn = pool.get().await?;
+    let Some(identity) = conn
+        .query_opt(
+            "SELECT google_sub,email,hosted_domain FROM joppa.google_identities WHERE actor=$1",
+            &[&actor],
+        )
+        .await?
+    else {
+        return Ok(());
+    };
+    let (sub, email, hosted_domain): (String, String, Option<String>) =
+        (identity.get(0), identity.get(1), identity.get(2));
+    let joined: BTreeSet<String> = conn
+        .query(MEMBERSHIP, &[&actor])
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    drop(conn);
+    let missing: BTreeSet<String> = granted_workspaces(pool, &email)
+        .await?
+        .difference(&joined)
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    enroll(
+        pool,
+        actor,
+        &sub,
+        &email,
+        hosted_domain.as_deref(),
+        &missing,
+    )
+    .await
 }
 
 /// The owner grants a workspace to an email. A refused request stores nothing.
@@ -235,7 +278,7 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
         })
         || email.chars().any(|c| c.is_whitespace() || c.is_control())
     {
-        return Err(commands::ClientField("email must be an email address").into());
+        return Err(commands::ClientField("a valid email is required").into());
     }
     let workspace = super::grants::owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
@@ -247,23 +290,68 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     Ok(json!({"workspace": workspace, "email": email}))
 }
 
+/// The owner grants a workspace to every email in a domain. A refused request stores nothing.
+pub async fn grant_domain(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    domain: &str,
+) -> Result<Value> {
+    let domain = domain.to_ascii_lowercase();
+    if domain.len() > 253
+        || !domain.contains('.')
+        || domain
+            .chars()
+            .any(|c| c == '@' || c.is_whitespace() || c.is_control())
+    {
+        return Err(commands::ClientField("a valid email domain is required").into());
+    }
+    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let conn = pool.get().await?;
+    conn.execute(
+        "INSERT INTO joppa.domain_grants(workspace,domain,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        &[&workspace, &domain, &actor],
+    )
+    .await?;
+    Ok(json!({"workspace": workspace, "domain": domain}))
+}
+
 /// The workspaces that this actor owns, each with its granted emails.
 pub async fn list_email_grants(pool: &Pool, actor: &str) -> Result<Value> {
+    list_grants(pool, actor, "email_grants", "email", "emails").await
+}
+
+/// The workspaces that this actor owns, each with its granted email domains.
+pub async fn list_domain_grants(pool: &Pool, actor: &str) -> Result<Value> {
+    list_grants(pool, actor, "domain_grants", "domain", "domains").await
+}
+
+async fn list_grants(
+    pool: &Pool,
+    actor: &str,
+    table: &str,
+    column: &str,
+    key: &str,
+) -> Result<Value> {
     let conn = pool.get().await?;
     let items: Vec<Value> = conn
         .query(
-            "SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
-                    COALESCE(array_agg(g.email ORDER BY g.email) FILTER (WHERE g.email IS NOT NULL), '{}')
+            &format!("SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
+                    COALESCE(array_agg(g.{column} ORDER BY g.{column}) FILTER (WHERE g.{column} IS NOT NULL), '{{}}')
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
-             LEFT JOIN joppa.email_grants g ON g.workspace=s.workspace
+             LEFT JOIN joppa.{table} g ON g.workspace=s.workspace
              WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
-             GROUP BY 1,2 ORDER BY 2,1",
+             GROUP BY 1,2 ORDER BY 2,1"),
             &[&actor],
         )
         .await?
         .iter()
-        .map(|r| json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1), "emails": r.get::<_, Vec<String>>(2)}))
+        .map(|r| {
+            let mut item = json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1)});
+            item[key] = json!(r.get::<_, Vec<String>>(2));
+            item
+        })
         .collect();
     Ok(json!({"items": items}))
 }

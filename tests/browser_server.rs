@@ -56,6 +56,26 @@ async fn browser_server() -> Result<()> {
         uuid::Uuid::new_v4().simple()
     );
     sessions::create(&pool, &cookie, "alex").await?;
+    // A person with a bound Google identity for alex@example.com, a session and no workspace.
+    let person = format!("google-person-{}", uuid::Uuid::new_v4().simple());
+    let conn = pool.get().await?;
+    conn.execute(
+        "DELETE FROM joppa.google_identities WHERE email='alex@example.com'",
+        &[],
+    )
+    .await?;
+    conn.execute(
+        "INSERT INTO joppa.google_identities(actor,google_sub,email) VALUES($1,$1,'alex@example.com')",
+        &[&person],
+    )
+    .await?;
+    drop(conn);
+    let person_cookie = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    sessions::create(&pool, &person_cookie, &person).await?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();
@@ -122,7 +142,7 @@ async fn browser_server() -> Result<()> {
     }
     println!(
         "JOPPA_BROWSER_READY {}",
-        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules})
+        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie})
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;
