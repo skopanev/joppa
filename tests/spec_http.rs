@@ -1637,12 +1637,30 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
 async fn any_past_revision_reads_whole_by_its_number() -> Result<()> {
     // past-revision-whole-ac1
     let w = world().await?;
-    w.note("a", 0, "A", "first text", json!([])).await?;
-    w.note("a", 1, "A", "second text", json!([])).await?;
-    w.note("a", 2, "A", "third text", json!([])).await?;
-    let old = w.get("address=note:a&revision=1").await?;
+    let first = json!({"title":"A","owner":"owner","body":"first text","status":"unprocessed"});
+    for (revision, data) in [
+        first.clone(),
+        json!({"title":"B","owner":"owner","body":"second text","status":"unprocessed"}),
+        json!({"title":"C","owner":"owner","body":"third text","status":"unprocessed"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        w.command(json!({"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":data,"links":[],"reason":"Save"})).await?;
+    }
+    let reply = w
+        .http
+        .get(format!("{}/api/workspaces/{}/objects", w.root, w.ws))
+        .bearer_auth(&w.bot)
+        .query(&[("address", "note:a"), ("revision", "1")])
+        .send()
+        .await?;
+    let status = reply.status();
+    let text = reply.text().await?;
+    ensure!(status.is_success(), "{status}: {text}");
+    let old: Value = serde_json::from_str(&text)?;
     ensure!(
-        old["document"]["revision"] == 1 && old["document"]["data"]["body"] == "first text",
+        old["document"]["revision"] == 1 && old["document"]["data"] == first,
         "{old}"
     );
     Ok(())
