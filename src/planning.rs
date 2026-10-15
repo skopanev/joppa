@@ -234,6 +234,23 @@ pub fn apply(
             for k in &blocked {
                 w.task_process.get_mut(k).unwrap().blocked = None;
             }
+            // A Task the holder saved during the claim follows the current criterion, as review_task does.
+            let replanned: Vec<String> = children
+                .iter()
+                .filter(|k| {
+                    w.task_process[*k].retired.is_none()
+                        && w.objects[*k]
+                            .revisions
+                            .iter()
+                            .any(|r| r.actor == actor && r.position > claim.position)
+                })
+                .cloned()
+                .collect();
+            for k in replanned {
+                w.task_process.get_mut(&k).unwrap().review_required = false;
+                let pin = tasks::context(w, &k);
+                w.task_context.insert(k, pin);
+            }
         }
         Command::ReleasePlanning { reason, .. } => {
             ensure!(
