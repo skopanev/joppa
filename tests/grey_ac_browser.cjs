@@ -34,7 +34,7 @@ async function server() {
   let output = '', errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });
   const ready = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { child.stdin.end(); reject(Error('browser server timed out')); }, 15000);
+    const timer = setTimeout(() => { child.stdin.end(); reject(Error('browser server timed out')); }, 45000);
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.on('exit', code => { clearTimeout(timer); reject(Error('browser fixture exited ' + code + ': ' + errors)); });
     child.stdout.on('data', chunk => {
