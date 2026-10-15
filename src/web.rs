@@ -195,15 +195,21 @@ async fn authenticate_grant(
             None => None,
         }
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
-        sessions::actor(&app.pool, token)
-            .await
-            .map_err(|_| {
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({"error":"Could not check your session. Please retry."})),
-                )
-            })?
-            .map(|actor| (actor, store::Access::Write))
+        let actor = sessions::actor(&app.pool, token).await.map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"Could not check your session. Please retry."})),
+            )
+        })?;
+        // A grant made after sign-in takes effect on the next page load, without a new sign-in.
+        if let Some(actor) = &actor {
+            let configured = app.login.users.iter().find(|(_, id)| *id == actor);
+            let configured = configured.map(|(email, _)| email.as_str());
+            store::enroll_granted(&app.pool, actor, configured)
+                .await
+                .map_err(failure)?;
+        }
+        actor.map(|actor| (actor, store::Access::Write))
     } else {
         None
     };
@@ -213,20 +219,20 @@ async fn authenticate_grant(
     ))
 }
 fn result(value: Result<Value>) -> ApiResult {
-    value.map(Json).map_err(|e| {
-        (
-            if e.is::<store::AccessDenied>() {
-                StatusCode::NOT_FOUND
-            } else if e.is::<joppa::commands::ClientField>()
-                || e.is::<joppa::objects::RequiredField>()
-            {
-                StatusCode::UNPROCESSABLE_ENTITY
-            } else {
-                StatusCode::CONFLICT
-            },
-            Json(json!({"error":format!("{e:#}")})),
-        )
-    })
+    value.map(Json).map_err(failure)
+}
+fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
+    (
+        if e.is::<store::AccessDenied>() {
+            StatusCode::NOT_FOUND
+        } else if e.is::<joppa::commands::ClientField>() || e.is::<joppa::objects::RequiredField>()
+        {
+            StatusCode::UNPROCESSABLE_ENTITY
+        } else {
+            StatusCode::CONFLICT
+        },
+        Json(json!({"error":format!("{e:#}")})),
+    )
 }
 async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) {
     let check = async {
@@ -304,6 +310,29 @@ async fn grant_email(
 async fn list_email_grants(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::list_email_grants(&app.pool, &actor).await)
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DomainGrant {
+    workspace: String,
+    domain: String,
+}
+/// The owner grants a workspace to a whole email domain from a signed-in browser.
+async fn grant_domain(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(body): Json<DomainGrant>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to grant access"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    result(store::grant_domain(&app.pool, &body.workspace, &actor, &body.domain).await)
+}
+async fn list_domain_grants(State(app): State<App>, headers: HeaderMap) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::list_domain_grants(&app.pool, &actor).await)
 }
 async fn settings_page() -> Html<String> {
     Html(
@@ -830,6 +859,10 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             "/api/email-grants",
             get(list_email_grants).post(grant_email),
         )
+        .route(
+            "/api/domain-grants",
+            get(list_domain_grants).post(grant_domain),
+        )
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
@@ -994,6 +1027,130 @@ mod tests {
             .unwrap()
             .get(0)
     }
+
+    const ORIGIN: &str = "http://joppa.test";
+
+    /// The app on the isolated test database, with one invited user and no rules file.
+    async fn test_app() -> Result<App> {
+        let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+        let db: String = pool
+            .get()
+            .await?
+            .query_one("SELECT current_database()", &[])
+            .await?
+            .get(0);
+        ensure!(db.starts_with("joppa_test"), "test database required");
+        store::migrate(&pool).await?;
+        Ok(App {
+            pool,
+            identities: Default::default(),
+            login: web_auth::Login::for_tests(),
+            oauth_origin: None,
+            embedder: None,
+        })
+    }
+
+    async fn create(pool: &Pool, workspace: &str, owner: &str) -> Result<()> {
+        let command = Command::Workspace {
+            title: workspace.into(),
+        };
+        store::execute(pool, workspace, owner, "create", &command).await?;
+        Ok(())
+    }
+
+    /// A browser session made without a sign-in.
+    async fn session_for(pool: &Pool, actor: &str) -> Result<String> {
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        sessions::create(pool, &token, actor).await?;
+        Ok(format!("joppa_session={token}"))
+    }
+
+    async fn scalar(
+        app: &App,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> i64 {
+        let conn = app.pool.get().await.unwrap();
+        conn.query_one(sql, params).await.unwrap().get(0)
+    }
+
+    /// The member list of W as its owner reads it, and every email and domain grant of W.
+    async fn members_and_grants(app: &App, w: &str, owner: &str) -> (Value, Vec<String>) {
+        let Json(index) = read(
+            State(app.clone()),
+            Path(w.into()),
+            browser(Some(owner), ORIGIN),
+        )
+        .await
+        .unwrap();
+        let grants = app
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query(
+                "SELECT email FROM joppa.email_grants WHERE workspace=$1
+                 UNION ALL SELECT 'domain '||domain FROM joppa.domain_grants WHERE workspace=$1 ORDER BY 1",
+                &[&w],
+            )
+            .await
+            .unwrap()
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        (index["index"]["members"].clone(), grants)
+    }
+
+    /// The workspace IDs that GET /api/workspaces lists for these headers.
+    async fn listed(app: &App, headers: HeaderMap) -> Vec<String> {
+        let Json(items) = list(State(app.clone()), headers).await.unwrap();
+        let ids = items.as_array().unwrap().iter();
+        ids.map(|item| item["id"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    fn plain(reply: ApiResult) -> std::result::Result<Value, (StatusCode, Value)> {
+        reply
+            .map(|Json(value)| value)
+            .map_err(|(status, Json(value))| (status, value))
+    }
+
+    async fn add_email(app: &App, cookie: &str, workspace: &str, email: &str) -> ApiResult {
+        let body = EmailGrant {
+            workspace: workspace.into(),
+            email: email.into(),
+        };
+        grant_email(
+            State(app.clone()),
+            browser(Some(cookie), ORIGIN),
+            Json(body),
+        )
+        .await
+    }
+
+    async fn add_domain(app: &App, cookie: &str, workspace: &str, domain: &str) -> ApiResult {
+        let body = DomainGrant {
+            workspace: workspace.into(),
+            domain: domain.into(),
+        };
+        grant_domain(
+            State(app.clone()),
+            browser(Some(cookie), ORIGIN),
+            Json(body),
+        )
+        .await
+    }
+
+    fn derived(sub: &str) -> String {
+        format!("user-{:x}", sha2::Sha256::digest(sub.as_bytes()))
+    }
+
+    const MEMBER_OF: &str = "SELECT count(*) FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2";
+    const SESSIONS_OF: &str = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";
 
     #[tokio::test]
     #[ignore = "requires isolated test database"]
@@ -1239,6 +1396,424 @@ mod tests {
         assert_eq!(refused.1.0, json!({"error":"workspace owner required"}));
         assert_eq!(snapshot().await, before);
         refused_sign_in().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn owner_adds_a_blank_or_malformed_email_and_w_does_not_change() -> Result<()> {
+        let app = test_app().await?;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let (sam, w) = (format!("sam-{id}"), format!("w-{id}"));
+        create(&app.pool, &w, &sam).await?;
+        let sam_cookie = session_for(&app.pool, &sam).await?;
+        let before = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(before, (json!({sam.clone():"human"}), vec![]));
+        for input in ["  ", "maria-at-example"] {
+            let reply = plain(add_email(&app, &sam_cookie, &w, input).await);
+            let refused = json!({"error":"a valid email is required"});
+            assert_eq!(
+                reply,
+                Err((StatusCode::UNPROCESSABLE_ENTITY, refused)),
+                "input {input:?}"
+            );
+            let after = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(after, before, "input {input:?} changed W; reply {reply:?}");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn a_signed_in_person_reads_a_newly_granted_workspace_after_the_next_page_load()
+    -> Result<()> {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let sub = format!("google-alex-{id}");
+        let alex = derived(&sub);
+        let alex_token = format!("alex-token-{id}");
+        let app = App {
+            identities: Arc::new(BTreeMap::from([(alex_token.clone(), alex.clone())])),
+            ..test_app().await?
+        };
+        let pool = &app.pool;
+        // This test owns alex@example.com in the shared test database.
+        let conn = pool.get().await?;
+        conn.execute(
+            "DELETE FROM joppa.email_grants WHERE email='alex@example.com'",
+            &[],
+        )
+        .await?;
+        conn.execute(
+            "DELETE FROM joppa.google_identities WHERE email='alex@example.com'",
+            &[],
+        )
+        .await?;
+        drop(conn);
+        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
+        let (home, w, control) = (
+            format!("home-{id}"),
+            format!("w-{id}"),
+            format!("control-{id}"),
+        );
+        create(pool, &home, &olga).await?;
+        create(pool, &w, &sam).await?;
+        create(pool, &control, &sam).await?;
+        let (sam_cookie, olga_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &olga).await?,
+        );
+        // Alex signs in with Google through a grant on another workspace.
+        plain(add_email(&app, &olga_cookie, &home, "alex@example.com").await).unwrap();
+        let (headers, Json(ready)) = sign_in(&app, &sub, "alex@example.com").await.unwrap();
+        assert_eq!(ready["actor"], alex.as_str());
+        let alex_cookie = session(&headers);
+        assert_eq!(scalar(&app, MEMBER_OF, &[&w, &alex]).await, 0);
+        // S grants W. Token requests for alex and for an agent enroll nobody.
+        plain(add_email(&app, &sam_cookie, &w, "alex@example.com").await).unwrap();
+        let granted = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(granted.0, json!({sam.clone():"human"}));
+        let mut bearer = HeaderMap::new();
+        bearer.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {alex_token}").parse()?,
+        );
+        assert_eq!(listed(&app, bearer.clone()).await, vec![home.clone()]);
+        let refused = plain(read(State(app.clone()), Path(w.clone()), bearer).await);
+        assert_eq!(refused.unwrap_err().0, StatusCode::NOT_FOUND);
+        let agent =
+            store::create_agent_token(pool, &control, &sam, &format!("bot-{id}"), None).await?;
+        let mut bearer = HeaderMap::new();
+        let token = agent["token"].as_str().unwrap();
+        bearer.insert(header::AUTHORIZATION, format!("Bearer {token}").parse()?);
+        assert_eq!(listed(&app, bearer).await, vec![control.clone()]);
+        assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, granted);
+        // Alex reloads twice with the same session; only the first reload enrolls.
+        let events = "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND actor='joppa-access' AND request_id=$2";
+        let request = format!("enroll-{alex}");
+        for reload in 1..=2 {
+            let Json(me_reply) = me(State(app.clone()), browser(Some(&alex_cookie), ORIGIN))
+                .await
+                .unwrap();
+            assert_eq!(me_reply["actor"], alex.as_str(), "reload {reload}");
+            assert_eq!(me_reply["email"], "alex@example.com", "reload {reload}");
+            let mut ids = listed(&app, browser(Some(&alex_cookie), ORIGIN)).await;
+            ids.sort();
+            let mut expected = vec![home.clone(), w.clone()];
+            expected.sort();
+            assert_eq!(ids, expected, "reload {reload}");
+            let (members, grants) = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(
+                members,
+                json!({sam.clone():"human", alex.clone():"human"}),
+                "reload {reload}"
+            );
+            assert_eq!(grants, granted.1, "reload {reload}");
+            assert_eq!(
+                scalar(&app, events, &[&w, &request]).await,
+                1,
+                "reload {reload}"
+            );
+            assert_eq!(
+                scalar(&app, SESSIONS_OF, &[&alex]).await,
+                1,
+                "reload {reload}"
+            );
+        }
+        let (status, error) = plain(
+            read(
+                State(app.clone()),
+                Path(control.clone()),
+                browser(Some(&alex_cookie), ORIGIN),
+            )
+            .await,
+        )
+        .unwrap_err();
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(error, json!({"error":"Workspace not found"}));
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn a_configured_user_without_a_google_identity_reads_a_newly_granted_workspace()
+    -> Result<()> {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let (casey, email) = (format!("casey-{id}"), format!("casey-{id}@example.test"));
+        let mut app = test_app().await?;
+        app.login.users.insert(email.clone(), casey.clone());
+        let pool = &app.pool;
+        let sam = format!("sam-{id}");
+        let (earlier, w, control) = (
+            format!("earlier-{id}"),
+            format!("w-{id}"),
+            format!("control-{id}"),
+        );
+        create(pool, &earlier, &casey).await?;
+        create(pool, &w, &sam).await?;
+        create(pool, &control, &sam).await?;
+        let (sam_cookie, casey_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &casey).await?,
+        );
+        let casey_reads = || browser(Some(&casey_cookie), ORIGIN);
+        assert_eq!(listed(&app, casey_reads()).await, vec![earlier.clone()]);
+        plain(add_email(&app, &sam_cookie, &w, &email).await).unwrap();
+        // Casey reloads twice with the same session; only the first reload enrolls.
+        let events = "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND actor='joppa-access' AND request_id=$2";
+        let request = format!("enroll-{casey}");
+        for reload in 1..=2 {
+            let Json(me_reply) = me(State(app.clone()), casey_reads()).await.unwrap();
+            assert_eq!(me_reply["actor"], casey.as_str(), "reload {reload}");
+            let mut ids = listed(&app, casey_reads()).await;
+            ids.sort();
+            let mut expected = vec![earlier.clone(), w.clone()];
+            expected.sort();
+            assert_eq!(ids, expected, "reload {reload}");
+            let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(
+                members,
+                json!({sam.clone():"human", casey.clone():"human"}),
+                "reload {reload}"
+            );
+            assert_eq!(
+                scalar(&app, events, &[&w, &request]).await,
+                1,
+                "reload {reload}"
+            );
+            assert_eq!(
+                scalar(&app, SESSIONS_OF, &[&casey]).await,
+                1,
+                "reload {reload}"
+            );
+        }
+        let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1 OR email=$2";
+        assert_eq!(scalar(&app, bound, &[&casey, &email]).await, 0);
+        let (status, error) =
+            plain(read(State(app.clone()), Path(control.clone()), casey_reads()).await)
+                .unwrap_err();
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(error, json!({"error":"Workspace not found"}));
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn owner_adds_a_domain_and_its_google_people_read_w_as_members() -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        // This test owns healthium.one in the shared test database.
+        let conn = pool.get().await?;
+        conn.execute(
+            "DELETE FROM joppa.domain_grants WHERE domain='healthium.one'",
+            &[],
+        )
+        .await?;
+        conn.execute(
+            "DELETE FROM joppa.email_grants WHERE email IN ('maria@healthium.one','lena@healthium.one')",
+            &[],
+        )
+        .await?;
+        drop(conn);
+        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
+        let (home, w, control) = (
+            format!("home-{id}"),
+            format!("w-{id}"),
+            format!("control-{id}"),
+        );
+        create(pool, &home, &olga).await?;
+        create(pool, &w, &sam).await?;
+        create(pool, &control, &sam).await?;
+        let (sam_cookie, olga_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &olga).await?,
+        );
+        // Maria is signed in through an email grant on another workspace.
+        plain(add_email(&app, &olga_cookie, &home, "maria@healthium.one").await).unwrap();
+        let maria_sub = format!("google-maria-{id}");
+        let maria = derived(&maria_sub);
+        let (headers, _) = sign_in(&app, &maria_sub, "maria@healthium.one")
+            .await
+            .unwrap();
+        let maria_cookie = session(&headers);
+        assert_eq!(scalar(&app, MEMBER_OF, &[&w, &maria]).await, 0);
+        // S adds the domain twice in another case; one lowercase grant remains.
+        for _ in 0..2 {
+            let reply = plain(add_domain(&app, &sam_cookie, &w, "HEALTHIUM.one").await);
+            assert_eq!(reply, Ok(json!({"workspace":w,"domain":"healthium.one"})));
+            let state = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(
+                state,
+                (
+                    json!({sam.clone():"human"}),
+                    vec!["domain healthium.one".into()]
+                )
+            );
+        }
+        let Json(domains) =
+            list_domain_grants(State(app.clone()), browser(Some(&sam_cookie), ORIGIN))
+                .await
+                .unwrap();
+        let mut expected = vec![
+            json!({"id":control,"title":control,"domains":[]}),
+            json!({"id":w,"title":w,"domains":["healthium.one"]}),
+        ];
+        expected.sort_by_key(|item| item["id"].as_str().unwrap().to_owned());
+        assert_eq!(domains, json!({"items": expected}));
+        // Maria reads the board again with the same session.
+        let Json(me_reply) = me(State(app.clone()), browser(Some(&maria_cookie), ORIGIN))
+            .await
+            .unwrap();
+        assert_eq!(me_reply["actor"], maria.as_str());
+        let mut ids = listed(&app, browser(Some(&maria_cookie), ORIGIN)).await;
+        ids.sort();
+        let mut expected = vec![home.clone(), w.clone()];
+        expected.sort();
+        assert_eq!(ids, expected);
+        assert_eq!(scalar(&app, SESSIONS_OF, &[&maria]).await, 1);
+        // Lena signs in with Google for the first time.
+        let lena_sub = format!("google-lena-{id}");
+        let lena = derived(&lena_sub);
+        let (headers, Json(ready)) = sign_in(&app, &lena_sub, "lena@healthium.one")
+            .await
+            .unwrap();
+        assert_eq!(ready["actor"], lena.as_str());
+        let lena_cookie = session(&headers);
+        assert_eq!(scalar(&app, SESSIONS_OF, &[&lena]).await, 1);
+        assert_eq!(
+            listed(&app, browser(Some(&lena_cookie), ORIGIN)).await,
+            vec![w.clone()]
+        );
+        let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(
+            members,
+            json!({sam.clone():"human", maria.clone():"human", lena.clone():"human"})
+        );
+        let (status, error) = plain(
+            read(
+                State(app.clone()),
+                Path(control.clone()),
+                browser(Some(&lena_cookie), ORIGIN),
+            )
+            .await,
+        )
+        .unwrap_err();
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(error, json!({"error":"Workspace not found"}));
+        // A verified email in another domain has no grant or rule.
+        let ivan_sub = format!("google-ivan-{id}");
+        let ivan = derived(&ivan_sub);
+        let (status, Json(error)) = sign_in(&app, &ivan_sub, &format!("ivan@other-{id}.test"))
+            .await
+            .unwrap_err();
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(error, json!({"error":"No workspace access"}));
+        let members = "SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key=$1";
+        let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1";
+        for sql in [members, bound, SESSIONS_OF] {
+            assert_eq!(scalar(&app, sql, &[&ivan]).await, 0, "{sql}");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn a_non_owner_or_an_invalid_domain_leaves_w_unchanged() -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let (sam, alex, w) = (format!("sam-{id}"), format!("alex-{id}"), format!("w-{id}"));
+        create(pool, &w, &sam).await?;
+        let member = Command::Member {
+            id: alex.clone(),
+            role: "human".into(),
+        };
+        store::execute(pool, &w, &sam, "add-alex", &member).await?;
+        let (sam_cookie, alex_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &alex).await?,
+        );
+        let before = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(
+            before,
+            (json!({sam.clone():"human", alex.clone():"human"}), vec![])
+        );
+        let reply = plain(add_domain(&app, &alex_cookie, &w, "healthium.one").await);
+        let owner_required = json!({"error":"workspace owner required"});
+        assert_eq!(reply, Err((StatusCode::CONFLICT, owner_required)));
+        assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, before);
+        let invalid = [
+            "healthium",
+            "",
+            "  ",
+            "@healthium.one",
+            "maria@healthium.one",
+            "health ium.one",
+            " healthium.one",
+        ];
+        for input in invalid {
+            let reply = plain(add_domain(&app, &sam_cookie, &w, input).await);
+            let refused = json!({"error":"a valid email domain is required"});
+            assert_eq!(
+                reply,
+                Err((StatusCode::UNPROCESSABLE_ENTITY, refused)),
+                "input {input:?}"
+            );
+            let after = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(after, before, "input {input:?} changed W");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn the_owner_adds_an_existing_member_again_and_w_does_not_change() -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let (sam, w) = (format!("sam-{id}"), format!("w-{id}"));
+        create(pool, &w, &sam).await?;
+        let sam_cookie = session_for(pool, &sam).await?;
+        plain(add_email(&app, &sam_cookie, &w, "maria@example.com").await).unwrap();
+        // The email binds one Google subject. Reuse another test's binding instead of deleting it.
+        let bound = pool
+            .get()
+            .await?
+            .query_opt(
+                "SELECT google_sub FROM joppa.google_identities WHERE email='maria@example.com'",
+                &[],
+            )
+            .await?
+            .map(|row| row.get::<_, String>(0));
+        let sub = bound.clone().unwrap_or(format!("google-maria-{id}"));
+        let maria = derived(&sub);
+        let (_, Json(ready)) = sign_in(&app, &sub, "maria@example.com").await.unwrap();
+        assert_eq!(ready["actor"], maria.as_str());
+        let before = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(
+            before,
+            (
+                json!({sam.clone():"human", maria.clone():"human"}),
+                vec!["maria@example.com".to_owned()]
+            )
+        );
+        let reply = plain(add_email(&app, &sam_cookie, &w, "maria@example.com").await);
+        assert_eq!(
+            reply,
+            Ok(json!({"workspace":w,"email":"maria@example.com"}))
+        );
+        assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, before);
+        // Later tests in this database start without this test's grant and binding.
+        let conn = pool.get().await?;
+        conn.execute("DELETE FROM joppa.email_grants WHERE workspace=$1", &[&w])
+            .await?;
+        if bound.is_none() {
+            conn.execute(
+                "DELETE FROM joppa.google_identities WHERE actor=$1",
+                &[&maria],
+            )
+            .await?;
+        }
         Ok(())
     }
 }

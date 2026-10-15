@@ -12,7 +12,9 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
-const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1";
+/// Owner grants for a lowercase email: its email grants and the grants of its domain.
+const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
+     UNION SELECT workspace FROM joppa.domain_grants WHERE domain=split_part($1,'@',2)";
 const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
 
 /// Resolve types for the authors of the records that this read returns.
@@ -77,7 +79,7 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
             allowed.insert(resolve_workspace(client, &name).await?);
         }
     }
-    // Owner email grants add workspaces, also without a rules file.
+    // Owner email and domain grants add workspaces, also without a rules file.
     for row in client
         .query(GRANTED, &[&email.to_ascii_lowercase()])
         .await?
@@ -148,9 +150,17 @@ pub async fn enroll(
         identity.get::<_, String>(0) == google_sub && identity.get::<_, String>(1) == email,
         "Identity already belongs to another account"
     );
+    join(&*tx, actor, workspaces).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Add the actor to these workspaces as human, each with the enrollment event. The caller
+/// commits, so a failure leaves no partial membership.
+async fn join(tx: &impl GenericClient, actor: &str, workspaces: &BTreeSet<String>) -> Result<()> {
     let mut normalized = BTreeSet::new();
     for name in workspaces {
-        normalized.insert(resolve_workspace(&*tx, name).await?);
+        normalized.insert(resolve_workspace(tx, name).await?);
     }
     // BTreeSet order prevents opposite lock ordering on concurrent enrollment.
     for workspace in &normalized {
@@ -159,7 +169,7 @@ pub async fn enroll(
             &[workspace],
         )
         .await?;
-        let (mut state, base_position) = state_rows::current(&*tx, workspace).await?;
+        let (mut state, base_position) = state_rows::current(tx, workspace).await?;
         let previous = state.clone();
         ensure!(
             !state.admin.is_empty(),
@@ -181,7 +191,7 @@ pub async fn enroll(
             command,
         }];
         super::board::project_current(
-            &*tx,
+            tx,
             workspace,
             &state,
             &events,
@@ -190,7 +200,6 @@ pub async fn enroll(
         )
         .await?;
     }
-    tx.commit().await?;
     Ok(())
 }
 
@@ -215,7 +224,7 @@ pub async fn update_identity_name(
     Ok(())
 }
 
-/// The workspaces that owners granted to this email.
+/// The workspaces that owners granted to this email or to its domain.
 pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<String>> {
     let conn = pool.get().await?;
     Ok(conn
@@ -224,6 +233,45 @@ pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<Str
         .iter()
         .map(|row| row.get(0))
         .collect())
+}
+
+/// A browser session joins each workspace granted to its email since sign-in: the bound
+/// Google email, else the configured login email. It binds no identity. Without an email or
+/// a new grant, nothing is written.
+pub async fn enroll_granted(pool: &Pool, actor: &str, configured: Option<&str>) -> Result<()> {
+    let conn = pool.get().await?;
+    let bound: Option<String> = conn
+        .query_opt(
+            "SELECT email FROM joppa.google_identities WHERE actor=$1",
+            &[&actor],
+        )
+        .await?
+        .map(|row| row.get(0));
+    let Some(email) = bound.or_else(|| configured.map(str::to_owned)) else {
+        return Ok(());
+    };
+    let joined: BTreeSet<String> = conn
+        .query(MEMBERSHIP, &[&actor])
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
+    drop(conn);
+    let missing: BTreeSet<String> = granted_workspaces(pool, &email.to_ascii_lowercase())
+        .await?
+        .difference(&joined)
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    commands::identifier(actor)?;
+    ensure!(actor != "joppa-access", "No workspace access");
+    let mut conn = pool.get().await?;
+    let tx = conn.transaction().await?;
+    join(&*tx, actor, &missing).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// The owner grants a workspace to an email. A refused request stores nothing.
@@ -235,7 +283,7 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
         })
         || email.chars().any(|c| c.is_whitespace() || c.is_control())
     {
-        return Err(commands::ClientField("email must be an email address").into());
+        return Err(commands::ClientField("a valid email is required").into());
     }
     let workspace = super::grants::owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
@@ -247,23 +295,68 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     Ok(json!({"workspace": workspace, "email": email}))
 }
 
+/// The owner grants a workspace to every email in a domain. A refused request stores nothing.
+pub async fn grant_domain(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    domain: &str,
+) -> Result<Value> {
+    let domain = domain.to_ascii_lowercase();
+    if domain.len() > 253
+        || !domain.contains('.')
+        || domain
+            .chars()
+            .any(|c| c == '@' || c.is_whitespace() || c.is_control())
+    {
+        return Err(commands::ClientField("a valid email domain is required").into());
+    }
+    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let conn = pool.get().await?;
+    conn.execute(
+        "INSERT INTO joppa.domain_grants(workspace,domain,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        &[&workspace, &domain, &actor],
+    )
+    .await?;
+    Ok(json!({"workspace": workspace, "domain": domain}))
+}
+
 /// The workspaces that this actor owns, each with its granted emails.
 pub async fn list_email_grants(pool: &Pool, actor: &str) -> Result<Value> {
+    list_grants(pool, actor, "email_grants", "email", "emails").await
+}
+
+/// The workspaces that this actor owns, each with its granted email domains.
+pub async fn list_domain_grants(pool: &Pool, actor: &str) -> Result<Value> {
+    list_grants(pool, actor, "domain_grants", "domain", "domains").await
+}
+
+async fn list_grants(
+    pool: &Pool,
+    actor: &str,
+    table: &str,
+    column: &str,
+    key: &str,
+) -> Result<Value> {
     let conn = pool.get().await?;
     let items: Vec<Value> = conn
         .query(
-            "SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
-                    COALESCE(array_agg(g.email ORDER BY g.email) FILTER (WHERE g.email IS NOT NULL), '{}')
+            &format!("SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
+                    COALESCE(array_agg(g.{column} ORDER BY g.{column}) FILTER (WHERE g.{column} IS NOT NULL), '{{}}')
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
-             LEFT JOIN joppa.email_grants g ON g.workspace=s.workspace
+             LEFT JOIN joppa.{table} g ON g.workspace=s.workspace
              WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
-             GROUP BY 1,2 ORDER BY 2,1",
+             GROUP BY 1,2 ORDER BY 2,1"),
             &[&actor],
         )
         .await?
         .iter()
-        .map(|r| json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1), "emails": r.get::<_, Vec<String>>(2)}))
+        .map(|r| {
+            let mut item = json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1)});
+            item[key] = json!(r.get::<_, Vec<String>>(2));
+            item
+        })
         .collect();
     Ok(json!({"items": items}))
 }

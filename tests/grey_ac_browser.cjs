@@ -565,7 +565,7 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     // A failed request shows the server error.
     await email.fill('not-an-email');
     await add.click();
-    await f.page.getByRole('alert').filter({hasText: 'email must be an email address'}).waitFor();
+    await f.page.getByRole('alert').filter({hasText: 'a valid email is required'}).waitFor();
     assert.equal(await add.isDisabled(), false);
     await email.fill('maria@example.com');
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants') && response.request().method() === 'POST');
@@ -578,6 +578,126 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     const listed = (await (await request.get(f.live.root + '/api/email-grants')).json()).items.filter(item => item.id === id);
     assert.deepEqual(listed, [{id, title: 'Team space', emails: ['maria@example.com']}]);
   } finally { await f.close(); }
+});
+
+test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  const person = await browser.newContext({reducedMotion: 'reduce'});
+  try {
+    const request = f.page.context().request;
+    const create = async title => {
+      const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
+      assert.equal(created.status(), 200);
+      return (await created.json()).id;
+    };
+    const id = await create('Shared space'), control = await create('Control space');
+    await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+    const page = await person.newPage(), signIns = [], errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', r => { if (new URL(r.url()).pathname.startsWith('/auth/')) signIns.push(r.url()); });
+    const read = async workspace => {
+      const response = await person.request.get(f.live.root + '/api/workspaces/' + workspace);
+      return {status: response.status(), value: await response.json()};
+    };
+    // Before the grant the person opens W and has no access.
+    await page.goto(f.live.root + '/?workspace=' + encodeURIComponent(id));
+    await page.locator('#tree').filter({hasText: 'This workspace is not available to your account.'}).waitFor();
+    assert.deepEqual(await read(id), {status: 404, value: {error: 'Workspace not found'}});
+    // The owner adds alex@example.com to W in Settings.
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const workspace = f.page.getByLabel('Owned workspace');
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await workspace.selectOption(id);
+    await f.page.getByLabel('Google email').fill('alex@example.com');
+    const granted = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants') && response.request().method() === 'POST');
+    await f.page.getByRole('button', {name: 'Add person'}).click();
+    assert.equal((await granted).status(), 200);
+    // The person reloads, and the board of W opens with the same session.
+    const board = page.waitForResponse(response => response.url().endsWith('/api/workspaces/' + encodeURIComponent(id) + '/board'));
+    await page.reload();
+    assert.equal((await board).status(), 200);
+    assert.equal(await page.locator('#workspaces').inputValue(), id);
+    assert.equal(await page.locator('#login-button').isVisible(), false);
+    assert.deepEqual(signIns, []);
+    const cookies = (await person.cookies()).filter(cookie => cookie.name === 'joppa_session');
+    assert.deepEqual(cookies.map(cookie => cookie.value), [f.live.person_cookie]);
+    const index = (await read(id)).value.index;
+    assert.equal(index.members[f.live.person], 'human');
+    assert.deepEqual(await read(control), {status: 404, value: {error: 'Workspace not found'}});
+    assert.deepEqual(errors, []);
+  } finally { await person.close(); await f.close(); }
+});
+
+test('owner-adds-members-ac7: alex adds healthium.one to W in Settings', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const create = async title => {
+      const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
+      assert.equal(created.status(), 200);
+      return (await created.json()).id;
+    };
+    const id = await create('Domain space'), control = await create('Domain control');
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const workspace = f.page.getByLabel('Workspace for the domain'), domain = f.page.getByRole('textbox', {name: 'Email domain'});
+    const add = f.page.getByRole('button', {name: 'Add domain'});
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await workspace.selectOption(id);
+    // A failed save shows the server error.
+    await domain.fill('healthium');
+    await add.click();
+    await f.page.getByRole('alert').filter({hasText: 'a valid email domain is required'}).waitFor();
+    assert.equal(await add.isDisabled(), false);
+    await domain.fill('healthium.one');
+    const granted = f.page.waitForResponse(response => response.url().endsWith('/api/domain-grants') && response.request().method() === 'POST');
+    await add.click();
+    assert.equal((await granted).status(), 200);
+    const domains = f.page.locator('#grant-domains li');
+    await domains.filter({hasText: 'healthium.one'}).waitFor();
+    assert.deepEqual(await domains.allInnerTexts(), ['healthium.one']);
+    assert.equal(await workspace.inputValue(), id);
+    // The control workspace has no domain.
+    await workspace.selectOption(control);
+    assert.equal(await domains.count(), 0);
+    const listed = (await (await request.get(f.live.root + '/api/domain-grants')).json()).items
+      .filter(item => item.id === id || item.id === control);
+    assert.deepEqual(listed, [{id: control, title: 'Domain control', domains: []}, {id, title: 'Domain space', domains: ['healthium.one']}]);
+  } finally { await f.close(); }
+});
+
+test('owner-adds-members-ac5: the sign-in page offers one Google sign-in control', async () => {
+  const live = await server();
+  const context = await browser.newContext({reducedMotion: 'reduce'});
+  try {
+    const page = await context.newPage(), starts = [], errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', r => { const {pathname} = new URL(r.url()); if (pathname.startsWith('/auth/')) starts.push(r.method() + ' ' + pathname); });
+    // The fixture has no Google client, so the start reply stands in for Google's authorize URL.
+    const google = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=joppa-browser-check';
+    await context.route(live.root + '/auth/login', route => route.fulfill({json: {verification_url: google, expires_in: 300}}));
+    await context.route('https://accounts.google.com/**', route => route.fulfill({contentType: 'text/html', body: '<title>Google</title>'}));
+    assert.equal((await page.goto(live.root + '/')).status(), 200);
+    const login = page.locator('#login-screen');
+    await login.locator('#login-button').waitFor({state: 'visible'});
+    const controls = login.locator('button:visible, a:visible, input:visible, [role="button"]:visible');
+    assert.equal(await controls.count(), 1);
+    assert.equal(await controls.first().getAttribute('id'), 'login-button');
+    assert.match(await controls.first().innerText(), /Continue with Google/);
+    const popup = page.waitForEvent('popup');
+    await controls.first().click();
+    const googleWindow = await popup;
+    await googleWindow.waitForURL(url => url.href.startsWith(google));
+    assert.deepEqual(starts, ['POST /auth/login']);
+    // Cancel ends this attempt: no other start and no poll follow, even after the poll interval.
+    const cancel = login.locator('#login-cancel');
+    await cancel.waitFor({state: 'visible'});
+    await cancel.click();
+    assert.equal(await cancel.isVisible(), false);
+    assert.equal(await login.locator('#login-button').isDisabled(), false);
+    await page.waitForTimeout(2500);
+    assert.deepEqual(starts, ['POST /auth/login']);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); await live.stop(); }
 });
 
 test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', async () => {

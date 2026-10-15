@@ -195,7 +195,7 @@ impl Login {
         }
         Ok(())
     }
-    /// A rule, a user entry or an owner email grant admits a verified Google identity.
+    /// A rule, a user entry or an owner email or domain grant admits a verified Google identity.
     fn admit(&self, identity: &Identity, granted: bool) -> Result<String> {
         ensure!(
             identity.email_verified && !identity.sub.is_empty(),
