@@ -85,7 +85,8 @@ select:disabled{opacity:1;cursor:default;background-image:none;padding-right:0;b
 body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:none}
 .authenticated #login-screen{display:none}
 .checking-session .login-content{visibility:hidden}
-#login-screen{min-height:80svh;display:flex;align-items:center}
+#login-screen{min-height:80svh;display:flex;align-items:center;justify-content:center}
+#login-screen>.login-content{width:min(100%,420px)}
 .login-content{display:flex;flex-direction:column;align-items:flex-start;gap:.2em}
 .brand-mark,.login-mark{display:flex;align-items:center;gap:3px;transform:rotate(-12deg);flex:none}
 .brand-mark i,.login-mark i{display:block;width:5px;height:19px;border-radius:3px;background:#365d41}
