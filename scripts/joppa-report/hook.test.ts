@@ -175,6 +175,26 @@ test("a merged report is full only when every part is full", async () => {
   rmSync(join(repo, ".joppa/extra.stamp.json"));
 });
 
+test("an extra part from another commit makes the merged report partial", async () => {
+  git("commit", "-q", "--allow-empty", "-m", "Stale extra");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  writeFileSync(join(repo, ".joppa/extra.junit.xml"), '<testsuites><testsuite name="tests/extra.rs"><testcase name="extra_case" /></testsuite></testsuites>');
+  writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: true, commit: "0".repeat(40), dirty: false }));
+  uploads.length = 0;
+  expect((await push()).code).toBe(0);
+  expect(uploads.length).toBe(1);
+  expect(uploads[0].body.stamp.full).toBe(false);
+  writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: true, commit: head(), dirty: false }));
+  git("commit", "-q", "--allow-empty", "-m", "Matching extra");
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  writeFileSync(join(repo, ".joppa/extra.stamp.json"), JSON.stringify({ full: true, commit: head(), dirty: false }));
+  uploads.length = 0;
+  expect((await push()).code).toBe(0);
+  expect(uploads[0].body.stamp.full).toBe(true);
+  rmSync(join(repo, ".joppa/extra.junit.xml"));
+  rmSync(join(repo, ".joppa/extra.stamp.json"));
+});
+
 test("a push to another branch uploads nothing", async () => {
   // runner-executed: only the default branch counts, even with a fresh full report.
   git("checkout", "-q", "-b", "feature/x");

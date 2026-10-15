@@ -120,6 +120,12 @@ fi
 
 # A full run writes the report for the pre-push hook. Old parts never mix with it.
 rm -f .joppa/junit.xml .joppa/stamp.json .joppa/*.junit.xml .joppa/*.stamp.json
+# Each extra report names the commit and the tree state it ran on, like the main stamp.
+part_stamp() {
+  local dirty=false
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || dirty=true
+  printf '{"full":true,"commit":"%s","dirty":%s}\n' "$(git rev-parse HEAD)" "$dirty" > "$1"
+}
 export JOPPA_TEST_ARTIFACTS="$scratch/artifacts.json"
 phase=lane-tests
 [ "${JOPPA_TEST_GATE:-0}" != 1 ] || phase=gate
@@ -168,7 +174,7 @@ done
 pids=()
 bun scripts/joppa-report/lane-junit.ts "$scratch"/worker-*.log || status=1
 bun test scripts/joppa-report --reporter=junit --reporter-outfile=.joppa/bun.junit.xml || status=1
-printf '{"full":true}\n' > .joppa/bun.stamp.json
+part_stamp .joppa/bun.stamp.json
 # Browser checks use a third database and the helper from the same frozen build.
 database browser
 export JOPPA_TEST_DATABASE_URL="$database_url"
@@ -176,5 +182,5 @@ setsid bun run test:browser --test --test-reporter=junit --test-reporter-destina
   --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs &
 pids+=("$!")
 wait "${pids[0]}" || status=1
-printf '{"full":true}\n' > .joppa/browser.stamp.json
+part_stamp .joppa/browser.stamp.json
 exit "$status"

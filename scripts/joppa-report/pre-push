@@ -25,7 +25,9 @@ async function main(): Promise<boolean> {
       junit = `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>${[junit, ...extra.map((f) => readFileSync(`.joppa/${f}`, "utf8"))].map(suites).join("\n")}</testsuites>\n`;
     for (const f of extra) {
       const part = `.joppa/${f.replace(/\.junit\.xml$/, ".stamp.json")}`;
-      const full = existsSync(part) && JSON.parse(readFileSync(part, "utf8")).full === true;
+      const extra = existsSync(part) ? JSON.parse(readFileSync(part, "utf8")) : {};
+      // An extra part from another commit or a dirty tree makes the merged report partial.
+      const full = extra.full === true && extra.dirty !== true && (extra.commit === undefined || extra.commit === stamp.commit);
       if (!full) stamp.full = false;
     }
   } catch {
