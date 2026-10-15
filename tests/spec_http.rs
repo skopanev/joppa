@@ -1822,19 +1822,32 @@ async fn a_requirement_with_no_live_criteria_archives_over_http() -> Result<()> 
 }
 
 // removal-is-archiving-ac3
-// alex is a human member in the workspace of skopanev (the owner token).
+// skopanev creates and owns the workspace; alex is a human member of it.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
-    let w = world().await?;
-    let cap = w.get("address=capability:empty").await?;
-    let archive = json!({"op":"archive_object","target":"capability:empty","revision":cap["current_revision"],"reason":"Cut"});
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [
+        json!({"op":"workspace","title":"Owned by skopanev"}),
+        json!({"op":"member","id":"alex","role":"human"}),
+        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
+        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    let cap = w.get_as(&w.alex, "address=capability:restrict").await?;
+    let archive = json!({"op":"archive_object","target":"capability:restrict","revision":cap["current_revision"],"reason":"Cut"});
     let (ok, reply) = send_as(&w, &w.alex, &archive).await?;
     ensure!(
         !ok && reply["error"] == "workspace owner or agent required",
         "{reply}"
     );
-    let read = w.get("address=capability:empty").await?;
+    let read = w.get_as(&w.alex, "address=capability:restrict").await?;
     ensure!(read["document"]["present"] == true, "{read}");
     Ok(())
 }
