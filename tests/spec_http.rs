@@ -2354,8 +2354,10 @@ async fn search_never_returns_another_workspaces_objects() -> Result<()> {
         json!([]),
     )
     .await?;
-    let found = a.search("passkey").await?;
-    ensure!(found.is_empty(), "{found:?}");
+    let (control, reply) = bot_search(&b, "passkey").await?;
+    ensure!(control.contains(&"note:secret".into()), "{reply}");
+    let (found, reply) = bot_search(&a, "passkey").await?;
+    ensure!(found.is_empty(), "{reply}");
     Ok(())
 }
 
