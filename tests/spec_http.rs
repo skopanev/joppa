@@ -137,13 +137,16 @@ impl World {
         Ok(reply.json().await?)
     }
     async fn get(&self, query: &str) -> Result<Value> {
+        self.get_as(&self.owner, query).await
+    }
+    async fn get_as(&self, token: &str, query: &str) -> Result<Value> {
         let reply = self
             .http
             .get(format!(
                 "{}/api/workspaces/{}/objects?{query}",
                 self.root, self.ws
             ))
-            .bearer_auth(&self.owner)
+            .bearer_auth(token)
             .send()
             .await?;
         ensure!(
@@ -1741,18 +1744,66 @@ async fn an_archived_object_leaves_the_list_of_its_parent() -> Result<()> {
     let w = world().await?;
     let cap = w.get("address=capability:empty").await?;
     w.command(json!({"op":"archive_object","target":"capability:empty","revision":cap["document"]["revision"],"reason":"Cut"})).await?;
-    let list = w.get("limit=50&parent=domain:security").await?;
-    let addresses: Vec<&str> = list["items"]
+    let addresses = list_addresses(&w, &w.bot, "domain:security").await?;
+    ensure!(
+        addresses.contains(&"capability:restrict".to_string())
+            && !addresses.contains(&"capability:empty".to_string()),
+        "{addresses:?}"
+    );
+    let read = w.get_as(&w.bot, "address=capability:empty").await?;
+    ensure!(read["document"]["present"] == false, "{read}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_archived_capability_leaves_the_list_when_done_and_retired_tasks_remain() -> Result<()> {
+    // removal-is-archiving-ac1
+    let w = world().await?;
+    let seed = json!({"op":"capability","id":"spent","title":"Finished work","domain":"security"});
+    let seed: Operation = serde_json::from_value(seed)?;
+    store::execute(&w.pool, &w.ws, "owner", "spent", &seed).await?;
+    w.command(json!({"op":"revise","req":"spent","expected_revision":0,"capability":"spent","title":"Finished rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"spent-a","text":"Criterion A"}]})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"spent","revision":1,"ac":"spent-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let done = ready_task(&w, "spent-done", "spent-a").await?;
+    w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
+        .await?;
+    w.command_as(
+        &w.bot,
+        json!({"op":"complete_task","id":done,"revision":2,"evidence":"Implemented the contract"}),
+    )
+    .await?;
+    let retired = ready_task(&w, "spent-retired", "spent-a").await?;
+    w.command(json!({"op":"retire_task","id":retired,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+    for target in ["ac:spent-a", "requirement:spent", "capability:spent"] {
+        let before = w.get(&format!("address={target}")).await?;
+        w.command(json!({"op":"archive_object","target":target,"revision":before["current_revision"],"reason":"Remove the finished work"})).await?;
+    }
+    for task in [&done, &retired] {
+        let read = w.get(&format!("address={task}")).await?;
+        ensure!(read["document"]["present"] == true, "{read}");
+    }
+    let addresses = list_addresses(&w, &w.bot, "domain:security").await?;
+    ensure!(
+        addresses.contains(&"capability:restrict".to_string())
+            && !addresses.contains(&"capability:spent".to_string()),
+        "{addresses:?}"
+    );
+    let read = w.get_as(&w.bot, "address=capability:spent").await?;
+    ensure!(read["document"]["present"] == false, "{read}");
+    Ok(())
+}
+
+async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<String>> {
+    let list = w
+        .get_as(token, &format!("limit=100&parent={parent}"))
+        .await?;
+    Ok(list["items"]
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|i| i["address"].as_str())
-        .collect();
-    ensure!(
-        addresses.contains(&"capability:restrict") && !addresses.contains(&"capability:empty"),
-        "{addresses:?}"
-    );
-    Ok(())
+        .filter_map(|i| i["address"].as_str().map(str::to_string))
+        .collect())
 }
 
 #[tokio::test]
@@ -1831,8 +1882,8 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|item| item["address"] != parent || item["present"] == false),
-            "The archived parent remains present in the list: {list}"
+                .all(|item| item["address"] != parent),
+            "The archived parent remains in the list: {list}"
         );
     }
     Ok(())

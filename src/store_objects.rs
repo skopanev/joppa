@@ -561,7 +561,7 @@ pub async fn read_objects(
         FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address
-        WHERE o.workspace=$1 AND (o.present OR EXISTS (SELECT 1 FROM joppa.objects child WHERE child.workspace=o.workspace AND child.parent=o.address AND child.present))
+        WHERE o.workspace=$1 AND o.present
             AND {after_filter} AND ($3::text IS NULL OR o.kind=$3)
             AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
             AND ($7::text IS NULL OR o.inbox_status=$7)
