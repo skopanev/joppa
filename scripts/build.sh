@@ -27,7 +27,7 @@ if [ "$(uname -s)" != Linux ]; then
         test-only) name=test:only; shift ;;
         test) name=test:rust; shift ;;
         browser) name=test:browser; shift ;;
-        build|lint|report|gate|fmt) name=$1; shift ;;
+        build|lint|report|gate|fmt|review) name=$1; shift ;;
         *) echo 'build: use a configured bun run command' >&2; exit 2 ;;
     esac
     database=${JOPPA_TEST_DATABASE_URL:-}
@@ -39,6 +39,7 @@ if [ "$(uname -s)" != Linux ]; then
         --env "JOPPA_LANE_TEST_ENV=${JOPPA_LANE_TEST_ENV:-$canonical_root/.local/lane-test.env}" \
         --env "JOPPA_TEST_DATABASE_URL=$database" \
         --env GIT_OPTIONAL_LOCKS=0 \
+        --env "JOPPA_REVIEW_BASE=${JOPPA_REVIEW_BASE:-}" \
         --env "MEDULLA_RUN_ID=${MEDULLA_RUN_ID:-host_$(date +%s)_$$}" \
         --entrypoint bun "${JOPPA_BUILD_IMAGE:-medulla-crew-joppa:latest}" run "$name" "$@"
 fi
@@ -65,6 +66,20 @@ if [ "${JOPPA_TEST_COMPILE_ONLY:-0}" != 1 ]; then
             export JOPPA_TEST_GATE=$([ "$1" = gate ] && echo 1 || echo 0)
             unset JOPPA_TEST_FILTER
             exec bash scripts/lane-test.sh "${2:-${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}}"
+            ;;
+        review)
+            # The Task gate: lint, then only the tests that the Task added or changed
+            # (BASE..HEAD, BASE from .git/lane-base). No touched test fails the gate.
+            # The full suite runs at the landing.
+            base=${JOPPA_REVIEW_BASE:-$(cat "$(git rev-parse --git-path lane-base)" 2>/dev/null || true)}
+            [ -n "$base" ] || { echo 'review: no base: write .git/lane-base or set JOPPA_REVIEW_BASE' >&2; exit 2; }
+            bash scripts/build.sh lint
+            plan=$(mktemp)
+            bun scripts/review-plan.ts "$base" > "$plan"
+            echo "review: focused plan for ${base:0:7}..$(git rev-parse --short HEAD):" >&2
+            cat "$plan" >&2
+            export JOPPA_REVIEW_PLAN="$plan"
+            exec bash scripts/lane-test.sh "${JOPPA_LANE_TEST_ENV:-/workspace/joppa/.local/lane-test.env}"
             ;;
         test-only)
             # A focused run names its target, so it never compiles every test binary:

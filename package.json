@@ -4,6 +4,7 @@
   "scripts": {
     "build": "bash scripts/build.sh build",
     "lint": "bash scripts/build.sh lint",
+  "review": "bash scripts/build.sh review",
     "test": "bash scripts/build.sh lane-tests",
     "test:only": "bash scripts/build.sh test-only",
     "fmt": "bash scripts/build.sh fmt",

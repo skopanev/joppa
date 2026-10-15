@@ -24,10 +24,12 @@ if [ "${1:-}" = --worker ]; then
 fi
 
 env_file=${1:?usage: scripts/lane-test.sh ENV_FILE}
+plan_file=${JOPPA_REVIEW_PLAN:-}
 filter=${JOPPA_TEST_FILTER:-}
 case "$filter" in -*) echo 'lane-test: filter must be a test name' >&2; exit 2 ;; esac
 # Outside Linux the run moves into the project container through bun run.
 if [ "$(uname -s)" != Linux ]; then
+  [ -z "$plan_file" ] || { echo 'lane-test: a review plan runs only through bun run review' >&2; exit 2; }
   if [ -n "$filter" ]; then
     exec env JOPPA_LANE_TEST_ENV="$env_file" bun run test:only "$filter" ${JOPPA_TEST_TARGET:+"$JOPPA_TEST_TARGET"}
   fi
@@ -115,6 +117,62 @@ if [ -n "$filter" ]; then
     echo 'lane-test: no Rust tests match the supplied filter' >&2
     status=2
   fi
+  exit "$status"
+fi
+
+# A review plan runs only the tests that the Task added or changed, in one database.
+# Each entry must run at least one test, and every entry must pass. Lint alone proves no
+# behavior, so a change that adds or edits no test fails the gate.
+if [ -n "$plan_file" ]; then
+  [ -s "$plan_file" ] || { echo 'review: the change adds or edits no test; a Task gate needs at least one focused test' >&2; exit 1; }
+  database review
+  export JOPPA_TEST_DATABASE_URL="$database_url"
+  bun -e 'const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    for (const line of (await Bun.file(process.argv[1]).text()).trim().split("\n")) {
+      const p = JSON.parse(line);
+      const target = p.kind !== "rust" ? "" : p.target === "lib" ? "--lib" : p.target === "bin" ? "--bins" : "--test=" + p.target;
+      console.log([p.kind, target, p.filter ?? "", p.file ?? "", p.name ? "^" + esc(p.name) + "$" : ""].join("\x1f"));
+    }' "$plan_file" > "$scratch/plan.tsv"
+  mapfile -t rust_targets < <(awk -F'\x1f' '$1 == "rust" { print $2 }' "$scratch/plan.tsv" | sort -u)
+  if [ "${#rust_targets[@]}" -gt 0 ]; then
+    bun run test:rust --no-run "${rust_targets[@]}" || exit $?
+  fi
+  n=0
+  # The plan comes on descriptor 3, so no test command can read it from stdin.
+  while IFS=$'\x1f' read -r -u 3 kind target rust_filter file pattern; do
+    n=$((n + 1))
+    log="$scratch/review-$n.log"
+    case $kind in
+      rust)
+        echo "review: rust $target ${rust_filter:-<whole file>}"
+        set +e
+        JOPPA_BUILD_LOCKED=1 bun run test:rust "$target" ${rust_filter:+"$rust_filter"} -- --include-ignored --test-threads=1 > "$log" 2>&1
+        code=$?
+        set -e
+        ran=$(grep -Ec '^test .+ \.\.\. (ok|FAILED)' "$log" || true)
+        ;;
+      bun)
+        echo "review: bun $file $pattern"
+        set +e
+        bun test "$file" --test-name-pattern "$pattern" > "$log" 2>&1
+        code=$?
+        set -e
+        ran=$( (grep -Eo '^ *[0-9]+ (pass|fail)' "$log" || true) | awk '{s += $1} END {print s + 0}')
+        ;;
+      browser)
+        echo "review: browser $file $pattern"
+        set +e
+        bun run test:browser --test --test-name-pattern="$pattern" --test-reporter=spec "$file" > "$log" 2>&1
+        code=$?
+        set -e
+        ran=$( (grep -Eo '^ℹ (pass|fail) [0-9]+' "$log" || true) | awk '{s += $3} END {print s + 0}')
+        ;;
+    esac
+    cat "$log"
+    if [ "$code" -ne 0 ]; then echo "review: FAILED: $kind $target$rust_filter$file $pattern" >&2; status=1
+    elif [ "${ran:-0}" -eq 0 ]; then echo "review: no test ran for: $kind $target$rust_filter$file $pattern" >&2; status=1
+    fi
+  done 3< "$scratch/plan.tsv"
   exit "$status"
 fi
 
