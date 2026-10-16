@@ -44,6 +44,8 @@ fn configured() -> World {
                 references: Default::default(),
                 required_fields: Default::default(),
                 parent_decision: false,
+                status: None,
+                status_order: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,

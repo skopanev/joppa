@@ -411,6 +411,13 @@ pub async fn read_objects(
                 &selected,
             )
             .await?;
+            add_status_tones(
+                &*conn,
+                &workspace,
+                std::slice::from_mut(&mut item),
+                &selected,
+            )
+            .await?;
             let (waits, counts) =
                 super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
             add_waits(
@@ -622,6 +629,7 @@ pub async fn read_objects(
         }
     }
     add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
+    add_status_tones(&*conn, &workspace, &mut items, &selected).await?;
     add_waits(
         &*conn,
         &workspace,
@@ -692,6 +700,145 @@ async fn add_waits(
         {
             item["process"]["readiness_blocker"] =
                 json!({"state":"dependency","target":target,"reason":reason});
+        }
+    }
+    Ok(())
+}
+
+/// The tone of each node from the status rule of its type: tests takes the test status of
+/// the criterion, children takes the first status in the type's order that a live direct
+/// child has, and none keeps the process tone. A node with no counted child is grey.
+/// The rule sets only the tone; the process label stays.
+async fn add_status_tones(
+    client: &impl GenericClient,
+    workspace: &str,
+    items: &mut [Value],
+    types: &std::collections::BTreeMap<String, objects::TreeType>,
+) -> Result<()> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let rule = |kind: &str| types.get(kind).map_or("none", objects::status_rule);
+    let ruled: Vec<(String, String)> = items
+        .iter()
+        .filter(|i| i["present"] != false)
+        .filter_map(|i| {
+            Some((
+                i["address"].as_str()?.to_owned(),
+                i["kind"].as_str()?.to_owned(),
+            ))
+        })
+        .filter(|(_, kind)| rule(kind) != "none")
+        .collect();
+    if ruled.is_empty() {
+        return Ok(());
+    }
+    let children_kinds: Vec<String> = types
+        .iter()
+        .filter(|(_, t)| objects::status_rule(t) == "children")
+        .map(|(kind, _)| kind.clone())
+        .collect();
+    let roots: Vec<String> = ruled
+        .iter()
+        .filter(|(_, kind)| rule(kind) == "children")
+        .map(|(address, _)| address.clone())
+        .collect();
+    // The live subtree below each children node, down through children nodes only.
+    let mut below = BTreeMap::<String, Vec<(String, String)>>::new();
+    if !roots.is_empty() {
+        for row in client
+            .query(
+                r#"
+        WITH RECURSIVE sub(address,kind,parent) AS (
+            SELECT c.address,c.kind,c.parent FROM joppa.objects c
+            WHERE c.workspace=$1 AND c.parent=ANY($2) AND c.present
+            UNION
+            SELECT c.address,c.kind,c.parent FROM sub
+            JOIN joppa.objects c ON c.workspace=$1 AND c.parent=sub.address AND c.present
+            WHERE sub.kind=ANY($3)
+        )
+        SELECT address,kind,parent FROM sub
+    "#,
+                &[&workspace, &roots, &children_kinds],
+            )
+            .await?
+        {
+            below
+                .entry(row.get(2))
+                .or_default()
+                .push((row.get(0), row.get(1)));
+        }
+    }
+    let criteria: BTreeSet<String> = ruled
+        .iter()
+        .cloned()
+        .chain(below.values().flatten().cloned())
+        .filter(|(_, kind)| rule(kind) == "tests")
+        .map(|(address, _)| address)
+        .collect();
+    let statuses = if criteria.is_empty() {
+        BTreeMap::new()
+    } else {
+        super::reports::criterion_test_statuses(
+            client,
+            workspace,
+            &criteria.into_iter().collect::<Vec<_>>(),
+            &BTreeSet::new(),
+        )
+        .await?
+    };
+    fn tone(
+        address: &str,
+        kind: &str,
+        types: &std::collections::BTreeMap<String, objects::TreeType>,
+        below: &BTreeMap<String, Vec<(String, String)>>,
+        statuses: &BTreeMap<String, Value>,
+        seen: &mut BTreeSet<String>,
+    ) -> Option<String> {
+        let t = types.get(kind)?;
+        match objects::status_rule(t) {
+            "tests" => Some(
+                match statuses.get(address).and_then(|s| s["status"].as_str()) {
+                    Some("green") => "green",
+                    Some("red") => "red",
+                    _ => "grey",
+                }
+                .to_owned(),
+            ),
+            "children" => {
+                if !seen.insert(address.to_owned()) {
+                    return Some("grey".into());
+                }
+                let found: BTreeSet<String> = below
+                    .get(address)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(child, kind)| tone(child, kind, types, below, statuses, seen))
+                    .collect();
+                Some(
+                    objects::status_order(t)
+                        .into_iter()
+                        .find(|s| found.contains(s))
+                        .unwrap_or_else(|| "grey".into()),
+                )
+            }
+            _ => None,
+        }
+    }
+    for item in items.iter_mut() {
+        let (Some(address), Some(kind)) = (item["address"].as_str(), item["kind"].as_str()) else {
+            continue;
+        };
+        if item["present"] == false {
+            continue;
+        }
+        if let Some(t) = tone(
+            address,
+            kind,
+            types,
+            &below,
+            &statuses,
+            &mut BTreeSet::new(),
+        ) {
+            item["signal"]["tone"] = json!(t);
         }
     }
     Ok(())

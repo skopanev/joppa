@@ -931,6 +931,71 @@ test('board-opens-top-level-ac1: a reload of the board shows only the top level'
   } finally { await f.close(); }
 });
 
+// type-status-rules-ac4
+test('type-status-rules-ac4: the board dot of each node has the colour of its status and R keeps its label', async () => {
+  const f = await fixture({});
+  try {
+    const tree = await f.api('/tree');
+    const types = structuredClone(tree.schema.types);
+    types.area = {title: 'Areas', role: 'group', root: true, parents: ['area'], status: 'children', status_order: ['red', 'grey', 'green']};
+    types.rule = {title: 'Rules', role: 'requirement', parents: ['area'], status: 'children'};
+    types.check = {title: 'Checks', role: 'ac', parents: ['rule'], status: 'tests'};
+    await f.command({op: 'set_tree_schema', revision: tree.current_revision, types, reason: 'Set the status rules'}, true);
+    for (const [address, parent] of [['area:g1', null], ['area:g2', 'area:g1'], ['rule:r', 'area:g2'], ['check:a', 'rule:r'], ['check:b', 'rule:r']]) {
+      await f.save(address, {title: address.split(':')[1].toUpperCase(), parent});
+    }
+    const nodes = ['area:g1', 'area:g2', 'rule:r'];
+    let order = 0;
+    const report = cases => f.upload('c' + String(++order).padStart(6, '0'), order, cases);
+    const labels = [];
+    // Each dot shows the tone of the API in the light and the dark theme.
+    const check = async (fixture, expected) => {
+      for (const theme of ['light', 'dark']) {
+        await f.page.goto(f.live.root + '/settings');
+        await f.page.evaluate(t => localStorage.setItem('theme', t), theme);
+        for (const [i, address] of nodes.entries()) {
+          const read = await f.api('/objects?address=' + encodeURIComponent(address));
+          assert.equal(read.signal.tone, expected[i], fixture + ' ' + address);
+          const card = await f.open(address);
+          const dot = card.locator(':scope > summary .status-circle').first();
+          assert.equal(await dot.getAttribute('data-tone'), expected[i], fixture + ' ' + theme + ' ' + address);
+          const colours = await dot.evaluate(e => {
+            const probe = document.createElement('i');
+            probe.style.color = 'var(--dot-' + e.dataset.tone + ')';
+            document.body.append(probe);
+            const want = getComputedStyle(probe).color;
+            probe.remove();
+            return [getComputedStyle(e).backgroundColor, want];
+          });
+          assert.equal(colours[0], colours[1], fixture + ' ' + theme + ' ' + address);
+          if (address === 'rule:r') labels.push((await dot.getAttribute('aria-label')).split('\n')[0]);
+        }
+      }
+    };
+    await f.bind('check:a', ['a']);
+    await report([['a']]);
+    await check('fixture 1', ['grey', 'grey', 'grey']);
+    await f.bind('check:b', ['b']);
+    await report([['a'], ['b']]);
+    await check('fixture 2', ['green', 'green', 'green']);
+    await report([['a'], ['b', 'boom']]);
+    await check('fixture 3', ['red', 'red', 'red']);
+    await f.bind('check:a', []);
+    await check('fixture 4', ['red', 'red', 'red']);
+    await f.bind('check:a', ['a']);
+    await report([['a'], ['b', 'boom']]);
+    await f.save('rule:r2', {title: 'R2', parent: 'area:g2'});
+    await f.save('check:d', {title: 'D', parent: 'rule:r2'});
+    const next = await f.api('/tree');
+    const ordered = structuredClone(next.schema.types);
+    ordered.area.status_order = ['grey', 'red', 'green'];
+    await f.command({op: 'set_tree_schema', revision: next.current_revision, types: ordered, reason: 'Put grey first'}, true);
+    await check('fixture 5', ['grey', 'grey', 'red']);
+    // The process label of R is the same in every fixture and theme, also when R is green.
+    assert.equal(new Set(labels).size, 1, JSON.stringify(labels));
+  } finally { await f.close(); }
+});
+
 // settings-in-name-menu-ac4
 test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and opens New workspace from the header', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
@@ -1156,7 +1221,8 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
     assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'grey');
     const mixed = card.locator('.common-object[data-object-address="requirement:mixed"] > summary');
     assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 Criteria');
-    assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'yellow');
+    // type-status-rules: a requirement takes the first of red, grey, green that a child has.
+    assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'grey');
   } finally { await f.close(); }
 });
 

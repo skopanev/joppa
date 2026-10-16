@@ -747,9 +747,7 @@ function showTestCount(chip){
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
   const label=green+' of '+total+' '+title+' ready'+(red?', '+red+' failed':'');
   chip.setAttribute('aria-label',label);
-  const tone=red?'red':total>0&&green===total?'green':green>0?'yellow':'grey';
-  const dot=chip.closest('summary')?.querySelector('.status-circle');
-  if(dot&&(dot.dataset.tone!==tone||dot.dataset.hint!=='Status: '+label))dot.replaceWith(statusCircle({tone,label}));
+  // The dot keeps the server tone of the type's status rule and the process label.
 }
 // A criterion takes its dot from its tests: green when every test passes,
 // red when one fails or is missing, grey otherwise, and grey "No tests" without tests.

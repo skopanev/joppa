@@ -41,6 +41,13 @@ pub struct TreeType {
     pub required_fields: BTreeMap<String, RequiredFieldRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
+    /// How a node of this type gets its tone: tests, children or none. Without a value the
+    /// role decides: the criterion role uses tests, group and requirement use children.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// The order in which a children rule takes the first status that a child has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_order: Option<Vec<String>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -174,6 +181,8 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 references: BTreeMap::new(),
                 required_fields: BTreeMap::new(),
                 parent_decision: false,
+                status: None,
+                status_order: None,
                 color: None,
                 title_size: None,
                 badge: None,
@@ -251,6 +260,8 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
                 references: BTreeMap::new(),
                 required_fields: BTreeMap::new(),
                 parent_decision: false,
+                status: None,
+                status_order: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,
@@ -643,6 +654,26 @@ fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
     Ok(())
 }
 
+/// The status rules of a type and the tones that a children rule can order.
+pub const STATUS_RULES: [&str; 3] = ["tests", "children", "none"];
+pub const STATUS_TONES: [&str; 3] = ["red", "grey", "green"];
+
+/// The status rule of a type: its own rule, else the default of its role.
+pub fn status_rule(t: &TreeType) -> &str {
+    t.status.as_deref().unwrap_or(match t.role.as_str() {
+        "ac" => "tests",
+        "group" | "requirement" => "children",
+        _ => "none",
+    })
+}
+
+/// The order of a children rule: its own order, else red, grey, green.
+pub fn status_order(t: &TreeType) -> Vec<String> {
+    t.status_order
+        .clone()
+        .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
+}
+
 pub fn set_schema(
     w: &mut Workspace,
     actor: &str,
@@ -689,6 +720,17 @@ pub fn set_schema(
             t.title_preview_length
                 .is_none_or(|length| (1..=256).contains(&length)),
             "type title_preview_length must be an integer from 1 to 256 characters"
+        );
+        ensure!(
+            t.status
+                .as_deref()
+                .is_none_or(|rule| STATUS_RULES.contains(&rule)),
+            "a status rule is tests, children or none"
+        );
+        ensure!(
+            t.status_order.as_ref().is_none_or(|order| !order.is_empty()
+                && order.iter().all(|s| STATUS_TONES.contains(&s.as_str()))),
+            "a status order allows only red, grey and green"
         );
         ensure!(
             t.parent_gate

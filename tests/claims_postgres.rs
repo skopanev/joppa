@@ -62,6 +62,8 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
                 references: Default::default(),
                 required_fields: Default::default(),
                 parent_decision: false,
+                status: None,
+                status_order: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,
