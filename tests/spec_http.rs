@@ -2082,6 +2082,84 @@ async fn a_parent_rule_that_orphans_risk_objects_is_refused_over_http() -> Resul
     Ok(())
 }
 
+// tree-schema-safe-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Result<()> {
+    // tree-schema-safe-ac3
+    // skopanev owns the workspace; note:kept sits at revision 2.
+    use sha2::{Digest, Sha256};
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [json!({"op":"workspace","title":"Owned by skopanev"})]
+        .into_iter()
+        .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    for (revision, body) in [(0, "First"), (1, "Second")] {
+        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":"kept","revision":revision,"parent":null,"data":{"title":"Kept","owner":"skopanev","body":body},"links":[],"reason":"Save"})).await?;
+    }
+    let hash = |read: &Value| -> Result<String> {
+        let document = serde_json::to_string(&read["document"])?;
+        Ok(format!("{:x}", Sha256::digest(document.as_bytes())))
+    };
+    let http = w.get_as(&w.skopanev, "address=note:kept").await?;
+    let mcp = object_as(&w, &w.skopanev, "note:kept", None).await?;
+    let r = http["current_revision"].clone();
+    ensure!(r == 2 && mcp["current_revision"] == r, "{http} {mcp}");
+    let (http_hash, mcp_hash) = (hash(&http)?, hash(&mcp)?);
+    let history = object_history(&w, "note:kept").await?;
+    let tree = async || -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.skopanev)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status.is_success(), "GET /tree: {status} {body}");
+        Ok(serde_json::from_str(&body)?)
+    };
+    let before = tree().await?;
+    let n = before["current_revision"].as_u64();
+    ensure!(n.is_some(), "{before}");
+    let n = n.unwrap();
+    let mut types = before["schema"]["types"].clone();
+    types["note"]["badge"] = json!("INPUT");
+    let (status, reply) = text_rule_request(
+        &w,
+        &w.skopanev,
+        &uuid::Uuid::new_v4().to_string(),
+        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Rename the note badge"}),
+        "http",
+    )
+    .await?;
+    ensure!(
+        (200..300).contains(&status) && reply.get("error").is_none(),
+        "{status} {reply}"
+    );
+    let after = tree().await?;
+    ensure!(
+        after["current_revision"] == n + 1 && after["schema"]["types"]["note"]["badge"] == "INPUT",
+        "{after}"
+    );
+    let http = w.get_as(&w.skopanev, "address=note:kept").await?;
+    ensure!(
+        http["current_revision"] == r && hash(&http)? == http_hash,
+        "{http}"
+    );
+    let mcp = object_as(&w, &w.skopanev, "note:kept", None).await?;
+    ensure!(
+        mcp["current_revision"] == r && hash(&mcp)? == mcp_hash,
+        "{mcp}"
+    );
+    ensure!(object_history(&w, "note:kept").await? == history);
+    Ok(())
+}
+
 async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<String>> {
     let list = w
         .get_as(token, &format!("limit=100&parent={parent}"))
