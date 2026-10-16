@@ -1855,6 +1855,61 @@ async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
     Ok(())
 }
 
+// tree-owner-sets-types-ac2
+// skopanev creates and owns the workspace; alex is a human member of it.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [
+        json!({"op":"workspace","title":"Owned by skopanev"}),
+        json!({"op":"member","id":"alex","role":"human"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    let tree = async || -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.skopanev)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status.is_success(), "GET /tree: {status} {body}");
+        Ok(serde_json::from_str(&body)?)
+    };
+    let before = tree().await?;
+    let n = before["current_revision"].clone();
+    ensure!(n.is_u64(), "{before}");
+    let mut types = before["schema"]["types"].clone();
+    ensure!(types.get("job").is_none(), "{before}");
+    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    let (status, reply) = text_rule_request(
+        &w,
+        &w.alex,
+        &uuid::Uuid::new_v4().to_string(),
+        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add jobs"}),
+        "http",
+    )
+    .await?;
+    ensure!(
+        reply["error"] == "workspace owner or agent required",
+        "{status} {reply}"
+    );
+    let after = tree().await?;
+    ensure!(
+        after["current_revision"] == n && after["schema"]["types"].get("job").is_none(),
+        "{after}"
+    );
+    Ok(())
+}
+
 // removal-is-archiving-ac5
 // skopanev owns the workspace and archives a capability with one live requirement.
 #[tokio::test]
