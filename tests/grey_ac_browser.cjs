@@ -854,6 +854,67 @@ test('settings-in-name-menu-ac3: Settings shows no agent token controls and read
   } finally { await f.close(); }
 });
 
+// settings-in-name-menu-ac4
+test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and puts Create first', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    const created = await f.page.context().request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Themed space'}});
+    const {id} = await created.json();
+    // The board stores the dark theme; Settings opens dark at once.
+    await f.page.goto(f.live.root + '/settings');
+    await f.page.evaluate(() => localStorage.setItem('theme', 'dark'));
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    assert.equal(await f.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+    const background = () => f.page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.equal(await background(), 'rgb(25, 28, 32)');
+    assert.equal(await f.page.locator('meta[name="theme-color"]').getAttribute('content'), '#191c20');
+    // One icon shows at a time: the sun in the dark theme.
+    assert.deepEqual([await f.page.locator('#sun-svg').isVisible(), await f.page.locator('#moon-svg').isVisible()], [true, false]);
+    // The theme button switches to light and stores the choice for the board.
+    await f.page.getByRole('button', {name: 'Switch to light theme'}).click();
+    assert.equal(await background(), 'rgb(255, 252, 245)');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'light');
+    // Create a workspace is the first section, above the workspace drop-down.
+    const create = await f.page.locator('#create-workspace').boundingBox(), select = await f.page.locator('#workspace-select').boundingBox();
+    assert.ok(create.y < select.y);
+    // Back to board opens the selected workspace.
+    const workspace = f.page.getByLabel('Workspace', {exact: true});
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await workspace.selectOption(id);
+    assert.equal(await f.page.getByRole('link', {name: '← Back to board'}).getAttribute('href'), '/?workspace=' + encodeURIComponent(id));
+    // A field and its button share one row, and Delete workspace uses the failure color.
+    const input = await f.page.getByLabel('Email or domain').boundingBox(), add = await f.page.getByRole('button', {name: 'Add', exact: true}).boundingBox();
+    assert.ok(Math.abs((input.y + input.height / 2) - (add.y + add.height / 2)) < 4);
+    const fail = await f.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fail').trim());
+    const color = await f.page.getByRole('button', {name: 'Delete workspace'}).evaluate(e => getComputedStyle(e).color);
+    const probe = await f.page.evaluate(value => { const e = document.createElement('i'); e.style.color = value; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, fail);
+    assert.equal(color, probe);
+    await f.page.getByRole('link', {name: '← Back to board'}).click();
+    await f.page.waitForURL(url => url.searchParams.get('workspace') === id);
+  } finally { await f.close(); }
+});
+
+// workspace-drop-down-ac1
+test('workspace-drop-down-ac1: the board drop-down shows no placeholder while the workspace list loads', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    await f.open('domain:d');
+    const title = await f.page.locator('#workspaces option:checked').innerText();
+    // Hold the list on reload: the drop-down shows the last title and never "Choose a workspace".
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    await f.page.route(f.live.root + '/api/workspaces', async route => { await held; await route.continue(); });
+    const reloaded = f.page.reload();
+    await f.page.locator('#workspaces').waitFor({state: 'attached'});
+    await f.page.waitForFunction(() => document.readyState !== 'loading');
+    assert.deepEqual(await f.page.locator('#workspaces option').allInnerTexts(), [title]);
+    assert.ok(!(await f.page.content()).includes('Choose a workspace'));
+    release();
+    await reloaded;
+    await f.page.unroute(f.live.root + '/api/workspaces');
+  } finally { await f.close(); }
+});
+
 test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});

@@ -3,50 +3,90 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#fffcf5">
+<script>
+// The same theme as the board: an explicit choice in localStorage, else the system theme.
+try{
+  const theme=localStorage.getItem('theme');
+  document.documentElement.dataset.theme=['light','dark'].includes(theme)?theme:'system';
+}catch{document.documentElement.dataset.theme='system';}
+</script>
 <title>Settings · Joppa</title>
 <link rel="icon" href="/favicon.svg">
 <style>/* BOARD_STYLE */
 /* BRAND_STYLE */
-#workspace-panel li{overflow-wrap:anywhere}</style>
+.settings{max-width:600px;margin:0 auto}
+.settings h1{margin:.6em 0 .2em}
+.settings section{padding:1.2em 0;border-top:1px solid var(--rule)}
+.settings h2{font-size:1.1em;margin:0 0 .6em}
+.settings label{margin:.2em 0 .3em}
+.settings .row{display:flex;gap:.6rem;align-items:center}
+.settings .row input,.settings .row select{flex:1;min-width:0;margin:0}
+.settings .row button,.settings .action{border:1px solid var(--rule);padding:.45em .9em;color:var(--heading);white-space:nowrap}
+.settings .row button:hover,.settings .action:hover{border-color:var(--text);text-decoration:none}
+.settings [role=alert]:empty{display:none}
+.settings [role=alert]{color:var(--fail);margin:.4em 0 0;font-size:.9em}
+#workspace-people{list-style:none;margin:0 0 1em;padding:0}
+#workspace-people li{padding:.45em 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+#workspace-people li[data-kind=email],#workspace-people li[data-kind=domain]{color:var(--muted)}
+#not-owner{color:var(--muted);margin:.6em 0 0}
+.owner-block{margin-top:1.2em}
+.danger{margin-top:1.6em;padding-top:1.2em;border-top:1px solid var(--rule)}
+.settings .danger .action{color:var(--fail);border-color:var(--fail)}
+#delete-confirm{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0}
+#delete-confirm[hidden]{display:none}
+.back-link{color:var(--link);text-decoration:none;white-space:nowrap}
+body>.app-header{flex-wrap:nowrap}
+body>.app-header .tagline{display:none}
+</style>
 <body class="authenticated">
 <header class="app-header">
-  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong><span class="tagline">AI first product specification</span></a>
+  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong></a>
+  <a id="back-link" class="back-link" href="/">← Back to board</a>
+  <nav class="header-actions" aria-label="Display">
+    <button id="theme" type="button" aria-label="Switch to dark theme" title="Switch to dark theme">
+      <svg id="moon-svg" class="theme-icon theme-moon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      <svg id="sun-svg" class="theme-icon theme-sun" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+    </button>
+  </nav>
 </header>
-<main class="layout">
+<main class="settings">
   <h1>Settings</h1>
+  <section aria-labelledby="create-workspace-title">
+    <h2 id="create-workspace-title">Create a workspace</h2>
+    <form id="create-workspace">
+      <label for="workspace-title">Workspace title</label>
+      <div class="row"><input id="workspace-title" name="title" autocomplete="off"><button id="create-workspace-button" type="submit">Create</button></div>
+      <p id="create-workspace-error" role="alert"></p>
+    </form>
+  </section>
   <section aria-labelledby="workspace-section-title">
     <h2 id="workspace-section-title">Your workspaces</h2>
-    <label for="workspace-select">Workspace</label> <select id="workspace-select" name="workspace" disabled></select>
+    <label for="workspace-select">Workspace</label>
+    <div class="row"><select id="workspace-select" name="workspace" disabled></select></div>
     <p id="workspace-error" role="alert"></p>
     <div id="workspace-panel" hidden>
       <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
-      <div id="owner-panel" hidden>
-        <h3>People</h3>
+      <div id="owner-panel" class="owner-block" hidden>
+        <h2>People</h2>
         <ul id="workspace-people" aria-label="People with access"></ul>
         <form id="grant-access">
-          <label>Email or domain <input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"></label>
-          <button id="grant-button" type="submit">Add</button>
+          <label for="grant-address">Email or domain</label>
+          <div class="row"><input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"><button id="grant-button" type="submit">Add</button></div>
           <p id="grant-error" role="alert"></p>
         </form>
-        <form id="rename-workspace">
-          <label>New title <input id="rename-title" name="title" autocomplete="off"></label>
-          <button id="rename-button" type="submit">Rename</button>
+        <form id="rename-workspace" class="owner-block">
+          <label for="rename-title">New title</label>
+          <div class="row"><input id="rename-title" name="title" autocomplete="off"><button id="rename-button" type="submit">Rename</button></div>
           <p id="rename-error" role="alert"></p>
         </form>
-        <div id="delete-workspace">
-          <button id="delete-button" type="button">Delete workspace</button>
-          <p id="delete-confirm" hidden>Delete this workspace for every member? <button id="delete-confirm-button" type="button">Delete for everyone</button> <button id="delete-cancel-button" type="button">Cancel</button></p>
+        <div id="delete-workspace" class="danger">
+          <button id="delete-button" class="action" type="button">Delete workspace</button>
+          <p id="delete-confirm" hidden><span>Delete this workspace for every member?</span> <button id="delete-confirm-button" class="action" type="button">Delete for everyone</button> <button id="delete-cancel-button" class="action" type="button">Cancel</button></p>
           <p id="delete-error" role="alert"></p>
         </div>
       </div>
     </div>
   </section>
-  <form id="create-workspace" aria-labelledby="create-workspace-title">
-    <h2 id="create-workspace-title">Create a workspace</h2>
-    <label>Workspace title <input id="workspace-title" name="title" autocomplete="off"></label>
-    <button id="create-workspace-button" type="submit">Create</button>
-    <p id="create-workspace-error" role="alert"></p>
-  </form>
 </main>
 <script>
 // The page reads two lists: the workspaces of the session and the owned workspaces with their
@@ -60,10 +100,30 @@ const send=async(url,method,body,failure)=>{
   if(!response.ok)throw Error(value.error||failure);
   return value;
 };
+// The theme button works as on the board.
+const theme=$('theme'),systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+const darkTheme=()=>{const selected=document.documentElement.dataset.theme;return selected==='dark'||selected==='system'&&systemTheme.matches;};
+const updateTheme=()=>{
+  const dark=darkTheme();
+  theme.dataset.dark=String(dark);
+  theme.title=dark?'Switch to light theme':'Switch to dark theme';
+  theme.setAttribute('aria-label',theme.title);
+  document.querySelector('meta[name="theme-color"]').content=dark?'#191c20':'#fffcf5';
+};
+theme.onclick=()=>{
+  const next=darkTheme()?'light':'dark';
+  document.documentElement.dataset.theme=next;
+  try{localStorage.setItem('theme',next);}catch{}
+  updateTheme();
+};
+systemTheme.addEventListener('change',updateTheme);
+updateTheme();
 let workspaces=[],owned=[];
 const select=$('workspace-select'),panel=$('workspace-panel');
 const show=()=>{
   const id=select.value,own=owned.find(w=>w.id===id);
+  // Back to board opens the selected workspace.
+  $('back-link').href=id?'/?workspace='+encodeURIComponent(id):'/';
   panel.hidden=!id;
   $('not-owner').hidden=!!own;$('owner-panel').hidden=!own;
   // One list: members first, then emails that have not signed in yet, then whole domains.

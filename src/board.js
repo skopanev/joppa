@@ -8,6 +8,8 @@ const $ = id => document.getElementById(id),
     if (cls) e.className = cls;
     return e;
   };
+// Until the workspace list arrives, the drop-down shows the last opened title, not a placeholder.
+try{const title=sessionStorage.getItem('joppa-workspace-title');if(title)$('workspaces').append(E('option',title));}catch{}
 const theme=$('theme');
 theme.onclick=()=>{
   const next=darkTheme()?'light':'dark';
@@ -139,6 +141,7 @@ async function list() {
   }
   if (!list.some(w => w.id === ws)) ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = ws;
+  try{sessionStorage.setItem('joppa-workspace-title',list.find(w=>w.id===ws)?.title||'');}catch{}
   if (ws) await load();
   else {data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));}
 }
@@ -270,6 +273,7 @@ $('login-button').onclick=async()=>{
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
 $('workspaces').onchange=async e=>{
   ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);
+  try{sessionStorage.setItem('joppa-workspace-title',e.target.selectedOptions[0]?.textContent||'');}catch{}
   location.assign(objectURL());
 };
 $('refresh').onclick = () => load().catch(notify);
