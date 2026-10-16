@@ -1996,6 +1996,71 @@ async fn the_owner_cannot_archive_a_capability_with_a_live_requirement_over_http
     Ok(())
 }
 
+// tree-schema-safe-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn removing_a_type_with_three_objects_is_refused_over_http() -> Result<()> {
+    // tree-schema-safe-ac1
+    // skopanev owns the workspace; note:first, note:second and note:third exist.
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [json!({"op":"workspace","title":"Owned by skopanev"})]
+        .into_iter()
+        .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    let ids = ["first", "second", "third"];
+    for id in ids {
+        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"skopanev","body":"Scope"},"links":[],"reason":"Save"})).await?;
+    }
+    let tree = async || -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.skopanev)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status.is_success(), "GET /tree: {status} {body}");
+        Ok(serde_json::from_str(&body)?)
+    };
+    let before = tree().await?;
+    let n = before["current_revision"].clone();
+    ensure!(n.is_u64(), "{before}");
+    let mut types = before["schema"]["types"].clone();
+    ensure!(
+        types
+            .as_object_mut()
+            .and_then(|t| t.remove("note"))
+            .is_some(),
+        "{before}"
+    );
+    let remove = json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Remove notes"});
+    for mcp in [false, true] {
+        refused_without_change(
+            &w,
+            mcp,
+            &w.skopanev,
+            remove.clone(),
+            "object type is absent from the tree schema",
+        )
+        .await?;
+    }
+    for id in ids {
+        let note = w.get_as(&w.skopanev, &format!("address=note:{id}")).await?;
+        ensure!(note["document"]["present"] == true, "{note}");
+    }
+    let after = tree().await?;
+    ensure!(
+        after["current_revision"] == n && after["schema"]["types"].get("note").is_some(),
+        "{after}"
+    );
+    Ok(())
+}
+
 // tree-schema-safe-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
