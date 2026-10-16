@@ -6218,6 +6218,55 @@ async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
     p.kept(&before, &assessment).await
 }
 
+// signal-becomes-spec-ac3
+// Member alex archives one signal under R over HTTP and one over MCP. A and R keep
+// their status, readiness and verification summary. Control: a new title of R makes A grey.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Result<()> {
+    let w = world().await?;
+    let p = frozen(&w, false).await?;
+    p.write("owner", json!({"op":"member","id":"alex","role":"human"}))
+        .await?;
+    for id in ["http-n", "mcp-n"] {
+        p.post_command(&w.owner, json!({"op":"save_object","kind":"signal","id":id,"revision":0,"parent":"spec:r","data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[],"reason":"Record the signal"})).await?;
+    }
+    let state = async || -> Result<Value> {
+        let a = p
+            .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
+            .await?;
+        let r = p
+            .mcp_read("joppa_objects", json!({"address":"spec:r"}))
+            .await?;
+        Ok(json!({
+            "status": p.ac_tests("criterion:a").await?["status"],
+            "assessment": a["process"]["assessment"],
+            "summary": r["verification_summary"],
+        }))
+    };
+    let before = state().await?;
+    ensure!(
+        before["status"] == "green" && before["assessment"]["state"] == "ready",
+        "A must start green and ready: {before}"
+    );
+    for (mcp, signal) in [(false, "signal:http-n"), (true, "signal:mcp-n")] {
+        let archive =
+            json!({"op":"archive_object","target":signal,"revision":1,"reason":"Needs no work"});
+        let reply = p.send_as(&w.alex, mcp, &archive).await?;
+        ensure!(reply.is_ok(), "mcp={mcp}: {reply:?}");
+        let after = state().await?;
+        ensure!(after == before, "mcp={mcp}: {before} became {after}");
+        let n = p
+            .mcp_read("joppa_objects", json!({"address":signal}))
+            .await?;
+        ensure!(n["document"]["present"] == false, "mcp={mcp}: {n}");
+    }
+    // Control: the fixture detects a reset.
+    let tests = p.ac_tests("criterion:a").await?;
+    p.save_r("area:g", "R renamed", json!([])).await?;
+    p.reset(&tests).await
+}
+
 // check-list-frozen-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
