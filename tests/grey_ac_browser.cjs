@@ -638,12 +638,12 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       // The page reads two lists and no single workspace.
       assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
       await select.selectOption(owned);
-      const members = f.page.getByRole('list', {name: 'Members', exact: true});
-      // People only: the agent member is not on the page.
-      assert.deepEqual(await members.locator('li').allInnerTexts(), ['alex', 'maria']);
+      // One list holds the members, then the emails that have not signed in. The agent member is not on the page.
+      const members = f.page.getByRole('list', {name: 'People with access', exact: true});
+      assert.deepEqual(await members.locator('li').allInnerTexts(), ['alex', 'maria', 'pending@example.com (invited)']);
+      assert.equal(await f.page.locator('#owner-panel ul').count(), 1);
       const panel = f.page.locator('#workspace-panel');
       assert.ok(!(await panel.innerText()).includes('planner-bot'));
-      assert.deepEqual(await f.page.getByRole('list', {name: 'Emails with access'}).locator('li').allInnerTexts(), ['pending@example.com']);
       for (const item of [select, members, ...await members.locator('li').all()]) {
         assert.ok(inside(await item.boundingBox(), width));
       }
@@ -829,9 +829,9 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants') && response.request().method() === 'POST');
     await add.click();
     assert.equal((await granted).status(), 200);
-    const emails = f.page.locator('#grant-emails li');
+    const emails = f.page.locator('#workspace-people li[data-kind="email"]');
     await emails.filter({hasText: 'maria@example.com'}).waitFor();
-    assert.deepEqual(await emails.allInnerTexts(), ['maria@example.com']);
+    assert.deepEqual(await emails.allInnerTexts(), ['maria@example.com (invited)']);
     assert.equal(await workspace.inputValue(), id);
     const listed = (await (await request.get(f.live.root + '/api/email-grants')).json()).items.filter(item => item.id === id);
     assert.deepEqual(listed, [{id, title: 'Team space', emails: ['maria@example.com']}]);
@@ -897,6 +897,13 @@ test('owner-adds-members-ac8: alex@example.com reloads the board and reads W wit
     assert.deepEqual(cookies.map(cookie => cookie.value), [f.live.person_cookie]);
     const index = (await read(id)).value.index;
     assert.equal(index.members[f.live.person], 'human');
+    // The person who signed in shows once, as a member, and the grant is not listed again.
+    await f.page.reload();
+    await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
+    await f.page.getByLabel('Workspace', {exact: true}).selectOption(id);
+    const people = await f.page.locator('#workspace-people li').allInnerTexts();
+    assert.equal(people.filter(text => text.includes('alex@example.com')).length, 1, JSON.stringify(people));
+    assert.ok(!people.some(text => text.includes('(invited)')), JSON.stringify(people));
     assert.deepEqual(await read(control), {status: 404, value: {error: 'Workspace not found'}});
     assert.deepEqual(errors, []);
   } finally { await person.close(); await f.close(); }
@@ -927,9 +934,9 @@ test('owner-adds-members-ac7: alex adds healthium.one to W in Settings', async (
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/domain-grants') && response.request().method() === 'POST');
     await add.click();
     assert.equal((await granted).status(), 200);
-    const domains = f.page.locator('#grant-domains li');
+    const domains = f.page.locator('#workspace-people li[data-kind="domain"]');
     await domains.filter({hasText: 'healthium.one'}).waitFor();
-    assert.deepEqual(await domains.allInnerTexts(), ['healthium.one']);
+    assert.deepEqual(await domains.allInnerTexts(), ['Everyone at healthium.one']);
     assert.equal(await workspace.inputValue(), id);
     // The control workspace has no domain.
     await workspace.selectOption(control);

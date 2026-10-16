@@ -3579,6 +3579,10 @@ async fn settings_in_name_menu_ac2_access_lists_people_by_name_and_no_agents() -
             &[&person, &email],
         )
         .await?;
+    // The grant of a member is not listed again; a pending grant is.
+    let pending = format!("pending-{person}@example.com");
+    store::grant_email(&pool, &ws, "owner", &email).await?;
+    store::grant_email(&pool, &ws, "owner", &pending).await?;
     let read = |token: String| {
         let http = w.http.clone();
         let url = format!("{root}/api/access");
@@ -3604,6 +3608,7 @@ async fn settings_in_name_menu_ac2_access_lists_people_by_name_and_no_agents() -
         people.contains(&format!("Maria Lopez <{email}>").as_str()) && !people.contains(&"agent"),
         "{people:?}"
     );
+    ensure!(item["emails"] == json!([pending]), "{}", item["emails"]);
     // A member who does not own the workspace gets no entry for it.
     let (code, other) = read(w.other.clone()).await?;
     ensure!(code == 200, "{code} {other}");

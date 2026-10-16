@@ -22,9 +22,7 @@
       <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
       <div id="owner-panel" hidden>
         <h3>People</h3>
-        <ul id="workspace-people" aria-label="Members"></ul>
-        <ul id="grant-emails" aria-label="Emails with access"></ul>
-        <ul id="grant-domains" aria-label="Domains with access"></ul>
+        <ul id="workspace-people" aria-label="People with access"></ul>
         <form id="grant-access">
           <label>Email or domain <input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"></label>
           <button id="grant-button" type="submit">Add</button>
@@ -68,9 +66,10 @@ const show=()=>{
   const id=select.value,own=owned.find(w=>w.id===id);
   panel.hidden=!id;
   $('not-owner').hidden=!!own;$('owner-panel').hidden=!own;
-  $('workspace-people').replaceChildren(...(own?.people||[]).map(p=>element('li',p)));
-  $('grant-emails').replaceChildren(...(own?.emails||[]).map(e=>element('li',e)));
-  $('grant-domains').replaceChildren(...(own?.domains||[]).map(d=>element('li',d)));
+  // One list: members first, then emails that have not signed in yet, then whole domains.
+  const item=(kind,text)=>{const li=element('li',text);li.dataset.kind=kind;return li;};
+  $('workspace-people').replaceChildren(...(own?.people||[]).map(p=>item('member',p)),
+    ...(own?.emails||[]).map(e=>item('email',e+' (invited)')),...(own?.domains||[]).map(d=>item('domain','Everyone at '+d)));
   $('rename-title').value=own?.title||'';
   for(const id of ['grant-error','rename-error','delete-error'])$(id).textContent='';
   $('delete-confirm').hidden=true;$('delete-button').hidden=false;
