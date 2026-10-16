@@ -3738,6 +3738,87 @@ async fn settings_agent_tokens_ac1_session_issue_list_and_origin() -> Result<()>
     Ok(())
 }
 
+// settings-agent-tokens-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn settings_agent_tokens_ac3_a_member_session_cannot_issue_or_revoke() -> Result<()> {
+    let w = world().await?;
+    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    let root = w.base.split("/api/").next().context("root")?.to_owned();
+    let ws = w.base.rsplit('/').next().context("workspace")?.to_owned();
+    // alex is a human member of W, not its owner, with a cookie session.
+    let member: Operation =
+        serde_json::from_value(json!({"op":"member","id":"alex","role":"human"}))?;
+    store::execute(&pool, &ws, "owner", "ac3-member-alex", &member).await?;
+    let session = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    sessions::create(&pool, &session, "alex").await?;
+    // The owner issues the token of bot.
+    let (code, bot) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {bot}");
+    let bot_id = bot["id"].as_i64().context("id")?;
+    let token = bot["token"].as_str().context("token")?.to_owned();
+    // Token and revocation rows of W.
+    let counts = || async {
+        let row = pool
+            .get()
+            .await?
+            .query_one(
+                "SELECT (SELECT count(*) FROM joppa.agent_tokens WHERE workspace=$1),
+                        (SELECT count(*) FROM joppa.agent_token_revocations r
+                         JOIN joppa.agent_tokens t ON t.id=r.token_id WHERE t.workspace=$1)",
+                &[&ws],
+            )
+            .await?;
+        anyhow::Ok((row.get::<_, i64>(0), row.get::<_, i64>(1)))
+    };
+    let before = counts().await?;
+    ensure!(before == (1, 0), "{before:?}");
+
+    // A same-origin create as alex is refused and stores no token.
+    let (code, reply) = session_post(
+        &w,
+        &session,
+        Some(&root),
+        "/agent-tokens",
+        json!({"agent":"helper","access":"read"}),
+    )
+    .await?;
+    ensure!(
+        code == 409 && reply["error"] == "workspace owner required",
+        "{code} {reply}"
+    );
+    ensure!(counts().await? == before, "a member create stored data");
+
+    // A same-origin revoke of the token of bot as alex is refused and stores no revocation.
+    let (code, reply) = session_post(
+        &w,
+        &session,
+        Some(&root),
+        &format!("/agent-tokens/{bot_id}/revoke"),
+        Value::Null,
+    )
+    .await?;
+    ensure!(
+        code == 409 && reply["error"] == "workspace owner required",
+        "{code} {reply}"
+    );
+    ensure!(counts().await? == before, "a member revoke stored data");
+
+    // The token of bot still reads W.
+    let read = w
+        .http
+        .get(format!("{}/objects?parent=*", w.base))
+        .bearer_auth(&token)
+        .send()
+        .await?;
+    ensure!(read.status().is_success(), "{}", read.status());
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_token_does_not_reach_another_workspace() -> Result<()> {

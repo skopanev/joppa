@@ -917,6 +917,31 @@ test('settings-agent-tokens-ac2: alex revokes the write token of bot in Settings
   } finally { await f.close(); }
 });
 
+// settings-agent-tokens-ac3
+test('settings-agent-tokens-ac3: alex, a member who is not the owner of W, sees no token list and no token controls for W', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    // The owner issues an active token for bot; alex reads W as a member with the cookie session.
+    const bot = await f.api('/agent-tokens', {agent: 'bot', access: 'write'}, f.live.owner);
+    const tokens = f.live.root + '/api/workspaces/' + f.live.ws + '/agent-tokens';
+    assert.equal((await f.page.context().request.get(f.live.root + '/api/workspaces/' + f.live.ws)).status(), 200);
+    const owned = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants'));
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const reply = await owned;
+    assert.equal(reply.status(), 200);
+    assert.ok(!(await reply.json()).items.some(item => item.id === f.live.ws));
+    // The section is removed, or it offers only workspaces that alex owns from earlier tests.
+    await f.page.waitForFunction(() => !document.getElementById('agent-tokens')?.hidden);
+    await f.page.waitForLoadState('networkidle');
+    // No issue control for W, and the page never loads the token list of W, so no row or revoke control of W shows.
+    assert.equal(await f.page.locator('#token-workspace option[value="' + f.live.ws + '"]').count(), 0);
+    assert.ok(!f.requests.some(request => request.url.startsWith(tokens)));
+    // The token of bot stays active.
+    assert.equal((await fetch(f.live.root + '/api/workspaces/' + f.live.ws + '/objects?parent=*',
+      {headers: {Authorization: 'Bearer ' + bot.token}})).status, 200);
+  } finally { await f.close(); }
+});
+
 test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});
