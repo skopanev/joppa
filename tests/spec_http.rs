@@ -3519,6 +3519,45 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
     Ok(())
 }
 
+// signal-becomes-spec-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> Result<()> {
+    let w = world().await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let bot = token["token"].as_str().unwrap();
+    let inbox = async || -> Result<(bool, Value)> {
+        let list = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
+        let listed = list["items"]
+            .as_array()
+            .is_some_and(|i| i.iter().any(|i| i["address"] == "note:signal"));
+        Ok((listed, list))
+    };
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"signal","revision":0,"parent":null,"data":{"title":"Dark mode","owner":"owner","body":"Please add dark mode"},"links":[],"reason":"Save"})).await?;
+    let (listed, list) = inbox().await?;
+    ensure!(listed, "{list}");
+    w.command_as(bot, json!({"op":"save_object","kind":"requirement","id":"dark","revision":0,"parent":"capability:restrict","data":{"title":"Dark mode","body":"Offer a dark theme","owner":"owner","consumers":["customer"]},"links":[{"relation":"related","target":"note:signal"}],"reason":"Turn the signal into a requirement"})).await?;
+    w.command_as(bot, json!({"op":"archive_object","target":"note:signal","revision":1,"reason":"Covered by requirement:dark"})).await?;
+    let (listed, list) = inbox().await?;
+    ensure!(!listed, "{list}");
+    let requirement = object_as(&w, bot, "requirement:dark", None).await?;
+    ensure!(
+        requirement["links"].as_array().is_some_and(|l| l
+            .iter()
+            .any(|l| l["link"]["relation"] == "related" && l["link"]["target"] == "note:signal")),
+        "{requirement}"
+    );
+    let signal = object_as(&w, bot, "note:signal", None).await?;
+    ensure!(
+        signal["document"]["present"] == false
+            && signal["incoming"].as_array().is_some_and(|i| i
+                .iter()
+                .any(|i| i["source"] == "requirement:dark" && i["relation"] == "related")),
+        "{signal}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result<()> {
