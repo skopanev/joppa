@@ -6619,6 +6619,55 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     Ok(())
 }
 
+// dependencies-before-priority-ac6
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac6_a_dependency_cycle_through_the_tree_is_refused_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
+    p.link("spec:b", ordering_link("spec:a")).await?;
+    let save = |key: &str, object: &Value, links: Value| {
+        let (kind, id) = key.split_once(':').unwrap();
+        json!({"op":"save_object","kind":kind,"id":id,"revision":object["current_revision"],"parent":object["document"]["parent"],
+            "data":object["document"]["data"],"links":links,"reason":"Order the work"})
+    };
+    // Each refusal leaves the committed rows and the journal position unchanged.
+    for (case, source, target) in [
+        ("fixture 1: A1 waits for B1", "criterion:a1", "criterion:b1"),
+        ("fixture 2: A waits for B", "spec:a", "spec:b"),
+    ] {
+        let object = p.read(source).await?;
+        p.refuse_command_as(
+            &w.owner,
+            case,
+            save(source, &object, ordering_link(target)),
+            "dependency cycle",
+        )
+        .await?;
+        ensure!(
+            p.object_both(source).await?["document"]["links"] == json!([]),
+            "{case}"
+        );
+    }
+    // Controls: a related link, a blocking link to an unrelated requirement and the removal
+    // of the link from B to A make no cycle.
+    p.save(
+        "spec:d",
+        Some("cap:c"),
+        json!({"title":"spec:d","body":"Deliver another rule","owner":"owner"}),
+        json!([]),
+    )
+    .await?;
+    p.link("spec:a", json!([{"target":"spec:b","relation":"related"}]))
+        .await?;
+    p.link("criterion:b1", ordering_link("spec:d")).await?;
+    p.link("spec:b", json!([])).await?;
+    ensure!(p.read("criterion:b1").await?["document"]["links"] == ordering_link("spec:d"));
+    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
 // dependencies-before-priority-ac7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
