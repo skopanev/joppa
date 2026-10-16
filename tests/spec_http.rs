@@ -3646,6 +3646,42 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()> {
+    // typed-links-ac1
+    let w = world().await?;
+    for id in ["a", "b"] {
+        w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":id},"links":[],"reason":"Save"})).await?;
+    }
+    w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":"b","revision":1,"parent":null,"data":{"title":"b","owner":"owner","body":"b"},"links":[{"target":"note:a","relation":"depends_on"}],"reason":"Save"})).await?;
+    let (actor, command) = last_event(&w).await?;
+    ensure!(actor == "bot", "{actor}: {command}");
+    for mcp in [false, true] {
+        let read = async |id: &str| -> Result<Value> {
+            if mcp {
+                object_as(&w, &w.bot, &format!("note:{id}"), None).await
+            } else {
+                w.get_as(&w.bot, &format!("address=note:{id}")).await
+            }
+        };
+        let b = read("b").await?;
+        ensure!(
+            b["document"]["links"][0]["relation"] == "depends_on"
+                && b["document"]["links"][0]["target"] == "note:a",
+            "mcp={mcp}: {b}"
+        );
+        let a = read("a").await?;
+        ensure!(
+            a["incoming"].as_array().is_some_and(|i| i
+                .iter()
+                .any(|i| i["source"] == "note:b" && i["relation"] == "depends_on")),
+            "mcp={mcp}: {a}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result<()> {
     // signal-in-one-inbox-ac3: eve learns nothing, not even that the workspace exists.
     let w = world().await?;
