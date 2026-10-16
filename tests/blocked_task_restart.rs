@@ -780,6 +780,12 @@ async fn journal_snapshot(
                 revision["document"]["revision"] == n,
                 "{address} revision {n}: {revision}"
             );
+            // The time of the last status event is display state that a rebuild takes from
+            // the document; the AC compares documents, revisions, comments and test results.
+            let mut revision = revision;
+            if let Some(signal) = revision["signal"].as_object_mut() {
+                signal.remove("at");
+            }
             out.insert(format!("revision {address} {n}"), revision);
         }
     }
