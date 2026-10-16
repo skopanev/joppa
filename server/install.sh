@@ -102,12 +102,13 @@ systemctl daemon-reload
 systemctl enable joppa
 restore_previous() {
     [[ -f /opt/joppa/bin/joppa.previous ]] || return 1
-    if ! (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous check-journal) >/dev/null 2>&1; then
-        echo 'The previous binary cannot read the current journal. Inspect journalctl -u joppa.' >&2
+    # The previous binary rebuilds only a projection that is not its own version. A failed
+    # migration rolls back, so the previous binary keeps its projection and starts. A full
+    # journal replay is not a condition: the previous binary served this journal without one.
+    if ! (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous backfill-board); then
+        echo 'The previous binary cannot rebuild the current projection. Inspect journalctl -u joppa.' >&2
         return 1
     fi
-    # Rebuild the cache for the previous binary before it accepts requests.
-    (set -a; source /etc/joppa/runtime.env; set +a; /opt/joppa/bin/joppa.previous backfill-board) || return 1
     mv /opt/joppa/bin/joppa.previous /opt/joppa/bin/joppa
     systemctl restart joppa
 }
