@@ -411,12 +411,14 @@ pub async fn read_objects(
                 &selected,
             )
             .await?;
-            let waits = super::waits::read(&*conn, &workspace, &selected).await?;
+            let (waits, counts) =
+                super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
             add_waits(
                 &*conn,
                 &workspace,
                 std::slice::from_mut(&mut item),
                 &waits,
+                &counts,
                 &criterion_kinds,
             )
             .await?;
@@ -498,7 +500,7 @@ pub async fn read_objects(
         None
     };
     // Waiting criteria leave the unstarted list inside the query, before its limit.
-    let waits = super::waits::read(&*conn, &workspace, &selected).await?;
+    let (waits, counts) = super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
     let waiting: Vec<String> = waits.keys().cloned().collect();
     let (after_filter, order) = if inbox {
         (
@@ -620,7 +622,15 @@ pub async fn read_objects(
         }
     }
     add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
-    add_waits(&*conn, &workspace, &mut items, &waits, &criterion_kinds).await?;
+    add_waits(
+        &*conn,
+        &workspace,
+        &mut items,
+        &waits,
+        &counts,
+        &criterion_kinds,
+    )
+    .await?;
     let next = more.then(|| {
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();
@@ -644,6 +654,7 @@ async fn add_waits(
     workspace: &str,
     items: &mut [Value],
     waits: &std::collections::BTreeMap<String, String>,
+    counts: &std::collections::BTreeMap<String, usize>,
     criteria: &[String],
 ) -> Result<()> {
     let targets: Vec<&String> = items
@@ -668,7 +679,13 @@ async fn add_waits(
         };
         let reason = crate::dependencies::reason(target);
         item["work_ready"] = json!(false);
-        item["waits_for"] = json!({"address":target,"title":titles.get(target),"reason":reason});
+        // The row shows only the count; the first target stays for the reason and the refusal.
+        let count = counts
+            .get(item["address"].as_str().unwrap_or(""))
+            .copied()
+            .unwrap_or(1);
+        item["waits_for"] =
+            json!({"address":target,"title":titles.get(target),"reason":reason,"count":count});
         if criteria.iter().any(|kind| item["kind"] == kind.as_str())
             && item["process"].is_object()
             && item["process"]["readiness_blocker"].is_null()

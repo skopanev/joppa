@@ -28,9 +28,18 @@ pub(super) async fn read(
     workspace: &str,
     types: &Types,
 ) -> Result<BTreeMap<String, String>> {
+    Ok(read_with_counts(client, workspace, types).await?.0)
+}
+
+/// The waits of `read` and, for each waiting node, the number of its unsatisfied targets.
+pub(super) async fn read_with_counts(
+    client: &impl GenericClient,
+    workspace: &str,
+    types: &Types,
+) -> Result<(BTreeMap<String, String>, BTreeMap<String, usize>)> {
     let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.blocking AND l.relation='depends_on' AND s.present AND s.kind<>ALL($2)", &[&workspace, &kinds(types, "task")]).await?;
     if links.is_empty() {
-        return Ok(BTreeMap::new());
+        return Ok((BTreeMap::new(), BTreeMap::new()));
     }
     let mut graph = Graph::default();
     for row in client.query("SELECT o.address,o.kind,COALESCE(a.target,o.parent) FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.address=o.parent WHERE o.workspace=$1 AND o.present", &[&workspace]).await? {
@@ -47,7 +56,8 @@ pub(super) async fn read(
         &BTreeSet::new(),
     )
     .await?;
-    Ok(graph.waits(&green(statuses)))
+    let green = green(statuses);
+    Ok((graph.waits(&green), graph.wait_counts(&green)))
 }
 
 /// The same wait in a live write, from the transaction state with earlier batch writes.

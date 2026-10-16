@@ -90,17 +90,46 @@ impl Graph {
         let needed: BTreeSet<&str> = self.deciding().into_values().flatten().collect();
         needed.into_iter().map(str::to_owned).collect()
     }
-    /// The first unsatisfied target of each waiting live node: the node's own links in
-    /// address order first, then the links of each ancestor up the tree.
-    pub fn waits(&self, green: &BTreeSet<String>) -> BTreeMap<String, String> {
-        let unsatisfied: BTreeSet<&str> = self
-            .deciding()
+    /// The live link targets that are not green.
+    fn unsatisfied(&self, green: &BTreeSet<String>) -> BTreeSet<&str> {
+        self.deciding()
             .into_iter()
             .filter(|(_, deciding)| {
                 deciding.is_empty() || deciding.iter().any(|c| !green.contains(*c))
             })
             .map(|(target, _)| target)
-            .collect();
+            .collect()
+    }
+    /// The number of distinct unsatisfied targets of each waiting live node, over the
+    /// links of the node and of each ancestor up the tree.
+    pub fn wait_counts(&self, green: &BTreeSet<String>) -> BTreeMap<String, usize> {
+        let unsatisfied = self.unsatisfied(green);
+        let mut counts = BTreeMap::new();
+        if unsatisfied.is_empty() {
+            return counts;
+        }
+        for node in self.parents.keys() {
+            let mut targets = BTreeSet::new();
+            let mut current = Some(node.as_str());
+            let mut seen = BTreeSet::new();
+            while let Some(key) = current.filter(|k| seen.insert(*k)) {
+                for target in self.links.get(key).into_iter().flatten() {
+                    if unsatisfied.contains(target.as_str()) {
+                        targets.insert(target.as_str());
+                    }
+                }
+                current = self.parents.get(key).and_then(|p| p.as_deref());
+            }
+            if !targets.is_empty() {
+                counts.insert(node.clone(), targets.len());
+            }
+        }
+        counts
+    }
+    /// The first unsatisfied target of each waiting live node: the node's own links in
+    /// address order first, then the links of each ancestor up the tree.
+    pub fn waits(&self, green: &BTreeSet<String>) -> BTreeMap<String, String> {
+        let unsatisfied = self.unsatisfied(green);
         let first: BTreeMap<&str, &str> = self
             .links
             .iter()
@@ -155,6 +184,30 @@ mod tests {
     }
     fn green(keys: &[&str]) -> BTreeSet<String> {
         keys.iter().map(|k| (*k).to_owned()).collect()
+    }
+
+    // dependencies-before-priority-ac5
+    #[test]
+    fn a_wait_counts_each_unsatisfied_target_of_the_node_and_its_ancestors() {
+        let mut g = tree();
+        g.node("requirement:d".into(), Some("capability:c".into()), false);
+        g.node("ac:d1".into(), Some("requirement:d".into()), true);
+        g.link("requirement:b".into(), "requirement:d".into());
+        g.link("ac:b1".into(), "requirement:a".into());
+        let counts = g.wait_counts(&green(&[]));
+        // B waits for A and D. B1 counts A once, from its own link and from B, and D.
+        assert_eq!(counts.get("requirement:b"), Some(&2));
+        assert_eq!(counts.get("ac:b1"), Some(&2));
+        // A green target leaves the count.
+        assert_eq!(
+            g.wait_counts(&green(&["ac:d1"])).get("requirement:b"),
+            Some(&1)
+        );
+        assert!(
+            g.wait_counts(&green(&["ac:a1", "ac:a2", "ac:d1"]))
+                .is_empty()
+        );
+        assert_eq!(counts.get("requirement:a"), None);
     }
 
     #[test]

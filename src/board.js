@@ -526,8 +526,8 @@ function appendObjectPage(root,part,params,generation){
       }
     }
     if(![...holder.querySelectorAll(':scope > .common-object')].some(card=>card.dataset.objectAddress===item.address)){
+      // A load or a reload shows the top level only: no branch opens from an earlier visit.
       const card=commonObjectCard(item,undefined,root.closest('.common-object')?.dataset.objectTitle);holder.append(card);
-      if(!new URLSearchParams(location.search).has('object')&&openBranches().has(item.address))card.open=true;
     }
   }
   applyTestStatuses(items);
@@ -649,11 +649,6 @@ function objectTypeLabel(kind){
   return label;
 }
 // Open branches survive a visit to an object page and the way back to the board.
-const openKey=()=>'joppa-open-'+ws;
-function openBranches(){try{return new Set(JSON.parse(sessionStorage.getItem(openKey())||'[]'));}catch{return new Set();}}
-function rememberBranch(address,open){
-  try{const set=openBranches();if(open)set.add(address);else set.delete(address);sessionStorage.setItem(openKey(),JSON.stringify([...set]));}catch{}
-}
 // Object text is Markdown. Line breaks stay, active HTML is removed, and external links open safely.
 const markdownSafe=(()=>{
   if(!window.DOMPurify||!window.marked)return null;
@@ -691,7 +686,10 @@ function commonObjectCard(item,loadedDetail,parentTitle){
     chip=E('span',undefined,'verification-chip');chip.dataset.address=item.address;chip.dataset.total=counts.total;chip.dataset.passed=counts.passed;chip.dataset.failed=counts.failed||0;chip.dataset.childTitle=verificationChildTitle(item.kind);showTestCount(chip);
   }
   // Waiting work names the first dependency that is not green yet.
-  const waits=item.waits_for?[E('span','Waits for '+(item.waits_for.title||item.waits_for.address),'waits-for')]:[];
+  // A waiting row shows only how many dependencies are not green; the dependency list names them.
+  const deps=item.waits_for?.count||1;
+  const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
+  if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
   // An empty slot keeps the count column aligned on rows without a count.
   summary.append(title,objectTypeLabel(item.kind),...waits,chip||E('span',undefined,'count-slot'));
   // The count can colour the row dot only once both sit in the summary.
@@ -721,7 +719,7 @@ function commonObjectCard(item,loadedDetail,parentTitle){
     if(!detail.historical){if(kids)appendObjectPage(children,kids,childParams,generation);else await appendObjectChildren(children,item.address);}
   };
   card.branchPrepare=async()=>{if(loaded)return;loaded=true;try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
-  card.addEventListener('toggle',async()=>{if(!new URLSearchParams(location.search).has('object'))rememberBranch(item.address,card.open);if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
+  card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
 }
 function syncObjectTitles(root=document){

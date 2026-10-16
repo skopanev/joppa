@@ -854,6 +854,26 @@ test('settings-in-name-menu-ac3: Settings shows no agent token controls and read
   } finally { await f.close(); }
 });
 
+// board-opens-top-level-ac1
+test('board-opens-top-level-ac1: a reload of the board shows only the top level', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'}});
+  try {
+    assert.equal((await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws))).status(), 200);
+    const top = f.page.locator('#tree .common-object[data-object-address="domain:d"]');
+    await top.waitFor();
+    // Alex opens the domain and sees the capability below it.
+    await top.locator(':scope > summary').click();
+    await top.locator('.common-object[data-object-address="capability:c"]').waitFor();
+    assert.equal(await top.evaluate(e => e.open), true);
+    await f.page.reload();
+    await top.waitFor();
+    await f.page.waitForFunction(() => document.querySelector('#tree .common-object') !== null);
+    // After the reload no branch is open.
+    assert.equal(await f.page.locator('#tree .common-object[open]').count(), 0);
+    assert.equal(await f.page.evaluate(() => Object.keys(sessionStorage).filter(k => k.startsWith('joppa-open-')).length), 0);
+  } finally { await f.close(); }
+});
+
 // settings-in-name-menu-ac4
 test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and puts Create first', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
@@ -1197,13 +1217,16 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
       await picker.selectOption('requirement:A');
       await B.locator('.dependency-add').click();
       await waiting().waitFor();
-      assert.equal(await waiting().innerText(), 'Waits for Sign-in rule', JSON.stringify(viewport));
+      // The row shows the count of dependencies that are not green, not the long title.
+      assert.equal(await waiting().innerText(), '1 dep', JSON.stringify(viewport));
+      assert.equal(await waiting().getAttribute('title'), 'Waits for Sign-in rule');
       assert.equal(await waiting().isVisible(), true);
       // The new row shows the wait first; the focus returns once its controls load.
       await f.page.waitForFunction(() => document.activeElement?.classList.contains('depends-on-button'));
       const linked = await f.mcp('joppa_objects', {address: 'requirement:B'});
       assert.deepEqual(linked.document.links, [{target: 'requirement:A', relation: 'depends_on', blocking: true}]);
       assert.deepEqual(linked.waits_for.address, 'requirement:A');
+      assert.equal(linked.waits_for.count, 1);
       assert.ok(!(await unstarted()).includes('ac:B1'), 'the work of B leaves the queue');
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
       if (viewport.width > 390) {
