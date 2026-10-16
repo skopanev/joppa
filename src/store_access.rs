@@ -152,6 +152,12 @@ pub async fn enroll(
         identity.get::<_, String>(0) == google_sub && identity.get::<_, String>(1) == email,
         "Identity already belongs to another account"
     );
+    // A first sign-in without hd leaves NULL. A later verified hd fills it for read scope.
+    tx.execute(
+        "UPDATE joppa.google_identities SET hosted_domain=$2 WHERE actor=$1 AND hosted_domain IS NULL AND $2::text IS NOT NULL",
+        &[&actor, &hosted_domain],
+    )
+    .await?;
     join(&*tx, actor, workspaces).await?;
     tx.commit().await?;
     Ok(())

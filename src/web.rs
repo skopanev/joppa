@@ -2091,40 +2091,63 @@ mod tests {
         let app = test_app().await?;
         let pool = &app.pool;
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let emails = ["kim@healthium.one"];
+        let emails = ["kim@healthium.one", "kai@healthium.one"];
         forget_hd_fixtures(&app, &emails).await?;
-        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
-        let (home, w) = (format!("home-{id}"), format!("w-{id}"));
+        let olga = format!("olga-{id}");
+        let home = format!("home-{id}");
         create(pool, &home, &olga).await?;
-        create(pool, &w, &sam).await?;
-        let (sam_cookie, olga_cookie) = (
-            session_for(pool, &sam).await?,
-            session_for(pool, &olga).await?,
-        );
-        // Kim signs in once with the company hd and once with no hd.
-        plain(add_email(&app, &olga_cookie, &home, "kim@healthium.one").await).unwrap();
-        let kim_sub = format!("google-kim-{id}");
-        let kim = derived(&kim_sub);
-        let (headers, _) = sign_in_hd(&app, &kim_sub, "kim@healthium.one", HEALTHIUM)
-            .await
-            .unwrap();
-        let with_hd = session(&headers);
-        let (headers, _) = sign_in(&app, &kim_sub, "kim@healthium.one").await.unwrap();
-        let without_hd = session(&headers);
-        assert_eq!(session_hd(&app, &with_hd).await.as_deref(), HEALTHIUM);
-        assert_eq!(session_hd(&app, &without_hd).await, None);
-        assert_eq!(scalar(&app, SESSIONS_OF, &[&kim]).await, 2);
-        plain(add_domain(&app, &sam_cookie, &w, "healthium.one").await).unwrap();
-        // The page load with no hd does not enroll Kim.
-        assert_eq!(reload(&app, &without_hd, &kim).await, vec![home.clone()]);
-        assert_eq!(scalar(&app, MEMBER_OF, &[&w, &kim]).await, 0);
-        // The page load with the company hd enrolls Kim in W as human.
-        let mut expected = vec![home.clone(), w.clone()];
-        expected.sort();
-        assert_eq!(reload(&app, &with_hd, &kim).await, expected);
-        let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
-        assert_eq!(members, json!({sam.clone():"human", kim.clone():"human"}));
-        assert_eq!(session_hd(&app, &without_hd).await, None);
+        let olga_cookie = session_for(pool, &olga).await?;
+        // Kim signs in with the company hd first. Kai signs in with no hd first.
+        for (email, hd_first) in [(emails[0], true), (emails[1], false)] {
+            // Each order starts without the domain grant of the other order.
+            forget_hd_fixtures(&app, &[]).await?;
+            let name = email.split('@').next().unwrap();
+            let (sam, w) = (format!("sam-{name}-{id}"), format!("w-{name}-{id}"));
+            create(pool, &w, &sam).await?;
+            let sam_cookie = session_for(pool, &sam).await?;
+            plain(add_email(&app, &olga_cookie, &home, email).await).unwrap();
+            let sub = format!("google-{email}-{id}");
+            let actor = derived(&sub);
+            let mut cookies = vec![];
+            for hd in if hd_first {
+                [HEALTHIUM, None]
+            } else {
+                [None, HEALTHIUM]
+            } {
+                let (headers, _) = sign_in_hd(&app, &sub, email, hd).await.unwrap();
+                cookies.push(session(&headers));
+            }
+            if !hd_first {
+                cookies.reverse();
+            }
+            let (with_hd, without_hd) = (&cookies[0], &cookies[1]);
+            assert_eq!(
+                session_hd(&app, with_hd).await.as_deref(),
+                HEALTHIUM,
+                "{email}"
+            );
+            assert_eq!(session_hd(&app, without_hd).await, None, "{email}");
+            assert_eq!(scalar(&app, SESSIONS_OF, &[&actor]).await, 2, "{email}");
+            plain(add_domain(&app, &sam_cookie, &w, "healthium.one").await).unwrap();
+            // The page load with no hd does not enroll the person.
+            assert_eq!(
+                reload(&app, without_hd, &actor).await,
+                vec![home.clone()],
+                "{email}"
+            );
+            assert_eq!(scalar(&app, MEMBER_OF, &[&w, &actor]).await, 0, "{email}");
+            // The page load with the company hd enrolls the person in W as human.
+            let mut expected = vec![home.clone(), w.clone()];
+            expected.sort();
+            assert_eq!(reload(&app, with_hd, &actor).await, expected, "{email}");
+            let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(
+                members,
+                json!({sam.clone():"human", actor.clone():"human"}),
+                "{email}"
+            );
+            assert_eq!(session_hd(&app, without_hd).await, None, "{email}");
+        }
         forget_hd_fixtures(&app, &emails).await
     }
 
