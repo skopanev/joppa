@@ -223,6 +223,16 @@ fn result(value: Result<Value>) -> ApiResult {
     value.map(Json).map_err(failure)
 }
 fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
+    // A database fault stays in the server log; the browser gets no database text.
+    if e.chain()
+        .any(|cause| cause.downcast_ref::<tokio_postgres::Error>().is_some())
+    {
+        eprintln!("joppa: request failed: {e:#}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"The server could not complete the request. Try again later."})),
+        );
+    }
     (
         if e.is::<store::AccessDenied>() {
             StatusCode::NOT_FOUND

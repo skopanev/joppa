@@ -393,6 +393,17 @@ pub async fn revoke_domain(
 /// the member loses access at the next request. A domain grant still admits its domain.
 pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) -> Result<Value> {
     let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    ensure!(id != actor, "workspace owner cannot be removed");
+    // The grant goes first: a failed journal write then leaves a member without a grant,
+    // never a removed member whose grant admits them again.
+    pool.get()
+        .await?
+        .execute(
+            "DELETE FROM joppa.email_grants g USING joppa.google_identities i
+             WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)",
+            &[&workspace, &id],
+        )
+        .await?;
     let command = Command::RemoveMember {
         id: id.into(),
         reason: "Removed in Settings".into(),
@@ -405,14 +416,6 @@ pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) 
         &command,
     )
     .await?;
-    pool.get()
-        .await?
-        .execute(
-            "DELETE FROM joppa.email_grants g USING joppa.google_identities i
-             WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)",
-            &[&workspace, &id],
-        )
-        .await?;
     Ok(json!({"workspace": workspace, "member": id, "removed": true}))
 }
 
