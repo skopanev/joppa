@@ -206,9 +206,19 @@ async fn authenticate_grant(
         if let Some((actor, hd)) = &session {
             let configured = app.login.users.iter().find(|(_, id)| *id == actor);
             let configured = configured.map(|(email, _)| email.as_str());
+            // A grant fault answers a fixed error; the server log keeps the cause.
             store::enroll_granted(&app.pool, actor, configured, hd.as_deref())
                 .await
-                .map_err(failure)?;
+                .map_err(|e| {
+                    if e.is::<store::AccessDenied>() {
+                        return failure(e);
+                    }
+                    eprintln!("joppa: sign-in grants failed: {e:#}");
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({"error":"sign-in grants are not available, try again"})),
+                    )
+                })?;
         }
         session.map(|(actor, _)| (actor, store::Access::Write))
     } else {
@@ -1585,6 +1595,68 @@ mod tests {
             let after = members_and_grants(&app, &w, &sam_cookie).await;
             assert_eq!(after, before, "input {input:?} changed W; reply {reply:?}");
         }
+        Ok(())
+    }
+
+    // owner-adds-members-ac10
+    #[tokio::test]
+    #[ignore = "requires isolated test database and a role that may create roles"]
+    async fn a_grant_fault_at_sign_in_answers_503_with_no_database_text() -> Result<()> {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let (owner, w, email) = (
+            format!("owner-{id}"),
+            format!("w-{id}"),
+            format!("fault-{id}@example.com"),
+        );
+        create(pool, &w, &owner).await?;
+        let owner_cookie = session_for(pool, &owner).await?;
+        plain(add_email(&app, &owner_cookie, &w, &email).await).unwrap();
+        let (headers, _) = sign_in(&app, &format!("google-fault-{id}"), &email)
+            .await
+            .unwrap();
+        let cookie = session(&headers);
+        // This role reads every table but the email grants, so the grant read fails.
+        let role = format!("joppa_fault_{id}");
+        pool.get()
+            .await?
+            .batch_execute(&format!(
+                "CREATE ROLE {role} NOLOGIN; GRANT {role} TO CURRENT_USER;
+                 GRANT USAGE ON SCHEMA joppa TO {role};
+                 GRANT SELECT ON ALL TABLES IN SCHEMA joppa TO {role};
+                 REVOKE SELECT ON joppa.email_grants FROM {role};"
+            ))
+            .await?;
+        let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
+        let separator = if url.contains('?') { '&' } else { '?' };
+        let faulty = App {
+            pool: store::pool(&format!("{url}{separator}options=-c%20role%3D{role}"))?,
+            ..app.clone()
+        };
+        let page = me(State(faulty.clone()), browser(Some(&cookie), ORIGIN)).await;
+        let api = list(State(faulty.clone()), browser(Some(&cookie), ORIGIN)).await;
+        drop(faulty);
+        pool.get()
+            .await?
+            .batch_execute(&format!(
+                "REVOKE {role} FROM CURRENT_USER; DROP OWNED BY {role}; DROP ROLE {role}"
+            ))
+            .await?;
+        for reply in [page, api] {
+            let (status, Json(body)) = reply.unwrap_err();
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                body,
+                json!({"error":"sign-in grants are not available, try again"})
+            );
+        }
+        // The same session works again once the grants are readable.
+        assert!(
+            me(State(app.clone()), browser(Some(&cookie), ORIGIN))
+                .await
+                .is_ok()
+        );
         Ok(())
     }
 
