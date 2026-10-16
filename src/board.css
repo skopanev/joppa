@@ -133,8 +133,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #account-menu{position:relative}
 .account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
 #account-menu:not([open])>.account-options{display:none}
-.account-options #logout{display:block;padding:.4rem 0}
-#logout{font-size:inherit;color:var(--muted)}
+.account-options #logout,.account-options #settings-link{display:block;padding:.4rem 0}
+#logout,#settings-link{font-size:inherit;color:var(--muted)}
 .build-version{font:11px/1 ui-monospace,monospace;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
 .login-content>.build-version{margin-top:2.4em}
 

@@ -292,7 +292,7 @@ test('account-menu: sign out requires the user menu and ends the real session', 
     await f.page.locator('#identity').focus();
     await f.page.keyboard.press('Enter');
     assert.equal(await f.page.locator('#logout').isVisible(), true);
-    assert.deepEqual(await f.page.locator('.account-options > *').allTextContents(), ['Sign out']);
+    assert.deepEqual(await f.page.locator('.account-options > *').allTextContents(), ['Settings', 'Sign out']);
     await f.page.keyboard.press('Escape');
     assert.equal(await f.page.locator('#logout').isVisible(), false);
     await f.page.locator('#identity').click();
@@ -339,6 +339,53 @@ test('account-menu: sign out requires the user menu and ends the real session', 
     assert.equal(await f.page.locator('.app-header').isVisible(), false);
     assert.ok(!(await f.page.context().cookies()).some(cookie => cookie.name === 'joppa_session'));
   } finally { await f.close(); }
+});
+
+test('settings-in-name-menu-ac1: Settings in the name menu opens the settings page with the member workspaces', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const person = await browser.newContext({reducedMotion: 'reduce'});
+  try {
+    const create = async (context, title) => {
+      const created = await context.request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
+      assert.equal(created.status(), 200);
+      return (await created.json()).id;
+    };
+    const suffix = crypto.randomUUID(), w1 = 'W1 ' + suffix, w2 = 'W2 ' + suffix, w3 = 'W3 ' + suffix;
+    await create(f.page.context(), w1);
+    await create(f.page.context(), w2);
+    // Another person owns the control workspace W3, so alex is not a member.
+    await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+    const control = await create(person, w3);
+    const reader = await (await f.page.context().request.get(f.live.root + '/api/workspaces')).json();
+    const titles = reader.map(w => w.title);
+    assert.ok(titles.includes(w1) && titles.includes(w2));
+    assert.ok(!titles.includes(w3) && !reader.some(w => w.id === control));
+    const inside = (box, width, height) => box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height;
+    for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
+      await f.page.setViewportSize({width, height});
+      await f.open('domain:d');
+      await f.page.locator('#identity').click();
+      const items = f.page.locator('.account-options > *');
+      assert.deepEqual(await items.allInnerTexts(), ['Settings', 'Sign out']);
+      for (const item of await items.all()) assert.ok(inside(await item.boundingBox(), width, height));
+      await items.first().click();
+      await f.page.waitForURL(f.live.root + '/settings');
+      const list = f.page.locator('#member-workspaces');
+      await list.waitFor();
+      assert.deepEqual(await list.locator('li').allInnerTexts(), titles);
+      assert.equal(await list.locator('li').filter({hasText: w3}).count(), 0);
+      assert.ok(inside(await list.boundingBox(), width, Infinity));
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    }
+    // A failed list read shows the server error and no list.
+    await f.page.route(f.live.root + '/api/workspaces', route => route.request().method() === 'GET'
+      ? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({error: 'workspace list unavailable'})})
+      : route.continue());
+    await f.page.reload();
+    await f.page.getByRole('alert').filter({hasText: 'workspace list unavailable'}).waitFor();
+    assert.equal(await f.page.locator('#member-workspaces').isVisible(), false);
+    assert.equal(await f.page.locator('#member-workspaces li').count(), 0);
+  } finally { await person.close(); await f.close(); }
 });
 
 test('direct-child-counts: each row uses the shared next-level count', async () => {
