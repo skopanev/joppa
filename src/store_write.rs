@@ -103,7 +103,8 @@ pub async fn execute_remote_input(
     .await
 }
 /// A member adds or removes one blocking dependency of `source` on `target`. The ordinary
-/// save writes the current document with only this link changed; an added link pins nothing.
+/// save writes the current document with only this link changed. An added link of a Task
+/// pins the current revision of its target; the link of another node pins nothing.
 pub async fn save_dependency(
     pool: &Pool,
     workspace: &str,
@@ -123,20 +124,35 @@ pub async fn save_dependency(
         serde_json::from_value(document["links"].clone())?;
     let dependency =
         |l: &crate::objects::ObjectLink| l.relation == "depends_on" && l.target == target;
+    let kind = object["kind"].as_str().context("object has no kind")?;
+    let schema = super::tree_schema(pool, workspace, actor, None).await?;
     let before = links.len();
     if add {
+        let revision = if schema["schema"]["types"][kind]["role"] == "task" {
+            let scope = super::ObjectScope {
+                address: Some(target),
+                ..Default::default()
+            };
+            let target = super::read_objects(pool, workspace, actor, &scope).await?;
+            Some(u32::try_from(
+                target["current_revision"]
+                    .as_u64()
+                    .context("target has no revision")?,
+            )?)
+        } else {
+            None
+        };
         links.retain(|l| !dependency(l));
         links.push(crate::objects::ObjectLink {
             target: target.into(),
             relation: "depends_on".into(),
-            revision: None,
+            revision,
             blocking: true,
         });
     } else {
         links.retain(|l| !(dependency(l) && l.blocking));
         ensure!(links.len() < before, "unknown dependency");
     }
-    let kind = object["kind"].as_str().context("object has no kind")?;
     let reason = if add {
         format!("Depend on {target}")
     } else {
@@ -145,7 +161,6 @@ pub async fn save_dependency(
     let mut command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
         "parent":document["parent"],"data":document["data"],"links":links,"reason":reason});
     // Only a link changes, so the title and the description still answer the type question.
-    let schema = super::tree_schema(pool, workspace, actor, None).await?;
     if let Some(question) = schema["schema"]["types"][kind]["question"].as_str() {
         command["question_checked"] = json!(question);
     }

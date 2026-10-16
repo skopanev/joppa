@@ -1321,7 +1321,8 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
       await waiting().waitFor();
       assert.equal(await waiting().innerText(), 'Waits for Sign-in rule', JSON.stringify(viewport));
       assert.equal(await waiting().isVisible(), true);
-      assert.equal(await f.page.evaluate(() => document.activeElement?.classList.contains('depends-on-button')), true);
+      // The new row shows the wait first; the focus returns once its controls load.
+      await f.page.waitForFunction(() => document.activeElement?.classList.contains('depends-on-button'));
       const linked = await f.mcp('joppa_objects', {address: 'requirement:B'});
       assert.deepEqual(linked.document.links, [{target: 'requirement:A', relation: 'depends_on', blocking: true}]);
       assert.deepEqual(linked.waits_for.address, 'requirement:A');
@@ -1378,6 +1379,37 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
         parent: 'capability:c', data: before.document.data, links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Cookie write'}}});
     assert.equal(commands.status(), 403);
     await unchanged('cookie commands');
+  } finally { await f.close(); }
+});
+
+test('dependencies-before-priority-ac5: a Task row pins the current revision of the Task it depends on', async () => {
+  const configured = {...types, work: {title: 'Work', role: 'task', parents: ['ac'], parent_gate: 'ready', badge: 'WRK'}};
+  const f = await fixture({'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'},
+    'requirement:B': {title: 'Billing rule', parent: 'capability:c'}, 'ac:B1': {title: 'Billing condition', parent: 'requirement:B'}}, configured);
+  const read = address => f.api('/objects?address=' + encodeURIComponent(address));
+  try {
+    const b1 = await read('ac:B1');
+    await f.command({op: 'confirm', req: b1.process.req, revision: b1.process.revision}, true);
+    await f.command({op: 'assess', req: b1.process.req, revision: b1.process.revision, ac: b1.process.criterion,
+      assessment: {ready: true, reason: 'Known scope'}}, true);
+    // alex owns both Tasks, so the ordinary Task rules let alex save their links.
+    for (const [id, revision, title] of [['t1', 0, 'Schema work'], ['t2', 0, 'Billing work'], ['t1', 1, 'Schema work']])
+      await f.command({op: 'save_object', kind: 'work', id, revision, parent: 'ac:B1', reason: 'Plan the work',
+        data: {title, owner: 'alex', contract: 'Implement ' + title + ' at revision ' + (revision + 1), purpose: 'implementation'}});
+    const T2 = await f.open('work:t2');
+    await T2.locator('.depends-on-button').click();
+    await T2.locator('.dependency-picker select option[value="work:t1"]').waitFor({state: 'attached'});
+    await T2.locator('.dependency-picker select').selectOption('work:t1');
+    await T2.locator('.dependency-add').click();
+    const card = f.page.locator('.object-page > .common-object[data-object-address="work:t2"]');
+    const remove = card.getByRole('button', {name: 'Remove dependency on Schema work'});
+    await card.locator('.dependency-remove, .dependency-error:not([hidden])').first().waitFor();
+    assert.equal(await card.locator('.dependency-error:not([hidden])').count(), 0,
+      await card.locator('.dependency-error').first().textContent());
+    assert.deepEqual((await read('work:t2')).document.links, [{target: 'work:t1', relation: 'depends_on', revision: 2, blocking: true}]);
+    await remove.click();
+    await card.locator('.dependency-remove').waitFor({state: 'detached'});
+    assert.deepEqual((await read('work:t2')).document.links, []);
   } finally { await f.close(); }
 });
 
