@@ -636,11 +636,13 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
       f.page.off('request', record);
       // The page reads two lists and no single workspace.
-      assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
+      assert.deepEqual(reads.sort(), ['/api/access', '/api/me', '/api/workspaces']);
       await select.selectOption(owned);
       // One list holds the members, then the emails that have not signed in. The agent member is not on the page.
       const members = f.page.getByRole('list', {name: 'People with access', exact: true});
-      assert.deepEqual(await members.locator('li').allInnerTexts(), ['alex', 'maria', 'pending@example.com (invited)']);
+      assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(), ['alex', 'maria', 'pending@example.com (invited)']);
+      // The owner row has no Remove; every other row has one.
+      assert.deepEqual(await members.locator('li').evaluateAll(rows => rows.map(r => !!r.querySelector('button.remove'))), [false, true, true]);
       assert.equal(await f.page.locator('#owner-panel ul').count(), 1);
       const panel = f.page.locator('#workspace-panel');
       assert.ok(!(await panel.innerText()).includes('planner-bot'));
@@ -661,6 +663,53 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
     assert.ok(await f.page.locator('#workspace-select option').count() >= 2);
     assert.equal(await f.page.locator('#owner-panel').isVisible(), false);
   } finally { await f.close(); }
+});
+
+// owner-manages-workspace-ac3
+test('owner-manages-workspace-ac3: alex removes a member, an email and a domain in Settings', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const person = await browser.newContext({reducedMotion: 'reduce'});
+  try {
+    const request = f.page.context().request;
+    const {id} = await (await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Shared ' + crypto.randomUUID()}})).json();
+    // The person signs in with the granted email and becomes a member.
+    assert.equal((await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root}, data: {workspace: id, email: 'alex@example.com'}})).status(), 200);
+    await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+    const page = await person.newPage();
+    await page.goto(f.live.root + '/?workspace=' + encodeURIComponent(id));
+    await page.locator('#workspaces').waitFor();
+    const personRead = async () => (await person.request.get(f.live.root + '/api/workspaces/' + id)).status();
+    assert.equal(await personRead(), 200);
+    for (const data of [{workspace: id, email: 'lena@example.com'}]) await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root}, data});
+    await request.post(f.live.root + '/api/domain-grants', {headers: {Origin: f.live.root}, data: {workspace: id, domain: 'example.org'}});
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const select = f.page.getByLabel('Workspace', {exact: true});
+    await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await select.selectOption(id);
+    const rows = f.page.locator('#workspace-people li');
+    const texts = () => rows.locator(':scope > span:first-child').allInnerTexts();
+    assert.equal((await texts()).length, 4, JSON.stringify(await texts()));
+    // The owner row has no Remove.
+    assert.equal(await rows.first().locator('button').count(), 0);
+    // Remove the member: the person loses the workspace at the next request.
+    const member = rows.filter({hasText: 'alex@example.com'}).filter({hasNot: f.page.locator('text=(invited)')});
+    await member.getByRole('button', {name: /^Remove /}).click();
+    await member.waitFor({state: 'detached'});
+    assert.equal(await personRead(), 404);
+    // Remove the invited email and the domain.
+    await rows.filter({hasText: 'lena@example.com (invited)'}).getByRole('button', {name: /^Remove /}).click();
+    await rows.filter({hasText: 'lena@example.com'}).waitFor({state: 'detached'});
+    await rows.filter({hasText: 'Everyone at example.org'}).getByRole('button', {name: /^Remove /}).click();
+    await rows.filter({hasText: 'example.org'}).waitFor({state: 'detached'});
+    assert.equal((await texts()).length, 1);
+    const access = (await (await request.get(f.live.root + '/api/access')).json()).items.find(w => w.id === id);
+    assert.deepEqual([access.emails, access.domains, access.members.length], [[], [], 1]);
+    // The owner cannot remove themself, and a member who is not the owner removes nothing.
+    const self = await request.post(f.live.root + '/api/access/remove', {headers: {Origin: f.live.root}, data: {workspace: id, member: 'alex'}});
+    assert.equal((await self.json()).error, 'workspace owner cannot be removed');
+    const foreign = await request.post(f.live.root + '/api/access/remove', {headers: {Origin: f.live.root}, data: {workspace: f.live.ws, member: 'bot'}});
+    assert.equal((await foreign.json()).error, 'workspace owner required');
+  } finally { await person.close(); await f.close(); }
 });
 
 // owner-manages-workspace-ac1
@@ -829,7 +878,7 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants') && response.request().method() === 'POST');
     await add.click();
     assert.equal((await granted).status(), 200);
-    const emails = f.page.locator('#workspace-people li[data-kind="email"]');
+    const emails = f.page.locator('#workspace-people li[data-kind="email"] > span');
     await emails.filter({hasText: 'maria@example.com'}).waitFor();
     assert.deepEqual(await emails.allInnerTexts(), ['maria@example.com (invited)']);
     assert.equal(await workspace.inputValue(), id);
@@ -894,9 +943,10 @@ test('settings-in-name-menu-ac4: Settings follows the board theme, links back to
     await f.page.getByRole('button', {name: 'Switch to light theme'}).click();
     assert.equal(await background(), 'rgb(255, 252, 245)');
     assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'light');
-    // Create a workspace is the first section, above the workspace drop-down.
-    const create = await f.page.locator('#create-workspace').boundingBox(), select = await f.page.locator('#workspace-select').boundingBox();
-    assert.ok(create.y < select.y);
+    // The workspace drop-down sits in the header, as on the board, and Create a workspace is the first section.
+    assert.equal(await f.page.locator('header.app-header .workspace-label #workspace-select').count(), 1);
+    const sections = await f.page.locator('main section h2').allInnerTexts();
+    assert.equal(sections[0], 'Create a workspace');
     // Back to board opens the selected workspace.
     const workspace = f.page.getByLabel('Workspace', {exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
@@ -1015,7 +1065,7 @@ test('owner-adds-members-ac7: alex adds healthium.one to W in Settings', async (
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/domain-grants') && response.request().method() === 'POST');
     await add.click();
     assert.equal((await granted).status(), 200);
-    const domains = f.page.locator('#workspace-people li[data-kind="domain"]');
+    const domains = f.page.locator('#workspace-people li[data-kind="domain"] > span');
     await domains.filter({hasText: 'healthium.one'}).waitFor();
     assert.deepEqual(await domains.allInnerTexts(), ['Everyone at healthium.one']);
     assert.equal(await workspace.inputValue(), id);

@@ -5707,6 +5707,17 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"remove_member","id":"newcomer","reason":"Remove access"}),
+            &w.owner,
+            owner_only,
+        )
+        .await?,
+    );
     // The deletion comes last: after it, the workspace accepts no command.
     covered.push(
         check_callers(

@@ -386,6 +386,36 @@ async fn delete_workspace(
             .map(|_| json!({"id": workspace, "deleted": true})),
     )
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessRemoval {
+    workspace: String,
+    #[serde(default)]
+    member: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    domain: Option<String>,
+}
+/// The owner removes a member, an email grant or a domain grant from a signed-in browser.
+async fn remove_access(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(body): Json<AccessRemoval>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to remove access"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let ws = &body.workspace;
+    result(match (&body.member, &body.email, &body.domain) {
+        (Some(id), None, None) => store::remove_member(&app.pool, ws, &actor, id).await,
+        (None, Some(email), None) => store::revoke_email(&app.pool, ws, &actor, email).await,
+        (None, None, Some(domain)) => store::revoke_domain(&app.pool, ws, &actor, domain).await,
+        _ => Err(joppa::commands::ClientField("name one member, email or domain").into()),
+    })
+}
 /// The settings page reads its owned workspaces, their people and their grants in one request.
 async fn list_owned_access(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
@@ -973,6 +1003,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             get(list_email_grants).post(grant_email),
         )
         .route("/api/access", get(list_owned_access))
+        .route("/api/access/remove", post(remove_access))
         .route(
             "/api/domain-grants",
             get(list_domain_grants).post(grant_domain),

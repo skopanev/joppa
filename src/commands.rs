@@ -92,6 +92,11 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reference_prefix: Option<String>,
     },
+    /// The owner removes a member. The owner cannot remove themself.
+    RemoveMember {
+        id: String,
+        reason: String,
+    },
     /// The owner deletes the workspace. The journal stays; nobody reads or writes it again.
     DeleteWorkspace {
         reason: String,
@@ -520,6 +525,7 @@ pub const OPERATIONS: &[Operation] = &[
     op("delete_workspace", &["reason"], OWNER),
     op("reorder_tree", &["kind", "expected", "ids"], OWNER),
     op("member", &["id", "role"], OWNER),
+    op("remove_member", &["id", "reason"], OWNER),
     op("consumer", &["title", "owner"], MEMBER),
     op(
         "edit_consumer",
@@ -1130,6 +1136,12 @@ pub(crate) fn apply_inner(
                 "member exists; identities cannot be reassigned"
             );
             w.members.insert(id.clone(), role.clone());
+        }
+        Command::RemoveMember { id, reason } => {
+            ensure!(actor == w.admin, "workspace owner required");
+            nonempty(reason)?;
+            ensure!(*id != w.admin, "workspace owner cannot be removed");
+            ensure!(w.members.remove(id).is_some(), "unknown member");
         }
         Command::Consumer {
             id,
