@@ -144,19 +144,24 @@ pub async fn revoke_agent_token(
     Ok(json!({"id": id, "agent": agent, "revoked": true}))
 }
 
+/// Each item holds only the name, access, status and dates; never the token or its hash.
 pub async fn list_agent_tokens(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
     let workspace = owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     let items: Vec<Value> = conn
         .query(
-            "SELECT t.id, t.agent, t.created_by, t.created_at::text,
-                    EXISTS(SELECT 1 FROM joppa.agent_token_revocations r WHERE r.token_id=t.id), t.access
-             FROM joppa.agent_tokens t WHERE t.workspace=$1 ORDER BY t.id",
+            "SELECT t.id, t.agent, t.access, t.created_at::text, r.revoked_at::text
+             FROM joppa.agent_tokens t
+             LEFT JOIN joppa.agent_token_revocations r ON r.token_id=t.id
+             WHERE t.workspace=$1 ORDER BY t.id",
             &[&workspace],
         )
         .await?
         .iter()
-        .map(|r| json!({"id": r.get::<_, i64>(0), "agent": r.get::<_, String>(1), "created_by": r.get::<_, String>(2), "created_at": r.get::<_, String>(3), "revoked": r.get::<_, bool>(4), "access": r.get::<_, String>(5)}))
+        .map(|r| {
+            let revoked_at: Option<String> = r.get(4);
+            json!({"id": r.get::<_, i64>(0), "agent": r.get::<_, String>(1), "access": r.get::<_, String>(2), "revoked": revoked_at.is_some(), "created_at": r.get::<_, String>(3), "revoked_at": revoked_at})
+        })
         .collect();
     Ok(json!({"items": items}))
 }

@@ -580,6 +580,113 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
   } finally { await f.close(); }
 });
 
+test('settings-agent-tokens-ac1: alex issues a read token for planner-reader in Settings and sees it once', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Token space'}});
+    assert.equal(created.status(), 200);
+    const {id} = await created.json();
+    const api = f.live.root + '/api/workspaces/' + encodeURIComponent(id);
+    const listed = async () => {
+      const response = await request.get(api + '/agent-tokens');
+      assert.equal(response.status(), 200);
+      return (await response.json()).items;
+    };
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const workspace = f.page.getByLabel('Workspace for the token'), agent = f.page.getByLabel('Agent name');
+    const issue = f.page.getByRole('button', {name: 'Issue token'});
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    // Only owned workspaces are offered; the fixture workspace belongs to another owner.
+    const offered = await workspace.locator('option').evaluateAll(options => options.map(option => option.value));
+    assert.ok(!offered.includes(f.live.ws));
+    const shown = f.page.waitForResponse(response => response.url() === api + '/agent-tokens');
+    await workspace.selectOption(id);
+    assert.equal((await shown).status(), 200);
+    // Fixture 2: a blank agent name shows the server error and issues no token.
+    assert.deepEqual(await listed(), []);
+    await agent.fill('');
+    await f.page.getByLabel('Token access').selectOption('read');
+    await issue.click();
+    const error = f.page.locator('#issue-token-error');
+    await error.filter({hasText: 'invalid id'}).waitFor();
+    assert.ok((await error.innerText()).startsWith('invalid id'));
+    assert.equal(await f.page.locator('#new-token').isVisible(), false);
+    assert.deepEqual(await listed(), []);
+    // The owner issues a read token for planner-reader.
+    await agent.fill('planner-reader');
+    const issued = f.page.waitForResponse(response => response.url() === api + '/agent-tokens' && response.request().method() === 'POST');
+    const reloaded = f.page.waitForResponse(response => response.url() === api + '/agent-tokens' && response.request().method() === 'GET');
+    await issue.click();
+    const reply = await (await issued).json();
+    assert.equal((await reloaded).status(), 200);
+    const token = reply.token;
+    assert.ok(token.startsWith('jpt_'));
+    const value = f.page.locator('#new-token-value'), copy = f.page.getByRole('button', {name: 'Copy token'});
+    assert.equal(await value.innerText(), token);
+    assert.equal(await copy.isVisible(), true);
+    await copy.click();
+    await f.page.waitForFunction(text => window.copiedIds.includes(text), token);
+    assert.deepEqual(await f.page.evaluate(() => window.copiedIds), [token]);
+    const rows = f.page.locator('#agent-token-list tr');
+    await rows.filter({hasText: 'planner-reader'}).waitFor();
+    const cells = async () => rows.evaluateAll(list => list.map(row => [...row.cells].slice(0, 3).map(cell => cell.textContent)));
+    assert.deepEqual(await cells(), [['planner-reader', 'read', 'active']]);
+    // The value stays out of storage and the URL.
+    const stored = await f.page.evaluate(() => JSON.stringify([{...localStorage}, {...sessionStorage}]) + location.href);
+    assert.ok(!stored.includes(token));
+    // After a reload the value is gone from the DOM and the served page.
+    await f.page.reload();
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await workspace.selectOption(id);
+    await rows.filter({hasText: 'planner-reader'}).waitFor();
+    assert.deepEqual(await cells(), [['planner-reader', 'read', 'active']]);
+    assert.ok(!(await f.page.content()).includes(token));
+    assert.equal(await f.page.locator('#new-token').isVisible(), false);
+    const source = await request.get(f.live.root + '/settings');
+    assert.equal(source.status(), 200);
+    assert.ok(!(await source.text()).includes(token));
+    // The read token reads W, and a write is refused.
+    const read = await fetch(api + '/objects?parent=*', {headers: {Authorization: 'Bearer ' + token}});
+    assert.equal(read.status, 200);
+    const write = await fetch(api + '/commands', {method: 'POST', headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'domain', id: 'refused', revision: 0, parent: null,
+        data: {title: 'Refused', owner: 'owner', body: 'Input'}, reason: 'Save'}})});
+    assert.equal(write.status, 403);
+    assert.deepEqual(await write.json(), {error: 'read-only token'});
+    // The owner list has only the public fields, with no token value or hash.
+    const items = await listed();
+    assert.equal(items.length, 1);
+    assert.deepEqual(Object.keys(items[0]).sort(), ['access', 'agent', 'created_at', 'id', 'revoked', 'revoked_at']);
+    assert.deepEqual({...items[0], created_at: undefined},
+      {id: reply.id, agent: 'planner-reader', access: 'read', revoked: false, created_at: undefined, revoked_at: null});
+    const text = JSON.stringify(items);
+    assert.ok(!text.includes(token));
+    assert.ok(!text.includes(createHash('sha256').update(token).digest('hex')));
+  } finally { await f.close(); }
+});
+
+test('settings-agent-tokens-ac1: a person who owns no workspace sees no token section', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  const person = await browser.newContext({reducedMotion: 'reduce'});
+  try {
+    await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+    const page = await person.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const owned = page.waitForResponse(response => response.url().endsWith('/api/email-grants'));
+    assert.equal((await page.goto(f.live.root + '/settings')).status(), 200);
+    const reply = await owned;
+    assert.deepEqual((await reply.json()).items, []);
+    await page.locator('#agent-tokens').waitFor({state: 'detached'});
+    for (const control of [page.locator('#agent-token-list'), page.getByLabel('Agent name'),
+      page.getByLabel('Workspace for the token'), page.getByRole('button', {name: 'Issue token'}),
+      page.getByRole('button', {name: 'Copy token'}), page.getByText('Agent tokens')]) {
+      assert.equal(await control.count(), 0);
+    }
+    assert.deepEqual(errors, []);
+  } finally { await person.close(); await f.close(); }
+});
+
 test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});

@@ -35,6 +35,25 @@
     <p id="grant-domain-error" role="alert"></p>
     <ul id="grant-domains" aria-label="Domains with access"></ul>
   </form>
+  <section id="agent-tokens" aria-labelledby="agent-tokens-title" hidden>
+    <form id="issue-token">
+      <h2 id="agent-tokens-title">Agent tokens</h2>
+      <label>Workspace for the token <select id="token-workspace" name="workspace"></select></label>
+      <label>Agent name <input id="token-agent" name="agent" autocomplete="off"></label>
+      <label>Token access <select id="token-access" name="access"><option value="read">read</option><option value="write">write</option></select></label>
+      <button id="issue-token-button" type="submit">Issue token</button>
+      <p id="issue-token-error" role="alert"></p>
+    </form>
+    <div id="new-token" hidden>
+      <p>Copy this token now. Joppa shows it only once.</p>
+      <code id="new-token-value"></code>
+      <button id="copy-token-button" type="button">Copy token</button>
+    </div>
+    <table aria-label="Agent tokens of the workspace">
+      <thead><tr><th>Agent</th><th>Access</th><th>Status</th><th>Created</th><th>Revoked</th></tr></thead>
+      <tbody id="agent-token-list"></tbody>
+    </table>
+  </section>
 </main>
 <script>
 const form=document.getElementById('create-workspace'),title=document.getElementById('workspace-title'),
@@ -92,6 +111,55 @@ grantForm(['grant-email','grant-workspace','grant-email-address','grant-email-bu
   '/api/email-grants','email','Could not add the person.');
 grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-domain-button','grant-domain-error','grant-domains'],
   '/api/domain-grants','domain','Could not add the domain.');
+// The whole token section stays hidden unless the server reports an owned workspace.
+// A new token value lives only in this page's memory; a reload drops it.
+{
+  const [section,form,select,agent,access,button,error,shown,value,copy,list]=['agent-tokens','issue-token','token-workspace',
+    'token-agent','token-access','issue-token-button','issue-token-error','new-token','new-token-value','copy-token-button',
+    'agent-token-list'].map(id=>document.getElementById(id));
+  const json=async(response,failure)=>{
+    const value=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(value.error||failure);
+    return value;
+  };
+  const tokens=()=>'/api/workspaces/'+encodeURIComponent(select.value)+'/agent-tokens';
+  const show=async()=>{
+    const {items}=await json(await fetch(tokens()),'Could not load the agent tokens.');
+    list.replaceChildren(...items.map(t=>{
+      const row=document.createElement('tr');
+      row.replaceChildren(...[t.agent,t.access,t.revoked?'revoked':'active',t.created_at,t.revoked_at||''].map(text=>{
+        const cell=document.createElement('td');cell.textContent=text;return cell;
+      }));
+      return row;
+    }));
+  };
+  const hide=()=>{shown.hidden=true;value.textContent='';};
+  select.onchange=()=>{hide();error.textContent='';show().catch(e=>{error.textContent=e.message;});};
+  copy.onclick=async()=>{
+    try{await navigator.clipboard.writeText(value.textContent);copy.textContent='Copied';}
+    catch{error.textContent='Could not copy the token. Select it and copy it by hand.';}
+  };
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    if(button.disabled)return;
+    button.disabled=true;error.textContent='';hide();
+    try{
+      const created=await json(await fetch(tokens(),{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({agent:agent.value,access:access.value})}),'Could not issue the token.');
+      value.textContent=created.token;copy.textContent='Copy token';shown.hidden=false;
+      agent.value='';
+      await show();
+    }catch(e){error.textContent=e.message;}
+    button.disabled=false;
+  };
+  button.disabled=true;
+  fetch('/api/email-grants').then(r=>json(r,'Could not load owned workspaces.')).then(({items})=>{
+    if(!items.length){section.remove();return;}
+    select.replaceChildren(...items.map(w=>new Option(w.title,w.id)));
+    section.hidden=false;button.disabled=false;
+    return show();
+  }).catch(e=>{section.hidden=false;error.textContent=e.message;});
+}
 </script>
 </body>
 </html>

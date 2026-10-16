@@ -540,6 +540,7 @@ async fn create_agent_token(
     Json(body): Json<AgentTokenRequest>,
 ) -> ApiResult {
     let actor = authenticate_write(&app, &headers).await?;
+    check_session_origin(&headers)?;
     result(
         store::create_agent_token(
             &app.pool,
@@ -557,7 +558,15 @@ async fn revoke_agent_token(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate_write(&app, &headers).await?;
+    check_session_origin(&headers)?;
     result(store::revoke_agent_token(&app.pool, &workspace, &actor, id).await)
+}
+/// Cookie sessions pass the shared origin check; bearer calls carry no ambient credential.
+fn check_session_origin(headers: &HeaderMap) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Ok(());
+    }
+    web_auth::check_origin(headers).map_err(auth_error)
 }
 async fn list_agent_tokens(
     State(app): State<App>,
