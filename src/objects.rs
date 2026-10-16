@@ -2181,8 +2181,53 @@ fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {
     }
     Ok(())
 }
+/// A live save may add a blocking Task link only to a Task under the same requirement.
+/// Replay skips this check, so stored links keep loading.
+fn task_links_same_requirement(w: &Workspace, cmd: &Command) -> Result<()> {
+    let Command::SaveObject {
+        id,
+        kind,
+        parent,
+        links,
+        ..
+    } = cmd
+    else {
+        return Ok(());
+    };
+    if !task_kind(w, kind) {
+        return Ok(());
+    }
+    // A stored blocking link stays allowed when the save only moves its pin.
+    let stored: BTreeSet<&str> = w
+        .objects
+        .get(resolve_address(w, &address(kind, id)))
+        .into_iter()
+        .flat_map(|o| o.current().links.iter().filter(|l| l.blocking))
+        .map(|l| resolve_address(w, &l.target))
+        .collect();
+    // The candidate state: the Task sits under its proposed parent.
+    let req = parent
+        .as_deref()
+        .and_then(|parent| crate::tasks::requirement(w, parent));
+    for link in links
+        .iter()
+        .filter(|l| l.blocking && !stored.contains(resolve_address(w, &l.target)))
+    {
+        let Some(target) = w.objects.get(resolve_address(w, &link.target)) else {
+            continue;
+        };
+        if task_kind(w, &target.kind) {
+            ensure!(
+                crate::tasks::requirement(w, &link.target) == req,
+                "a Task can depend only on a Task under the same requirement"
+            );
+        }
+    }
+    Ok(())
+}
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     validate_title_length(w, cmd)?;
+    task_links_same_requirement(w, cmd)?;
     match cmd {
         Command::MigrateNotes {}
         | Command::MigrateTasks {}
