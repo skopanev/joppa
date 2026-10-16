@@ -579,7 +579,7 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       await f.page.waitForURL(f.live.root + '/settings');
       const list = f.page.locator('#member-workspaces');
       await list.waitFor();
-      assert.deepEqual(await list.locator('li').allInnerTexts(), titles);
+      assert.deepEqual(await list.locator(':scope > li > .workspace-title').allInnerTexts(), titles);
       assert.equal(await list.locator('li').filter({hasText: w3}).count(), 0);
       assert.ok(inside(await list.boundingBox(), width, Infinity));
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
@@ -593,6 +593,62 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
     assert.equal(await f.page.locator('#member-workspaces').isVisible(), false);
     assert.equal(await f.page.locator('#member-workspaces li').count(), 0);
   } finally { await person.close(); await f.close(); }
+});
+
+// Alex owns W1 and a second owned workspace whose read fails. The fixture workspace is W2:
+// the fixture owner owns it and alex is only a member.
+test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    const request = f.page.context().request;
+    const create = async title => {
+      const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
+      assert.equal(created.status(), 200);
+      return (await created.json()).id;
+    };
+    const suffix = crypto.randomUUID(), w1 = 'W1 ' + suffix, w3 = 'W3 ' + suffix;
+    const owned = await create(w1), failing = await create(w3);
+    const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + '/commands', {method: 'POST',
+      headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', id: 'maria', role: 'human'}})});
+    assert.equal(added.status, 200, await added.text());
+    // A person with an email grant is not yet a member of W1.
+    const granted = await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root},
+      data: {workspace: owned, email: 'pending@example.com'}});
+    assert.equal(granted.status(), 200);
+    const read = await (await request.get(f.live.root + '/api/workspaces/' + owned)).json();
+    assert.deepEqual(Object.keys(read.index.members), ['alex', 'maria']);
+    const order = (await (await request.get(f.live.root + '/api/workspaces')).json()).map(w => w.id);
+    assert.ok(order.includes(owned) && order.includes(failing) && order.includes(f.live.ws));
+    await f.page.route(f.live.root + '/api/workspaces/' + failing, route => route.fulfill({status: 500,
+      contentType: 'application/json', body: JSON.stringify({error: 'workspace read unavailable'})}));
+    const inside = (box, width) => box.x >= 0 && box.x + box.width <= width;
+    for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
+      await f.page.setViewportSize({width, height});
+      assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+      const list = f.page.locator('#member-workspaces');
+      await list.waitFor();
+      const entry = id => list.locator(':scope > li').nth(order.indexOf(id));
+      const w1Entry = entry(owned), w2Entry = entry(f.live.ws), failed = entry(failing);
+      assert.equal(await w1Entry.locator('.workspace-title').innerText(), w1);
+      const members = w1Entry.getByRole('list', {name: 'Members of ' + w1});
+      assert.deepEqual(await members.locator('li').allInnerTexts(), ['alex', 'maria']);
+      assert.ok(!(await w1Entry.innerText()).includes('pending@example.com'));
+      assert.equal(await w2Entry.locator('.workspace-title').innerText(), 'Browser checks');
+      assert.equal(await w2Entry.locator('ul, ol, [role="list"], form, button, input, select').count(), 0);
+      // A failed read shows the server error at its own entry and no member list.
+      assert.equal(await failed.getByRole('alert').innerText(), 'workspace read unavailable');
+      assert.equal(await failed.locator('ul').count(), 0);
+      // The add-person form offers W1 and not W2.
+      const offered = f.page.getByLabel('Owned workspace');
+      await offered.locator('option[value="' + owned + '"]').waitFor({state: 'attached'});
+      assert.ok(!(await offered.locator('option').evaluateAll(options => options.map(option => option.value))).includes(f.live.ws));
+      for (const item of [w1Entry, members, ...await members.locator('li').all(), w2Entry, failed]) {
+        assert.ok(inside(await item.boundingBox(), width));
+      }
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
+    }
+  } finally { await f.close(); }
 });
 
 test('create-workspace-ac1: alex creates Billing on the settings page and owns it', async () => {

@@ -63,13 +63,33 @@
 </main>
 <script>
 // The list shows exactly the workspaces that the server returns for the session.
+// An owned entry lists the current members of its workspace read; email grants are not members.
+// The list appears once every entry read has finished.
 (async()=>{
   const list=document.getElementById('member-workspaces'),error=document.getElementById('member-workspaces-error');
-  try{
-    const response=await fetch('/api/workspaces');
+  const read=async(url,failure)=>{
+    const response=await fetch(url);
     const value=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(value.error||'Could not load your workspaces.');
-    list.replaceChildren(...value.map(w=>{const li=document.createElement('li');li.textContent=w.title;return li;}));
+    if(!response.ok)throw Error(value.error||failure);
+    return value;
+  };
+  const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
+  try{
+    const [workspaces,{actor}]=await Promise.all([read('/api/workspaces','Could not load your workspaces.'),read('/api/me','Could not load your account.')]);
+    list.replaceChildren(...await Promise.all(workspaces.map(async w=>{
+      const entry=document.createElement('li'),title=element('span',w.title);
+      title.className='workspace-title';entry.append(title);
+      try{
+        const {index}=await read('/api/workspaces/'+encodeURIComponent(w.id),'Could not load the workspace members.');
+        if(index.owner===actor){
+          const members=document.createElement('ul');
+          members.setAttribute('aria-label','Members of '+w.title);
+          members.replaceChildren(...Object.keys(index.members).map(id=>element('li',id)));
+          entry.append(members);
+        }
+      }catch(e){const failure=element('p',e.message);failure.setAttribute('role','alert');entry.append(failure);}
+      return entry;
+    })));
     list.hidden=false;
   }catch(e){error.textContent=e.message;}
 })();
