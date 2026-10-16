@@ -101,11 +101,13 @@ pub(crate) fn context(w: &Workspace, key: &str) -> Option<(String, u32)> {
     ))
 }
 
+/// A done Task never asks for a review; a new text of its parent does not reopen it.
 pub fn review_required(w: &Workspace, key: &str, t: &Task) -> bool {
-    t.review_required
-        || w.task_context
-            .get(key)
-            .is_some_and(|old| old != &context(w, key))
+    t.done.is_none()
+        && (t.review_required
+            || w.task_context
+                .get(key)
+                .is_some_and(|old| old != &context(w, key)))
 }
 
 pub fn parent_assessment(w: &Workspace, key: &str) -> Option<Value> {

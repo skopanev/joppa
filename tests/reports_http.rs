@@ -3448,6 +3448,88 @@ async fn an_agent_token_writes_as_the_agent_and_stops_when_revoked() -> Result<(
     Ok(())
 }
 
+// removal-at-once-ac2
+// Owner S revokes the write token of bot. The first call after that is a read, and it fails.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_revoked_write_token_fails_on_the_first_read_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let workspace = w.base.rsplit('/').next().unwrap().to_owned();
+    let root = w.base.split("/api/").next().unwrap().to_owned();
+    let read_http = |token: String| {
+        let request = w
+            .http
+            .get(format!("{}/objects?address=note:from-bot", w.base))
+            .bearer_auth(token);
+        async move {
+            let reply = request.send().await?;
+            anyhow::Ok((
+                reply.status().as_u16(),
+                reply.json::<Value>().await.unwrap_or(Value::Null),
+            ))
+        }
+    };
+    let read_mcp = |token: String| {
+        let request = w.http.post(format!("{root}/mcp")).bearer_auth(token)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":"note:from-bot"}}}));
+        async move {
+            let reply = request.send().await?;
+            anyhow::Ok((
+                reply.status().as_u16(),
+                reply.json::<Value>().await.unwrap_or(Value::Null),
+            ))
+        }
+    };
+    for mcp in [false, true] {
+        let (code, created) = post(
+            &w,
+            &w.owner,
+            "/agent-tokens",
+            json!({"agent":"bot","access":"write"}),
+        )
+        .await?;
+        ensure!(
+            code == 200 && created["access"] == "write" && created["agent"] == "bot",
+            "{code} {created}"
+        );
+        let bot = created["token"].as_str().unwrap_or_default().to_owned();
+        // Controls: the write grant writes, and the token reads.
+        if !mcp {
+            let (code, saved) = save_note(&w, &bot, "from-bot").await?;
+            ensure!(code == 200, "{code} {saved}");
+        }
+        let (code, read) = read_http(bot.clone()).await?;
+        ensure!(
+            code == 200 && read["address"] == "note:from-bot",
+            "{code} {read}"
+        );
+        let (code, read) = read_mcp(bot.clone()).await?;
+        ensure!(
+            code == 200 && read["result"]["isError"] != true,
+            "{code} {read}"
+        );
+        let id = created["id"].as_i64().unwrap_or_default();
+        let (code, reply) = post(
+            &w,
+            &w.owner,
+            &format!("/agent-tokens/{id}/revoke"),
+            json!({}),
+        )
+        .await?;
+        ensure!(code == 200, "revoke: {code} {reply}");
+        let (code, reply) = if mcp {
+            read_mcp(bot).await?
+        } else {
+            read_http(bot).await?
+        };
+        ensure!(
+            code == 401 && reply["error"] == "token revoked",
+            "first read after the revocation, MCP={mcp}: {code} {reply}"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn only_the_owner_creates_an_agent_token() -> Result<()> {
@@ -6132,6 +6214,105 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
     Ok(())
 }
 
+// ready-is-the-only-gate-ac2
+// R is requirement:key at revision 1, and A is its green ready criterion ac:key-rights.
+// Agent bot saves a new text of R. Revision 1 of R keeps the old text.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() -> Result<()> {
+    let w = world().await?;
+    let workspace = w.base.rsplit('/').next().unwrap().to_owned();
+    // Bot reads joppa_objects over HTTP and MCP; both give the same reply.
+    let read = |query: &'static str, mut arguments: Value| {
+        let w = &w;
+        arguments["workspace"] = json!(workspace);
+        async move {
+            let http: Value = w
+                .http
+                .get(format!("{}/objects?{query}", w.base))
+                .bearer_auth(&w.token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            let mcp = mcp_read(w, &w.token, "joppa_objects", arguments).await?;
+            ensure!(http == mcp, "joppa_objects {query}: HTTP {http}\nMCP {mcp}");
+            anyhow::Ok(http)
+        }
+    };
+    let tests = || async {
+        let mcp = mcp_read(
+            &w,
+            &w.token,
+            "joppa_tests",
+            json!({"workspace":workspace,"ac":"ac:key-rights"}),
+        )
+        .await?;
+        let http = w.status().await?;
+        ensure!(http == mcp, "joppa_tests: HTTP {http}\nMCP {mcp}");
+        anyhow::Ok(http)
+    };
+    ready_for_planning(&w).await?;
+    w.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    // Controls: R is at revision 1, and A is green and ready for work.
+    let r = read(
+        "address=requirement:key",
+        json!({"address":"requirement:key"}),
+    )
+    .await?;
+    ensure!(r["current_revision"] == 1, "R before the save: {r}");
+    ensure!(tests().await?["status"] == "green", "A must start green");
+    let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "ready",
+        "A before the save: {a}"
+    );
+    let mut data = r["document"]["data"].clone();
+    data["body"] = json!("Changed scope");
+    let (code, reply) = post(&w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":
+        {"op":"save_object","kind":"requirement","id":"key","revision":1,"parent":r["document"]["parent"],
+         "data":data,"links":[],"reason":"Change R"}})).await?;
+    ensure!(code == 200, "bot saves R: {code} {reply}");
+    let r = read(
+        "address=requirement:key",
+        json!({"address":"requirement:key"}),
+    )
+    .await?;
+    ensure!(
+        r["current_revision"] == 2
+            && r["document"]["actor"] == "agent"
+            && r["document"]["data"]["body"] == "Changed scope",
+        "R after the save: {r}"
+    );
+    let status = tests().await?;
+    ensure!(status["status"] == "grey", "A after the save: {status}");
+    let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "unassessed"
+            && a["process"]["readiness_blocker"]["state"] == "unassessed",
+        "A after the save: {a}"
+    );
+    let old = read(
+        "address=requirement:key&revision=1",
+        json!({"address":"requirement:key","revision":1}),
+    )
+    .await?;
+    ensure!(
+        old["historical"] == true
+            && old["document"]["revision"] == 1
+            && old["document"]["data"]["body"] == "Scope",
+        "R at revision 1: {old}"
+    );
+    Ok(())
+}
+
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -7168,5 +7349,130 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
     ensure!(code == 200, "{code} {reply}");
     ensure!(p.read("work:t2").await?["document"]["links"] == json!([]));
     store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+/// The addresses on one Task view page.
+fn task_addresses(tasks: &[Value]) -> Vec<&str> {
+    tasks.iter().filter_map(|t| t["address"].as_str()).collect()
+}
+
+/// T is done, needs no review and has no review label.
+fn done_without_review(t: &Value) -> bool {
+    t["process"]["status"] == "done"
+        && t["process"]["review_required"] == false
+        && t["signal"]["label"]
+            .as_str()
+            .is_some_and(|l| !l.contains("needs owner review"))
+}
+
+// completion-record-ac4
+// Bot completes T under A. Then owner S saves a new text of R, then of A.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.ready().await?;
+    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    p.write(
+        "agent",
+        json!({"op":"claim_task","id":"work:t","revision":p.revision("work:t").await?}),
+    )
+    .await?;
+    p.write("agent", json!({"op":"complete_task","id":"work:t","revision":p.revision("work:t").await?,"evidence":"commit abc123 on master"})).await?;
+    let t = p.object_both("work:t").await?;
+    ensure!(done_without_review(&t), "T after completion: {t}");
+    let spec = p.revision("spec:one").await?;
+    p.owner_command(json!({"op":"save_object","kind":"spec","id":"one","revision":spec,"parent":null,
+        "data":{"title":"One rule","body":"Implement the changed rule","owner":"owner"},"links":[],"reason":"Change R"}))
+        .await?;
+    let criterion = p.revision("criterion:a").await?;
+    p.owner_command(json!({"op":"save_object","kind":"criterion","id":"a","revision":criterion,"parent":"spec:one",
+        "data":{"title":"criterion:a","owner":"owner","description":"Changed wording"},"links":[],"reason":"Change A"}))
+        .await?;
+    // Controls: R and A are at new revisions.
+    ensure!(p.revision("spec:one").await? > spec);
+    ensure!(p.revision("criterion:a").await? == criterion + 1);
+    ensure!(p.read("criterion:a").await?["document"]["data"]["description"] == "Changed wording");
+    let t = p.object_both("work:t").await?;
+    ensure!(done_without_review(&t), "T after the new texts: {t}");
+    let all = p.tasks_both("all").await?;
+    let entry = all
+        .iter()
+        .find(|t| t["address"] == "work:t")
+        .ok_or_else(|| anyhow::anyhow!("T is missing in view=all: {all:?}"))?;
+    ensure!(
+        entry["status"] == "done"
+            && entry["review_required"] == false
+            && entry["signal"]["label"]
+                .as_str()
+                .is_some_and(|l| !l.contains("needs owner review")),
+        "T in view=all: {entry}"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
+// pins-ignore-process-events-ac2
+// Task B depends on open Task A. Planner P saves a new contract of A over HTTP, then over MCP.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_review() -> Result<()> {
+    let w = world().await?;
+    let contract = |title: &str, contract: &str| json!({"title":title,"owner":"owner","contract":contract,"purpose":"implementation"});
+    for mcp in [false, true] {
+        let p = planning(&w).await?;
+        p.ready().await?;
+        p.save(
+            "work:a",
+            Some("criterion:a"),
+            contract("A", "Deliver the prerequisite"),
+            json!([]),
+        )
+        .await?;
+        let pin = p.revision("work:a").await?;
+        p.save(
+            "work:b",
+            Some("criterion:a"),
+            contract("B", "Use the prerequisite"),
+            json!([{"target":"work:a","relation":"depends_on","revision":pin,"blocking":true}]),
+        )
+        .await?;
+        // Control: B pins the current revision of A.
+        let b = p.object_both("work:b").await?;
+        ensure!(b["review_required"] == false, "B before the change: {b}");
+        p.claim("agent", "criterion:a").await?;
+        let save = json!({"op":"save_object","kind":"work","id":"a","revision":pin,"parent":"criterion:a",
+            "data":contract("A","Deliver the changed prerequisite"),"links":[],"reason":"Change the contract"});
+        p.send(mcp, &save).await?.map_err(anyhow::Error::msg)?;
+        let a = p.object_both("work:a").await?;
+        ensure!(
+            a["current_revision"] == pin + 1 && a["process"]["status"] == "open",
+            "A after the change: {a}"
+        );
+        let b = p.object_both("work:b").await?;
+        ensure!(
+            b["review_required"] == true && b["document"]["links"][0]["revision"] == pin,
+            "B after the change: {b}"
+        );
+        let waiting = p.tasks_both("waiting").await?;
+        let entry = waiting
+            .iter()
+            .find(|t| t["address"] == "work:b")
+            .ok_or_else(|| anyhow::anyhow!("B is missing in view=waiting: {waiting:?}"))?;
+        ensure!(
+            entry["claimable"] == false
+                && entry["waiting_reason"]
+                    == "Task has an unmet dependency or a changed dependency revision: work:a",
+            "B in view=waiting: {entry}"
+        );
+        let available = p.tasks_both("available").await?;
+        ensure!(
+            !task_addresses(&available).contains(&"work:b"),
+            "B must not be available: {available:?}"
+        );
+        store::check_journal(&p.pool).await?;
+    }
     Ok(())
 }
