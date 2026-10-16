@@ -828,3 +828,52 @@ async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_
     );
     Ok(())
 }
+
+// work-priority-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn work_priority_ac5_an_agent_sets_the_priority_and_the_timeline_names_it() -> Result<()> {
+    let w = world().await?;
+    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.save("area", "d", None).await?;
+    w.save("rule", "r", Some("area:d")).await?;
+    w.save("check", "a", Some("rule:r")).await?;
+    w.ready("check:a").await?;
+    ensure!(w.object("check:a").await?["process"]["priority"] == "p2");
+    let before: Value = w
+        .http
+        .get(format!("{}/timeline?order=newest&limit=1", w.base))
+        .bearer_auth(&w.bot)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let after = before["items"][0]["position"]
+        .as_u64()
+        .with_context(|| format!("timeline: {before}"))?;
+    let (code, reply) = w.set_priority(&w.bot, "check:a", "p0").await?;
+    ensure!(code == 200, "{code} {reply}");
+    let read = w
+        .mcp(&w.bot, "joppa_objects", json!({"address":"check:a"}))
+        .await?;
+    ensure!(read["process"]["priority"] == "p0", "{}", read["process"]);
+    let timeline: Value = w
+        .http
+        .get(format!("{}/timeline?after={after}", w.base))
+        .bearer_auth(&w.bot)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let entries = timeline["items"].as_array().context("items")?;
+    ensure!(entries.len() == 1, "{timeline}");
+    let entry = &entries[0];
+    ensure!(
+        entry["actor"] == "bot"
+            && entry["actor_type"] == "agent"
+            && entry["change"] == "priority"
+            && entry["address"] == "check:a",
+        "{entry}"
+    );
+    Ok(())
+}
