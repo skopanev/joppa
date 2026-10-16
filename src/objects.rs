@@ -2228,6 +2228,7 @@ fn task_links_same_requirement(w: &Workspace, cmd: &Command) -> Result<()> {
 /// A live save refuses a new blocking link from S to T when T, or a node below T, waits on S,
 /// on an ancestor of S or on a node below S. A node waits on the blocking link targets of
 /// itself and of its ancestors, and a target needs itself and each live node below it.
+/// Task links keep their revision pins and do not take part, as in `dependencies::Graph`.
 /// Replay accepts the links that are already stored.
 fn validate_wait_cycle(
     w: &Workspace,
@@ -2235,6 +2236,13 @@ fn validate_wait_cycle(
     parent: Option<&str>,
     links: &[ObjectLink],
 ) -> Result<()> {
+    let task = |k: &str| {
+        k.split_once(':')
+            .is_some_and(|(kind, _)| task_kind(w, kind))
+    };
+    if task(key) {
+        return Ok(());
+    }
     let source = resolve_address(w, key).to_owned();
     let stored = w
         .objects
@@ -2288,7 +2296,9 @@ fn validate_wait_cycle(
         found
     };
     let targets = |k: &str| -> Vec<String> {
-        let own = if k == source {
+        let own = if task(k) {
+            &[]
+        } else if k == source {
             links
         } else {
             w.objects
