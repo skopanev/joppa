@@ -23,6 +23,7 @@ struct World {
     alex: String,
     maria: String,
     bot: String,
+    skopanev: String,
     /// A signed-in account that is not a member of the workspace.
     eve: String,
     pool: deadpool_postgres::Pool,
@@ -71,11 +72,12 @@ async fn world() -> Result<World> {
     let alex = uuid::Uuid::new_v4().simple().to_string();
     let maria = uuid::Uuid::new_v4().simple().to_string();
     let bot = uuid::Uuid::new_v4().simple().to_string();
+    let skopanev = uuid::Uuid::new_v4().simple().to_string();
     let eve = uuid::Uuid::new_v4().simple().to_string();
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ owner.clone(): "owner", alex.clone(): "alex", maria.clone(): "maria", bot.clone(): "bot", eve.clone(): "eve" }).to_string(),
+        json!({ owner.clone(): "owner", alex.clone(): "alex", maria.clone(): "maria", bot.clone(): "bot", skopanev.clone(): "skopanev", eve.clone(): "eve" }).to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
@@ -107,6 +109,7 @@ async fn world() -> Result<World> {
                 alex,
                 maria,
                 bot,
+                skopanev,
                 eve,
                 pool,
                 http: reqwest::Client::new(),
@@ -1848,6 +1851,40 @@ async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
         "{reply}"
     );
     let read = w.get_as(&w.alex, "address=capability:restrict").await?;
+    ensure!(read["document"]["present"] == true, "{read}");
+    Ok(())
+}
+
+// removal-is-archiving-ac5
+// skopanev owns the workspace and archives a capability with one live requirement.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_owner_cannot_archive_a_capability_with_a_live_requirement_over_http() -> Result<()> {
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [
+        json!({"op":"workspace","title":"Owned by skopanev"}),
+        json!({"op":"consumer","id":"customer","title":"Customer","owner":"skopanev"}),
+        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
+        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+        json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"skopanev","consumers":["customer"]},"reason":"Define"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    let requirement = w.get_as(&w.skopanev, "address=requirement:key").await?;
+    ensure!(requirement["document"]["present"] == true, "{requirement}");
+    let cap = w.get_as(&w.skopanev, "address=capability:restrict").await?;
+    let archive = json!({"op":"archive_object","target":"capability:restrict","revision":cap["current_revision"],"reason":"Cut"});
+    let (ok, reply) = send_as(&w, &w.skopanev, &archive).await?;
+    ensure!(
+        !ok && reply["error"] == "cannot archive an object with active children",
+        "{reply}"
+    );
+    let read = w.get_as(&w.skopanev, "address=capability:restrict").await?;
     ensure!(read["document"]["present"] == true, "{read}");
     Ok(())
 }
