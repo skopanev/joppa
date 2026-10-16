@@ -5786,6 +5786,63 @@ async fn a_task_link_across_criteria_of_one_requirement_is_saved() -> Result<()>
     Ok(())
 }
 
+// task-links-stay-in-req-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_dependency()
+-> Result<()> {
+    let w = world().await?;
+    tasks_under_two_requirements(&w).await?;
+    // Bot creates task:t4 so that bot, as its unclaimed creator, may add the link.
+    w.command_as(&w.bot, ready_task_command("t4", "other-audit"))
+        .await?;
+    let t4 = "task:t4";
+    let (ok, saved) = send_as(
+        &w,
+        &w.bot,
+        &linked_task_command("t4", 1, "other-audit", "task:t2"),
+    )
+    .await?;
+    ensure!(ok, "{saved}");
+    let read = w.get_as(&w.bot, &format!("address={t4}")).await?;
+    let links = &read["document"]["links"];
+    ensure!(
+        links[0]["target"] == "task:t2" && links[0]["blocking"] == true,
+        "{read}"
+    );
+    let (ok, early) = send_as(
+        &w,
+        &w.bot,
+        &json!({"op":"claim_task","id":t4,"revision":read["current_revision"]}),
+    )
+    .await?;
+    ensure!(
+        !ok && early["error"]
+            .as_str()
+            .is_some_and(|e| e.starts_with("Task has an unmet dependency")),
+        "{early}"
+    );
+    let waiting = w.get(&format!("address={t4}")).await?;
+    ensure!(waiting["process"]["assignee"].is_null(), "{waiting}");
+    let current = async |address: &str| -> Result<Value> {
+        Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
+    };
+    w.command_as(
+        &w.bot,
+        json!({"op":"claim_task","id":"task:t2","revision":current("task:t2").await?}),
+    )
+    .await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","id":"task:t2","revision":current("task:t2").await?,"evidence":"Implemented the contract"})).await?;
+    let (ok, claimed) = send_as(
+        &w,
+        &w.bot,
+        &json!({"op":"claim_task","id":t4,"revision":current(t4).await?}),
+    )
+    .await?;
+    ensure!(ok, "{claimed}");
+    Ok(())
+}
+
 // task-links-stay-in-req-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
