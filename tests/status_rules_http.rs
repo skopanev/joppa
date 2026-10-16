@@ -747,3 +747,84 @@ async fn dependencies_before_priority_ac1_a_p0_requirement_waits_for_the_p2_one_
     );
     Ok(())
 }
+
+// ready-signal-takes-tasks-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_mark() -> Result<()>
+{
+    let w = world().await?;
+    let tree = w.tree().await?;
+    let mut types = tree["schema"]["types"].clone();
+    let kind_of = |role: &str, inbox: bool| -> Result<String> {
+        types
+            .as_object()
+            .and_then(|t| {
+                t.iter()
+                    .find(|(_, v)| v["role"] == role && (!inbox || v["inbox"] == true))
+            })
+            .map(|(k, _)| k.clone())
+            .with_context(|| format!("{role} type"))
+    };
+    let (task, signal) = (kind_of("task", false)?, kind_of("document", true)?);
+    types[&task]["parents"]
+        .as_array_mut()
+        .context("task parents")?
+        .push(json!(signal));
+    w.command(&w.owner, json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Allow work under a signal"})).await?;
+    w.command(&w.owner, json!({"op":"save_object","kind":signal,"id":"n","revision":0,"parent":null,"data":{"title":"Login fails","owner":"owner","source":"support chat","body":"The login page fails"},"reason":"Record the signal"})).await?;
+    let n = format!("{signal}:n");
+    let t = format!("{task}:t");
+    w.command(&w.owner, json!({"op":"save_object","kind":task,"id":"t","revision":0,"parent":n,"data":{"title":"Fix the login","owner":"owner","contract":"Fix the login page and check it","purpose":"implementation"},"reason":"Create work"})).await?;
+    let revision = w.object(&t).await?["current_revision"].clone();
+    // The first claim is refused: N has no readiness mark.
+    let (code, reply) = w
+        .try_command(
+            &w.bot,
+            json!({"op":"claim_task","id":t,"revision":revision}),
+        )
+        .await?;
+    ensure!(
+        code != 200 && reply["error"] == format!("{n} has no readiness assessment"),
+        "{code} {reply}"
+    );
+    ensure!(w.object(&t).await?["process"]["assignee"].is_null());
+    // Member P marks N ready for work; the second claim succeeds.
+    w.command(
+        &w.alex,
+        json!({"op":"assess_signal","target":n,"ready":true,"reason":"Clear fix"}),
+    )
+    .await?;
+    let revision = w.object(&t).await?["current_revision"].clone();
+    w.command(
+        &w.bot,
+        json!({"op":"claim_task","id":t,"revision":revision}),
+    )
+    .await?;
+    let claimed = w.object(&t).await?;
+    ensure!(
+        claimed["process"]["status"] == "in_progress" && claimed["process"]["assignee"] == "bot",
+        "{}",
+        claimed["process"]
+    );
+    let read = w.mcp(&w.bot, "joppa_objects", json!({"address":n})).await?;
+    ensure!(
+        read["signal"]["assessment"]["state"] == "ready"
+            && read["signal"]["assessment"]["reason"] == "Clear fix",
+        "{}",
+        read["signal"]
+    );
+    let revision = w.object(&t).await?["current_revision"].clone();
+    w.command(
+        &w.bot,
+        json!({"op":"complete_task","id":t,"revision":revision,"evidence":"The login page works"}),
+    )
+    .await?;
+    let done = w.object(&t).await?;
+    ensure!(
+        done["process"]["status"] == "done" && done["process"]["verification"] == "none",
+        "{}",
+        done["process"]
+    );
+    Ok(())
+}

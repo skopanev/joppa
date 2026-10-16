@@ -88,6 +88,15 @@ pub fn task_verdict(w: &Workspace, key: &str) -> &'static str {
     {
         return "unverified";
     }
+    // Work under a signal has no criterion to verify.
+    if w.objects
+        .get(key)
+        .and_then(|o| o.current().parent.as_deref())
+        .and_then(|p| w.objects.get(crate::objects::resolve_address(w, p)))
+        .is_some_and(|p| crate::objects::input_type(w, &p.kind))
+    {
+        return "none";
+    }
     let Some((_, revision)) = crate::objects::verification_context(w, key) else {
         return "unverified";
     };

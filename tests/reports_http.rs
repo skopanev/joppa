@@ -7414,6 +7414,76 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
     Ok(())
 }
 
+// pins-ignore-process-events-ac3
+// Task B blocks on criterion C, and C lists test A. Clean full reports make C green, then red.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() -> Result<()> {
+    let w = world().await?;
+    let p = planning(&w).await?;
+    p.ready().await?;
+    let pin = p.prerequisite("Deliver the prerequisite").await?;
+    p.write(
+        "agent",
+        json!({"op":"set_ac_tests","target":"criterion:c","tests":[A],"reason":"Bind the test"}),
+    )
+    .await?;
+    // The new test list resets the readiness of C, so the owner confirms C ready again.
+    p.confirm(
+        "spec:two",
+        &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
+    )
+    .await?;
+    ensure!(p.revision("criterion:c").await? == pin);
+    p.save("work:b", Some("criterion:a"), json!({"title":"B","owner":"owner","contract":"Use the prerequisite","purpose":"implementation"}),
+        json!([{"target":"criterion:c","relation":"depends_on","revision":pin,"blocking":true}])).await?;
+    // Control: B waits while C is grey.
+    ensure!(p.status("criterion:c").await?["status"] == "grey");
+    ensure!(!task_addresses(&p.tasks_both("available").await?).contains(&"work:b"));
+    ensure!(task_addresses(&p.tasks_both("waiting").await?).contains(&"work:b"));
+    p.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let c = p.status("criterion:c").await?;
+    ensure!(c["status"] == "green", "C after the passing run: {c}");
+    let available = p.tasks_both("available").await?;
+    ensure!(
+        task_addresses(&available).contains(&"work:b"),
+        "B must be available: {available:?}"
+    );
+    let b = p.object_both("work:b").await?;
+    ensure!(
+        b["review_required"] == false && b["process"]["assignee"].is_null(),
+        "B while C is green: {b}"
+    );
+    // Fixture 2: a later clean full report fails test A.
+    p.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    let c = p.status("criterion:c").await?;
+    ensure!(c["status"] == "red", "C after the failing run: {c}");
+    let available = p.tasks_both("available").await?;
+    ensure!(
+        !task_addresses(&available).contains(&"work:b"),
+        "B must leave the available list: {available:?}"
+    );
+    let waiting = p.tasks_both("waiting").await?;
+    ensure!(
+        task_addresses(&waiting).contains(&"work:b"),
+        "B must wait: {waiting:?}"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
 // pins-ignore-process-events-ac2
 // Task B depends on open Task A. Planner P saves a new contract of A over HTTP, then over MCP.
 #[tokio::test]

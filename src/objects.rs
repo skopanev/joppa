@@ -2142,7 +2142,10 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
-            let evidence = verified(w, &address(&target.kind, &target.id));
+            // A Task target needs its completed work. Any other target is decided at read
+            // time by the test status of its criteria from reports (dependencies::Graph).
+            let target_task = types.get(&target.kind).is_some_and(|t| t.role == "task");
+            let evidence = !target_task || verified(w, &address(&target.kind, &target.id));
             evidence && visit(w, &l.target, types, stack)
         });
         let parent_ready = o
@@ -2785,7 +2788,11 @@ pub fn process(w: &Workspace, key: &str) -> Value {
         return json!({});
     };
     if input_type(w, &o.kind) {
-        return json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed"),"verification":"unverified"});
+        let mut p = json!({"status":o.current().data["status"].as_str().unwrap_or("unprocessed"),"verification":"unverified"});
+        if let Some(a) = w.signal_assessments.get(key) {
+            p["assessment"] = json!({"state":if a.ready {"ready"} else {"not_ready"},"reason":a.reason,"actor":a.actor,"criterion":key});
+        }
+        return p;
     }
     let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
     let mut result=match role.as_deref() {

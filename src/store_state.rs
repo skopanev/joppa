@@ -74,6 +74,15 @@ pub(super) fn affected(
             }
         }
     }
+    for key in state
+        .signal_assessments
+        .keys()
+        .chain(previous.signal_assessments.keys())
+    {
+        if state.signal_assessments.get(key) != previous.signal_assessments.get(key) {
+            changed.insert(key.clone());
+        }
+    }
     for (key, acceptances) in &state.acceptances {
         if previous.acceptances.get(key) != Some(acceptances) {
             changed.insert(key.clone());

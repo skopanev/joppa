@@ -21,6 +21,12 @@ pub enum Command {
         priorities: Option<Vec<String>>,
         reason: String,
     },
+    /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
+    AssessSignal {
+        target: String,
+        ready: bool,
+        reason: String,
+    },
     /// Set the priority of a node. It changes no revision, status or readiness.
     SetPriority {
         target: String,
@@ -531,6 +537,7 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op("rename_workspace", &["title", "reason"], OWNER),
     op("set_priority", &["target", "priority"], MEMBER),
+    op("assess_signal", &["target", "ready", "reason"], MEMBER),
     op("delete_workspace", &["reason"], OWNER),
     op("reorder_tree", &["kind", "expected", "ids"], OWNER),
     op("member", &["id", "role"], OWNER),
@@ -1010,6 +1017,33 @@ pub(crate) fn apply_inner(
                 position,
                 recorded_at,
             )?;
+        }
+        Command::AssessSignal {
+            target,
+            ready,
+            reason,
+        } => {
+            nonempty(reason)?;
+            let key = crate::objects::resolve_address(w, target).to_owned();
+            let kind = w
+                .objects
+                .get(&key)
+                .filter(|o| o.current().present)
+                .map(|o| o.kind.clone())
+                .context("unknown object")?;
+            ensure!(
+                crate::objects::input_type(w, &kind),
+                "only a signal of an inbox type takes a readiness mark"
+            );
+            w.signal_assessments.insert(
+                key,
+                crate::model::SignalAssessment {
+                    ready: *ready,
+                    reason: reason.clone(),
+                    actor: actor.into(),
+                    position,
+                },
+            );
         }
         Command::SetPriority { target, priority } => {
             let key = crate::objects::resolve_address(w, target).to_owned();

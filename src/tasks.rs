@@ -153,6 +153,15 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
                     commands::human(w, actor)?;
                 }
                 readiness_blocker(w, key).is_none()
+            } else if objects::input_type(w, &w.objects[parent].kind) {
+                // A Task under a signal needs the signal marked ready for work.
+                match w.signal_assessments.get(parent) {
+                    None => anyhow::bail!("{parent} has no readiness assessment"),
+                    Some(a) if !a.ready => {
+                        anyhow::bail!("{parent} is not ready for work: {}", a.reason)
+                    }
+                    Some(_) => objects::work_ready(w, parent),
+                }
             } else {
                 objects::work_ready(w, parent)
             }

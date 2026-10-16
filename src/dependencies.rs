@@ -5,8 +5,8 @@
 use crate::model::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The live tree with the blocking links of every node other than a Task.
-/// Task links keep their revision pins and do not take part here.
+/// The live tree with its blocking links. A Task link to another Task keeps its revision pin
+/// and its done rule and does not take part here; a Task link to any other node does.
 #[derive(Default)]
 pub struct Graph {
     parents: BTreeMap<String, Option<String>>,
@@ -26,10 +26,17 @@ impl Graph {
                 o.current().parent.as_deref().map(resolve),
                 role == Some("ac"),
             );
-            if role != Some("task") {
-                for link in &o.current().links {
-                    if link.blocking && link.relation == "depends_on" {
-                        graph.link(key.clone(), resolve(&link.target));
+            for link in &o.current().links {
+                if link.blocking && link.relation == "depends_on" {
+                    let target = resolve(&link.target);
+                    // A Task link to another Task keeps its revision pin and its done rule.
+                    let target_task = w
+                        .objects
+                        .get(&target)
+                        .and_then(|t| types.get(&t.kind))
+                        .is_some_and(|t| t.role == "task");
+                    if role != Some("task") || !target_task {
+                        graph.link(key.clone(), target);
                     }
                 }
             }
