@@ -203,6 +203,7 @@ pub async fn tree_schema(
         objects::SchemaRevision {
             revision: 0,
             types: objects::legacy_defaults(),
+            priorities: None,
             actor: row.get(0),
             at: String::new(),
             position: 0,
@@ -418,6 +419,7 @@ pub async fn read_objects(
                 &selected,
             )
             .await?;
+            add_priorities(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
             let (waits, counts) =
                 super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
             add_waits(
@@ -509,14 +511,29 @@ pub async fn read_objects(
     // Waiting criteria leave the unstarted list inside the query, before its limit.
     let (waits, counts) = super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
     let waiting: Vec<String> = waits.keys().cloned().collect();
+    // Unstarted work follows the priority chain from the top, then journal order. Its pages
+    // continue after the cursor object in that order, at the same journal position.
+    let chain = priority_chain_sql("o.workspace", "o.address", "$16::text[]");
+    let unstarted_order = format!(
+        "{chain},(SELECT (r.document->>'at')::timestamptz FROM joppa.object_revisions r WHERE r.workspace=o.workspace AND r.address=o.address AND r.revision=1),o.address"
+    );
     let (after_filter, order) = if inbox {
         (
-            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text)",
-            "(o.inbox_status='processed'),o.address",
+            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text) AND $16::text[] IS NOT NULL".to_owned(),
+            "(o.inbox_status='processed'),o.address".to_owned(),
+        )
+    } else if unstarted {
+        (
+            "$2::text IS NOT NULL AND NOT $13::boolean".to_owned(),
+            unstarted_order,
         )
     } else {
-        ("o.address>$2 AND NOT $13::boolean", "o.address")
+        (
+            "o.address>$2 AND NOT $13::boolean AND $16::text[] IS NOT NULL".to_owned(),
+            "o.address".to_owned(),
+        )
     };
+    let values = priority_values(&*conn, &workspace).await?;
     // A criterion that is green by its test reports has nothing left to plan.
     // It leaves the unstarted list before LIMIT, so pages stay full.
     let green: Vec<String> = if unstarted {
@@ -595,7 +612,11 @@ pub async fn read_objects(
                 &after,
                 &scope.kind,
                 &parent,
-                &((limit + 1) as i64),
+                &if unstarted {
+                    i64::MAX
+                } else {
+                    (limit + 1) as i64
+                },
                 &prefix,
                 &scope.note_status,
                 &related_to,
@@ -606,9 +627,23 @@ pub async fn read_objects(
                 &after_processed,
                 &green,
                 &waiting,
+                &values,
             ],
         )
         .await?;
+    let rows = if unstarted {
+        let start = if after.is_empty() {
+            0
+        } else {
+            rows.iter()
+                .position(|r| r.get::<_, String>(0) == after)
+                .context("object list changed; start again without cursor")?
+                + 1
+        };
+        rows.into_iter().skip(start).take(limit + 1).collect()
+    } else {
+        rows
+    };
     let more = rows.len() > limit;
     let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     for (item, row) in items.iter_mut().zip(rows.iter()) {
@@ -630,6 +665,7 @@ pub async fn read_objects(
     }
     add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
     add_status_tones(&*conn, &workspace, &mut items, &selected).await?;
+    add_priorities(&*conn, &workspace, &mut items).await?;
     add_waits(
         &*conn,
         &workspace,
@@ -703,6 +739,81 @@ async fn add_waits(
         }
     }
     Ok(())
+}
+
+/// The priority values of the current tree schema, the first value first in work order.
+pub(super) async fn priority_values(
+    client: &impl GenericClient,
+    workspace: &str,
+) -> Result<Vec<String>> {
+    let saved: Option<String> = client
+        .query_opt(
+            "SELECT (value->'tree_schema'->-1->'priorities')::text FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key=''",
+            &[&workspace],
+        )
+        .await?
+        .and_then(|row| row.get(0));
+    Ok(saved
+        .and_then(|v| serde_json::from_str(&v).ok())
+        .unwrap_or_else(|| ["p0", "p1", "p2"].map(String::from).to_vec()))
+}
+
+/// The priority of each node in process.priority: its own value of the current list, else
+/// the last value. A priority is not a change of the node.
+async fn add_priorities(
+    client: &impl GenericClient,
+    workspace: &str,
+    items: &mut [Value],
+) -> Result<()> {
+    let addresses: Vec<String> = items
+        .iter()
+        .filter_map(|i| i["address"].as_str().map(String::from))
+        .collect();
+    if addresses.is_empty() {
+        return Ok(());
+    }
+    let values = priority_values(client, workspace).await?;
+    let own: std::collections::BTreeMap<String, String> = client
+        .query(
+            "SELECT key,value#>>'{}' FROM joppa.state_entries WHERE workspace=$1 AND section='priorities' AND key=ANY($2)",
+            &[&workspace, &addresses],
+        )
+        .await?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    let last = values.last().cloned().unwrap_or_default();
+    for item in items {
+        let Some(address) = item["address"].as_str() else {
+            continue;
+        };
+        let priority = own
+            .get(address)
+            .filter(|v| values.contains(v))
+            .cloned()
+            .unwrap_or_else(|| last.clone());
+        if !item["process"].is_object() {
+            item["process"] = json!({});
+        }
+        item["process"]["priority"] = json!(priority);
+    }
+    Ok(())
+}
+
+/// The SQL rank array of the priority chain of `node` (a column of joppa.objects or of the
+/// Task queue): the rank of each priority from the root down to it. `values` is the list.
+pub(super) fn priority_chain_sql(workspace: &str, node: &str, values: &str) -> String {
+    format!(
+        "(WITH RECURSIVE up(address,depth) AS (
+            SELECT {node},0
+            UNION ALL
+            SELECT COALESCE(al.target,p.parent),up.depth+1 FROM up
+            JOIN joppa.objects p ON p.workspace={workspace} AND p.address=up.address
+            LEFT JOIN joppa.object_aliases al ON al.workspace=p.workspace AND al.address=p.parent
+            WHERE p.parent IS NOT NULL AND up.depth<64)
+        SELECT array_agg(COALESCE(array_position({values},pe.value#>>'{{}}'),cardinality({values})) ORDER BY up.depth DESC)
+        FROM up LEFT JOIN joppa.state_entries pe ON pe.workspace={workspace} AND pe.section='priorities' AND pe.key=up.address)"
+    )
 }
 
 /// The tone of each node from the status rule of its type: tests takes the test status of

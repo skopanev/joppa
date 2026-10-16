@@ -831,6 +831,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             actor,
             schema.revision,
             &schema.types,
+            None,
             "Record the default Task readiness gate",
             position,
             at,

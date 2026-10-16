@@ -208,7 +208,7 @@ pub(super) fn select_next(
 ) -> Result<Option<(String, u32, String)>> {
     let priorities = validate_selection(state, project, purpose, priorities)?;
     let mut waiting = None;
-    let mut choices: Vec<(usize, u64, String, String, u32)> = state
+    let mut choices: Vec<(usize, Vec<usize>, u64, String, String, u32)> = state
         .requirements
         .iter()
         .filter_map(|(req, q)| q.revisions.last().map(|r| (req, q, r)))
@@ -223,6 +223,7 @@ pub(super) fn select_next(
         .map(|(req, q, r, id, t)| {
             (
                 rank(state, req, q, r, id, t, &priorities),
+                Vec::new(),
                 t.created_at,
                 req.clone(),
                 id.clone(),
@@ -247,6 +248,7 @@ pub(super) fn select_next(
         }
         choices.push((
             object_rank(state, key, t, &priorities),
+            crate::objects::priority_chain(state, key),
             t.created_at,
             String::new(),
             key.clone(),
@@ -257,11 +259,12 @@ pub(super) fn select_next(
     if let Some(reason) = waiting.filter(|_| choices.is_empty()) {
         anyhow::bail!("{reason}");
     }
-    choices.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3).cmp(&(&b.0, &b.1, &b.2, &b.3)));
+    // Explicit priorities first, then the priority chain from the top, then journal order.
+    choices.sort_by(|a, b| (&a.0, &a.1, &a.2, &a.3, &a.4).cmp(&(&b.0, &b.1, &b.2, &b.3, &b.4)));
     Ok(choices
         .into_iter()
         .next()
-        .map(|(_, _, req, id, revision)| (req, revision, id)))
+        .map(|(_, _, _, req, id, revision)| (req, revision, id)))
 }
 
 /// Current Task queue, sourced from just the latest revision of each REQ in the

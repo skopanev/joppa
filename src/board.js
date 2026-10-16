@@ -543,6 +543,7 @@ async function renderObjectTree(){
   const generation=loadNumber;
   const configuration=window.SNAPSHOT?{schema:data.snapshot_schema}:await api('workspaces/'+encodeURIComponent(ws)+'/tree');if(generation!==loadNumber)return;
   data.objectTypes=configuration.schema.types;
+  data.priorities=configuration.schema.priorities||['p0','p1','p2'];
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
   if(data.launch.configured)root.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
@@ -668,6 +669,31 @@ function markdownBlock(text,cls){
   if(markdownSafe)box.innerHTML=markdownSafe(text);else{box.textContent=text;box.classList.add('markdown-raw');}
   return box;
 }
+// The priority of a node as a drop-down of the configured values. A change is not a new
+// revision of the node; a refused change keeps the old value and shows the error.
+function priorityControl(item){
+  const select=E('select',undefined,'priority-select');
+  select.setAttribute('aria-label','Priority of '+item.title);
+  const values=data.priorities||['p0','p1','p2'];
+  for(const value of values.includes(item.process.priority)?values:[...values,item.process.priority]){
+    const option=E('option',value.toUpperCase());option.value=value;select.append(option);
+  }
+  select.value=item.process.priority;
+  select.disabled=!!window.SNAPSHOT;
+  for(const type of ['click','keydown','pointerdown'])select.addEventListener(type,e=>e.stopPropagation());
+  select.onchange=async()=>{
+    const previous=item.process.priority,next=select.value;
+    select.disabled=true;
+    try{
+      const response=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/priority',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:item.address,priority:next})});
+      const reply=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(reply.error||'Could not set the priority.');
+      item.process.priority=next;
+    }catch(e){select.value=previous;toast(e.message,true);}
+    select.disabled=false;
+  };
+  return select;
+}
 function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
@@ -690,8 +716,10 @@ function commonObjectCard(item,loadedDetail,parentTitle){
   const deps=item.waits_for?.count||1;
   const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
   if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
+  // Every live node shows its priority; a member changes it in the row.
+  const priority=item.process?.priority&&!item.historical&&item.present!==false?priorityControl(item):null;
   // An empty slot keeps the count column aligned on rows without a count.
-  summary.append(title,objectTypeLabel(item.kind),...waits,chip||E('span',undefined,'count-slot'));
+  summary.append(title,...(priority?[priority]:[]),objectTypeLabel(item.kind),...waits,chip||E('span',undefined,'count-slot'));
   // The count can colour the row dot only once both sit in the summary.
   if(chip?.dataset.total)showTestCount(chip);
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));

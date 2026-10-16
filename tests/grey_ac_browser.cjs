@@ -996,6 +996,39 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
   } finally { await f.close(); }
 });
 
+// work-priority-ac4
+test('work-priority-ac4: each row shows its priority and alex sets p0 on the requirement from its row', async () => {
+  const f = await fixture(criterionRecords);
+  try {
+    for (const [target, priority] of [['domain:d', 'p1'], ['capability:c', 'p0'], ['ac:A', 'p1']]) {
+      await f.command({op: 'set_priority', target, priority});
+    }
+    const expected = {'domain:d': 'P1', 'capability:c': 'P0', 'requirement:r': 'P2', 'ac:A': 'P1'};
+    for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
+      await f.page.setViewportSize({width, height});
+      for (const [address, label] of Object.entries(expected)) {
+        const card = await f.open(address);
+        const select = card.locator(':scope > summary .priority-select');
+        assert.equal(await select.locator('option:checked').innerText(), label, width + ' ' + address);
+        assert.ok(await select.isVisible(), width + ' ' + address);
+      }
+      // Alex sets p0 on the requirement from its row; the row shows it at once.
+      const card = await f.open('requirement:r');
+      const select = card.locator(':scope > summary .priority-select');
+      const saved = f.page.waitForResponse(r => r.url().endsWith('/priority') && r.request().method() === 'POST');
+      await select.selectOption('p0');
+      assert.equal((await saved).status(), 200);
+      assert.equal(await select.locator('option:checked').innerText(), 'P0');
+      assert.equal(await card.evaluate(e => e.open), true, 'the change does not toggle the row');
+      assert.equal((await f.api('/objects?address=requirement:r')).process.priority, 'p0');
+      assert.equal((await f.mcp('joppa_objects', {address: 'requirement:r'})).process.priority, 'p0');
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+      await f.command({op: 'set_priority', target: 'requirement:r', priority: 'p2'});
+      expected['requirement:r'] = 'P2';
+    }
+  } finally { await f.close(); }
+});
+
 // settings-in-name-menu-ac4
 test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and opens New workspace from the header', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});

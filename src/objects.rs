@@ -85,6 +85,10 @@ pub struct ReferenceRule {
 pub struct SchemaRevision {
     pub revision: u32,
     pub types: BTreeMap<String, TreeType>,
+    /// The ordered priority values, the first value first in work order. Without a saved
+    /// list the values are p0, p1 and p2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priorities: Option<Vec<String>>,
     pub actor: String,
     pub at: String,
     pub position: u64,
@@ -285,6 +289,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
         .unwrap_or_else(|| SchemaRevision {
             revision: 0,
             types: legacy_defaults(),
+            priorities: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -482,6 +487,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
     candidate.tree_schema.push(SchemaRevision {
         revision: schema_revision,
         types,
+        priorities: previous_schema.priorities.clone(),
         actor: actor.into(),
         at: at.into(),
         position,
@@ -674,11 +680,55 @@ pub fn status_order(t: &TreeType) -> Vec<String> {
         .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
 }
 
+#[allow(clippy::too_many_arguments)]
+/// The priority values of the workspace, the first value first in work order.
+pub fn priority_values(w: &Workspace) -> Vec<String> {
+    schema(w)
+        .priorities
+        .unwrap_or_else(|| ["p0", "p1", "p2"].map(String::from).to_vec())
+}
+
+/// The priority of a node: its own value of the current list, else the last value.
+pub fn priority(w: &Workspace, key: &str) -> String {
+    let values = priority_values(w);
+    w.priorities
+        .get(resolve_address(w, key))
+        .filter(|v| values.contains(v))
+        .cloned()
+        .unwrap_or_else(|| values.last().cloned().unwrap_or_default())
+}
+
+/// The work order key of a node: the rank of each priority from the root down to it.
+pub fn priority_chain(w: &Workspace, key: &str) -> Vec<usize> {
+    let values = priority_values(w);
+    let mut chain = vec![];
+    let mut seen = BTreeSet::new();
+    let mut current = Some(resolve_address(w, key).to_owned());
+    while let Some(node) = current.filter(|n| seen.insert(n.clone())) {
+        let value = priority(w, &node);
+        chain.push(
+            values
+                .iter()
+                .position(|v| *v == value)
+                .unwrap_or(values.len()),
+        );
+        current = w
+            .objects
+            .get(&node)
+            .and_then(|o| o.current().parent.clone())
+            .map(|p| resolve_address(w, &p).to_owned());
+    }
+    chain.reverse();
+    chain
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn set_schema(
     w: &mut Workspace,
     actor: &str,
     revision: u32,
     types: &BTreeMap<String, TreeType>,
+    priorities: Option<&Vec<String>>,
     reason: &str,
     position: u64,
     at: &str,
@@ -696,6 +746,16 @@ pub fn set_schema(
         !types.is_empty() && types.len() <= 100,
         "tree schema needs 1 to 100 types"
     );
+    if let Some(values) = priorities {
+        let mut seen = BTreeSet::new();
+        ensure!(
+            (1..=20).contains(&values.len())
+                && values.iter().all(|v| (1..=32).contains(&v.chars().count())
+                    && v.chars().all(|c| !c.is_whitespace() && !c.is_control())
+                    && seen.insert(v.as_str())),
+            "a priority list has 1 to 20 different values without spaces"
+        );
+    }
     for (kind, t) in types {
         commands::identifier(kind)?;
         commands::nonempty(&t.title)?;
@@ -825,9 +885,11 @@ pub fn set_schema(
             )?;
         }
     }
+    let priorities = priorities.cloned().or_else(|| schema(w).priorities);
     w.tree_schema.push(SchemaRevision {
         revision: revision + 1,
         types: types.clone(),
+        priorities,
         actor: actor.into(),
         at: at.into(),
         position,

@@ -16,7 +16,15 @@ pub enum Command {
     SetTreeSchema {
         revision: u32,
         types: BTreeMap<String, crate::objects::TreeType>,
+        /// The ordered priority values; without it the schema keeps its current list.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        priorities: Option<Vec<String>>,
         reason: String,
+    },
+    /// Set the priority of a node. It changes no revision, status or readiness.
+    SetPriority {
+        target: String,
+        priority: String,
     },
     SaveObject {
         id: String,
@@ -522,6 +530,7 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("rename_workspace", &["title", "reason"], OWNER),
+    op("set_priority", &["target", "priority"], MEMBER),
     op("delete_workspace", &["reason"], OWNER),
     op("reorder_tree", &["kind", "expected", "ids"], OWNER),
     op("member", &["id", "role"], OWNER),
@@ -988,9 +997,33 @@ pub(crate) fn apply_inner(
         Command::SetTreeSchema {
             revision,
             types,
+            priorities,
             reason,
         } => {
-            crate::objects::set_schema(w, actor, *revision, types, reason, position, recorded_at)?;
+            crate::objects::set_schema(
+                w,
+                actor,
+                *revision,
+                types,
+                priorities.as_ref(),
+                reason,
+                position,
+                recorded_at,
+            )?;
+        }
+        Command::SetPriority { target, priority } => {
+            let key = crate::objects::resolve_address(w, target).to_owned();
+            ensure!(
+                w.objects.get(&key).is_some_and(|o| o.current().present),
+                "unknown object"
+            );
+            let values = crate::objects::priority_values(w);
+            ensure!(
+                values.contains(priority),
+                "priority is one of {}",
+                values.join(", ")
+            );
+            w.priorities.insert(key, priority.clone());
         }
         Command::SaveObject { .. } => {
             crate::objects::save(w, actor, command, position, recorded_at)?;

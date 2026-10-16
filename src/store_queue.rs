@@ -187,7 +187,10 @@ pub(super) async fn read(
         .await?
         .get(0);
     ensure!(offset <= total, "invalid task cursor offset");
-    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($9::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($9)+1),created_at,sort_req,sort_id LIMIT $10 OFFSET $11"), &[&workspace,&actor,&project,&purpose,&view,&held,&held_req,&waiting,&targets,&(limit as i64),&offset]).await?;
+    // Explicit priorities first, then the priority chain of each Task from the top.
+    let values = super::objects::priority_values(client, workspace).await?;
+    let chain = super::objects::priority_chain_sql("q.workspace", "q.address", "$12::text[]");
+    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($9::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($9)+1),{chain},created_at,sort_req,sort_id LIMIT $10 OFFSET $11"), &[&workspace,&actor,&project,&purpose,&view,&held,&held_req,&waiting,&targets,&(limit as i64),&offset,&values]).await?;
     let mut items: Vec<Value> = rows
         .iter()
         .map(|r| serde_json::from_str(r.get(0)))

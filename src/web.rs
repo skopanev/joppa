@@ -385,6 +385,35 @@ async fn rename_workspace(
             .map(|_| json!({"id": workspace, "title": body.title})),
     )
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PriorityChange {
+    target: String,
+    priority: String,
+}
+/// A member sets the priority of a node from the board row of a signed-in browser.
+async fn set_priority(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<PriorityChange>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to set a priority"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let command = Command::SetPriority {
+        target: body.target.clone(),
+        priority: body.priority.clone(),
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    result(
+        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
+            .await
+            .map(|_| json!({"target": body.target, "priority": body.priority})),
+    )
+}
 /// The owner deletes a workspace from a signed-in browser. The journal stays.
 async fn delete_workspace(
     State(app): State<App>,
@@ -1030,6 +1059,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         )
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/rename", post(rename_workspace))
+        .route("/api/workspaces/{workspace}/priority", post(set_priority))
         .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
