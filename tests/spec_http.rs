@@ -1996,6 +1996,92 @@ async fn the_owner_cannot_archive_a_capability_with_a_live_requirement_over_http
     Ok(())
 }
 
+// tree-schema-safe-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_parent_rule_that_orphans_risk_objects_is_refused_over_http() -> Result<()> {
+    // tree-schema-safe-ac2
+    // skopanev owns the workspace; two risks sit under capability:restrict.
+    let mut w = world().await?;
+    w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
+    for (i, op) in [
+        json!({"op":"workspace","title":"Owned by skopanev"}),
+        json!({"op":"consumer","id":"customer","title":"Customer","owner":"skopanev"}),
+        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
+        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let op: Operation = serde_json::from_value(op)?;
+        store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
+    }
+    let tree = async || -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.skopanev)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status.is_success(), "GET /tree: {status} {body}");
+        Ok(serde_json::from_str(&body)?)
+    };
+    let before = tree().await?;
+    let n = before["current_revision"].as_u64();
+    ensure!(n.is_some(), "{before}");
+    let n = n.unwrap();
+    let mut types = before["schema"]["types"].clone();
+    ensure!(types.get("risk").is_none(), "{before}");
+    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
+    let (status, reply) = text_rule_request(
+        &w,
+        &w.skopanev,
+        &uuid::Uuid::new_v4().to_string(),
+        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add risk"}),
+        "http",
+    )
+    .await?;
+    ensure!(
+        (200..300).contains(&status) && reply.get("error").is_none(),
+        "{status} {reply}"
+    );
+    for id in ["leak", "outage"] {
+        let save = json!({"op":"save_object","kind":"risk","id":id,"revision":0,"parent":"capability:restrict","data":{"title":id,"owner":"skopanev","body":"Scope"},"reason":"Define"});
+        let (ok, reply) = send_as(&w, &w.skopanev, &save).await?;
+        ensure!(ok, "{reply}");
+    }
+    types["risk"]["parents"] = json!(["domain"]);
+    let narrow =
+        json!({"op":"set_tree_schema","revision":n + 1,"types":types,"reason":"Move risk"});
+    for mcp in [false, true] {
+        refused_without_change(
+            &w,
+            mcp,
+            &w.skopanev,
+            narrow.clone(),
+            "parent type is not permitted by the tree schema",
+        )
+        .await?;
+    }
+    let after = tree().await?;
+    ensure!(
+        after["current_revision"] == n + 1
+            && after["schema"]["types"]["risk"]["parents"] == json!(["capability"]),
+        "{after}"
+    );
+    for id in ["leak", "outage"] {
+        let risk = w.get_as(&w.skopanev, &format!("address=risk:{id}")).await?;
+        ensure!(
+            risk["document"]["present"] == true
+                && risk["document"]["parent"] == "capability:restrict",
+            "{risk}"
+        );
+    }
+    Ok(())
+}
+
 async fn list_addresses(w: &World, token: &str, parent: &str) -> Result<Vec<String>> {
     let list = w
         .get_as(token, &format!("limit=100&parent={parent}"))
