@@ -9,6 +9,10 @@ pub struct Workspace {
     pub replay_claims: bool,
     #[serde(skip)]
     pub claim_time_ms: Option<i64>,
+    /// The first journal position of each replay rule (joppa.replay_epochs). A replay
+    /// gives older events the meaning that they had when they were written.
+    #[serde(skip)]
+    pub replay_epochs: BTreeMap<String, u64>,
     #[serde(default)]
     pub claims_migrated: bool,
     #[serde(skip)]

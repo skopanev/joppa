@@ -128,6 +128,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/025_session_hd.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/026_replay_epochs.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -320,6 +322,9 @@ pub struct Event {
 async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, Vec<Event>)> {
     let rows = client.query("SELECT position,actor,recorded_at::text,command::text FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await.context("run joppa migrate before using the journal")?;
     let mut state = Workspace::default();
+    if !rows.is_empty() {
+        state.replay_epochs = replay_epochs(client, workspace).await?;
+    }
     let mut events = vec![];
     for row in rows {
         let position = row.get::<_, i64>(0) as u64;
@@ -337,6 +342,45 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         });
     }
     Ok((state, events))
+}
+/// The replay epochs of a workspace that has a journal. A missing rule stops the replay:
+/// without its epoch the replay cannot tell the old meaning of an event from the new one.
+async fn replay_epochs(
+    client: &impl GenericClient,
+    workspace: &str,
+) -> Result<std::collections::BTreeMap<String, u64>> {
+    let epochs: std::collections::BTreeMap<String, u64> = client
+        .query(
+            "SELECT rule,first_position FROM joppa.replay_epochs WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?
+        .iter()
+        .map(|row| (row.get::<_, String>(0), row.get::<_, i64>(1) as u64))
+        .collect();
+    for rule in commands::REPLAY_RULES {
+        ensure!(
+            epochs.contains_key(rule),
+            "workspace {workspace} has no replay epoch for rule {rule}; run joppa migrate"
+        );
+    }
+    Ok(epochs)
+}
+
+/// A new workspace starts with every replay rule in force.
+pub(super) async fn start_replay_epochs(
+    client: &impl GenericClient,
+    workspace: &str,
+) -> Result<()> {
+    for rule in commands::REPLAY_RULES {
+        client
+            .execute(
+                "INSERT INTO joppa.replay_epochs(workspace,rule,first_position) VALUES($1,$2,1)",
+                &[&workspace, &rule],
+            )
+            .await?;
+    }
+    Ok(())
 }
 async fn resolve_workspace(client: &impl GenericClient, name: &str) -> Result<String> {
     Ok(client

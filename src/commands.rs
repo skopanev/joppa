@@ -854,6 +854,25 @@ pub fn unchanged_save(
     crate::objects::unchanged_save(w, actor, command, position, recorded_at)
 }
 
+/// Replay rules: each one is a later change of the meaning of an old command. A rule
+/// applies to every live write, and in a replay from its epoch in the workspace on.
+pub const RESET_CHANGED: &str = "reset_changed";
+pub const KEEP_ASSESSMENTS: &str = "keep_assessments";
+pub const LIST_SAVE_RESET: &str = "list_save_reset";
+pub const REPLAY_RULES: [&str; 3] = [RESET_CHANGED, KEEP_ASSESSMENTS, LIST_SAVE_RESET];
+
+/// The workspace journal reached the epoch of the rule at `position`.
+fn epoch_reached(w: &Workspace, rule: &str, position: u64) -> bool {
+    w.replay_epochs
+        .get(rule)
+        .is_none_or(|first| position >= *first)
+}
+
+/// The rule applies to the event at `position`.
+pub fn rule_applies(w: &Workspace, rule: &str, position: u64) -> bool {
+    !w.replay_claims || epoch_reached(w, rule, position)
+}
+
 pub fn apply_replay(
     w: &mut Workspace,
     actor: &str,
@@ -867,6 +886,9 @@ pub fn apply_replay(
     w.replay_claims = false;
     result?;
     crate::objects::sync(w, actor, command, position, recorded_at);
+    if !epoch_reached(w, RESET_CHANGED, position) {
+        return Ok(());
+    }
     crate::objects::reset_changed(w, position, recorded_at)
 }
 
@@ -1389,6 +1411,7 @@ pub(crate) fn apply_inner(
                     );
                 }
             }
+            let keep_assessments = rule_applies(w, KEEP_ASSESSMENTS, position);
             let r = w
                 .requirements
                 .entry(req.clone())
@@ -1452,10 +1475,11 @@ pub(crate) fn apply_inner(
                 .last()
                 .map(|old| old.acs.as_slice())
                 .unwrap_or_default();
-            if previous.len() != acs.len()
-                || acs
-                    .iter()
-                    .any(|ac| !previous.iter().any(|old| same_criterion(old, ac)))
+            if keep_assessments
+                && (previous.len() != acs.len()
+                    || acs
+                        .iter()
+                        .any(|ac| !previous.iter().any(|old| same_criterion(old, ac))))
             {
                 carry_assessments(previous, &mut acs);
             }

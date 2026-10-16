@@ -643,6 +643,7 @@ async fn write(
                 position += 1;
                 if position == 1 {
                     tx.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&workspace]).await?;
+                    super::start_replay_epochs(&*tx, &workspace).await?;
                     reserve_name(&*tx, &workspace, &workspace).await?;
                 }
                 if let Command::RenameWorkspace { workspace_id: Some(name), .. } = &command {

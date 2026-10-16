@@ -124,6 +124,9 @@ pub fn set(
         position,
         reason: reason.into(),
     });
+    if !crate::commands::rule_applies(w, crate::commands::LIST_SAVE_RESET, position) {
+        return Ok(());
+    }
     crate::objects::reset_criteria(w, &address, at)
 }
 

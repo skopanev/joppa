@@ -1710,7 +1710,9 @@ fn saved(
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             candidate.document_overrides.remove(&key);
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
-            if let Command::Revise { req, .. } = &cmd {
+            if let Command::Revise { req, .. } = &cmd
+                && commands::rule_applies(&candidate, commands::KEEP_ASSESSMENTS, position)
+            {
                 keep_assessments(&mut candidate, req);
             }
             sync(&mut candidate, actor, &cmd, position, at);
@@ -2869,6 +2871,9 @@ pub fn archive(
     let inbox = input_type(w, kind);
     w.objects.get_mut(&target).unwrap().revisions.push(next);
     w.archived_objects.insert(target.clone());
+    if !commands::rule_applies(w, commands::LIST_SAVE_RESET, position) {
+        return Ok(());
+    }
     // An archived spec object resets the criteria at and below its parent.
     match parent {
         Some(parent) if !inbox => reset_criteria(w, &parent, at),

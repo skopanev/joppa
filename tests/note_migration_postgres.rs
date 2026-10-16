@@ -21,6 +21,14 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     let conn = pool.get().await?;
     conn.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&ws])
         .await?;
+    // This journal is written by the current rules, so every replay epoch starts at 1.
+    for rule in joppa::commands::REPLAY_RULES {
+        conn.execute(
+            "INSERT INTO joppa.replay_epochs(workspace,rule,first_position) VALUES($1,$2,1)",
+            &[&ws, &rule],
+        )
+        .await?;
+    }
     for (index, command) in commands.iter().enumerate() {
         let actor = if index < 2 { "owner" } else { "agent" };
         conn.execute("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb)", &[&ws,&((index+1) as i64),&actor,&Uuid::new_v4().to_string(),&command.to_string()]).await?;
