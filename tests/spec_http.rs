@@ -3585,7 +3585,7 @@ async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
     // signal-records-source-ac1
     let w = world().await?;
     let source = json!({"channel_type":"chat","channel_name":"support","author":"maria","at":"2026-10-09T10:00:00Z"});
-    w.command(json!({"op":"save_object","kind":"note","id":"chat","revision":0,"parent":null,"data":{"title":"Refunds are slow","owner":"owner","body":"My refund takes a week","source":source},"links":[],"reason":"Intake"}))
+    w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":"chat","revision":0,"parent":null,"data":{"title":"Refunds are slow","owner":"owner","body":"My refund takes a week","source":source},"links":[],"reason":"Intake"}))
         .await?;
     let read = w.get("address=note:chat").await?;
     ensure!(read["document"]["data"]["source"] == source, "{read}");
