@@ -16,7 +16,7 @@ pub const MEMBERSHIP: &str =
 /// domain grants that equal the hd. Without hd, no domain grant matches.
 const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
      UNION SELECT workspace FROM joppa.domain_grants WHERE domain=lower($2::text)";
-const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
+const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1 AND value->'deleted_at' IS NULL";
 
 /// Resolve types for the authors of the records that this read returns.
 pub(super) async fn actor_types(
@@ -183,6 +183,10 @@ async fn join(tx: &impl GenericClient, actor: &str, workspaces: &BTreeSet<String
             !state.admin.is_empty(),
             "Access rule refers to an unknown workspace"
         );
+        // A grant to a deleted workspace admits nobody.
+        if state.deleted_at.is_some() {
+            continue;
+        }
         if let Some(role) = state.members.get(actor) {
             ensure!(role == "human", "Google cannot claim a service identity");
             continue;
@@ -366,7 +370,7 @@ pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
                     COALESCE((SELECT array_agg(d.domain ORDER BY d.domain) FROM joppa.domain_grants d WHERE d.workspace=s.workspace), '{}')
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
-             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
+             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1 AND s.value->'deleted_at' IS NULL
              ORDER BY 2,1",
             &[&actor],
         )
@@ -396,7 +400,7 @@ async fn list_grants(
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
              LEFT JOIN joppa.{table} g ON g.workspace=s.workspace
-             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
+             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1 AND s.value->'deleted_at' IS NULL
              GROUP BY 1,2 ORDER BY 2,1"),
             &[&actor],
         )

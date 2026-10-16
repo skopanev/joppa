@@ -92,6 +92,10 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reference_prefix: Option<String>,
     },
+    /// The owner deletes the workspace. The journal stays; nobody reads or writes it again.
+    DeleteWorkspace {
+        reason: String,
+    },
     ReorderTree {
         kind: String,
         parent: Option<String>,
@@ -513,6 +517,7 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("rename_workspace", &["title", "reason"], OWNER),
+    op("delete_workspace", &["reason"], OWNER),
     op("reorder_tree", &["kind", "expected", "ids"], OWNER),
     op("member", &["id", "role"], OWNER),
     op("consumer", &["title", "owner"], MEMBER),
@@ -902,7 +907,7 @@ pub(crate) fn apply_inner(
     identifier(actor)?;
     if let Command::EnrollMember { id } = command {
         ensure!(
-            actor == "joppa-access" && !w.admin.is_empty(),
+            actor == "joppa-access" && !w.admin.is_empty() && w.deleted_at.is_none(),
             "internal enrollment required"
         );
         identifier(id)?;
@@ -1078,6 +1083,13 @@ pub(crate) fn apply_inner(
                 reason: reason.clone(),
             };
             crate::objects::save(w, actor, &command, position, recorded_at)?;
+        }
+        Command::DeleteWorkspace { reason } => {
+            ensure!(actor == w.admin, "workspace owner deletes the workspace");
+            nonempty(reason)?;
+            // Without members, every read and every later command of the workspace is refused.
+            w.members.clear();
+            w.deleted_at = Some(position);
         }
         Command::RenameWorkspace {
             workspace_id,

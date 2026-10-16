@@ -335,6 +335,57 @@ async fn list_domain_grants(State(app): State<App>, headers: HeaderMap) -> ApiRe
     let actor = authenticate(&app, &headers).await?;
     result(store::list_domain_grants(&app.pool, &actor).await)
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceRename {
+    title: String,
+}
+/// The owner renames a workspace from a signed-in browser.
+async fn rename_workspace(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<WorkspaceRename>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to rename a workspace"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let command = Command::RenameWorkspace {
+        workspace_id: None,
+        title: body.title.clone(),
+        reason: "Renamed in Settings".into(),
+        reference_prefix: None,
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    result(
+        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
+            .await
+            .map(|_| json!({"id": workspace, "title": body.title})),
+    )
+}
+/// The owner deletes a workspace from a signed-in browser. The journal stays.
+async fn delete_workspace(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to delete a workspace"));
+    }
+    let actor = authenticate_write(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let command = Command::DeleteWorkspace {
+        reason: "Deleted in Settings".into(),
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    result(
+        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
+            .await
+            .map(|_| json!({"id": workspace, "deleted": true})),
+    )
+}
 /// The settings page reads its owned workspaces, their people and their grants in one request.
 async fn list_owned_access(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
@@ -927,6 +978,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             get(list_domain_grants).post(grant_domain),
         )
         .route("/api/workspaces/{workspace}", get(read))
+        .route("/api/workspaces/{workspace}/rename", post(rename_workspace))
+        .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
         .route("/api/workspaces/{workspace}/tasks", get(tasks))

@@ -67,6 +67,7 @@ pub(super) async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Resul
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     let (state, _) = state_rows::current(&**conn, &workspace).await?;
+    ensure!(state.deleted_at.is_none(), "Workspace not found");
     ensure!(state.admin == actor, "workspace owner required");
     Ok(workspace)
 }

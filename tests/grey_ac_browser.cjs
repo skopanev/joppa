@@ -587,10 +587,11 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       for (const item of await items.all()) assert.ok(inside(await item.boundingBox(), width, height));
       await items.first().click();
       await f.page.waitForURL(f.live.root + '/settings');
-      const list = f.page.locator('#member-workspaces');
-      await list.waitFor();
-      assert.deepEqual(await list.locator(':scope > li > .workspace-title').allInnerTexts(), titles);
-      assert.equal(await list.locator('li').filter({hasText: w3}).count(), 0);
+      // One drop-down lists the workspaces of alex in the server order.
+      const list = f.page.getByLabel('Workspace', {exact: true});
+      await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
+      assert.deepEqual(await list.locator('option').allInnerTexts(), titles);
+      assert.equal(await list.locator('option').filter({hasText: w3}).count(), 0);
       assert.ok(inside(await list.boundingBox(), width, Infinity));
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
@@ -600,8 +601,8 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       : route.continue());
     await f.page.reload();
     await f.page.getByRole('alert').filter({hasText: 'workspace list unavailable'}).waitFor();
-    assert.equal(await f.page.locator('#member-workspaces').isVisible(), false);
-    assert.equal(await f.page.locator('#member-workspaces li').count(), 0);
+    assert.equal(await f.page.locator('#workspace-select option').count(), 0);
+    assert.equal(await f.page.locator('#workspace-panel').isVisible(), false);
   } finally { await person.close(); await f.close(); }
 });
 
@@ -623,8 +624,6 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
     const granted = await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root},
       data: {workspace: owned, email: 'pending@example.com'}});
     assert.equal(granted.status(), 200);
-    const order = (await (await request.get(f.live.root + '/api/workspaces')).json()).map(w => w.id);
-    assert.ok(order.includes(owned) && order.includes(f.live.ws));
     const inside = (box, width) => box.x >= 0 && box.x + box.width <= width;
     for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
       await f.page.setViewportSize({width, height});
@@ -632,37 +631,104 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       const record = r => { const path = new URL(r.url()).pathname; if (path.startsWith('/api/')) reads.push(path); };
       f.page.on('request', record);
       assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
-      const list = f.page.locator('#member-workspaces');
-      await list.waitFor();
-      await f.page.getByLabel('Owned workspace').locator('option[value="' + owned + '"]').waitFor({state: 'attached'});
+      const select = f.page.getByLabel('Workspace', {exact: true});
+      await select.locator('option[value="' + owned + '"]').waitFor({state: 'attached'});
+      await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
       f.page.off('request', record);
       // The page reads two lists and no single workspace.
       assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
-      const entry = id => list.locator(':scope > li').nth(order.indexOf(id));
-      const w1Entry = entry(owned), w2Entry = entry(f.live.ws);
-      assert.equal(await w1Entry.locator('.workspace-title').innerText(), w1);
-      const members = w1Entry.getByRole('list', {name: 'Members of ' + w1});
+      await select.selectOption(owned);
+      const members = f.page.getByRole('list', {name: 'Members', exact: true});
       // People only: the agent member is not on the page.
       assert.deepEqual(await members.locator('li').allInnerTexts(), ['alex', 'maria']);
-      assert.ok(!(await w1Entry.innerText()).includes('planner-bot'));
-      assert.ok(!(await w1Entry.innerText()).includes('pending@example.com'));
-      assert.equal(await w2Entry.locator('.workspace-title').innerText(), 'Browser checks');
-      assert.equal(await w2Entry.locator('ul, ol, [role="list"], form, button, input, select').count(), 0);
-      // The add form offers W1 and not W2.
-      const offered = await f.page.getByLabel('Owned workspace').locator('option').evaluateAll(options => options.map(option => option.value));
-      assert.ok(offered.includes(owned) && !offered.includes(f.live.ws));
-      for (const item of [w1Entry, members, ...await members.locator('li').all(), w2Entry]) {
+      const panel = f.page.locator('#workspace-panel');
+      assert.ok(!(await panel.innerText()).includes('planner-bot'));
+      assert.deepEqual(await f.page.getByRole('list', {name: 'Emails with access'}).locator('li').allInnerTexts(), ['pending@example.com']);
+      for (const item of [select, members, ...await members.locator('li').all()]) {
         assert.ok(inside(await item.boundingBox(), width));
       }
+      // W2 shows no member list and no control.
+      await select.selectOption(f.live.ws);
+      await f.page.locator('#not-owner').waitFor();
+      assert.equal(await panel.locator('ul:visible, form:visible, button:visible, input:visible').count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
-    // A failed owned read keeps the workspace list and shows the server error once.
+    // A failed owned read keeps the drop-down and shows the server error once.
     await f.page.route(f.live.root + '/api/access', route => route.fulfill({status: 500,
       contentType: 'application/json', body: JSON.stringify({error: 'owned read unavailable'})}));
     await f.page.reload();
-    await f.page.locator('#member-workspaces-error').filter({hasText: 'owned read unavailable'}).waitFor();
-    assert.equal(await f.page.locator('#member-workspaces').isVisible(), true);
-    assert.equal(await f.page.locator('#member-workspaces ul').count(), 0);
+    await f.page.locator('#workspace-error').filter({hasText: 'owned read unavailable'}).waitFor();
+    assert.ok(await f.page.locator('#workspace-select option').count() >= 2);
+    assert.equal(await f.page.locator('#owner-panel').isVisible(), false);
+  } finally { await f.close(); }
+});
+
+// owner-manages-workspace-ac1
+test('owner-manages-workspace-ac1: alex renames an owned workspace in Settings', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    const request = f.page.context().request;
+    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Old name'}});
+    const {id} = await created.json();
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const select = f.page.getByLabel('Workspace', {exact: true});
+    await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await select.selectOption(id);
+    const title = f.page.getByLabel('New title'), rename = f.page.getByRole('button', {name: 'Rename'});
+    assert.equal(await title.inputValue(), 'Old name');
+    // A blank title shows the server error and keeps the name.
+    await title.fill('  ');
+    await rename.click();
+    await f.page.locator('#rename-error').filter({hasText: 'text must not be empty'}).waitFor();
+    await title.fill('New name');
+    const saved = f.page.waitForResponse(r => r.url().endsWith('/rename') && r.request().method() === 'POST');
+    await rename.click();
+    assert.equal((await saved).status(), 200);
+    await select.locator('option[value="' + id + '"]').filter({hasText: 'New name'}).waitFor({state: 'attached'});
+    assert.equal(await select.inputValue(), id);
+    const listed = (await (await request.get(f.live.root + '/api/workspaces')).json()).filter(w => w.id === id);
+    assert.deepEqual(listed, [{id, title: 'New name'}]);
+    // A member who is not the owner cannot rename W2.
+    const refused = await request.post(f.live.root + '/api/workspaces/' + encodeURIComponent(f.live.ws) + '/rename',
+      {headers: {Origin: f.live.root}, data: {title: 'Taken'}});
+    assert.notEqual(refused.status(), 200);
+    assert.ok(!(await (await request.get(f.live.root + '/api/workspaces')).json()).some(w => w.title === 'Taken'));
+  } finally { await f.close(); }
+});
+
+// owner-manages-workspace-ac2
+test('owner-manages-workspace-ac2: alex deletes an owned workspace in Settings and nobody reads it', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}});
+  try {
+    const request = f.page.context().request;
+    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Doomed ' + crypto.randomUUID()}});
+    const {id, title} = await created.json();
+    const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(id) + '/commands', {method: 'POST',
+      headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', id: 'owner', role: 'human'}})});
+    assert.equal(added.status, 200, await added.text());
+    assert.equal((await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}})).status, 200);
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const select = f.page.getByLabel('Workspace', {exact: true});
+    await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    await select.selectOption(id);
+    // The first click only asks; Cancel keeps the workspace.
+    await f.page.getByRole('button', {name: 'Delete workspace'}).click();
+    await f.page.getByRole('button', {name: 'Cancel'}).click();
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 200);
+    await f.page.getByRole('button', {name: 'Delete workspace'}).click();
+    const deleted = f.page.waitForResponse(r => r.url().endsWith('/delete') && r.request().method() === 'POST');
+    await f.page.getByRole('button', {name: 'Delete for everyone'}).click();
+    assert.equal((await deleted).status(), 200);
+    await select.locator('option[value="' + id + '"]').waitFor({state: 'detached'});
+    // Neither the owner nor the other member lists or reads it.
+    assert.ok(!(await (await request.get(f.live.root + '/api/workspaces')).json()).some(w => w.id === id || w.title === title));
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 404);
+    assert.equal((await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}})).status, 404);
+    // A member who is not the owner cannot delete W2.
+    const refused = await request.post(f.live.root + '/api/workspaces/' + encodeURIComponent(f.live.ws) + '/delete', {headers: {Origin: f.live.root}});
+    assert.notEqual(refused.status(), 200);
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + f.live.ws)).status(), 200);
   } finally { await f.close(); }
 });
 
@@ -746,12 +812,13 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     assert.equal(created.status(), 200);
     const {id} = await created.json();
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
-    const workspace = f.page.getByLabel('Owned workspace'), email = f.page.getByLabel('Email or domain');
+    const workspace = f.page.getByLabel('Workspace', {exact: true}), email = f.page.getByLabel('Email or domain');
     const add = f.page.getByRole('button', {name: 'Add', exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
-    // Only owned workspaces are offered; the owner of the fixture workspace is not alex.
-    const offered = await workspace.locator('option').evaluateAll(options => options.map(option => option.value));
-    assert.ok(!offered.includes(f.live.ws));
+    // The fixture workspace is offered, but alex does not own it, so it has no add field.
+    await workspace.selectOption(f.live.ws);
+    await f.page.locator('#not-owner').waitFor();
+    assert.equal(await email.isVisible(), false);
     await workspace.selectOption(id);
     // A value with "@" is an email, so a malformed email gets the email error.
     await email.fill('maria@');
@@ -780,7 +847,7 @@ test('settings-in-name-menu-ac3: Settings shows no agent token controls and read
     const requests = [];
     f.page.on('request', r => requests.push(r.url()));
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
-    await f.page.getByLabel('Owned workspace').locator('option').first().waitFor({state: 'attached'});
+    await f.page.locator('#workspace-select option').first().waitFor({state: 'attached'});
     assert.equal(await f.page.locator('#agent-tokens, #agent-token-list, #issue-token').count(), 0);
     assert.equal(await f.page.getByText(/token/i).count(), 0);
     assert.ok(!requests.some(url => url.includes('/agent-tokens')));
@@ -812,7 +879,7 @@ test('owner-adds-members-ac8: alex@example.com reloads the board and reads W wit
     assert.deepEqual(await read(id), {status: 404, value: {error: 'Workspace not found'}});
     // The owner adds alex@example.com to W in Settings.
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
-    const workspace = f.page.getByLabel('Owned workspace');
+    const workspace = f.page.getByLabel('Workspace', {exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
     await workspace.selectOption(id);
     await f.page.getByLabel('Email or domain').fill('alex@example.com');
@@ -847,7 +914,7 @@ test('owner-adds-members-ac7: alex adds healthium.one to W in Settings', async (
     const id = await create('Domain space'), control = await create('Domain control');
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
     // The same field takes a domain: a value without "@" is a domain.
-    const workspace = f.page.getByLabel('Owned workspace'), domain = f.page.getByRole('textbox', {name: 'Email or domain'});
+    const workspace = f.page.getByLabel('Workspace', {exact: true}), domain = f.page.getByRole('textbox', {name: 'Email or domain'});
     const add = f.page.getByRole('button', {name: 'Add', exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
     await workspace.selectOption(id);
