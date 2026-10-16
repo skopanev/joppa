@@ -1621,6 +1621,61 @@ async fn a_push_with_no_verify_uploads_nothing() -> Result<()> {
     Ok(())
 }
 
+// result-has-output-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_default_branch_push_after_a_dirty_run_uploads_nothing() -> Result<()> {
+    // A lists X, X is red on C; a full run on a dirty tree at C passes X, then C is pushed.
+    let w = world().await?;
+    let repo = PushRepo::new(&w)?;
+    let c = repo.git(&["rev-parse", "HEAD"])?;
+    w.upload(
+        &c,
+        1,
+        true,
+        junit(&[("opens", "fail"), ("refuses", "pass")]),
+    )
+    .await?;
+    let x_of = |s: &Value| {
+        s["tests"]
+            .as_array()
+            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
+            .map(|x| (x["status"].clone(), x["commit"].clone()))
+    };
+    let red = Some((json!("fail"), json!(c)));
+    let s = w.status().await?;
+    ensure!(x_of(&s) == red, "X is not red on {c}: {s}");
+    let rows = report_rows(&w).await?;
+    ensure!(rows.0 == 1, "one report before the push: {rows:?}");
+    // A tracked change that keeps X passing.
+    let file = repo.repo.join("tests/auth/login.test.ts");
+    let source = std::fs::read_to_string(&file)?;
+    std::fs::write(&file, format!("// Uncommitted change\n{source}"))?;
+    let stamp = repo.bun_test()?;
+    ensure!(
+        stamp["commit"] == c.as_str() && stamp["dirty"] == true && stamp["full"] == true,
+        "{stamp}"
+    );
+    let (code, out) = repo.push(&w.token, &["master"])?;
+    ensure!(code == 0, "git push: {out}");
+    ensure!(
+        repo.remote_head()? == c,
+        "the remote default branch is not at {c}"
+    );
+    let refused = "joppa report: the run was on a dirty tree, nothing uploaded";
+    ensure!(
+        out.lines().any(|line| line == refused),
+        "no \"{refused}\" in: {out}"
+    );
+    ensure!(
+        report_rows(&w).await? == rows,
+        "the push stored a report or result"
+    );
+    let s = w.status().await?;
+    ensure!(x_of(&s) == red, "X is not red on {c}: {s}");
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_upload_without_a_token_is_refused() -> Result<()> {
