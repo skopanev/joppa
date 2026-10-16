@@ -666,6 +666,81 @@ test('settings-agent-tokens-ac1: alex issues a read token for planner-reader in 
   } finally { await f.close(); }
 });
 
+test('settings-agent-tokens-ac1: late token replies stay with their workspace', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const create = async (title, agent) => {
+      const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
+      assert.equal(created.status(), 200);
+      const {id} = await created.json();
+      const url = f.live.root + '/api/workspaces/' + encodeURIComponent(id) + '/agent-tokens';
+      const issued = await request.post(url, {headers: {Origin: f.live.root}, data: {agent, access: 'read'}});
+      assert.equal(issued.status(), 200);
+      return {id, url};
+    };
+    const a = await create('Race A', 'agent-a'), b = await create('Race B', 'agent-b');
+    // Each held request waits for its release.
+    let hold = null;
+    await f.page.route(a.url, async route => {
+      if (hold?.method !== route.request().method()) return route.continue();
+      const held = hold;
+      hold = null;
+      held.started();
+      await held.released;
+      await route.continue();
+    });
+    const holding = method => {
+      const held = {method};
+      const started = new Promise(resolve => { held.started = resolve; });
+      held.released = new Promise(resolve => { held.release = resolve; });
+      hold = held;
+      return {started, release: held.release};
+    };
+    const workspace = f.page.getByLabel('Workspace for the token');
+    const rows = f.page.locator('#agent-token-list tr');
+    const agents = () => rows.evaluateAll(list => list.map(row => row.cells[0].textContent).sort());
+    const first = f.page.waitForResponse(response => response.url().endsWith('/agent-tokens'));
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    await first;
+    await workspace.locator('option[value="' + b.id + '"]').waitFor({state: 'attached'});
+    // A late list reply of A does not replace the list of B.
+    const list = holding('GET');
+    await workspace.selectOption(a.id);
+    await list.started;
+    await workspace.selectOption(b.id);
+    await rows.filter({hasText: 'agent-b'}).waitFor();
+    const late = f.page.waitForResponse(response => response.url() === a.url);
+    list.release();
+    await (await late).finished();
+    await f.page.evaluate(() => new Promise(resolve => setTimeout(resolve, 200)));
+    assert.equal(await workspace.inputValue(), b.id);
+    assert.deepEqual(await agents(), ['agent-b']);
+    // During an issue the workspace cannot change, and the token shows with its own list.
+    const shownA = f.page.waitForResponse(response => response.url() === a.url && response.request().method() === 'GET');
+    await workspace.selectOption(a.id);
+    await shownA;
+    await rows.filter({hasText: 'agent-a'}).waitFor();
+    const issue = holding('POST');
+    await f.page.getByLabel('Agent name').fill('agent-c');
+    await f.page.getByRole('button', {name: 'Issue token'}).click();
+    await issue.started;
+    assert.equal(await workspace.isDisabled(), true);
+    issue.release();
+    await f.page.locator('#new-token').waitFor();
+    await rows.filter({hasText: 'agent-c'}).waitFor();
+    await f.page.waitForFunction(() => !document.getElementById('token-workspace').disabled);
+    assert.equal(await workspace.inputValue(), a.id);
+    assert.deepEqual(await agents(), ['agent-a', 'agent-c']);
+    assert.ok((await f.page.locator('#new-token-value').innerText()).startsWith('jpt_'));
+    // Selecting another workspace drops the shown token.
+    await workspace.selectOption(b.id);
+    await rows.filter({hasText: 'agent-b'}).waitFor();
+    assert.equal(await f.page.locator('#new-token').isVisible(), false);
+    assert.equal(await f.page.locator('#new-token-value').textContent(), '');
+  } finally { await f.close(); }
+});
+
 test('settings-agent-tokens-ac1: a person who owns no workspace sees no token section', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});

@@ -123,18 +123,24 @@ grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-do
     return value;
   };
   const tokens=()=>'/api/workspaces/'+encodeURIComponent(select.value)+'/agent-tokens';
+  // Only the latest list load may fill the table, so a late reply never shows another workspace.
+  let loads=0;
   const show=async()=>{
-    const {items}=await json(await fetch(tokens()),'Could not load the agent tokens.');
-    list.replaceChildren(...items.map(t=>{
-      const row=document.createElement('tr');
-      row.replaceChildren(...[t.agent,t.access,t.revoked?'revoked':'active',t.created_at,t.revoked_at||''].map(text=>{
-        const cell=document.createElement('td');cell.textContent=text;return cell;
+    const load=++loads;
+    try{
+      const {items}=await json(await fetch(tokens()),'Could not load the agent tokens.');
+      if(load!==loads)return;
+      list.replaceChildren(...items.map(t=>{
+        const row=document.createElement('tr');
+        row.replaceChildren(...[t.agent,t.access,t.revoked?'revoked':'active',t.created_at,t.revoked_at||''].map(text=>{
+          const cell=document.createElement('td');cell.textContent=text;return cell;
+        }));
+        return row;
       }));
-      return row;
-    }));
+    }catch(e){if(load===loads)error.textContent=e.message;}
   };
   const hide=()=>{shown.hidden=true;value.textContent='';};
-  select.onchange=()=>{hide();error.textContent='';show().catch(e=>{error.textContent=e.message;});};
+  select.onchange=()=>{hide();error.textContent='';list.replaceChildren();show();};
   copy.onclick=async()=>{
     try{await navigator.clipboard.writeText(value.textContent);copy.textContent='Copied';}
     catch{error.textContent='Could not copy the token. Select it and copy it by hand.';}
@@ -142,7 +148,8 @@ grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-do
   form.onsubmit=async event=>{
     event.preventDefault();
     if(button.disabled)return;
-    button.disabled=true;error.textContent='';hide();
+    // The workspace stays fixed until the token and its list are shown.
+    button.disabled=select.disabled=true;error.textContent='';hide();
     try{
       const created=await json(await fetch(tokens(),{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({agent:agent.value,access:access.value})}),'Could not issue the token.');
@@ -150,7 +157,7 @@ grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-do
       agent.value='';
       await show();
     }catch(e){error.textContent=e.message;}
-    button.disabled=false;
+    button.disabled=select.disabled=false;
   };
   button.disabled=true;
   fetch('/api/email-grants').then(r=>json(r,'Could not load owned workspaces.')).then(({items})=>{
