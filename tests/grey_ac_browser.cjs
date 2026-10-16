@@ -1285,6 +1285,102 @@ test('blocking-pins-revision-ac1: a blocking link keeps its stored target revisi
   } finally { await f.close(); }
 });
 
+test('dependencies-before-priority-ac5: alex sets and removes a dependency from the row of B', async t => {
+  const records = {'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'},
+    'requirement:A': {title: 'Sign-in rule', parent: 'capability:c'}, 'requirement:B': {title: 'Billing rule', parent: 'capability:c'},
+    'ac:A1': {title: 'Sign-in condition', parent: 'requirement:A'}, 'ac:B1': {title: 'Billing condition', parent: 'requirement:B'}};
+  const f = await fixture(records);
+  const read = address => f.api('/objects?address=' + encodeURIComponent(address));
+  const unstarted = async () => {
+    const http = await f.api('/objects?work_filter=unstarted&limit=100');
+    const mcp = await f.mcp('joppa_objects', {work_filter: 'unstarted', limit: 100});
+    assert.deepEqual(mcp, http);
+    return http.items.map(item => item.address);
+  };
+  const card = () => f.page.locator('.object-page > .common-object[data-object-address="requirement:B"]');
+  const waiting = () => card().locator(':scope > summary > .waits-for');
+  try {
+    // B1 is ready and its work is in the queue. A is not green.
+    const b1 = await read('ac:B1');
+    await f.command({op: 'confirm', req: b1.process.req, revision: b1.process.revision}, true);
+    await f.command({op: 'assess', req: b1.process.req, revision: b1.process.revision, ac: b1.process.criterion,
+      assessment: {ready: true, reason: 'Known scope'}}, true);
+    assert.ok((await unstarted()).includes('ac:B1'));
+    const readiness = (await read('ac:B1')).process.assessment.state;
+    assert.equal(readiness, 'ready');
+    // Each width is its own subtest, so the output names both runs.
+    for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('dependencies-before-priority-ac5: ' + viewport.width + ' px', async () => {
+      await f.page.setViewportSize(viewport);
+      const B = await f.open('requirement:B');
+      // Alex chooses Depends on in the row of B and picks A.
+      await B.locator('.depends-on-button').click();
+      const picker = B.locator('.dependency-picker select');
+      await picker.locator('option[value="requirement:A"]').waitFor({state: 'attached'});
+      await picker.selectOption('requirement:A');
+      await B.locator('.dependency-add').click();
+      await waiting().waitFor();
+      assert.equal(await waiting().innerText(), 'Waits for Sign-in rule', JSON.stringify(viewport));
+      assert.equal(await waiting().isVisible(), true);
+      assert.equal(await f.page.evaluate(() => document.activeElement?.classList.contains('depends-on-button')), true);
+      const linked = await f.mcp('joppa_objects', {address: 'requirement:B'});
+      assert.deepEqual(linked.document.links, [{target: 'requirement:A', relation: 'depends_on', blocking: true}]);
+      assert.deepEqual(linked.waits_for.address, 'requirement:A');
+      assert.ok(!(await unstarted()).includes('ac:B1'), 'the work of B leaves the queue');
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
+      if (viewport.width > 390) {
+        // A refused save keeps the row and shows the server error.
+        const A = await f.open('requirement:A');
+        await A.locator('.depends-on-button').click();
+        await A.locator('.dependency-picker select option[value="requirement:B"]').waitFor({state: 'attached'});
+        await A.locator('.dependency-picker select').selectOption('requirement:B');
+        await A.locator('.dependency-add').click();
+        await A.locator('.dependency-error').waitFor();
+        assert.equal(await A.locator('.dependency-error').innerText(), 'dependency cycle');
+        assert.equal(await A.isVisible(), true);
+        assert.deepEqual((await read('requirement:A')).document.links, []);
+        await f.open('requirement:B');
+      }
+      // Alex removes the dependency with the keyboard.
+      const remove = card().getByRole('button', {name: 'Remove dependency on Sign-in rule'});
+      await remove.focus();
+      await f.page.keyboard.press('Enter');
+      await card().locator('.dependency-remove').waitFor({state: 'detached'});
+      assert.equal(await waiting().count(), 0);
+      const unlinked = await read('requirement:B');
+      assert.deepEqual(unlinked.document.links, []);
+      assert.equal(unlinked.waits_for, undefined);
+      assert.ok((await unstarted()).includes('ac:B1'), 'the work of B returns to the queue');
+      assert.equal((await read('ac:B1')).process.assessment.state, readiness, 'the link change cleared no readiness');
+    });
+
+    // Refusals change neither B nor the journal.
+    const before = await read('requirement:B');
+    const route = f.live.root + '/api/workspaces/' + f.live.ws;
+    const body = () => ({request_id: crypto.randomUUID(), source: 'requirement:B', target: 'requirement:A', action: 'add'});
+    const unchanged = async label => {
+      const after = await read('requirement:B');
+      assert.deepEqual([after.current_revision, after.document, after.position], [before.current_revision, before.document, before.position], label);
+    };
+    const foreign = await f.page.request.post(route + '/dependencies', {headers: {Origin: 'https://other.example'}, data: body()});
+    assert.equal(foreign.status(), 403);
+    assert.equal((await foreign.json()).error, 'cross-origin request denied');
+    await unchanged('foreign Origin');
+    // The person has a valid session and no access to this workspace.
+    const outsider = await browser.newContext();
+    try {
+      await outsider.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+      const stranger = await outsider.request.post(route + '/dependencies', {headers: {Origin: f.live.root}, data: body()});
+      assert.equal(stranger.status(), 404);
+    } finally { await outsider.close(); }
+    await unchanged('non-member cookie session');
+    const commands = await f.page.request.post(route + '/commands', {headers: {Origin: f.live.root},
+      data: {request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'requirement', id: 'B', revision: before.current_revision,
+        parent: 'capability:c', data: before.document.data, links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Cookie write'}}});
+    assert.equal(commands.status(), 403);
+    await unchanged('cookie commands');
+  } finally { await f.close(); }
+});
+
 test('compact-open-object-ac1: the object row holds the control for its fields', async () => {
   const title = 'Release plan outline';
   assert.equal(title.length, 20);

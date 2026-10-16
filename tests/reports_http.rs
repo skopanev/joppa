@@ -6943,3 +6943,95 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
     store::check_journal(&p.pool).await?;
     Ok(())
 }
+
+// dependencies-before-priority-ac5
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_commands()
+-> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
+    let root = w.base.split("/api/").next().context("root")?.to_owned();
+    let route = format!("{root}/api/workspaces/{}", p.ws);
+    let session = |actor: &'static str| {
+        let pool = p.pool.clone();
+        async move {
+            let session = format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            );
+            sessions::create(&pool, &session, actor).await?;
+            anyhow::Ok(session)
+        }
+    };
+    let send = |session: String, origin: String, path: &'static str, body: Value| {
+        let request = w
+            .http
+            .post(format!("{route}{path}"))
+            .header("cookie", format!("joppa_session={session}"))
+            .header("origin", origin)
+            .json(&body);
+        async move {
+            let reply = request.send().await?;
+            anyhow::Ok((
+                reply.status().as_u16(),
+                reply.json::<Value>().await.unwrap_or(Value::Null),
+            ))
+        }
+    };
+    let add = || json!({"request_id":uuid::Uuid::new_v4().to_string(),"source":"spec:b","target":"spec:a","action":"add"});
+    let member = session("owner").await?;
+    let outsider = session("outsider").await?;
+    let b = p.read("spec:b").await?;
+    let before = p.saved().await?;
+    let refusals = [
+        (
+            "foreign Origin",
+            send(
+                member.clone(),
+                "http://evil.example".into(),
+                "/dependencies",
+                add(),
+            )
+            .await?,
+            403,
+        ),
+        (
+            "non-member cookie session",
+            send(outsider, root.clone(), "/dependencies", add()).await?,
+            404,
+        ),
+        (
+            "cookie commands",
+            send(member.clone(), root.clone(), "/commands",
+                json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":"spec","id":"b",
+                    "revision":b["current_revision"],"parent":"cap:c","data":b["document"]["data"],
+                    "links":ordering_link("spec:a"),"reason":"Cookie write"}})).await?,
+            403,
+        ),
+    ];
+    for (case, (code, reply), expected) in refusals {
+        ensure!(code == expected, "{case}: {code} {reply}");
+        ensure!(p.saved().await? == before, "{case} changed saved state");
+    }
+    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
+    // Control: the member session from this origin saves and removes only the link.
+    let (code, reply) = send(member.clone(), root.clone(), "/dependencies", add()).await?;
+    ensure!(code == 200, "{code} {reply}");
+    let linked = p.object_both("spec:b").await?;
+    ensure!(
+        linked["document"]["links"] == ordering_link("spec:a")
+            && linked["document"]["data"] == b["document"]["data"]
+            && linked["document"]["parent"] == b["document"]["parent"],
+        "{linked}"
+    );
+    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    let remove = json!({"request_id":uuid::Uuid::new_v4().to_string(),"source":"spec:b","target":"spec:a","action":"remove"});
+    let (code, reply) = send(member, root, "/dependencies", remove).await?;
+    ensure!(code == 200, "{code} {reply}");
+    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
+    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}

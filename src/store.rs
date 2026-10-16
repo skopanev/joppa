@@ -358,7 +358,7 @@ mod state_rows;
 mod write;
 pub use write::{
     BatchOperation, check_fields, execute, execute_batch, execute_input, execute_remote_batch,
-    execute_remote_input,
+    execute_remote_input, save_dependency,
 };
 fn summaries(state: &Workspace) -> Value {
     let summaries: serde_json::Map<String, Value> = state

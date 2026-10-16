@@ -300,6 +300,7 @@ function statusCircle(signal,number){
 }
 function assessmentHint(a){
   if(!a)return '';
+  if(a.state==='dependency')return '\nWaits for: '+a.target;
   if(a.state==='unassessed')return '\nReadiness: Not assessed';
   if(a.state==='waiting')return '\nQuestion: '+a.reason+'\nRecipient: '+personLabel(a.recipient||'Unassigned');
   return '\nReadiness: Ready';
@@ -685,8 +686,10 @@ function commonObjectCard(item,loadedDetail,parentTitle){
   }else if(!isCriterion&&counts&&verificationChildTitle(item.kind)){
     chip=E('span',undefined,'verification-chip');chip.dataset.address=item.address;chip.dataset.total=counts.total;chip.dataset.passed=counts.passed;chip.dataset.failed=counts.failed||0;chip.dataset.childTitle=verificationChildTitle(item.kind);showTestCount(chip);
   }
+  // Waiting work names the first dependency that is not green yet.
+  const waits=item.waits_for?[E('span','Waits for '+(item.waits_for.title||item.waits_for.address),'waits-for')]:[];
   // An empty slot keeps the count column aligned on rows without a count.
-  summary.append(title,objectTypeLabel(item.kind),chip||E('span',undefined,'count-slot'));
+  summary.append(title,objectTypeLabel(item.kind),...waits,chip||E('span',undefined,'count-slot'));
   // The count can colour the row dot only once both sit in the summary.
   if(chip?.dataset.total)showTestCount(chip);
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
@@ -831,6 +834,7 @@ function fillCommonObject(body,detail){
     fields.append(field);
   }
   secondary.append(fields);
+  if(!historical&&r.present!==false&&!window.SNAPSHOT)secondary.append(dependencyControls(detail));
   if(!historical&&data.objectTypes?.[detail.kind]?.role==='ac')secondary.append(criterionTestsSection(detail.address));
   const links=new Map();
   for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
@@ -851,6 +855,54 @@ function fillCommonObject(body,detail){
   }
   const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
   body.append(secondary);
+}
+// Blocking dependencies of a node. Depends on adds one from a picker of live nodes;
+// each one has its own remove control. A refused save keeps the row and shows the error.
+function dependencyControls(detail){
+  const box=E('div',undefined,'object-dependencies');
+  for(const {link,title} of detail.links||[]){
+    if(link.relation!=='depends_on'||!link.blocking)continue;
+    const name=title||link.target,row=E('p',undefined,'dependency-row');
+    const remove=button('Remove',()=>saveDependency(box,detail,link.target,'remove'),'dependency-remove');
+    remove.setAttribute('aria-label','Remove dependency on '+name);
+    row.append(E('span','Depends on','hint'),objectLink(name,link.target),remove);box.append(row);
+  }
+  const picker=E('div',undefined,'dependency-picker');picker.hidden=true;
+  const select=E('select');select.setAttribute('aria-label','Node that this one depends on');
+  const open=button('Depends on',async()=>{
+    if(!picker.hidden){picker.hidden=true;open.setAttribute('aria-expanded','false');return;}
+    select.replaceChildren(E('option','Loading nodes…'));select.disabled=true;picker.hidden=false;open.setAttribute('aria-expanded','true');
+    const items=[],params={parent:'*',limit:'100'};let cursor;
+    do{const page=await objectPart(cursor?{...params,cursor}:params);items.push(...page.items);cursor=page.next_cursor;}while(cursor);
+    const linked=new Set((detail.links||[]).filter(({link})=>link.relation==='depends_on'&&link.blocking).map(({link})=>link.target));
+    const live=items.filter(item=>item.present!==false&&item.address!==detail.address&&!linked.has(item.address)).sort((a,b)=>a.title.localeCompare(b.title));
+    select.replaceChildren(...live.map(item=>{const option=E('option',item.title+' · '+(data.objectTypes[item.kind]?.title||item.kind));option.value=item.address;return option;}));
+    select.disabled=!live.length;if(!live.length)select.append(E('option','No other live nodes'));
+    select.focus();
+  },'depends-on-button');
+  open.setAttribute('aria-expanded','false');
+  const add=button('Add',()=>select.value&&!select.disabled?saveDependency(box,detail,select.value,'add'):undefined,'dependency-add');
+  const cancel=button('Cancel',()=>{picker.hidden=true;open.setAttribute('aria-expanded','false');open.focus();},'dependency-cancel');
+  picker.append(select,add,cancel);
+  const error=E('p',undefined,'dependency-error');error.setAttribute('role','alert');error.hidden=true;
+  box.append(open,picker,error);
+  return box;
+}
+async function saveDependency(box,detail,target,action){
+  const error=box.querySelector(':scope > .dependency-error');error.hidden=true;
+  const response=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/dependencies',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({request_id:crypto.randomUUID(),source:detail.address,target,action})});
+  const reply=await response.json().catch(()=>({}));
+  if(!response.ok){error.textContent=reply.error||'Could not save the dependency.';error.hidden=false;return;}
+  // Read the node again, so its row shows the new wait, and keep the focus on its controls.
+  const card=box.closest('.common-object');if(!card)return;
+  const generation=loadNumber,fresh=await objectPart({address:detail.address});
+  if(generation!==loadNumber||!card.isConnected)return;
+  const r=fresh.document,d=r.data;
+  const next=commonObjectCard({...fresh,title:d.title,owner:d.owner,revision:r.revision,parent:r.parent,present:r.present,at:r.at,note_status:d.status},fresh,
+    card.parentElement?.closest('.common-object')?.dataset.objectTitle);
+  card.replaceWith(next);await next.branchPrepare();next.branchReady=true;next.open=true;
+  next.querySelector('.depends-on-button')?.focus();
 }
 async function showObjectRevisions(address){
   const generation=loadNumber;
