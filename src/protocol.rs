@@ -34,6 +34,7 @@ pub async fn handle(
             tool("joppa_tree", "Read the versioned workspace tree schema. Type index sets presentation order; smaller values appear first. Type title_size sets title size in pixels (12 to 48). Type badge sets the compact label. Type title_preview_length is the maximum title length on write and the visible title length (default 64 characters). Agents change it with set_tree_schema. The browser page is read-only.", json!({"workspace":{"type":"string"},"revision":{"type":"integer","minimum":0}}), json!(["workspace"])),
             tool("joppa_objects", "Read one common object or list its children. Every object has revisions, links, comments and attachments. Address uses kind:id. No address means root objects. parent=* lists all objects. Lists are paginated. history=true returns counts. revision=N reads exactly one document revision. For the Inbox, use kind of a schema type with inbox=true and parent=*. Unprocessed inputs come first, then processed inputs; each group uses address order. Items expose status and note_status. Set note_status=unprocessed for only open inputs. Without parent=* the list holds only root notes and misses notes under other objects. related_to reads links in both directions. work_filter=unstarted lists all configured criteria that are ready, not verified as passing, and have no active Tasks. A blocked Task does not count as active. Task binding follows the nearest criterion through configured tree parents and stops at a specification. Candidates can have done Tasks awaiting verification. Check work_summary.done before creating new work. work_summary counts active, done and retired Tasks. Its done_verification counts passing, failing and unverified completed work. Process evidence remains available through joppa_read.", json!({"workspace":{"type":"string"},"address":{"type":"string"},"parent":{"type":"string"},"kind":{"type":"string"},"revision":{"type":"integer","minimum":1},"history":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":100},"cursor":{"type":"string"},"note_status":{"type":"string","enum":["unprocessed","processed"]},"related_to":{"type":"string"},"work_filter":{"type":"string","enum":["unstarted"]}}), json!(["workspace"])),
             tool("joppa_tasks", "List current Tasks without reading every REQ. available shows tasks this actor can claim, mine shows claimed unfinished tasks, waiting shows unassigned tasks whose configured parent gate, dependencies, or contract are not ready, all shows every current Task. A blocked Task is not claimable; its waiting_reason is \"Task is blocked for planning\". Optional filters and ordered priorities use the same selection as claim_next_task. Results are paginated; a cursor expires when the workspace changes.", json!({"workspace":{"type":"string"},"view":{"type":"string","enum":["available","mine","waiting","all"],"default":"available"},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50},"cursor":{"type":"string"},"project":{"type":"string"},"purpose":{"type":"string","minLength":1},"priorities":{"type":"array","items":{"type":"string"}}}), json!(["workspace"])),
+            tool("joppa_timeline", "Read the timeline of one workspace: one entry for each recorded change, in journal order. Each entry has position, at, actor, actor_type, address, title, revision, change, op and reason. change is save, move, archive, restore, comment, file, tests, readiness, priority, task, report, planning, member, schema, workspace or other. revision is the object revision at that change. A test report upload has the address report/ID. Supply after to read only the entries after that position. Follow next_cursor until it is null. order=newest reads the newest entries first.", json!({"workspace":{"type":"string"},"after":{"type":"integer","minimum":0,"default":0},"limit":{"type":"integer","minimum":1,"maximum":100,"default":50},"cursor":{"type":"string"},"order":{"type":"string","enum":["oldest","newest"],"default":"oldest"}}), json!(["workspace"])),
             tool("joppa_command", "Append an operation. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries. The holder or the workspace owner stops failed work with block_task {id, revision, reason, evidence}: it clears the holder, keeps status open and records process.blocked; claims then refuse the Task. When the failure was outside the Task, the planning holder of the parent criterion or the workspace owner clears the block with unblock_task {id, revision, reason, evidence}: it sets process.blocked to null and keeps the contract and process.origin_revision. finish_planning {ac, reason} compares each blocked, unretired child Task with its document at the block: title, contract, projects and blocking links. If one is unchanged, finish fails with \"blocked Task needs a new contract or retirement\". A successful finish clears process.blocked of the changed Tasks. retire_task {id, revision, reason} needs the Task owner or the workspace owner. The planning holder of the parent criterion can also retire a blocked Task.",json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
@@ -86,6 +87,7 @@ const READ_TOOLS: &[&str] = &[
     "joppa_tree",
     "joppa_objects",
     "joppa_tasks",
+    "joppa_timeline",
     "joppa_help",
     "joppa_model_docs",
 ];
@@ -226,6 +228,29 @@ async fn call(
                 a["project"].as_str(),
                 a["purpose"].as_str(),
                 &priorities,
+            )
+            .await
+        }
+        "joppa_timeline" => {
+            let number = |k: &str, default: u64| {
+                a.get(k)
+                    .map(|v| {
+                        v.as_u64()
+                            .ok_or_else(|| anyhow::anyhow!("{k} must be a whole number"))
+                    })
+                    .transpose()
+                    .map(|v| v.unwrap_or(default))
+            };
+            store::read_timeline(
+                pool,
+                field("workspace")?,
+                actor,
+                &store::TimelineScope {
+                    after: number("after", 0)?,
+                    limit: usize::try_from(number("limit", 50)?)?,
+                    cursor: a["cursor"].as_str(),
+                    order: a["order"].as_str(),
+                },
             )
             .await
         }

@@ -316,8 +316,18 @@ dialog::backdrop{background:#22222240}
 #toast.toast-leaving{opacity:0;transform:translateX(24px)}
 #toast.toast-failed{background:var(--fail)}
 
+.timeline-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.timeline-row{display:grid;grid-template-columns:11em 9em minmax(0,1fr) auto;gap:.2em 1em;align-items:baseline;padding:.45em .3em;border-bottom:1px solid var(--rule);color:var(--text)}
+a.timeline-row:hover{background:var(--hover);text-decoration:none}
+.timeline-time,.timeline-actor{color:var(--muted);font-size:.85em}
+.timeline-object{color:var(--heading);overflow-wrap:anywhere}
+a.timeline-row .timeline-object{color:var(--link)}
+.timeline-change{font-size:.75em;font-variant:small-caps;letter-spacing:.04em;color:var(--muted)}
+.timeline-more{margin-top:1em}
 @media(max-width:760px){
   body{padding:16px}
+  .timeline-row{grid-template-columns:minmax(0,1fr) auto}
+  .timeline-object{grid-column:1/-1}
   .workspace-label{max-width:none}
   .header-actions{margin-left:0;width:100%}
   .filter-fields{grid-template-columns:minmax(0,1fr)}

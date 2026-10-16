@@ -5492,6 +5492,7 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
         "migrate_schema",
         "migrate_documents",
         "migrate_task_claims",
+        "record_report",
     ] {
         ensure!(!command.contains(name), "{name} is in the op enum");
     }

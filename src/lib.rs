@@ -14,4 +14,5 @@ pub mod redact;
 pub mod sessions;
 pub mod store;
 pub mod tasks;
+pub mod timeline;
 pub mod tree_order;

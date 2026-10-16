@@ -443,6 +443,21 @@ It reports each failure and then finishes the run. No extra test runner is requi
 `GET /api/workspaces/:workspace/tasks` reads the same queue as `joppa_tasks`.
 Use view, limit, cursor, project, purpose and comma-separated priorities as query parameters.
 
+## Workspace timeline
+
+`GET /api/workspaces/:workspace/timeline` and `joppa_timeline` return the same page.
+The timeline has one entry for each journal event, in journal order.
+Each entry has `position`, `at`, `actor`, `actor_type`, `address`, `title`, `revision`, `change`, `op` and `reason`.
+`revision` is the object revision at that change. The board opens it with `?object=ADDRESS&revision=N`.
+`change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, report, planning, member, schema, workspace or other.
+A move is a save that changes only the parent.
+A test report upload appends a `record_report` event, so it has a journal position too. Its address is `report/ID`.
+Use `after=POSITION` to read only later entries. Use `limit` (1 to 100, default 50).
+Send `next_cursor` as `cursor` to read the next page. The last page has `next_cursor: null`.
+`order=newest` reads the newest entries first; its cursor reads older entries.
+Members and agents of the workspace read the timeline. Another account gets 404 `Workspace not found`.
+The board shows the timeline at `/?workspace=W&view=timeline`, newest first.
+
 
 ## Planning a criterion
 

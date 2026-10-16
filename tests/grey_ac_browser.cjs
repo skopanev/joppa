@@ -2051,4 +2051,66 @@ test('no-dashed-focus-ac1: a mouse click leaves no focus mark on the history Clo
   } finally { await f.close(); }
 });
 
+// workspace-timeline-ac2
+test('workspace-timeline-ac2: alex reads the newest change first and opens R at the revision of its move', async () => {
+  const configured = {...types, signal: {title: 'Signals', role: 'document', root: true, parents: ['*'], inbox: true, badge: 'SIG'}};
+  const f = await fixture({
+    'domain:d': {title: 'Domain'},
+    'capability:c1': {title: 'First capability', parent: 'domain:d'},
+    'capability:c2': {title: 'Second capability', parent: 'domain:d'},
+    'requirement:q': {title: 'Requirement of A', parent: 'capability:c1'},
+    'ac:A': {title: 'Criterion A', parent: 'requirement:q'},
+    'signal:n': {title: 'Signal N'},
+  }, configured);
+  try {
+    // The five changes of ac1: bot saves R, P moves R, archives N, marks A ready, bot uploads a report.
+    const criterion = await f.api('/objects?address=ac:A');
+    await f.command({op: 'confirm', req: criterion.process.req, revision: criterion.process.revision}, true);
+    await f.save('requirement:R', {title: 'Requirement R', parent: 'capability:c1'});
+    await f.command({op: 'save_object', kind: 'requirement', id: 'R', revision: 1, parent: 'capability:c2',
+      data: {title: 'Requirement R', owner: 'owner', body: 'Current source'}, reason: 'Move R to the second capability'}, true);
+    await f.command({op: 'archive_object', target: 'signal:n', revision: 1, reason: 'Signal N is handled'}, true);
+    const ready = await f.api('/objects?address=ac:A');
+    await f.command({op: 'assess', req: ready.process.req, revision: ready.process.revision, ac: ready.process.criterion,
+      assessment: {ready: true, reason: 'The scope of A is known'}}, true);
+    await f.upload('0123abc', 1, [['one']]);
+    const newest = (await f.api('/timeline?order=newest&limit=5')).items;
+    assert.deepEqual(newest.map(item => item.change), ['report', 'readiness', 'archive', 'move', 'save']);
+    const move = newest[3];
+    assert.deepEqual([move.address, move.revision, newest[4].address, newest[4].revision], ['requirement:R', 2, 'requirement:R', 1]);
+    for (const viewport of [{width: 1280, height: 900}, {width: 390, height: 844}]) {
+      await f.page.setViewportSize(viewport);
+      // alex opens the timeline page from the header link.
+      await f.open('domain:d');
+      const link = f.page.locator('#timeline-link');
+      assert.equal(new URL(await link.getAttribute('href'), f.live.root).search, '?workspace=' + f.live.ws + '&view=timeline');
+      await link.click();
+      const rows = f.page.locator('.timeline-list > .timeline-entry');
+      await rows.nth(4).waitFor();
+      assert.equal(await f.page.locator('.timeline-title').innerText(), 'Timeline');
+      for (const [index, item] of newest.entries()) {
+        const row = rows.nth(index);
+        assert.equal(await row.getAttribute('data-position'), String(item.position), viewport.width + ': row ' + (index + 1));
+        const expected = await f.page.evaluate(item => [eventDate(item.at), personLabel(item.actor), item.title, item.change], item);
+        assert.deepEqual(await row.locator('.timeline-time, .timeline-actor, .timeline-object, .timeline-change').allInnerTexts(),
+          expected, viewport.width + ': row ' + (index + 1));
+      }
+      assert.deepEqual(await rows.locator('.timeline-object').evaluateAll(nodes => nodes.slice(0, 5).map(node => node.textContent)),
+        ['Test report 0123abc', 'Criterion A', 'Signal N', 'Requirement R', 'Requirement R']);
+      for (const index of [0, 4]) {
+        const box = await rows.nth(index).boundingBox();
+        assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, viewport.width + ': ' + JSON.stringify(box));
+      }
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), viewport.width + ': no horizontal scroll');
+      // The move row opens R at the revision of the move.
+      await rows.nth(3).locator('a.timeline-row').click();
+      await f.page.waitForURL(url => url.searchParams.get('object') === 'requirement:R' && url.searchParams.get('revision') === String(move.revision));
+      const card = f.page.locator('.object-page > .common-object[data-object-address="requirement:R"]');
+      await card.waitFor();
+      assert.ok((await f.page.locator('.object-page-navigation > .hint').innerText()).startsWith('Revision ' + move.revision), viewport.width);
+      await Promise.all(f.requests.map(entry => entry.body));
+    }
+  } finally { await f.close(); }
+});
+
 });

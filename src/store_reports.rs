@@ -70,6 +70,19 @@ pub async fn upload_report(
     if stamp.dirty {
         return Err(commands::ClientField("a dirty run cannot be uploaded").into());
     }
+    // Writes take the workspace lock first; the upload appends its journal event under it.
+    tx.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+        &[&workspace],
+    )
+    .await?;
+    let event = |report: i64, repeat: bool| Command::RecordReport {
+        report,
+        commit: stamp.commit.clone(),
+        branch: stamp.branch.clone(),
+        tests: results.len() as u64,
+        repeat,
+    };
     let inserted = tx.query_opt(
         "INSERT INTO joppa.test_reports(workspace,commit_sha,commit_time,commit_order,branch,default_branch,dirty,full_run,uploader,stamp_hash,junit) VALUES($1,$2,$3::text::timestamptz,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (workspace,commit_sha,stamp_hash) DO NOTHING RETURNING id",
         &[&workspace,&stamp.commit,&stamp.commit_time,&stamp.order,&stamp.branch,&stamp.default_branch,&stamp.dirty,&stamp.full,&actor,&stamp_hash,&upload.junit],
@@ -82,17 +95,23 @@ pub async fn upload_report(
             &[&id],
         )
         .await?;
+        let position =
+            super::timeline::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
-        return Ok(json!({"report": id, "tests": results.len(), "replayed": true}));
+        return Ok(
+            json!({"report": id, "tests": results.len(), "replayed": true, "position": position}),
+        );
     };
     let id: i64 = row.get(0);
     tx.execute(
         "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message) SELECT $1,x.address,x.status,x.duration_ms,x.message FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text)",
         &[&id, &serde_json::to_string(&results)?],
     ).await?;
+    let position =
+        super::timeline::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
     Ok(
-        json!({"report": id, "commit": stamp.commit, "tests": results.len(), "replayed": false, "uploader": actor}),
+        json!({"report": id, "commit": stamp.commit, "tests": results.len(), "replayed": false, "uploader": actor, "position": position}),
     )
 }
 

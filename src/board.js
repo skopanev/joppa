@@ -222,6 +222,7 @@ async function load() {
   if (request !== loadNumber) return;
   data = next;
   data.objectTypes=next.object_types||{};
+  $('timeline-link').href='/?workspace='+encodeURIComponent(ws)+'&view=timeline';
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(ws);
   await renderObjectTree();
@@ -396,6 +397,7 @@ if (window.SNAPSHOT) {
   document.body.classList.add('snapshot');
   $('login-screen').remove();
   $('refresh').remove();
+  $('timeline-link').hidden=true;
   document.body.classList.add('authenticated');
   data = window.SNAPSHOT;
   ws = data.workspace;
@@ -501,6 +503,34 @@ async function renderObjectPage(root,address,revision,generation){
     page.replaceChildren(card);card.open=true;
   }catch(e){if(generation===loadNumber&&page.isConnected)page.replaceChildren(E('p',e.message,'empty-state'));}
 }
+/// The workspace timeline, newest change first. A row with an object revision opens that revision.
+async function renderTimelinePage(root,generation){
+  const navigation=E('nav',undefined,'object-page-navigation');navigation.setAttribute('aria-label','Timeline navigation');
+  const board=E('a','Back to board','text-button');board.href=objectURL();navigation.append(board);
+  const page=E('section',undefined,'timeline-page');page.append(E('h2','Timeline','timeline-title'));
+  const list=E('ol',undefined,'timeline-list');page.append(list);root.append(navigation,page);
+  document.title='Timeline · Joppa';
+  const more=async cursor=>{
+    const params=new URLSearchParams({order:'newest',limit:'50'});if(cursor)params.set('cursor',cursor);
+    const part=await api('workspaces/'+encodeURIComponent(ws)+'/timeline?'+params);if(generation!==loadNumber||!page.isConnected)return;
+    page.querySelector(':scope > .timeline-more')?.remove();
+    for(const item of part.items)list.append(timelineRow(item));
+    if(!list.children.length)page.append(E('p','No changes yet.','hint'));
+    if(part.next_cursor){const next=button('Load older changes',async()=>{next.disabled=true;try{await more(part.next_cursor);}catch(e){next.disabled=false;notify(e);}},'text-button timeline-more');page.append(next);}
+  };
+  try{await more();}catch(e){if(generation===loadNumber&&page.isConnected)page.append(E('p',e.message,'empty-state'));}
+}
+function timelineRow(item){
+  const row=E('li',undefined,'timeline-entry');row.dataset.position=item.position;row.dataset.change=item.change;
+  const kind=item.kind||String(item.address||'').split(':')[0];
+  const title=item.title||item.address||item.op;
+  const target=item.address&&item.revision?E('a',undefined,'timeline-row'):E('div',undefined,'timeline-row');
+  if(target.tagName==='A'){target.href=objectURL(item.address,item.revision);target.dataset.linkAddress=item.address;}
+  const time=E('time',eventDate(item.at),'timeline-time');time.dateTime=item.at;
+  target.append(time,E('span',personLabel(item.actor),'timeline-actor'),E('span',objectTitlePreview(title,kind),'timeline-object'),E('span',item.change,'timeline-change'));
+  target.title=[item.change,title,item.reason].filter(Boolean).join(' · ');
+  row.append(target);return row;
+}
 async function appendObjectChildren(root,parent,kind,extra={}){
   const generation=loadNumber;
   const params={limit:'50',...extra};if(parent)params.parent=parent;if(kind)params.kind=kind;
@@ -546,6 +576,7 @@ async function renderObjectTree(){
   data.priorities=configuration.schema.priorities||['p0','p1','p2'];
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
+  if(selection.get('view')==='timeline')return renderTimelinePage(root,generation);
   if(data.launch.configured)root.append(E('p',data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(data.launch.blocker_count??data.launch.blockers?.length),'hint'));
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
   commonObjectFilters(root,contents);root.append(contents);

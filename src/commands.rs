@@ -143,6 +143,17 @@ pub enum Command {
     EnrollMember {
         id: String,
     },
+    /// Internal event of a test report upload: it gives the upload its journal position.
+    /// The report itself stays in joppa.test_reports; the event changes no state.
+    RecordReport {
+        report: i64,
+        commit: String,
+        branch: String,
+        tests: u64,
+        /// True for an identical repeat of a stored report.
+        #[serde(default)]
+        repeat: bool,
+    },
     Domain {
         id: String,
         title: String,
@@ -958,6 +969,9 @@ pub(crate) fn apply_inner(
         return Ok(());
     }
     ensure!(w.members.contains_key(actor), "not a workspace member");
+    if let Command::RecordReport { .. } = command {
+        return Ok(());
+    }
     if crate::planning::apply(w, actor, command, position, recorded_at)? {
         return Ok(());
     }

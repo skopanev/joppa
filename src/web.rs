@@ -559,6 +559,36 @@ async fn objects(
     )
 }
 #[derive(Deserialize)]
+struct TimelineQuery {
+    after: Option<u64>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    order: Option<String>,
+}
+/// The workspace timeline, with the access rules of the other reads.
+async fn timeline(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<TimelineQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(
+        store::read_timeline(
+            &app.pool,
+            &workspace,
+            &actor,
+            &store::TimelineScope {
+                after: q.after.unwrap_or(0),
+                limit: q.limit.unwrap_or(50),
+                cursor: q.cursor.as_deref(),
+                order: q.order.as_deref(),
+            },
+        )
+        .await,
+    )
+}
+#[derive(Deserialize)]
 struct TaskQuery {
     view: Option<String>,
     limit: Option<usize>,
@@ -1064,6 +1094,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
         .route("/api/workspaces/{workspace}/tasks", get(tasks))
+        .route("/api/workspaces/{workspace}/timeline", get(timeline))
         .route("/api/workspaces/{workspace}/tree", get(tree_schema))
         .route(
             "/api/workspaces/{workspace}/reports",

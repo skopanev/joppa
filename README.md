@@ -213,6 +213,7 @@ with it gets HTTP 401 `token revoked`.
 | `joppa_list` | List accessible products |
 | `joppa_read` | Read a workspace or resolve a copied system ID |
 | `joppa_tasks` | List available, assigned or waiting Tasks without opening every REQ |
+| `joppa_timeline` | Read every recorded change of a workspace in journal order, page by page |
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_model_docs` | Read English model, process and evidence rules |
 | `joppa_help` | Read command shapes and API rules |
