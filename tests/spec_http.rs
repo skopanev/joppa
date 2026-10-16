@@ -3409,14 +3409,16 @@ async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
     Ok(())
 }
 
+// signal-in-one-inbox-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
-    // signal-in-one-inbox-ac2
     let w = world().await?;
-    w.command(json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":"requirement:key","data":{"title":"Under","owner":"owner","body":"About keys"},"links":[],"reason":"Save"}))
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let bot = token["token"].as_str().unwrap();
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":"requirement:key","data":{"title":"Under","owner":"owner","body":"About keys"},"links":[],"reason":"Save"}))
         .await?;
-    let inbox = w.get("kind=note&parent=*&limit=100").await?;
+    let inbox = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     let items = inbox["items"].as_array().cloned().unwrap_or_default();
     ensure!(
         items
