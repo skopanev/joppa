@@ -723,7 +723,9 @@ test('owner-manages-workspace-ac1: alex renames an owned workspace in Settings',
     const select = f.page.getByLabel('Workspace', {exact: true});
     await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
     await select.selectOption(id);
-    const title = f.page.getByLabel('New title'), rename = f.page.getByRole('button', {name: 'Rename'});
+    // The pencil next to the drop-down opens the rename form with the current title.
+    await f.page.locator('header').getByRole('button', {name: 'Rename workspace'}).click();
+    const title = f.page.getByLabel('New title'), rename = f.page.getByRole('button', {name: 'Rename', exact: true});
     assert.equal(await title.inputValue(), 'Old name');
     // A blank title shows the server error and keeps the name.
     await title.fill('  ');
@@ -737,6 +739,10 @@ test('owner-manages-workspace-ac1: alex renames an owned workspace in Settings',
     assert.equal(await select.inputValue(), id);
     const listed = (await (await request.get(f.live.root + '/api/workspaces')).json()).filter(w => w.id === id);
     assert.deepEqual(listed, [{id, title: 'New name'}]);
+    await f.page.locator('#rename-workspace').waitFor({state: 'hidden'});
+    // W2 is not owned by alex, so the pencil is gone.
+    await select.selectOption(f.live.ws);
+    assert.equal(await f.page.getByRole('button', {name: 'Rename workspace'}).isVisible(), false);
     // A member who is not the owner cannot rename W2.
     const refused = await request.post(f.live.root + '/api/workspaces/' + encodeURIComponent(f.live.ws) + '/rename',
       {headers: {Origin: f.live.root}, data: {title: 'Taken'}});
@@ -815,6 +821,8 @@ test('create-workspace-ac1: alex creates Billing on the settings page and owns i
     const titles = async () => (await (await request.get(f.live.root + '/api/workspaces')).json()).map(w => w.title);
     assert.ok(!(await titles()).includes('Billing'));
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    // New workspace in the header opens the form.
+    await f.page.getByRole('button', {name: '+ New workspace'}).click();
     const title = f.page.getByLabel('Workspace title'), create = f.page.getByRole('button', {name: 'Create'});
     // A failed request keeps the form and shows the server error.
     await title.fill('  ');
@@ -924,7 +932,7 @@ test('board-opens-top-level-ac1: a reload of the board shows only the top level'
 });
 
 // settings-in-name-menu-ac4
-test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and puts Create first', async () => {
+test('settings-in-name-menu-ac4: Settings follows the board theme, links back to the board and opens New workspace from the header', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   try {
     const created = await f.page.context().request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Themed space'}});
@@ -943,10 +951,16 @@ test('settings-in-name-menu-ac4: Settings follows the board theme, links back to
     await f.page.getByRole('button', {name: 'Switch to light theme'}).click();
     assert.equal(await background(), 'rgb(255, 252, 245)');
     assert.equal(await f.page.evaluate(() => localStorage.getItem('theme')), 'light');
-    // The workspace drop-down sits in the header, as on the board, and Create a workspace is the first section.
-    assert.equal(await f.page.locator('header.app-header .workspace-label #workspace-select').count(), 1);
-    const sections = await f.page.locator('main section h2').allInnerTexts();
-    assert.equal(sections[0], 'Create a workspace');
+    // The header holds the workspace drop-down, the pencil and New workspace; the forms open on demand.
+    const header = f.page.locator('header.app-header');
+    assert.equal(await header.locator('.workspace-label #workspace-select').count(), 1);
+    assert.equal(await header.getByRole('button', {name: '+ New workspace'}).isVisible(), true);
+    assert.equal(await f.page.locator('#create-workspace').isVisible(), false);
+    assert.equal(await f.page.locator('#rename-workspace').isVisible(), false);
+    await header.getByRole('button', {name: '+ New workspace'}).click();
+    assert.equal(await f.page.getByLabel('Workspace title').evaluate(e => e === document.activeElement), true);
+    await f.page.locator('#create-workspace').getByRole('button', {name: 'Cancel'}).click();
+    assert.equal(await f.page.locator('#create-workspace').isVisible(), false);
     // Back to board opens the selected workspace.
     const workspace = f.page.getByLabel('Workspace', {exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});

@@ -42,11 +42,20 @@ try{
 #delete-confirm{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0}
 #delete-confirm[hidden]{display:none}
 .back-link{color:var(--link);text-decoration:none;white-space:nowrap}
+/* Rename and New workspace sit next to the workspace drop-down, as header controls. */
+.icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;color:var(--muted);flex:none}
+.icon-button:hover{color:var(--heading)}
+.header-button{color:var(--link);white-space:nowrap;flex:none}
+.drawer{padding:1em 0 1.2em;border-bottom:1px solid var(--rule)}
+.drawer[hidden]{display:none}
+.drawer .cancel{color:var(--muted);border-color:transparent}
 </style>
 <body class="authenticated">
 <header class="app-header">
   <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong></a>
   <label class="workspace-label"><span class="sr-only">Workspace</span><select id="workspace-select" name="workspace" aria-label="Workspace" disabled></select></label>
+  <button id="rename-open" class="icon-button" type="button" aria-label="Rename workspace" title="Rename workspace" hidden><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+  <button id="create-open" class="header-button" type="button">+ New workspace</button>
   <nav class="header-actions" aria-label="Account and display">
     <a id="back-link" class="back-link" href="/">← Back to board</a>
     <button id="theme" type="button" aria-label="Switch to dark theme" title="Switch to dark theme">
@@ -64,40 +73,36 @@ try{
 </header>
 <main class="settings">
   <h1>Settings</h1>
-  <section aria-labelledby="create-workspace-title">
-    <h2 id="create-workspace-title">Create a workspace</h2>
-    <form id="create-workspace">
-      <label for="workspace-title">Workspace title</label>
-      <div class="row"><input id="workspace-title" name="title" autocomplete="off"><button id="create-workspace-button" type="submit">Create</button></div>
-      <p id="create-workspace-error" role="alert"></p>
-    </form>
-  </section>
-  <section aria-labelledby="workspace-section-title">
-    <h2 id="workspace-section-title">Workspace settings</h2>
-    <p id="workspace-error" role="alert"></p>
-    <div id="workspace-panel" hidden>
-      <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
-      <div id="owner-panel" class="owner-block" hidden>
-        <h2>People</h2>
-        <ul id="workspace-people" aria-label="People with access"></ul>
-        <form id="grant-access">
-          <label for="grant-address">Email or domain</label>
-          <div class="row"><input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"><button id="grant-button" type="submit">Add</button></div>
-          <p id="grant-error" role="alert"></p>
-        </form>
-        <form id="rename-workspace" class="owner-block">
-          <label for="rename-title">New title</label>
-          <div class="row"><input id="rename-title" name="title" autocomplete="off"><button id="rename-button" type="submit">Rename</button></div>
-          <p id="rename-error" role="alert"></p>
-        </form>
-        <div id="delete-workspace" class="danger">
-          <button id="delete-button" class="action" type="button">Delete workspace</button>
-          <p id="delete-confirm" hidden><span>Delete this workspace for every member?</span> <button id="delete-confirm-button" class="action" type="button">Delete for everyone</button> <button id="delete-cancel-button" class="action" type="button">Cancel</button></p>
-          <p id="delete-error" role="alert"></p>
-        </div>
+  <form id="create-workspace" class="drawer" aria-labelledby="create-workspace-title" hidden>
+    <h2 id="create-workspace-title">New workspace</h2>
+    <label for="workspace-title">Workspace title</label>
+    <div class="row"><input id="workspace-title" name="title" autocomplete="off"><button id="create-workspace-button" type="submit">Create</button><button class="cancel" type="button">Cancel</button></div>
+    <p id="create-workspace-error" role="alert"></p>
+  </form>
+  <form id="rename-workspace" class="drawer" aria-labelledby="rename-workspace-title" hidden>
+    <h2 id="rename-workspace-title">Rename workspace</h2>
+    <label for="rename-title">New title</label>
+    <div class="row"><input id="rename-title" name="title" autocomplete="off"><button id="rename-button" type="submit">Rename</button><button class="cancel" type="button">Cancel</button></div>
+    <p id="rename-error" role="alert"></p>
+  </form>
+  <p id="workspace-error" role="alert"></p>
+  <div id="workspace-panel" hidden>
+    <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
+    <section id="owner-panel" aria-labelledby="people-title" hidden>
+      <h2 id="people-title">People</h2>
+      <ul id="workspace-people" aria-label="People with access"></ul>
+      <form id="grant-access">
+        <label for="grant-address">Email or domain</label>
+        <div class="row"><input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"><button id="grant-button" type="submit">Add</button></div>
+        <p id="grant-error" role="alert"></p>
+      </form>
+      <div id="delete-workspace" class="danger">
+        <button id="delete-button" class="action" type="button">Delete workspace</button>
+        <p id="delete-confirm" hidden><span>Delete this workspace for every member?</span> <button id="delete-confirm-button" class="action" type="button">Delete for everyone</button> <button id="delete-cancel-button" class="action" type="button">Cancel</button></p>
+        <p id="delete-error" role="alert"></p>
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 </main>
 <script>
 // The page reads two lists: the workspaces of the session and the owned workspaces with their
@@ -150,6 +155,8 @@ const show=()=>{
   $('workspace-people').replaceChildren(...(own?.members||[]).map(m=>item('member',m.label,m.owner?null:{member:m.id})),
     ...(own?.emails||[]).map(e=>item('email',e+' (invited)',{email:e})),...(own?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d})));
   $('rename-title').value=own?.title||'';
+  // The pencil renames the selected workspace, so only its owner sees it.
+  $('rename-open').hidden=!own;if(!own)$('rename-workspace').hidden=true;
   for(const id of ['grant-error','rename-error','delete-error'])$(id).textContent='';
   $('delete-confirm').hidden=true;$('delete-button').hidden=false;
 };
@@ -165,6 +172,18 @@ const load=async selected=>{
   show();
 };
 select.onchange=show;
+// Each header button opens its form above the people; Cancel or a second click closes it.
+const drawer=(button,form,focus)=>{
+  $(button).onclick=()=>{
+    const open=$(form).hidden;
+    for(const id of ['create-workspace','rename-workspace'])$(id).hidden=true;
+    $(form).hidden=!open;
+    if(open)$(focus).focus();
+  };
+  $(form).querySelector('.cancel').onclick=()=>{$(form).hidden=true;$(button).focus();};
+};
+drawer('create-open','create-workspace','workspace-title');
+drawer('rename-open','rename-workspace','rename-title');
 // Remove takes one member, email or domain away from the selected workspace at once.
 const remove=async(removal,button)=>{
   const workspace=select.value;
@@ -202,6 +221,7 @@ $('rename-workspace').onsubmit=async event=>{
   try{
     await send('/api/workspaces/'+encodeURIComponent(workspace)+'/rename','POST',{title:$('rename-title').value},'Could not rename the workspace.');
     await load(workspace);
+    $('rename-workspace').hidden=true;
   }catch(e){$('rename-error').textContent=e.message;}
   button.disabled=false;
 };
