@@ -920,26 +920,36 @@ test('settings-agent-tokens-ac2: alex revokes the write token of bot in Settings
 // settings-agent-tokens-ac3
 test('settings-agent-tokens-ac3: alex, a member who is not the owner of W, sees no token list and no token controls for W', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  const person = await browser.newContext({reducedMotion: 'reduce'});
   try {
-    // The owner issues an active token for bot; alex reads W as a member with the cookie session.
+    // alex@example.com is a fresh person with a cookie session who owns no workspace. The rules admit alex to W,
+    // the owner adds alex to W as a member and issues an active token for bot.
+    writeFileSync(f.live.access_file, JSON.stringify({emails: {'alex@example.test': [f.live.ws], 'alex@example.com': [f.live.ws]}}));
+    await f.command({op: 'member', id: f.live.person, role: 'human'}, true);
     const bot = await f.api('/agent-tokens', {agent: 'bot', access: 'write'}, f.live.owner);
-    const tokens = f.live.root + '/api/workspaces/' + f.live.ws + '/agent-tokens';
-    assert.equal((await f.page.context().request.get(f.live.root + '/api/workspaces/' + f.live.ws)).status(), 200);
-    const owned = f.page.waitForResponse(response => response.url().endsWith('/api/email-grants'));
-    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    const api = f.live.root + '/api/workspaces/' + f.live.ws;
+    await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
+    assert.equal((await person.request.get(api)).status(), 200);
+    const page = await person.newPage(), requests = [], errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => requests.push(request.url()));
+    const owned = page.waitForResponse(response => response.url().endsWith('/api/email-grants'));
+    assert.equal((await page.goto(f.live.root + '/settings')).status(), 200);
     const reply = await owned;
-    assert.equal(reply.status(), 200);
-    assert.ok(!(await reply.json()).items.some(item => item.id === f.live.ws));
-    // The section is removed, or it offers only workspaces that alex owns from earlier tests.
-    await f.page.waitForFunction(() => !document.getElementById('agent-tokens')?.hidden);
-    await f.page.waitForLoadState('networkidle');
-    // No issue control for W, and the page never loads the token list of W, so no row or revoke control of W shows.
-    assert.equal(await f.page.locator('#token-workspace option[value="' + f.live.ws + '"]').count(), 0);
-    assert.ok(!f.requests.some(request => request.url.startsWith(tokens)));
+    assert.deepEqual((await reply.json()).items, []);
+    await page.locator('#agent-tokens').waitFor({state: 'detached'});
+    await page.waitForLoadState('networkidle');
+    for (const control of [page.locator('#agent-token-list'), page.getByRole('table', {name: 'Agent tokens of the workspace'}),
+      page.getByLabel('Agent name'), page.getByLabel('Workspace for the token'), page.getByLabel('Token access'),
+      page.getByRole('button', {name: 'Issue token'}), page.getByRole('button', {name: 'Revoke token of bot'}),
+      page.getByRole('button', {name: 'Copy token'}), page.getByText('Agent tokens')]) {
+      assert.equal(await control.count(), 0);
+    }
+    assert.ok(!requests.some(url => url.startsWith(api + '/agent-tokens')));
+    assert.deepEqual(errors, []);
     // The token of bot stays active.
-    assert.equal((await fetch(f.live.root + '/api/workspaces/' + f.live.ws + '/objects?parent=*',
-      {headers: {Authorization: 'Bearer ' + bot.token}})).status, 200);
-  } finally { await f.close(); }
+    assert.equal((await fetch(api + '/objects?parent=*', {headers: {Authorization: 'Bearer ' + bot.token}})).status, 200);
+  } finally { await person.close(); await f.close(); }
 });
 
 test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
