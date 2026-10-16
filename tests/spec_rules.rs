@@ -121,18 +121,18 @@ fn an_object_with_live_children_cannot_be_archived() {
     );
 }
 
+// removal-is-archiving-ac3
 #[test]
 fn a_human_who_is_not_the_owner_cannot_archive() {
-    // removal-is-archiving-ac3
+    // A member may archive an Inbox note, so the refusal uses a capability.
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
     refused(
         &mut w,
         "legal",
-        json!({"op":"archive_object","target":"note:a","revision":1,"reason":"Remove"}),
+        json!({"op":"archive_object","target":"capability:c","revision":1,"reason":"Remove"}),
         "workspace owner or agent required",
     );
-    assert!(w.state.objects["note:a"].current().present);
+    assert!(w.state.objects["capability:c"].current().present);
 }
 
 #[test]
