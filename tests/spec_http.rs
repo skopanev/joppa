@@ -5707,6 +5707,18 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
+    // The deletion comes last: after it, the workspace accepts no command.
+    covered.push(
+        check_callers(
+            &w,
+            &help,
+            None,
+            json!({"op":"delete_workspace","reason":"Close the workspace"}),
+            &w.owner,
+            "workspace owner deletes the workspace",
+        )
+        .await?,
+    );
     let mut restricted: Vec<String> = help["operations"]
         .as_object()
         .unwrap()

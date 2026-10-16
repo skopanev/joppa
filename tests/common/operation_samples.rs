@@ -8,6 +8,8 @@ pub fn sample(op: &str, field: &str) -> Value {
         "tests" | "expected" | "ids" | "subject_keys" | "projects" | "acs" | "checks" => json!([]),
         "archived" | "discovery_complete" => json!(false),
         "assessment" => json!({"ready":true,"reason":"The contract is clear"}),
+        // A blank reason passes the field check, and the refusal keeps the shared workspace.
+        "reason" if op == "delete_workspace" => json!(""),
         "evidence" if op == "result" => {
             json!({"check":"c1","outcome":"pass","observed":["Seen"],"note":"Checked"})
         }
