@@ -6368,3 +6368,59 @@ async fn an_owner_schema_save_over_http_adds_one_revision_and_keeps_the_old_one(
     );
     Ok(())
 }
+
+// tree-schema-revision-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_owner_schema_save_on_a_stale_revision_over_http_is_refused_and_changes_nothing()
+-> Result<()> {
+    async fn tree(w: &World) -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.owner)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status == 200, "GET /tree: {status}: {body}");
+        Ok(serde_json::from_str(&body)?)
+    }
+    let w = world().await?;
+    let before = tree(&w).await?;
+    let n = before["current_revision"]
+        .as_u64()
+        .ok_or_else(|| anyhow::anyhow!("current_revision needs a number: {before}"))?;
+    let mut risk = before["schema"]["types"].clone();
+    ensure!(risk.get("risk").is_none(), "risk already exists: {before}");
+    let mut job = risk.clone();
+    risk["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"]});
+    job["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    w.command(json!({"op":"set_tree_schema","revision":n,"types":risk,"reason":"Add risk"}))
+        .await?;
+    let control = tree(&w).await?;
+    ensure!(
+        control["current_revision"] == n + 1,
+        "current_revision is not {}: {control}",
+        n + 1
+    );
+    let body = w
+        .refused(json!({"op":"set_tree_schema","revision":n,"types":job,"reason":"Add jobs"}))
+        .await?;
+    let reply: Value = serde_json::from_str(&body)?;
+    ensure!(
+        reply["error"] == "stale schema revision; read the tree schema again",
+        "{body}"
+    );
+    let after = tree(&w).await?;
+    ensure!(
+        after["current_revision"] == n + 1,
+        "current_revision is not {}: {after}",
+        n + 1
+    );
+    ensure!(
+        after == control,
+        "a stale save changed the tree:\n{after}\ncontrol:\n{control}"
+    );
+    Ok(())
+}
