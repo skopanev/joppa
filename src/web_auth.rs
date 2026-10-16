@@ -17,8 +17,10 @@ struct Pending {
     verifier: String,
     expires: Instant,
     processing: bool,
-    result: Option<std::result::Result<String, String>>,
+    result: Option<std::result::Result<SignedIn, String>>,
 }
+/// The admitted actor and the verified Google hd of this sign-in.
+type SignedIn = (String, Option<String>);
 #[derive(Clone)]
 pub struct Login {
     pub users: BTreeMap<String, String>,
@@ -36,7 +38,7 @@ impl std::fmt::Display for NoAccess {
 }
 impl std::error::Error for NoAccess {}
 /// Error details never include Google's tokens or the authorization code.
-fn outcome(result: Result<String>, cancelled: bool) -> std::result::Result<String, String> {
+fn outcome(result: Result<SignedIn>, cancelled: bool) -> std::result::Result<SignedIn, String> {
     result.map_err(|e| {
         if cancelled || e.is::<NoAccess>() {
             e.to_string()
@@ -223,11 +225,15 @@ impl Login {
             None => Err(NoAccess.into()),
         }
     }
-    async fn enroll(&self, pool: &deadpool_postgres::Pool, identity: &Identity) -> Result<String> {
+    async fn enroll(
+        &self,
+        pool: &deadpool_postgres::Pool,
+        identity: &Identity,
+    ) -> Result<SignedIn> {
         let email = identity.email.to_ascii_lowercase();
         // Grants are read only for a verified email; admit refuses any other.
         let granted = if identity.email_verified {
-            joppa::store::granted_workspaces(pool, &email).await?
+            joppa::store::granted_workspaces(pool, &email, identity.hd.as_deref()).await?
         } else {
             Default::default()
         };
@@ -253,9 +259,10 @@ impl Login {
         if let Some(name) = identity.display_name() {
             joppa::store::update_identity_name(pool, &actor, &identity.sub, &name).await?;
         }
-        Ok(actor)
+        Ok((actor, identity.hd.clone()))
     }
-    pub async fn poll(&self, id: &str) -> Result<Option<(String, String)>> {
+    /// A new session token, the actor and the hd of this sign-in.
+    pub async fn poll(&self, id: &str) -> Result<Option<(String, String, Option<String>)>> {
         let mut pending = self.pending.lock().unwrap();
         let p = pending
             .get(id)
@@ -268,9 +275,9 @@ impl Login {
             return Ok(None);
         };
         pending.remove(id);
-        let actor = result.map_err(anyhow::Error::msg)?;
+        let (actor, hd) = result.map_err(anyhow::Error::msg)?;
         let token = random();
-        Ok(Some((token, actor)))
+        Ok(Some((token, actor, hd)))
     }
 }
 pub fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
@@ -375,9 +382,10 @@ mod tests {
         assert!(l.callback(&pool, &id, &state, None, true).await.is_err());
         assert!(l.poll(&id).await.is_err());
         let (id, _) = l.start(None).await.unwrap();
-        l.pending.lock().unwrap().get_mut(&id).unwrap().result = Some(Ok("owner".into()));
-        let (token, actor) = l.poll(&id).await.unwrap().unwrap();
+        l.pending.lock().unwrap().get_mut(&id).unwrap().result = Some(Ok(("owner".into(), None)));
+        let (token, actor, hd) = l.poll(&id).await.unwrap().unwrap();
         assert_eq!(actor, "owner");
+        assert_eq!(hd, None);
         assert!(l.poll(&id).await.is_err());
         assert_eq!(token.len(), 64);
         let (id, _) = l.start(None).await.unwrap();

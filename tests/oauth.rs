@@ -145,7 +145,7 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &browser, &owner).await?;
+    sessions::create(&pool, &browser, &owner, None).await?;
     let cookie = format!("joppa_session={browser}");
     assert_eq!(
         http.get(format!("{base}/oauth/authorize?{}", form(&a)))

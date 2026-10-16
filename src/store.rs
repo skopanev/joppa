@@ -126,6 +126,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/024_domain_grants.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/025_session_hd.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;

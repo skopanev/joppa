@@ -10,23 +10,26 @@ pub const LIFETIME_SECONDS: u64 = 604_800;
 fn hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
-pub async fn create(pool: &Pool, token: &str, actor: &str) -> Result<()> {
+/// The session keeps the verified Google hd of this sign-in, in lowercase. None means no hd.
+pub async fn create(pool: &Pool, token: &str, actor: &str, hd: Option<&str>) -> Result<()> {
+    let hd = hd.map(str::to_ascii_lowercase);
     pool.get().await?.execute(
         // Срок считается от одной константы, а не от литерала в SQL: два
         // места разъезжаются молча — кука живёт дольше строки в базе.
-        "INSERT INTO joppa.browser_sessions(token_hash, actor, expires_at) VALUES($1,$2,clock_timestamp()+make_interval(secs => $3))",
-        &[&hash(token), &actor, &(LIFETIME_SECONDS as f64)],
+        "INSERT INTO joppa.browser_sessions(token_hash, actor, expires_at, hd) VALUES($1,$2,clock_timestamp()+make_interval(secs => $3),$4)",
+        &[&hash(token), &actor, &(LIFETIME_SECONDS as f64), &hd],
     ).await?;
     Ok(())
 }
-pub async fn actor(pool: &Pool, token: &str) -> Result<Option<String>> {
+/// The actor of a valid session and the hd of its sign-in.
+pub async fn actor(pool: &Pool, token: &str) -> Result<Option<(String, Option<String>)>> {
     if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Ok(None);
     }
     Ok(pool.get().await?.query_opt(
-        "SELECT actor FROM joppa.browser_sessions s WHERE token_hash=$1 AND expires_at>clock_timestamp() AND NOT EXISTS (SELECT 1 FROM joppa.revoked_sessions r WHERE r.token_hash=s.token_hash)",
+        "SELECT actor,hd FROM joppa.browser_sessions s WHERE token_hash=$1 AND expires_at>clock_timestamp() AND NOT EXISTS (SELECT 1 FROM joppa.revoked_sessions r WHERE r.token_hash=s.token_hash)",
         &[&hash(token)],
-    ).await?.map(|row| row.get(0)))
+    ).await?.map(|row| (row.get(0), row.get(1))))
 }
 pub async fn revoke(pool: &Pool, token: &str) -> Result<()> {
     pool.get().await?.execute(

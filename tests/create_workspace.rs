@@ -106,8 +106,8 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
         format!("joppa_session={}{}", id, uuid::Uuid::new_v4().simple()),
         format!("joppa_session={}{}", uuid::Uuid::new_v4().simple(), id),
     );
-    sessions::create(&pool, alex_cookie.split_once('=').unwrap().1, &alex).await?;
-    sessions::create(&pool, sam_cookie.split_once('=').unwrap().1, &sam).await?;
+    sessions::create(&pool, alex_cookie.split_once('=').unwrap().1, &alex, None).await?;
+    sessions::create(&pool, sam_cookie.split_once('=').unwrap().1, &sam, None).await?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
         .port();

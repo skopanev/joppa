@@ -195,21 +195,22 @@ async fn authenticate_grant(
             None => None,
         }
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
-        let actor = sessions::actor(&app.pool, token).await.map_err(|_| {
+        let session = sessions::actor(&app.pool, token).await.map_err(|_| {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(json!({"error":"Could not check your session. Please retry."})),
             )
         })?;
         // A grant made after sign-in takes effect on the next page load, without a new sign-in.
-        if let Some(actor) = &actor {
+        // A domain grant needs the hd of this session's own sign-in.
+        if let Some((actor, hd)) = &session {
             let configured = app.login.users.iter().find(|(_, id)| *id == actor);
             let configured = configured.map(|(email, _)| email.as_str());
-            store::enroll_granted(&app.pool, actor, configured)
+            store::enroll_granted(&app.pool, actor, configured, hd.as_deref())
                 .await
                 .map_err(failure)?;
         }
-        actor.map(|actor| (actor, store::Access::Write))
+        session.map(|(actor, _)| (actor, store::Access::Write))
     } else {
         None
     };
@@ -779,8 +780,8 @@ async fn poll_login(State(app): State<App>, headers: HeaderMap) -> AuthResult {
     let mut response = auth_headers();
     match app.login.poll(id).await.map_err(auth_error)? {
         None => Ok((response, Json(json!({"status":"pending"})))),
-        Some((token, actor)) => {
-            sessions::create(&app.pool, &token, &actor)
+        Some((token, actor, hd)) => {
+            sessions::create(&app.pool, &token, &actor, hd.as_deref())
                 .await
                 .map_err(auth_error)?;
             if let Some(old) = web_auth::cookie(&headers, "joppa_session") {
@@ -1048,8 +1049,13 @@ mod tests {
 
     /// A verified Google identity completes sign-in through the callback outcome and the poll.
     async fn sign_in(app: &App, sub: &str, email: &str) -> AuthResult {
+        sign_in_hd(app, sub, email, None).await
+    }
+
+    /// The same sign-in, with the Google hd claim when Some.
+    async fn sign_in_hd(app: &App, sub: &str, email: &str, hd: Option<&str>) -> AuthResult {
         let identity = serde_json::from_value::<crate::google_auth::Identity>(
-            json!({"sub":sub,"email":email,"email_verified":true,"nonce":"n"}),
+            json!({"sub":sub,"email":email,"email_verified":true,"hd":hd,"nonce":"n"}),
         )
         .unwrap();
         let (id, _) = app.login.start(None).await.unwrap();
@@ -1122,7 +1128,7 @@ mod tests {
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         );
-        sessions::create(pool, &token, actor).await?;
+        sessions::create(pool, &token, actor, None).await?;
         Ok(format!("joppa_session={token}"))
     }
 
@@ -1207,6 +1213,8 @@ mod tests {
     }
 
     const MEMBER_OF: &str = "SELECT count(*) FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2";
+    /// The Google hd of a company account in healthium.one.
+    const HEALTHIUM: Option<&str> = Some("healthium.one");
     const SESSIONS_OF: &str = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";
 
     #[tokio::test]
@@ -1248,8 +1256,8 @@ mod tests {
             format!("{id}{}", uuid::Uuid::new_v4().simple()),
             format!("{}{id}", uuid::Uuid::new_v4().simple()),
         );
-        sessions::create(&pool, &sam_cookie, &sam).await?;
-        sessions::create(&pool, &olga_cookie, &other_owner).await?;
+        sessions::create(&pool, &sam_cookie, &sam, None).await?;
+        sessions::create(&pool, &olga_cookie, &other_owner, None).await?;
         let (sam_cookie, olga_cookie) = (
             format!("joppa_session={sam_cookie}"),
             format!("joppa_session={olga_cookie}"),
@@ -1387,7 +1395,7 @@ mod tests {
         let mut cookies = vec![];
         for actor in [&sam, &alex] {
             let token = format!("{}{}", uuid::Uuid::new_v4().simple(), id);
-            sessions::create(&pool, &token, actor).await?;
+            sessions::create(&pool, &token, actor, None).await?;
             cookies.push(format!("joppa_session={token}"));
         }
         let (sam_cookie, alex_cookie) = (&cookies[0], &cookies[1]);
@@ -1653,6 +1661,7 @@ mod tests {
         Ok(())
     }
 
+    // owner-adds-members-ac9
     #[tokio::test]
     #[ignore = "requires isolated test database"]
     async fn owner_adds_a_domain_and_its_google_people_read_w_as_members() -> Result<()> {
@@ -1689,7 +1698,7 @@ mod tests {
         plain(add_email(&app, &olga_cookie, &home, "maria@healthium.one").await).unwrap();
         let maria_sub = format!("google-maria-{id}");
         let maria = derived(&maria_sub);
-        let (headers, _) = sign_in(&app, &maria_sub, "maria@healthium.one")
+        let (headers, _) = sign_in_hd(&app, &maria_sub, "maria@healthium.one", HEALTHIUM)
             .await
             .unwrap();
         let maria_cookie = session(&headers);
@@ -1731,7 +1740,7 @@ mod tests {
         // Lena signs in with Google for the first time.
         let lena_sub = format!("google-lena-{id}");
         let lena = derived(&lena_sub);
-        let (headers, Json(ready)) = sign_in(&app, &lena_sub, "lena@healthium.one")
+        let (headers, Json(ready)) = sign_in_hd(&app, &lena_sub, "lena@healthium.one", HEALTHIUM)
             .await
             .unwrap();
         assert_eq!(ready["actor"], lena.as_str());
@@ -1872,5 +1881,300 @@ mod tests {
             .await?;
         }
         Ok(())
+    }
+
+    /// AC9 tests own these domains and emails in the shared test database.
+    /// They start and end without their grants and Google bindings.
+    async fn forget_hd_fixtures(app: &App, emails: &[&str]) -> Result<()> {
+        let conn = app.pool.get().await?;
+        conn.execute(
+            "DELETE FROM joppa.domain_grants WHERE domain IN ('healthium.one','gmail.com')",
+            &[],
+        )
+        .await?;
+        let emails: Vec<String> = emails.iter().map(|e| e.to_string()).collect();
+        conn.execute(
+            "DELETE FROM joppa.email_grants WHERE email=ANY($1)",
+            &[&emails],
+        )
+        .await?;
+        conn.execute(
+            "DELETE FROM joppa.google_identities WHERE email=ANY($1)",
+            &[&emails],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// The stored hd of the browser session in this cookie.
+    async fn session_hd(app: &App, cookie: &str) -> Option<String> {
+        let token = cookie.strip_prefix("joppa_session=").unwrap();
+        let hash = format!("{:x}", sha2::Sha256::digest(token.as_bytes()));
+        let conn = app.pool.get().await.unwrap();
+        conn.query_one(
+            "SELECT hd FROM joppa.browser_sessions WHERE token_hash=$1",
+            &[&hash],
+        )
+        .await
+        .unwrap()
+        .get(0)
+    }
+
+    /// A page load with this cookie, then the workspaces that it lists.
+    async fn reload(app: &App, cookie: &str, actor: &str) -> Vec<String> {
+        let Json(me_reply) = me(State(app.clone()), browser(Some(cookie), ORIGIN))
+            .await
+            .unwrap();
+        assert_eq!(me_reply["actor"], actor);
+        let mut ids = listed(app, browser(Some(cookie), ORIGIN)).await;
+        ids.sort();
+        ids
+    }
+
+    // owner-adds-members-ac9
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn domain_grant_needs_hd_lena_reads_w_and_people_without_that_hd_do_not() -> Result<()> {
+        let mut app = test_app().await?;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let casey_email = format!("casey-{id}@healthium.one");
+        let emails = [
+            "lena@healthium.one",
+            "ex@healthium.one",
+            "pat@gmail.com",
+            "max@healthium.one",
+        ];
+        forget_hd_fixtures(&app, &emails).await?;
+        let casey = format!("casey-{id}");
+        app.login.users.insert(casey_email.clone(), casey.clone());
+        let pool = app.pool.clone();
+        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
+        let (home, w, w2) = (format!("home-{id}"), format!("w-{id}"), format!("w2-{id}"));
+        create(&pool, &home, &olga).await?;
+        create(&pool, &w, &sam).await?;
+        create(&pool, &w2, &sam).await?;
+        let (sam_cookie, olga_cookie) = (
+            session_for(&pool, &sam).await?,
+            session_for(&pool, &olga).await?,
+        );
+        plain(add_domain(&app, &sam_cookie, &w, "healthium.one").await).unwrap();
+        plain(add_domain(&app, &sam_cookie, &w2, "gmail.com").await).unwrap();
+        // Lena signs in with the company account.
+        let lena_sub = format!("google-lena-{id}");
+        let lena = derived(&lena_sub);
+        let (headers, Json(ready)) = sign_in_hd(&app, &lena_sub, "lena@healthium.one", HEALTHIUM)
+            .await
+            .unwrap();
+        assert_eq!(ready["actor"], lena.as_str());
+        let lena_cookie = session(&headers);
+        assert_eq!(session_hd(&app, &lena_cookie).await.as_deref(), HEALTHIUM);
+        assert_eq!(reload(&app, &lena_cookie, &lena).await, vec![w.clone()]);
+        let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(members, json!({sam.clone():"human", lena.clone():"human"}));
+        // Without hd, or with another hd, the domain grant admits nobody.
+        let people = [
+            ("ex@healthium.one", None),
+            ("pat@gmail.com", None),
+            ("max@healthium.one", Some("other-hd.test")),
+        ];
+        for (email, hd) in people {
+            let sub = format!("google-{email}-{id}");
+            let (status, Json(error)) = sign_in_hd(&app, &sub, email, hd).await.unwrap_err();
+            assert_eq!(status, StatusCode::FORBIDDEN, "{email}");
+            assert_eq!(error, json!({"error":"No workspace access"}), "{email}");
+            let members =
+                "SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key=$1";
+            let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1";
+            for sql in [members, bound, SESSIONS_OF] {
+                assert_eq!(
+                    scalar(&app, sql, &[&derived(&sub)]).await,
+                    0,
+                    "{email}: {sql}"
+                );
+            }
+        }
+        // An email grant on home lets them sign in. They still do not read W or W2.
+        let mut outsiders = vec![];
+        for (email, hd) in people {
+            plain(add_email(&app, &olga_cookie, &home, email).await).unwrap();
+            let actor = derived(&format!("google-{email}-{id}"));
+            let sub = format!("google-{email}-{id}");
+            let (headers, _) = sign_in_hd(&app, &sub, email, hd).await.unwrap();
+            let cookie = session(&headers);
+            assert_eq!(
+                reload(&app, &cookie, &actor).await,
+                vec![home.clone()],
+                "{email}"
+            );
+            for workspace in [&w, &w2] {
+                let refused = plain(
+                    read(
+                        State(app.clone()),
+                        Path(workspace.clone()),
+                        browser(Some(&cookie), ORIGIN),
+                    )
+                    .await,
+                );
+                assert_eq!(refused.unwrap_err().0, StatusCode::NOT_FOUND, "{email}");
+            }
+            outsiders.push(actor);
+        }
+        // A configured actor without a bound identity gets no domain grant, also with hd.
+        let casey_cookie = format!("joppa_session={}{}", id, uuid::Uuid::new_v4().simple());
+        let token = casey_cookie.strip_prefix("joppa_session=").unwrap();
+        sessions::create(&pool, token, &casey, HEALTHIUM).await?;
+        assert_eq!(
+            reload(&app, &casey_cookie, &casey).await,
+            Vec::<String>::new()
+        );
+        let (w_members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(
+            w_members,
+            json!({sam.clone():"human", lena.clone():"human"})
+        );
+        let (w2_members, _) = members_and_grants(&app, &w2, &sam_cookie).await;
+        assert_eq!(w2_members, json!({sam.clone():"human"}));
+        for actor in outsiders.iter().chain([&casey]) {
+            assert_eq!(scalar(&app, MEMBER_OF, &[&w, actor]).await, 0, "{actor}");
+            assert_eq!(scalar(&app, MEMBER_OF, &[&w2, actor]).await, 0, "{actor}");
+        }
+        forget_hd_fixtures(&app, &emails).await
+    }
+
+    // owner-adds-members-ac9
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn domain_grant_needs_hd_a_reload_and_an_older_session_do_not_enroll_ex() -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let emails = ["ex@healthium.one"];
+        forget_hd_fixtures(&app, &emails).await?;
+        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
+        let (home, w) = (format!("home-{id}"), format!("w-{id}"));
+        create(pool, &home, &olga).await?;
+        create(pool, &w, &sam).await?;
+        let (sam_cookie, olga_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &olga).await?,
+        );
+        // Ex signs in with no hd through an email grant on home.
+        plain(add_email(&app, &olga_cookie, &home, "ex@healthium.one").await).unwrap();
+        let ex_sub = format!("google-ex-{id}");
+        let ex = derived(&ex_sub);
+        let (headers, _) = sign_in(&app, &ex_sub, "ex@healthium.one").await.unwrap();
+        let ex_cookie = session(&headers);
+        assert_eq!(session_hd(&app, &ex_cookie).await, None);
+        // A session made before this rule has a NULL hd.
+        let older = format!("{}{id}", uuid::Uuid::new_v4().simple());
+        pool.get().await?.execute(
+            "INSERT INTO joppa.browser_sessions(token_hash,actor,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
+            &[&format!("{:x}", sha2::Sha256::digest(older.as_bytes())), &ex],
+        ).await?;
+        let older = format!("joppa_session={older}");
+        assert_eq!(session_hd(&app, &older).await, None);
+        // S adds healthium.one to W. Ex reloads with each session.
+        plain(add_domain(&app, &sam_cookie, &w, "healthium.one").await).unwrap();
+        for cookie in [&ex_cookie, &older, &ex_cookie] {
+            assert_eq!(reload(&app, cookie, &ex).await, vec![home.clone()]);
+            let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+            assert_eq!(members, json!({sam.clone():"human"}));
+        }
+        assert_eq!(scalar(&app, MEMBER_OF, &[&w, &ex]).await, 0);
+        forget_hd_fixtures(&app, &emails).await
+    }
+
+    // owner-adds-members-ac9
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn domain_grant_needs_hd_of_the_session_that_loads_the_page() -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let emails = ["kim@healthium.one"];
+        forget_hd_fixtures(&app, &emails).await?;
+        let (sam, olga) = (format!("sam-{id}"), format!("olga-{id}"));
+        let (home, w) = (format!("home-{id}"), format!("w-{id}"));
+        create(pool, &home, &olga).await?;
+        create(pool, &w, &sam).await?;
+        let (sam_cookie, olga_cookie) = (
+            session_for(pool, &sam).await?,
+            session_for(pool, &olga).await?,
+        );
+        // Kim signs in once with the company hd and once with no hd.
+        plain(add_email(&app, &olga_cookie, &home, "kim@healthium.one").await).unwrap();
+        let kim_sub = format!("google-kim-{id}");
+        let kim = derived(&kim_sub);
+        let (headers, _) = sign_in_hd(&app, &kim_sub, "kim@healthium.one", HEALTHIUM)
+            .await
+            .unwrap();
+        let with_hd = session(&headers);
+        let (headers, _) = sign_in(&app, &kim_sub, "kim@healthium.one").await.unwrap();
+        let without_hd = session(&headers);
+        assert_eq!(session_hd(&app, &with_hd).await.as_deref(), HEALTHIUM);
+        assert_eq!(session_hd(&app, &without_hd).await, None);
+        assert_eq!(scalar(&app, SESSIONS_OF, &[&kim]).await, 2);
+        plain(add_domain(&app, &sam_cookie, &w, "healthium.one").await).unwrap();
+        // The page load with no hd does not enroll Kim.
+        assert_eq!(reload(&app, &without_hd, &kim).await, vec![home.clone()]);
+        assert_eq!(scalar(&app, MEMBER_OF, &[&w, &kim]).await, 0);
+        // The page load with the company hd enrolls Kim in W as human.
+        let mut expected = vec![home.clone(), w.clone()];
+        expected.sort();
+        assert_eq!(reload(&app, &with_hd, &kim).await, expected);
+        let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
+        assert_eq!(members, json!({sam.clone():"human", kim.clone():"human"}));
+        assert_eq!(session_hd(&app, &without_hd).await, None);
+        forget_hd_fixtures(&app, &emails).await
+    }
+
+    // owner-adds-members-ac9
+    #[tokio::test]
+    #[ignore = "requires isolated test database"]
+    async fn domain_grant_needs_hd_but_an_email_grant_does_not_and_hd_case_does_not_matter()
+    -> Result<()> {
+        let app = test_app().await?;
+        let pool = &app.pool;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let emails = ["ex@healthium.one", "lena@healthium.one"];
+        forget_hd_fixtures(&app, &emails).await?;
+        let sam = format!("sam-{id}");
+        let (w, w2) = (format!("w-{id}"), format!("w2-{id}"));
+        create(pool, &w, &sam).await?;
+        create(pool, &w2, &sam).await?;
+        let sam_cookie = session_for(pool, &sam).await?;
+        // S grants the single email. Ex signs in with no hd and reads W.
+        plain(add_email(&app, &sam_cookie, &w, "ex@healthium.one").await).unwrap();
+        let ex_sub = format!("google-ex-{id}");
+        let ex = derived(&ex_sub);
+        let (headers, _) = sign_in(&app, &ex_sub, "ex@healthium.one").await.unwrap();
+        let ex_cookie = session(&headers);
+        assert_eq!(session_hd(&app, &ex_cookie).await, None);
+        assert_eq!(reload(&app, &ex_cookie, &ex).await, vec![w.clone()]);
+        let read_w = read(
+            State(app.clone()),
+            Path(w.clone()),
+            browser(Some(&ex_cookie), ORIGIN),
+        );
+        let Json(index) = read_w.await.unwrap();
+        assert_eq!(
+            index["index"]["members"],
+            json!({sam.clone():"human", ex.clone():"human"})
+        );
+        // A mixed-case hd matches the healthium.one domain grant.
+        plain(add_domain(&app, &sam_cookie, &w2, "healthium.one").await).unwrap();
+        let lena_sub = format!("google-lena-{id}");
+        let lena = derived(&lena_sub);
+        let (headers, Json(ready)) =
+            sign_in_hd(&app, &lena_sub, "lena@healthium.one", Some("HealthIum.One"))
+                .await
+                .unwrap();
+        assert_eq!(ready["actor"], lena.as_str());
+        let lena_cookie = session(&headers);
+        assert_eq!(session_hd(&app, &lena_cookie).await.as_deref(), HEALTHIUM);
+        assert_eq!(reload(&app, &lena_cookie, &lena).await, vec![w2.clone()]);
+        let (members, _) = members_and_grants(&app, &w2, &sam_cookie).await;
+        assert_eq!(members, json!({sam.clone():"human", lena.clone():"human"}));
+        forget_hd_fixtures(&app, &emails).await
     }
 }

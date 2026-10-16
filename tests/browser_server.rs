@@ -55,7 +55,7 @@ async fn browser_server() -> Result<()> {
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &cookie, "alex").await?;
+    sessions::create(&pool, &cookie, "alex", None).await?;
     // A person with a bound Google identity for alex@example.com, a session and no workspace.
     let person = format!("google-person-{}", uuid::Uuid::new_v4().simple());
     let conn = pool.get().await?;
@@ -75,7 +75,7 @@ async fn browser_server() -> Result<()> {
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &person_cookie, &person).await?;
+    sessions::create(&pool, &person_cookie, &person, None).await?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();

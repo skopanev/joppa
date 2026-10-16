@@ -12,9 +12,10 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
-/// Owner grants for a lowercase email: its email grants and the grants of its domain.
+/// Owner grants for a lowercase email ($1) and a Google hd ($2): its email grants, and the
+/// domain grants that equal the hd. Without hd, no domain grant matches.
 const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
-     UNION SELECT workspace FROM joppa.domain_grants WHERE domain=split_part($1,'@',2)";
+     UNION SELECT workspace FROM joppa.domain_grants WHERE domain=lower($2::text)";
 const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1";
 
 /// Resolve types for the authors of the records that this read returns.
@@ -80,8 +81,9 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
         }
     }
     // Owner email and domain grants add workspaces, also without a rules file.
+    // Only a bound Google identity has an hd, so only it gets domain grants.
     for row in client
-        .query(GRANTED, &[&email.to_ascii_lowercase()])
+        .query(GRANTED, &[&email.to_ascii_lowercase(), &hosted_domain])
         .await?
     {
         allowed.insert(row.get(0));
@@ -224,11 +226,15 @@ pub async fn update_identity_name(
     Ok(())
 }
 
-/// The workspaces that owners granted to this email or to its domain.
-pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<String>> {
+/// The workspaces that owners granted to this email or to this Google hd.
+pub async fn granted_workspaces(
+    pool: &Pool,
+    email: &str,
+    hd: Option<&str>,
+) -> Result<BTreeSet<String>> {
     let conn = pool.get().await?;
     Ok(conn
-        .query(GRANTED, &[&email.to_ascii_lowercase()])
+        .query(GRANTED, &[&email.to_ascii_lowercase(), &hd])
         .await?
         .iter()
         .map(|row| row.get(0))
@@ -236,9 +242,15 @@ pub async fn granted_workspaces(pool: &Pool, email: &str) -> Result<BTreeSet<Str
 }
 
 /// A browser session joins each workspace granted to its email since sign-in: the bound
-/// Google email, else the configured login email. It binds no identity. Without an email or
-/// a new grant, nothing is written.
-pub async fn enroll_granted(pool: &Pool, actor: &str, configured: Option<&str>) -> Result<()> {
+/// Google email, else the configured login email. Domain grants use the hd of this session,
+/// and only for a bound identity. It binds no identity. Without an email or a new grant,
+/// nothing is written.
+pub async fn enroll_granted(
+    pool: &Pool,
+    actor: &str,
+    configured: Option<&str>,
+    session_hd: Option<&str>,
+) -> Result<()> {
     let conn = pool.get().await?;
     let bound: Option<String> = conn
         .query_opt(
@@ -247,6 +259,7 @@ pub async fn enroll_granted(pool: &Pool, actor: &str, configured: Option<&str>) 
         )
         .await?
         .map(|row| row.get(0));
+    let hd = bound.as_ref().and(session_hd);
     let Some(email) = bound.or_else(|| configured.map(str::to_owned)) else {
         return Ok(());
     };
@@ -257,7 +270,7 @@ pub async fn enroll_granted(pool: &Pool, actor: &str, configured: Option<&str>) 
         .map(|row| row.get(0))
         .collect();
     drop(conn);
-    let missing: BTreeSet<String> = granted_workspaces(pool, &email.to_ascii_lowercase())
+    let missing: BTreeSet<String> = granted_workspaces(pool, &email.to_ascii_lowercase(), hd)
         .await?
         .difference(&joined)
         .cloned()

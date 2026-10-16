@@ -60,13 +60,13 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &token, "owner").await?;
+    sessions::create(&pool, &token, "owner", None).await?;
     let other = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &other, "other-owner").await?;
+    sessions::create(&pool, &other, "other-owner", None).await?;
     let digest = format!("{:x}", Sha256::digest(token.as_bytes()));
     let row = pool
         .get()
@@ -233,7 +233,7 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
     );
     assert_eq!(
         sessions::actor(&pool, &other).await?,
-        Some("other-owner".into())
+        Some(("other-owner".into(), None))
     );
     sessions::revoke(&pool, &token).await?; // Repeated logout is harmless.
     let expired = format!(

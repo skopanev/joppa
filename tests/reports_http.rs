@@ -3571,7 +3571,7 @@ async fn settings_agent_tokens_ac1_session_issue_list_and_origin() -> Result<()>
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &session, "owner").await?;
+    sessions::create(&pool, &session, "owner", None).await?;
     let root = w.base.split("/api/").next().context("root")?.to_owned();
     let ws = w.base.rsplit('/').next().context("workspace")?.to_owned();
     // Token and revocation rows of W.
@@ -3755,7 +3755,7 @@ async fn settings_agent_tokens_ac3_a_member_session_cannot_issue_or_revoke() -> 
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    sessions::create(&pool, &session, "alex").await?;
+    sessions::create(&pool, &session, "alex", None).await?;
     // The owner issues the token of bot.
     let (code, bot) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {bot}");
@@ -6961,7 +6961,7 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
                 uuid::Uuid::new_v4().simple(),
                 uuid::Uuid::new_v4().simple()
             );
-            sessions::create(&pool, &session, actor).await?;
+            sessions::create(&pool, &session, actor, None).await?;
             anyhow::Ok(session)
         }
     };
