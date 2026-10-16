@@ -6729,6 +6729,33 @@ async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> 
     Ok(())
 }
 
+// dependencies-before-priority-ac3
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac3_a_shared_parent_alone_never_makes_work_wait_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
+    // Controls: A1 and B1 are grey, and B1 is ready.
+    ensure!(p.status("criterion:a1").await?["status"] == "grey");
+    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    let readiness = p.readiness("criterion:b1").await?;
+    ensure!(readiness[0] == "ready", "{readiness}");
+    let free =
+        |b1: &Value| b1["work_ready"] == true && b1["process"]["readiness_blocker"].is_null();
+    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    let b1 = p.object_both("criterion:b1").await?;
+    ensure!(free(&b1), "{b1}");
+    // Control: a blocking link from B to A makes B1 wait until it is removed.
+    p.link("spec:b", ordering_link("spec:a")).await?;
+    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    p.link("spec:b", json!([])).await?;
+    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    let b1 = p.object_both("criterion:b1").await?;
+    ensure!(free(&b1), "{b1}");
+    ensure!(p.readiness("criterion:b1").await? == readiness);
+    Ok(())
+}
+
 // dependencies-before-priority-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
