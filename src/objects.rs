@@ -2693,12 +2693,19 @@ pub fn archive(
     else {
         bail!("archive_object required")
     };
+    let target = resolve_address(w, target).to_owned();
+    // A human member may archive an Inbox object, such as a signal that needs no work.
+    let inbox_target = w
+        .objects
+        .get(&target)
+        .is_some_and(|o| input_type(w, &o.kind));
     ensure!(
-        w.members.get(actor).is_some_and(|role| role == "agent") || actor == w.admin,
+        w.members.get(actor).is_some_and(|role| role == "agent")
+            || actor == w.admin
+            || (inbox_target && w.members.get(actor).is_some_and(|role| role == "human")),
         "workspace owner or agent required"
     );
     commands::nonempty(reason)?;
-    let target = resolve_address(w, target).to_owned();
     let old = w.objects.get(&target).context("unknown object")?;
     ensure!(
         old.current().revision == *revision,

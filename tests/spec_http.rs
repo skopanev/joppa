@@ -3427,6 +3427,96 @@ async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
     Ok(())
 }
 
+// signal-becomes-spec-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result<()> {
+    let w = world().await?;
+    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
+    let mut types = schema["schema"]["types"].clone();
+    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Add a document outside the Inbox"})).await?;
+    w.command(json!({"op":"save_object","kind":"record","id":"plain","revision":0,"parent":null,"data":{"title":"Plain record","owner":"owner"},"links":[],"reason":"Save"})).await?;
+    let read = async |address: &str| -> Result<Value> {
+        let result = mcp_call(
+            &w,
+            &w.alex,
+            "joppa_objects",
+            json!({"workspace":w.ws,"address":address}),
+        )
+        .await?;
+        ensure!(result["isError"] != true, "{result}");
+        Ok(serde_json::from_str(
+            result["content"][0]["text"].as_str().unwrap_or("null"),
+        )?)
+    };
+    let inbox = async || -> Result<Vec<String>> {
+        let list = w.get_as(&w.alex, "kind=note&parent=*&limit=100").await?;
+        Ok(list["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|i| i["address"].as_str().map(str::to_owned))
+            .collect())
+    };
+    for mcp in [false, true] {
+        let id = if mcp { "mcp-signal" } else { "http-signal" };
+        let signal = format!("note:{id}");
+        w.note(id, 0, "Dark mode", "Please add dark mode", json!([]))
+            .await?;
+        ensure!(
+            inbox().await?.contains(&signal),
+            "mcp={mcp}: not in the Inbox"
+        );
+        // A member stays refused for objects outside the Inbox.
+        for target in ["capability:empty", "record:plain"] {
+            let revision = read(target).await?["document"]["revision"].clone();
+            refused_without_change(&w, mcp, &w.alex, json!({"op":"archive_object","target":target,"revision":revision,"reason":"Out of scope"}), "workspace owner or agent required").await?;
+            ensure!(
+                read(target).await?["document"]["present"] == true,
+                "mcp={mcp} {target}"
+            );
+        }
+        // Each other archive check still refuses the member and writes nothing.
+        refused_without_change(
+            &w,
+            mcp,
+            &w.alex,
+            json!({"op":"archive_object","target":signal,"revision":1,"reason":"  "}),
+            "text must not be empty",
+        )
+        .await?;
+        refused_without_change(
+            &w,
+            mcp,
+            &w.alex,
+            json!({"op":"archive_object","target":signal,"revision":0,"reason":"Out of scope"}),
+            "stale object revision; read the object again",
+        )
+        .await?;
+        ensure!(
+            read(&signal).await?["document"]["present"] == true,
+            "mcp={mcp} {signal}"
+        );
+        let archive =
+            json!({"op":"archive_object","target":signal,"revision":1,"reason":"Out of scope"});
+        let reply = send_over(&w, mcp, &w.alex, &archive).await?;
+        ensure!(reply.is_ok(), "mcp={mcp}: {reply:?}");
+        ensure!(
+            !inbox().await?.contains(&signal),
+            "mcp={mcp}: still in the Inbox"
+        );
+        let object = read(&signal).await?;
+        ensure!(
+            object["document"]["present"] == false
+                && object["document"]["reason"] == "Out of scope",
+            "mcp={mcp}: {object}"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result<()> {
@@ -5183,6 +5273,8 @@ async fn check_callers(
     Ok(name)
 }
 
+// signal-becomes-spec-ac2
+// A member may archive an Inbox object, so the archive refusal uses a capability.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Result<()> {
@@ -5203,7 +5295,8 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     }
     w.note("secret", 0, "Secret note", "Token s3cr3t", json!([]))
         .await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"}), &w.bot, agent_or_owner).await?);
+    w.command(json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"})).await?;
     covered.push(check_callers(&w, &help, None, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"}), &w.bot, agent_or_owner).await?);
     covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.owner, owner_only).await?);
     covered.push(
