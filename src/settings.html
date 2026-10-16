@@ -26,7 +26,13 @@ try{
 .settings [role=alert]:empty{display:none}
 .settings [role=alert]{color:var(--fail);margin:.4em 0 0;font-size:.9em}
 #workspace-people{list-style:none;margin:0 0 1em;padding:0}
-#workspace-people li{padding:.45em 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+#workspace-people li{padding:.75em 0;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+#workspace-people li:first-child{border-top:1px solid var(--rule)}
+/* The workspace drop-down sits in the heading row, as in the board header. */
+.workspace-row{display:flex;align-items:center;gap:.5em;flex-wrap:wrap}
+.workspace-row h2{margin:0}
+.workspace-row .workspace-label{min-width:0;max-width:100%}
+.workspace-row .workspace-label select{max-width:100%}
 #workspace-people li[data-kind=email],#workspace-people li[data-kind=domain]{color:var(--muted)}
 #not-owner{color:var(--muted);margin:.6em 0 0}
 .owner-block{margin-top:1.2em}
@@ -60,9 +66,10 @@ body>.app-header .tagline{display:none}
     </form>
   </section>
   <section aria-labelledby="workspace-section-title">
-    <h2 id="workspace-section-title">Your workspaces</h2>
-    <label for="workspace-select">Workspace</label>
-    <div class="row"><select id="workspace-select" name="workspace" disabled></select></div>
+    <div class="workspace-row">
+      <h2 id="workspace-section-title">Your workspaces</h2>
+      <label class="workspace-label"><select id="workspace-select" name="workspace" aria-label="Workspace" disabled></select></label>
+    </div>
     <p id="workspace-error" role="alert"></p>
     <div id="workspace-panel" hidden>
       <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
