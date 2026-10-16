@@ -3280,14 +3280,20 @@ async fn inbox_order_uses_the_schema_and_rejects_a_stale_cursor() -> Result<()> 
     Ok(())
 }
 
+// signal-in-one-inbox-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
-    // signal-in-one-inbox-ac1
     let w = world().await?;
-    w.note("first", 0, "First", "Refunds are slow", json!([]))
-        .await?;
-    let inbox = w.get("kind=note&parent=*&limit=100").await?;
+    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
+    let bot = token["token"].as_str().unwrap();
+    let empty = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
+    ensure!(
+        empty["items"].as_array().is_some_and(Vec::is_empty),
+        "{empty}"
+    );
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"first","revision":0,"parent":null,"data":{"title":"First","owner":"owner","body":"Refunds are slow"},"links":[],"reason":"Save"})).await?;
+    let inbox = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     let items = inbox["items"].as_array().cloned().unwrap_or_default();
     ensure!(
         items.len() == 1 && items[0]["address"] == "note:first",
