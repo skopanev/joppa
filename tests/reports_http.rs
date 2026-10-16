@@ -6756,6 +6756,60 @@ async fn ac3_a_shared_parent_alone_never_makes_work_wait_over_http_and_mcp() -> 
     Ok(())
 }
 
+// dependencies-before-priority-ac4
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:c", &["criterion:a1", "criterion:a2"]).await?;
+    for (ac, test) in [("criterion:a1", A), ("criterion:a2", B)] {
+        p.write(
+            "agent",
+            json!({"op":"set_ac_tests","target":ac,"tests":[test],"reason":"Bind the test"}),
+        )
+        .await?;
+    }
+    p.link("spec:b", ordering_link("spec:a")).await?;
+    p.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    // Controls: A1 and A2 are green, B1 is ready and grey, and B1 is listed.
+    for ac in ["criterion:a1", "criterion:a2"] {
+        ensure!(p.status(ac).await?["status"] == "green", "{ac}");
+    }
+    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    let readiness = p.readiness("criterion:b1").await?;
+    ensure!(readiness[0] == "ready", "{readiness}");
+    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    // A clean full report fails the test of A2.
+    p.upload(
+        "c2c2c2c",
+        2,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "fail")]),
+    )
+    .await?;
+    ensure!(p.status("criterion:a2").await?["status"] == "red");
+    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    let b1 = p.object_both("criterion:b1").await?;
+    ensure!(waits_for(&b1, "spec:a"), "{b1}");
+    // A later clean full report passes every listed test of A.
+    p.upload(
+        "c3c3c3c",
+        3,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(p.status("criterion:a2").await?["status"] == "green");
+    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    Ok(())
+}
+
 // dependencies-before-priority-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
