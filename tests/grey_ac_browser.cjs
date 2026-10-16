@@ -4,6 +4,7 @@ const {spawn, spawnSync} = require('node:child_process');
 const {createHash} = require('node:crypto');
 const {writeFileSync} = require('node:fs');
 const {once} = require('node:events');
+const http = require('node:http');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
@@ -56,10 +57,19 @@ async function fixture(records, configured = types, contextOptions = {}) {
   const context = await browser.newContext({reducedMotion: 'reduce', ...contextOptions});
   const page = await context.newPage(), requests = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // Playwright never settles the body of a response whose document the page left.
+  // Each new main-frame document ends the wait for the bodies of the document that it replaced.
+  let leave, left = new Promise(resolve => { leave = resolve; });
+  await context.exposeBinding('joppaNewDocument', ({frame}) => {
+    if (frame !== page.mainFrame()) return;
+    leave();
+    left = new Promise(resolve => { leave = resolve; });
+  });
+  await context.addInitScript(() => window.joppaNewDocument());
   page.on('response', response => {
     if (!response.url().includes('/api/')) return;
     const entry = {url: response.url(), status: response.status()};
-    entry.body = response.json().then(value => { entry.value = value; }).catch(() => {});
+    entry.body = Promise.race([response.json().then(value => { entry.value = value; }).catch(() => {}), left]);
     requests.push(entry);
   });
   await context.addCookies([{name: 'joppa_session', value: live.cookie, url: live.root}]);
@@ -649,6 +659,33 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
   } finally { await f.close(); }
+});
+
+test('settings-in-name-menu-ac1: open does not wait for the response body of a page that it left', async () => {
+  const f = await fixture({'domain:d': {title: 'Domain'}, 'domain:e': {title: 'Other domain'}});
+  // This server sends the headers of an /api/ response and never ends its body, like a fetch that a navigation cuts off.
+  const sockets = new Set();
+  const stalled = http.createServer((request, response) => {
+    response.writeHead(200, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
+    response.write('{');
+  });
+  stalled.on('connection', socket => sockets.add(socket));
+  stalled.listen(0, '127.0.0.1');
+  await once(stalled, 'listening');
+  try {
+    const url = 'http://127.0.0.1:' + stalled.address().port + '/api/stalled';
+    await f.open('domain:d');
+    const headers = f.page.waitForResponse(url);
+    await f.page.evaluate(target => { fetch(target).catch(() => {}); }, url);
+    await headers;
+    assert.ok(f.requests.some(entry => entry.url === url));
+    // The old document still waits for the body. The new document must open without it.
+    await f.open('domain:e');
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    stalled.close();
+    await f.close();
+  }
 });
 
 test('create-workspace-ac1: alex creates Billing on the settings page and owns it', async () => {
