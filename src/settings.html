@@ -25,71 +25,49 @@
     <button id="create-workspace-button" type="submit">Create</button>
     <p id="create-workspace-error" role="alert"></p>
   </form>
-  <form id="grant-email" aria-labelledby="grant-email-title">
-    <h2 id="grant-email-title">Add a person to a workspace</h2>
+  <form id="grant-access" aria-labelledby="grant-access-title">
+    <h2 id="grant-access-title">Add people to a workspace</h2>
     <label>Owned workspace <select id="grant-workspace" name="workspace"></select></label>
-    <label>Google email <input id="grant-email-address" name="email" inputmode="email" autocomplete="off"></label>
-    <button id="grant-email-button" type="submit">Add person</button>
-    <p id="grant-email-error" role="alert"></p>
+    <label>Email or domain <input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"></label>
+    <button id="grant-button" type="submit">Add</button>
+    <p id="grant-error" role="alert"></p>
     <ul id="grant-emails" aria-label="Emails with access"></ul>
-  </form>
-  <form id="grant-domain" aria-labelledby="grant-domain-title">
-    <h2 id="grant-domain-title">Add an email domain to a workspace</h2>
-    <label>Workspace for the domain <select id="grant-domain-workspace" name="workspace"></select></label>
-    <label>Email domain <input id="grant-domain-name" name="domain" autocomplete="off"></label>
-    <button id="grant-domain-button" type="submit">Add domain</button>
-    <p id="grant-domain-error" role="alert"></p>
     <ul id="grant-domains" aria-label="Domains with access"></ul>
   </form>
-  <section id="agent-tokens" aria-labelledby="agent-tokens-title" hidden>
-    <form id="issue-token">
-      <h2 id="agent-tokens-title">Agent tokens</h2>
-      <label>Workspace for the token <select id="token-workspace" name="workspace"></select></label>
-      <label>Agent name <input id="token-agent" name="agent" autocomplete="off"></label>
-      <label>Token access <select id="token-access" name="access"><option value="read">read</option><option value="write">write</option></select></label>
-      <button id="issue-token-button" type="submit">Issue token</button>
-      <p id="issue-token-error" role="alert"></p>
-    </form>
-    <div id="new-token" hidden>
-      <p>Copy this token now. Joppa shows it only once.</p>
-      <code id="new-token-value"></code>
-      <button id="copy-token-button" type="button">Copy token</button>
-    </div>
-    <table aria-label="Agent tokens of the workspace">
-      <thead><tr><th>Agent</th><th>Access</th><th>Status</th><th>Created</th><th>Revoked</th><th>Action</th></tr></thead>
-      <tbody id="agent-token-list"></tbody>
-    </table>
-  </section>
 </main>
 <script>
-// The list shows exactly the workspaces that the server returns for the session.
-// An owned entry lists the current members of its workspace read; email grants are not members.
-// The list appears once every entry read has finished.
+// The page reads two lists: the workspaces of the session and the owned workspaces with their people.
+// An owned entry lists its people by name and email; agents and member IDs stay off this page.
+// The list appears once both reads have finished.
+const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
+const read=async(url,failure)=>{
+  const response=await fetch(url);
+  const value=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(value.error||failure);
+  return value;
+};
+const accessRead=()=>read('/api/access','Could not load owned workspaces.');
+// The workspace list and the add form share the first read.
+const firstAccess=accessRead();
 (async()=>{
   const list=document.getElementById('member-workspaces'),error=document.getElementById('member-workspaces-error');
-  const read=async(url,failure)=>{
-    const response=await fetch(url);
-    const value=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(value.error||failure);
-    return value;
-  };
-  const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
   try{
-    const [workspaces,{actor}]=await Promise.all([read('/api/workspaces','Could not load your workspaces.'),read('/api/me','Could not load your account.')]);
-    list.replaceChildren(...await Promise.all(workspaces.map(async w=>{
+    const [workspaces,owned]=await Promise.all([read('/api/workspaces','Could not load your workspaces.'),
+      firstAccess.then(v=>v.items,e=>e)]);
+    list.replaceChildren(...workspaces.map(w=>{
       const entry=document.createElement('li'),title=element('span',w.title);
       title.className='workspace-title';entry.append(title);
-      try{
-        const {index}=await read('/api/workspaces/'+encodeURIComponent(w.id),'Could not load the workspace members.');
-        if(index.owner===actor){
-          const members=document.createElement('ul');
-          members.setAttribute('aria-label','Members of '+w.title);
-          members.replaceChildren(...Object.keys(index.members).map(id=>element('li',id)));
-          entry.append(members);
-        }
-      }catch(e){const failure=element('p',e.message);failure.setAttribute('role','alert');entry.append(failure);}
+      const own=owned instanceof Error?undefined:owned.find(o=>o.id===w.id);
+      if(own){
+        const people=document.createElement('ul');
+        people.setAttribute('aria-label','Members of '+w.title);
+        people.replaceChildren(...own.people.map(p=>element('li',p)));
+        entry.append(people);
+      }
       return entry;
-    })));
+    }));
+    // A failed owned read keeps the workspace list and shows the server error once.
+    if(owned instanceof Error)error.textContent=owned.message;
     list.hidden=false;
   }catch(e){error.textContent=e.message;}
 })();
@@ -108,20 +86,19 @@ form.onsubmit=async event=>{
     location.assign('/?workspace='+encodeURIComponent(value.id));
   }catch(e){error.textContent=e.message;create.disabled=false;}
 };
+// One field adds an email or a whole domain: a value with "@" is an email, any other value is a domain.
 // Only workspaces that the server reports as owned are offered.
-// The email and domain forms differ only in their elements, endpoint and field.
-const grantForm=(ids,endpoint,field,failure)=>{
-  const [form,select,input,button,error,list]=ids.map(id=>document.getElementById(id));
+{
+  const [form,select,input,button,error,emails,domains]=['grant-access','grant-workspace','grant-address','grant-button',
+    'grant-error','grant-emails','grant-domains'].map(id=>document.getElementById(id));
   let owned=[];
   const show=()=>{
     const workspace=owned.find(w=>w.id===select.value);
-    list.replaceChildren(...(workspace?.[field+'s']||[]).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+    emails.replaceChildren(...(workspace?.emails||[]).map(text=>element('li',text)));
+    domains.replaceChildren(...(workspace?.domains||[]).map(text=>element('li',text)));
   };
-  const load=async selected=>{
-    const response=await fetch(endpoint);
-    const value=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(value.error||'Could not load owned workspaces.');
-    owned=value.items;
+  const load=async(selected,reading=accessRead())=>{
+    owned=(await reading).items;
     select.replaceChildren(...owned.map(w=>new Option(w.title,w.id)));
     if(owned.some(w=>w.id===selected))select.value=selected;
     button.disabled=!owned.length;
@@ -132,91 +109,18 @@ const grantForm=(ids,endpoint,field,failure)=>{
     event.preventDefault();
     if(button.disabled)return;
     button.disabled=true;error.textContent='';
-    const workspace=select.value;
+    const workspace=select.value,value=input.value.trim(),email=value.includes('@');
     try{
-      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspace,[field]:input.value})});
-      const value=await response.json().catch(()=>({}));
-      if(!response.ok)throw Error(value.error||failure);
+      const response=await fetch(email?'/api/email-grants':'/api/domain-grants',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(email?{workspace,email:value}:{workspace,domain:value})});
+      const reply=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(reply.error||(email?'Could not add the person.':'Could not add the domain.'));
       input.value='';
       await load(workspace);
     }catch(e){error.textContent=e.message;button.disabled=false;}
   };
   button.disabled=true;
-  load().catch(e=>{error.textContent=e.message;});
-};
-grantForm(['grant-email','grant-workspace','grant-email-address','grant-email-button','grant-email-error','grant-emails'],
-  '/api/email-grants','email','Could not add the person.');
-grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-domain-button','grant-domain-error','grant-domains'],
-  '/api/domain-grants','domain','Could not add the domain.');
-// The whole token section stays hidden unless the server reports an owned workspace.
-// A new token value lives only in this page's memory; a reload drops it.
-{
-  const [section,form,select,agent,access,button,error,shown,value,copy,list]=['agent-tokens','issue-token','token-workspace',
-    'token-agent','token-access','issue-token-button','issue-token-error','new-token','new-token-value','copy-token-button',
-    'agent-token-list'].map(id=>document.getElementById(id));
-  const json=async(response,failure)=>{
-    const value=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(value.error||failure);
-    return value;
-  };
-  const tokens=()=>'/api/workspaces/'+encodeURIComponent(select.value)+'/agent-tokens';
-  // Only the latest list load may fill the table, so a late reply never shows another workspace.
-  let loads=0;
-  const show=async()=>{
-    const load=++loads;
-    try{
-      const {items}=await json(await fetch(tokens()),'Could not load the agent tokens.');
-      if(load!==loads)return;
-      list.replaceChildren(...items.map(t=>{
-        const row=document.createElement('tr');
-        row.replaceChildren(...[t.agent,t.access,t.revoked?'revoked':'active',t.created_at,t.revoked_at||''].map(text=>{
-          const cell=document.createElement('td');cell.textContent=text;return cell;
-        }),document.createElement('td'));
-        if(!t.revoked){
-          const control=document.createElement('button');
-          control.type='button';control.textContent='Revoke';control.setAttribute('aria-label','Revoke token of '+t.agent);
-          control.onclick=()=>revoke(t.id,control);
-          row.lastChild.append(control);
-        }
-        return row;
-      }));
-    }catch(e){if(load===loads)error.textContent=e.message;}
-  };
-  // A refused revoke keeps the row as it is and shows the server error.
-  const revoke=async(id,control)=>{
-    control.disabled=true;error.textContent='';
-    try{
-      await json(await fetch(tokens()+'/'+id+'/revoke',{method:'POST'}),'Could not revoke the token.');
-      await show();
-    }catch(e){error.textContent=e.message;control.disabled=false;}
-  };
-  const hide=()=>{shown.hidden=true;value.textContent='';};
-  select.onchange=()=>{hide();error.textContent='';list.replaceChildren();show();};
-  copy.onclick=async()=>{
-    try{await navigator.clipboard.writeText(value.textContent);copy.textContent='Copied';}
-    catch{error.textContent='Could not copy the token. Select it and copy it by hand.';}
-  };
-  form.onsubmit=async event=>{
-    event.preventDefault();
-    if(button.disabled)return;
-    // The workspace stays fixed until the token and its list are shown.
-    button.disabled=select.disabled=true;error.textContent='';hide();
-    try{
-      const created=await json(await fetch(tokens(),{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({agent:agent.value,access:access.value})}),'Could not issue the token.');
-      value.textContent=created.token;copy.textContent='Copy token';shown.hidden=false;
-      agent.value='';
-      await show();
-    }catch(e){error.textContent=e.message;}
-    button.disabled=select.disabled=false;
-  };
-  button.disabled=true;
-  fetch('/api/email-grants').then(r=>json(r,'Could not load owned workspaces.')).then(({items})=>{
-    if(!items.length){section.remove();return;}
-    select.replaceChildren(...items.map(w=>new Option(w.title,w.id)));
-    section.hidden=false;button.disabled=false;
-    return show();
-  }).catch(e=>{section.hidden=false;error.textContent=e.message;});
+  load(undefined,firstAccess).catch(e=>{error.textContent=e.message;});
 }
 </script>
 </body>

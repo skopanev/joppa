@@ -12,7 +12,7 @@ use tokio_postgres::GenericClient;
 mod access;
 pub use access::{
     AccessDenied, enroll, enroll_granted, grant_domain, grant_email, granted_workspaces,
-    list_domain_grants, list_email_grants, update_identity_name,
+    list_domain_grants, list_email_grants, list_owned_access, update_identity_name,
 };
 #[path = "store_board.rs"]
 mod board;

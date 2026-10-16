@@ -350,6 +350,37 @@ pub async fn list_domain_grants(pool: &Pool, actor: &str) -> Result<Value> {
     list_grants(pool, actor, "domain_grants", "domain", "domains").await
 }
 
+/// The workspaces that this actor owns, each with its people and its pending grants, in one read.
+/// A person shows as "name <email>", as the email, or as the member ID when no Google identity is
+/// bound. Agent members are not people, so the list omits them.
+pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let items: Vec<Value> = conn
+        .query(
+            "SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
+                    COALESCE((SELECT array_agg(COALESCE(NULLIF(i.display_name,'')||' <'||i.email||'>', i.email, m.key) ORDER BY m.key)
+                              FROM jsonb_each_text(b.first_view->'members') m
+                              LEFT JOIN joppa.google_identities i ON i.actor=m.key
+                              WHERE m.value='human'), '{}'),
+                    COALESCE((SELECT array_agg(e.email ORDER BY e.email) FROM joppa.email_grants e WHERE e.workspace=s.workspace), '{}'),
+                    COALESCE((SELECT array_agg(d.domain ORDER BY d.domain) FROM joppa.domain_grants d WHERE d.workspace=s.workspace), '{}')
+             FROM joppa.state_entries s
+             LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
+             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1
+             ORDER BY 2,1",
+            &[&actor],
+        )
+        .await?
+        .iter()
+        .map(|r| {
+            json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1),
+                "people": r.get::<_, Vec<String>>(2), "emails": r.get::<_, Vec<String>>(3),
+                "domains": r.get::<_, Vec<String>>(4)})
+        })
+        .collect();
+    Ok(json!({"items": items}))
+}
+
 async fn list_grants(
     pool: &Pool,
     actor: &str,

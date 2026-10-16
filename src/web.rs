@@ -335,6 +335,11 @@ async fn list_domain_grants(State(app): State<App>, headers: HeaderMap) -> ApiRe
     let actor = authenticate(&app, &headers).await?;
     result(store::list_domain_grants(&app.pool, &actor).await)
 }
+/// The settings page reads its owned workspaces, their people and their grants in one request.
+async fn list_owned_access(State(app): State<App>, headers: HeaderMap) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::list_owned_access(&app.pool, &actor).await)
+}
 async fn settings_page() -> Html<String> {
     Html(
         include_str!("settings.html")
@@ -916,6 +921,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             "/api/email-grants",
             get(list_email_grants).post(grant_email),
         )
+        .route("/api/access", get(list_owned_access))
         .route(
             "/api/domain-grants",
             get(list_domain_grants).post(grant_domain),
