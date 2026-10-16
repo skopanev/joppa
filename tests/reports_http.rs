@@ -6619,6 +6619,67 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     Ok(())
 }
 
+// dependencies-before-priority-ac2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> Result<()> {
+    let w = world().await?;
+    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
+    p.link("spec:b", ordering_link("spec:a")).await?;
+    p.save("work:t", Some("criterion:b1"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([]))
+        .await?;
+    ensure!(p.tasks_both("mine").await?.is_empty());
+    let reason = joppa::dependencies::reason("spec:a");
+    let revision = p.revision("work:t").await?;
+    p.refuse_command(
+        "claim_task on T",
+        json!({"op":"claim_task","id":"work:t","revision":revision}),
+        &reason,
+    )
+    .await?;
+    p.refuse_command(
+        "claim_next_task with only T",
+        json!({"op":"claim_next_task"}),
+        &reason,
+    )
+    .await?;
+    let t = p.object_both("work:t").await?;
+    ensure!(
+        t["process"]["assignee"].is_null() && t["process"]["status"] == "open",
+        "{t}"
+    );
+    let listed = |tasks: &[Value]| tasks.iter().find(|t| t["address"] == "work:t").cloned();
+    ensure!(listed(&p.tasks_both("available").await?).is_none());
+    for view in ["all", "waiting"] {
+        let t = listed(&p.tasks_both(view).await?);
+        ensure!(
+            t.as_ref()
+                .is_some_and(|t| t["claimable"] == false && t["waiting_reason"] == reason.as_str()),
+            "view={view}: {t:?}"
+        );
+    }
+    // Release: a clean full report makes every criterion of A green.
+    p.write(
+        "agent",
+        json!({"op":"set_ac_tests","target":"criterion:a1","tests":[A],"reason":"Bind the test"}),
+    )
+    .await?;
+    p.upload(
+        "c1c1c1c",
+        1,
+        true,
+        junit(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    let t = listed(&p.tasks_both("available").await?);
+    ensure!(
+        t.is_some_and(|t| t["claimable"] == true),
+        "available after A is green"
+    );
+    store::check_journal(&p.pool).await?;
+    Ok(())
+}
+
 // dependencies-before-priority-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
