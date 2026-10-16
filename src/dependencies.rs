@@ -5,8 +5,8 @@
 use crate::model::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The live tree with its blocking links. A Task link to another Task keeps its revision pin
-/// and its done rule and does not take part here; a Task link to any other node does.
+/// The live tree with its blocking links. A Task link takes part only when its target is a
+/// criterion with a test list; other Task links keep their revision pins and evidence.
 #[derive(Default)]
 pub struct Graph {
     parents: BTreeMap<String, Option<String>>,
@@ -29,13 +29,9 @@ impl Graph {
             for link in &o.current().links {
                 if link.blocking && link.relation == "depends_on" {
                     let target = resolve(&link.target);
-                    // A Task link to another Task keeps its revision pin and its done rule.
-                    let target_task = w
-                        .objects
-                        .get(&target)
-                        .and_then(|t| types.get(&t.kind))
-                        .is_some_and(|t| t.role == "task");
-                    if role != Some("task") || !target_task {
+                    // A Task link waits here only for a criterion with a test list; other
+                    // Task links keep their revision pin and their recorded evidence.
+                    if role != Some("task") || crate::objects::report_decided(w, &target) {
                         graph.link(key.clone(), target);
                     }
                 }

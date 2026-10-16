@@ -2117,6 +2117,18 @@ pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
 }
 /// Task dependency pins of the object and its ancestors. The ordering links of other nodes
 /// wait at read time and in live writes, where the test status of their targets is known.
+/// A criterion with a saved test list: its test status from reports decides a link to it.
+pub fn report_decided(w: &Workspace, key: &str) -> bool {
+    let key = resolve_address(w, key);
+    w.objects
+        .get(key)
+        .is_some_and(|o| schema(w).types.get(&o.kind).is_some_and(|t| t.role == "ac"))
+        && w.ac_tests
+            .get(key)
+            .and_then(|t| t.current())
+            .is_some_and(|r| !r.tests.is_empty())
+}
+
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
     fn visit(
         w: &Workspace,
@@ -2142,10 +2154,10 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
-            // A Task target needs its completed work. Any other target is decided at read
-            // time by the test status of its criteria from reports (dependencies::Graph).
-            let target_task = types.get(&target.kind).is_some_and(|t| t.role == "task");
-            let evidence = !target_task || verified(w, &address(&target.kind, &target.id));
+            // A criterion with a test list is decided at read time by its test status from
+            // reports (dependencies::Graph). Any other target keeps its recorded evidence.
+            let target_key = address(&target.kind, &target.id);
+            let evidence = report_decided(w, &target_key) || verified(w, &target_key);
             evidence && visit(w, &l.target, types, stack)
         });
         let parent_ready = o
