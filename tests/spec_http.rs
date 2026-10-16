@@ -1910,6 +1910,58 @@ async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
     Ok(())
 }
 
+// tree-owner-sets-types-ac3
+// bot is an agent member of the shared spec workspace.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_agent_member_adds_risk_to_the_tree_over_http() -> Result<()> {
+    let w = world().await?;
+    let tree = async || -> Result<Value> {
+        let reply = w
+            .http
+            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+            .bearer_auth(&w.bot)
+            .send()
+            .await?;
+        let status = reply.status();
+        let body = reply.text().await?;
+        ensure!(status.is_success(), "GET /tree: {status} {body}");
+        Ok(serde_json::from_str(&body)?)
+    };
+    let before = tree().await?;
+    let n = before["current_revision"].as_u64();
+    ensure!(n.is_some(), "{before}");
+    let n = n.unwrap();
+    let mut types = before["schema"]["types"].clone();
+    ensure!(types.get("risk").is_none(), "{before}");
+    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
+    let (status, reply) = text_rule_request(
+        &w,
+        &w.bot,
+        &uuid::Uuid::new_v4().to_string(),
+        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add risk"}),
+        "http",
+    )
+    .await?;
+    ensure!(
+        (200..300).contains(&status) && reply.get("error").is_none(),
+        "{status} {reply}"
+    );
+    let after = tree().await?;
+    ensure!(
+        after["current_revision"] == n + 1 && after["schema"]["types"].get("risk").is_some(),
+        "{after}"
+    );
+    let (actor, command) = last_event(&w).await?;
+    ensure!(
+        actor == "bot"
+            && command["op"] == "set_tree_schema"
+            && command["types"].get("risk").is_some(),
+        "{actor} {command}"
+    );
+    Ok(())
+}
+
 // removal-is-archiving-ac5
 // skopanev owns the workspace and archives a capability with one live requirement.
 #[tokio::test]
