@@ -1346,6 +1346,57 @@ test('blocking-pins-revision-ac1: a blocking link keeps its stored target revisi
   } finally { await f.close(); }
 });
 
+// The bot marks A ready. Alex reads the rows of A and B under the requirement.
+test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for work', async t => {
+  const f = await fixture({...criterionRecords, 'ac:B': {title: 'Second condition', parent: 'requirement:r'}});
+  // Alex reads the signal of each criterion over HTTP and MCP; both replies are the same.
+  const signal = async address => {
+    const http = await f.api('/objects?address=' + encodeURIComponent(address), undefined, f.live.alex);
+    const mcp = await f.mcp('joppa_objects', {address}, f.live.alex);
+    assert.deepEqual(mcp.signal, http.signal, address);
+    return http;
+  };
+  try {
+    for (const address of ['ac:A', 'ac:B']) assert.equal((await signal(address)).signal.assessment.state, 'unassessed', address);
+    const a = await signal('ac:A');
+    await f.command({op: 'confirm', req: a.process.req, revision: a.process.revision}, true);
+    await f.command({op: 'assess', req: a.process.req, revision: a.process.revision, ac: a.process.criterion,
+      assessment: {ready: true, reason: 'Known scope'}});
+    const [A, B] = [await signal('ac:A'), await signal('ac:B')];
+    assert.deepEqual([A.signal.assessment.state, A.signal.assessment.reason], ['ready', 'Known scope']);
+    assert.equal(A.process.readiness_blocker, null);
+    assert.equal(A.signal.label, 'Ready for work');
+    assert.equal(B.signal.assessment.state, 'unassessed');
+    assert.notEqual(B.signal.label, 'Ready for work');
+    // Each width is its own subtest, so the output names both runs.
+    for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('readiness-per-criterion-ac1: ' + viewport.width + ' px', async () => {
+      await f.page.setViewportSize(viewport);
+      const card = await f.open('requirement:r');
+      const row = address => card.locator('.common-object[data-object-address="' + address + '"] > summary');
+      await row('ac:B').waitFor();
+      // The board gives each row its test status last. Neither criterion has tests.
+      for (const address of ['ac:A', 'ac:B']) await row(address).getByRole('img', {name: /No tests/}).waitFor();
+      // The status dot carries the row status as its name and shows it on hover.
+      const status = async address => {
+        const dot = row(address).locator('.status-circle');
+        assert.equal(await dot.isVisible(), true, address);
+        await dot.hover();
+        const hint = f.page.locator('.status-hint');
+        await hint.waitFor();
+        return {label: await dot.getAttribute('aria-label'), hint: await hint.innerText(), text: await row(address).innerText()};
+      };
+      const shownA = await status('ac:A');
+      assert.match(shownA.label, /^Status: Ready for work · No tests(\n|$)/, JSON.stringify(viewport));
+      assert.match(shownA.hint, /^Status: Ready for work · No tests(\n|$)/, JSON.stringify(viewport));
+      assert.equal(await row('ac:A').getByRole('img', {name: /Ready for work/}).count(), 1);
+      const shownB = await status('ac:B');
+      for (const text of Object.values(shownB)) assert.ok(!text.includes('Ready for work'), JSON.stringify([viewport, text]));
+      assert.equal(await row('ac:B').getByRole('img', {name: /Ready for work/}).count(), 0);
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
+    });
+  } finally { await f.close(); }
+});
+
 test('dependencies-before-priority-ac5: alex sets and removes a dependency from the row of B', async t => {
   const records = {'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'},
     'requirement:A': {title: 'Sign-in rule', parent: 'capability:c'}, 'requirement:B': {title: 'Billing rule', parent: 'capability:c'},

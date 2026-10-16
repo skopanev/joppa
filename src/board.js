@@ -787,13 +787,15 @@ function testSummary(s){
 async function applyTestStatuses(items){
   const criteria=items.filter(item=>data.objectTypes?.[item.kind]?.role==='ac').map(item=>item.address);
   if(!criteria.length)return;
+  const ready=new Set(items.filter(item=>item.signal?.label==='Ready for work').map(item=>item.address));
   let reply;
   try{reply=await api('workspaces/'+encodeURIComponent(ws)+'/tests?ac='+encodeURIComponent(criteria.join(',')));}catch{return;}
   for(const status of reply.items||[reply]){
     for(const card of document.querySelectorAll('.common-object[data-object-address="'+CSS.escape(status.address)+'"]')){
       const dot=card.querySelector(':scope > summary .status-circle');
       // A criterion without tests is grey "No tests", so yellow on the board means mixed only.
-      const label=status.reason==='no tests'?'No tests':testSummary(status);
+      // A ready criterion with grey tests keeps "Ready for work" before its test status.
+      const label=(ready.has(status.address)&&testTone(status.status)==='grey'?'Ready for work · ':'')+(status.reason==='no tests'?'No tests':testSummary(status));
       if(dot)dot.replaceWith(statusCircle({tone:testTone(status.status),label}));
     }
   }

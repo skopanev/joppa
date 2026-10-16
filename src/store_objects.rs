@@ -326,7 +326,10 @@ pub async fn read_objects(
                     .unwrap_or_else(|| json!({}));
                 item["link"] = link.clone();
                 item["blocking"] = json!(link["blocking"].as_bool().unwrap_or(false));
-                item["revision"] = link["revision"].clone();
+                // An ordering dependency stores no revision field, so its link item shows none.
+                if let Some(revision) = link.get("revision") {
+                    item["revision"] = revision.clone();
+                }
                 item["metadata_scope"] = json!("current");
                 item
             })

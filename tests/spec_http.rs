@@ -2600,6 +2600,59 @@ async fn a_stored_revision_on_an_ordering_link_asks_for_no_review() -> Result<()
     Ok(())
 }
 
+// blocking-pins-revision-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn bot_adds_and_removes_a_blocking_link_that_stores_no_target_revision() -> Result<()> {
+    let w = world().await?;
+    let save = |id: &str, revision: u32, body: &str, links: Value| json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,"data":{"title":id,"owner":"owner","body":body},"links":links,"reason":"Save"});
+    // T is at revision 3 before the link.
+    for revision in 0..3 {
+        w.command(save(
+            "t",
+            revision,
+            &format!("T at revision {}", revision + 1),
+            json!([]),
+        ))
+        .await?;
+    }
+    w.command(save("s", 0, "Source", json!([]))).await?;
+    let t = w.get("address=note:t").await?;
+    ensure!(t["current_revision"] == 3, "{t}");
+    // Agent bot adds a blocking link from S to T. The link names no revision.
+    let link = json!([{"target":"note:t","relation":"depends_on","blocking":true}]);
+    w.command_as(&w.bot, save("s", 1, "Source", link)).await?;
+    // T moves to revision 4.
+    w.command(save("t", 3, "T at revision 4", json!([])))
+        .await?;
+    let s = w.get("address=note:s").await?;
+    let stored = &s["document"]["links"][0];
+    let shown = &s["links"][0];
+    ensure!(
+        s["document"]["actor"] == "bot"
+            && s["document"]["links"].as_array().map(Vec::len) == Some(1)
+            && s["links"].as_array().map(Vec::len) == Some(1)
+            && stored == &json!({"target":"note:t","relation":"depends_on","blocking":true})
+            && shown["link"] == *stored
+            && shown["blocking"] == true
+            && shown.get("revision").is_none()
+            && shown["current_revision"] == 4
+            && s["review_required"] == false,
+        "after revision 4 of T: {s}"
+    );
+    // Agent bot removes the link.
+    w.command_as(&w.bot, save("s", 2, "Source", json!([])))
+        .await?;
+    let s = w.get("address=note:s").await?;
+    ensure!(
+        s["document"]["actor"] == "bot"
+            && s["links"] == json!([])
+            && s["document"]["links"] == json!([]),
+        "after the removal: {s}"
+    );
+    Ok(())
+}
+
 async fn journal_refuses(sql: &str) -> Result<()> {
     // As an application role that has UPDATE and DELETE rights, so only the WORM
     // trigger can refuse; a superuser could drop the trigger and prove nothing.
