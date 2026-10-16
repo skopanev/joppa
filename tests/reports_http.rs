@@ -1224,6 +1224,42 @@ async fn latest_run_decides_by_commit_order_not_upload_time() -> Result<()> {
     Ok(())
 }
 
+// status-current-only-ac1
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_listed_test_without_a_result_is_not_run_and_grey() -> Result<()> {
+    // A lists opens (X) and refuses (Y); the only report is a partial run of C with X passing.
+    let w = world().await?;
+    w.upload("c1c1c1c", 1, false, junit(&[("opens", "pass")]))
+        .await?;
+    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
+    ensure!(code == 200, "{code} {created}");
+    let bot = created["token"].as_str().unwrap();
+    let reply = w
+        .http
+        .get(format!("{}/tests?ac=ac:key-rights", w.base))
+        .bearer_auth(bot)
+        .send()
+        .await?;
+    let code = reply.status();
+    let text = reply.text().await?;
+    ensure!(code.is_success(), "{code} {text}");
+    let s: Value = serde_json::from_str(&text)?;
+    let test = |address: &str| {
+        s["tests"]
+            .as_array()
+            .and_then(|tests| tests.iter().find(|t| t["address"] == address))
+    };
+    ensure!(
+        test(A).is_some_and(|x| x["status"] == "pass" && x["commit"] == "c1c1c1c")
+            && test(B).is_some_and(|y| y["status"] == "not_run")
+            && s["status"] == "grey"
+            && s["reason"] == "not all tests passed",
+        "{s}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_test_absent_from_a_full_run_is_missing() -> Result<()> {
