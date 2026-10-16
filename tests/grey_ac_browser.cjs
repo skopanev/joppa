@@ -480,6 +480,50 @@ test('done-is-not-green-ac3: a done Task under a green criterion shows Checks pa
   } finally { await f.close(); }
 });
 
+test('tests-only-from-reports-ac1: object pages and board rows show no legacy checks block', async () => {
+  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const f = await fixture(criterionRecords, configured);
+  try {
+    await f.bind('ac:A', ['X']);
+    await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
+      data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
+      reason: 'Check the object page under a criterion'});
+    await f.upload('dddddddddddddddddddddddddddddddddddddddd', 1, [['X']]);
+    const addresses = ['requirement:r', 'ac:A', 'task:T'];
+    const noLegacy = async (card, address) => {
+      const sections = await card.locator(':scope > .object-body > .object-secondary > .object-section > summary').allTextContents();
+      assert.ok(!sections.some(title => /^Checks|run plan/i.test(title)), address + ': ' + sections.join(', '));
+      assert.equal(await card.locator('.object-checks,.verification-record').count(), 0, address);
+      const text = await card.locator(':scope > .object-body').textContent();
+      for (const forbidden of ['Expected', 'Observed', 'Missing result', 'Not checked']) assert.ok(!text.includes(forbidden), address + ': ' + forbidden);
+    };
+    const testsShown = async card => {
+      const group = card.locator(':scope > .object-body > .object-secondary > .object-tests');
+      await group.locator(':scope > summary').filter({hasText: /^Tests 1$/}).waitFor();
+      if (await group.getAttribute('open') === null) await group.locator(':scope > summary').click();
+      await group.locator('.ac-check').waitFor();
+      assert.match(await group.locator('.ac-check').innerText(), /checks.cjs > X\s+pass · commit ddddddd/);
+    };
+    for (const address of addresses) {
+      const card = await f.open(address);
+      await noLegacy(card, address);
+      if (address === 'ac:A') await testsShown(card);
+    }
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    const cards = {};
+    for (const address of ['domain:d', 'capability:c', ...addresses]) {
+      const card = f.page.locator('#tree .common-object[data-object-address="' + address + '"]');
+      await card.waitFor();
+      if (await card.getAttribute('open') === null) await card.locator(':scope > summary').click({position: {x: 4, y: 4}});
+      await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
+      cards[address] = card;
+    }
+    await Promise.all(f.requests.map(entry => entry.body));
+    for (const address of addresses) await noLegacy(cards[address], address);
+    await testsShown(cards['ac:A']);
+  } finally { await f.close(); }
+});
+
 test('removal-at-once-ac4: a removed member reloads without workspace data', async () => {
   const secret = 'Private source for the browser member';
   const f = await fixture({'domain:d': {title: 'Private domain', body: secret}});

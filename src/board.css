@@ -254,7 +254,6 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
 .verification-chip.has-failures{color:var(--fail)}
 .verification-chip.has-passes{color:var(--pass)}
-.ac-checks{margin:.8em 0 0;padding-left:1em;border-left:1px solid var(--rule)}
 .ac-check{padding:.3em 0}
 .ac-check-heading{display:flex;align-items:baseline;margin:0;font-size:.85em;color:var(--heading)}
 .ac-check .detail-fact{padding-left:1.3em;font-size:.8em}

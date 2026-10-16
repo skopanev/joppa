@@ -223,12 +223,6 @@ async function load() {
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(ws);
   await renderObjectTree();
 }
-async function boardPart(level,id,revision){
-  const params=new URLSearchParams({level});
-  if(id)params.set('id',id);
-  if(revision)params.set('revision',revision);
-  return api('workspaces/'+encodeURIComponent(ws)+'/board?'+params);
-}
 async function showApp(identity) {
   closeAccountMenu();
   if(identity.email===undefined)identity={...identity,...await api('me')};
@@ -391,11 +385,6 @@ function personLabel(actor){
 function eventDate(value){
   const date=new Date(value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));
   return Number.isNaN(date.getTime())?'Date unavailable':new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(date);
-}
-function cardFact(root,label,value){
-  if(value===undefined||value===null||value==='')return;
-  const line=E('p',undefined,'detail-fact');
-  line.append(E('span',label+': ','hint'),E('span',value));root.append(line);
 }
 if (window.SNAPSHOT) {
   document.body.classList.remove('checking-session');
@@ -861,48 +850,7 @@ function fillCommonObject(body,detail){
     secondary.append(group);
   }
   const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
-  if(!historical&&detail.process?.req){
-    const group=objectSection('Checks','object-checks'),content=E('section',undefined,'verification-record');group.append(content);let loaded=false;
-    group.addEventListener('toggle',async()=>{
-      if(!group.open||loaded)return;loaded=true;const generation=loadNumber;content.append(E('p','Loading checks…','hint'));
-      try{const record=window.SNAPSHOT?snapshotVerification(detail):await boardPart('process',detail.address);if(generation!==loadNumber||!group.isConnected)return;resizeBranch(group,()=>{content.replaceChildren();renderVerification(content,record);});}
-      catch(e){loaded=false;content.replaceChildren();notify(e);}
-    });secondary.append(group);
-  }
   body.append(secondary);
-}
-function snapshotVerification(detail){
-  const req=detail.process.req,r=data.state.requirements[req].revisions.at(-1);
-  const criteria=Object.values(data.snapshot_objects).filter(o=>o.process?.req===req&&data.objectTypes[o.kind]?.role==='ac'&&o.revisions.at(-1).present).map(o=>({address:o.address,id:o.process.criterion||o.id,title:o.revisions.at(-1).data.title}));
-  return {...r,revision:r.number,criteria};
-}
-function renderVerification(root,record){
-  root.append(E('h3','Checks'),E('p','Revision '+record.revision+(record.confirmed?' · Confirmed':' · Awaiting owner confirmation'),'node-meta'));
-  if(record.verification_scope)root.append(E('p',record.verification_scope.scope,'detail-fact'));
-  for(const criterion of record.criteria||[]){
-    const item=E('section',undefined,'ac-checks');
-    const heading=E('h4',undefined,'ac-check-heading');
-    heading.append(statusCircle(criterion.signal||{tone:'grey',label:'Not checked'}),objectLink(criterion.title,criterion.address));item.append(heading);
-    const runs=Object.entries(record.runs||{});
-    let count=0;
-    for(const [id,run] of runs){
-      for(const check of run.plan||[]){
-        if(check.ac!==criterion.id)continue;
-        count++;const result=run.results?.[check.id];
-        const row=E('article',undefined,'ac-check');
-        const at=record.result_dates?.[id]?.[check.id];
-        const label=result?.outcome==='pass'?'Passed':result?.outcome==='fail'?'Failed':result?.outcome==='skip'?'Skipped':result?'Not checked':run.finished?'Missing result':'Running';
-        const name=E('h4',undefined,'ac-check-heading');name.append(statusCircle({tone:result?.outcome==='fail'?'red':result?.outcome==='pass'?'green':result?'grey':'yellow',label,at}),E('span',check.id));
-        row.append(name,E('p',label+' · '+run.scope,'node-meta'));
-        cardFact(row,'Subject',Object.entries(run.subject||{}).map(([key,value])=>key+': '+value).join(' · ')||'Not recorded');
-        cardFact(row,'Expected',(check.expected||[]).join(', '));
-        if(result){cardFact(row,'Observed',(result.observed||[]).join(', ')||'Nothing recorded');if(result.note)cardFact(row,'Evidence',result.note);}
-        item.append(row);
-      }
-    }
-    if(!count)item.append(E('p','No tests linked yet.','hint'));
-    root.append(item);
-  }
 }
 async function showObjectRevisions(address){
   const generation=loadNumber;
