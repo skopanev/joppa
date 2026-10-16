@@ -806,6 +806,68 @@ test('settings-agent-tokens-ac1: a person who owns no workspace sees no token se
   } finally { await person.close(); await f.close(); }
 });
 
+// settings-agent-tokens-ac2
+test('settings-agent-tokens-ac2: alex revokes the write token of bot in Settings and the token stops working', async () => {
+  const f = await fixture({'domain:d': {title: 'Existing domain'}});
+  try {
+    const request = f.page.context().request;
+    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Revoke space'}});
+    assert.equal(created.status(), 200);
+    const {id} = await created.json();
+    const api = f.live.root + '/api/workspaces/' + encodeURIComponent(id);
+    const issued = await request.post(api + '/agent-tokens', {headers: {Origin: f.live.root}, data: {agent: 'bot', access: 'write'}});
+    assert.equal(issued.status(), 200);
+    const {id: tokenId, token} = await issued.json();
+    const read = () => fetch(api + '/objects?parent=*', {headers: {Authorization: 'Bearer ' + token}});
+    assert.equal((await read()).status, 200);
+    const workspace = f.page.getByLabel('Workspace for the token');
+    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
+    await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
+    const shown = f.page.waitForResponse(response => response.url() === api + '/agent-tokens');
+    await workspace.selectOption(id);
+    assert.equal((await shown).status(), 200);
+    const row = f.page.locator('#agent-token-list tr').filter({hasText: 'bot'});
+    const control = row.getByRole('button', {name: 'Revoke token of bot'});
+    const cells = () => row.evaluate(element => [...element.cells].slice(0, 5).map(cell => cell.textContent));
+    await control.waitFor();
+    const before = await cells();
+    assert.deepEqual([...before.slice(0, 3), before[4]], ['bot', 'write', 'active', '']);
+    // Fixture 3: the request goes to a token id unknown in W, so the server refuses it; the page shows its error and keeps the row.
+    const revokeUrl = api + '/agent-tokens/' + tokenId + '/revoke', unknownUrl = api + '/agent-tokens/' + (tokenId + 1000) + '/revoke';
+    await f.page.route(revokeUrl, route => route.continue({url: unknownUrl}));
+    const refused = f.page.waitForResponse(response => response.url() === unknownUrl);
+    await control.click();
+    const reply = await refused;
+    assert.equal(reply.status(), 409);
+    assert.deepEqual(await reply.json(), {error: 'unknown agent token'});
+    await f.page.locator('#issue-token-error').filter({hasText: 'unknown agent token'}).waitFor();
+    assert.deepEqual(await cells(), before);
+    await f.page.waitForFunction(() => !document.querySelector('#agent-token-list button').disabled);
+    assert.equal((await read()).status, 200);
+    await f.page.unroute(revokeUrl);
+    // The owner revokes the token; the list loads again and shows it revoked with its date and no control.
+    const revoked = f.page.waitForResponse(response => response.url() === revokeUrl);
+    const reloaded = f.page.waitForResponse(response => response.url() === api + '/agent-tokens' && response.request().method() === 'GET');
+    await control.click();
+    assert.equal((await revoked).status(), 200);
+    assert.equal((await reloaded).status(), 200);
+    await control.waitFor({state: 'detached'});
+    const after = await cells();
+    assert.deepEqual(after.slice(0, 4), ['bot', 'write', 'revoked', before[3]]);
+    assert.ok(after[4].length > 0);
+    assert.equal(await row.getByRole('button').count(), 0);
+    assert.equal(await f.page.locator('#issue-token-error').textContent(), '');
+    const listed = (await (await request.get(api + '/agent-tokens')).json()).items;
+    assert.deepEqual(listed.map(item => [item.id, item.revoked, item.revoked_at]), [[tokenId, true, after[4]]]);
+    // The next call with the revoked token is refused.
+    const write = await fetch(api + '/commands', {method: 'POST', headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'domain', id: 'revoked', revision: 0, parent: null,
+        data: {title: 'Revoked', owner: 'owner', body: 'Input'}, reason: 'Save'}})});
+    assert.equal(write.status, 401);
+    assert.deepEqual(await write.json(), {error: 'token revoked'});
+  } finally { await f.close(); }
+});
+
 test('owner-adds-members-ac8: alex@example.com reloads the board and reads W with no new sign-in', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});

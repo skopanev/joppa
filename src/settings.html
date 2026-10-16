@@ -50,7 +50,7 @@
       <button id="copy-token-button" type="button">Copy token</button>
     </div>
     <table aria-label="Agent tokens of the workspace">
-      <thead><tr><th>Agent</th><th>Access</th><th>Status</th><th>Created</th><th>Revoked</th></tr></thead>
+      <thead><tr><th>Agent</th><th>Access</th><th>Status</th><th>Created</th><th>Revoked</th><th>Action</th></tr></thead>
       <tbody id="agent-token-list"></tbody>
     </table>
   </section>
@@ -134,10 +134,24 @@ grantForm(['grant-domain','grant-domain-workspace','grant-domain-name','grant-do
         const row=document.createElement('tr');
         row.replaceChildren(...[t.agent,t.access,t.revoked?'revoked':'active',t.created_at,t.revoked_at||''].map(text=>{
           const cell=document.createElement('td');cell.textContent=text;return cell;
-        }));
+        }),document.createElement('td'));
+        if(!t.revoked){
+          const control=document.createElement('button');
+          control.type='button';control.textContent='Revoke';control.setAttribute('aria-label','Revoke token of '+t.agent);
+          control.onclick=()=>revoke(t.id,control);
+          row.lastChild.append(control);
+        }
         return row;
       }));
     }catch(e){if(load===loads)error.textContent=e.message;}
+  };
+  // A refused revoke keeps the row as it is and shows the server error.
+  const revoke=async(id,control)=>{
+    control.disabled=true;error.textContent='';
+    try{
+      await json(await fetch(tokens()+'/'+id+'/revoke',{method:'POST'}),'Could not revoke the token.');
+      await show();
+    }catch(e){error.textContent=e.message;control.disabled=false;}
   };
   const hide=()=>{shown.hidden=true;value.textContent='';};
   select.onchange=()=>{hide();error.textContent='';list.replaceChildren();show();};
