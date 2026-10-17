@@ -899,7 +899,7 @@ function fillCommonObject(body,detail){
   if(!historical&&r.present!==false&&!window.SNAPSHOT&&body.parentElement?.classList.contains('common-object'))secondary.append(dependencyControls(detail));
   if(!historical&&data.objectTypes?.[detail.kind]?.role==='ac')secondary.append(criterionTestsSection(detail.address));
   const links=new Map();
-  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
+  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision&&detail.review_required===true?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
   for(const link of detail.incoming||[]){const key=link.source+'@';const entry=links.get(key)||{address:link.source,title:link.title||link.source,labels:[]};entry.labels.push('Linked from · '+link.relation);links.set(key,entry);}
   if(links.size){
     const group=objectSection('Links '+links.size,'object-relations');

@@ -490,6 +490,35 @@ test('done-is-not-green-ac3: a done Task under a green criterion shows Checks pa
   } finally { await f.close(); }
 });
 
+test('pins-ignore-process-events-ac4: the board marks a link changed only when the server asks for review', async () => {
+  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const f = await fixture(criterionRecords, configured);
+  const task = (id, contract, revision = 0, links = []) => f.command({op: 'save_object', kind: 'task', id, revision, parent: 'ac:A',
+    data: {title: 'Task ' + id, owner: 'owner', contract, purpose: 'implementation'}, links, reason: 'Define the Task'});
+  const meta = async () => {
+    const card = await f.open('task:B');
+    const text = await card.locator(':scope > .object-body .object-links').textContent();
+    assert.match(text, /Links to · depends_on · revision 1/);
+    return {text};
+  };
+  try {
+    await task('A', 'Implement the first part');
+    await task('B', 'Implement the second part', 0, [{target: 'task:A', relation: 'depends_on', revision: 1, blocking: true}]);
+    // Process events move A to revision 3; the server keeps the pin of B current.
+    await f.command({op: 'claim_task', id: 'task:A', revision: 1});
+    await f.command({op: 'release_task', id: 'task:A', revision: 2, reason: 'Hand the work back'});
+    let read = await f.mcp('joppa_objects', {address: 'task:B'});
+    assert.equal(read.review_required, false, JSON.stringify(read));
+    assert.doesNotMatch((await meta()).text, /changed/);
+    // An authored contract change of A asks for review of B.
+    const a = await f.mcp('joppa_objects', {address: 'task:A'});
+    await task('A', 'Implement the first part and record the result', a.current_revision);
+    read = await f.mcp('joppa_objects', {address: 'task:B'});
+    assert.equal(read.review_required, true, JSON.stringify(read));
+    assert.match((await meta()).text, /Links to · depends_on · revision 1 · changed/);
+  } finally { await f.close(); }
+});
+
 test('tests-only-from-reports-ac1: object pages and board rows show no legacy checks block', async () => {
   const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
