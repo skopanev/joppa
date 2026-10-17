@@ -10,9 +10,9 @@
 <h1>How it works</h1>
 <p>This is a suggested method. We suggest a tree that connects product commitments, work and evidence. Choose the levels and questions that fit your workspace.</p>
 <div class="milestones" aria-label="Three separate milestones">
-<article class="milestone"><strong>Work done</strong><p>A task records what was changed.</p></article>
-<article class="milestone"><strong>Checks passed</strong><p>Evidence supports an AC on recorded versions.</p></article>
-<article class="milestone"><strong>Owner accepted</strong><p>The owner accepts that revision and checked result.</p></article>
+<article class="milestone"><strong>Work done</strong><p>A Task records what was changed.</p></article>
+<article class="milestone"><strong>Tests passed</strong><p>Every test of a criterion passes in the latest full report.</p></article>
+<article class="milestone"><strong>Owner accepted</strong><p>The owner accepts the requirement and its green criteria.</p></article>
 </div>
 <nav class="guide-nav" aria-label="Guide sections"><a href="#tree-levels">The tree</a><a href="#agent-work">Working with agents</a><a href="#evidence">Evidence</a><a href="#worked-example">A complete example</a><a href="#revisions">Revisions &amp; setbacks</a></nav>
 <section><h2>We suggest one workspace per product</h2>
@@ -30,51 +30,49 @@
 </div>
 <p>We suggest opening an object to read its linked work. The workspace schema selects the permitted task parents.</p>
 
-<p>The workspace schema defines the tree. We suggest domains and capabilities as default levels for organizing commitments. Verification uses the configured specification and criterion roles. Owner acceptance is tracked separately.</p><p>Status circles show the recorded verdict. Required passing checks produce green. Pending decisions or work produce yellow. Failed checks produce red. Unchecked or empty items produce grey. Elapsed time alone does not expire a pass. A result applies to its recorded context revision and subject. Another context revision or subject needs another run. Include relevant code, test and environment versions in the verification scope. Containers summarize their current children, including those hidden by filters. An empty branch cannot be green. Task completion does not make a criterion green. Historical document revisions use grey circles. Inspect the recorded subject before using a pass as evidence about the deployed version.</p></section>
+<p>The workspace schema defines the tree. We suggest domains and capabilities as default levels for organizing commitments. Each type has a status rule: tests, children, links or none. Owner acceptance is tracked separately.</p><p>Status circles show the current status. A criterion is green when every test in its list passes in the latest full report. It is red when one test fails or is missing from that report. It is grey when it has no test list or no full report after the change. A group or a requirement takes its status from its children. A node with the links rule takes its status from the objects that link to it. Pending decisions or work produce yellow. An empty branch cannot be green. Task completion does not make a criterion green.</p></section>
 <section id="agent-work"><h2>We suggest reading here and writing through an agent</h2>
-<p>Open an object and choose the <strong>copy + robot</strong> button. Paste the unique system ID into your agent chat to discuss it. Content changes, discussions, decisions and test results are recorded through <span class="brand-word">joppa<span>.</span></span> MCP. The portal is read-only, including comments, descriptions, attachments and tree order. Use the dropdowns to choose what to view. The history icon opens a compact list of when, who and what changed. A requirement’s revision number sits beside it; choose an older revision inside History to read its wording and evidence.</p>
-<p>File and comment icons are highlighted with a count when content exists. Empty icons stay thin, muted and disabled. Choose an active file icon beside a domain, capability, requirement, AC, intake or intake point to open the file list and read or download a file; adding or removing files goes through your agent. The notes button opens read-only descriptions and discussion. The copy button gives your agent only the permanent system ID.</p></section>
+<p>Open an object and choose the <strong>copy + robot</strong> button. Paste the unique system ID into your agent chat to discuss it. Content changes, discussions, decisions and test lists are recorded through <span class="brand-word">joppa<span>.</span></span> MCP. On the board, a person sets priorities and dependencies. In Settings, the owner manages people and workspaces. The history icon opens a compact list of when, who and what changed. The timeline shows every change of the workspace in order.</p>
+<p>File and comment icons are highlighted with a count when content exists. Empty icons stay thin, muted and disabled. Choose an active file icon to open the file list and read or download a file. Adding or removing files goes through your agent. The notes button opens descriptions and discussion. The copy button gives your agent only the permanent system ID.</p></section>
 <section><h2>We suggest reviewing the tree with its owner</h2>
 <p>We suggest asking an agent to propose levels from the product documentation. The product owner reviews the boundaries, questions and owners.</p>
-<p>We suggest writing requirements and checks together. Assign an owner who answers questions and reviews changes. Record decisions through MCP.</p>
+<p>We suggest writing requirements and tests together. Assign an owner who answers questions and reviews changes. Record decisions through MCP.</p>
 <p>We suggest assessing readiness before work starts. Ask a named person for missing information. Independent work can proceed while other work awaits a decision.</p></section>
-<section id="evidence"><h2>What a check proves</h2>
-<p>A passed check supports one acceptance condition for one REQ revision on a recorded combination of builds and configuration. A completed task alone proves none of that.</p>
-<p>Before execution, the runner records the full expected check list and whether discovery is complete. Every expected check needs a result. Missing, skipped or undiscovered checks cannot make an AC green. One automated test names one AC; several tests may check the same AC.</p>
-<div class="table-wrap"><table><caption>Make a result reproducible</caption><thead><tr><th scope="col">Record</th><th scope="col">Example</th></tr></thead><tbody>
-<tr><th scope="row">Requirement and condition</th><td>Paid access after sign-in, revision 1, iOS access AC.</td></tr>
-<tr><th scope="row">Versions and environment</th><td>iOS build A1 + backend B1 + configuration C1, tested in staging. Use immutable build IDs or commit hashes.</td></tr>
-<tr><th scope="row">Input and steps</th><td>A fixture with an active subscription; sign out, then sign in. Identify the fixture version in the run or its evidence.</td></tr>
-<tr><th scope="row">Expected and observed</th><td>Expected: paid features open. Observed: the purchase screen appears.</td></tr>
-<tr><th scope="row">Evidence</th><td>The recorded result and inspection note, with a log, report or screenshot link when available. An attachment or link alone does not establish a pass.</td></tr>
+<section id="evidence"><h2>What a test report proves</h2>
+<p>A criterion lists the tests that prove it, by file and name. The test runner uploads a report for each commit. Only a full, clean report from the default branch decides the status. A completed Task alone proves nothing.</p>
+<p>Each listed test needs a result in the full report. A failed or missing test makes the criterion red. One criterion can list several tests. One test can prove several criteria.</p>
+<div class="table-wrap"><table><caption>Write a test that proves a criterion</caption><thead><tr><th scope="col">Part</th><th scope="col">Example</th></tr></thead><tbody>
+<tr><th scope="row">Criterion</th><td>On iOS, a customer with an active subscription has access to paid features after signing in again.</td></tr>
+<tr><th scope="row">Test name</th><td><code>tests/access.rs &gt; paid_access_stays_after_sign_in</code>, saved in the test list of the criterion.</td></tr>
+<tr><th scope="row">Input and steps</th><td>A fixture with an active subscription. The test signs out, then signs in.</td></tr>
+<tr><th scope="row">Assertion</th><td>The paid features open. The purchase screen does not appear.</td></tr>
+<tr><th scope="row">Report</th><td>The full report of the commit on the default branch, with the result of each test.</td></tr>
 </tbody></table></div>
-<p>For a product spanning repositories, “version” means the relevant combination, not whichever repository changed last. A name such as “staging” identifies a place; it does not identify its build or configuration. Include the versions that can affect the condition.</p>
-<div class="example"><strong>A manual check needs concrete evidence too.</strong><p>For a key that must have exactly <code>read, verify</code>, record that expected list and the actual list. An extra <code>delete</code> permission means failure. “Checked manually” is insufficient. Only a human submits manual results; an agent records a human decision only on explicit instruction.</p></div>
-<p class="evidence-note"><strong>Read green as “verified on these versions”.</strong> The portal summarizes the latest-started completed run. It does not automatically compare that run with the deployed release. Inspect the versions in Checks before treating a green card as evidence about production. A newer unfinished run turns the status yellow; the previous completed result remains visible in Checks as historical evidence.</p>
+<p class="evidence-note"><strong>Read green as “the listed tests pass on this commit”.</strong> The criterion shows the commit of each test result. Compare that commit with the deployed release before you treat a green card as evidence about production. A failed test keeps its failure message in the history of the criterion.</p>
 </section>
 <section id="worked-example"><h2>A suggested path from a requirement to a release</h2>
-<p>We suggest the following workflow. Illustrative build labels below stand for immutable versions. The agreed scope is iOS; Android and web require their own scope decision.</p>
+<p>We suggest the following workflow. The agreed scope is iOS. Android and web require their own scope decision.</p>
 <ol class="journey">
-<li><h3>Agree on the behavior</h3><p><strong>REQ:</strong> A customer with an active subscription keeps paid access after signing in again. <strong>AC:</strong> On iOS, paid features are available after sign-in for that customer.</p><p>The owner confirms revision 1. The agent assesses its AC. Two tasks deliver it: the backend returns the subscription entitlement, and the iOS app refreshes access after sign-in.</p></li>
-<li><h3>Record the plan, then run it</h3><p>The runner seals the full check list for <span class="version">app A1 + backend B1 + configuration C1</span>. It records the test environment and fixture. Both tasks can be complete while the AC still awaits verification.</p></li>
-<li><h3>Keep the failure and fix the cause</h3><p><span class="outcome fail">Failed</span> The backend reports an active subscription, but the app shows the purchase screen. The observed behavior and report stay in history.</p><p>The agent links the correction task to the AC. After the app fix, the runner records a fresh plan and reruns the full expected set on <span class="version">app A2 + backend B1 + configuration C1</span>. The requirement wording is unchanged, so it remains revision 1.</p></li>
-<li><h3>Verify, then ask the owner to accept</h3><p><span class="outcome pass">Passed</span> Every expected check passes on that same combination. The REQ is ready for acceptance. The owner explicitly accepts revision 1 and its checked run. Agent confidence, task completion and silence cannot substitute for this decision.</p></li>
-<li><h3>Check the next release on its own versions</h3><p>Backend B2 is released later. The successful A2/B1/C1 report remains a valid historical record; it does not verify A2/B2/C1. Run the checks for the new combination, even when the REQ wording is unchanged, then obtain acceptance of the new successful run.</p><p>Before launch, compare the intended release with the accepted evidence. <span class="brand-word">joppa<span>.</span></span>’s launch check can reject a mismatched version for mandatory conditions, but it blocks a deployment only when the release pipeline actually enforces it.</p></li>
+<li><h3>Agree on the behavior</h3><p><strong>REQ:</strong> A customer with an active subscription keeps paid access after signing in again. <strong>AC:</strong> On iOS, paid features are available after sign-in for that customer.</p><p>The owner confirms the requirement. The agent assesses the criterion and marks it ready. Two Tasks deliver it: the backend returns the subscription entitlement, and the iOS app refreshes access after sign-in.</p></li>
+<li><h3>List the tests, then run them</h3><p>The agent saves the test list of the criterion. Both Tasks can be complete while the criterion is still grey: it waits for a full report.</p></li>
+<li><h3>Keep the failure and fix the cause</h3><p><span class="outcome fail">Failed</span> The backend reports an active subscription, but the app shows the purchase screen. The failed result stays in history.</p><p>The agent fixes the app. The next full report runs every test again.</p></li>
+<li><h3>Verify, then ask the owner to accept</h3><p><span class="outcome pass">Passed</span> Every listed test passes in the latest full report. The requirement is ready for acceptance. Agent confidence, Task completion and silence cannot take the place of this decision.</p></li>
+<li><h3>Check the next release on its own commit</h3><p>A later commit changes the backend. Its full report runs the same tests again. A test that fails or goes missing makes the criterion red again.</p><p>Before launch, compare the release commit with the commit of the test results. The <span class="brand-word">joppa<span>.</span></span> status shows only what the reports prove.</p></li>
 </ol>
 </section>
 <section id="revisions"><h2>Changed wording needs fresh evidence</h2>
-<p>Saving a change to REQ or AC wording creates a new REQ revision. <strong>All ACs in that revision start at n/a, including unchanged ones.</strong> Earlier checks and acceptance remain attached to their original revision. Even a typo correction in that wording currently requires fresh results and acceptance.</p>
-<p>The agent compares the implementation and tests with the new wording, updates them where needed and reruns the full checks. Suitable test code can be reused; old results cannot be copied into the new revision.</p>
-<p>Comments do not create revisions or automatically block work. An agent must not silently expand an iOS condition to Android or web. People decide changes to scope and policy.</p>
+<p>A change to the wording of a criterion makes it grey again. The next full report decides its status. Earlier results stay in history.</p>
+<p>The agent compares the implementation and the tests with the new wording. It updates them where necessary. Suitable test code can stay. Old results do not count for the new wording.</p>
+<p>Comments do not create revisions or block work. An agent must not silently expand an iOS condition to Android or web. People decide changes to scope and policy.</p>
 <h2>When work needs another pass</h2>
 <div class="table-wrap"><table><caption>What happens next, and who moves it forward</caption><thead><tr><th scope="col">Situation</th><th scope="col">Next action</th></tr></thead><tbody>
-<tr><th scope="row">A check fails</th><td>The agent investigates and links the fix to the AC, then reports a fresh complete run. A newer completed failure cannot be hidden by choosing an older pass.</td></tr>
-<tr><th scope="row">Results are missing or skipped</th><td>The runner completes discovery and execution in a fresh run. The AC stays unverified until the full expected set passes.</td></tr>
-<tr><th scope="row">A deployed build differs</th><td>The agent checks the new combination. Old evidence stays in history and is not proof about the new build.</td></tr>
-<tr><th scope="row">The owner finds a defect or declines acceptance</th><td>The owner records the reason. A confirmed defect invalidates the affected result and removes acceptance. After resolution, a fresh passing run is needed. Changed expected behavior requires a new revision.</td></tr>
-<tr><th scope="row">Requirements or policy conflict</th><td>The agent records the specific question and responsible decision maker, marking the affected AC as waiting. Its dependents wait; independent ready ACs may proceed.</td></tr>
+<tr><th scope="row">A test fails</th><td>The agent finds the cause and fixes it. The next full report shows the new result. An older pass cannot hide a newer failure.</td></tr>
+<tr><th scope="row">A test is missing from the report</th><td>The criterion is red. The agent restores the test or corrects the test list.</td></tr>
+<tr><th scope="row">The deployed commit differs</th><td>The agent runs the full report on that commit. Old results stay in history and are not proof about the new commit.</td></tr>
+<tr><th scope="row">The owner finds a defect</th><td>The owner records the reason. The agent adds a test that fails on the defect, then fixes it. Changed expected behavior needs new wording.</td></tr>
+<tr><th scope="row">Requirements or policy conflict</th><td>The agent records the specific question and the person who decides. The affected criterion waits. Independent ready criteria can continue.</td></tr>
 </tbody></table></div>
-<p>History preserves wording, reports and decisions with their authors and timestamps. Acceptance records what the owner considered sufficient for that revision and run; it does not prove that every possible condition has been discovered.</p>
+<p>History keeps wording, reports and decisions with their authors and times. Acceptance records what the owner considered sufficient. It does not prove that every possible condition is known.</p>
 </section>
 <a class="return-link" href="/">← Back to your workspace</a>
 <script>

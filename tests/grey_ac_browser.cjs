@@ -193,6 +193,19 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
   } finally { await f.close(); }
 });
 
+test('guide-teaches-reports-ac1: the guide teaches test lists and full reports, not legacy Checks', async () => {
+  const f = await fixture({});
+  try {
+    assert.equal((await f.page.goto(f.live.root + '/guide')).status(), 200);
+    const text = await f.page.locator('body').innerText();
+    for (const legacy of [/Expected and observed/i, /runner (records|seals)/i, /check list/i, /manual check/i, /start at n\/a/i])
+      assert.doesNotMatch(text, legacy);
+    assert.match(text, /every test in its list passes in the latest full report/);
+    assert.match(text, /A failed or missing test makes the criterion red/);
+    assert.match(text, /status rule: tests, children, links or none/);
+  } finally { await f.close(); }
+});
+
 test('type-question: the schema question opens from each type badge', async () => {
   const question = 'Which observation does this record preserve?';
   const configured = {record: {title: 'Records', role: 'document', root: true, parents: ['record'], badge: 'REC', question}};
