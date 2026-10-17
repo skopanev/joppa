@@ -41,11 +41,11 @@ pub struct TreeType {
     pub required_fields: BTreeMap<String, RequiredFieldRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
-    /// How a node of this type gets its tone: tests, children or none. Without a value the
+    /// How a node of this type gets its tone: tests, children, links or none. Without a value the
     /// role decides: the criterion role uses tests, group and requirement use children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// The order in which a children rule takes the first status that a child has.
+    /// The order in which a children or links rule takes the first status that it finds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_order: Option<Vec<String>>,
 }
@@ -661,7 +661,7 @@ fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
 }
 
 /// The status rules of a type and the tones that a children rule can order.
-pub const STATUS_RULES: [&str; 3] = ["tests", "children", "none"];
+pub const STATUS_RULES: [&str; 4] = ["tests", "children", "links", "none"];
 pub const STATUS_TONES: [&str; 3] = ["red", "grey", "green"];
 
 /// The status rule of a type: its own rule, else the default of its role.
@@ -785,7 +785,7 @@ pub fn set_schema(
             t.status
                 .as_deref()
                 .is_none_or(|rule| STATUS_RULES.contains(&rule)),
-            "a status rule is tests, children or none"
+            "a status rule is tests, children, links or none"
         );
         ensure!(
             t.status_order.as_ref().is_none_or(|order| !order.is_empty()

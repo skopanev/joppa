@@ -299,7 +299,7 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
         (
             "status",
             json!("parent"),
-            "a status rule is tests, children or none",
+            "a status rule is tests, children, links or none",
         ),
         (
             "status_order",
@@ -875,5 +875,105 @@ async fn work_priority_ac5_an_agent_sets_the_priority_and_the_timeline_names_it(
             && entry["address"] == "check:a",
         "{entry}"
     );
+    Ok(())
+}
+
+// type-status-rules-ac6
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linking_object_has()
+-> Result<()> {
+    let w = world().await?;
+    let task = w.rules_schema(json!(["red", "grey", "green"])).await?;
+    let task = task.as_str().context("task kind")?;
+    let tree = w.tree().await?;
+    let mut types = tree["schema"]["types"].clone();
+    types["user"] =
+        json!({"title":"Users","role":"document","root":true,"parents":[],"status":"links"});
+    w.command(&w.owner, json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Add users with a links rule"})).await?;
+    ensure!(w.tree().await?["schema"]["types"]["user"]["status"] == "links");
+    w.save("user", "u", None).await?;
+    w.save("area", "g", None).await?;
+    w.save("rule", "r", Some("area:g")).await?;
+    let link = json!([{"target":"user:u","relation":"related","blocking":false}]);
+    let save_linked = |kind: &str, id: &str, parent: &str, extra: Value| {
+        let mut data = json!({"title":id,"owner":"owner","body":"The contract","description":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
+        for (k, v) in extra.as_object().into_iter().flatten() {
+            data[k] = v.clone();
+        }
+        json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"links":link,"reason":"Link to the user"})
+    };
+    // Fixture 1: no object links to U, so U is grey.
+    ensure!(w.tones(&["user:u"]).await? == ["grey"], "fixture 1");
+    // Fixture 2: green check A links to U.
+    w.command(&w.owner, save_linked("check", "a", "rule:r", json!({})))
+        .await?;
+    w.bind("check:a", &["a"]).await?;
+    w.report(&[("a", "pass")]).await?;
+    ensure!(
+        w.tones(&["check:a", "user:u"]).await? == ["green", "green"],
+        "fixture 2"
+    );
+    // Fixture 3: a done Task under A links to U and takes the status of A.
+    w.command(
+        &w.owner,
+        save_linked(
+            task,
+            "t",
+            "check:a",
+            json!({"contract":"Implement and check the contract","purpose":"implementation"}),
+        ),
+    )
+    .await?;
+    let p = w.object("check:a").await?["process"].clone();
+    w.command(&w.owner, json!({"op":"assess","req":p["req"],"revision":p["revision"],"ac":p["criterion"],"assessment":{"ready":true,"reason":"Known scope","recipient":null,"decision":null}})).await?;
+    let t = format!("{task}:t");
+    let revision = w.object(&t).await?["current_revision"].clone();
+    w.command(
+        &w.bot,
+        json!({"op":"claim_task","id":t,"revision":revision}),
+    )
+    .await?;
+    let revision = w.object(&t).await?["current_revision"].clone();
+    w.command(
+        &w.bot,
+        json!({"op":"complete_task","id":t,"revision":revision,"evidence":"Implemented"}),
+    )
+    .await?;
+    ensure!(w.tones(&["user:u"]).await? == ["green"], "fixture 3");
+    // Fixture 4: red check B links to U.
+    w.command(&w.owner, save_linked("check", "b", "rule:r", json!({})))
+        .await?;
+    w.bind("check:b", &["b"]).await?;
+    w.report(&[("a", "pass"), ("b", "fail")]).await?;
+    ensure!(w.tones(&["user:u"]).await? == ["red"], "fixture 4");
+    // Fixture 5: B is archived and an open Task links to U, so U is grey.
+    let b = w.object("check:b").await?;
+    w.command(&w.owner, json!({"op":"archive_object","target":"check:b","revision":b["current_revision"],"reason":"Drop the check"})).await?;
+    w.report(&[("a", "pass")]).await?;
+    ensure!(
+        w.tones(&["user:u"]).await? == ["green"],
+        "after the archive"
+    );
+    w.command(
+        &w.owner,
+        save_linked(
+            task,
+            "open",
+            "check:a",
+            json!({"contract":"Implement the next part","purpose":"implementation"}),
+        ),
+    )
+    .await?;
+    ensure!(w.tones(&["user:u"]).await? == ["grey"], "fixture 5");
+    // Fixture 6: the open Task is retired, and a retired Task does not count.
+    let o = format!("{task}:open");
+    let revision = w.object(&o).await?["current_revision"].clone();
+    w.command(
+        &w.owner,
+        json!({"op":"retire_task","id":o,"revision":revision,"reason":"Not needed"}),
+    )
+    .await?;
+    ensure!(w.tones(&["user:u"]).await? == ["green"], "fixture 6");
     Ok(())
 }
