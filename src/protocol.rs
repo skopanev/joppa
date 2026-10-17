@@ -26,7 +26,7 @@ pub async fn handle(
             )
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({"tools": [
+        "tools/list" => Ok(json!({"tools": json!([
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
             tool("joppa_search", "Find current objects of any configured type inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
             tool("joppa_read", "Read a schema-defined root index, one copied object, or its configured verification context. Supply workspace OR item_id. Every requirement reports revision_count. history=true returns counts only, never events or revision bodies. To read an older revision, explicitly supply revision=N; the response contains exactly one revision and its discussion/evidence. Copied requirement and AC IDs obey the same rules.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement: current revision by default, including its ACs, tasks, runs, issues and revision comments"},"revision":{"type":"integer","minimum":1,"description":"Read exactly this revision of the selected requirement; omit for current. Works with req or a requirement/AC item_id."},"history":{"type":"boolean","default":false,"description":"Discover revision counts without revision bodies or events. Then request one revision by number."},"target":{"type":"string","description":"One object's notes: description, comments and attachments. Address as kind:id, e.g. requirement:r-xxx or ac:r-xxx/2. Cannot be combined with revision or history."}}), json!([])),
@@ -39,7 +39,10 @@ pub async fn handle(
             tool("joppa_batch", "Append up to 100 operations atomically. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_model_docs", "Read Joppa methodology and ASD-STE100 technical writing rules. Prefer English for new technical text. Read before creating a product tree.", json!({"section":{"type":"string","enum":["all","model","process","green","writing","objects"]}}), json!([])),
             tool("joppa_help", "Get operation shapes and writing rules. Read before authoring commands. Supply workspace to read schema questions. Check the title and description, then resend save_object with question_checked equal to the question.", json!({"workspace":{"type":"string"}}), json!([]))
-        ]})),
+        ]).as_array().into_iter().flatten()
+            // A read-only grant sees only the tools that it can call.
+            .filter(|t| access != store::Access::Read || t["name"].as_str().is_some_and(|n| READ_TOOLS.contains(&n)))
+            .cloned().collect::<Vec<_>>()})),
         "tools/call" => call(pool, actor, access, msg, embedder)
             .await
             .map(|v| json!({"content":[{"type":"text","text":v.to_string()}]})),

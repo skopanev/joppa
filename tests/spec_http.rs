@@ -1,5 +1,5 @@
 //! Specification behaviour over HTTP and MCP: a real server, an owner token and a test DB.
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};
 use std::{
@@ -5058,6 +5058,59 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         status == 401
             && serde_json::from_str::<Value>(&text).is_ok_and(|v| v["error"] == "token revoked"),
         "{status} {text}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn tools_list_for_a_read_only_token_lists_only_the_read_tools() -> Result<()> {
+    // read-only-agent-token-ac5
+    let w = world().await?;
+    let mut names = vec![];
+    for (agent, access) in [("planner-reader", "read"), ("control-agent", "write")] {
+        let created: Value = w
+            .http
+            .post(format!("{}/api/workspaces/{}/agent-tokens", w.root, w.ws))
+            .bearer_auth(&w.owner)
+            .json(&json!({"agent":agent,"access":access}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let token = created["token"].as_str().context("token")?;
+        let listed: Value = w
+            .http
+            .post(format!("{}/mcp", w.root))
+            .bearer_auth(token)
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let tools: Vec<String> = listed["result"]["tools"]
+            .as_array()
+            .context("tools")?
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+        names.push(tools);
+    }
+    let (read, write) = (&names[0], &names[1]);
+    let writes = ["joppa_command", "joppa_batch"];
+    ensure!(
+        writes.iter().all(|n| write.iter().any(|t| t == n)),
+        "{write:?}"
+    );
+    ensure!(
+        !read.is_empty() && read.iter().all(|t| !writes.contains(&t.as_str())),
+        "{read:?}"
+    );
+    ensure!(
+        read.iter().all(|t| write.contains(t)) && read.len() + writes.len() == write.len(),
+        "{read:?} {write:?}"
     );
     Ok(())
 }
