@@ -56,9 +56,16 @@ async function main(): Promise<boolean> {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ stamp: { ...stamp, default_branch: true }, junit }),
     });
-    const result = await reply.json();
-    say(reply.ok ? `uploaded ${result.tests} results for ${stamp.commit.slice(0, 7)}` : `upload refused: ${result.error ?? reply.status}`);
-    return reply.ok;
+    // A proxy in front of Joppa can answer with text, for example during a restart.
+    const text = await reply.text();
+    let result: any = null;
+    try {
+      result = JSON.parse(text);
+    } catch {}
+    const cause = typeof result?.error === "string" ? result.error : `HTTP ${reply.status}: ${text.trim().slice(0, 200)}`;
+    const stored = reply.ok && result !== null && typeof result === "object";
+    say(stored ? `uploaded ${result.tests} results for ${stamp.commit.slice(0, 7)}` : `upload refused: ${cause}`);
+    return stored;
   } catch (error) {
     say(`upload failed: ${error}`);
     return false;

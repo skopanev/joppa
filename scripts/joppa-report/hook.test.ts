@@ -14,6 +14,8 @@ let root = "";
 let repo = "";
 const uploads: any[] = [];
 let server: ReturnType<typeof Bun.serve>;
+// When set, the fake Joppa answers like a proxy during a restart: a text body, not JSON.
+let gateway: { status: number; body: string } | null = null;
 
 function run(cmd: string[], env: Record<string, string> = {}) {
   const r = Bun.spawnSync(cmd, { cwd: repo || root, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
@@ -36,6 +38,7 @@ beforeAll(() => {
   server = Bun.serve({
     port: 0,
     async fetch(request) {
+      if (gateway) return new Response(gateway.body, { status: gateway.status });
       const body = await request.json();
       // Reject any body that the real endpoint would not take, so hook and server cannot drift.
       if (JSON.stringify(shape(body)) !== JSON.stringify(shape(FIXTURE)))
@@ -236,4 +239,23 @@ test("strict upload exits 0 only when the report is stored", async () => {
   expect(await upload({ JOPPA_REPORT_STRICT: "1" })).toBe(1);
   expect(await upload({})).toBe(0);
   expect(uploads.length).toBe(1);
+});
+
+test("an upload that gets a text reply names the HTTP status and the reply", async () => {
+  bunTest({ JOPPA_FULL_RUN: "1" });
+  uploads.length = 0;
+  for (const [status, body] of [[502, "bad gateway\n"], [200, "null"]] as const) {
+    gateway = { status, body };
+    const p = Bun.spawn(["bun", join(KIT, "pre-push"), "origin", "x"], {
+      cwd: repo, env: { ...process.env, JOPPA_REPORT_TOKEN: "fixture-token", JOPPA_REPORT_STRICT: "1" }, stdin: "pipe", stdout: "pipe", stderr: "pipe",
+    });
+    p.stdin.write(`refs/heads/master ${head()} refs/heads/master ${"0".repeat(40)}\n`);
+    p.stdin.end();
+    const err = await new Response(p.stderr).text();
+    expect(await p.exited).toBe(1);
+    expect(err).toContain(`upload refused: HTTP ${status}: ${body.trim()}`);
+    expect(err).not.toContain("TypeError");
+  }
+  gateway = null;
+  expect(uploads.length).toBe(0);
 });
