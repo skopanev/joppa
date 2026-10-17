@@ -220,6 +220,48 @@ pub(super) async fn read(
             item["waiting_reason"] = json!(crate::dependencies::reason(target));
         }
     }
+    // A done Task under a criterion with a saved test list takes the criterion status as its
+    // verification, as in joppa_objects. An unreadable status keeps the stored verdict.
+    let parents: Vec<String> = items
+        .iter()
+        .filter(|i| i["status"] == "done")
+        .filter_map(|i| i["parent"].as_str().map(str::to_owned))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if !parents.is_empty() {
+        let optional = parents.iter().cloned().collect();
+        let statuses =
+            super::reports::criterion_test_statuses(client, workspace, &parents, &optional).await?;
+        for item in &mut items {
+            let Some(status) = item["parent"]
+                .as_str()
+                .filter(|_| item["status"] == "done")
+                .and_then(|p| statuses.get(p))
+                .filter(|s| !s["tests_revision"].is_null())
+            else {
+                continue;
+            };
+            let Some(verification) = (match status["status"].as_str() {
+                Some("green") => Some("pass"),
+                Some("red") => Some("fail"),
+                Some("grey") => Some("unverified"),
+                _ => None,
+            }) else {
+                continue;
+            };
+            let process = |item: &Value| json!({"status":item["status"],"verification":item["verification"],"readiness_blocker":item["readiness_blocker"]});
+            // Earlier signal rules, such as retirement or review, keep their signal.
+            let rule = crate::objects::task_signal(&process(item));
+            let decided = item["signal"]["tone"] == rule.0 && item["signal"]["label"] == rule.1;
+            item["verification"] = json!(verification);
+            if decided {
+                let (tone, label) = crate::objects::task_signal(&process(item));
+                item["signal"]["tone"] = json!(tone);
+                item["signal"]["label"] = json!(label);
+            }
+        }
+    }
     let next = (offset + (items.len() as i64) < total)
         .then(|| format!("{position}:{now}:{}", offset + items.len() as i64));
     Ok(

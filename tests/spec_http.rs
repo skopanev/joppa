@@ -370,6 +370,19 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
             && row["signal"]["label"] == "Work complete · Checks passed",
         "{row}"
     );
+    // The Task queue reads the same verification and signal.
+    let queue = mcp("joppa_tasks", json!({"workspace":w.ws,"view":"all"})).await?;
+    let entry = queue["tasks"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["address"] == task))
+        .ok_or_else(|| anyhow::anyhow!("the queue needs the task: {queue}"))?;
+    ensure!(
+        entry["status"] == "done"
+            && entry["verification"] == "pass"
+            && entry["signal"]["tone"] == "green"
+            && entry["signal"]["label"] == "Work complete · Checks passed",
+        "{entry}"
+    );
     // An unreadable criterion status keeps the bound-run verdict; T has no bound run.
     let broken = w.pool.get().await?.execute(
         "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='ac_tests' AND key='ac:key-rights'",
