@@ -547,6 +547,8 @@ function appendObjectPage(root,part,params,generation){
   }
   for(const item of items){
     if(ancestors.has(item.address))continue;
+    // A retired Task is history: the timeline and its own page keep it, the tree does not.
+    if(item.process?.status==='retired')continue;
     let holder=root;
     if(!params.parent&&!params.kind){
       holder=[...root.querySelectorAll(':scope > .object-collection')].find(group=>group.dataset.kind===item.kind);

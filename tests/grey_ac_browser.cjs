@@ -519,6 +519,22 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
   } finally { await f.close(); }
 });
 
+test('retired-tasks-hidden-ac1: the board tree hides a retired Task and its page still opens', async () => {
+  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const f = await fixture(criterionRecords, configured);
+  try {
+    for (const id of ['open', 'old']) await f.command({op: 'save_object', kind: 'task', id, revision: 0, parent: 'ac:A',
+      data: {title: 'Task ' + id, owner: 'owner', contract: 'Implement the ' + id + ' part', purpose: 'implementation'}, reason: 'Define the Task'});
+    await f.command({op: 'retire_task', id: 'task:old', revision: 1, reason: 'A new Task replaces this work'}, true);
+    const card = await f.open('ac:A');
+    await card.locator('.common-object[data-object-address="task:open"]').waitFor();
+    assert.equal(await card.locator('.common-object[data-object-address="task:old"]').count(), 0);
+    const retired = await f.open('task:old');
+    const circle = retired.locator(':scope > summary .status-circle');
+    assert.match(await circle.getAttribute('data-hint'), /^Status: Retired(\n|$)/);
+  } finally { await f.close(); }
+});
+
 test('tests-only-from-reports-ac1: object pages and board rows show no legacy checks block', async () => {
   const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
