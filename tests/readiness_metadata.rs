@@ -539,7 +539,6 @@ async fn refresh_is_current_only_idempotent_and_preserves_status_time_and_histor
     Ok(())
 }
 
-// [ready-is-the-only-gate-ac1]
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> anyhow::Result<()> {
