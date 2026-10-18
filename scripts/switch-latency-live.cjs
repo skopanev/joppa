@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const {writeFileSync} = require('node:fs');
 const os = require('node:os');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const {installProbe, timedRun, summary} = require('../tests/switch_probe.cjs');
+const {installProbe, timedRun, summary, measureRuns} = require('../tests/switch_probe.cjs');
 
 const root = process.env.JOPPA_LIVE_ROOT || 'https://joppa.otion.us';
 const target = {ws: process.env.JOPPA_LIVE_WORKSPACE || 'joppa',
@@ -72,22 +72,13 @@ async function main() {
         health_ms: health};
     });
 
-    const runs = [];
-    for (let run = 0; run < RUNS; run++) {
-      const away = aways[run % aways.length];
+    report.runs = [];
+    await measureRuns(RUNS, async run => {
+      const away = aways[(run - 1) % aways.length];
       const wanted = {ws: target.ws, rows: target.rows, foreign: [...foreign]};
-      try {
-        const result = await timedRun(page, away, target, wanted, awayShown);
-        runs.push({run: run + 1, ms: +result.ms.toFixed(1), resources: result.resources});
-      } catch (error) {
-        // A failed run stays in the list. It counts as slower than every other run.
-        runs.push({run: run + 1, ms: null, error: error.message.split('\n')[0]});
-      }
-    }
-    const timed = summary(runs.map(run => ({ms: run.ms ?? Infinity})));
-    Object.assign(report, {runs, failed_runs: runs.filter(run => run.ms === null).length,
-      sorted_ms: timed.sorted_ms.map(ms => Number.isFinite(ms) ? ms : null),
-      p95_ms: Number.isFinite(timed.p95_ms) ? timed.p95_ms : null, median_ms: Number.isFinite(timed.median_ms) ? timed.median_ms : null});
+      const result = await timedRun(page, away, target, wanted, awayShown);
+      return {ms: +result.ms.toFixed(1), resources: result.resources};
+    }, report.runs);
 
     // Fast selections: an older read of the target ends after a newer selection, then four
     // selections without a wait end on the target.
@@ -116,10 +107,26 @@ async function main() {
     await context.close();
   } finally {
     await browser.close();
+    if (report.runs) Object.assign(report, summary(report.runs));
+    report.failures = failures(report);
     writeFileSync(out, JSON.stringify(report, null, 1) + '\n');
   }
   console.log(JSON.stringify({build: report.build, sorted_ms: report.sorted_ms, p95_ms: report.p95_ms,
-    failed_runs: report.failed_runs, fast_switch: report.fast_switch, writes: report.writes}));
+    failed_runs: report.failed_runs, fast_switch: report.fast_switch, writes: report.writes, failures: report.failures}));
+  if (report.failures.length) process.exitCode = 1;
+}
+
+/// The criteria of the run. Each failed criterion gives one line. The report is saved first.
+function failures(report) {
+  const list = [];
+  if ((report.runs || []).length !== RUNS) list.push('runs: ' + (report.runs || []).length + ' of ' + RUNS);
+  if (report.failed_runs) list.push('failed runs: ' + report.failed_runs);
+  if (report.p95_ms === null || report.p95_ms === undefined || report.p95_ms > 1000) list.push('p95 ' + report.p95_ms + ' ms is not at most 1000 ms');
+  for (const [check, result] of Object.entries(report.fast_switch || {})) if (result.startsWith('FAILED')) list.push(check + ': ' + result);
+  if (!report.fast_switch) list.push('fast selections: not run');
+  if (!report.page_errors || report.page_errors.length) list.push('page errors: ' + JSON.stringify(report.page_errors ?? 'not read'));
+  if (report.writes.length) list.push('board requests other than reads: ' + report.writes.join(', '));
+  return list;
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

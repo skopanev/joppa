@@ -6,7 +6,7 @@ const {writeFileSync} = require('node:fs');
 const os = require('node:os');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {server, domainTree, workspaces, shows, build} = require('./switch_support.cjs');
-const {installProbe, timedRun, summary} = require('./switch_probe.cjs');
+const {installProbe, timedRun, summary, measureRuns} = require('./switch_probe.cjs');
 
 const RUNS = 20;
 
@@ -29,22 +29,24 @@ async function main() {
     await page.locator('#workspaces option[value="' + big.ws + '"]').waitFor({state: 'attached'});
     // 20 timed selections of the large workspace. Each run starts on another workspace, so the
     // board holds no data of the large workspace before the selection.
-    const runs = [];
-    for (let run = 0; run < RUNS; run++) {
-      const away = run % 2 ? third : other;
+    report.runs = [];
+    await measureRuns(RUNS, async run => {
+      const away = run % 2 ? other : third;
       const result = await timedRun(page, away, big, expect(big), target => shows(page, expect(target)));
-      runs.push({run: run + 1, from: away.ws, ms: +result.ms.toFixed(1), resources: result.resources});
-    }
-    Object.assign(report, {runs}, summary(runs));
+      return {from: away.ws, ms: +result.ms.toFixed(1), resources: result.resources};
+    }, report.runs);
+    report.page_errors = errors;
     assert.deepEqual(errors, []);
     await context.close();
   } finally {
     await browser.close();
     await live.stop();
+    if (report.runs) Object.assign(report, summary(report.runs));
     if (process.env.JOPPA_SWITCH_OUT) writeFileSync(process.env.JOPPA_SWITCH_OUT, JSON.stringify(report, null, 1) + '\n');
   }
-  console.log(JSON.stringify({label: report.label, sorted_ms: report.sorted_ms, p95_ms: report.p95_ms}));
-  assert.ok(report.p95_ms <= 1000, 'p95 ' + report.p95_ms + ' ms is above 1000 ms');
+  console.log(JSON.stringify({label: report.label, sorted_ms: report.sorted_ms, p95_ms: report.p95_ms, failed_runs: report.failed_runs}));
+  assert.equal(report.failed_runs, 0, 'every run shows the top level');
+  assert.ok(report.p95_ms !== null && report.p95_ms <= 1000, 'p95 ' + report.p95_ms + ' ms is above 1000 ms');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -68,7 +68,10 @@ test('the rows of the old selection are not usable while the new board loads', a
   if (await old.count()) await old.click({force: true, timeout: 2000}).catch(() => {});
   await finish();
   await shows(page, expect(other));
-  const mixed = reads.filter(url => url.pathname.includes('/' + other.ws + '/') && /domain:d\d/.test(url.search));
+  // The read parameters name nodes by address. An address of the old workspace must not appear.
+  const oldNode = value => /^domain:d\d$/.test(value || '');
+  const mixed = reads.filter(url => url.pathname.includes('/' + encodeURIComponent(other.ws) + '/')
+    && ['address', 'parent', 'related_to'].some(name => oldNode(url.searchParams.get(name))));
   assert.deepEqual(mixed.map(String), [], 'no read of the new workspace asks for a node of the old workspace');
   assert.deepEqual(errors, []);
   await page.close();

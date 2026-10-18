@@ -41,10 +41,25 @@ async function timedRun(page, away, target, expect, shown) {
   return page.evaluate(() => window.switchProbe.result);
 }
 
-/// The sorted durations, the 19th value as p95 of 20 runs, and the median.
+/// The sorted durations, the 19th value as p95 of 20 runs, and the median. A failed run has no
+/// duration. It stays in the list and counts as slower than every other run, so a p95 or a
+/// median that falls on it is null.
 function summary(runs) {
-  const sorted = runs.map(run => run.ms).sort((a, b) => a - b);
-  return {sorted_ms: sorted, p95_ms: sorted[18] ?? null, median_ms: sorted.length ? (sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2 : null};
+  const sorted = runs.map(run => run.ms ?? Infinity).sort((a, b) => a - b);
+  const value = ms => Number.isFinite(ms) ? +ms.toFixed(1) : null;
+  return {sorted_ms: sorted.map(value), failed_runs: runs.filter(run => run.ms === null).length,
+    p95_ms: sorted.length >= 19 ? value(sorted[18]) : null,
+    median_ms: sorted.length ? value((sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2) : null};
 }
 
-module.exports = {installProbe, timedRun, summary};
+/// Run `measure` once for each of `count` runs and add each result to `runs` at once, so the
+/// report keeps every finished run. A failed run is kept with its error, not replaced.
+async function measureRuns(count, measure, runs) {
+  for (let run = 1; run <= count; run++) {
+    try { runs.push({run, ...(await measure(run))}); }
+    catch (error) { runs.push({run, ms: null, error: error.message.split('\n')[0]}); }
+  }
+  return runs;
+}
+
+module.exports = {installProbe, timedRun, summary, measureRuns};
