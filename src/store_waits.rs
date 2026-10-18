@@ -22,21 +22,14 @@ fn green(statuses: BTreeMap<String, Value>) -> BTreeSet<String> {
         .collect()
 }
 
-/// The first unsatisfied target of each waiting live node at the current read position.
-pub(super) async fn read(
-    client: &impl GenericClient,
-    workspace: &str,
-    types: &Types,
-) -> Result<BTreeMap<String, String>> {
-    Ok(read_with_counts(client, workspace, types).await?.0)
-}
-
-/// The waits of `read` and, for each waiting node, the number of its unsatisfied targets.
+/// The first unsatisfied target of each waiting live node, and for each the number of its
+/// unsatisfied targets.
 pub(super) async fn read_with_counts(
     client: &impl GenericClient,
     workspace: &str,
     types: &Types,
 ) -> Result<(BTreeMap<String, String>, BTreeMap<String, usize>)> {
+    crate::probe::count(&crate::probe::WAITS);
     // A Task link waits here only for a criterion with a saved test list.
     let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target LEFT JOIN joppa.objects t ON t.workspace=l.workspace AND t.address=COALESCE(a.target,l.target) WHERE l.workspace=$1 AND l.blocking AND l.relation='depends_on' AND s.present AND (s.kind<>ALL($2) OR (t.kind=ANY($3) AND EXISTS(SELECT 1 FROM joppa.state_entries e WHERE e.workspace=l.workspace AND e.section='ac_tests' AND e.key=t.address AND jsonb_array_length(COALESCE(e.value->'revisions'->-1->'tests','[]'::jsonb))>0)))", &[&workspace, &kinds(types, "task"), &kinds(types, "ac")]).await?;
     if links.is_empty() {

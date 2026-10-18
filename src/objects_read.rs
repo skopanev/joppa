@@ -37,18 +37,7 @@ pub async fn read_objects(
     );
     let unstarted = scope.work_filter == Some("unstarted");
     if let Some(key) = scope.address {
-        return read_one(
-            &conn,
-            workspace,
-            public,
-            position,
-            prefix,
-            selected,
-            criterion_kinds,
-            scope,
-            key,
-        )
-        .await;
+        return read_one(&conn, workspace, public, position, prefix, scope, key).await;
     }
     super::object_list::read_list(
         &conn,
@@ -75,8 +64,6 @@ async fn read_one(
     public: String,
     position: i64,
     prefix: String,
-    selected: std::collections::BTreeMap<String, objects::TreeType>,
-    criterion_kinds: Vec<String>,
     scope: &ObjectScope<'_>,
     key: &str,
 ) -> Result<Value> {
@@ -214,31 +201,9 @@ async fn read_one(
                 .map(|(_, _, file)| file)
                 .collect::<Vec<_>>()
         );
-        add_verification_summaries(
-            &*conn,
-            &workspace,
-            std::slice::from_mut(&mut item),
-            &selected,
-        )
-        .await?;
-        add_status_tones(
-            &*conn,
-            &workspace,
-            std::slice::from_mut(&mut item),
-            &selected,
-        )
-        .await?;
+        // The decoration comes from the status projection of the last write.
+        apply_rollups(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
         add_priorities(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
-        let (waits, counts) = super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
-        add_waits(
-            &*conn,
-            &workspace,
-            std::slice::from_mut(&mut item),
-            &waits,
-            &counts,
-            &criterion_kinds,
-        )
-        .await?;
     }
     Ok(item)
 }

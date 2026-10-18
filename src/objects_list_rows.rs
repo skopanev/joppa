@@ -24,9 +24,6 @@ pub(super) async fn list_rows(
         after_processed,
         after,
         parent,
-        waits,
-        counts,
-        waiting,
         after_filter,
         order,
         values,
@@ -76,7 +73,7 @@ pub(super) async fn list_rows(
                 AND NOT o.address=ANY($14::text[])
                 AND COALESCE(w.active,0)=0
                 AND COALESCE(jsonb_typeof(o.process->'planning_claim'),'null')<>'object'
-                AND NOT o.address=ANY($15::text[])))
+                AND NOT COALESCE(o.rollup ? 'waits_for',false)))
         ORDER BY {order} LIMIT $5
     "#
     );
@@ -102,7 +99,6 @@ pub(super) async fn list_rows(
                 &specification_kinds,
                 &after_processed,
                 &green,
-                &waiting,
                 &values,
             ],
         )
@@ -139,18 +135,9 @@ pub(super) async fn list_rows(
             item["work_summary"] = serde_json::from_str(row.get(15))?;
         }
     }
-    add_verification_summaries(&*conn, &workspace, &mut items, &selected).await?;
-    add_status_tones(&*conn, &workspace, &mut items, &selected).await?;
+    // The decoration comes from the status projection of the last write.
+    apply_rollups(&*conn, &workspace, &mut items).await?;
     add_priorities(&*conn, &workspace, &mut items).await?;
-    add_waits(
-        &*conn,
-        &workspace,
-        &mut items,
-        &waits,
-        &counts,
-        &criterion_kinds,
-    )
-    .await?;
     let next = more.then(|| {
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();

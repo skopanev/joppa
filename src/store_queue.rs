@@ -94,9 +94,8 @@ pub(super) async fn read(
                 .all(|r| r.get::<_, Option<&str>>(1) == Some(req.as_str()))
         });
     let restricted = "($6::text IS NOT NULL AND NOT COALESCE(data->>'claim_req'=$7::text,false))";
-    // A Task under waiting work is not available; the wait is read now, not projected.
-    let types = serde_json::from_str(row.get(2))?;
-    let waits = super::waits::read(client, workspace, &types).await?;
+    // A Task under waiting work is not available; the wait comes from the status projection.
+    let waits = super::objects::projected_waits(client, workspace).await?;
     let waiting: Vec<String> = waits.keys().cloned().collect();
     let filter = format!(
         "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND NOT {restricted} AND NOT address=ANY($8)) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR {restricted} OR address=ANY($8))))"

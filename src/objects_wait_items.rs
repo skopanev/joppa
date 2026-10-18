@@ -12,6 +12,7 @@ pub(super) async fn add_waits(
     counts: &std::collections::BTreeMap<String, usize>,
     criteria: &[String],
 ) -> Result<()> {
+    crate::probe::count(&crate::probe::ROLLUP);
     let targets: Vec<&String> = items
         .iter()
         .filter_map(|item| waits.get(item["address"].as_str()?))

@@ -13,6 +13,7 @@ pub(super) async fn add_status_tones(
     items: &mut [Value],
     types: &std::collections::BTreeMap<String, objects::TreeType>,
 ) -> Result<()> {
+    crate::probe::count(&crate::probe::ROLLUP);
     use std::collections::{BTreeMap, BTreeSet};
     let rule = |kind: &str| types.get(kind).map_or("none", objects::status_rule);
     let ruled: Vec<(String, String)> = items

@@ -91,6 +91,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/026_replay_epochs.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/027_status_projection.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -200,7 +202,7 @@ async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
 
 pub async fn backfill_board(pool: &Pool) -> Result<usize> {
     let mut conn = pool.get().await?;
-    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1 OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS(SELECT 1 FROM joppa.task_queue q WHERE q.workspace=w.id AND q.created_at=0) ORDER BY w.id", &[&BOARD_PROJECTION_VERSION]).await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1 OR b.position<>(SELECT COALESCE(MAX(e.position),0) FROM joppa.events e WHERE e.workspace=w.id) OR EXISTS(SELECT 1 FROM joppa.task_queue q WHERE q.workspace=w.id AND q.created_at=0) OR COALESCE((b.first_view->'status_projection'->>'version')::int,0)<>$2 OR COALESCE((b.first_view->'status_projection'->>'position')::bigint,-1)<>b.position OR EXISTS(SELECT 1 FROM joppa.objects o WHERE o.workspace=w.id AND (o.test_status IS NULL OR o.rollup IS NULL)) ORDER BY w.id", &[&BOARD_PROJECTION_VERSION, &objects::STATUS_PROJECTION_VERSION]).await?;
     let mut done = 0;
     for row in rows {
         let id: String = row.get(0);

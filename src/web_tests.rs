@@ -183,6 +183,13 @@ const MEMBER_OF: &str =
 const HEALTHIUM: Option<&str> = Some("healthium.one");
 const SESSIONS_OF: &str = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";
 
+#[test]
+fn a_missing_status_projection_answers_503() {
+    let (status, body) = failure(anyhow::Error::new(store::ProjectionNotReady));
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body.0["error"], "criterion status projection is not ready");
+}
+
 include!("web_tests_domain.rs");
 
 include!("web_tests_email.rs");

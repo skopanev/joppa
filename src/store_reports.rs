@@ -44,32 +44,16 @@ pub use overview::{criterion_tests, task_status, tests_overview};
 mod acceptance;
 pub use acceptance::check_acceptance;
 
-/// Read test evidence once for the criteria in the requested tree branches.
-/// A target in `optional` with an unreadable saved list is left out of the result.
+/// The stored test statuses of the requested objects, from the status projection of the
+/// last write. A missing or stale projection is an error, never an old status. `optional`
+/// stays for the callers: a stored status is always readable.
 pub(super) async fn criterion_test_statuses(
     client: &impl GenericClient,
     workspace: &str,
     targets: &[String],
-    optional: &std::collections::BTreeSet<String>,
+    _optional: &std::collections::BTreeSet<String>,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
-    let rows = client.query("SELECT o.address,o.title,o.description,a.value::text,b.value#>>'{}' FROM joppa.objects o LEFT JOIN joppa.state_entries a ON a.workspace=o.workspace AND a.section='ac_tests' AND a.key=o.address LEFT JOIN joppa.state_entries b ON b.workspace=o.workspace AND b.section='criterion_boundaries' AND b.key=o.address WHERE o.workspace=$1 AND o.address=ANY($2)", &[&workspace,&targets]).await?;
-    let mut criteria = vec![];
-    for row in rows {
-        let saved: Option<AcTests> = match row
-            .get::<_, Option<String>>(3)
-            .map(|s| serde_json::from_str(&s))
-            .transpose()
-        {
-            Ok(saved) => saved,
-            Err(_) if optional.contains(row.get::<_, &str>(0)) => continue,
-            Err(error) => return Err(error.into()),
-        };
-        let data =
-            json!({"title":row.get::<_,String>(1),"description":row.get::<_,Option<String>>(2)});
-        let boundary = Boundary::read(row.get::<_, Option<&str>>(4));
-        criteria.push((row.get::<_, String>(0), data, saved, boundary));
-    }
-    statuses_for_criteria(client, workspace, criteria).await
+    super::objects::stored_statuses(client, workspace, targets).await
 }
 
 /// Use the current transaction's text and test list, including earlier batch writes.
@@ -114,6 +98,7 @@ async fn statuses_for_criteria(
     workspace: &str,
     criteria: Vec<(String, Value, Option<AcTests>, Boundary)>,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
+    crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
         return Ok(Default::default());
     }
@@ -129,13 +114,27 @@ async fn statuses_for_criteria(
     let results: Vec<(i64,TestResult)> = client
         .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
         .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4) })).collect();
+    // Each criterion reads only the results of its own tests. The grouping keeps every row,
+    // duplicates included, and preserves the input order for each address (the query has no
+    // ORDER BY), so a status costs its own results and not every result of the workspace.
+    let mut by_test: std::collections::BTreeMap<&str, Vec<(i64, TestResult)>> = Default::default();
+    for (id, result) in &results {
+        by_test
+            .entry(result.address.as_str())
+            .or_default()
+            .push((*id, result.clone()));
+    }
     let mut statuses = std::collections::BTreeMap::new();
     for (address, data, saved, boundary) in criteria {
         let current = saved.as_ref().and_then(AcTests::current);
         let tests = current.map(|r| r.tests.as_slice()).unwrap_or_default();
         let draft = current.is_some_and(|r| r.text_hash != text_hash(&data));
+        let own: Vec<(i64, TestResult)> = tests
+            .iter()
+            .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
+            .collect();
         let mut status =
-            serde_json::to_value(criterion_status(tests, draft, boundary, &reports, &results))?;
+            serde_json::to_value(criterion_status(tests, draft, boundary, &reports, &own))?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

@@ -161,12 +161,8 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
             && entry["signal"]["label"] == "Work complete · Checks passed",
         "{entry}"
     );
-    // An unreadable criterion status keeps the bound-run verdict; T has no bound run.
-    let broken = w.pool.get().await?.execute(
-        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='ac_tests' AND key='ac:key-rights'",
-        &[&w.ws],
-    ).await?;
-    ensure!(broken == 1, "the saved list must exist");
+    // A new test list that has not run makes the criterion grey, so T reads Unverified.
+    w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights","checks.rs > new key check"],"reason":"Add a check that has not run"})).await?;
     let object = mcp("joppa_objects", json!({"workspace":w.ws,"address":task})).await?;
     let list = mcp(
         "joppa_objects",

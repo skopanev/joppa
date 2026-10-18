@@ -9,9 +9,6 @@ pub(super) struct ListPlan<'s> {
     pub(super) after_processed: bool,
     pub(super) after: &'s str,
     pub(super) parent: Option<String>,
-    pub(super) waits: std::collections::BTreeMap<String, String>,
-    pub(super) counts: std::collections::BTreeMap<String, usize>,
-    pub(super) waiting: Vec<String>,
     pub(super) after_filter: String,
     pub(super) order: String,
     pub(super) values: Vec<String>,
@@ -107,18 +104,15 @@ pub(super) async fn read_list(
     } else {
         None
     };
-    // Waiting criteria leave the unstarted list inside the query, before its limit.
-    let (waits, counts) = super::waits::read_with_counts(&*conn, &workspace, &selected).await?;
-    let waiting: Vec<String> = waits.keys().cloned().collect();
     // Unstarted work follows the priority chain from the top, then journal order. Its pages
     // continue after the cursor object in that order, at the same journal position.
-    let chain = priority_chain_sql("o.workspace", "o.address", "$16::text[]");
+    let chain = priority_chain_sql("o.workspace", "o.address", "$15::text[]");
     let unstarted_order = format!(
         "{chain},(SELECT (r.document->>'at')::timestamptz FROM joppa.object_revisions r WHERE r.workspace=o.workspace AND r.address=o.address AND r.revision=1),o.address"
     );
     let (after_filter, order) = if inbox {
         (
-            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text) AND $16::text[] IS NOT NULL".to_owned(),
+            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text) AND $15::text[] IS NOT NULL".to_owned(),
             "(o.inbox_status='processed'),o.address".to_owned(),
         )
     } else if unstarted {
@@ -128,7 +122,7 @@ pub(super) async fn read_list(
         )
     } else {
         (
-            "o.address>$2 AND NOT $13::boolean AND $16::text[] IS NOT NULL".to_owned(),
+            "o.address>$2 AND NOT $13::boolean AND $15::text[] IS NOT NULL".to_owned(),
             "o.address".to_owned(),
         )
     };
@@ -162,9 +156,6 @@ pub(super) async fn read_list(
         after_processed,
         after,
         parent,
-        waits,
-        counts,
-        waiting,
         after_filter,
         order,
         values,

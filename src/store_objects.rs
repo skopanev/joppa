@@ -23,6 +23,14 @@ use tone_items::add_status_tones;
 #[path = "objects_summaries.rs"]
 mod summary_items;
 use summary_items::add_verification_summaries;
+#[path = "objects_projection.rs"]
+mod projection;
+pub use projection::ProjectionNotReady;
+use projection::apply_rollups;
+pub(super) use projection::projected_waits;
+pub(super) use projection::{
+    STATUS_PROJECTION_VERSION, rebuild as rebuild_status_projection, stored_statuses,
+};
 
 async fn authorized(
     pool: &Pool,

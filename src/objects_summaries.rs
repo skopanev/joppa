@@ -8,6 +8,7 @@ pub(super) async fn add_verification_summaries(
     items: &mut [Value],
     types: &std::collections::BTreeMap<String, objects::TreeType>,
 ) -> Result<()> {
+    crate::probe::count(&crate::probe::ROLLUP);
     use std::collections::{BTreeMap, BTreeSet};
     let task_parent = |item: &Value| {
         types
