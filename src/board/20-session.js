@@ -71,7 +71,9 @@ function resizeBranch(node,update){
 async function load() {
   closeAccountMenu();
   const request = ++loadNumber;
-  const next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));
+  let next;
+  // The response and the error of an older selection are not shown.
+  try{next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(ws)+'/board'));}catch(e){if(request!==loadNumber)return;throw e;}
   if (request !== loadNumber) return;
   data = next;
   data.objectTypes=next.object_types||{};
@@ -125,8 +127,10 @@ $('login-button').onclick=async()=>{
   finally{if(attempt===signInAttempt){b.disabled=false;$('login-cancel').hidden=true;}}
 };
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
+/// The rows of the old selection go away at once, so nobody can use them under the new selection.
+function clearBoard(){$('tree').replaceChildren(E('p','Loading workspace…','object-loading hint'));}
 $('workspaces').onchange=e=>{
-  ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);
+  ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);clearBoard();
   try{sessionStorage.setItem('joppa-workspace-title',e.target.selectedOptions[0]?.textContent||'');}catch{}
   history.pushState(null,'',objectURL());
   load().catch(notify);

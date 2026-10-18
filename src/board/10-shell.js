@@ -35,8 +35,9 @@ function closeAccountMenu(){$('account-menu').open=false;}
 document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))closeAccountMenu();},true);
 window.addEventListener('popstate',()=>{
   closeAccountMenu();
-  const next=new URLSearchParams(location.search).get('workspace')||ws;
-  if(next&&next!==ws){ws=next;$('workspaces').value=ws;}
+  // The first entry has no workspace in its address. Its history state names the workspace.
+  const next=new URLSearchParams(location.search).get('workspace')||history.state?.workspace||ws;
+  if(next&&next!==ws){ws=next;$('workspaces').value=ws;clearBoard();}
   if(ws)load().catch(notify);
 });
 window.addEventListener('pageshow',closeAccountMenu);
@@ -111,10 +112,12 @@ function notify(e) {
   toast(e?.message||String(e||''),e instanceof Error);
 }
 async function api(path) {
+  // A 404 changes the board only while the request still belongs to the shown selection.
+  const generation=loadNumber,selected=ws;
   const r = await fetch('/api/' + path);
   const j = await r.json();
   if(r.status===401){loadNumber++;data=null;document.body.classList.remove('authenticated');$('tree').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
-  if(r.status===404 && path.startsWith('workspaces/')&&!path.includes('/objects?')){data=null;$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));}
+  if(r.status===404 && path.startsWith('workspaces/')&&!path.includes('/objects?')&&generation===loadNumber&&selected===ws){data=null;$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));}
   if(path.includes('/objects?')&&(r.status===404||j.error==='unknown object'))throw Error('Object not found.');
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
@@ -146,6 +149,8 @@ async function list() {
   }
   if (!list.some(w => w.id === ws)) ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = ws;
+  // Back to the first entry returns to the workspace that the list chose for it.
+  if(ws&&!requested)history.replaceState({...history.state,workspace:ws},'',location.href);
   try{sessionStorage.setItem('joppa-workspace-title',list.find(w=>w.id===ws)?.title||'');}catch{}
   if (ws) await load();
   else {data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));}
