@@ -114,7 +114,8 @@ restore_previous() {
 }
 # Build the new projections once while both application versions are stopped.
 # Keep this operation outside the service memory limit and health timeout.
-if ! runuser -u postgres -- env 'JOPPA_DATABASE_URL=postgresql:///joppa?host=/var/run/postgresql' /opt/joppa/bin/joppa migrate; then
+if ! runuser -u postgres -- env 'JOPPA_DATABASE_URL=postgresql:///joppa?host=/var/run/postgresql' /opt/joppa/bin/joppa migrate || \
+   ! runuser -u postgres -- env 'JOPPA_DATABASE_URL=postgresql:///joppa?host=/var/run/postgresql' /opt/joppa/bin/joppa backfill-board; then
     restore_previous || true
     echo 'Projection migration failed. Restored the previous version if compatible.' >&2
     exit 1
