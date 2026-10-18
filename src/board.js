@@ -33,7 +33,12 @@ systemTheme.addEventListener('change',updateThemeColor);
 updateThemeColor();
 function closeAccountMenu(){$('account-menu').open=false;}
 document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))closeAccountMenu();},true);
-window.addEventListener('popstate',closeAccountMenu);
+window.addEventListener('popstate',()=>{
+  closeAccountMenu();
+  const next=new URLSearchParams(location.search).get('workspace')||ws;
+  if(next&&next!==ws){ws=next;$('workspaces').value=ws;}
+  if(ws)load().catch(notify);
+});
 window.addEventListener('pageshow',closeAccountMenu);
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&$('account-menu').open){$('account-menu').open=false;$('identity').focus();}
@@ -272,10 +277,11 @@ $('login-button').onclick=async()=>{
   finally{if(attempt===signInAttempt){b.disabled=false;$('login-cancel').hidden=true;}}
 };
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});sessionStorage.removeItem('joppa-token');location.reload();};
-$('workspaces').onchange=async e=>{
+$('workspaces').onchange=e=>{
   ws=e.target.value;sessionStorage.setItem('joppa-workspace',ws);
   try{sessionStorage.setItem('joppa-workspace-title',e.target.selectedOptions[0]?.textContent||'');}catch{}
-  location.assign(objectURL());
+  history.pushState(null,'',objectURL());
+  load().catch(notify);
 };
 $('refresh').onclick = () => load().catch(notify);
 let statusHint=null;
@@ -573,9 +579,11 @@ function appendObjectPage(root,part,params,generation){
 async function renderObjectTree(){
   const root=$('tree');root.replaceChildren();
   const generation=loadNumber;
-  const configuration=window.SNAPSHOT?{schema:data.snapshot_schema}:await api('workspaces/'+encodeURIComponent(ws)+'/tree');if(generation!==loadNumber)return;
-  data.objectTypes=configuration.schema.types;
-  data.priorities=configuration.schema.priorities||['p0','p1','p2'];
+  if(window.SNAPSHOT)data.objectTypes=data.snapshot_schema.types;
+  else if(!data.objectTypes||!Object.keys(data.objectTypes).length){
+    const configuration=await api('workspaces/'+encodeURIComponent(ws)+'/tree');if(generation!==loadNumber)return;
+    data.objectTypes=configuration.schema.types;
+  }
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
   if(selection.get('view')==='timeline')return renderTimelinePage(root,generation);
@@ -702,30 +710,11 @@ function markdownBlock(text,cls){
   if(markdownSafe)box.innerHTML=markdownSafe(text);else{box.textContent=text;box.classList.add('markdown-raw');}
   return box;
 }
-// The priority of a node as a drop-down of the configured values. A change is not a new
-// revision of the node; a refused change keeps the old value and shows the error.
-function priorityControl(item){
-  const select=E('select',undefined,'priority-select');
-  select.setAttribute('aria-label','Priority of '+item.title);
-  const values=data.priorities||['p0','p1','p2'];
-  for(const value of values.includes(item.process.priority)?values:[...values,item.process.priority]){
-    const option=E('option',value.toUpperCase());option.value=value;select.append(option);
-  }
-  select.value=item.process.priority;
-  select.disabled=!!window.SNAPSHOT;
-  for(const type of ['click','keydown','pointerdown'])select.addEventListener(type,e=>e.stopPropagation());
-  select.onchange=async()=>{
-    const previous=item.process.priority,next=select.value;
-    select.disabled=true;
-    try{
-      const response=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/priority',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target:item.address,priority:next})});
-      const reply=await response.json().catch(()=>({}));
-      if(!response.ok)throw Error(reply.error||'Could not set the priority.');
-      item.process.priority=next;
-    }catch(e){select.value=previous;toast(e.message,true);}
-    select.disabled=false;
-  };
-  return select;
+// Every live node shows its priority read-only in the row.
+function priorityBadge(item){
+  const badge=E('span',item.process.priority.toUpperCase(),'priority-badge');
+  badge.setAttribute('aria-label','Priority of '+item.title);
+  return badge;
 }
 function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
@@ -749,8 +738,8 @@ function commonObjectCard(item,loadedDetail,parentTitle){
   const deps=item.waits_for?.count||1;
   const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
   if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
-  // Every live node shows its priority; a member changes it in the row.
-  const priority=item.process?.priority&&!item.historical&&item.present!==false?priorityControl(item):null;
+  // Every live node shows its priority read-only in the row.
+  const priority=item.process?.priority&&!item.historical&&item.present!==false?priorityBadge(item):null;
   // An empty slot keeps the count column aligned on rows without a count.
   summary.append(title,...(priority?[priority]:[]),objectTypeLabel(item.kind),...waits,chip||E('span',undefined,'count-slot'));
   // The count can colour the row dot only once both sit in the summary.
@@ -897,8 +886,9 @@ function fillCommonObject(body,detail){
     fields.append(field);
   }
   secondary.append(fields);
-  // Dependency controls belong to the node row; the revision dialog only reads.
-  if(!historical&&r.present!==false&&!window.SNAPSHOT&&body.parentElement?.classList.contains('common-object'))secondary.append(dependencyControls(detail));
+  // Blocking dependencies are shown read-only on the board.
+  const deps=!historical&&r.present!==false&&body.parentElement?.classList.contains('common-object')?dependencyList(detail):null;
+  if(deps)secondary.append(deps);
   if(!historical&&data.objectTypes?.[detail.kind]?.role==='ac')secondary.append(criterionTestsSection(detail.address));
   const links=new Map();
   for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision&&detail.review_required===true?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
@@ -920,53 +910,16 @@ function fillCommonObject(body,detail){
   const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
   body.append(secondary);
 }
-// Blocking dependencies of a node. Depends on adds one from a picker of live nodes;
-// each one has its own remove control. A refused save keeps the row and shows the error.
-function dependencyControls(detail){
+// Blocking dependencies of a node, shown read-only on the board.
+function dependencyList(detail){
+  const blocking=(detail.links||[]).filter(({link})=>link.relation==='depends_on'&&link.blocking);
+  if(!blocking.length)return null;
   const box=E('div',undefined,'object-dependencies');
-  for(const {link,title} of detail.links||[]){
-    if(link.relation!=='depends_on'||!link.blocking)continue;
+  for(const {link,title} of blocking){
     const name=title||link.target,row=E('p',undefined,'dependency-row');
-    const remove=button('Remove',()=>saveDependency(box,detail,link.target,'remove'),'dependency-remove');
-    remove.setAttribute('aria-label','Remove dependency on '+name);
-    row.append(E('span','Depends on','hint'),objectLink(name,link.target),remove);box.append(row);
+    row.append(E('span','Depends on','hint'),objectLink(name,link.target));box.append(row);
   }
-  const picker=E('div',undefined,'dependency-picker');picker.hidden=true;
-  const select=E('select');select.setAttribute('aria-label','Node that this one depends on');
-  const open=button('Depends on',async()=>{
-    if(!picker.hidden){picker.hidden=true;open.setAttribute('aria-expanded','false');return;}
-    select.replaceChildren(E('option','Loading nodes…'));select.disabled=true;picker.hidden=false;open.setAttribute('aria-expanded','true');
-    const items=[],params={parent:'*',limit:'100'};let cursor;
-    do{const page=await objectPart(cursor?{...params,cursor}:params);items.push(...page.items);cursor=page.next_cursor;}while(cursor);
-    const linked=new Set((detail.links||[]).filter(({link})=>link.relation==='depends_on'&&link.blocking).map(({link})=>link.target));
-    const live=items.filter(item=>item.present!==false&&item.address!==detail.address&&!linked.has(item.address)).sort((a,b)=>a.title.localeCompare(b.title));
-    select.replaceChildren(...live.map(item=>{const option=E('option',item.title+' · '+(data.objectTypes[item.kind]?.title||item.kind));option.value=item.address;return option;}));
-    select.disabled=!live.length;if(!live.length)select.append(E('option','No other live nodes'));
-    select.focus();
-  },'depends-on-button');
-  open.setAttribute('aria-expanded','false');
-  const add=button('Add',()=>select.value&&!select.disabled?saveDependency(box,detail,select.value,'add'):undefined,'dependency-add');
-  const cancel=button('Cancel',()=>{picker.hidden=true;open.setAttribute('aria-expanded','false');open.focus();},'dependency-cancel');
-  picker.append(select,add,cancel);
-  const error=E('p',undefined,'dependency-error');error.setAttribute('role','alert');error.hidden=true;
-  box.append(open,picker,error);
   return box;
-}
-async function saveDependency(box,detail,target,action){
-  const error=box.querySelector(':scope > .dependency-error');error.hidden=true;
-  const response=await fetch('/api/workspaces/'+encodeURIComponent(ws)+'/dependencies',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({request_id:crypto.randomUUID(),source:detail.address,target,action})});
-  const reply=await response.json().catch(()=>({}));
-  if(!response.ok){error.textContent=reply.error||'Could not save the dependency.';error.hidden=false;return;}
-  // Read the node again, so its row shows the new wait, and keep the focus on its controls.
-  const card=box.closest('.common-object');if(!card)return;
-  const generation=loadNumber,fresh=await objectPart({address:detail.address});
-  if(generation!==loadNumber||!card.isConnected)return;
-  const r=fresh.document,d=r.data;
-  const next=commonObjectCard({...fresh,title:d.title,owner:d.owner,revision:r.revision,parent:r.parent,present:r.present,at:r.at,note_status:d.status},fresh,
-    card.parentElement?.closest('.common-object')?.dataset.objectTitle);
-  card.replaceWith(next);await next.branchPrepare();next.branchReady=true;next.open=true;
-  next.querySelector('.depends-on-button')?.focus();
 }
 async function showObjectRevisions(address){
   const generation=loadNumber;

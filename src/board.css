@@ -370,11 +370,8 @@ a.timeline-row .timeline-object{color:var(--link)}
 .history-button svg,.fields-button svg{display:inline-block;width:13px;height:13px;vertical-align:middle;position:relative;top:.5px}
 
 /* Ordering dependencies: a waiting row names its first unfinished target. */
-.common-object>summary>.priority-select{appearance:none;-webkit-appearance:none;flex:none;width:auto;height:auto;min-height:0;margin:0;padding:0 .2em;border:0;background:none;font-size:.75rem;letter-spacing:.04em;color:var(--muted);cursor:pointer}
-.common-object>summary>.priority-select:hover{color:var(--heading)}
+.common-object>summary>.priority-badge{flex:none;padding:0 .2em;font-size:.75rem;letter-spacing:.04em;color:var(--muted)}
 .common-object>summary>.waits-for{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
 .object-dependencies{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1em;min-width:0;font-size:.85rem}
-.dependency-row,.dependency-picker{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3em .8em;flex-basis:100%;min-width:0;margin:0}
+.dependency-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3em .8em;flex-basis:100%;min-width:0;margin:0}
 .dependency-row>.object-link{display:inline;font-size:1em}
-.dependency-picker>select{min-width:0;max-width:100%}
-.dependency-error{flex-basis:100%;margin:0;color:var(--fail)}

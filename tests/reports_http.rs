@@ -7297,7 +7297,23 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
         (
             "non-member cookie session",
             send(outsider, root.clone(), "/dependencies", add()).await?,
-            404,
+            403,
+        ),
+        (
+            "member cookie dependencies",
+            send(member.clone(), root.clone(), "/dependencies", add()).await?,
+            403,
+        ),
+        (
+            "member cookie priority",
+            send(
+                member.clone(),
+                root.clone(),
+                "/priority",
+                json!({"target":"spec:b","priority":"p0"}),
+            )
+            .await?,
+            403,
         ),
         (
             "cookie commands",
@@ -7313,41 +7329,6 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
         ensure!(p.saved().await? == before, "{case} changed saved state");
     }
     ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
-    // Control: the member session from this origin saves and removes only the link.
-    let (code, reply) = send(member.clone(), root.clone(), "/dependencies", add()).await?;
-    ensure!(code == 200, "{code} {reply}");
-    let linked = p.object_both("spec:b").await?;
-    ensure!(
-        linked["document"]["links"] == ordering_link("spec:a")
-            && linked["document"]["data"] == b["document"]["data"]
-            && linked["document"]["parent"] == b["document"]["parent"],
-        "{linked}"
-    );
-    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
-    let remove = json!({"request_id":uuid::Uuid::new_v4().to_string(),"source":"spec:b","target":"spec:a","action":"remove"});
-    let (code, reply) = send(member.clone(), root.clone(), "/dependencies", remove).await?;
-    ensure!(code == 200, "{code} {reply}");
-    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
-    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
-    // A Task of the custom type work pins the current revision of its target.
-    for key in ["work:t1", "work:t2"] {
-        p.save(key, Some("criterion:b1"), json!({"title":key,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([]))
-            .await?;
-    }
-    p.save("work:t1", Some("criterion:b1"), json!({"title":"work:t1","owner":"owner","contract":"Implement the rule","purpose":"implementation"}), json!([]))
-        .await?;
-    let task = |action: &str| json!({"request_id":uuid::Uuid::new_v4().to_string(),"source":"work:t2","target":"work:t1","action":action});
-    let (code, reply) = send(member.clone(), root.clone(), "/dependencies", task("add")).await?;
-    ensure!(code == 200, "{code} {reply}");
-    let pinned = p.object_both("work:t2").await?;
-    ensure!(
-        pinned["document"]["links"]
-            == json!([{"target":"work:t1","relation":"depends_on","revision":2,"blocking":true}]),
-        "{pinned}"
-    );
-    let (code, reply) = send(member, root, "/dependencies", task("remove")).await?;
-    ensure!(code == 200, "{code} {reply}");
-    ensure!(p.read("work:t2").await?["document"]["links"] == json!([]));
     store::check_journal(&p.pool).await?;
     Ok(())
 }

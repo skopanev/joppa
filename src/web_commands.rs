@@ -31,52 +31,12 @@ pub(super) async fn command(
         .await,
     )
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct DependencyRequest {
-    request_id: String,
-    source: String,
-    target: String,
-    action: String,
-}
-/// A signed-in member adds or removes one blocking dependency from the board. Only a
-/// browser session from this origin with a write grant may; commands and reorder stay
-/// closed to cookie sessions.
-pub(super) async fn dependency(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    headers: HeaderMap,
-    Json(request): Json<DependencyRequest>,
-) -> ApiResult {
-    if headers.contains_key(header::AUTHORIZATION) {
-        return Err(auth_error(
-            "Sign in with the browser to change a dependency",
-        ));
-    }
-    let actor = authenticate_write(&app, &headers).await?;
-    web_auth::check_origin(&headers).map_err(auth_error)?;
-    let add = match request.action.as_str() {
-        "add" => true,
-        "remove" => false,
-        _ => {
-            return Err((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(json!({"error":"action must be add or remove"})),
-            ));
-        }
-    };
-    result(
-        store::save_dependency(
-            &app.pool,
-            &workspace,
-            &actor,
-            &request.request_id,
-            &request.source,
-            &request.target,
-            add,
-        )
-        .await,
-    )
+/// The board is read-only; dependency changes go through Joppa MCP.
+pub(super) async fn dependency() -> ApiResult {
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
+    ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

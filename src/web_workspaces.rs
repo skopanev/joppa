@@ -131,34 +131,12 @@ pub(super) async fn rename_workspace(
             .map(|_| json!({"id": workspace, "title": body.title})),
     )
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct PriorityChange {
-    target: String,
-    priority: String,
-}
-/// A member sets the priority of a node from the board row of a signed-in browser.
-pub(super) async fn set_priority(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    headers: HeaderMap,
-    Json(body): Json<PriorityChange>,
-) -> ApiResult {
-    if headers.contains_key(header::AUTHORIZATION) {
-        return Err(auth_error("Sign in with the browser to set a priority"));
-    }
-    let actor = authenticate_write(&app, &headers).await?;
-    web_auth::check_origin(&headers).map_err(auth_error)?;
-    let command = Command::SetPriority {
-        target: body.target.clone(),
-        priority: body.priority.clone(),
-    };
-    let request_id = uuid::Uuid::new_v4().to_string();
-    result(
-        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
-            .await
-            .map(|_| json!({"target": body.target, "priority": body.priority})),
-    )
+/// The board is read-only; priority changes go through Joppa MCP.
+pub(super) async fn set_priority() -> ApiResult {
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
+    ))
 }
 /// The owner deletes a workspace from a signed-in browser. The journal stays.
 pub(super) async fn delete_workspace(

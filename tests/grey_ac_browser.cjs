@@ -1055,7 +1055,7 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
 });
 
 // work-priority-ac4
-test('work-priority-ac4: each row shows its priority and alex sets p0 on the requirement from its row', async () => {
+test('work-priority-ac4: each row shows its priority read-only and browser POST /priority is refused with 403', async () => {
   const f = await fixture(criterionRecords);
   try {
     for (const [target, priority] of [['domain:d', 'p1'], ['capability:c', 'p0'], ['ac:A', 'p1']]) {
@@ -1066,24 +1066,17 @@ test('work-priority-ac4: each row shows its priority and alex sets p0 on the req
       await f.page.setViewportSize({width, height});
       for (const [address, label] of Object.entries(expected)) {
         const card = await f.open(address);
-        const select = card.locator(':scope > summary .priority-select');
-        assert.equal(await select.locator('option:checked').innerText(), label, width + ' ' + address);
-        assert.ok(await select.isVisible(), width + ' ' + address);
+        const badge = card.locator(':scope > summary .priority-badge');
+        assert.equal(await badge.innerText(), label, width + ' ' + address);
+        assert.ok(await badge.isVisible(), width + ' ' + address);
+        assert.equal(await card.locator(':scope > summary .priority-select').count(), 0);
       }
-      // Alex sets p0 on the requirement from its row; the row shows it at once.
-      const card = await f.open('requirement:r');
-      const select = card.locator(':scope > summary .priority-select');
-      const saved = f.page.waitForResponse(r => r.url().endsWith('/priority') && r.request().method() === 'POST');
-      await select.selectOption('p0');
-      assert.equal((await saved).status(), 200);
-      assert.equal(await select.locator('option:checked').innerText(), 'P0');
-      assert.equal(await card.evaluate(e => e.open), true, 'the change does not toggle the row');
-      assert.equal((await f.api('/objects?address=requirement:r')).process.priority, 'p0');
-      assert.equal((await f.mcp('joppa_objects', {address: 'requirement:r'})).process.priority, 'p0');
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-      await f.command({op: 'set_priority', target: 'requirement:r', priority: 'p2'});
-      expected['requirement:r'] = 'P2';
     }
+    const refused = await f.page.request.post(f.live.root + '/api/workspaces/' + f.live.ws + '/priority',
+      {headers: {Origin: f.live.root}, data: {target: 'requirement:r', priority: 'p0'}});
+    assert.equal(refused.status(), 403);
+    assert.equal((await f.api('/objects?address=requirement:r')).process.priority, 'p2');
   } finally { await f.close(); }
 });
 
@@ -1478,111 +1471,46 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     assert.ok((await unstarted()).includes('ac:B1'));
     const readiness = (await read('ac:B1')).process.assessment.state;
     assert.equal(readiness, 'ready');
+    // Save the blocking dependency on B via MCP/API command; the board displays it read-only.
+    const currentB = await read('requirement:B');
+    await f.command({op: 'save_object', kind: 'requirement', id: 'B', revision: currentB.current_revision,
+      parent: 'capability:c', data: currentB.document.data,
+      links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Add blocking dependency'});
+    assert.ok(!(await unstarted()).includes('ac:B1'), 'the work of B leaves the queue');
     // Each width is its own subtest, so the output names both runs.
     for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('dependencies-before-priority-ac5: ' + viewport.width + ' px', async () => {
       await f.page.setViewportSize(viewport);
       const B = await f.open('requirement:B');
-      // Alex chooses Depends on in the row of B and picks A.
-      await B.locator('.depends-on-button').click();
-      const picker = B.locator('.dependency-picker select');
-      await picker.locator('option[value="requirement:A"]').waitFor({state: 'attached'});
-      await picker.selectOption('requirement:A');
-      await B.locator('.dependency-add').click();
       await waiting().waitFor();
-      // The row shows the count of dependencies that are not green, not the long title.
       assert.equal(await waiting().innerText(), '1 dep', JSON.stringify(viewport));
       assert.equal(await waiting().getAttribute('title'), 'Waits for Sign-in rule');
       assert.equal(await waiting().isVisible(), true);
-      // The new row shows the wait first; the focus returns once its controls load.
-      await f.page.waitForFunction(() => document.activeElement?.classList.contains('depends-on-button'));
-      const linked = await f.mcp('joppa_objects', {address: 'requirement:B'});
-      assert.deepEqual(linked.document.links, [{target: 'requirement:A', relation: 'depends_on', blocking: true}]);
-      assert.deepEqual(linked.waits_for.address, 'requirement:A');
-      assert.equal(linked.waits_for.count, 1);
-      assert.ok(!(await unstarted()).includes('ac:B1'), 'the work of B leaves the queue');
+      const depLink = B.locator('.object-dependencies .dependency-row .object-link');
+      await depLink.waitFor();
+      assert.equal(await depLink.innerText(), 'Sign-in rule');
+      assert.equal(await B.locator('.depends-on-button, .dependency-add, .dependency-remove, .dependency-picker').count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
-      if (viewport.width > 390) {
-        // A refused save keeps the row and shows the server error.
-        const A = await f.open('requirement:A');
-        await A.locator('.depends-on-button').click();
-        await A.locator('.dependency-picker select option[value="requirement:B"]').waitFor({state: 'attached'});
-        await A.locator('.dependency-picker select').selectOption('requirement:B');
-        await A.locator('.dependency-add').click();
-        await A.locator('.dependency-error').waitFor();
-        assert.equal(await A.locator('.dependency-error').innerText(), 'dependency cycle');
-        assert.equal(await A.isVisible(), true);
-        assert.deepEqual((await read('requirement:A')).document.links, []);
-        await f.open('requirement:B');
-      }
-      // Alex removes the dependency with the keyboard.
-      const remove = card().getByRole('button', {name: 'Remove dependency on Sign-in rule'});
-      await remove.focus();
-      await f.page.keyboard.press('Enter');
-      await card().locator('.dependency-remove').waitFor({state: 'detached'});
-      assert.equal(await waiting().count(), 0);
-      const unlinked = await read('requirement:B');
-      assert.deepEqual(unlinked.document.links, []);
-      assert.equal(unlinked.waits_for, undefined);
-      assert.ok((await unstarted()).includes('ac:B1'), 'the work of B returns to the queue');
-      assert.equal((await read('ac:B1')).process.assessment.state, readiness, 'the link change cleared no readiness');
     });
 
-    // Refusals change neither B nor the journal.
+    // Browser POST /dependencies and /commands are refused with 403 Forbidden.
     const before = await read('requirement:B');
     const route = f.live.root + '/api/workspaces/' + f.live.ws;
-    const body = () => ({request_id: crypto.randomUUID(), source: 'requirement:B', target: 'requirement:A', action: 'add'});
+    const body = () => ({request_id: crypto.randomUUID(), source: 'requirement:B', target: 'requirement:A', action: 'remove'});
     const unchanged = async label => {
       const after = await read('requirement:B');
       assert.deepEqual([after.current_revision, after.document, after.position], [before.current_revision, before.document, before.position], label);
     };
+    const sameOrigin = await f.page.request.post(route + '/dependencies', {headers: {Origin: f.live.root}, data: body()});
+    assert.equal(sameOrigin.status(), 403);
+    await unchanged('same-origin cookie dependencies');
     const foreign = await f.page.request.post(route + '/dependencies', {headers: {Origin: 'https://other.example'}, data: body()});
     assert.equal(foreign.status(), 403);
-    assert.equal((await foreign.json()).error, 'cross-origin request denied');
     await unchanged('foreign Origin');
-    // The person has a valid session and no access to this workspace.
-    const outsider = await browser.newContext();
-    try {
-      await outsider.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
-      const stranger = await outsider.request.post(route + '/dependencies', {headers: {Origin: f.live.root}, data: body()});
-      assert.equal(stranger.status(), 404);
-    } finally { await outsider.close(); }
-    await unchanged('non-member cookie session');
     const commands = await f.page.request.post(route + '/commands', {headers: {Origin: f.live.root},
       data: {request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'requirement', id: 'B', revision: before.current_revision,
-        parent: 'capability:c', data: before.document.data, links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Cookie write'}}});
+        parent: 'capability:c', data: before.document.data, links: [], reason: 'Cookie write'}}});
     assert.equal(commands.status(), 403);
     await unchanged('cookie commands');
-  } finally { await f.close(); }
-});
-
-test('dependencies-before-priority-ac5: a Task row pins the current revision of the Task it depends on', async () => {
-  const configured = {...types, work: {title: 'Work', role: 'task', parents: ['ac'], parent_gate: 'ready', badge: 'WRK'}};
-  const f = await fixture({'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'},
-    'requirement:B': {title: 'Billing rule', parent: 'capability:c'}, 'ac:B1': {title: 'Billing condition', parent: 'requirement:B'}}, configured);
-  const read = address => f.api('/objects?address=' + encodeURIComponent(address));
-  try {
-    const b1 = await read('ac:B1');
-    await f.command({op: 'confirm', req: b1.process.req, revision: b1.process.revision}, true);
-    await f.command({op: 'assess', req: b1.process.req, revision: b1.process.revision, ac: b1.process.criterion,
-      assessment: {ready: true, reason: 'Known scope'}}, true);
-    // alex owns both Tasks, so the ordinary Task rules let alex save their links.
-    for (const [id, revision, title] of [['t1', 0, 'Schema work'], ['t2', 0, 'Billing work'], ['t1', 1, 'Schema work']])
-      await f.command({op: 'save_object', kind: 'work', id, revision, parent: 'ac:B1', reason: 'Plan the work',
-        data: {title, owner: 'alex', contract: 'Implement ' + title + ' at revision ' + (revision + 1), purpose: 'implementation'}});
-    const T2 = await f.open('work:t2');
-    await T2.locator('.depends-on-button').click();
-    await T2.locator('.dependency-picker select option[value="work:t1"]').waitFor({state: 'attached'});
-    await T2.locator('.dependency-picker select').selectOption('work:t1');
-    await T2.locator('.dependency-add').click();
-    const card = f.page.locator('.object-page > .common-object[data-object-address="work:t2"]');
-    const remove = card.getByRole('button', {name: 'Remove dependency on Schema work'});
-    await card.locator('.dependency-remove, .dependency-error:not([hidden])').first().waitFor();
-    assert.equal(await card.locator('.dependency-error:not([hidden])').count(), 0,
-      await card.locator('.dependency-error').first().textContent());
-    assert.deepEqual((await read('work:t2')).document.links, [{target: 'work:t1', relation: 'depends_on', revision: 2, blocking: true}]);
-    await remove.click();
-    await card.locator('.dependency-remove').waitFor({state: 'detached'});
-    assert.deepEqual((await read('work:t2')).document.links, []);
   } finally { await f.close(); }
 });
 
