@@ -3,7 +3,7 @@ const {readFileSync}=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const root=path.join(__dirname,'..');
-const html=readFileSync(path.join(root,'src/board.html'),'utf8').replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8')).replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
+const html=readFileSync(path.join(root,'src/board.html'),'utf8').replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8')).replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',require('./board_script.cjs'));
 const tree=readFileSync(path.join(root,'src/tree.html'),'utf8').replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8')).replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* TREE_STYLE */',readFileSync(path.join(root,'src/tree.css'),'utf8')).replace('/* TREE_SCRIPT */',readFileSync(path.join(root,'src/tree.js'),'utf8'));
 const row=(address,title,revision=1)=>({address,title,revision,kind:address.split(':')[0],id:address.split(':')[1],owner:'owner',at:'2026-10-05T12:00:00Z',work_ready:true,review_required:false,item_id:'w-N-ABCDEFGHIJ',links:[]});
 const rows=[{...row('initiative:release','Release'),present:false,signal:{tone:'green',label:'Complete'}},{...row('note:source','Customer source',2),links:[{target:'consumer:person',relation:'related'}]},{...row('note:processed','Reviewed input'),note_status:'processed'},row('consumer:person','Product user')];

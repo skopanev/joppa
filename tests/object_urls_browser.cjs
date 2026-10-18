@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const root=path.join(__dirname,'..');
 const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
-  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',readFileSync(path.join(root,'src/board.js'),'utf8'));
+  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',require('./board_script.cjs'));
 const types={folder:{title:'Folder',role:'group',root:true,parents:[],badge:'FOLD',title_size:21},
   incoming:{title:'Incoming information',role:'document',root:true,parents:['*'],inbox:true},
   measure:{title:'Measure',role:'ac',root:false,parents:['folder'],badge:'TEST',title_preview_length:24}};
