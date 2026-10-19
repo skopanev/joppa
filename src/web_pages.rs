@@ -66,10 +66,11 @@ pub(super) fn page_at(origin: &str) -> String {
 
 /// The board script in execution order. The parts form one script in one element, so they
 /// share one scope. The file names in src/board sort in this order.
-const BOARD_SCRIPT: [&str; 5] = [
+const BOARD_SCRIPT: [&str; 6] = [
     include_str!("board/10-shell.js"),
     include_str!("board/20-session.js"),
     include_str!("board/30-rows.js"),
+    include_str!("board/35-history.js"),
     include_str!("board/40-pages.js"),
     include_str!("board/50-cards.js"),
 ];

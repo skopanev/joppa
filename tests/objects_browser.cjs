@@ -15,7 +15,7 @@ const defaults={domain:{title:'Domain',role:'group',root:true,parents:[]},capabi
       const linked=row=>row.address!==related&&(row.links.some(l=>l.target===related)||(rows.find(r=>r.address===related)?.links||[]).some(l=>l.target===row.address));
       value=address?document(address,Number(url.searchParams.get('revision'))||undefined):{items:related?rows.filter(row=>matches(row)&&linked(row)):url.searchParams.get('parent')==='*'?rows.filter(matches):url.searchParams.has('parent')?[]:rows.filter(row=>!url.searchParams.get('kind')||row.kind===url.searchParams.get('kind')),next_cursor:null};}else if(url.pathname.endsWith('/tree'))value=url.searchParams.get('revision')==='0'?{...schema,schema:{...schema.schema,revision:0,reason:'Default workspace tree',types:defaults}}:schema;return route.fulfill({status:value?200:404,json:value||{error:'Unknown route'}});});
 await page.goto('http://joppa.test/');await page.getByRole('tab',{name:'Initiative',exact:true}).waitFor();
-assert.deepEqual(await page.getByRole('tab').allTextContents(),['Workstream','Initiative','Inputs','Consumer'],'root tabs use the schema index, titles and permissions');
+assert.deepEqual(await page.getByRole('tab').allTextContents(),['Workstream','Initiative','Inputs','Consumer','History'],'root tabs use the schema index, titles and permissions');
 assert.equal(await page.getByRole('tab',{name:'Workstream',exact:true}).getAttribute('aria-selected'),'true','the first configured collection opens initially');
 await page.getByRole('tab',{name:'Workstream',exact:true}).click();await page.locator('#collection-workstream .collection-empty').waitFor();
 await page.getByRole('tab',{name:'Consumer',exact:true}).click();await page.locator('[data-object-address="consumer:person"]').waitFor();
