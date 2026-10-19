@@ -158,8 +158,8 @@ pub fn criterion_status(
         .map(|t| test_status(t, reports, results))
         .collect();
     // After a change, a draft list is decided when every listed test has an eligible result.
-    let decided_after_change = matches!(boundary, Boundary::After(_))
-        && statuses.iter().all(|t| t.status != "not_run");
+    let decided_after_change =
+        matches!(boundary, Boundary::After(_)) && statuses.iter().all(|t| t.status != "not_run");
     let (status, reason) = if tests.is_empty() {
         ("grey", Some("no tests"))
     } else if draft && !decided_after_change {

@@ -55,7 +55,10 @@ fn parse(args: &Value) -> Result<(String, Vec<TestResult>)> {
                 .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
         "commit must be a lowercase git sha"
     );
-    ensure!(!record.results.is_empty(), "results must name at least one test");
+    ensure!(
+        !record.results.is_empty(),
+        "results must name at least one test"
+    );
     ensure!(
         record.results.len() <= RECORD_MAX,
         "a record has at most {RECORD_MAX} results"
@@ -130,9 +133,12 @@ pub async fn record_results(
             &[&id],
         )
         .await?;
-        let position = super::timeline::record_report(&*tx, &workspace, actor, event(id, true)).await?;
+        let position =
+            super::timeline::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
-        return Ok(json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position}));
+        return Ok(
+            json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position}),
+        );
     };
     let id: i64 = row.get(0);
     tx.execute(
@@ -142,7 +148,9 @@ pub async fn record_results(
     let position =
         super::timeline::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
-    Ok(json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position}))
+    Ok(
+        json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position}),
+    )
 }
 
 #[cfg(test)]
@@ -165,12 +173,30 @@ mod tests {
     #[test]
     fn a_record_refuses_actor_at_unknown_fields_and_bad_input() {
         for (input, error) in [
-            (json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"actor":"x"}), "actor comes from the server"),
-            (json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"at":"2020-01-01T00:00:00Z"}), "at comes from the server"),
-            (json!({"commit":"abcdef1","results":[{"test":"a","status":"pass","actor":"x"}]}), "invalid record_results input"),
-            (json!({"commit":"ABCDEF1","results":[{"test":"a","status":"pass"}]}), "lowercase git sha"),
-            (json!({"commit":"abcdef1","results":[]}), "at least one test"),
-            (json!({"commit":"abcdef1","results":[{"test":"a","status":"passed"}]}), "pass, fail, skip or todo"),
+            (
+                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"actor":"x"}),
+                "actor comes from the server",
+            ),
+            (
+                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"at":"2020-01-01T00:00:00Z"}),
+                "at comes from the server",
+            ),
+            (
+                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass","actor":"x"}]}),
+                "invalid record_results input",
+            ),
+            (
+                json!({"commit":"ABCDEF1","results":[{"test":"a","status":"pass"}]}),
+                "lowercase git sha",
+            ),
+            (
+                json!({"commit":"abcdef1","results":[]}),
+                "at least one test",
+            ),
+            (
+                json!({"commit":"abcdef1","results":[{"test":"a","status":"passed"}]}),
+                "pass, fail, skip or todo",
+            ),
         ] {
             let message = parse(&input).unwrap_err().to_string();
             assert!(message.contains(error), "{input}: {message}");

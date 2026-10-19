@@ -29,10 +29,10 @@ pub use grants::{
     Access, READ_ONLY_REFUSAL, TokenGrant, create_agent_token, list_agent_tokens,
     revoke_agent_token, token_actor,
 };
-#[path = "store_reports.rs"]
-mod reports;
 #[path = "store_record_results.rs"]
 mod record_results;
+#[path = "store_reports.rs"]
+mod reports;
 pub use record_results::{RECORD_MAX, record_results};
 pub use reports::{
     REPORT_MAX, ReportUpload, Stamp, criterion_tests, task_status, tests_overview, upload_report,

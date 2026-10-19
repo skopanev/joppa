@@ -37,10 +37,16 @@ fn a_recorded_skip_or_todo_is_never_a_pass() {
     let reports = [record(1, "c1", 1, 10), record(2, "c1", 2, 20)];
     let rows = [result(1, "x", "pass"), result(2, "x", "skipped")];
     let s = criterion_status(&x, false, Boundary::None, &reports, &rows);
-    assert_eq!((s.status.as_str(), s.tests[0].status.as_str()), ("grey", "skipped"));
+    assert_eq!(
+        (s.status.as_str(), s.tests[0].status.as_str()),
+        ("grey", "skipped")
+    );
     let rows = [result(1, "x", "pass"), result(2, "x", "todo")];
     let s = criterion_status(&x, false, Boundary::None, &reports, &rows);
-    assert_eq!((s.status.as_str(), s.tests[0].status.as_str()), ("grey", "todo"));
+    assert_eq!(
+        (s.status.as_str(), s.tests[0].status.as_str()),
+        ("grey", "todo")
+    );
 }
 
 #[test]
@@ -62,10 +68,27 @@ fn records_after_a_change_combine_and_the_latest_record_decides() {
     let at = Boundary::After(100);
     let reports = [record(1, "c1", 1, 101), record(2, "c1", 2, 102)];
     let rows = [result(1, "x", "pass"), result(2, "y", "pass")];
-    assert_eq!(criterion_status(&both, false, at, &reports, &rows).status, "green");
+    assert_eq!(
+        criterion_status(&both, false, at, &reports, &rows).status,
+        "green"
+    );
     let old = [record(1, "c1", 1, 99), record(2, "c1", 2, 100)];
-    assert_eq!(criterion_status(&both, false, at, &old, &rows).status, "grey");
-    let later = [record(1, "c1", 1, 101), record(2, "c1", 2, 102), record(3, "c2", 3, 103)];
-    let rows = [result(1, "x", "pass"), result(2, "y", "pass"), result(3, "x", "fail")];
-    assert_eq!(criterion_status(&both, false, at, &later, &rows).status, "red");
+    assert_eq!(
+        criterion_status(&both, false, at, &old, &rows).status,
+        "grey"
+    );
+    let later = [
+        record(1, "c1", 1, 101),
+        record(2, "c1", 2, 102),
+        record(3, "c2", 3, 103),
+    ];
+    let rows = [
+        result(1, "x", "pass"),
+        result(2, "y", "pass"),
+        result(3, "x", "fail"),
+    ];
+    assert_eq!(
+        criterion_status(&both, false, at, &later, &rows).status,
+        "red"
+    );
 }
