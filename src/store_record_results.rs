@@ -11,9 +11,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 /// The largest number of results in one record.
-pub const RECORD_MAX: usize = 50_000;
-/// The largest MCP request body: a full record of 50 000 results fits.
-pub const MCP_BODY_MAX: usize = 32 * 1024 * 1024;
+pub const RECORD_MAX: usize = 1000;
 /// A stored failure message keeps its first 8 KB.
 const MESSAGE_MAX: usize = 8 * 1024;
 
@@ -173,17 +171,17 @@ mod tests {
     }
 
     #[test]
-    fn a_record_takes_50000_results_and_refuses_more() {
+    fn a_record_takes_1000_results_and_refuses_more() {
         let rows = |n: usize| -> Vec<_> {
             (0..n)
                 .map(|i| json!({"test": format!("t{i}"), "status": "pass"}))
                 .collect()
         };
-        let (_, parsed) = parse(&json!({"commit":"abcdef1","results":rows(50_000)})).unwrap();
-        assert_eq!(parsed.len(), 50_000);
-        let error = parse(&json!({"commit":"abcdef1","results":rows(50_001)})).unwrap_err();
+        let (_, parsed) = parse(&json!({"commit":"abcdef1","results":rows(1000)})).unwrap();
+        assert_eq!(parsed.len(), 1000);
+        let error = parse(&json!({"commit":"abcdef1","results":rows(1001)})).unwrap_err();
         assert!(
-            error.to_string().contains("at most 50000 results"),
+            error.to_string().contains("at most 1000 results"),
             "{error}"
         );
     }

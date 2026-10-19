@@ -33,7 +33,7 @@ pub use grants::{
 mod record_results;
 #[path = "store_reports.rs"]
 mod reports;
-pub use record_results::{MCP_BODY_MAX, RECORD_MAX, record_results};
+pub use record_results::{RECORD_MAX, record_results};
 pub use reports::{
     REPORT_MAX, ReportUpload, Stamp, criterion_tests, task_status, tests_overview, upload_report,
 };

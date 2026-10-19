@@ -3,13 +3,7 @@
 use super::*;
 use axum::response::{IntoResponse, Response};
 pub(super) fn routes() -> Router<App> {
-    // A test record of up to 50 000 results is larger than the default body limit.
-    Router::new().route(
-        "/mcp",
-        post(endpoint)
-            .layer(axum::extract::DefaultBodyLimit::max(store::MCP_BODY_MAX))
-            .get(get_endpoint),
-    )
+    Router::new().route("/mcp", post(endpoint).get(get_endpoint))
 }
 /// The actor and its access grant. Service credentials and OAuth identities write.
 async fn identity(
