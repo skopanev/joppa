@@ -1,7 +1,8 @@
 //! Status tones in the tree schema: an ordered list with a light and a dark colour each.
 //! A higher entry wins over a lower one: the list order is the default order of a children
 //! rule. A schema without `statuses` uses the default list. The older `status_colors` map
-//! stays readable for earlier journal events and overrides the light and dark colours.
+//! stays readable for earlier journal events. It colours the default list for both themes,
+//! and a saved `statuses` list replaces it.
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -71,7 +72,7 @@ pub fn validate_statuses(statuses: &[Status]) -> Result<()> {
     Ok(())
 }
 
-/// The list that applies: the schema list, else the default list, with the older map on top.
+/// The list that applies: the schema list, else the default list coloured by the older map.
 /// A tone that the schema list omits keeps its default colours at the end of the order.
 pub fn effective(
     statuses: Option<&Vec<Status>>,
@@ -83,6 +84,7 @@ pub fn effective(
             list.push(d);
         }
     }
+    let colors = if statuses.is_some() { None } else { colors };
     for (tone, color) in colors.into_iter().flatten() {
         if let Some(s) = list.iter_mut().find(|s| &s.tone == tone) {
             s.light = color.clone();
@@ -137,6 +139,16 @@ mod tests {
         assert_eq!(
             (grey.light.as_str(), grey.dark.as_str()),
             ("#c8c3b8", "#c8c3b8")
+        );
+        // A saved list replaces the older map.
+        let own = vec![status("grey", "#aaaaaa", "#555555")];
+        let grey = effective(Some(&own), Some(&colors))
+            .into_iter()
+            .find(|s| s.tone == "grey")
+            .unwrap();
+        assert_eq!(
+            (grey.light.as_str(), grey.dark.as_str()),
+            ("#aaaaaa", "#555555")
         );
     }
 
