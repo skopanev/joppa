@@ -17,6 +17,7 @@ pub async fn tree_schema(
             revision: 0,
             types: objects::legacy_defaults(),
             priorities: None,
+            status_colors: None,
             actor: row.get(0),
             at: String::new(),
             position: 0,

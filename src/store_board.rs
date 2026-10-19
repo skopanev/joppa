@@ -66,7 +66,7 @@ pub(super) async fn project_current(
     for o in state.objects.values().filter(|o| o.current().present) {
         *counts.entry(&o.kind).or_default() += 1;
     }
-    let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,
+    let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"status_colors":crate::objects::schema(state).status_colors,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
     super::queue_rows::project(client, workspace, state, selected.as_ref()).await?;
@@ -116,7 +116,7 @@ pub async fn board_read(
                 json!({"workspace":first["workspace_id"],"position":row.get::<_,i64>(0),"lazy":true,
                 "state":{"title":first["title"],"members":members},
                 "member_labels":labels,"launch":first["launch"],
-                "object_types":first["object_types"],"counts":first["counts"],"custom_tree":first["custom_tree"]}),
+                "object_types":first["object_types"],"status_colors":first["status_colors"],"counts":first["counts"],"custom_tree":first["custom_tree"]}),
             )
         }
         Some("process") => {

@@ -13,6 +13,7 @@ pub mod planning;
 pub mod probe;
 pub mod redact;
 pub mod sessions;
+pub mod status_colors;
 pub mod store;
 pub mod tasks;
 pub mod timeline;

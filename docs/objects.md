@@ -293,6 +293,10 @@ Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to u
 This value is also the maximum length of a new title. The server refuses a longer title, so put the context in `body` or `description`.
 Older titles can be longer. The board shows a preview that ends with an ellipsis, and the complete title stays in the Details section.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.
+
+The schema can also set `status_colors`, the colour of each status dot, for example `{"green": "#22a559", "grey": "#c8c3b8"}`.
+The keys are green, grey, red, yellow, orange and purple. Each value is `#RRGGBB`.
+A schema change without `status_colors` keeps the current colours. Unset tones keep the colours of the board theme.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
 ## Type order

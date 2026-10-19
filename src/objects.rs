@@ -89,6 +89,9 @@ pub struct SchemaRevision {
     /// list the values are p0, p1 and p2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priorities: Option<Vec<String>>,
+    /// The colour of each status dot, as #RRGGBB per tone. Without it the board colours stay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_colors: Option<BTreeMap<String, String>>,
     pub actor: String,
     pub at: String,
     pub position: u64,
@@ -290,6 +293,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             revision: 0,
             types: legacy_defaults(),
             priorities: None,
+            status_colors: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -488,6 +492,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         revision: schema_revision,
         types,
         priorities: previous_schema.priorities.clone(),
+        status_colors: previous_schema.status_colors.clone(),
         actor: actor.into(),
         at: at.into(),
         position,
@@ -729,6 +734,7 @@ pub fn set_schema(
     revision: u32,
     types: &BTreeMap<String, TreeType>,
     priorities: Option<&Vec<String>>,
+    status_colors: Option<&BTreeMap<String, String>>,
     reason: &str,
     position: u64,
     at: &str,
@@ -755,6 +761,9 @@ pub fn set_schema(
                     && seen.insert(v.as_str())),
             "a priority list has 1 to 20 different values without spaces"
         );
+    }
+    if let Some(colors) = status_colors {
+        crate::status_colors::validate(colors)?;
     }
     for (kind, t) in types {
         commands::identifier(kind)?;
@@ -886,10 +895,12 @@ pub fn set_schema(
         }
     }
     let priorities = priorities.cloned().or_else(|| schema(w).priorities);
+    let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);
     w.tree_schema.push(SchemaRevision {
         revision: revision + 1,
         types: types.clone(),
         priorities,
+        status_colors,
         actor: actor.into(),
         at: at.into(),
         position,
