@@ -57,6 +57,7 @@ fn report(id: i64, commit: &str, order: i64, full: bool, received_us: i64) -> Re
         commit: commit.into(),
         order,
         full,
+        recorded: false,
         received_us,
         receipt_us: received_us,
     }

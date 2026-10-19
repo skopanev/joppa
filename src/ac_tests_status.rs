@@ -22,6 +22,8 @@ pub struct Report {
     /// First-parent position on the default branch. Higher is newer.
     pub order: i64,
     pub full: bool,
+    /// A record_results report: its skip and todo results count, and it has no missing tests.
+    pub recorded: bool,
     /// First receipt; it orders reports with the same commit order.
     pub received_us: i64,
     /// Latest receipt, including identical repeats; it is compared with the boundary.
@@ -76,10 +78,10 @@ pub struct CriterionStatus {
 }
 
 fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> TestStatus {
-    let full = |id: i64| reports.iter().any(|r| r.id == id && r.full);
+    let counts_skips = |id: i64| reports.iter().any(|r| r.id == id && (r.full || r.recorded));
     let results: Vec<(i64, TestResult)> = all
         .iter()
-        .filter(|(id, r)| full(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
+        .filter(|(id, r)| counts_skips(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
         .cloned()
         .collect();
     let results = results.as_slice();

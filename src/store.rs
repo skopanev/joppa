@@ -31,6 +31,9 @@ pub use grants::{
 };
 #[path = "store_reports.rs"]
 mod reports;
+#[path = "store_record_results.rs"]
+mod record_results;
+pub use record_results::{RECORD_MAX, record_results};
 pub use reports::{
     REPORT_MAX, ReportUpload, Stamp, criterion_tests, task_status, tests_overview, upload_report,
 };
