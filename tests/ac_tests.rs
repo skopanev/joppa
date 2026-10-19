@@ -375,7 +375,8 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "not_run")
     );
-    // Two partial runs after the boundary pass every test together: still grey.
+    // Two partial runs after the boundary pass every test together: green, because
+    // the latest eligible result of each test decides (no full run is required).
     let partial = [
         report(3, "c2", 2, false, 101),
         report(4, "c3", 3, false, 102),
@@ -386,7 +387,7 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         "green"
     );
     let s = criterion_status(&both, false, at, &partial, &rows);
-    assert_eq!(s.status, "grey");
+    assert_eq!(s.status, "green");
     // One clean full run after the boundary that passes every test is green.
     let full = [report(5, "c4", 4, true, 101)];
     assert_eq!(

@@ -2033,9 +2033,8 @@ async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterio
         s["status"] == "grey" && saved_list(&s) == saved_list(&before),
         "without a new report: {s}"
     );
+    // A partial report that covers only one listed test keeps the criterion grey.
     w.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
-        .await?;
-    w.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
         .await?;
     let s = w.status().await?;
     ensure!(
@@ -2284,13 +2283,15 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
         "the summary of H changed"
     );
 
-    // Partial runs after the change do not combine; one new clean full run does.
+    // Partial runs after the change combine: the latest result of each test decides.
     p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
         .await?;
+    let s = tests("criterion:a").await?;
+    ensure!(s["status"] == "grey", "after one partial run: {s}");
     p.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
         .await?;
     let s = tests("criterion:a").await?;
-    ensure!(s["status"] == "grey", "after partial runs: {s}");
+    ensure!(s["status"] == "green", "after partial runs: {s}");
     p.upload(
         "c4c4c4c",
         4,
@@ -6456,10 +6457,8 @@ async fn frozen_f8_only_a_full_report_after_the_change_makes_a_green() -> Result
     p.resave_a().await?;
     // Control: the clean full report from before the change does not count.
     p.reset(&before).await?;
-    // Control: partial reports after the change do not combine.
+    // Control: a partial report after the change that misses a listed test stays grey.
     p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
-        .await?;
-    p.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
         .await?;
     let s = p.ac_tests("criterion:a").await?;
     ensure!(s["status"] == "grey", "after partial reports: {s}");
