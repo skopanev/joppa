@@ -36,6 +36,7 @@ function rootCollectionTabs(root){
     }
     return panel;
   });
+  panels.push(historyPanel(root,existing));
   let nav=root.querySelector(':scope > .collection-tabs');
   if(!nav){nav=E('div',undefined,'collection-tabs');nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Root collections');root.prepend(nav);}
   nav.replaceChildren();nav.hidden=false;
@@ -65,7 +66,7 @@ function rootCollectionTabs(root){
     if(data.filterActive)data.filterUpdate?.();
   };
   for(const panel of panels){
-    const kind=panel.dataset.collectionKind,type=data.objectTypes[kind];
+    const kind=panel.dataset.collectionKind,type=data.objectTypes[kind]||{title:'History'};
     panel.id='collection-'+kind;panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','tab-'+kind);panel.tabIndex=-1;
     const tab=button(type.title,()=>activate(kind),'collection-tab');applyObjectColor(tab,kind);tab.id='tab-'+kind;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);nav.append(tab);
   }

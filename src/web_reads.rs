@@ -113,6 +113,23 @@ pub(super) async fn timeline(
     )
 }
 #[derive(Deserialize)]
+pub(super) struct HistoryQuery {
+    limit: Option<i64>,
+    cursor: Option<String>,
+    all: Option<bool>,
+}
+/// History: journal entries that are open until a member marks them processed.
+pub(super) async fn history(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<HistoryQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    let args = serde_json::json!({"limit": q.limit, "cursor": q.cursor, "all": q.all});
+    result(store::read_history(&app.pool, &workspace, &actor, &args).await)
+}
+#[derive(Deserialize)]
 pub(super) struct TaskQuery {
     view: Option<String>,
     limit: Option<usize>,

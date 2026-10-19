@@ -143,7 +143,7 @@ try{
 
   // 3. A link crosses two roots and keeps its own title.
   // Root collections come from the schema, in its order.
-  assert.deepEqual(await page.getByRole('tab').allTextContents(),['Portfolio','Intake'],
+  assert.deepEqual(await page.getByRole('tab').allTextContents(),['Portfolio','Intake','History'],
     '[ac:uniform-object-cards-ac2] root collection tabs follow the schema order and titles');
   await page.locator('#tab-intake').click();
   // A collection header is flat: only the cards inside it expand.
