@@ -8,9 +8,9 @@
 //! A filter such as `bun test -t` reports every other test as skipped, so skipped
 //! and todo results count only in full runs; a partial run did not run those tests.
 //! A change above a criterion sets its boundary. Reports received at or before it do
-//! not count, and after it only one clean full run where every listed test passes
-//! gives green: partial runs no longer combine. An identical repeat of a report is a
-//! new receipt of it, and its latest receipt decides whether it came after the change.
+//! not count. After it, the latest eligible result of each listed test decides, also
+//! when the results come from several partial runs. An identical repeat of a report is
+//! a new receipt of it, and its latest receipt decides whether it came after the change.
 //! After a change, an eligible full run decides even when the list is a draft.
 use super::TestResult;
 use serde::Serialize;
@@ -134,19 +134,6 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
     }
 }
 
-/// One full run where every listed test ran and every case of it passed.
-fn full_pass(tests: &[String], reports: &[Report], results: &[(i64, TestResult)]) -> bool {
-    reports.iter().filter(|r| r.full).any(|report| {
-        tests.iter().all(|test| {
-            let mut cases = results
-                .iter()
-                .filter(|(id, r)| *id == report.id && &r.address == test)
-                .peekable();
-            cases.peek().is_some() && cases.all(|(_, r)| r.status == "pass")
-        })
-    })
-}
-
 pub fn criterion_status(
     tests: &[String],
     draft: bool,
@@ -183,11 +170,6 @@ pub fn criterion_status(
         ("red", None)
     } else if !statuses.iter().all(|t| t.status == "pass") {
         ("grey", Some("not all tests passed"))
-    } else if boundary != Boundary::None && !full_pass(tests, reports, results) {
-        (
-            "grey",
-            Some("a full run after the change must pass every test"),
-        )
     } else {
         ("green", None)
     };
