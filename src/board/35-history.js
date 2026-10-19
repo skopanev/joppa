@@ -30,23 +30,39 @@ function historyPanel(root,existing){
   panel.collectionLoad=()=>{if(!loaded)load();};
   return panel;
 }
+// A History row looks like a board row: a dot, a title, a type label and the state.
+// Its body holds the change reason, the actor, a link to the object and the mark.
 function historyRow(item){
-  const row=E('div',undefined,'history-entry history-'+item.status);row.dataset.position=String(item.position);
-  const line=E('div',undefined,'history-line');
-  line.append(E('span','#'+item.position,'history-position'),E('span',item.status,'history-status'),
-    E('span',item.change||item.op||'','history-change'),E('span',item.title||item.address||'','history-title'),
-    E('span',item.actor||'','history-actor'));
-  row.append(line);
-  if(item.reason)row.append(E('p',item.reason,'history-reason hint'));
+  const open=item.status==='open';
+  const card=E('details',undefined,'common-object history-entry history-'+item.status);card.dataset.position=String(item.position);
+  if(item.kind)applyObjectColor(card,item.kind);
+  const summary=E('summary',undefined,'title-row');
+  const signal={tone:open?'yellow':'grey',label:open?'Open change':'Processed change',at:item.at};
+  const title=nodeTitle('#'+item.position+' '+(item.title||item.address||item.op||'Change'),signal);
+  const badge=E('span',String(item.change||item.op||'change').toUpperCase(),'type-label type-badge');
+  summary.append(title,badge,E('span',undefined,'count-slot'),E('span',open?'Open':'Processed','note-state'));
+  card.append(summary);
+  const body=E('div',undefined,'object-body');
+  if(item.reason)body.append(E('p',item.reason,'history-reason'));
+  body.append(E('p',(item.actor||'')+(item.at?' · '+item.at:''),'history-actor hint'));
+  if(item.address){
+    const link=E('a',item.address+(item.revision?' · revision '+item.revision:''));
+    link.href='/?workspace='+encodeURIComponent(ws)+'&object='+encodeURIComponent(item.address)+(item.revision?'&revision='+item.revision:'');
+    const line=E('p',undefined,'history-object');line.append(link);body.append(line);
+  }
   if(item.processed){
-    row.append(E('p','Processed by '+item.processed.actor+': '+(item.processed.reason||''),'history-mark hint'));
+    const mark=E('div',undefined,'history-mark');
+    mark.append(E('p','Processed by '+item.processed.actor+(item.processed.at?' · '+item.processed.at:''),'hint'));
+    if(item.processed.reason)mark.append(E('p',item.processed.reason));
     if(item.processed.nodes?.length){
       const nodes=E('p',undefined,'history-nodes');
       for(const node of item.processed.nodes){
         const link=E('a',node);link.href='/?workspace='+encodeURIComponent(ws)+'&object='+encodeURIComponent(node);nodes.append(link,' ');
       }
-      row.append(nodes);
+      mark.append(nodes);
     }
+    body.append(mark);
   }
-  return row;
+  card.append(body);
+  return card;
 }
