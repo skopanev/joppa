@@ -8,10 +8,10 @@
 //! A filter such as `bun test -t` reports every other test as skipped, so skipped
 //! and todo results count only in full runs; a partial run did not run those tests.
 //! A change above a criterion sets its boundary. Reports received at or before it do
-//! not count, and after it only one clean full run where every listed test passes
-//! gives green: partial runs no longer combine. An identical repeat of a report is a
-//! new receipt of it, and its latest receipt decides whether it came after the change.
-//! After a change, an eligible full run decides even when the list is a draft.
+//! not count. After it, the latest eligible result of each listed test decides, also
+//! when the results come from several partial runs. An identical repeat of a report is
+//! a new receipt of it, and its latest receipt decides whether it came after the change.
+//! After a change, a draft list is decided once every listed test has an eligible result.
 use super::TestResult;
 use serde::Serialize;
 
@@ -22,6 +22,8 @@ pub struct Report {
     /// First-parent position on the default branch. Higher is newer.
     pub order: i64,
     pub full: bool,
+    /// A record_results report: its skip and todo results count, and it has no missing tests.
+    pub recorded: bool,
     /// First receipt; it orders reports with the same commit order.
     pub received_us: i64,
     /// Latest receipt, including identical repeats; it is compared with the boundary.
@@ -76,10 +78,10 @@ pub struct CriterionStatus {
 }
 
 fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> TestStatus {
-    let full = |id: i64| reports.iter().any(|r| r.id == id && r.full);
+    let counts_skips = |id: i64| reports.iter().any(|r| r.id == id && (r.full || r.recorded));
     let results: Vec<(i64, TestResult)> = all
         .iter()
-        .filter(|(id, r)| full(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
+        .filter(|(id, r)| counts_skips(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
         .cloned()
         .collect();
     let results = results.as_slice();
@@ -134,19 +136,6 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
     }
 }
 
-/// One full run where every listed test ran and every case of it passed.
-fn full_pass(tests: &[String], reports: &[Report], results: &[(i64, TestResult)]) -> bool {
-    reports.iter().filter(|r| r.full).any(|report| {
-        tests.iter().all(|test| {
-            let mut cases = results
-                .iter()
-                .filter(|(id, r)| *id == report.id && &r.address == test)
-                .peekable();
-            cases.peek().is_some() && cases.all(|(_, r)| r.status == "pass")
-        })
-    })
-}
-
 pub fn criterion_status(
     tests: &[String],
     draft: bool,
@@ -168,8 +157,9 @@ pub fn criterion_status(
         .iter()
         .map(|t| test_status(t, reports, results))
         .collect();
-    let decided_after_change =
-        matches!(boundary, Boundary::After(_)) && reports.iter().any(|r| r.full);
+    // After a change, a draft list is decided when every listed test has an eligible result.
+    let decided_after_change = matches!(boundary, Boundary::After(_))
+        && statuses.iter().all(|t| t.status != "not_run");
     let (status, reason) = if tests.is_empty() {
         ("grey", Some("no tests"))
     } else if draft && !decided_after_change {
@@ -183,11 +173,6 @@ pub fn criterion_status(
         ("red", None)
     } else if !statuses.iter().all(|t| t.status == "pass") {
         ("grey", Some("not all tests passed"))
-    } else if boundary != Boundary::None && !full_pass(tests, reports, results) {
-        (
-            "grey",
-            Some("a full run after the change must pass every test"),
-        )
     } else {
         ("green", None)
     };
