@@ -126,7 +126,9 @@ pub(super) async fn history(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    let args = serde_json::json!({"limit": q.limit, "cursor": q.cursor, "all": q.all});
+    // The board reads full pages; the MCP tool reads one entry by default.
+    let limit = q.limit.unwrap_or(store::HISTORY_LIMIT);
+    let args = serde_json::json!({"limit": limit, "cursor": q.cursor, "all": q.all});
     result(store::read_history(&app.pool, &workspace, &actor, &args).await)
 }
 #[derive(Deserialize)]

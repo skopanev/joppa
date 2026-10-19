@@ -115,7 +115,10 @@ async function api(path) {
   // A 404 changes the board only while the request still belongs to the shown selection.
   const generation=loadNumber,selected=ws;
   const r = await fetch('/api/' + path);
-  const j = await r.json();
+  // A proxy error page or a cut reply is not JSON. Report the HTTP status, not a parser error.
+  const text = await r.text();
+  let j;
+  try{j=text?JSON.parse(text):{};}catch{j={error:'The server sent an unreadable reply (HTTP '+r.status+'). Try again.'};if(r.ok)throw Error(j.error);}
   if(r.status===401){loadNumber++;data=null;document.body.classList.remove('authenticated');$('tree').replaceChildren();$('login-status').textContent='Your session expired. Please sign in again.';}
   if(r.status===404 && path.startsWith('workspaces/')&&!path.includes('/objects?')&&generation===loadNumber&&selected===ws){data=null;$('tree').replaceChildren(E('p','This workspace is no longer available. Choose another workspace or ask its owner for access.','empty-state'));}
   if(path.includes('/objects?')&&(r.status===404||j.error==='unknown object'))throw Error('Object not found.');

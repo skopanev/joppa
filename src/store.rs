@@ -42,6 +42,8 @@ mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
 #[path = "store_timeline.rs"]
 mod timeline;
+#[path = "store_timeline_items.rs"]
+mod timeline_items;
 #[path = "store_waits.rs"]
 mod waits;
 pub use timeline::{TimelineScope, read_timeline};
