@@ -101,7 +101,11 @@ function renderTree(schema){
       const points=[[a.x+width/2,a.y+height],[a.x+width/2,b.y+height/2],[b.x+width+3,b.y+height/2]];
       if(edge.reference&&b.depth<a.depth&&b.y>a.y+height&&clear(points)){direct.add(edge);continue;}
       if(b.depth!==a.depth+1||edge.reference){rails.set(edge,rails.size);track(edge,'source',a.depth);track(edge,'target',b.depth>a.depth?b.depth-1:b.depth);}
+      else track(edge,'adjacent',a.depth);
     }
+    // Every vertical segment in a column gap gets its own lane, so two lines never merge.
+    const rowOf=id=>nodes.get(id).row;
+    for(const list of tracks.values())list.sort((x,y)=>rowOf(x.edge.source)-rowOf(y.edge.source)||rowOf(x.edge.target)-rowOf(y.edge.target));
     const topPadding=padding+(rails.size?14+rails.size*18:0);
     const rightPadding=tracks.has(depth)||edges.some(edge=>edge.source===edge.target&&nodes.get(edge.source)?.depth===depth)?gap:padding;
     types.style.width=(padding+rightPadding+(depth+1)*width+depth*gap)+'px';types.style.height=(topPadding+padding+Math.max(1,row)*step-44)+'px';
@@ -124,8 +128,7 @@ function renderTree(schema){
         label={x:(x+b.x+width)/2,y:y-9,text:edge.title};
       }
       else if(b.depth===a.depth+1&&!edge.reference){
-        const siblings=edges.filter(e=>e.source===edge.source&&nodes.get(e.target)?.depth===b.depth&&!e.reference),index=siblings.indexOf(edge);
-        const startX=a.x+width,endX=b.x-3,middle=startX+gap*(index+1)/(siblings.length+1);
+        const startX=a.x+width,endX=b.x-3,middle=lane(edge,'adjacent',a.depth);
         d=roundedPath([[startX,startY],[middle,startY],[middle,endY],[endX,endY]]);
       }
       else if(a===b){const x=a.x+width;d=roundedPath([[x,a.y+height/3],[x+24,a.y+height/3],[x+24,a.y+height*2/3],[x+3,a.y+height*2/3]]);}

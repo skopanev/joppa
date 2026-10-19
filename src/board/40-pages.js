@@ -161,38 +161,16 @@ function commonNotes(root,relatedTo,kind){
   }
   return section;
 }
+// A type badge is a plain label: a click goes to its row, and no popover opens.
 function objectTypeLabel(kind){
   const type=data.objectTypes?.[kind]||{},title=type.title||kind.toUpperCase();
   const words=title.trim().split(/\s+/);
   const short=words.length===1&&title===title.toLocaleUpperCase()?title:words.map(word=>Array.from(word)[0]).join('').toLocaleUpperCase();
   const question=type.question||'',hint=question?title+'\n'+question:title;
-  const label=E(question?'button':'abbr',type.badge||short,'type-label type-badge');
-  label.dataset.hint=hint;label.title=hint;label.tabIndex=0;label.setAttribute('aria-label',title);
-  if(question){
-    label.type='button';label.setAttribute('aria-expanded','false');
-    const panel=E('div',question,'type-question');panel.id='type-question-'+crypto.randomUUID();panel.setAttribute('popover','auto');
-    label.setAttribute('aria-controls',panel.id);
-    label.setAttribute('popovertarget',panel.id);
-    label.addEventListener('click',event=>{
-      event.stopPropagation();hideStatusHint();
-      if(!panel.isConnected)document.body.append(panel);
-    });
-    panel.addEventListener('beforetoggle',event=>{
-      label.setAttribute('aria-expanded',String(event.newState==='open'));
-      if(event.newState==='open')panel.style.visibility='hidden';
-    });
-    panel.addEventListener('toggle',()=>{
-      if(!panel.matches(':popover-open')){panel.remove();return;}
-      const anchor=label.getBoundingClientRect(),box=panel.getBoundingClientRect();
-      panel.style.left=Math.max(8,Math.min(anchor.left,window.innerWidth-box.width-8))+'px';
-      panel.style.top=(anchor.bottom+10+box.height<=window.innerHeight-8?anchor.bottom+10:Math.max(8,anchor.top-box.height-10))+'px';
-      panel.style.visibility='';
-    });
-  }
+  const label=E('abbr',type.badge||short,'type-label type-badge');
+  label.dataset.hint=hint;label.title=hint;label.setAttribute('aria-label',title);
   label.addEventListener('pointerenter',()=>showStatusHint(label));
   label.addEventListener('pointerleave',hideStatusHint);
-  label.addEventListener('focus',()=>showStatusHint(label));
-  label.addEventListener('blur',hideStatusHint);
   return label;
 }
 // Open branches survive a visit to an object page and the way back to the board.

@@ -206,38 +206,29 @@ test('guide-teaches-reports-ac1: the guide teaches test lists and full reports, 
   } finally { await f.close(); }
 });
 
-test('type-question: the schema question opens from each type badge', async () => {
+test('type-badge: a click on a type badge toggles its row and opens no popover', async () => {
   const question = 'Which observation does this record preserve?';
   const configured = {record: {title: 'Records', role: 'document', root: true, parents: ['record'], badge: 'REC', question}};
-  const f = await fixture({'record:root': {title: 'Source'}, 'record:child': {title: 'Detail', parent: 'record:root'}}, configured);
+  const f = await fixture({'record:root': {title: 'Source'}, 'record:child': {title: 'Detail', parent: 'record:root'},
+    'record:leaf': {title: 'Leaf', parent: 'record:child'}}, configured);
   try {
     const card = await f.open('record:root');
     const child = card.locator('.common-object[data-object-address="record:child"]');
     await child.waitFor();
     const badge = child.locator(':scope > summary > .type-badge');
+    assert.equal(await badge.evaluate(node => node.tagName), 'ABBR');
+    assert.equal(await child.locator(':scope > summary button.type-badge').count(), 0);
     assert.equal(await badge.getAttribute('title'), 'Records\n' + question);
     await badge.hover();
     assert.equal(await f.page.locator('.status-hint').innerText(), 'Records\n' + question);
-    await badge.click();
-    const panel = f.page.locator('.type-question:popover-open');
-    await panel.waitFor();
-    assert.equal(await panel.innerText(), question);
-    assert.equal(await badge.getAttribute('aria-expanded'), 'true');
     assert.equal(await child.getAttribute('open'), null);
-    await f.page.keyboard.press('Escape');
-    await f.page.waitForFunction(() => !document.querySelector('.type-question:popover-open'));
-    await badge.focus();
-    await f.page.keyboard.press('Enter');
-    await panel.waitFor();
     await badge.click();
-    await f.page.waitForFunction(() => !document.querySelector('.type-question:popover-open'));
-    await f.page.setViewportSize({width: 390, height: 844});
-    const rootBadge = card.locator(':scope > summary > .type-badge');
-    await rootBadge.click();
-    await panel.waitFor();
-    assert.equal(await panel.innerText(), question);
-    const box = await panel.boundingBox();
-    assert.ok(box.x >= 0 && box.x + box.width <= 390 && box.y >= 0 && box.y + box.height <= 844);
+    await child.locator('.common-object[data-object-address="record:leaf"]').waitFor();
+    assert.equal(await child.getAttribute('open'), '');
+    assert.equal(await f.page.locator(':popover-open').count(), 0);
+    await badge.click();
+    await f.page.waitForFunction(() => !document.querySelector('.common-object[data-object-address="record:child"]').open);
+    assert.equal(await f.page.locator(':popover-open').count(), 0);
   } finally { await f.close(); }
 });
 
