@@ -408,9 +408,12 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
     // check-list-frozen-ac4: an eligible full run decides a draft list after the change.
     let s = criterion_status(&both, true, at, &full, &pass(5));
     assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
-    // Without an eligible full run, or without a boundary, a draft stays a draft.
+    // After the change, partial runs that give every listed test a result decide a draft.
     let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
     let s = criterion_status(&both, true, at, &partial, &rows);
+    assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
+    // A draft with a listed test that has no eligible result, or without a boundary, stays a draft.
+    let s = criterion_status(&both, true, at, &partial[..1], &rows[..1]);
     assert_eq!(s.reason.as_deref(), Some("tests_draft"));
     let s = criterion_status(&both, true, Boundary::None, &full, &pass(5));
     assert_eq!(s.reason.as_deref(), Some("tests_draft"));

@@ -11,7 +11,7 @@
 //! not count. After it, the latest eligible result of each listed test decides, also
 //! when the results come from several partial runs. An identical repeat of a report is
 //! a new receipt of it, and its latest receipt decides whether it came after the change.
-//! After a change, an eligible full run decides even when the list is a draft.
+//! After a change, a draft list is decided once every listed test has an eligible result.
 use super::TestResult;
 use serde::Serialize;
 
@@ -157,8 +157,9 @@ pub fn criterion_status(
         .iter()
         .map(|t| test_status(t, reports, results))
         .collect();
-    let decided_after_change =
-        matches!(boundary, Boundary::After(_)) && reports.iter().any(|r| r.full);
+    // After a change, a draft list is decided when every listed test has an eligible result.
+    let decided_after_change = matches!(boundary, Boundary::After(_))
+        && statuses.iter().all(|t| t.status != "not_run");
     let (status, reason) = if tests.is_empty() {
         ("grey", Some("no tests"))
     } else if draft && !decided_after_change {
