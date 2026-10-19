@@ -99,7 +99,7 @@ async fn ensure_notes(
 }
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "11";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "12";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]

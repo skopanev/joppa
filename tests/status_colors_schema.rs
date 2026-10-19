@@ -41,7 +41,7 @@ fn an_unknown_tone_or_a_bad_colour_is_refused_without_a_new_revision() {
     let mut w = World::new();
     let types = schema_types(&w);
     for (colors_value, error) in [
-        (json!({"blue":"#000000"}), "keys are green"),
+        (json!({"blue":"#000000"}), "status tones are"),
         (json!({"grey":"grey"}), "#RRGGBB"),
     ] {
         let e = w
@@ -55,4 +55,36 @@ fn an_unknown_tone_or_a_bad_colour_is_refused_without_a_new_revision() {
     }
     assert_eq!(joppa::objects::schema(&w.state).revision, 0);
     assert_eq!(colors(&w), Value::Null);
+}
+
+#[test]
+fn ordered_statuses_save_with_both_themes_and_set_the_children_order() {
+    let mut w = World::new();
+    let types = schema_types(&w);
+    let statuses = json!([
+        {"tone":"green","light":"#22a559","dark":"#2fbf6a"},
+        {"tone":"red","light":"#bc5d52","dark":"#e07a70"},
+        {"tone":"grey","light":"#c8c3b8","dark":"#8a8f96"}
+    ]);
+    w.ok(
+        "owner",
+        json!({"op":"set_tree_schema","revision":0,"types":types,"statuses":statuses,"reason":"Order"}),
+    );
+    let schema = joppa::objects::schema(&w.state);
+    assert_eq!(serde_json::to_value(&schema.statuses).unwrap(), statuses);
+    let ordered = joppa::objects::ordered_types(&schema);
+    assert_eq!(
+        ordered["requirement"].status_order.as_deref(),
+        Some(&["green".to_owned(), "red".to_owned(), "grey".to_owned()][..]),
+        "a higher entry wins in a children rule"
+    );
+    let e = w
+        .apply(
+            "owner",
+            json!({"op":"set_tree_schema","revision":1,"types":types,
+                   "statuses":[{"tone":"red","light":"#000000","dark":"red"}],"reason":"Bad"}),
+        )
+        .expect_err("a bad dark colour must be refused");
+    assert!(e.to_string().contains("#RRGGBB"), "{e}");
+    assert_eq!(joppa::objects::schema(&w.state).revision, 1);
 }

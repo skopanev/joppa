@@ -9,7 +9,7 @@
   --hover:#f5efe2;--selected:#faf6ec;--control-hover:#fff;--pass:#2d6c3c;--fail:#a13935;
   --waiting:#865611;--available:#35643e;--progress:#2a6297;--ready:#196b70;
   --moon-color:var(--muted);--sun-color:var(--waiting);
-  --dot-green:#39835a;--dot-yellow:#ae7a16;--dot-orange:#c4772e;--dot-red:#bc5d52;--dot-purple:#8061a9;--dot-grey:#b8b3a8;
+  --dot-green:var(--dot-green-light);--dot-yellow:var(--dot-yellow-light);--dot-orange:var(--dot-orange-light);--dot-red:var(--dot-red-light);--dot-purple:var(--dot-purple-light);--dot-grey:var(--dot-grey-light);
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23444' stroke-width='1.2'/%3E%3C/svg%3E");
   --line:var(--rule);--accent:var(--link);
   font:14px/1.6 Verdana,sans-serif;color:var(--text);background:var(--bg);font-synthesis:none;
@@ -20,7 +20,7 @@
   --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;--badge-share:35%;
   --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
   --waiting:#e0b15b;--available:#8ccba0;--progress:#8cb5ff;--ready:#81c8cf;
-  --dot-green:#39835a;--dot-yellow:#c8921f;--dot-orange:#c4772e;--dot-red:#bc5d52;--dot-purple:#9b7bc6;--dot-grey:#b4b8bf;
+  --dot-green:var(--dot-green-dark);--dot-yellow:var(--dot-yellow-dark);--dot-orange:var(--dot-orange-dark);--dot-red:var(--dot-red-dark);--dot-purple:var(--dot-purple-dark);--dot-grey:var(--dot-grey-dark);
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23a5a9b0' stroke-width='1.2'/%3E%3C/svg%3E");
 }
 @media(prefers-color-scheme:dark){
@@ -30,7 +30,7 @@
     --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;--badge-share:35%;
     --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
     --waiting:#e0b15b;--available:#8ccba0;--progress:#8cb5ff;--ready:#81c8cf;
-    --dot-green:#39835a;--dot-yellow:#c8921f;--dot-orange:#c4772e;--dot-red:#bc5d52;--dot-purple:#9b7bc6;--dot-grey:#b4b8bf;
+    --dot-green:var(--dot-green-dark);--dot-yellow:var(--dot-yellow-dark);--dot-orange:var(--dot-orange-dark);--dot-red:var(--dot-red-dark);--dot-purple:var(--dot-purple-dark);--dot-grey:var(--dot-grey-dark);
     --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23a5a9b0' stroke-width='1.2'/%3E%3C/svg%3E");
   }
 }
@@ -55,12 +55,12 @@ button:disabled{opacity:.45;cursor:default;text-decoration:none}
 button[hidden]{display:none}
 button svg{display:block}
 button,a,input,select,textarea,summary{-webkit-tap-highlight-color:transparent}
-button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:1px solid var(--link);outline-offset:3px}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,.status-circle:focus-visible{outline:none}
 summary{cursor:pointer;list-style:none}
 summary::-webkit-details-marker{display:none}
 summary:focus-visible{outline:none}
-summary:focus-visible:before{outline:1px solid var(--link);outline-offset:2px}
-.common-object>summary:focus-visible{outline:1px solid var(--link);outline-offset:-1px}
+summary:focus-visible:before{outline:none}
+.common-object>summary:focus-visible{outline:none}
 .common-object>summary:hover>.node-title{color:var(--heading)}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
 input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
@@ -81,7 +81,7 @@ select:disabled{opacity:1;cursor:default;background-image:none;padding-right:0;b
   :is(#workspaces,#workspace-select,.filter-fields select,.dialog-revisions select)::picker(select){padding:.3em 0;border:1px solid var(--rule);border-radius:0;background:var(--bg);color:var(--text)}
   :is(#workspaces,#workspace-select,.filter-fields select,.dialog-revisions select) option{padding:.3em .8em;color:var(--heading)}
   :is(#workspaces,#workspace-select,.filter-fields select,.dialog-revisions select) option:hover{background:var(--hover)}
-  :is(#workspaces,#workspace-select,.filter-fields select,.dialog-revisions select) option:focus-visible{outline:1px solid var(--link);outline-offset:-1px}
+  :is(#workspaces,#workspace-select,.filter-fields select,.dialog-revisions select) option:focus-visible{outline:none}
 }
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
@@ -129,7 +129,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 #sun-svg,#theme[data-dark=true] #moon-svg{display:none}
 #moon-svg,#theme[data-dark=true] #sun-svg{display:block}
 #identity{color:var(--muted)}
-#identity:focus-visible{outline:1px solid var(--link);outline-offset:3px}
+#identity:focus-visible{outline:none}
 #account-menu{position:relative}
 .account-options{position:absolute;right:0;top:calc(100% + .7rem);z-index:5;width:190px;max-width:calc(100vw - 32px);padding:.8rem 1rem;background:var(--bg);border:1px solid var(--rule)}
 #account-menu:not([open])>.account-options{display:none}
@@ -193,7 +193,7 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .type-label{color:var(--muted)}
 .type-badge{flex:none;color:color-mix(in srgb,var(--object-color,var(--muted)) var(--badge-share),var(--heading));text-decoration:none;cursor:help}
 .common-object>summary>.type-badge{min-width:2.8rem;text-align:left}
-.type-badge:focus-visible{outline:1px solid var(--link);outline-offset:3px}
+.type-badge:focus-visible{outline:none}
 .type-question{position:fixed;inset:auto;margin:0;max-width:min(420px,calc(100vw - 16px));max-height:calc(100svh - 16px);overflow:auto;padding:.7rem 1rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font-size:.9rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .common-object .item-actions,.common-object .node-actions{display:flex;flex-wrap:nowrap;align-items:baseline;gap:var(--row-gap);flex:none;font-size:.8rem}
 .common-object .item-actions>button{white-space:nowrap;color:var(--muted);text-transform:lowercase}
@@ -376,3 +376,4 @@ a.timeline-row .timeline-object{color:var(--link)}
 .dependency-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3em .8em;flex-basis:100%;min-width:0;margin:0}
 .dependency-row>.object-link{display:inline;font-size:1em}
 .history-entry>.object-body p{margin:.2rem 0 0}
+:focus,:focus-visible{outline:none}

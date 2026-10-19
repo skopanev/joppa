@@ -18,6 +18,7 @@ pub async fn tree_schema(
             types: objects::legacy_defaults(),
             priorities: None,
             status_colors: None,
+            statuses: None,
             actor: row.get(0),
             at: String::new(),
             position: 0,
@@ -33,6 +34,11 @@ pub async fn tree_schema(
         access::actor_types(&**conn, &workspace, std::slice::from_ref(&selected.actor)).await?;
     let mut schema = json!(selected);
     schema["actor_type"] = json!(types[&selected.actor]);
+    // Readers see the status list that applies, also when the schema keeps the default list.
+    schema["statuses"] = json!(crate::status_colors::effective(
+        selected.statuses.as_ref(),
+        selected.status_colors.as_ref()
+    ));
     Ok(
         json!({"workspace":row.get::<_,String>(2),"position":row.get::<_,i64>(3),"current_revision":current,"schema":schema}),
     )

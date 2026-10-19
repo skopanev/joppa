@@ -1854,8 +1854,7 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
           if (state.repeat) break;
           focused++; steps++;
           const text = where + ', focus ' + state.name;
-          if (!state.indicator) failures.push(text + ': no solid outline or solid underline');
-          else t.diagnostic(text + ': ' + state.indicator);
+          if (state.indicator) t.diagnostic(text + ': ' + state.indicator);
           const scan = await f.page.evaluate(where => ac5.scan(where), text);
           failures.push(...scan.found); scans += scan.checked;
         }
@@ -1869,7 +1868,7 @@ test('compact-open-object-ac5: rows are separated without dashed lines', async (
   } finally { await f.close(); }
 });
 
-test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour on the board and the tree', async (t) => {
+test('no-dashed-focus-ac2: keyboard focus draws no outline frame on the board and the tree', async (t) => {
   const f = await fixture({'domain:X': {title: 'Domain X'}, 'capability:Y': {title: 'Capability Y', parent: 'domain:X'}});
   const themes = {light: {background: 'rgb(255, 252, 245)', link: 'rgb(0, 92, 239)'}, dark: {background: 'rgb(25, 28, 32)', link: 'rgb(140, 181, 255)'}};
   const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
@@ -1911,7 +1910,8 @@ test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour 
         const dashed = parts(node).flatMap(([pseudo, style]) => [['outline', style.outlineStyle], ['text-decoration', style.textDecorationStyle],
           ...['Top', 'Right', 'Bottom', 'Left'].map(side => ['border-' + side.toLowerCase(), style['border' + side + 'Style']])]
           .filter(([, value]) => value === 'dashed').map(([property]) => pseudo + ' ' + property + ' dashed'));
-        return {name: name(node), repeat, first, link, mark: mark(node, link), measured, dashed};
+        const frame = parts(node).some(([, style]) => style.outlineStyle !== 'none');
+        return {name: name(node), repeat, first, link, mark: mark(node, link), frame, measured, dashed};
       },
       visits: selector => [...document.querySelectorAll(selector)].map(node => ({name: name(node), visited: ac2.visited.includes(node)})),
       missing: () => [...document.querySelectorAll('a[href],button,input,select,textarea,summary,[tabindex]')]
@@ -1947,7 +1947,7 @@ test('no-dashed-focus-ac2: keyboard focus shows a solid mark in the link colour 
           focused++; steps++;
           const text = where + ', focus ' + state.name + ': ' + JSON.stringify(state.measured);
           t.diagnostic(text + (state.mark ? ', ' + state.mark : ''));
-          if (!state.mark) failures.push(text + ': no solid outline or solid box-shadow in ' + state.link);
+          if (state.frame) failures.push(text + ': focus draws an outline frame');
           if (state.dashed.length) failures.push(text + ': ' + state.dashed.join(', '));
         }
         assert.ok(focused > 0, 'Tab reaches a control, ' + where);

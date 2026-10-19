@@ -77,7 +77,7 @@ async function load() {
   if (request !== loadNumber) return;
   data = next;
   data.objectTypes=next.object_types||{};
-  applyStatusColors(next.status_colors);
+  applyStatuses(next.statuses);
   $('timeline-link').href='/?workspace='+encodeURIComponent(ws)+'&view=timeline';
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(ws);
@@ -150,11 +150,13 @@ function showStatusHint(circle){
   statusHint.style.left=left+'px';statusHint.style.top=top+'px';
 }
 document.addEventListener('scroll',hideStatusHint,true);
-// The tree schema can set the colour of each status dot. Unset tones keep the theme colours.
-function applyStatusColors(colors){
-  for(const tone of ['green','grey','red','yellow','orange','purple']){
-    const color=colors?.[tone];
-    if(typeof color==='string'&&/^#[0-9a-f]{6}$/i.test(color))document.documentElement.style.setProperty('--dot-'+tone,color);
-    else document.documentElement.style.removeProperty('--dot-'+tone);
+// The tree schema gives each status tone a light and a dark colour. The theme picks one.
+function applyStatuses(statuses){
+  const style=document.documentElement.style;
+  for(const status of Array.isArray(statuses)?statuses:[]){
+    if(!/^[a-z]+$/.test(status?.tone||''))continue;
+    for(const theme of ['light','dark']){
+      if(/^#[0-9a-f]{6}$/i.test(status[theme]||''))style.setProperty('--dot-'+status.tone+'-'+theme,status[theme]);
+    }
   }
 }

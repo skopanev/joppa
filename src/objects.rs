@@ -92,6 +92,9 @@ pub struct SchemaRevision {
     /// The colour of each status dot, as #RRGGBB per tone. Without it the board colours stay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_colors: Option<BTreeMap<String, String>>,
+    /// The ordered status tones with a light and a dark colour; a higher entry wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statuses: Option<Vec<crate::status_colors::Status>>,
     pub actor: String,
     pub at: String,
     pub position: u64,
@@ -294,6 +297,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             types: legacy_defaults(),
             priorities: None,
             status_colors: None,
+            statuses: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -493,6 +497,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         types,
         priorities: previous_schema.priorities.clone(),
         status_colors: previous_schema.status_colors.clone(),
+        statuses: previous_schema.statuses.clone(),
         actor: actor.into(),
         at: at.into(),
         position,
@@ -678,6 +683,17 @@ pub fn status_rule(t: &TreeType) -> &str {
     })
 }
 
+/// The types of a schema with each children order filled from the schema status list.
+pub fn ordered_types(s: &SchemaRevision) -> BTreeMap<String, TreeType> {
+    let list = crate::status_colors::effective(s.statuses.as_ref(), s.status_colors.as_ref());
+    let order = crate::status_colors::children_order(&list);
+    let mut types = s.types.clone();
+    for t in types.values_mut() {
+        t.status_order.get_or_insert_with(|| order.clone());
+    }
+    types
+}
+
 /// The order of a children rule: its own order, else red, grey, green.
 pub fn status_order(t: &TreeType) -> Vec<String> {
     t.status_order
@@ -735,6 +751,7 @@ pub fn set_schema(
     types: &BTreeMap<String, TreeType>,
     priorities: Option<&Vec<String>>,
     status_colors: Option<&BTreeMap<String, String>>,
+    statuses: Option<&Vec<crate::status_colors::Status>>,
     reason: &str,
     position: u64,
     at: &str,
@@ -764,6 +781,9 @@ pub fn set_schema(
     }
     if let Some(colors) = status_colors {
         crate::status_colors::validate(colors)?;
+    }
+    if let Some(list) = statuses {
+        crate::status_colors::validate_statuses(list)?;
     }
     for (kind, t) in types {
         commands::identifier(kind)?;
@@ -896,11 +916,13 @@ pub fn set_schema(
     }
     let priorities = priorities.cloned().or_else(|| schema(w).priorities);
     let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);
+    let statuses = statuses.cloned().or_else(|| schema(w).statuses);
     w.tree_schema.push(SchemaRevision {
         revision: revision + 1,
         types: types.clone(),
         priorities,
         status_colors,
+        statuses,
         actor: actor.into(),
         at: at.into(),
         position,

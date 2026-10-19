@@ -22,6 +22,9 @@ pub enum Command {
         /// The colour of each status dot; without it the schema keeps its current colours.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status_colors: Option<std::collections::BTreeMap<String, String>>,
+        /// The ordered status tones with light and dark colours; without it they stay.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        statuses: Option<Vec<crate::status_colors::Status>>,
         reason: String,
     },
     /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
@@ -1023,6 +1026,7 @@ pub(crate) fn apply_inner(
             types,
             priorities,
             status_colors,
+            statuses,
             reason,
         } => {
             crate::objects::set_schema(
@@ -1032,6 +1036,7 @@ pub(crate) fn apply_inner(
                 types,
                 priorities.as_ref(),
                 status_colors.as_ref(),
+                statuses.as_ref(),
                 reason,
                 position,
                 recorded_at,

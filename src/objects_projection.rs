@@ -59,7 +59,7 @@ pub(in crate::store) async fn rebuild(
     position: u64,
 ) -> Result<()> {
     crate::probe::count(&crate::probe::REBUILD);
-    let types = crate::objects::schema(state).types;
+    let types = crate::objects::ordered_types(&crate::objects::schema(state));
     let addresses: Vec<String> = state.objects.keys().cloned().collect();
     let statuses =
         super::reports::state_criterion_statuses(client, workspace, state, &addresses).await?;
