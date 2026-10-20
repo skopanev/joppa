@@ -19,11 +19,12 @@ fn configured() -> World {
     for actor in ["planner", "other", "worker"] {
         w.ok(
             "owner",
-            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+            json!({"op":"member","id":actor,"role":"human"}),
         );
     }
+    // Only the workspace owner sets the tree schema.
     w.ok(
-        "planner",
+        "owner",
         json!({"op":"set_tree_schema","revision":0,"reason":"Configure roles","types":{
             "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
             "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
@@ -150,14 +151,13 @@ fn claim_guards_are_atomic_and_existing_work_does_not_block() {
         json!({"op":"claim_planning","ac":"criterion:a","revision":revision}),
         "criterion is already claimed for planning",
     );
-    let revision = w.state.objects["criterion:c"].current().revision;
-    refuse(
-        &mut w,
-        "planner",
-        json!({"op":"claim_planning","ac":"criterion:c","revision":revision}),
-        "agent already holds a planning claim in this workspace",
+    // A planner may hold claims in several REQs.
+    claim(&mut w, "planner", "criterion:c");
+    assert_eq!(
+        objects::process(&w.state, "criterion:c")["planning_claim"]["actor"],
+        "planner"
     );
-    assert!(objects::process(&w.state, "criterion:c")["planning_claim"].is_null());
+    assert_eq!(w.state.planning_claims["criterion:a"].actor, "planner");
     let mut other_workspace = configured();
     claim(&mut other_workspace, "planner", "criterion:c");
 }

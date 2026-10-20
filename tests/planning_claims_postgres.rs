@@ -51,6 +51,7 @@ async fn save_work(
 }
 
 /// Creates a workspace with ready, unverified criteria A and B under one confirmed spec.
+/// Each actor is a human member, as the planners P and Q are people.
 async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> Result<String> {
     let workspace = format!("planning-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -66,7 +67,7 @@ async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> 
             pool,
             &workspace,
             "owner",
-            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+            json!({"op":"member","id":actor,"role":"human"}),
         )
         .await?;
     }
@@ -173,7 +174,7 @@ async fn planning_race_publication_release_and_replay_use_the_store() -> Result<
     let t0_after = read(&pool, &workspace, "work:t0").await?["process"].clone();
     assert_eq!(t0_after["status"], t0_before["status"]);
     assert_eq!(t0_after["assignee"], t0_before["assignee"]);
-    // The one-claim limit applies per workspace: the holder may claim B elsewhere.
+    // The holder of A here may claim a ready criterion in another workspace.
     let second = planning_workspace(&pool, &["planner", "other"]).await?;
     let b = read(&pool, &second, "criterion:b").await?;
     write(

@@ -821,7 +821,8 @@ impl Planning<'_> {
     }
 }
 
-// planning-claim-ac1
+// Planning claim guards with agent members. The people tests of planning-claim-ac1 are
+// in reports_http_parts/planning_people.rs.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_state() -> Result<()>
@@ -849,19 +850,10 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
         .await?;
     p.claim("agent", "criterion:a").await?;
     ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
-    let revision = p.revision("criterion:c").await?;
-    p.refuse(
-        "P holds A and claims C of another REQ",
-        "criterion:c",
-        revision,
-        "agent already holds a planning claim in this workspace",
-    )
-    .await?;
-    let c = p.saved_object("criterion:c").await?;
-    ensure!(
-        c.is_object() && c["process"]["planning_claim"].is_null(),
-        "C must stay unclaimed: {c}"
-    );
+    // A planner may hold claims in several REQs.
+    p.claim("agent", "criterion:c").await?;
+    ensure!(p.read("criterion:c").await?["process"]["planning_claim"]["actor"] == "agent");
+    ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
 
     let p = planning(&w).await?;
     p.confirm(
@@ -1020,6 +1012,8 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
     store::check_journal(&p.pool).await?;
     Ok(())
 }
+
+include!("reports_http_parts/planning_people.rs");
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
