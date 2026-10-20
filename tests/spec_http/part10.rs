@@ -66,11 +66,43 @@ async fn a_requirement_with_no_live_criteria_archives_over_http() -> Result<()> 
     Ok(())
 }
 
+/// The journal entry at the `position` of a command reply, as `reader` reads it.
+async fn journal_entry(w: &World, reader: &str, reply: &Value) -> Result<Value> {
+    let position = &reply["position"];
+    ensure!(
+        position.is_u64(),
+        "the reply has no journal position: {reply}"
+    );
+    let journal = store::read(&w.pool, &w.ws, reader, &store::Scope::full()).await?;
+    let entries: Vec<&Value> = journal["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| entry["position"] == *position)
+        .collect();
+    ensure!(entries.len() == 1, "{position}: {entries:?}");
+    Ok(entries[0].clone())
+}
+
+/// The tree schema of the workspace, as the `token` account reads it over HTTP.
+async fn read_tree(w: &World, token: &str) -> Result<Value> {
+    let reply = w
+        .http
+        .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
+        .bearer_auth(token)
+        .send()
+        .await?;
+    let status = reply.status();
+    let body = reply.text().await?;
+    ensure!(status.is_success(), "GET /tree: {status} {body}");
+    Ok(serde_json::from_str(&body)?)
+}
+
 // removal-is-archiving-ac3
 // skopanev creates and owns the workspace; alex is a human member of it.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
+async fn a_member_who_is_not_the_owner_archives_a_capability_over_http() -> Result<()> {
     let mut w = world().await?;
     w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
@@ -87,13 +119,20 @@ async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
     }
     let cap = w.get_as(&w.alex, "address=capability:restrict").await?;
     let archive = json!({"op":"archive_object","target":"capability:restrict","revision":cap["current_revision"],"reason":"Cut"});
+    // eve is not a member, so the access layer refuses her.
+    let (ok, reply) = send_as(&w, &w.eve, &archive).await?;
+    ensure!(!ok && reply["error"] == "Workspace not found", "{reply}");
     let (ok, reply) = send_as(&w, &w.alex, &archive).await?;
-    ensure!(
-        !ok && reply["error"] == "workspace owner required",
-        "{reply}"
-    );
+    ensure!(ok, "{reply}");
     let read = w.get_as(&w.alex, "address=capability:restrict").await?;
-    ensure!(read["document"]["present"] == true, "{read}");
+    ensure!(read["document"]["present"] == false, "{read}");
+    let addresses = list_addresses(&w, &w.alex, "domain:security").await?;
+    ensure!(
+        !addresses.contains(&"capability:restrict".to_string()),
+        "{addresses:?}"
+    );
+    let entry = journal_entry(&w, "skopanev", &reply).await?;
+    ensure!(entry["actor"] == "alex", "{entry}");
     Ok(())
 }
 
@@ -101,7 +140,7 @@ async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
 // skopanev creates and owns the workspace; alex is a human member of it.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
+async fn a_member_who_is_not_the_owner_changes_the_tree_over_http() -> Result<()> {
     let mut w = world().await?;
     w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
@@ -114,63 +153,36 @@ async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
         let op: Operation = serde_json::from_value(op)?;
         store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
     }
-    let tree = async || -> Result<Value> {
-        let reply = w
-            .http
-            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
-            .bearer_auth(&w.skopanev)
-            .send()
-            .await?;
-        let status = reply.status();
-        let body = reply.text().await?;
-        ensure!(status.is_success(), "GET /tree: {status} {body}");
-        Ok(serde_json::from_str(&body)?)
-    };
-    let before = tree().await?;
-    let n = before["current_revision"].clone();
-    ensure!(n.is_u64(), "{before}");
+    let before = read_tree(&w, &w.skopanev).await?;
+    let n = before["current_revision"].as_u64();
+    ensure!(n.is_some(), "{before}");
+    let n = n.unwrap();
     let mut types = before["schema"]["types"].clone();
-    ensure!(types.get("job").is_none(), "{before}");
-    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
-    let (status, reply) = text_rule_request(
-        &w,
-        &w.alex,
-        &uuid::Uuid::new_v4().to_string(),
-        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add jobs"}),
-        "http",
-    )
-    .await?;
+    ensure!(types.get("risk").is_none(), "{before}");
+    types["risk"] = json!({"title":"Risk","role":"document","root":true,"parents":["*"]});
+    let save = json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add risk"});
+    // eve is not a member, so the access layer refuses her.
+    let (ok, reply) = send_as(&w, &w.eve, &save).await?;
+    ensure!(!ok && reply["error"] == "Workspace not found", "{reply}");
+    let (status, reply) =
+        text_rule_request(&w, &w.alex, &uuid::Uuid::new_v4().to_string(), save, "http").await?;
+    ensure!(status == 200, "{status} {reply}");
+    let after = read_tree(&w, &w.skopanev).await?;
     ensure!(
-        reply["error"] == "workspace owner required",
-        "{status} {reply}"
-    );
-    let after = tree().await?;
-    ensure!(
-        after["current_revision"] == n && after["schema"]["types"].get("job").is_none(),
+        after["current_revision"] == n + 1 && after["schema"]["types"].get("risk").is_some(),
         "{after}"
     );
+    let entry = journal_entry(&w, "skopanev", &reply).await?;
+    ensure!(entry["actor"] == "alex", "{entry}");
     Ok(())
 }
 
-// bot is an agent member of the shared spec workspace.
-// From the owner_writes epoch on, an agent member has only member rights.
+// bot is an agent member of the shared spec workspace. It has the rights of a member.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_member_cannot_change_the_tree_over_http() -> Result<()> {
+async fn an_agent_member_changes_the_tree_over_http() -> Result<()> {
     let w = world().await?;
-    let tree = async || -> Result<Value> {
-        let reply = w
-            .http
-            .get(format!("{}/api/workspaces/{}/tree", w.root, w.ws))
-            .bearer_auth(&w.bot)
-            .send()
-            .await?;
-        let status = reply.status();
-        let body = reply.text().await?;
-        ensure!(status.is_success(), "GET /tree: {status} {body}");
-        Ok(serde_json::from_str(&body)?)
-    };
-    let before = tree().await?;
+    let before = read_tree(&w, &w.bot).await?;
     let n = before["current_revision"].as_u64();
     ensure!(n.is_some(), "{before}");
     let n = n.unwrap();
@@ -185,15 +197,14 @@ async fn an_agent_member_cannot_change_the_tree_over_http() -> Result<()> {
         "http",
     )
     .await?;
+    ensure!(status == 200, "{status} {reply}");
+    let after = read_tree(&w, &w.bot).await?;
     ensure!(
-        status == 409 && reply["error"] == "workspace owner required",
-        "{status} {reply}"
-    );
-    let after = tree().await?;
-    ensure!(
-        after["current_revision"] == n && after["schema"]["types"].get("risk").is_none(),
+        after["current_revision"] == n + 1 && after["schema"]["types"].get("risk").is_some(),
         "{after}"
     );
+    let entry = journal_entry(&w, "owner", &reply).await?;
+    ensure!(entry["actor"] == "bot", "{entry}");
     Ok(())
 }
 

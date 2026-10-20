@@ -903,8 +903,9 @@ fn archive_and_restore_group_objects() {
     );
     let original = serde_json::to_value(&w.state.objects["initiative:i"].revisions[0]).unwrap();
     w.no("owner", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive group"}));
-    w.no("legal", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
-    w.ok("owner", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    // Any member archives. The command layer refuses a caller who is not a member.
+    w.no("stranger", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    w.ok("legal", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
     assert!(!w.state.objects["initiative:i"].current().present);
     assert_eq!(w.state.objects["initiative:i"].current().revision, 2);
     w.no("owner", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));

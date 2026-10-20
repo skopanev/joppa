@@ -731,7 +731,7 @@ fn unchanged_specialist_decision_can_be_reused_but_evidence_cannot() {
 }
 
 #[test]
-fn tree_order_is_owner_only_scoped_and_does_not_change_requirement_evidence() {
+fn tree_order_is_member_scoped_and_does_not_change_requirement_evidence() {
     let mut w = World::new();
     w.ready();
     w.run("verified", "pass");
@@ -769,11 +769,25 @@ fn tree_order_is_owner_only_scoped_and_does_not_change_requirement_evidence() {
     ] {
         let command =
             json!({"op":"reorder_tree","kind":kind,"parent":parent,"expected":expected,"ids":ids});
-        w.no("agent", command.clone());
+        // The command layer refuses a non-member. The order rule also refuses one.
+        let e = w.apply("stranger", command.clone()).unwrap_err();
+        assert!(e.to_string().contains("not a workspace member"), "{e}");
+        let owned = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let mut copy = w.state.clone();
+        let e = joppa::tree_order::reorder(
+            &mut copy,
+            "stranger",
+            kind,
+            parent,
+            &owned(&expected),
+            &owned(&ids),
+        )
+        .unwrap_err();
+        assert_eq!(e.to_string(), "workspace member required");
         let mut invalid = command.clone();
         invalid["ids"] = json!(["foreign", "foreign"]);
-        w.no("owner", invalid);
-        w.ok("owner", command.clone());
+        w.no("agent", invalid);
+        w.ok("agent", command.clone());
         w.no("owner", command); // stale order cannot overwrite another move
         assert_eq!(
             joppa::tree_order::ordered_ids(&w.state, kind, parent).unwrap(),

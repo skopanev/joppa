@@ -156,11 +156,6 @@ async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result<()> {
     let w = world().await?;
-    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
-    let mut types = schema["schema"]["types"].clone();
-    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
-    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Add a document outside the Inbox"})).await?;
-    w.command(json!({"op":"save_object","kind":"record","id":"plain","revision":0,"parent":null,"data":{"title":"Plain record","owner":"owner"},"links":[],"reason":"Save"})).await?;
     let read = async |address: &str| -> Result<Value> {
         let result = mcp_call(
             &w,
@@ -193,16 +188,16 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
             inbox().await?.contains(&signal),
             "mcp={mcp}: not in the Inbox"
         );
-        // A member stays refused for objects outside the Inbox.
-        for target in ["capability:empty", "record:plain"] {
-            let revision = read(target).await?["document"]["revision"].clone();
-            refused_without_change(&w, mcp, &w.alex, json!({"op":"archive_object","target":target,"revision":revision,"reason":"Out of scope"}), "workspace owner required").await?;
-            ensure!(
-                read(target).await?["document"]["present"] == true,
-                "mcp={mcp} {target}"
-            );
-        }
-        // Each other archive check still refuses the member and writes nothing.
+        // eve is not a member, so the access layer refuses her and writes nothing.
+        refused_without_change(
+            &w,
+            mcp,
+            &w.eve,
+            json!({"op":"archive_object","target":signal,"revision":1,"reason":"Out of scope"}),
+            "Workspace not found",
+        )
+        .await?;
+        // Each archive check still refuses the member and writes nothing.
         refused_without_change(
             &w,
             mcp,

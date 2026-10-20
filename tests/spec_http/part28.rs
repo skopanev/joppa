@@ -1,7 +1,28 @@
 // Part 28 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
+/// Help names "member" as the caller of `command`. The non-member eve gets the reply of the
+/// access layer and changes nothing. Then alex, a member who is not the owner, runs it.
+async fn member_runs(w: &World, help: &Value, command: Value) -> Result<()> {
+    let name = command["op"].as_str().unwrap();
+    let callers = &help["operations"][name]["callers"];
+    ensure!(*callers == json!(["member"]), "{name}: {callers}");
+    let before = saved_rows(w).await?;
+    let (ok, reply) = send_as(w, &w.eve, &command).await?;
+    ensure!(
+        !ok && reply["error"] == "Workspace not found",
+        "{name}: {reply}"
+    );
+    ensure!(
+        saved_rows(w).await? == before,
+        "{name}: a refusal changed state"
+    );
+    let (ok, reply) = send_as(w, &w.alex, &command).await?;
+    ensure!(ok, "{name}: {reply}");
+    Ok(())
+}
+
 // signal-becomes-spec-ac2
-// A member may archive an Inbox object, so the archive refusal uses a capability.
+// Any member sets the tree schema, archives, restores and orders the tree.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Result<()> {
@@ -15,15 +36,15 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
-    covered.push(check_callers(&w, &help, None, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"}), &w.owner, owner_only).await?);
+    member_runs(&w, &help, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
     for id in ["a", "b", "c"] {
         w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
     }
     w.note("secret", 0, "Secret note", "Token s3cr3t", json!([]))
         .await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"}), &w.owner, owner_only).await?);
+    member_runs(&w, &help, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"})).await?;
     w.command(json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"})).await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"}), &w.owner, owner_only).await?);
+    member_runs(&w, &help, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"})).await?;
     covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.owner, owner_only).await?);
     covered.push(
         check_callers(
@@ -36,7 +57,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
-    covered.push(check_callers(&w, &help, None, json!({"op":"reorder_tree","kind":"job","parent":null,"expected":["a","b","c"],"ids":["c","b","a"]}), &w.owner, "workspace owner reorders the tree").await?);
+    member_runs(&w, &help, json!({"op":"reorder_tree","kind":"job","parent":null,"expected":["a","b","c"],"ids":["c","b","a"]})).await?;
     covered.push(
         check_callers(
             &w,

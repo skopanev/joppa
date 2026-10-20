@@ -123,16 +123,23 @@ fn an_object_with_live_children_cannot_be_archived() {
 
 // removal-is-archiving-ac3
 #[test]
-fn a_human_who_is_not_the_owner_cannot_archive() {
-    // A member may archive an Inbox note, so the refusal uses a capability.
+fn a_human_who_is_not_the_owner_archives() {
+    // Capability c holds requirement r, so the test archives an empty capability.
     let mut w = World::new();
+    w.ok(
+        "owner",
+        json!({"op":"capability","id":"spare","title":"Spare","domain":"d"}),
+    );
+    let archive =
+        json!({"op":"archive_object","target":"capability:spare","revision":1,"reason":"Remove"});
     refused(
         &mut w,
-        "legal",
-        json!({"op":"archive_object","target":"capability:c","revision":1,"reason":"Remove"}),
-        "workspace owner required",
+        "stranger",
+        archive.clone(),
+        "not a workspace member",
     );
-    assert!(w.state.objects["capability:c"].current().present);
+    w.ok("legal", archive);
+    assert!(!w.state.objects["capability:spare"].current().present);
 }
 
 #[test]
@@ -168,32 +175,27 @@ fn a_schema_save_on_a_stale_revision_is_refused() {
 }
 
 #[test]
-fn a_human_who_is_not_the_owner_cannot_change_the_tree() {
+fn a_human_who_is_not_the_owner_changes_the_tree() {
     // tree-owner-sets-types-ac2
     let mut w = World::new();
     let types = schema_types(&w);
-    let e = w
-        .apply(
-            "legal",
-            json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Change"}),
-        )
-        .unwrap_err();
-    println!("human schema error: {e}");
+    let save = json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Change"});
+    refused(&mut w, "stranger", save.clone(), "not a workspace member");
     assert_eq!(joppa::objects::schema(&w.state).revision, 0);
+    w.ok("legal", save);
+    assert_eq!(joppa::objects::schema(&w.state).revision, 1);
 }
 
 #[test]
-fn an_agent_member_cannot_change_the_tree() {
+fn an_agent_member_changes_the_tree() {
     // tree-owner-sets-types-ac3: an agent has the rights of a member.
     let mut w = World::new();
     let types = schema_types(&w);
-    refused(
-        &mut w,
+    w.ok(
         "agent",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure"}),
-        "workspace owner required",
     );
-    assert_eq!(joppa::objects::schema(&w.state).revision, 0);
+    assert_eq!(joppa::objects::schema(&w.state).revision, 1);
 }
 
 #[test]
