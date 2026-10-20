@@ -1014,6 +1014,7 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
 }
 
 include!("reports_http_parts/planning_people.rs");
+include!("reports_http_parts/planning_people_wait.rs");
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
