@@ -287,6 +287,12 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
     let revision = tree["current_revision"].as_u64().context("revision")?;
     ensure!(revision == before + 1, "{before} -> {revision}");
     let types = &tree["schema"]["types"];
+    // The MCP tool joppa_tree shows the same revision and the same saved rules.
+    let mcp = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
+    ensure!(
+        mcp["current_revision"] == tree["current_revision"] && mcp["schema"]["types"] == *types,
+        "{mcp}"
+    );
     ensure!(
         types["check"]["status"] == "tests"
             && types["rule"]["status"] == "children"
@@ -319,6 +325,10 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
         ensure!(
             w.tree().await?["current_revision"] == revision,
             "{field} changed the schema"
+        );
+        ensure!(
+            w.mcp(&w.owner, "joppa_tree", json!({})).await?["current_revision"] == revision,
+            "{field} changed the schema over MCP"
         );
     }
     Ok(())
