@@ -342,7 +342,7 @@ pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -
     current.actor = actor.into();
     current.at = at.into();
     current.position = position;
-    current.reason = "Record configurable reference and presentation rules".into();
+    current.reason = REFERENCES_SCHEMA_REASON.into();
     w.tree_schema.push(current);
     w.schema_migrated = true;
     Ok(())
@@ -365,7 +365,7 @@ pub fn migrate_documents(w: &mut Workspace, actor: &str, position: u64, at: &str
     configured.actor = actor.into();
     configured.at = at.into();
     configured.position = position;
-    configured.reason = "Use configured roles and flags for every object type".into();
+    configured.reason = ROLES_SCHEMA_REASON.into();
     w.tree_schema.push(configured);
     w.documents_migrated = true;
     Ok(())
@@ -470,7 +470,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
     }
     let mut candidate = w.clone();
     let previous_schema = schema(w);
-    let reason = "Replace incoming source types with Note";
+    let reason = NOTES_SCHEMA_REASON;
     let sources: Vec<_> = w
         .objects
         .iter()
@@ -707,10 +707,30 @@ pub fn status_order(t: &TreeType) -> Vec<String> {
         .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
 }
 
+/// The reasons of the schema revisions that the migrations write. A replay of an old
+/// migration event writes the same revision, so these texts never change.
+const NOTES_SCHEMA_REASON: &str = "Replace incoming source types with Note";
+const REFERENCES_SCHEMA_REASON: &str = "Record configurable reference and presentation rules";
+const ROLES_SCHEMA_REASON: &str = "Use configured roles and flags for every object type";
+pub const TASK_GATE_SCHEMA_REASON: &str = "Record the default Task readiness gate";
+
+/// The workspace uses the built-in tree: every schema revision comes from a migration.
+fn builtin_tree(w: &Workspace) -> bool {
+    w.tree_schema.iter().all(|r| {
+        [
+            NOTES_SCHEMA_REASON,
+            TASK_GATE_SCHEMA_REASON,
+            REFERENCES_SCHEMA_REASON,
+            ROLES_SCHEMA_REASON,
+        ]
+        .contains(&r.reason.as_str())
+    })
+}
+
 /// The process fields that objects of a type show. A saved schema lists them per type. The
-/// built-in tree, before any saved schema, shows confirmed and acceptance on a requirement
-/// and confirmed on a criterion. The defaults stay out of `defaults()`, because an old
-/// schema migration event replays from those types.
+/// built-in tree, until the workspace saves its own schema, shows confirmed and acceptance on
+/// a requirement and confirmed on a criterion. The defaults stay out of `defaults()`, because
+/// an old schema migration event replays from those types.
 pub fn process_fields(w: &Workspace, kind: &str) -> Vec<String> {
     let s = schema(w);
     let Some(t) = s.types.get(kind) else {
@@ -719,9 +739,9 @@ pub fn process_fields(w: &Workspace, kind: &str) -> Vec<String> {
     if let Some(fields) = &t.process_fields {
         return fields.clone();
     }
-    match (s.revision, t.role.as_str()) {
-        (0, "requirement") => vec!["confirmed".into(), "acceptance".into()],
-        (0, "ac") => vec!["confirmed".into()],
+    match (builtin_tree(w), t.role.as_str()) {
+        (true, "requirement") => vec!["confirmed".into(), "acceptance".into()],
+        (true, "ac") => vec!["confirmed".into()],
         _ => vec![],
     }
 }

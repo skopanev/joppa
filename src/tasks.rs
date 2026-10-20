@@ -843,7 +843,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             None,
             None,
             None,
-            "Record the default Task readiness gate",
+            objects::TASK_GATE_SCHEMA_REASON,
             position,
             at,
         )?;
