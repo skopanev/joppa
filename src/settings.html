@@ -197,6 +197,8 @@ const remove=async(removal,button)=>{
 send('/api/me','GET',undefined,'').then(me=>{$('identity').textContent=me.name||me.email||me.actor||'Account';$('identity').title=me.email||'';},()=>{$('identity').textContent='Account';});
 $('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});location.assign('/');};
 document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))$('account-menu').open=false;},true);
+// A long name wraps the menu to the left edge of a narrow screen. Then the options open to the right.
+$('account-menu').addEventListener('toggle',()=>{const o=document.querySelector('.account-options');o.classList.remove('to-right');if($('account-menu').open&&o.getBoundingClientRect().left<0)o.classList.add('to-right');});
 load(sessionStorage.getItem('joppa-workspace')).catch(e=>{$('workspace-error').textContent=e.message;});
 // One field adds an email or a whole domain: a value with "@" is an email, any other value is a domain.
 $('grant-access').onsubmit=async event=>{
