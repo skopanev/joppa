@@ -105,6 +105,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
+        .route("/api/workspaces/{workspace}/search", get(search))
         .route("/api/workspaces/{workspace}/tasks", get(tasks))
         .route("/api/workspaces/{workspace}/timeline", get(timeline))
         .route("/api/workspaces/{workspace}/history", get(history))

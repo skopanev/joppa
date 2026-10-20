@@ -214,6 +214,9 @@ use workspaces::*;
 #[path = "web_reads.rs"]
 mod reads;
 use reads::*;
+#[path = "web_search.rs"]
+mod search_route;
+use search_route::*;
 #[path = "web_reports.rs"]
 mod reports;
 use reports::*;

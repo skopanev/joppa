@@ -113,17 +113,21 @@ function commonObjectFilters(root,contents){
   const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
   const owner=picker('Object owner',[['','All owners'],...Object.keys(data.state.members).map(id=>[id,personLabel(id)])]);
   const status=picker('Object status',[['','All statuses']]);const markStatus=statusFilter(status);
-  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:data.activeRootKind,owner:owner.value,status:status.value};const filtering=Boolean(selected.owner||selected.status);data.filterActive=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
+  // The search box uses the server search of joppa_search and combines with the other filters.
+  const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
+  const update=async()=>{const mine=++request,generation=loadNumber;const selected={kind:data.activeRootKind,owner:owner.value,status:status.value,query:search.value.trim()};const filtering=Boolean(selected.owner||selected.status||selected.query);data.filterActive=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
     if(!filtering){rootCollectionTabs(root);return;}
     for(const panel of root.querySelectorAll('.root-collection'))panel.hidden=true;
     holder.append(E('p','Loading objects…','object-loading hint'));
     const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(inputQueue(selected.kind))params.note_status='unprocessed';let cursor;const items=[];
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
-    const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status));
+    let found;
+    if(selected.query){const reply=await api('workspaces/'+encodeURIComponent(ws)+'/search?'+new URLSearchParams({q:selected.query,limit:'50'}));if(mine!==request||generation!==loadNumber||!controls.isConnected)return;found=new Set(reply.items.map(item=>item.kind+':'+item.id));}
+    const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status)&&(!found||found.has(item.address)));
     holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
   }catch(e){if(mine===request)notify(e);}};
   data.filterActive=false;data.filterUpdate=update;
-  owner.onchange=update;status.onchange=()=>{markStatus();update();};root.append(controls);return controls;
+  owner.onchange=update;status.onchange=()=>{markStatus();update();};let typing;search.oninput=()=>{clearTimeout(typing);typing=setTimeout(update,250);};root.append(controls);return controls;
 }
 // The status filter lists the tones of the schema status list in its order, each with its dot.
 // The closed filter shows the dot of the selected tone. A native list colours the option text.
