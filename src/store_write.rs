@@ -637,7 +637,7 @@ async fn write(
                 super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
             }
             if let Command::ClaimPlanning { ac, revision } = &command {
-                let target = crate::planning::validate_claim(&state, actor, ac, *revision)?;
+                let target = crate::planning::validate_claim(&state, ac, *revision)?;
                 let status = super::reports::planning_criterion_status(&*tx, &workspace, &state, &target).await?;
                 ensure!(status["status"] != "green", "criterion is already verified");
                 if let Some(dependency) = waits.get(&target) {

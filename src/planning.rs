@@ -25,23 +25,11 @@ fn criterion(w: &Workspace, ac: &str) -> Result<String> {
     Ok(key.into())
 }
 
-pub(crate) fn validate_claim(
-    w: &Workspace,
-    actor: &str,
-    ac: &str,
-    revision: u32,
-) -> Result<String> {
+pub(crate) fn validate_claim(w: &Workspace, ac: &str, revision: u32) -> Result<String> {
     let key = criterion(w, ac)?;
     ensure!(
         !w.planning_claims.contains_key(&key),
         "criterion is already claimed for planning"
-    );
-    // A planner may hold claims on several criteria of one REQ, so it plans the whole REQ.
-    let req = crate::tasks::requirement(w, &key);
-    ensure!(
-        !w.planning_claims.iter().any(|(held, c)| c.actor == actor
-            && (req.is_none() || crate::tasks::requirement(w, held) != req)),
-        "agent already holds a planning claim in this workspace"
     );
     ensure!(
         w.objects[&key].current().revision == revision,
@@ -173,7 +161,7 @@ pub fn apply(
     }
     let key = criterion(w, ac)?;
     if let Command::ClaimPlanning { revision, .. } = command {
-        validate_claim(w, actor, ac, *revision)?;
+        validate_claim(w, ac, *revision)?;
         ensure!(
             objects::assessment(w, &key).is_some_and(|a| a["state"] == "ready")
                 && objects::readiness_blocker(w, &key, true).is_none()

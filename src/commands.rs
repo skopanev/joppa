@@ -528,7 +528,7 @@ pub const OPERATIONS: &[Operation] = &[
     op(
         "set_tree_schema",
         &["revision", "types", "reason"],
-        AGENT_OR_OWNER,
+        OWNER,
     ),
     op(
         "save_object",
@@ -538,12 +538,12 @@ pub const OPERATIONS: &[Operation] = &[
     op(
         "archive_object",
         &["target", "revision", "reason"],
-        AGENT_OR_OWNER,
+        OWNER,
     ),
     op(
         "restore_object",
         &["target", "revision", "reason"],
-        AGENT_OR_OWNER,
+        OWNER,
     ),
     op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
     op(
@@ -912,11 +912,15 @@ pub const LIST_SAVE_RESET: &str = "list_save_reset";
 /// From this rule on, the member command accepts only people. Agents and runners enroll
 /// through the internal enroll_service event.
 pub const HUMAN_MEMBERS: &str = "human_members";
-pub const REPLAY_RULES: [&str; 4] = [
+/// From this rule on, only the workspace owner sets the tree schema, archives and restores.
+/// An agent has the rights of a member.
+pub const OWNER_WRITES: &str = "owner_writes";
+pub const REPLAY_RULES: [&str; 5] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
+    OWNER_WRITES,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

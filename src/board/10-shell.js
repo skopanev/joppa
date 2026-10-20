@@ -33,6 +33,8 @@ systemTheme.addEventListener('change',updateThemeColor);
 updateThemeColor();
 function closeAccountMenu(){$('account-menu').open=false;}
 document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))closeAccountMenu();},true);
+// A long name wraps the menu to the left edge of a narrow screen. Then the options open to the right.
+$('account-menu').addEventListener('toggle',()=>{const o=document.querySelector('.account-options');o.classList.remove('to-right');if($('account-menu').open&&o.getBoundingClientRect().left<0)o.classList.add('to-right');});
 window.addEventListener('popstate',()=>{
   closeAccountMenu();
   // The first entry has no workspace in its address. Its history state names the workspace.
