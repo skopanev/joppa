@@ -1529,6 +1529,8 @@ test('compact-open-object-ac1: the object row holds the control for its fields',
       assert.equal(await X.getAttribute('open'), '');
       assert.equal(await control.count(), 1);
       assert.equal(await control.evaluate(node => node.tagName + ' ' + node.type), 'BUTTON button');
+      // The control is an icon with the tooltip Properties.
+      assert.deepEqual(await control.evaluate(node => [node.title, node.querySelectorAll('svg').length, node.textContent.trim()]), ['Properties', 1, '']);
       // Copy and Revisions stay the last two controls of the row.
       assert.deepEqual((await row.locator('button').evaluateAll(nodes => nodes.map(node => node.className))).slice(-3),
         ['fields-button', 'copy', 'history-button']);
