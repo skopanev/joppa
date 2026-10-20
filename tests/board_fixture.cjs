@@ -70,7 +70,8 @@ async function fixture(types, statuses) {
     await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, live.owner);
     const tree = await api('/tree');
-    await command({op: 'set_tree_schema', revision: tree.current_revision, types, ...(statuses ? {statuses} : {}), reason: 'Configure the browser tree'});
+    // Only the workspace owner sets the tree schema.
+    await command({op: 'set_tree_schema', revision: tree.current_revision, types, ...(statuses ? {statuses} : {}), reason: 'Configure the browser tree'}, live.owner);
   } catch (error) { await close(); throw error; }
   return {live, page, api, command, mcp, save, close};
 }

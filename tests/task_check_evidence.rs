@@ -18,7 +18,7 @@ fn fixture() -> World {
     section.root = true;
     section.parents = vec!["*".into()];
     types.insert("section".into(), section);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Use an arbitrary Task type and parent"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Use an arbitrary Task type and parent"}));
     tasks::migrate(&mut w.state, "owner", w.position + 1, "test").unwrap();
     for (id, parent) in [
         ("one", Some("ac:ios")),

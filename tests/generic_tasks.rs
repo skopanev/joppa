@@ -67,7 +67,7 @@ fn configured() -> World {
             },
         );
     }
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Use specifications with any depth"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Use specifications with any depth"}));
     save(&mut w, "spec:root", None, document("Root specification"));
     save(
         &mut w,
@@ -530,7 +530,7 @@ fn schema_selects_completion_or_test_evidence_as_the_parent_gate() {
     let mut w = configured();
     let mut schema = objects::schema(&w.state);
     schema.types.get_mut("task").unwrap().parent_gate = Some("completed".into());
-    w.ok("agent",json!({"op":"set_tree_schema","revision":schema.revision,"types":schema.types,"reason":"Require completed parent work"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":schema.revision,"types":schema.types,"reason":"Require completed parent work"}));
     save(
         &mut w,
         "work:parent",
@@ -567,7 +567,7 @@ fn schema_selects_completion_or_test_evidence_as_the_parent_gate() {
     tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
     let mut types = objects::defaults();
     types.get_mut("task").unwrap().parent_gate = Some("verified".into());
-    w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require verified parent evidence"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require verified parent evidence"}));
     save(
         &mut w,
         "task:verified",

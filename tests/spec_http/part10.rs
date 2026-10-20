@@ -89,7 +89,7 @@ async fn a_human_member_cannot_archive_a_capability_over_http() -> Result<()> {
     let archive = json!({"op":"archive_object","target":"capability:restrict","revision":cap["current_revision"],"reason":"Cut"});
     let (ok, reply) = send_as(&w, &w.alex, &archive).await?;
     ensure!(
-        !ok && reply["error"] == "workspace owner or agent required",
+        !ok && reply["error"] == "workspace owner required",
         "{reply}"
     );
     let read = w.get_as(&w.alex, "address=capability:restrict").await?;
@@ -141,7 +141,7 @@ async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
     )
     .await?;
     ensure!(
-        reply["error"] == "workspace owner or agent required",
+        reply["error"] == "workspace owner required",
         "{status} {reply}"
     );
     let after = tree().await?;
@@ -152,11 +152,11 @@ async fn a_human_member_cannot_change_the_tree_over_http() -> Result<()> {
     Ok(())
 }
 
-// tree-owner-sets-types-ac3
 // bot is an agent member of the shared spec workspace.
+// From the owner_writes epoch on, an agent member has only member rights.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_member_adds_risk_to_the_tree_over_http() -> Result<()> {
+async fn an_agent_member_cannot_change_the_tree_over_http() -> Result<()> {
     let w = world().await?;
     let tree = async || -> Result<Value> {
         let reply = w
@@ -186,20 +186,13 @@ async fn an_agent_member_adds_risk_to_the_tree_over_http() -> Result<()> {
     )
     .await?;
     ensure!(
-        (200..300).contains(&status) && reply.get("error").is_none(),
+        status == 409 && reply["error"] == "workspace owner required",
         "{status} {reply}"
     );
     let after = tree().await?;
     ensure!(
-        after["current_revision"] == n + 1 && after["schema"]["types"].get("risk").is_some(),
+        after["current_revision"] == n && after["schema"]["types"].get("risk").is_none(),
         "{after}"
-    );
-    let (actor, command) = last_event(&w).await?;
-    ensure!(
-        actor == "bot"
-            && command["op"] == "set_tree_schema"
-            && command["types"].get("risk").is_some(),
-        "{actor} {command}"
     );
     Ok(())
 }

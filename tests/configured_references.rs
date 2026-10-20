@@ -15,7 +15,7 @@ fn migrate(w: &mut World) {
     w.position += 3;
 }
 fn set_schema(w: &mut World, types: std::collections::BTreeMap<String, TreeType>) {
-    w.ok("agent", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure reference fields"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure reference fields"}));
 }
 fn rule(target: &str, multiple: bool, required: bool) -> ReferenceRule {
     ReferenceRule {

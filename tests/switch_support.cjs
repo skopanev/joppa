@@ -99,7 +99,8 @@ async function workspaces(live, browser, records) {
   };
   await api(live.owner, live.ws, '/agent-tokens', {agent: 'bot'});
   await command(live.owner, live.ws, {op: 'member', id: 'alex', role: 'human'});
-  await configure(live.agent, live.ws);
+  // Only the workspace owner sets the tree schema.
+  await configure(live.owner, live.ws);
   await saveAll(live, live.agent, live.ws, 'owner', records);
   const context = await browser.newContext({reducedMotion: 'reduce', viewport: {width: 1440, height: 1000}});
   await context.addCookies([{name: 'joppa_session', value: live.cookie, url: live.root}]);

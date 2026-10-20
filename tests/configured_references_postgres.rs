@@ -49,7 +49,7 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
         },
     )]
     .into();
-    store::execute_remote_input(&pool,&ws,"agent","schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured context"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured context"})).await?;
     for (kind, id) in [
         ("domain", "root"),
         ("consumer", "normal"),
@@ -113,7 +113,7 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["task"]["references"] = json!({});
-    store::execute_remote_input(&pool,&ws,"agent","remove-rules",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Remove reference meaning"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","remove-rules",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Remove reference meaning"})).await?;
     let after:Vec<(String,i32,Value)>=pool.get().await?.query("SELECT address,revision,document::text FROM joppa.object_revisions WHERE workspace=$1 ORDER BY address,revision",&[&ws]).await?.iter().map(|r|Ok((r.get(0),r.get(1),serde_json::from_str(r.get::<_,&str>(2))?))).collect::<Result<_>>()?;
     assert_eq!(before, after);
     assert_eq!(

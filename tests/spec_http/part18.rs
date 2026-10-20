@@ -196,7 +196,7 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
         // A member stays refused for objects outside the Inbox.
         for target in ["capability:empty", "record:plain"] {
             let revision = read(target).await?["document"]["revision"].clone();
-            refused_without_change(&w, mcp, &w.alex, json!({"op":"archive_object","target":target,"revision":revision,"reason":"Out of scope"}), "workspace owner or agent required").await?;
+            refused_without_change(&w, mcp, &w.alex, json!({"op":"archive_object","target":target,"revision":revision,"reason":"Out of scope"}), "workspace owner required").await?;
             ensure!(
                 read(target).await?["document"]["present"] == true,
                 "mcp={mcp} {target}"

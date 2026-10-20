@@ -53,7 +53,7 @@ fn required_fields_follow_configured_types_and_value_presence() {
         )
         .unwrap(),
     );
-    w.ok("agent", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require an ordinary field on configured types"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require an ordinary field on configured types"}));
     assert_eq!(
         serde_json::to_value(&objects::schema(&w.state).types["note"].required_fields).unwrap(),
         json!({"origin":"origin is required"})
@@ -130,7 +130,7 @@ fn required_field_rules_reject_invalid_configuration_and_default_to_empty() {
         let mut types = serde_json::to_value(&current.types).unwrap();
         types["note"]["required_fields"] = rule;
         let before = serde_json::to_value(&w.state).unwrap();
-        w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":types,"reason":"Reject an invalid required field rule"}));
+        w.no("owner", json!({"op":"set_tree_schema","revision":current.revision,"types":types,"reason":"Reject an invalid required field rule"}));
         assert_eq!(serde_json::to_value(&w.state).unwrap(), before);
     }
 }
@@ -145,12 +145,12 @@ fn required_text_rules_use_literal_markers_on_any_document_field() {
         json!({"title":"Old input","owner":"owner","body":"Original text"}),
     );
     let original = w.state.objects["note:old"].current().clone();
-    w.ok("agent", json!({"op":"archive_object","target":"note:old","revision":1,"reason":"Archive the original input"}));
+    w.ok("owner", json!({"op":"archive_object","target":"note:old","revision":1,"reason":"Archive the original input"}));
     let mut types = serde_json::to_value(objects::schema(&w.state).types).unwrap();
     let rule = json!({"contains":["left:","Right:"],"error":"Both markers are required"});
     types["note"]["required_fields"] = json!({"body":rule});
     types["observation"] = json!({"title":"Observation","role":"document","root":true,"parents":["*"],"required_fields":{"text":rule}});
-    w.ok("agent", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require configured text markers"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require configured text markers"}));
     assert_eq!(
         serde_json::to_value(
             objects::schema(&w.state).types["observation"]
@@ -221,7 +221,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
             json!({"title":name,"role":"document","root":true,"parents":["*"]}),
         );
     }
-    w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Names do not select behavior"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Names do not select behavior"}));
     let data = json!({"title":"The same document","owner":"owner","body":"Common text","description":"Common description","consumers":{"ordinary":"data"},"projects":"ordinary data","status":"ordinary"});
     for name in names {
         let key = format!("{name}:same");
@@ -242,7 +242,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
     assert!(w.state.task_process.is_empty());
     let mut types = objects::schema(&w.state).types;
     types.get_mut("custom").unwrap().inbox = Some(true);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Enable only the configured input queue"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Enable only the configured input queue"}));
     save(
         &mut w,
         "custom:input",
@@ -320,7 +320,7 @@ fn migrated_criterion_edits_preserve_native_and_custom_specification_parents() {
             .last_mut()
             .unwrap()
             .data["audiences"] = json!(["d"]);
-        w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure specification context"}));
+        w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure specification context"}));
         w.state
             .objects
             .get_mut("requirement:r")
@@ -416,7 +416,7 @@ fn migrated_criterion_edits_preserve_native_and_custom_specification_parents() {
         let parent_kind = w.state.objects[&parent].kind.clone();
         let mut invalid_schema = objects::schema(&w.state).types;
         invalid_schema.remove(&parent_kind);
-        w.no("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":invalid_schema,"reason":"Reject removal of a used parent type"}));
+        w.no("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":invalid_schema,"reason":"Reject removal of a used parent type"}));
         assert_eq!(serde_json::to_value(&w.state).unwrap(), state);
         assert_eq!(w.position, position);
     }
@@ -455,7 +455,7 @@ fn criterion_edits_preserve_custom_specification_type_context() {
         "spec":{"title":"Specification","role":"requirement","parents":["area"]},
         "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
     });
-    w.ok("agent",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure named roles"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure named roles"}));
     save(
         &mut w,
         "area:outer",
@@ -508,7 +508,7 @@ fn criterion_edits_preserve_custom_specification_type_context() {
 fn verification_uses_roles_when_former_group_names_are_verification_types() {
     let mut w = empty();
     w.ok(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
         "consumer":{"title":"Specification","role":"requirement","root":true,"parents":["*"]},
         "domain":{"title":"Criterion","role":"ac","parents":["*"]},
@@ -589,7 +589,7 @@ fn verification_uses_roles_when_former_group_names_are_verification_types() {
 fn every_type_can_order_its_own_siblings() {
     let mut w = empty();
     w.ok(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
         "root":{"title":"Root","role":"group","root":true},
         "entry":{"title":"Entry","role":"document","parents":["root"]}
@@ -628,7 +628,7 @@ fn native_and_custom_verification_names_use_common_process_keys() {
         let types = json!({spec:{"title":"Specification","role":"requirement","root":true},
             criterion:{"title":"Criterion","role":"ac","parents":[spec]}});
         w.ok(
-            "agent",
+            "owner",
             json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,
             "types":types,"reason":"Use configured verification roles"}),
         );

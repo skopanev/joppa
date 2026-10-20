@@ -130,7 +130,7 @@ fn a_human_who_is_not_the_owner_cannot_archive() {
         &mut w,
         "legal",
         json!({"op":"archive_object","target":"capability:c","revision":1,"reason":"Remove"}),
-        "workspace owner or agent required",
+        "workspace owner required",
     );
     assert!(w.state.objects["capability:c"].current().present);
 }
@@ -183,15 +183,17 @@ fn a_human_who_is_not_the_owner_cannot_change_the_tree() {
 }
 
 #[test]
-fn an_agent_member_can_change_the_tree() {
-    // tree-owner-sets-types-ac3
+fn an_agent_member_cannot_change_the_tree() {
+    // tree-owner-sets-types-ac3: an agent has the rights of a member.
     let mut w = World::new();
     let types = schema_types(&w);
-    w.ok(
+    refused(
+        &mut w,
         "agent",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure"}),
+        "workspace owner required",
     );
-    assert_eq!(joppa::objects::schema(&w.state).revision, 1);
+    assert_eq!(joppa::objects::schema(&w.state).revision, 0);
 }
 
 #[test]

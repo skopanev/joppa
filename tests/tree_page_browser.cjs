@@ -16,7 +16,7 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
   try {
     const tree = await f.api('/tree');
     await f.command({op: 'set_tree_schema', revision: tree.current_revision, types, priorities: ['urgent', 'normal', 'later'],
-      reason: 'Set the priority levels'});
+      reason: 'Set the priority levels'}, f.live.owner);
     // The expected lists come from the configuration above, not from the page.
     const expected = {
       roots: ['Areas', 'Memos'],

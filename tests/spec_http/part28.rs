@@ -11,20 +11,19 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
     let owner_only = "workspace owner required";
-    let agent_or_owner = "workspace owner or agent required";
     let mut covered = vec![];
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
-    covered.push(check_callers(&w, &help, None, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"}), &w.owner, owner_only).await?);
     for id in ["a", "b", "c"] {
         w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
     }
     w.note("secret", 0, "Secret note", "Token s3cr3t", json!([]))
         .await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"}), &w.owner, owner_only).await?);
     w.command(json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"})).await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"}), &w.bot, agent_or_owner).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"}), &w.owner, owner_only).await?);
     covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.owner, owner_only).await?);
     covered.push(
         check_callers(

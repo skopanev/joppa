@@ -41,7 +41,7 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
         "rule":{"title":"Rule","role":"ac","root":false,"parents":["*"]},
         "work":{"title":"Work","role":"task","root":false,"parents":["*"],"parent_gate":"ready"}
     });
-    apply(&pool,&ws,"agent",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use configured type names"})).await?;
+    apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use configured type names"})).await?;
     for (kind, id, parent, data) in [
         (
             "spec",

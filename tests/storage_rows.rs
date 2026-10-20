@@ -163,8 +163,8 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
     };
     let original = store::read_objects(&pool, &ws, "owner", &scope).await?;
     let archive = json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive the group"});
-    let archived = store::execute_remote_input(&pool, &ws, "agent", "archive", &archive).await?;
-    let retry = store::execute_remote_input(&pool, &ws, "agent", "archive", &archive).await?;
+    let archived = store::execute_remote_input(&pool, &ws, "owner", "archive", &archive).await?;
+    let retry = store::execute_remote_input(&pool, &ws, "owner", "archive", &archive).await?;
     assert_eq!(retry["position"], archived["position"]);
     assert_eq!(retry["replayed"], true);
     let edit = json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit the group"});
@@ -210,7 +210,7 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
     )
     .await?;
     assert_eq!(old["document"], original["document"]);
-    store::execute_remote_input(&pool, &ws, "agent", "restore", &json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore the group"})).await?;
+    store::execute_remote_input(&pool, &ws, "owner", "restore", &json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore the group"})).await?;
     let current = store::read_objects(&pool, &ws, "owner", &scope).await?;
     assert_eq!(current["item_id"], system_id);
     assert_eq!(current["document"]["present"], true);

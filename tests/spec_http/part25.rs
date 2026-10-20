@@ -109,9 +109,15 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
     }
 
     // The same inputs succeed with a write grant, so each refusal comes from the grant.
+    // Only the workspace owner sets the tree schema, so the owner sends that control.
     let mut last = before;
     for (name, arguments) in mcp_calls {
-        let result = mcp_call(&w, writer, name, arguments.clone()).await?;
+        let token = if arguments["command"]["op"] == "set_tree_schema" {
+            &w.owner
+        } else {
+            writer
+        };
+        let result = mcp_call(&w, token, name, arguments.clone()).await?;
         ensure!(result["isError"] != true, "{name} {arguments}: {result}");
         let saved = saved_rows(&w).await?;
         ensure!(

@@ -42,7 +42,7 @@ fn setup_custom() -> World {
         "work":{"title":"Work","role":"task","root":false,"parents":["*"],"parent_gate":"ready"},
         "source":{"title":"Input","role":"document","root":true,"parents":["*"],"inbox":true}
     });
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure all type names"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure all type names"}));
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     objects::migrate_documents(&mut w.state, "owner", w.position + 1, "now").unwrap();
@@ -359,7 +359,7 @@ fn custom_workflow_ids_do_not_collide_with_legacy_verification_ids() {
         .unwrap();
     types.extend(custom);
     let n = objects::schema(&w.state).revision;
-    w.ok("agent",json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add custom verification types"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add custom verification types"}));
     let original = serde_json::to_value(&w.state.requirements["r"]).unwrap();
     save(
         &mut w,
@@ -404,7 +404,7 @@ fn old_type_names_do_not_select_verification_when_the_schema_assigns_other_roles
         json!({"op":"enroll_service","id":"agent","role":"agent"}),
     );
     w.ok(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":0,"types":{
         "requirement":{"title":"Group","role":"group","root":true,"parents":[]},
         "ac":{"title":"Input","role":"document","root":true,"parents":["*"],"inbox":true}

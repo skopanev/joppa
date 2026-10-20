@@ -217,11 +217,11 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
                 'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
         archive = {'op':'archive_object','target':'domain:unused','revision':1,'reason':'Archive an empty group'}
-        mcp('joppa_command', {'workspace':ws,'request_id':'archive-group','command':archive})
+        mcp('joppa_command', {'workspace':ws,'request_id':'archive-group','command':archive}, owner_token)
         assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})['document']['present'] is False
         assert all(item['address']!='domain:unused' for item in mcp('joppa_objects', {'workspace':ws,'kind':'domain','parent':'*'})['items'])
         mcp('joppa_command', {'workspace':ws,'request_id':'restore-group',
-            'command':{'op':'restore_object','target':'domain:unused','revision':2,'reason':'Restore the group'}})
+            'command':{'op':'restore_object','target':'domain:unused','revision':2,'reason':'Restore the group'}}, owner_token)
         current_group = mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})
         assert current_group['document']['present'] is True and current_group['current_revision']==3
         assert current_group['item_id']==empty['system_ids']['domain']['unused']
@@ -486,7 +486,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'rule': {'title':'Rule','role':'ac','root':False,'parents':['*']},
         })
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-schema','command':
-            {'op':'set_tree_schema','revision':configured['current_revision'],'types':types,'reason':'Configure workflow types'}})
+            {'op':'set_tree_schema','revision':configured['current_revision'],'types':types,'reason':'Configure workflow types'}}, owner_token)
         for kind, ident, parent, text in [
             ('spec','same',None,'Outer specification'),
             ('epic','same','spec:same','Inner specification'),

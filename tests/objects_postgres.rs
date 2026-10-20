@@ -167,7 +167,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     assert_eq!(batch["results"][1]["object"]["revision"], 2);
     let replay = store::execute_remote_batch(&pool, &ws, "agent", "note-batch", &ops).await?;
     assert_eq!(batch["results"], replay["results"]);
-    store::execute_remote_input(&pool,&ws,"agent","default-schema",&json!({"op":"set_tree_schema","revision":store::tree_schema(&pool,&ws,"agent",None).await?["current_revision"],"types":joppa::objects::defaults(),"reason":"Record the default schema"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","default-schema",&json!({"op":"set_tree_schema","revision":store::tree_schema(&pool,&ws,"agent",None).await?["current_revision"],"types":joppa::objects::defaults(),"reason":"Record the default schema"})).await?;
     let first_view: String = pool
         .get()
         .await?
@@ -214,7 +214,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     store::execute_remote_input(
         &pool,
         &ws,
-        "agent",
+        "owner",
         "schema",
         &json!({"op":"set_tree_schema","revision":store::tree_schema(&pool,&ws,"agent",None).await?["current_revision"],"types":types,"reason":"Use an initiative"}),
     )
@@ -284,7 +284,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     types["note"]["title_size"] = json!(21);
     types["note"]["title"] = json!("Incoming note");
     types["domain"]["index"] = json!(200);
-    store::execute_remote_input(&pool, &ws, "agent", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
+    store::execute_remote_input(&pool, &ws, "owner", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
     let board = store::board_read(&pool, &ws, "agent", None, None, None).await?;
     assert_eq!(board["custom_tree"], false);
     assert_eq!(board["object_types"]["note"]["color"], "#7655a2");
@@ -497,7 +497,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     )
     .await?;
     assert_eq!(historical["document"]["data"]["body"], "Original source");
-    store::execute_remote_input(&pool,&ws,"agent","restore-a",&json!({"op":"restore_object","target":"note:a","revision":4,"reason":"Restore the source"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","restore-a",&json!({"op":"restore_object","target":"note:a","revision":4,"reason":"Restore the source"})).await?;
     let restored = store::read_objects(
         &pool,
         &ws,

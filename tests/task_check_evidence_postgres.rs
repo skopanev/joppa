@@ -101,7 +101,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     types["job"] = types["task"].clone();
     types["job"]["parents"] = json!(["*"]);
     types["section"] = json!({"title":"Section","role":"group","parents":["*"],"root":true});
-    apply(&pool,&ws,"agent",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use custom Task names through an intermediate group"})).await?;
+    apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use custom Task names through an intermediate group"})).await?;
     apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"section","id":"nested","revision":0,"parent":"ac:ios","data":{"title":"Nested work","owner":"owner"},"reason":"Place work at an arbitrary depth"})).await?;
     for id in ["one", "two"] {
         apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":"section:nested","data":{"title":id,"owner":"owner","contract":"Implement the fixture behavior","purpose":"implementation","projects":["app"]},"reason":"Create exact test contracts"})).await?;

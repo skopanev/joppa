@@ -127,7 +127,8 @@ async function fixture(records, configured = types, contextOptions = {}) {
     await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, true);
     const schema = await api('/tree');
-    await command({op: 'set_tree_schema', revision: schema.current_revision, types: configured, reason: 'Configure the browser tree'});
+    // Only the workspace owner sets the tree schema, archives and restores.
+    await command({op: 'set_tree_schema', revision: schema.current_revision, types: configured, reason: 'Configure the browser tree'}, true);
     for (const [address, record] of Object.entries(records)) await save(address, record);
   } catch (error) { await close(); throw error; }
   return {page, requests, open, close, api, command, save, upload, bind, mcp, live};
@@ -1309,7 +1310,7 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
   try {
     await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
     await f.upload('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 1, [['X'], ['Y', 'failed check']]);
-    await f.command({op: 'archive_object', target: 'ac:B', revision: 1, reason: 'Drop the red criterion'});
+    await f.command({op: 'archive_object', target: 'ac:B', revision: 1, reason: 'Drop the red criterion'}, true);
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
     assert.equal(await r.locator('.verification-chip').innerText(), '1 Criteria');

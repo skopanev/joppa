@@ -350,7 +350,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     .await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let types = json!({"spec":{"title":"Specification","role":"requirement","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","inbox":true,"root":true,"parents":["*"]}});
-    apply(&pool,&ws,"agent",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use arbitrary type names"})).await?;
+    apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use arbitrary type names"})).await?;
     for (kind, id, parent, data) in [
         (
             "spec",

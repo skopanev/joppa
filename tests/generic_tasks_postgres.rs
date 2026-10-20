@@ -69,7 +69,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
             },
         );
     }
-    store::execute_remote_input(&pool,&ws,"agent","schema",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Use specifications without REQ or AC"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Use specifications without REQ or AC"})).await?;
     for (id, parent) in [("root", None), ("urgent", Some("spec:root"))] {
         store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"spec","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner"},"reason":"Create a specification"})).await?;
     }
@@ -182,7 +182,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["ac"] = json!({"title":"Criterion","role":"ac","root":false,"parents":["spec"]});
-    store::execute_remote_input(&pool,&ws,"agent","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
     let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","description":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
     let ac_id = ac["system_ids"]["ac"]["standalone"].as_str().unwrap();
     let selected =

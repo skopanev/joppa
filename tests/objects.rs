@@ -90,7 +90,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
         .unwrap()
         .parents
         .push("initiative".into());
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Add an initiative level"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Add an initiative level"}));
     save(
         &mut w,
         "initiative:i",
@@ -141,11 +141,11 @@ fn schema_supports_custom_grouping_without_a_capability() {
         )
         .is_ok()
     );
-    w.no("agent",json!({"op":"set_tree_schema","revision":0,"types":objects::defaults(),"reason":"Stale schema"}));
+    w.no("owner",json!({"op":"set_tree_schema","revision":0,"types":objects::defaults(),"reason":"Stale schema"}));
     let mut invalid = objects::schema(&w.state).types;
     invalid.get_mut("ac").unwrap().parents = vec!["initiative".into()];
     w.no(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Invalid AC parent"}),
     );
 }
@@ -383,7 +383,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
         .parents
         .push("initiative".into());
     w.ok(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Group capabilities"}),
     );
     save(
@@ -516,16 +516,16 @@ fn schema_title_sizes_preserve_documents_and_old_schemas() {
     old.types.remove("point");
     let mut types = old.types.clone();
     types.get_mut("note").unwrap().title_size = Some(21);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Set type title size"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Set type title size"}));
     assert_eq!(objects::schema(&w.state).types["note"].title_size, Some(21));
     assert_eq!(documents, serde_json::to_value(&w.state.objects).unwrap());
     for size in [0, 11, 49, -1] {
         let mut invalid = serde_json::to_value(&types).unwrap();
         invalid["note"]["title_size"] = json!(size);
-        w.no("agent", json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Reject invalid title size"}));
+        w.no("owner", json!({"op":"set_tree_schema","revision":1,"types":invalid,"reason":"Reject invalid title size"}));
     }
     assert_eq!(objects::schema(&w.state).revision, 1);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":1,"types":old.types,"reason":"Restore the original presentation"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":1,"types":old.types,"reason":"Restore the original presentation"}));
     assert!(objects::schema(&w.state).types["note"].title_size.is_none());
     assert_eq!(w.state.tree_schema[0].types["note"].title_size, Some(21));
 }
@@ -539,7 +539,7 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
     types.remove("intake");
     types.remove("point");
     types.get_mut("note").unwrap().title_preview_length = Some(256);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Allow long note titles"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Allow long note titles"}));
     save(
         &mut w,
         "note:preview",
@@ -550,7 +550,7 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
     let before = serde_json::to_value(&w.state.objects).unwrap();
     types.get_mut("note").unwrap().badge = Some("INPUT".into());
     types.get_mut("note").unwrap().title_preview_length = Some(64);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Configure compact titles and badges"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Configure compact titles and badges"}));
     assert_eq!(before, serde_json::to_value(&w.state.objects).unwrap());
     assert_eq!(
         w.state.objects["note:preview"].current().data["title"],
@@ -559,12 +559,12 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
     for badge in ["", "TOO-LONG-LABEL", "REQ CAP", "REQ\n"] {
         let mut invalid = types.clone();
         invalid.get_mut("note").unwrap().badge = Some(badge.into());
-        w.no("agent",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid badge"}));
+        w.no("owner",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid badge"}));
     }
     for length in [0, 257, -1] {
         let mut invalid = serde_json::to_value(&types).unwrap();
         invalid["note"]["title_preview_length"] = json!(length);
-        w.no("agent",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid title preview"}));
+        w.no("owner",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid title preview"}));
     }
     assert_eq!(objects::schema(&w.state).revision, 2);
     assert_eq!(
@@ -579,7 +579,7 @@ fn schema_colors_reject_css_values_and_keep_old_schema() {
     let mut types = objects::defaults();
     types.get_mut("note").unwrap().color = Some("#7254aB".into());
     w.ok(
-        "agent",
+        "owner",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Set Note color"}),
     );
     assert_eq!(
@@ -588,7 +588,7 @@ fn schema_colors_reject_css_values_and_keep_old_schema() {
     );
     for color in ["red", "#123", "#123456;display:none", "#12345z"] {
         types.get_mut("note").unwrap().color = Some(color.into());
-        w.no("agent", json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Reject invalid color"}));
+        w.no("owner", json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Reject invalid color"}));
     }
     assert_eq!(objects::schema(&w.state).revision, 1);
 }
@@ -612,15 +612,15 @@ fn type_order_changes_schema_without_changing_documents() {
     types.remove("point");
     types.get_mut("domain").unwrap().index = Some(0);
     types.get_mut("consumer").unwrap().index = Some(10);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Order root collections"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Order root collections"}));
     let current = objects::schema(&w.state);
     assert_eq!(current.revision, old.revision + 1);
     assert_eq!(current.types["domain"].index, Some(0));
     assert_eq!(before, serde_json::to_value(&w.state.objects).unwrap());
-    w.no("agent", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Reject a stale schema edit"}));
+    w.no("owner", json!({"op":"set_tree_schema","revision":old.revision,"types":types,"reason":"Reject a stale schema edit"}));
     let mut invalid = serde_json::to_value(&types).unwrap();
     invalid["domain"]["index"] = json!(-1);
-    w.no("agent", json!({"op":"set_tree_schema","revision":current.revision,"types":invalid,"reason":"Reject an invalid index"}));
+    w.no("owner", json!({"op":"set_tree_schema","revision":current.revision,"types":invalid,"reason":"Reject an invalid index"}));
 }
 
 // [ac:unrouted-requests-listed-ac2]
@@ -636,7 +636,7 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
         .unwrap(),
     );
     types.get_mut("note").unwrap().inbox = Some(false);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Select the input queue"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Select the input queue"}));
     save(
         &mut w,
         "incoming:n",
@@ -689,7 +689,7 @@ fn launch_configuration_preserves_owner_acceptance_and_can_disable_the_preset() 
     assert_eq!(objects::launch_summary(&w.state)["ready"], true);
     let mut types = objects::defaults();
     types.get_mut("ac").unwrap().launch_blocker = Some(false);
-    w.ok("agent",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Remove launch conditions from this type"}));
+    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Remove launch conditions from this type"}));
     assert_eq!(objects::launch_summary(&w.state)["configured"], false);
 }
 
@@ -840,7 +840,7 @@ fn archive_world() -> World {
     group.title = "Initiative".into();
     group.parents = vec!["initiative".into()];
     types.insert("initiative".into(), group);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure group nesting"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure group nesting"}));
     w
 }
 
@@ -852,7 +852,7 @@ fn archive_configured_documents_preserves_history_and_child_guards() {
     input.title = "Incoming information".into();
     input.parents = vec!["incoming".into()];
     configured.types.insert("incoming".into(), input);
-    w.ok("agent", json!({"op":"set_tree_schema","revision":configured.revision,"types":configured.types,"reason":"Use a custom document type"}));
+    w.ok("owner", json!({"op":"set_tree_schema","revision":configured.revision,"types":configured.types,"reason":"Use a custom document type"}));
     save(
         &mut w,
         "incoming:parent",
@@ -868,23 +868,23 @@ fn archive_configured_documents_preserves_history_and_child_guards() {
         vec![],
     );
     let original = serde_json::to_value(&w.state.objects["incoming:parent"].revisions[0]).unwrap();
-    w.no("agent", json!({"op":"archive_object","target":"incoming:parent","revision":1,"reason":"Reject a live child"}));
-    w.ok("agent", json!({"op":"archive_object","target":"incoming:child","revision":1,"reason":"Archive the child"}));
-    w.ok("agent", json!({"op":"archive_object","target":"incoming:parent","revision":1,"reason":"Archive the review"}));
+    w.no("owner", json!({"op":"archive_object","target":"incoming:parent","revision":1,"reason":"Reject a live child"}));
+    w.ok("owner", json!({"op":"archive_object","target":"incoming:child","revision":1,"reason":"Archive the child"}));
+    w.ok("owner", json!({"op":"archive_object","target":"incoming:parent","revision":1,"reason":"Archive the review"}));
     assert!(!w.state.objects["incoming:parent"].current().present);
     assert_eq!(
         serde_json::to_value(&w.state.objects["incoming:parent"].revisions[0]).unwrap(),
         original
     );
-    w.no("agent", json!({"op":"restore_object","target":"incoming:child","revision":2,"reason":"Reject an absent parent"}));
-    w.no("agent", json!({"op":"restore_object","target":"incoming:parent","revision":1,"reason":"Reject a stale revision"}));
-    w.ok("agent", json!({"op":"restore_object","target":"incoming:parent","revision":2,"reason":"Restore the review"}));
+    w.no("owner", json!({"op":"restore_object","target":"incoming:child","revision":2,"reason":"Reject an absent parent"}));
+    w.no("owner", json!({"op":"restore_object","target":"incoming:parent","revision":1,"reason":"Reject a stale revision"}));
+    w.ok("owner", json!({"op":"restore_object","target":"incoming:parent","revision":2,"reason":"Restore the review"}));
     assert_eq!(
         w.state.objects["incoming:parent"].current().data["body"],
         "Keep history"
     );
     assert_eq!(w.state.objects["incoming:parent"].current().links.len(), 1);
-    w.ok("agent", json!({"op":"restore_object","target":"incoming:child","revision":2,"reason":"Restore the child"}));
+    w.ok("owner", json!({"op":"restore_object","target":"incoming:child","revision":2,"reason":"Restore the child"}));
 }
 
 #[test]
@@ -902,14 +902,14 @@ fn archive_and_restore_group_objects() {
         json!({"op":"note","target":"initiative:i","id":"source","text":"Keep this context"}),
     );
     let original = serde_json::to_value(&w.state.objects["initiative:i"].revisions[0]).unwrap();
-    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive group"}));
+    w.no("owner", json!({"op":"archive_object","target":"initiative:i","revision":0,"reason":"Archive group"}));
     w.no("legal", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    w.ok("owner", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
     assert!(!w.state.objects["initiative:i"].current().present);
     assert_eq!(w.state.objects["initiative:i"].current().revision, 2);
-    w.no("agent", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));
-    w.no("agent", json!({"op":"restore_object","target":"initiative:i","revision":1,"reason":"Stale restore"}));
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
+    w.no("owner", json!({"op":"archive_object","target":"initiative:i","revision":2,"reason":"Archive again"}));
+    w.no("owner", json!({"op":"restore_object","target":"initiative:i","revision":1,"reason":"Stale restore"}));
+    w.ok("owner", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
     let object = &w.state.objects["initiative:i"];
     assert!(object.current().present);
     assert_eq!(object.current().revision, 3);
@@ -941,13 +941,13 @@ fn archive_requires_an_empty_group_and_restore_requires_a_present_parent() {
         json!({"title":"Child","owner":"owner"}),
         vec![],
     );
-    w.no("agent", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive parent"}));
-    w.no("agent", json!({"op":"archive_object","target":"requirement:r","revision":1,"reason":"Archive a specification"}));
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:child","revision":1,"reason":"Archive child"}));
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive empty parent"}));
-    w.no("agent", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore before parent"}));
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:parent","revision":2,"reason":"Restore parent"}));
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore child"}));
+    w.no("owner", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive parent"}));
+    w.no("owner", json!({"op":"archive_object","target":"requirement:r","revision":1,"reason":"Archive a specification"}));
+    w.ok("owner", json!({"op":"archive_object","target":"initiative:child","revision":1,"reason":"Archive child"}));
+    w.ok("owner", json!({"op":"archive_object","target":"initiative:parent","revision":1,"reason":"Archive empty parent"}));
+    w.no("owner", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore before parent"}));
+    w.ok("owner", json!({"op":"restore_object","target":"initiative:parent","revision":2,"reason":"Restore parent"}));
+    w.ok("owner", json!({"op":"restore_object","target":"initiative:child","revision":2,"reason":"Restore child"}));
 }
 
 #[test]
@@ -957,14 +957,14 @@ fn archive_legacy_group_does_not_resync() {
         "owner",
         json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
     );
-    w.ok("agent", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive empty group"}));
+    w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive empty group"}));
     w.ok(
         "owner",
         json!({"op":"domain","id":"other","title":"Other","owner":"owner"}),
     );
     assert!(!w.state.objects["domain:unused"].current().present);
     assert_eq!(w.state.objects["domain:unused"].current().revision, 2);
-    w.ok("agent", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
+    w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
     w.ok(
         "owner",
         json!({"op":"domain","id":"another","title":"Another","owner":"owner"}),
@@ -980,9 +980,9 @@ fn restore_legacy_group_reflects_edits() {
         "owner",
         json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
     );
-    w.ok("agent", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive group"}));
+    w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive group"}));
     w.no("owner", json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit an archived group"}));
-    w.ok("agent", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
+    w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
     w.ok("owner", json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit restored group"}));
     assert!(w.state.objects["domain:unused"].current().present);
     assert_eq!(
@@ -1004,8 +1004,8 @@ fn custom_group_fields_survive_archive() {
     );
     let data = w.state.objects["initiative:i"].current().data.clone();
     let overrides = w.state.document_overrides.clone();
-    w.ok("agent", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
-    w.ok("agent", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
+    w.ok("owner", json!({"op":"archive_object","target":"initiative:i","revision":1,"reason":"Archive group"}));
+    w.ok("owner", json!({"op":"restore_object","target":"initiative:i","revision":2,"reason":"Restore group"}));
     w.ok(
         "agent",
         json!({"op":"note","target":"domain:d","id":"unrelated","text":"Unrelated context"}),
