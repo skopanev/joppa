@@ -169,7 +169,7 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
         "the read must not rewrite a stored revision"
     );
     let response = w.http.post(format!("{}/api/workspaces/{}/commands", w.root, w.ws)).bearer_auth(&w.owner)
-        .json(&json!({"request_id":"change-role","command":{"op":"enroll_service","id":"alex","role":"agent"}})).send().await?;
+        .json(&json!({"request_id":"change-role","command":{"op":"member","id":"alex","role":"human"}})).send().await?;
     ensure!(
         response.status() == reqwest::StatusCode::CONFLICT,
         "{response:?}"

@@ -21,6 +21,17 @@ async fn pool() -> Result<deadpool_postgres::Pool> {
 }
 
 async fn write(pool: &deadpool_postgres::Pool, ws: &str, command: Value) -> Result<Value> {
+    // An agent or a runner enrolls through the internal event, as an agent token does.
+    if command["op"] == "enroll_service" {
+        return store::enroll_service(
+            pool,
+            ws,
+            "owner",
+            command["id"].as_str().unwrap_or_default(),
+            command["role"].as_str().unwrap_or_default(),
+        )
+        .await;
+    }
     store::execute_remote_input(
         pool,
         ws,

@@ -66,6 +66,17 @@ struct Fixture {
 }
 impl Fixture {
     async fn write(&self, actor: &str, command: Value) -> Result<Value> {
+        // An agent or a runner enrolls through the internal event, as an agent token does.
+        if command["op"] == "enroll_service" {
+            return store::enroll_service(
+                &self.pool,
+                &self.ws,
+                actor,
+                command["id"].as_str().unwrap_or_default(),
+                command["role"].as_str().unwrap_or_default(),
+            )
+            .await;
+        }
         store::execute_remote_input(
             &self.pool,
             &self.ws,

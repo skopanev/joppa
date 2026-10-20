@@ -5,7 +5,7 @@
 async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<()> {
     let w = world().await?;
     let before = saved_rows(&w).await?;
-    let valid = json!({"op":"enroll_service","id":"should-not-exist","role":"agent"});
+    let valid = json!({"op":"member","id":"should-not-exist","role":"human"});
     for command in [
         json!({"op":"made_up_operation","id":"x"}),
         json!({"op":"migrate_notes"}),

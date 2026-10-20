@@ -8,6 +8,17 @@ async fn write(
     actor: &str,
     command: Value,
 ) -> Result<Value> {
+    // An agent or a runner enrolls through the internal event, as an agent token does.
+    if command["op"] == "enroll_service" {
+        return store::enroll_service(
+            pool,
+            workspace,
+            actor,
+            command["id"].as_str().unwrap_or_default(),
+            command["role"].as_str().unwrap_or_default(),
+        )
+        .await;
+    }
     store::execute_remote_input(
         pool,
         workspace,

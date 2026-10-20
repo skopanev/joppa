@@ -21,6 +21,17 @@ async fn pool() -> Result<deadpool_postgres::Pool> {
 }
 
 async fn write(pool: &deadpool_postgres::Pool, ws: &str, command: Value) -> Result<Value> {
+    // An agent or a runner enrolls through the internal event, as an agent token does.
+    if command["op"] == "enroll_service" {
+        return store::enroll_service(
+            pool,
+            ws,
+            "owner",
+            command["id"].as_str().unwrap_or_default(),
+            command["role"].as_str().unwrap_or_default(),
+        )
+        .await;
+    }
     store::execute_remote_input(
         pool,
         ws,
@@ -81,13 +92,13 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     ensure!(items.len() == 25, "{first}");
     ensure!(items.iter().all(|i| i["status"] == "open"), "{first}");
     ensure!(items.iter().all(|i| i["at"].is_string()), "{first}");
-    // The note row has the status of the note; a member row has no object and no status.
+    // The note row has the status of the note; an enrollment row has no object and no status.
     let note = items.iter().find(|i| i["address"] == "note:intake");
     ensure!(
         note.is_some_and(|n| n["signal"]["tone"].is_string()),
         "{first}"
     );
-    let member = items.iter().find(|i| i["op"] == "member");
+    let member = items.iter().find(|i| i["op"] == "enroll_service");
     ensure!(member.is_some_and(|m| m["signal"].is_null()), "{first}");
     let cursor = first["next_cursor"].as_str().unwrap_or_default().to_owned();
     ensure!(!cursor.is_empty(), "{first}");

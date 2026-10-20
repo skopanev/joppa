@@ -216,6 +216,13 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     let write = |actor: &'static str, cmd: Value| {
         let (pool, ws) = (pool.clone(), ws.clone());
         async move {
+            if cmd["op"] == "enroll_service" {
+                let (id, role) = (
+                    cmd["id"].as_str().unwrap_or_default(),
+                    cmd["role"].as_str().unwrap_or_default(),
+                );
+                return store::enroll_service(&pool, &ws, actor, id, role).await;
+            }
             store::execute_remote_input(&pool, &ws, actor, &uuid::Uuid::new_v4().to_string(), &cmd)
                 .await
         }

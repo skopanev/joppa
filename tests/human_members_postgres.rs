@@ -69,7 +69,10 @@ async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
     )
     .await
     .expect_err("an epoch field must be refused");
-    ensure!(error.to_string().contains("unknown field `epoch`"), "{error}");
+    ensure!(
+        error.to_string().contains("unknown field `epoch`"),
+        "{error}"
+    );
     // The internal enrollment of a service identity is not a public operation.
     let error = store::execute_remote_input(
         &pool,
