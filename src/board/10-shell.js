@@ -34,7 +34,8 @@ updateThemeColor();
 function closeAccountMenu(){$('account-menu').open=false;}
 document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))closeAccountMenu();},true);
 // A long name wraps the menu to the left edge of a narrow screen. Then the options open to the right.
-$('account-menu').addEventListener('toggle',()=>{const o=document.querySelector('.account-options');o.classList.remove('to-right');if($('account-menu').open&&o.getBoundingClientRect().left<0)o.classList.add('to-right');});
+// The click sets the side before the menu opens, so the first frame of the open menu is on screen.
+$('identity').addEventListener('click',()=>{const right=$('account-menu').getBoundingClientRect().right;document.querySelector('.account-options').classList.toggle('to-right',right<Math.min(190,innerWidth-32));});
 window.addEventListener('popstate',()=>{
   closeAccountMenu();
   // The first entry has no workspace in its address. Its history state names the workspace.
