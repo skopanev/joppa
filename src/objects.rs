@@ -792,19 +792,9 @@ pub fn priority_chain(w: &Workspace, key: &str) -> Vec<usize> {
 }
 
 #[allow(clippy::too_many_arguments)]
-/// Before the owner_writes epoch, an agent member also set the tree schema, archived and
-/// restored. A replay keeps those old events.
-fn agent_right(w: &Workspace, actor: &str, position: u64) -> bool {
-    !commands::rule_applies(w, commands::OWNER_WRITES, position)
-        && w.members.get(actor).is_some_and(|role| role == "agent")
-}
-
-fn owner_refusal(w: &Workspace, position: u64) -> &'static str {
-    if commands::rule_applies(w, commands::OWNER_WRITES, position) {
-        "workspace owner required"
-    } else {
-        "workspace owner or agent required"
-    }
+/// Any member of the workspace edits the tree: the schema, the order, archives and restores.
+pub(crate) fn may_edit_tree(w: &Workspace, actor: &str) -> bool {
+    actor == w.admin || w.members.contains_key(actor)
 }
 
 pub fn set_schema(
@@ -819,11 +809,7 @@ pub fn set_schema(
     position: u64,
     at: &str,
 ) -> Result<()> {
-    ensure!(
-        actor == w.admin || agent_right(w, actor, position),
-        "{}",
-        owner_refusal(w, position)
-    );
+    ensure!(may_edit_tree(w, actor), "workspace member required");
     ensure!(
         schema(w).revision == revision,
         "stale schema revision; read the tree schema again"
@@ -3050,21 +3036,7 @@ pub fn archive(
         bail!("archive_object required")
     };
     let target = resolve_address(w, target).to_owned();
-    // A human member may archive an Inbox object, such as a signal that needs no work.
-    let inbox_target = w
-        .objects
-        .get(&target)
-        .is_some_and(|o| input_type(w, &o.kind));
-    // From the owner_writes epoch on, an agent archives an Inbox object as a member does.
-    let member = w.members.get(actor).is_some_and(|role| {
-        role == "human"
-            || (role == "agent" && commands::rule_applies(w, commands::OWNER_WRITES, position))
-    });
-    ensure!(
-        actor == w.admin || agent_right(w, actor, position) || (inbox_target && member),
-        "{}",
-        owner_refusal(w, position)
-    );
+    ensure!(may_edit_tree(w, actor), "workspace member required");
     commands::nonempty(reason)?;
     let old = w.objects.get(&target).context("unknown object")?;
     ensure!(
@@ -3138,11 +3110,7 @@ pub fn restore(
     else {
         bail!("restore_object required")
     };
-    ensure!(
-        actor == w.admin || agent_right(w, actor, position),
-        "{}",
-        owner_refusal(w, position)
-    );
+    ensure!(may_edit_tree(w, actor), "workspace member required");
     commands::nonempty(reason)?;
     let target = resolve_address(w, target).to_owned();
     let old = w.objects.get(&target).context("unknown object")?;

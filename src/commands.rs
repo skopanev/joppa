@@ -525,26 +525,14 @@ const fn op(
 /// The public operation catalog. Help, the command schemas and remote admission use it.
 /// Internal, retired and CLI-only operations are absent.
 pub const OPERATIONS: &[Operation] = &[
-    op(
-        "set_tree_schema",
-        &["revision", "types", "reason"],
-        OWNER,
-    ),
+    op("set_tree_schema", &["revision", "types", "reason"], MEMBER),
     op(
         "save_object",
         &["kind", "revision", "data", "reason"],
         MEMBER,
     ),
-    op(
-        "archive_object",
-        &["target", "revision", "reason"],
-        OWNER,
-    ),
-    op(
-        "restore_object",
-        &["target", "revision", "reason"],
-        OWNER,
-    ),
+    op("archive_object", &["target", "revision", "reason"], MEMBER),
+    op("restore_object", &["target", "revision", "reason"], MEMBER),
     op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
     op(
         "decide_note",
@@ -562,7 +550,7 @@ pub const OPERATIONS: &[Operation] = &[
     op("set_priority", &["target", "priority"], MEMBER),
     op("assess_signal", &["target", "ready", "reason"], MEMBER),
     op("delete_workspace", &["reason"], OWNER),
-    op("reorder_tree", &["kind", "expected", "ids"], OWNER),
+    op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
     op("member", &["id", "role"], OWNER),
     op("remove_member", &["id", "reason"], OWNER),
     op("consumer", &["title", "owner"], MEMBER),
@@ -912,15 +900,11 @@ pub const LIST_SAVE_RESET: &str = "list_save_reset";
 /// From this rule on, the member command accepts only people. Agents and runners enroll
 /// through the internal enroll_service event.
 pub const HUMAN_MEMBERS: &str = "human_members";
-/// From this rule on, only the workspace owner sets the tree schema, archives and restores.
-/// An agent has the rights of a member.
-pub const OWNER_WRITES: &str = "owner_writes";
-pub const REPLAY_RULES: [&str; 5] = [
+pub const REPLAY_RULES: [&str; 4] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
-    OWNER_WRITES,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

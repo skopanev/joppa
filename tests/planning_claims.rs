@@ -17,10 +17,7 @@ fn configured() -> World {
         json!({"op":"workspace","title":"Planning contracts"}),
     );
     for actor in ["planner", "other", "worker"] {
-        w.ok(
-            "owner",
-            json!({"op":"member","id":actor,"role":"human"}),
-        );
+        w.ok("owner", json!({"op":"member","id":actor,"role":"human"}));
     }
     // Only the workspace owner sets the tree schema.
     w.ok(

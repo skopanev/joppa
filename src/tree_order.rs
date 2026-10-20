@@ -94,7 +94,10 @@ pub fn reorder(
     expected: &[String],
     ids: &[String],
 ) -> Result<()> {
-    ensure!(actor == w.admin, "workspace owner reorders the tree");
+    ensure!(
+        crate::objects::may_edit_tree(w, actor),
+        "workspace member required"
+    );
     let current = ordered_ids(w, kind, parent)?;
     ensure!(expected == current, "order changed; refresh and try again");
     ensure!(
