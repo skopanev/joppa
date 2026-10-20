@@ -49,4 +49,4 @@ async function main() {
   assert.ok(report.p95_ms !== null && report.p95_ms <= 1000, 'p95 ' + report.p95_ms + ' ms is above 1000 ms');
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+require('node:test').test('714c82e6 switch-latency: the top level of a large workspace shows within 1 second', main);

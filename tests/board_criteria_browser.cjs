@@ -4,6 +4,7 @@ const {test, before, after} = require('node:test');
 const assert = require('node:assert/strict');
 const {spawn, spawnSync} = require('node:child_process');
 const {once} = require('node:events');
+const {readFileSync} = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
@@ -193,5 +194,36 @@ test('5e504068 status-filter: the Object status filter lists the schema tones in
     const closed = await select.evaluate(node => ({tone: node.dataset.tone, image: getComputedStyle(node).backgroundImage}));
     assert.equal(closed.tone, 'green');
     assert.match(closed.image, /radial-gradient\(.*rgb\(34, 165, 89\)/);
+  } finally { await f.close(); }
+});
+
+test('board-filters-and-theme-ac2 theme-reload: the dark theme shows its palette at once and after a reload', async () => {
+  // The configured palettes: --bg and --text of the light and the dark theme in board.css.
+  const css = readFileSync(path.join(root, 'src/board.css'), 'utf8');
+  const palette = selector => {
+    const block = css.slice(css.indexOf(selector + '{')).split('}')[0];
+    const rgb = name => {
+      const hex = block.match(new RegExp(name + ':#([0-9a-f]{3,6});'))[1].replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3');
+      return 'rgb(' + [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ') + ')';
+    };
+    return {background: rgb('--bg'), foreground: rgb('--text')};
+  };
+  const light = palette(':root'), dark = palette(':root[data-theme=dark]');
+  assert.notDeepEqual(light, dark);
+  const f = await fixture(domains);
+  try {
+    const rendered = () => f.page.evaluate(() => ({background: getComputedStyle(document.body).backgroundColor,
+      foreground: getComputedStyle(document.documentElement).color}));
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+    await f.page.locator('#theme').waitFor();
+    assert.notEqual(await f.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+    assert.deepEqual(await rendered(), light);
+    await f.page.locator('#theme').click();
+    assert.equal(await f.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+    assert.deepEqual(await rendered(), dark, 'the switch shows the dark palette at once');
+    await f.page.reload();
+    await f.page.locator('#theme').waitFor();
+    assert.equal(await f.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+    assert.deepEqual(await rendered(), dark, 'the reload keeps the dark palette');
   } finally { await f.close(); }
 });
