@@ -167,3 +167,31 @@ test('5c9f319a tree-lanes: two edges never share one vertical segment', async ()
     }
   } finally { await f.close(); }
 });
+
+test('5e504068 status-filter: the Object status filter lists the schema tones in order, each with its colour dot', async () => {
+  const statuses = [{tone: 'orange', light: '#d0661a', dark: '#f08a3c'}, {tone: 'green', light: '#22a559', dark: '#2fbf6a'},
+    {tone: 'red', light: '#c0392b', dark: '#ef6b5e'}];
+  const f = await fixture(domains, statuses);
+  try {
+    await f.save('domain:d1', 'Domain 1');
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+    const select = f.page.getByLabel('Object status');
+    await select.waitFor();
+    const options = await select.locator('option').evaluateAll(list => list.map(option => ({value: option.value,
+      dot: option.querySelector('.status-circle') && getComputedStyle(option.querySelector('.status-circle')).backgroundColor})));
+    // The saved order comes first; the tones that the list omits follow in the default order.
+    assert.deepEqual(options.map(option => option.value), ['', 'orange', 'green', 'red', 'purple', 'yellow', 'grey']);
+    assert.deepEqual(options.slice(1, 4).map(option => option.dot), ['rgb(208, 102, 26)', 'rgb(34, 165, 89)', 'rgb(192, 57, 43)']);
+    assert.ok(options.slice(4).every(option => option.dot && option.dot !== 'rgba(0, 0, 0, 0)'), JSON.stringify(options));
+    await select.click();
+    const listed = f.page.locator('.status-option[data-tone="orange"] .status-circle');
+    await listed.waitFor({state: 'visible'});
+    const box = await listed.boundingBox();
+    assert.ok(box && box.width >= 6 && box.height >= 6, 'the open list shows the dot: ' + JSON.stringify(box));
+    await f.page.locator('.status-option[data-tone="green"]').click();
+    assert.equal(await select.inputValue(), 'green');
+    const closed = await select.evaluate(node => ({tone: node.dataset.tone, image: getComputedStyle(node).backgroundImage}));
+    assert.equal(closed.tone, 'green');
+    assert.match(closed.image, /radial-gradient\(.*rgb\(34, 165, 89\)/);
+  } finally { await f.close(); }
+});

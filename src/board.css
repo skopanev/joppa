@@ -150,6 +150,9 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .collection-tab[aria-selected=true]{color:var(--heading);text-decoration-line:underline;text-decoration-style:wavy;text-decoration-thickness:1px;text-underline-offset:5px}
 .filter-fields{display:flex;flex-wrap:wrap;gap:.2em 2em;margin:0 0 1.2em}
 .filter-fields select{width:12em;font-size:14px}
+.filter-fields select.status-filter:not([data-tone=""]){padding-left:16px;background-image:radial-gradient(circle,var(--tone) 3.5px,transparent 4px),var(--select-arrow);background-position:left center,right 4px center;background-size:8px 8px,10px 6px}
+.status-option .status-circle{margin-right:.5em;vertical-align:1px}
+@supports not (appearance:base-select){.status-filter option[data-tone]{color:var(--tone)}}
 @media(pointer:coarse){.filter-fields select{font-size:16px}}
 #tree>.filter-fields{margin-bottom:1.4em}
 
