@@ -76,6 +76,23 @@ async fn browser_server() -> Result<()> {
         uuid::Uuid::new_v4().simple()
     );
     sessions::create(&pool, &person_cookie, &person, None).await?;
+    // A second person with a Google identity, a profile name, a session and no workspace.
+    // The email is new for each fixture, so no grant from an earlier check admits this person.
+    let maria = format!("google-maria-{}", uuid::Uuid::new_v4().simple());
+    let maria_email = format!("{maria}@example.com");
+    pool.get()
+        .await?
+        .execute(
+            "INSERT INTO joppa.google_identities(actor,google_sub,email,display_name) VALUES($1,$1,$2,'Maria Petrova')",
+            &[&maria, &maria_email],
+        )
+        .await?;
+    let maria_cookie = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    sessions::create(&pool, &maria_cookie, &maria, None).await?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();
@@ -142,7 +159,7 @@ async fn browser_server() -> Result<()> {
     }
     println!(
         "JOPPA_BROWSER_READY {}",
-        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie})
+        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie,"maria":maria,"maria_email":maria_email,"maria_cookie":maria_cookie})
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;

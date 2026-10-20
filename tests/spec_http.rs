@@ -47,3 +47,5 @@ include!("spec_http/part32.rs");
 include!("spec_http/part33.rs");
 include!("spec_http/part34.rs");
 include!("spec_http/part35.rs");
+include!("spec_http/part36.rs");
+include!("spec_http/part37.rs");

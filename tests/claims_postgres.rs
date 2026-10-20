@@ -41,13 +41,14 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
         &json!({"op":"workspace","title":"Claims"}),
     )
     .await?;
-    for bot in ["bot1", "bot2"] {
-        store::execute_input(
+    // alex and maria are two different human members.
+    for member in ["alex", "maria"] {
+        store::execute_remote_input(
             &pool,
             &ws,
             "owner",
-            bot,
-            &json!({"op":"enroll_service","id":bot,"role":"agent"}),
+            member,
+            &json!({"op":"member","id":member,"role":"human"}),
         )
         .await?;
     }
@@ -84,28 +85,29 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
     for run in 0..50 {
         let task = store::execute_remote_input(&pool,&ws,"owner",&format!("task-{run}"),&json!({"op":"save_object","kind":"task","revision":0,"parent":"spec:root","data":{"title":"Implement","owner":"owner","contract":"Implement the specification","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
         let claim = json!({"op":"claim_task","id":task["object"]["address"],"revision":task["object"]["revision"]});
-        for bot in ["bot1", "bot2"] {
-            let mine = store::task_queue(&pool, &ws, bot, "mine", 10, None).await?;
+        for member in ["alex", "maria"] {
+            let mine = store::task_queue(&pool, &ws, member, "mine", 10, None).await?;
             ensure!(
                 mine["total"] == 0,
-                "run {run}: {bot} mine total {}",
+                "run {run}: {member} mine total {}",
                 mine["total"]
             );
         }
         let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
-        let [a, b] =
-            [("bot1", format!("a-{run}")), ("bot2", format!("b-{run}"))].map(|(bot, request)| {
+        let [a, b] = [("alex", format!("a-{run}")), ("maria", format!("b-{run}"))].map(
+            |(member, request)| {
                 let (pool, ws, claim, barrier) =
                     (pool.clone(), ws.clone(), claim.clone(), barrier.clone());
                 tokio::spawn(async move {
                     barrier.wait().await;
-                    store::execute_remote_input(&pool, &ws, bot, &request, &claim).await
+                    store::execute_remote_input(&pool, &ws, member, &request, &claim).await
                 })
-            });
+            },
+        );
         let (a, b) = (a.await, b.await);
         let (winner, won, lost) = match (a, b) {
-            (Ok(Ok(won)), Ok(Err(lost))) => ("bot1", won, lost),
-            (Ok(Err(lost)), Ok(Ok(won))) => ("bot2", won, lost),
+            (Ok(Ok(won)), Ok(Err(lost))) => ("alex", won, lost),
+            (Ok(Err(lost)), Ok(Ok(won))) => ("maria", won, lost),
             (a, b) => anyhow::bail!("run {run}: {a:?} / {b:?}"),
         };
         ensure!(won["command"]["op"] == "claim_task", "run {run}: {won}");

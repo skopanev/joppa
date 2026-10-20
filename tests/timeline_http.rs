@@ -15,7 +15,8 @@ impl Drop for Server {
     }
 }
 
-/// Workspace W with the members bot (agent), pat (person) and runner (agent, uploads reports).
+/// Workspace W with the members bot (agent), pat and maria (persons), and runner (agent,
+/// uploads reports).
 struct World {
     _server: Server,
     _dir: std::path::PathBuf,
@@ -54,7 +55,12 @@ async fn world() -> Result<World> {
         &json!({"op":"workspace","title":"Timeline"}),
     )
     .await?;
-    for (id, role) in [("bot", "agent"), ("pat", "human"), ("runner", "agent")] {
+    for (id, role) in [
+        ("bot", "agent"),
+        ("pat", "human"),
+        ("maria", "human"),
+        ("runner", "agent"),
+    ] {
         if role == "human" {
             store::execute_remote_input(
                 &pool,
@@ -72,7 +78,7 @@ async fn world() -> Result<World> {
         std::env::temp_dir().join(format!("joppa-timeline-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let tokens: std::collections::BTreeMap<&'static str, String> =
-        ["owner", "bot", "pat", "runner"]
+        ["owner", "bot", "pat", "maria", "runner"]
             .into_iter()
             .map(|actor| (actor, uuid::Uuid::new_v4().simple().to_string()))
             .collect();
@@ -357,15 +363,13 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
 // workspace-timeline-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_read_only_agent_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_reply()
--> Result<()> {
+async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_reply() -> Result<()>
+{
     let w = world().await?;
-    w.save("bot", "domain:d", 0, None, "Add the domain").await?;
-    let reader = store::create_agent_token(&w.pool, &w.ws, "owner", "reader", Some("read")).await?
-        ["token"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    // The owner changes W. maria is a member of W, and eve is not.
+    w.save("owner", "domain:d", 0, None, "Add the domain")
+        .await?;
+    let maria = w.token("maria").to_owned();
     let read = |ws: String, auth: (&'static str, String)| {
         let w = &w;
         async move {
@@ -378,7 +382,7 @@ async fn a_read_only_agent_reads_the_timeline_and_a_stranger_gets_the_absent_wor
             Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
         }
     };
-    let (code, body) = read(w.ws.clone(), ("authorization", format!("Bearer {reader}"))).await?;
+    let (code, body) = read(w.ws.clone(), ("authorization", format!("Bearer {maria}"))).await?;
     let timeline: Value = serde_json::from_str(&body)?;
     ensure!(
         code == 200
@@ -388,7 +392,7 @@ async fn a_read_only_agent_reads_the_timeline_and_a_stranger_gets_the_absent_wor
         "{code} {body}"
     );
     let mcp = w
-        .mcp(&reader, "joppa_timeline", json!({"workspace":w.ws}))
+        .mcp(&maria, "joppa_timeline", json!({"workspace":w.ws}))
         .await?;
     ensure!(mcp == timeline, "{mcp} / {timeline}");
     let eve = format!(

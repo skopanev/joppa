@@ -605,11 +605,12 @@ test('removal-at-once-ac4: a removed member reloads without workspace data', asy
   } finally { await f.close(); }
 });
 
-// Alex keeps the workspaces that this check creates. It runs after removal-at-once-ac4,
-// which opens the board without a workspace choice, like the other Settings checks.
+// Maria is new in each fixture and is a member of W1 and W2 only. Alex owns W1 and W2.
+// Another person owns the control workspace W3.
 test('settings-in-name-menu-ac1: Settings in the name menu opens the settings page with the member workspaces', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   const person = await browser.newContext({reducedMotion: 'reduce'});
+  const maria = await browser.newContext({reducedMotion: 'reduce'});
   try {
     const create = async (context, title) => {
       const created = await context.request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title}});
@@ -617,42 +618,55 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       return (await created.json()).id;
     };
     const suffix = crypto.randomUUID(), w1 = 'W1 ' + suffix, w2 = 'W2 ' + suffix, w3 = 'W3 ' + suffix;
-    await create(f.page.context(), w1);
-    await create(f.page.context(), w2);
-    // Another person owns the control workspace W3, so alex is not a member.
+    const shared = [await create(f.page.context(), w1), await create(f.page.context(), w2)];
+    // Alex adds maria as a human member. A Google person reads only granted workspaces, so alex also grants the email.
+    for (const id of shared) {
+      const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(id) + '/commands', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
+        body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', id: f.live.maria, role: 'human'}})});
+      assert.equal(added.status, 200, await added.text());
+      const granted = await f.page.context().request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root},
+        data: {workspace: id, email: f.live.maria_email}});
+      assert.equal(granted.status(), 200);
+    }
     await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
-    const control = await create(person, w3);
-    const reader = await (await f.page.context().request.get(f.live.root + '/api/workspaces')).json();
-    const titles = reader.map(w => w.title);
-    assert.ok(titles.includes(w1) && titles.includes(w2));
-    assert.ok(!titles.includes(w3) && !reader.some(w => w.id === control));
+    await create(person, w3);
+    await maria.addCookies([{name: 'joppa_session', value: f.live.maria_cookie, url: f.live.root}]);
+    // Maria is a member of W1 and W2, but not the owner.
+    const access = (await (await f.page.context().request.get(f.live.root + '/api/access')).json()).items;
+    for (const id of shared) {
+      assert.deepEqual(access.find(w => w.id === id).members.filter(m => m.id === f.live.maria).map(m => m.owner), [false]);
+    }
+    const page = await maria.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
     const inside = (box, width, height) => box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height;
     for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
-      await f.page.setViewportSize({width, height});
-      await f.open('domain:d');
-      await f.page.locator('#identity').click();
-      const items = f.page.locator('.account-options > *');
+      await page.setViewportSize({width, height});
+      assert.equal((await page.goto(f.live.root + '/?workspace=' + encodeURIComponent(shared[0]))).status(), 200);
+      await page.locator('#identity').filter({hasText: /\S/}).waitFor();
+      await page.locator('#identity').click();
+      const items = page.locator('.account-options > *');
       assert.deepEqual(await items.allInnerTexts(), ['Settings', 'Sign out']);
       for (const item of await items.all()) assert.ok(inside(await item.boundingBox(), width, height));
       await items.first().click();
-      await f.page.waitForURL(f.live.root + '/settings');
-      // One drop-down lists the workspaces of alex in the server order.
-      const list = f.page.getByLabel('Workspace', {exact: true});
-      await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
-      assert.deepEqual(await list.locator('option').allInnerTexts(), titles);
-      assert.equal(await list.locator('option').filter({hasText: w3}).count(), 0);
+      await page.waitForURL(f.live.root + '/settings');
+      // One drop-down holds the titles of W1 and W2 and no other workspace.
+      const list = page.getByLabel('Workspace', {exact: true});
+      await page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
+      assert.deepEqual((await list.locator('option').allInnerTexts()).sort(), [w1, w2]);
       assert.ok(inside(await list.boundingBox(), width, Infinity));
-      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
     // A failed list read shows the server error and no list.
-    await f.page.route(f.live.root + '/api/workspaces', route => route.request().method() === 'GET'
+    await page.route(f.live.root + '/api/workspaces', route => route.request().method() === 'GET'
       ? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({error: 'workspace list unavailable'})})
       : route.continue());
-    await f.page.reload();
-    await f.page.getByRole('alert').filter({hasText: 'workspace list unavailable'}).waitFor();
-    assert.equal(await f.page.locator('#workspace-select option').count(), 0);
-    assert.equal(await f.page.locator('#workspace-panel').isVisible(), false);
-  } finally { await person.close(); await f.close(); }
+    await page.reload();
+    await page.getByRole('alert').filter({hasText: 'workspace list unavailable'}).waitFor();
+    assert.equal(await page.locator('#workspace-select option').count(), 0);
+    assert.equal(await page.locator('#workspace-panel').isVisible(), false);
+    assert.deepEqual(errors, []);
+  } finally { await maria.close(); await person.close(); await f.close(); }
 });
 
 // Alex owns W1. The fixture workspace is W2: the fixture owner owns it and alex is only a member.
@@ -663,16 +677,19 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
     const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'W1 ' + crypto.randomUUID()}});
     assert.equal(created.status(), 200);
     const {id: owned, title: w1} = await created.json();
-    for (const [suffix, body] of [['/commands', {request_id: crypto.randomUUID(), command: {op: 'member', id: 'maria', role: 'human'}}],
+    for (const [suffix, body] of [['/commands', {request_id: crypto.randomUUID(), command: {op: 'member', id: f.live.maria, role: 'human'}}],
       ['/agent-tokens', {agent: 'planner-bot'}]]) {
       const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + suffix, {method: 'POST',
         headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       assert.equal(added.status, 200, await added.text());
     }
-    // A person with an email grant is not yet a member of W1.
-    const granted = await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root},
-      data: {workspace: owned, email: 'pending@example.com'}});
-    assert.equal(granted.status(), 200);
+    // A person with an email grant is not yet a member of W1. Maria is a member and also has an email grant.
+    for (const email of ['pending@example.com', f.live.maria_email]) {
+      const granted = await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root}, data: {workspace: owned, email}});
+      assert.equal(granted.status(), 200);
+    }
+    const grants = (await (await request.get(f.live.root + '/api/email-grants')).json()).items.find(w => w.id === owned);
+    assert.deepEqual(grants.emails.sort(), [f.live.maria_email, 'pending@example.com'].sort());
     const inside = (box, width) => box.x >= 0 && box.x + box.width <= width;
     for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
       await f.page.setViewportSize({width, height});
@@ -688,8 +705,10 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       assert.deepEqual(reads.sort(), ['/api/access', '/api/me', '/api/workspaces']);
       await select.selectOption(owned);
       // One list holds the members, then the emails that have not signed in. The agent member is not on the page.
+      // Maria has a Google identity, so her row shows "name <email>", and her email grant has no second row.
       const members = f.page.getByRole('list', {name: 'People with access', exact: true});
-      assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(), ['alex', 'maria', 'pending@example.com (invited)']);
+      assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(),
+        ['alex', 'Maria Petrova <' + f.live.maria_email + '>', 'pending@example.com (invited)']);
       // The owner row has no Remove; every other row has one.
       assert.deepEqual(await members.locator('li').evaluateAll(rows => rows.map(r => !!r.querySelector('button.remove'))), [false, true, true]);
       assert.equal(await f.page.locator('#owner-panel ul').count(), 1);
@@ -701,6 +720,7 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       // W2 shows no member list and no control.
       await select.selectOption(f.live.ws);
       await f.page.locator('#not-owner').waitFor();
+      assert.equal(await f.page.locator('#not-owner').innerText(), 'Only the owner of this workspace manages its people.');
       assert.equal(await panel.locator('ul:visible, form:visible, button:visible, input:visible').count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }

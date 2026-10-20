@@ -4,27 +4,25 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     // old-agent-locked-out-ac1
+    // P is alex and Q is maria, two different human members.
     let w = world().await?;
-    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
-    let bot = first["token"].as_str().unwrap();
-    let bot2 = second["token"].as_str().unwrap();
-    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let (p, q) = (w.alex.as_str(), w.maria.as_str());
+    w.command_as(p, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"returned","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for transfer"})).await?;
     w.command_as(
-        bot,
+        p,
         json!({"op":"claim_task","id":"task:returned","revision":1}),
     )
     .await?;
-    w.command_as(bot, json!({"op":"release_task","id":"task:returned","revision":2,"reason":"Return the unfinished work"})).await?;
+    w.command_as(p, json!({"op":"release_task","id":"task:returned","revision":2,"reason":"Return the unfinished work"})).await?;
     w.command_as(
-        bot2,
+        q,
         json!({"op":"claim_task","id":"task:returned","revision":3}),
     )
     .await?;
     let claimed = w.get("address=task:returned").await?;
     ensure!(claimed["current_revision"] == 4, "{claimed}");
-    ensure!(claimed["process"]["assignee"] == "bot2", "{claimed}");
+    ensure!(claimed["process"]["assignee"] == "maria", "{claimed}");
     let conn = w.pool.get().await?;
     let before: i64 = conn
         .query_one(
@@ -38,7 +36,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     let response = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(bot)
+        .bearer_auth(p)
         .json(&json!({"request_id":request_id,"command":complete}))
         .send()
         .await?;
@@ -52,7 +50,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
         response["error"] == "Task is not claimed unfinished work",
         "{response}"
     );
-    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":complete}}})).send().await?;
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(p).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":complete}}})).send().await?;
     ensure!(response.status().is_success(), "{}", response.status());
     let response: Value = response.json().await?;
     ensure!(
@@ -87,7 +85,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     let response = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(bot2)
+        .bearer_auth(q)
         .json(&json!({"request_id":request_id,"command":complete}))
         .send()
         .await?;
@@ -95,13 +93,13 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     let done = w.get("address=task:returned").await?;
     ensure!(
         done["current_revision"] == 5
-            && done["document"]["actor"] == "bot2"
+            && done["document"]["actor"] == "maria"
             && done["process"]["done"].is_string(),
         "{done}"
     );
     w.command(json!({"op":"save_object","kind":"task","id":"owner-completion","revision":0,"parent":"ac:key-rights","data":{"title":"Check completion authority","owner":"owner","contract":"Implement the same key rights contract","purpose":"implementation","projects":[]},"reason":"Check completion by the current holder"})).await?;
     w.command_as(
-        bot2,
+        q,
         json!({"op":"claim_task","id":"task:owner-completion","revision":1}),
     )
     .await?;
@@ -129,10 +127,10 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
         unchanged["document"] == owned["document"] && unchanged["process"] == owned["process"],
         "The refused owner completion changed the Task"
     );
-    w.command_as(bot2, complete).await?;
+    w.command_as(q, complete).await?;
     let done = w.get("address=task:owner-completion").await?;
     ensure!(
-        done["document"]["actor"] == "bot2" && done["process"]["done"].is_string(),
+        done["document"]["actor"] == "maria" && done["process"]["done"].is_string(),
         "{done}"
     );
     Ok(())
@@ -142,34 +140,28 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_released_holder_cannot_complete_open_or_reclaimed_work() -> Result<()> {
     // old-agent-locked-out-ac1
-    // A Task owner must be a human member, so P is alex in the variant where P owns the Task.
-    for (holder, owner_releases) in [
-        ("bot", false),
-        ("bot", true),
-        ("alex", false),
-        ("alex", true),
-    ] {
-        released_holder_cannot_complete(holder, owner_releases)
+    // P is alex and Q is maria. In one fixture, P also owns the Task document.
+    for (p_owns_task, owner_releases) in
+        [(false, false), (false, true), (true, false), (true, true)]
+    {
+        released_holder_cannot_complete(p_owns_task, owner_releases)
             .await
-            .map_err(|e| e.context(format!("holder {holder}, owner releases: {owner_releases}")))?;
+            .map_err(|e| {
+                e.context(format!(
+                    "P owns the Task: {p_owns_task}, owner releases: {owner_releases}"
+                ))
+            })?;
     }
     Ok(())
 }
 
-/// P (`holder`) claims T, then P or the workspace owner releases it; P's completion is refused
-/// while T is open and after Q claims it, then Q completes T. Alex as P owns the Task document.
-async fn released_holder_cannot_complete(holder: &str, owner_releases: bool) -> Result<()> {
+/// P (alex) claims T, then P or the workspace owner releases it; P's completion is refused
+/// while T is open and after Q (maria) claims it, then Q completes T.
+async fn released_holder_cannot_complete(p_owns_task: bool, owner_releases: bool) -> Result<()> {
     let w = world().await?;
-    let first = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let second = store::create_agent_token(&w.pool, &w.ws, "owner", "bot2", None).await?;
-    let bot = first["token"].as_str().unwrap();
-    let bot2 = second["token"].as_str().unwrap();
-    let (p, document_owner) = if holder == "alex" {
-        (w.alex.as_str(), "alex")
-    } else {
-        (bot, "owner")
-    };
-    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    let (p, q) = (w.alex.as_str(), w.maria.as_str());
+    let document_owner = if p_owns_task { "alex" } else { "owner" };
+    w.command_as(p, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"released","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":document_owner,"contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for release"})).await?;
     w.command_as(
         p,
@@ -178,7 +170,7 @@ async fn released_holder_cannot_complete(holder: &str, owner_releases: bool) -> 
     .await?;
     let claimed = w.get("address=task:released").await?;
     ensure!(
-        claimed["process"]["assignee"] == holder
+        claimed["process"]["assignee"] == "alex"
             && claimed["document"]["data"]["owner"] == document_owner,
         "{claimed}"
     );
@@ -194,7 +186,7 @@ async fn released_holder_cannot_complete(holder: &str, owner_releases: bool) -> 
         );
     }
     w.command_as(
-        bot2,
+        q,
         json!({"op":"claim_task","id":"task:released","revision":3}),
     )
     .await?;
@@ -202,16 +194,16 @@ async fn released_holder_cannot_complete(holder: &str, owner_releases: bool) -> 
         let claimed = refused_completion(&w, p, "task:released", mcp).await?;
         ensure!(
             claimed["process"]["status"] == "in_progress"
-                && claimed["process"]["assignee"] == "bot2"
+                && claimed["process"]["assignee"] == "maria"
                 && claimed["process"]["done"].is_null(),
             "{claimed}"
         );
     }
-    w.command_as(bot2, json!({"op":"complete_task","id":"task:released","revision":4,"evidence":"Implemented the contract and recorded checks"})).await?;
+    w.command_as(q, json!({"op":"complete_task","id":"task:released","revision":4,"evidence":"Implemented the contract and recorded checks"})).await?;
     let done = w.get("address=task:released").await?;
     ensure!(
         done["current_revision"] == 5
-            && done["document"]["actor"] == "bot2"
+            && done["document"]["actor"] == "maria"
             && done["process"]["done"].is_string(),
         "{done}"
     );
