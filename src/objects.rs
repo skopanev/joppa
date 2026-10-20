@@ -701,6 +701,9 @@ pub fn status_order(t: &TreeType) -> Vec<String> {
         .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
 }
 
+/// The relations that a link between two objects can have.
+pub const LINK_RELATIONS: [&str; 2] = ["related", "depends_on"];
+
 #[allow(clippy::too_many_arguments)]
 /// The priority values of the workspace, the first value first in work order.
 pub fn priority_values(w: &Workspace) -> Vec<String> {
@@ -1238,7 +1241,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
         .is_some_and(|(kind, _)| task_kind(w, kind));
     for link in links {
         ensure!(
-            ["related", "depends_on"].contains(&link.relation.as_str()),
+            LINK_RELATIONS.contains(&link.relation.as_str()),
             "unknown link relation"
         );
         ensure!(

@@ -32,3 +32,7 @@ body.schema-page{max-width:1280px}
 .schema-footer{margin-top:1.2em}
 @media(max-width:760px){.schema-page .header-actions{justify-content:space-between}.schema-page #revision{max-width:180px}.schema-legend>span:last-child{margin-left:0;flex-basis:100%}.type{padding:9px 10px}}
 :focus,:focus-visible{outline:none}
+.schema-config{display:grid;grid-template-columns:repeat(auto-fit,minmax(14em,1fr));gap:1em 2em;margin:1.5em 0}
+.schema-config h2{margin:0 0 .3em;font-size:.85em;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.schema-config ul,.schema-config ol{margin:0;padding-left:1.2em}
+.schema-status-rule{display:block;color:var(--muted)}

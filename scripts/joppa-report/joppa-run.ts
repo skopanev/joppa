@@ -29,7 +29,7 @@ const probe = Bun.spawnSync(
 let browserFailed = false;
 if (probe.exitCode === 0) {
   const browser = Bun.spawnSync(
-    ["bun", "run", "test:browser", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs", "tests/board_criteria_browser.cjs", "tests/board_filters_browser.cjs"],
+    ["bun", "run", "test:browser", "--test", "--test-reporter=junit", "--test-reporter-destination=.joppa/browser.junit.xml", "tests/grey_ac_browser.cjs", "tests/board_criteria_browser.cjs", "tests/board_filters_browser.cjs", "tests/tree_page_browser.cjs"],
     { stdout: "inherit", stderr: "inherit", env },
   );
   browserFailed = browser.exitCode !== 0;

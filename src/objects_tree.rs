@@ -39,6 +39,22 @@ pub async fn tree_schema(
         selected.statuses.as_ref(),
         selected.status_colors.as_ref()
     ));
+    // The tree page shows the values that apply: priority levels, link relations and the
+    // status rule of each type.
+    schema["priority_levels"] = json!(
+        selected
+            .priorities
+            .clone()
+            .unwrap_or_else(|| { ["p0", "p1", "p2"].map(String::from).to_vec() })
+    );
+    schema["link_relations"] = json!(objects::LINK_RELATIONS);
+    schema["status_rules"] = json!(
+        selected
+            .types
+            .iter()
+            .map(|(kind, t)| (kind.clone(), objects::status_rule(t)))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    );
     Ok(
         json!({"workspace":row.get::<_,String>(2),"position":row.get::<_,i64>(3),"current_revision":current,"schema":schema}),
     )

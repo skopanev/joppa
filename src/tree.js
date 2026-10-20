@@ -4,8 +4,21 @@ const element=(tag,text,cls)=>{const el=document.createElement(tag);el.textConte
 const svgElement=(tag,attributes)=>{const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attributes))el.setAttribute(key,value);return el;};
 async function api(path){const response=await fetch('/api/'+path);const value=await response.json();if(!response.ok)throw Error(value.error||'Could not read the schema.');return value;}
 
+// The configuration lists repeat the schema in words: root types, parent rules, link
+// relations, priority levels and the status rule of each type. Nothing here is editable.
+const RULE_TEXT={tests:'Test results of its own list',children:'First status of its children',links:'First status of linking objects',none:'Process status'};
+function renderConfig(schema){
+  const list=(id,values)=>document.querySelector('#'+id).replaceChildren(...values.map(text=>element('li',text)));
+  const title=kind=>kind==='*'?'Any object type':schema.types[kind]?.title||kind;
+  const kinds=Object.keys(schema.types).sort();
+  list('config-roots',kinds.filter(kind=>schema.types[kind].root).map(title));
+  list('config-edges',kinds.flatMap(kind=>[...(schema.types[kind].root?['Workspace']:[]),...schema.types[kind].parents.map(title)].map(parent=>parent+' → '+title(kind))));
+  list('config-relations',schema.link_relations||[]);
+  list('config-priorities',schema.priority_levels||[]);
+  list('config-status-rules',kinds.map(kind=>title(kind)+': '+(RULE_TEXT[schema.status_rules?.[kind]]||schema.status_rules?.[kind]||'')));
+}
 function renderTree(schema){
-  layout=undefined;
+  layout=undefined;renderConfig(schema);
   const definitions=schema.types,root='@workspace';
   const nodes=new Map(),parents=new Map(),edges=[];
   nodes.set(root,{title:workspace.selectedOptions[0].textContent,label:'Workspace',className:'workspace-node'});
@@ -69,6 +82,7 @@ function renderTree(schema){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);
       card.setAttribute('aria-label',t.title+'. Parents: '+[...(t.root?['Workspace']:[]),...t.parents.map(p=>p==='*'?'Any object type':definitions[p]?.title||p)].join(', ')+(related.length?'. '+related.join(' '):''));
       if(t.parents.includes('*'))card.append(element('small','Inside any type','schema-parent-rule'));
+      const rule=schema.status_rules?.[id];if(rule)card.append(element('small','Status: '+(RULE_TEXT[rule]||rule).toLowerCase(),'schema-status-rule'));
     }
     card.addEventListener('mouseenter',()=>{hovered=id;highlight(id);});card.addEventListener('mouseleave',()=>{hovered=undefined;highlight(document.activeElement?.dataset.kind);});
     card.addEventListener('focus',()=>highlight(id));card.addEventListener('blur',()=>highlight(hovered));node.card=card;types.append(card);

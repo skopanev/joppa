@@ -237,7 +237,7 @@ part_stamp .joppa/bun.stamp.json
 database browser
 export JOPPA_TEST_DATABASE_URL="$database_url"
 setsid bun run test:browser --test --test-reporter=junit --test-reporter-destination=.joppa/browser.junit.xml \
-  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs &
+  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs tests/tree_page_browser.cjs &
 pids+=("$!")
 wait "${pids[0]}" || status=1
 part_stamp .joppa/browser.stamp.json
