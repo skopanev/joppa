@@ -149,6 +149,12 @@ pub enum Command {
     EnrollMember {
         id: String,
     },
+    /// Internal enrollment of a service identity, an agent or a runner, by the workspace
+    /// owner. Public command entry points reject this operation.
+    EnrollService {
+        id: String,
+        role: String,
+    },
     /// Internal event of a test report upload: it gives the upload its journal position.
     /// The report itself stays in joppa.test_reports; the event changes no state.
     RecordReport {
@@ -903,7 +909,15 @@ pub fn unchanged_save(
 pub const RESET_CHANGED: &str = "reset_changed";
 pub const KEEP_ASSESSMENTS: &str = "keep_assessments";
 pub const LIST_SAVE_RESET: &str = "list_save_reset";
-pub const REPLAY_RULES: [&str; 3] = [RESET_CHANGED, KEEP_ASSESSMENTS, LIST_SAVE_RESET];
+/// From this rule on, the member command accepts only people. Agents and runners enroll
+/// through the internal enroll_service event.
+pub const HUMAN_MEMBERS: &str = "human_members";
+pub const REPLAY_RULES: [&str; 4] = [
+    RESET_CHANGED,
+    KEEP_ASSESSMENTS,
+    LIST_SAVE_RESET,
+    HUMAN_MEMBERS,
+];
 
 /// The workspace journal reached the epoch of the rule at `position`.
 fn epoch_reached(w: &Workspace, rule: &str, position: u64) -> bool {
@@ -1218,10 +1232,23 @@ pub(crate) fn apply_inner(
         Command::Member { id, role } => {
             ensure!(actor == w.admin, "workspace owner required");
             identifier(id)?;
+            // From its epoch on, a membership is a person. An older event keeps its role.
+            let roles: &[&str] = if rule_applies(w, HUMAN_MEMBERS, position) {
+                &["human"]
+            } else {
+                &["human", "agent", "runner"]
+            };
+            ensure!(roles.contains(&role.as_str()), "unknown role");
             ensure!(
-                ["human", "agent", "runner"].contains(&role.as_str()),
-                "unknown role"
+                !w.members.contains_key(id),
+                "member exists; identities cannot be reassigned"
             );
+            w.members.insert(id.clone(), role.clone());
+        }
+        Command::EnrollService { id, role } => {
+            ensure!(actor == w.admin, "workspace owner required");
+            identifier(id)?;
+            ensure!(["agent", "runner"].contains(&role.as_str()), "unknown role");
             ensure!(
                 !w.members.contains_key(id),
                 "member exists; identities cannot be reassigned"

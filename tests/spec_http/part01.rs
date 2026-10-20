@@ -29,7 +29,7 @@ async fn seed(pool: &deadpool_postgres::Pool, ws: &str, extra: Vec<(&str, Value)
         json!({"op":"workspace","title":"Spec over HTTP"}),
         json!({"op":"member","id":"alex","role":"human"}),
         json!({"op":"member","id":"maria","role":"human"}),
-        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
         json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
         json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
         json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),

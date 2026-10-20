@@ -44,7 +44,7 @@ async fn workspace(pool: &deadpool_postgres::Pool, task_parents: Value) -> Resul
         pool,
         &ws,
         "owner",
-        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
     )
     .await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;

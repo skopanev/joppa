@@ -179,8 +179,11 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
         &json!({"op":"workspace","title":"Grey states across a restart"}),
     )
     .await?;
-    f.write(OWNER, json!({"op":"member","id":AGENT,"role":"agent"}))
-        .await?;
+    f.write(
+        OWNER,
+        json!({"op":"enroll_service","id":AGENT,"role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure groups","types":{
         "area":{"title":"Area","role":"group","root":true,"parents":["area"]},

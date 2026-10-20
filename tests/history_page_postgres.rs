@@ -53,7 +53,7 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
         write(
             &pool,
             &ws,
-            json!({"op":"member","id":format!("agent-{i}"),"role":"agent"}),
+            json!({"op":"enroll_service","id":format!("agent-{i}"),"role":"agent"}),
         )
         .await?;
     }

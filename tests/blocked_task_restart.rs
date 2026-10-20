@@ -311,8 +311,11 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
     )
     .await?;
     for actor in [PLANNER, L, Z] {
-        f.write(OWNER, json!({"op":"member","id":actor,"role":"agent"}))
-            .await?;
+        f.write(
+            OWNER,
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+        )
+        .await?;
     }
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
@@ -613,8 +616,11 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
     )
     .await?;
     for actor in [PLANNER, READER] {
-        f.write(OWNER, json!({"op":"member","id":actor,"role":"agent"}))
-            .await?;
+        f.write(
+            OWNER,
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+        )
+        .await?;
     }
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
@@ -854,8 +860,11 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
         &json!({"op":"workspace","title":"Claims across a restart"}),
     )
     .await?;
-    f.write(OWNER, json!({"op":"member","id":HOLDER,"role":"agent"}))
-        .await?;
+    f.write(
+        OWNER,
+        json!({"op":"enroll_service","id":HOLDER,"role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},

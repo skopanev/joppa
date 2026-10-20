@@ -37,7 +37,7 @@ fn fixture(timed: bool) -> Result<Workspace> {
         at(
             &mut w,
             "owner",
-            json!({"op":"member","id":actor,"role":"agent"}),
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
             0,
         )?;
     }

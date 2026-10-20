@@ -47,7 +47,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
             &ws,
             "owner",
             bot,
-            &json!({"op":"member","id":bot,"role":"agent"}),
+            &json!({"op":"enroll_service","id":bot,"role":"agent"}),
         )
         .await?;
     }
@@ -64,6 +64,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
                 parent_decision: false,
                 status: None,
                 status_order: None,
+                process_fields: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,
@@ -181,8 +182,14 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
             "workspace",
             json!({"op":"workspace","title":"One active task per agent"}),
         ),
-        ("bot", json!({"op":"member","id":"bot","role":"agent"})),
-        ("bot2", json!({"op":"member","id":"bot2","role":"agent"})),
+        (
+            "bot",
+            json!({"op":"enroll_service","id":"bot","role":"agent"}),
+        ),
+        (
+            "bot2",
+            json!({"op":"enroll_service","id":"bot2","role":"agent"}),
+        ),
     ] {
         store::execute_input(&pool, &ws, "owner", id, &command).await?;
     }
@@ -373,7 +380,7 @@ async fn permanent_fixture(minutes: i64) -> Result<(deadpool_postgres::Pool, Str
             &ws,
             "owner",
             actor,
-            &json!({"op":"member","id":actor,"role":"agent"}),
+            &json!({"op":"enroll_service","id":actor,"role":"agent"}),
         )
         .await?;
     }

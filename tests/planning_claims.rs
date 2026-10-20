@@ -17,7 +17,10 @@ fn configured() -> World {
         json!({"op":"workspace","title":"Planning contracts"}),
     );
     for actor in ["planner", "other", "worker"] {
-        w.ok("owner", json!({"op":"member","id":actor,"role":"agent"}));
+        w.ok(
+            "owner",
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+        );
     }
     w.ok(
         "planner",
@@ -438,7 +441,7 @@ fn readiness_guard_preserves_the_criterion_and_legacy_results_do_not_replace_jun
     w.ok("planner", json!({"op":"assess","req":"spec:one","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known input"}}));
     w.ok(
         "owner",
-        json!({"op":"member","id":"runner","role":"runner"}),
+        json!({"op":"enroll_service","id":"runner","role":"runner"}),
     );
     w.ok("owner", json!({"op":"define_verification_scope","req":"spec:one","revision":revision,"subject_keys":["build"],"scope":"Criterion checks","reason":"Define the build"}));
     w.ok("runner", json!({"op":"plan","req":"spec:one","revision":revision,"run":"checks","subject":{"build":"commit-a"},"scope":"Criterion checks","discovery_complete":true,"checks":[

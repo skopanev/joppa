@@ -58,6 +58,22 @@ pub async fn execute(
     )
     .await
 }
+/// Enroll an agent or a runner through the internal enroll_service event. Only server code
+/// calls it; HTTP and MCP writes refuse the operation.
+pub async fn enroll_service(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    id: &str,
+    role: &str,
+) -> Result<Value> {
+    let command = Command::EnrollService {
+        id: id.into(),
+        role: role.into(),
+    };
+    let request = format!("service-{}", uuid::Uuid::new_v4());
+    execute(pool, workspace, actor, &request, &command).await
+}
 pub async fn execute_input(
     pool: &Pool,
     workspace: &str,
@@ -632,6 +648,11 @@ async fn write(
                 ensure!(acs.len() == 1, "task must belong to exactly one AC");
                 commands::nonempty(contract)?;
             }
+            // Only server code enrolls an agent or a runner; HTTP and MCP writes refuse it.
+            ensure!(
+                allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
+                "internal operation"
+            );
             ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),

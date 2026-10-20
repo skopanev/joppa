@@ -26,7 +26,10 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
             "workspace",
             json!({"op":"workspace","title":"Configured references"}),
         ),
-        ("member", json!({"op":"member","id":"agent","role":"agent"})),
+        (
+            "member",
+            json!({"op":"enroll_service","id":"agent","role":"agent"}),
+        ),
     ] {
         store::execute_input(&pool, &ws, "owner", request, &command).await?;
     }

@@ -51,7 +51,7 @@ async fn workspace(pool: &deadpool_postgres::Pool) -> Result<String> {
         pool,
         &ws,
         "owner",
-        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
     )
     .await?;
     Ok(ws)

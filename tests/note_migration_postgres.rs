@@ -12,7 +12,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     let said = "  Дословная заметка\n\nkeep all spaces  ";
     let commands = [
         json!({"op":"workspace","title":"Migration test"}),
-        json!({"op":"member","id":"agent","role":"agent"}),
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
         json!({"op":"intake","id":"source","said":said,"author":"customer"}),
         json!({"op":"split","id":"source","points":[said]}),
         json!({"op":"note","target":"point:source/source.1","id":"context","text":"Original discussion"}),

@@ -345,7 +345,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         &pool,
         &ws,
         "owner",
-        json!({"op":"member","id":"agent","role":"agent"}),
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
     )
     .await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
@@ -528,7 +528,7 @@ async fn blocked_fixture(with_v: bool) -> anyhow::Result<(Pool, String)> {
             &pool,
             &ws,
             "owner",
-            json!({"op":"member","id":actor,"role":"agent"}),
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
         )
         .await?;
     }

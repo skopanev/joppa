@@ -65,7 +65,8 @@ try {
     try { if ((await fetch(`http://127.0.0.1:${port}/health`)).ok) break; } catch {}
     await Bun.sleep(100);
   }
-  await ok({ op: "member", id: "agent", role: "agent" });
+  // The agent enrolls through its token; the member command takes only people.
+  { const [status, data] = await call("/agent-tokens", { agent: "agent" }); check(status === 200, [status, data]); }
   await ok({ op: "consumer", id: "customer", title: "Customer", owner: "owner" });
   await ok({ op: "domain", id: "security", title: "Security", authority: "owner" });
   await ok({ op: "capability", id: "restrict", title: "Restrict access", domain: "security" });

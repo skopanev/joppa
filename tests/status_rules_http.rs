@@ -43,7 +43,7 @@ async fn world() -> Result<World> {
     let ws = format!("status-rules-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
         json!({"op":"workspace","title":"Status rules"}),
-        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
         json!({"op":"member","id":"alex","role":"human"}),
     ]
     .into_iter()

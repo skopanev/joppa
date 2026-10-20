@@ -27,12 +27,12 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         (
             "agent",
             "owner",
-            json!({"op":"member","id":"agent","role":"agent"}),
+            json!({"op":"enroll_service","id":"agent","role":"agent"}),
         ),
         (
             "other",
             "owner",
-            json!({"op":"member","id":"other","role":"agent"}),
+            json!({"op":"enroll_service","id":"other","role":"agent"}),
         ),
     ] {
         store::execute_input(&pool, &ws, actor, id, &cmd).await?;
@@ -54,6 +54,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
                 parent_decision: false,
                 status: None,
                 status_order: None,
+                process_fields: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,
@@ -256,7 +257,11 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
         &json!({"op":"workspace","title":"Dependency pins"}),
     )
     .await?;
-    write("owner", json!({"op":"member","id":"agent","role":"agent"})).await?;
+    write(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&pool, &ws, "owner", None).await?;
     write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ready criteria","types":{
         "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},

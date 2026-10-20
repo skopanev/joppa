@@ -192,6 +192,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             parent_decision: false,
             status: None,
             status_order: None,
+            process_fields: None,
             inbox: None,
             launch_blocker: None,
             color: None,

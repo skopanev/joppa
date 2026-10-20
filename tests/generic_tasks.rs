@@ -28,8 +28,14 @@ fn configured() -> World {
         "owner",
         json!({"op":"workspace","title":"Generic specifications"}),
     );
-    w.ok("owner", json!({"op":"member","id":"agent","role":"agent"}));
-    w.ok("owner", json!({"op":"member","id":"other","role":"agent"}));
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"other","role":"agent"}),
+    );
     let mut types: std::collections::BTreeMap<String, TreeType> = std::collections::BTreeMap::new();
     for (kind, role, root, parents) in [
         ("spec", "document", true, vec!["spec"]),
@@ -46,6 +52,7 @@ fn configured() -> World {
                 parent_decision: false,
                 status: None,
                 status_order: None,
+                process_fields: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,

@@ -55,7 +55,7 @@ async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> 
             pool,
             &workspace,
             "owner",
-            json!({"op":"member","id":actor,"role":"agent"}),
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
         )
         .await?;
     }

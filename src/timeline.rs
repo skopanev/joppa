@@ -51,7 +51,10 @@ const CHANGES: &[(&str, &[&str])] = &[
         "planning",
         &["claim_planning", "finish_planning", "release_planning"],
     ),
-    ("member", &["member", "remove_member", "enroll_member"]),
+    (
+        "member",
+        &["member", "remove_member", "enroll_member", "enroll_service"],
+    ),
     ("schema", &["set_tree_schema", "reorder_tree"]),
     (
         "workspace",

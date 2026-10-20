@@ -63,7 +63,12 @@ async fn workspace(pool: &deadpool_postgres::Pool, tasks: usize) -> Result<Strin
         &json!({"op":"workspace","title":"History marks"}),
     )
     .await?;
-    write(pool, &ws, json!({"op":"member","id":"bot","role":"agent"})).await?;
+    write(
+        pool,
+        &ws,
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
+    )
+    .await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Use root Tasks","types":{
         "task":{"title":"Tasks","role":"task","root":true,"parents":["*"]}

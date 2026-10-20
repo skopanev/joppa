@@ -101,7 +101,7 @@ async fn ensure_notes(
 }
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "12";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "13";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]
@@ -198,8 +198,8 @@ mod state_rows;
 #[path = "store_write.rs"]
 mod write;
 pub use write::{
-    BatchOperation, check_fields, execute, execute_batch, execute_input, execute_remote_batch,
-    execute_remote_input, save_dependency,
+    BatchOperation, check_fields, enroll_service, execute, execute_batch, execute_input,
+    execute_remote_batch, execute_remote_input, save_dependency,
 };
 fn summaries(state: &Workspace) -> Value {
     let summaries: serde_json::Map<String, Value> = state

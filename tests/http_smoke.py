@@ -141,7 +141,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
 
         status, body = command({'op': 'workspace', 'title': 'Forbidden remote create'})
         assert status == 409 and 'server CLI' in body
-        ok({'op': 'member', 'id': 'agent', 'role': 'agent'})
+        # The member command takes only people; an agent enrolls through its token.
+        assert command({'op': 'member', 'id': 'agent', 'role': 'agent'})[0] == 409
+        assert request(f'/api/workspaces/{ws}/agent-tokens', {'agent': 'agent'})[0] == 200
         ok({'op':'member','id':'legal','role':'human'})
         ok({'op':'member','id':'reviewer','role':'human'})
         ok({'op':'consumer','id':'customer','title':'Customer','owner':'owner'})
@@ -265,15 +267,14 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             ('joppa_batch', {'workspace':mcp_ws,'request_id':'mcp-batch-create-denied',
                 'operations':[{'command':{'op':'workspace','title':'Forbidden remote create'}}]}),
             ('joppa_batch', {'workspace':mcp_ws,'request_id':'mcp-late-create-denied',
-                'operations':[{'command':{'op':'member','id':'should-not-exist','role':'agent'}},
+                'operations':[{'command':{'op':'member','id':'should-not-exist','role':'human'}},
                               {'command':{'op':'workspace','title':'Forbidden remote create'}}]}),
         ]:
             denied = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':name,'arguments':arguments}}, owner_token)[1]['result']
             assert denied['isError'] and 'server CLI' in denied['content'][0]['text']
         assert 'should-not-exist' not in mcp('joppa_read', {'workspace':mcp_ws}, owner_token)['index']['members']
-        mcp('joppa_command', {'workspace':mcp_ws,'request_id':'member',
-            'command':{'op':'member','id':'agent','role':'agent'}},owner_token)
+        assert request(f'/api/workspaces/{mcp_ws}/agent-tokens', {'agent': 'agent'})[0] == 200
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'consumer',
             'command':{'op':'consumer','id':'customer','title':'Customer','owner':'owner'}},owner_token)
         draft = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-generated',

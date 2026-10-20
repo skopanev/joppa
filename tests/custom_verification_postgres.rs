@@ -30,13 +30,7 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
     )
     .await?;
     for (id, role) in [("agent", "agent"), ("runner", "runner")] {
-        apply(
-            &pool,
-            &ws,
-            "owner",
-            json!({"op":"member","id":id,"role":role}),
-        )
-        .await?;
+        store::enroll_service(&pool, &ws, "owner", id, role).await?;
     }
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let types = json!({

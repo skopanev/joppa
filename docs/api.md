@@ -39,7 +39,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 ```text
 workspace: title (server administrative CLI only; rejected by HTTP API and MCP)
 rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
-member: id, role (human|agent|runner); workspace owner only
+member: id, role (human); workspace owner only. An agent enrolls through its agent token, not through member. An older journal event keeps its agent or runner role in a replay.
 consumer: id, title, description, owner (human member)
 edit_consumer: id, title, description, owner, reason; consumer owner or workspace owner
 reorder_tree: kind (any configured type), parent (complete object address or null), expected:[id], ids:[id]; workspace owner only

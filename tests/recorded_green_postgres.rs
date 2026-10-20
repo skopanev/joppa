@@ -48,7 +48,7 @@ async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
         pool,
         &ws,
         "owner",
-        json!({"op":"member","id":"bot","role":"agent"}),
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
     )
     .await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;

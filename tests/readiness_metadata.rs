@@ -44,7 +44,10 @@ fn refuse_claim(w: &mut World, key: &str) -> String {
 #[test]
 fn tasks_under_not_ready_criteria_cannot_be_claimed() {
     let mut w = World::new();
-    w.ok("owner", json!({"op":"member","id":"bot","role":"agent"}));
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"bot","role":"agent"}),
+    );
     w.ok("owner", json!({"op":"member","id":"alex","role":"human"}));
     let access = |expected: u32| {
         json!({"op":"revise","req":"access","expected_revision":expected,"capability":"c",
@@ -604,7 +607,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     );
     let snapshot = "SELECT jsonb_build_array(b.xmin::text,b.first_view->>'projection_version',(SELECT jsonb_agg(jsonb_build_array(o.address,o.xmin::text) ORDER BY o.address) FROM joppa.objects o WHERE o.workspace=b.workspace))::text FROM joppa.board_cache b WHERE b.workspace=$1";
     let before: String = conn.query_one(snapshot, &[&ws]).await?.get(0);
-    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "12");
+    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "13");
     store::backfill_board(&pool).await?;
     assert_eq!(
         conn.query_one(snapshot, &[&ws]).await?.get::<_, String>(0),

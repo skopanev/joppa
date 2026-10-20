@@ -66,7 +66,8 @@ async function fixture(types, statuses) {
     finally { assert.deepEqual(pageErrors, []); }
   };
   try {
-    await command({op: 'member', id: 'bot', role: 'agent'}, live.owner);
+    // An agent enrolls through its token; the member command takes only people.
+    await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, live.owner);
     const tree = await api('/tree');
     await command({op: 'set_tree_schema', revision: tree.current_revision, types, ...(statuses ? {statuses} : {}), reason: 'Configure the browser tree'});

@@ -25,10 +25,13 @@ fn setup_custom() -> World {
         "owner",
         json!({"op":"workspace","title":"Configured workflows"}),
     );
-    w.ok("owner", json!({"op":"member","id":"agent","role":"agent"}));
     w.ok(
         "owner",
-        json!({"op":"member","id":"runner","role":"runner"}),
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    );
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"runner","role":"runner"}),
     );
     let types = json!({
         "spec":{"title":"Spec","role":"requirement","root":true,"parents":["*"]},
@@ -396,7 +399,10 @@ fn old_type_names_do_not_select_verification_when_the_schema_assigns_other_roles
         "owner",
         json!({"op":"workspace","title":"Names do not select behavior"}),
     );
-    w.ok("owner", json!({"op":"member","id":"agent","role":"agent"}));
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    );
     w.ok(
         "agent",
         json!({"op":"set_tree_schema","revision":0,"types":{

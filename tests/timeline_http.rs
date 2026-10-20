@@ -55,14 +55,18 @@ async fn world() -> Result<World> {
     )
     .await?;
     for (id, role) in [("bot", "agent"), ("pat", "human"), ("runner", "agent")] {
-        store::execute_remote_input(
-            &pool,
-            &ws,
-            "owner",
-            &uuid::Uuid::new_v4().to_string(),
-            &json!({"op":"member","id":id,"role":role}),
-        )
-        .await?;
+        if role == "human" {
+            store::execute_remote_input(
+                &pool,
+                &ws,
+                "owner",
+                &uuid::Uuid::new_v4().to_string(),
+                &json!({"op":"member","id":id,"role":role}),
+            )
+            .await?;
+        } else {
+            store::enroll_service(&pool, &ws, "owner", id, role).await?;
+        }
     }
     let dir =
         std::env::temp_dir().join(format!("joppa-timeline-{}", uuid::Uuid::new_v4().simple()));

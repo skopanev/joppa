@@ -39,7 +39,7 @@ async fn current_object_read_has_no_journal_select_and_bounded_history_latency()
         &workspace,
         "owner",
         "agent",
-        &json!({"op":"member","id":"bot","role":"agent"}),
+        &json!({"op":"enroll_service","id":"bot","role":"agent"}),
     )
     .await?;
 

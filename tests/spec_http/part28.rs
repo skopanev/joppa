@@ -43,7 +43,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
             &w,
             &help,
             None,
-            json!({"op":"member","id":"newcomer","role":"agent"}),
+            json!({"op":"enroll_service","id":"newcomer","role":"agent"}),
             &w.owner,
             owner_only,
         )

@@ -72,7 +72,7 @@ pub(super) async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Resul
     Ok(workspace)
 }
 
-/// The owner creates a token for an agent. The agent becomes a member with role agent.
+/// The owner creates a token for an agent. The agent enrolls through enroll_service.
 /// A missing access means write. The raw token is returned once.
 pub async fn create_agent_token(
     pool: &Pool,
@@ -91,18 +91,7 @@ pub async fn create_agent_token(
         ensure!(role == "agent", "{agent} is a person, not an agent");
     } else {
         drop(conn);
-        let enroll = Command::Member {
-            id: agent.into(),
-            role: "agent".into(),
-        };
-        execute(
-            pool,
-            &workspace,
-            actor,
-            &format!("agent-token-{}", uuid::Uuid::new_v4()),
-            &enroll,
-        )
-        .await?;
+        super::write::enroll_service(pool, &workspace, actor, agent, "agent").await?;
     }
     let token = format!(
         "jpt_{}{}",

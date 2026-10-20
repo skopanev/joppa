@@ -71,7 +71,7 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
         pool,
         &ws,
         "owner",
-        json!({"op":"member","id":"planner","role":"agent"}),
+        json!({"op":"enroll_service","id":"planner","role":"agent"}),
     )
     .await?;
     let schema = store::tree_schema(pool, &ws, "owner", None).await?;

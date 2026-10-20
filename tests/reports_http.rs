@@ -47,7 +47,7 @@ async fn world() -> Result<World> {
     let ws = format!("http-reports-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
         json!({"op":"workspace","title":"Reports over HTTP"}),
-        json!({"op":"member","id":"agent","role":"agent"}),
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
         json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
         json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
         json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
@@ -487,8 +487,11 @@ async fn planning(w: &World) -> Result<Planning<'_>> {
     )
     .await?;
     for actor in ["agent", "other"] {
-        p.write("owner", json!({"op":"member","id":actor,"role":"agent"}))
-            .await?;
+        p.write(
+            "owner",
+            json!({"op":"enroll_service","id":actor,"role":"agent"}),
+        )
+        .await?;
     }
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
@@ -2090,8 +2093,11 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
         &json!({"op":"workspace","title":"Branch reset"}),
     )
     .await?;
-    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
-        .await?;
+    p.write(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure nested groups","types":{
         "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
@@ -5462,8 +5468,11 @@ impl Planning<'_> {
     async fn held_t0(&self) -> Result<()> {
         self.ready().await?;
         self.t0().await?;
-        self.write("owner", json!({"op":"member","id":"worker","role":"agent"}))
-            .await?;
+        self.write(
+            "owner",
+            json!({"op":"enroll_service","id":"worker","role":"agent"}),
+        )
+        .await?;
         let revision = self.revision("work:t0").await?;
         self.write(
             "worker",
@@ -6068,8 +6077,11 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
         &json!({"op":"workspace","title":"Every change resets"}),
     )
     .await?;
-    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
-        .await?;
+    p.write(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
         "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
@@ -6582,8 +6594,11 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         &json!({"op":"workspace","title":"A requirement change resets"}),
     )
     .await?;
-    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
-        .await?;
+    p.write(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
         "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
@@ -6716,8 +6731,11 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
         &json!({"op":"workspace","title":"Ordering links"}),
     )
     .await?;
-    p.write("owner", json!({"op":"member","id":"agent","role":"agent"}))
-        .await?;
+    p.write(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    )
+    .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ordered work","types":{
         "cap":{"title":"Capability","role":"group","root":true,"parents":[]},

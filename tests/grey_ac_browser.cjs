@@ -124,7 +124,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
     try { await context.close(); await live.stop(); } finally { assert.deepEqual(errors, []); }
   };
   try {
-    await command({op: 'member', id: 'bot', role: 'agent'}, true);
+    await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, true);
     const schema = await api('/tree');
     await command({op: 'set_tree_schema', revision: schema.current_revision, types: configured, reason: 'Configure the browser tree'});
@@ -663,10 +663,10 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
     const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'W1 ' + crypto.randomUUID()}});
     assert.equal(created.status(), 200);
     const {id: owned, title: w1} = await created.json();
-    for (const member of [{id: 'maria', role: 'human'}, {id: 'planner-bot', role: 'agent'}]) {
-      const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + '/commands', {method: 'POST',
-        headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
-        body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', ...member}})});
+    for (const [suffix, body] of [['/commands', {request_id: crypto.randomUUID(), command: {op: 'member', id: 'maria', role: 'human'}}],
+      ['/agent-tokens', {agent: 'planner-bot'}]]) {
+      const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + suffix, {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       assert.equal(added.status, 200, await added.text());
     }
     // A person with an email grant is not yet a member of W1.

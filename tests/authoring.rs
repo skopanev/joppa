@@ -76,7 +76,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &ws,
         "owner",
         "member",
-        &json!({"op":"member","id":"agent","role":"agent"}),
+        &json!({"op":"enroll_service","id":"agent","role":"agent"}),
     )
     .await?;
     store::execute_input(
@@ -488,7 +488,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         (
             "member",
             "owner",
-            json!({"op":"member","id":"agent","role":"agent"}),
+            json!({"op":"enroll_service","id":"agent","role":"agent"}),
         ),
         (
             "consumer",

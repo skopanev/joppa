@@ -74,8 +74,8 @@ impl World {
 pub fn setup() -> Vec<Value> {
     vec![
         json!({"op":"workspace","title":"Example product"}),
-        json!({"op":"member","id":"agent","role":"agent"}),
-        json!({"op":"member","id":"runner","role":"runner"}),
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+        json!({"op":"enroll_service","id":"runner","role":"runner"}),
         json!({"op":"member","id":"legal","role":"human"}),
         json!({"op":"domain","id":"d","title":"Access","authority":"owner"}),
         json!({"op":"capability","id":"c","title":"Keep paid access","domain":"d"}),

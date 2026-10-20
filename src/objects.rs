@@ -48,6 +48,10 @@ pub struct TreeType {
     /// The order in which a children or links rule takes the first status that it finds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_order: Option<Vec<String>>,
+    /// The process fields that an object of this type shows: confirmed for a requirement or a
+    /// criterion, acceptance for a requirement. A type without the list shows neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_fields: Option<Vec<String>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -193,6 +197,12 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 status: None,
                 status_order: None,
+                // The built-in tree keeps the confirmation and the acceptance of a requirement.
+                process_fields: match kind {
+                    "requirement" => Some(vec!["confirmed".into(), "acceptance".into()]),
+                    "ac" => Some(vec!["confirmed".into()]),
+                    _ => None,
+                },
                 color: None,
                 title_size: None,
                 badge: None,
@@ -272,6 +282,7 @@ pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 status: None,
                 status_order: None,
+                process_fields: None,
                 inbox: None,
                 launch_blocker: None,
                 color: None,
@@ -818,6 +829,15 @@ pub fn set_schema(
                 .as_deref()
                 .is_none_or(|rule| STATUS_RULES.contains(&rule)),
             "a status rule is tests, children, links or none"
+        );
+        ensure!(
+            t.process_fields
+                .as_ref()
+                .is_none_or(|fields| fields.iter().all(|f| {
+                    (f == "confirmed" && matches!(t.role.as_str(), "requirement" | "ac"))
+                        || (f == "acceptance" && t.role == "requirement")
+                })),
+            "process_fields allows confirmed for a requirement or a criterion and acceptance for a requirement"
         );
         ensure!(
             t.status_order.as_ref().is_none_or(|order| !order.is_empty()
@@ -2852,6 +2872,19 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     result["verification"] = json!(verification(w, key));
     if role.as_deref() == Some("requirement") {
         result["acceptance"] = crate::acceptance::current(w, resolve_address(w, key));
+    }
+    // Only the tree schema adds the confirmation and the acceptance fields.
+    let fields = schema(w)
+        .types
+        .get(&o.kind)
+        .and_then(|t| t.process_fields.clone())
+        .unwrap_or_default();
+    if let Some(map) = result.as_object_mut() {
+        for field in ["confirmed", "acceptance"] {
+            if !fields.iter().any(|f| f == field) {
+                map.remove(field);
+            }
+        }
     }
     result["annotation_address"] = json!(annotation_address(w, key));
     if role.as_deref() == Some("ac") {

@@ -203,6 +203,7 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
         "heartbeat_task",
         "workspace",
         "enroll_member",
+        "enroll_service",
         "migrate_persistent_claims",
         "migrate_notes",
         "migrate_tasks",

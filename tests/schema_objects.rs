@@ -13,7 +13,10 @@ fn empty() -> World {
         position: 0,
     };
     w.ok("owner", json!({"op":"workspace","title":"Common objects"}));
-    w.ok("owner", json!({"op":"member","id":"agent","role":"agent"}));
+    w.ok(
+        "owner",
+        json!({"op":"enroll_service","id":"agent","role":"agent"}),
+    );
     migrate(&mut w);
     w
 }
