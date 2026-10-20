@@ -301,7 +301,7 @@ A higher entry wins over a lower one: the list order is the default order of a c
 A tone that the list omits keeps its default colours. A schema change without `statuses` keeps the current list.
 joppa_tree shows the list that applies. The older `status_colors` map still works and sets one colour for both themes.
 A type can set `process_fields`: `confirmed` for a requirement or a criterion, and `acceptance` for a requirement.
-An object shows only the process fields that its type lists. The built-in tree lists both for a requirement and `confirmed` for a criterion.
+An object shows only the process fields that its type lists. Before a workspace saves its own schema, the built-in tree shows both on a requirement and `confirmed` on a criterion.
 A type without `process_fields` shows no confirmation and no acceptance.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 

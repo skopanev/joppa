@@ -197,12 +197,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
                 parent_decision: false,
                 status: None,
                 status_order: None,
-                // The built-in tree keeps the confirmation and the acceptance of a requirement.
-                process_fields: match kind {
-                    "requirement" => Some(vec!["confirmed".into(), "acceptance".into()]),
-                    "ac" => Some(vec!["confirmed".into()]),
-                    _ => None,
-                },
+                process_fields: None,
                 color: None,
                 title_size: None,
                 badge: None,
@@ -710,6 +705,25 @@ pub fn status_order(t: &TreeType) -> Vec<String> {
     t.status_order
         .clone()
         .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
+}
+
+/// The process fields that objects of a type show. A saved schema lists them per type. The
+/// built-in tree, before any saved schema, shows confirmed and acceptance on a requirement
+/// and confirmed on a criterion. The defaults stay out of `defaults()`, because an old
+/// schema migration event replays from those types.
+pub fn process_fields(w: &Workspace, kind: &str) -> Vec<String> {
+    let s = schema(w);
+    let Some(t) = s.types.get(kind) else {
+        return vec![];
+    };
+    if let Some(fields) = &t.process_fields {
+        return fields.clone();
+    }
+    match (s.revision, t.role.as_str()) {
+        (0, "requirement") => vec!["confirmed".into(), "acceptance".into()],
+        (0, "ac") => vec!["confirmed".into()],
+        _ => vec![],
+    }
 }
 
 /// The relations that a link between two objects can have.
@@ -2874,11 +2888,7 @@ pub fn process(w: &Workspace, key: &str) -> Value {
         result["acceptance"] = crate::acceptance::current(w, resolve_address(w, key));
     }
     // Only the tree schema adds the confirmation and the acceptance fields.
-    let fields = schema(w)
-        .types
-        .get(&o.kind)
-        .and_then(|t| t.process_fields.clone())
-        .unwrap_or_default();
+    let fields = process_fields(w, &o.kind);
     if let Some(map) = result.as_object_mut() {
         for field in ["confirmed", "acceptance"] {
             if !fields.iter().any(|f| f == field) {
