@@ -74,16 +74,21 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
         "{refused}"
     );
 
-    // Open entries: 31 of 32. The first page holds 25, the cursor gives the other 6.
+    // Every entry after the marked entry 1 is open: at least 31. The first page holds 25,
+    // and the cursor gives the rest once, in journal order.
     let first = page(&pool, &ws, json!({"limit": store::HISTORY_LIMIT})).await?;
     let items = first["items"].as_array().cloned().unwrap_or_default();
     ensure!(items.len() == 25, "{first}");
     ensure!(items.iter().all(|i| i["status"] == "open"), "{first}");
     ensure!(items.iter().all(|i| i["at"].is_string()), "{first}");
-    let note = &items[0];
-    ensure!(note["address"] == "note:intake", "{note}");
-    ensure!(note["signal"]["tone"].is_string(), "{note}");
-    ensure!(items[1]["signal"].is_null(), "{}", items[1]);
+    // The note row has the status of the note; a member row has no object and no status.
+    let note = items.iter().find(|i| i["address"] == "note:intake");
+    ensure!(
+        note.is_some_and(|n| n["signal"]["tone"].is_string()),
+        "{first}"
+    );
+    let member = items.iter().find(|i| i["op"] == "member");
+    ensure!(member.is_some_and(|m| m["signal"].is_null()), "{first}");
     let cursor = first["next_cursor"].as_str().unwrap_or_default().to_owned();
     ensure!(!cursor.is_empty(), "{first}");
     let second = page(
@@ -92,9 +97,21 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
         json!({"limit": store::HISTORY_LIMIT, "cursor": cursor}),
     )
     .await?;
+    let rest = second["items"].as_array().cloned().unwrap_or_default();
     ensure!(
-        second["items"].as_array().map(Vec::len) == Some(6),
+        items.len() + rest.len() >= 31 && rest.len() <= 25,
         "{second}"
+    );
+    let positions: Vec<i64> = items
+        .iter()
+        .chain(&rest)
+        .filter_map(|i| i["position"].as_i64())
+        .collect();
+    ensure!(
+        positions.len() == items.len() + rest.len()
+            && positions[0] == 2
+            && positions.windows(2).all(|p| p[1] == p[0] + 1),
+        "{positions:?}"
     );
     ensure!(second["next_cursor"].is_null(), "{second}");
 
