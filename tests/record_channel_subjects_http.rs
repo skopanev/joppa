@@ -24,7 +24,10 @@ async fn a_record_updates_only_the_tests_it_names() -> Result<()> {
     w.recorded(c2, json!([{"test":X,"status":"pass"}])).await?;
     let s = w.tests_http(&w.bot).await?;
     ensure!(s["status"] == "green", "{s}");
-    ensure!(test(&s, X)["commit"] == c2 && test(&s, Y)["commit"] == c1, "{s}");
+    ensure!(
+        test(&s, X)["commit"] == c2 && test(&s, Y)["commit"] == c1,
+        "{s}"
+    );
     Ok(())
 }
 
