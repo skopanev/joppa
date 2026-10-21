@@ -2088,7 +2088,10 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
       for (const [index, item] of newest.entries()) {
         const row = rows.nth(index);
         assert.equal(await row.getAttribute('data-position'), String(item.position), viewport.width + ': row ' + (index + 1));
-        const expected = await f.page.evaluate(item => [eventDate(item.at), personLabel(item.actor), item.title, item.change], item);
+        const expected = await f.page.evaluate(async item => {
+          const {eventDate, personLabel} = await import('board/format.js');
+          return [eventDate(item.at), personLabel(item.actor), item.title, item.change];
+        }, item);
         assert.deepEqual(await row.locator('.timeline-time, .timeline-actor, .timeline-object, .timeline-change').allInnerTexts(),
           expected, viewport.width + ': row ' + (index + 1));
       }

@@ -4,6 +4,8 @@ import {$,E} from 'board/dom.js';
 import {notify} from 'board/feedback.js';
 import {showApp} from 'board/sign-in.js';
 import {load} from 'board/board.js';
+// The theme switch has no exports. The import runs it.
+import 'board/theme.js';
 if (window.SNAPSHOT) {
   document.body.classList.remove('checking-session');
   document.body.classList.add('snapshot');
