@@ -1,7 +1,16 @@
+// The History tab: open journal entries and their marks.
+import {state} from 'board/state.js';
+import {E} from 'board/dom.js';
+import {notify,button} from 'board/feedback.js';
+import {api} from 'board/api.js';
+import {nodeTitle} from 'board/status.js';
+import {eventDate} from 'board/format.js';
+import {applyObjectColor} from 'board/object-types.js';
+import {collectionHeading} from 'board/collections.js';
 // History is a tab beside the root tabs. It lists open journal entries, oldest first,
 // and with "Show processed too" it also lists processed entries with their mark. The
 // server sets the page size. Load more reads the next page.
-function historyPanel(root,existing){
+export function historyPanel(root,existing){
   let panel=existing.find(node=>node.dataset.collectionKind==='@history');
   if(panel)return panel;
   panel=E('section',undefined,'root-collection history-collection');panel.dataset.collectionKind='@history';
@@ -15,7 +24,7 @@ function historyPanel(root,existing){
   let request=0,loaded=false;
   const page=async(cursor,mine)=>{
     const params=new URLSearchParams();if(all.checked)params.set('all','true');if(cursor)params.set('cursor',cursor);
-    const reply=await api('workspaces/'+encodeURIComponent(ws)+'/history?'+params);
+    const reply=await api('workspaces/'+encodeURIComponent(state.ws)+'/history?'+params);
     if(mine!==request||!panel.isConnected)return;
     items.append(...reply.items.map(historyRow));
     if(!reply.next_cursor)return;
@@ -57,7 +66,7 @@ function historyRow(item){
   body.append(E('p',(item.actor||'')+(item.at?' · '+eventDate(item.at):''),'history-actor hint'));
   if(item.address){
     const link=E('a',item.address+(item.revision?' · revision '+item.revision:''));
-    link.href='/?workspace='+encodeURIComponent(ws)+'&object='+encodeURIComponent(item.address)+(item.revision?'&revision='+item.revision:'');
+    link.href='/?workspace='+encodeURIComponent(state.ws)+'&object='+encodeURIComponent(item.address)+(item.revision?'&revision='+item.revision:'');
     const line=E('p',undefined,'history-object');line.append(link);body.append(line);
   }
   if(item.processed){
@@ -67,7 +76,7 @@ function historyRow(item){
     if(item.processed.nodes?.length){
       const nodes=E('p',undefined,'history-nodes');
       for(const node of item.processed.nodes){
-        const link=E('a',node);link.href='/?workspace='+encodeURIComponent(ws)+'&object='+encodeURIComponent(node);nodes.append(link,' ');
+        const link=E('a',node);link.href='/?workspace='+encodeURIComponent(state.ws)+'&object='+encodeURIComponent(node);nodes.append(link,' ');
       }
       mark.append(nodes);
     }

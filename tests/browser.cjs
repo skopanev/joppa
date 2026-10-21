@@ -11,7 +11,7 @@ const style=readFileSync(path.join(root,'src/board.css'),'utf8');
 const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',style)
   .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8'))
-  .replace('/* BOARD_SCRIPT */',source)
+  .replace('/* BOARD_IMPORTS */',source)
   .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
 
 const {ATTACK,SUBJECT_ATTACK,types,schema,object,rows,old,record,detail}=require('./browser_fixture.cjs');

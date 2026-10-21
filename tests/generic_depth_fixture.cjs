@@ -5,7 +5,7 @@ const path=require('node:path');
 const root=path.join(__dirname,'..');
 const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
-  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_SCRIPT */',require('./board_script.cjs'));
+  .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_IMPORTS */',require('./board_script.cjs'));
 
 const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epic','Epic','group'],
   ['outcome','Outcome','requirement'],['measure','Measure','ac'],['action','Action','task']];

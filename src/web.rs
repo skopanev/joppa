@@ -229,6 +229,9 @@ use login::*;
 #[path = "web_server.rs"]
 mod server;
 pub use server::serve;
+#[path = "web_board.rs"]
+mod board_script;
+use board_script::*;
 #[path = "web_pages.rs"]
 mod pages;
 pub use pages::snapshot;

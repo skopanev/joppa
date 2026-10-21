@@ -71,6 +71,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
                 )
             }),
         )
+        .route("/board/{name}", get(board_module))
         .route("/tree", get(|| async { Html(tree_page()) }))
         .route(
             "/guide",

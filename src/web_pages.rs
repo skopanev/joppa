@@ -26,7 +26,7 @@ pub fn snapshot(data: &Value) -> anyhow::Result<String> {
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
-    Ok(page()
+    Ok(board_page("https://joppa.otion.us", &embedded_imports())
         .replace("/* SNAPSHOT */", &format!("window.SNAPSHOT={escaped};"))
         .replace(
             "/favicon.svg",
@@ -40,10 +40,6 @@ pub fn snapshot(data: &Value) -> anyhow::Result<String> {
         ))
 }
 
-pub(super) fn page() -> String {
-    page_at("https://joppa.otion.us")
-}
-
 pub(super) async fn public_page(State(app): State<App>) -> Html<String> {
     Html(page_at(
         app.oauth_origin
@@ -53,6 +49,10 @@ pub(super) async fn public_page(State(app): State<App>) -> Html<String> {
 }
 
 pub(super) fn page_at(origin: &str) -> String {
+    board_page(origin, &served_imports())
+}
+
+fn board_page(origin: &str, imports: &str) -> String {
     let escaped = origin
         .replace('&', "&amp;")
         .replace('"', "&quot;")
@@ -61,19 +61,8 @@ pub(super) fn page_at(origin: &str) -> String {
         .replace("/* PUBLIC_ORIGIN */", &escaped)
         .replace("/* BOARD_STYLE */", include_str!("board.css"))
         .replace("/* BRAND_STYLE */", include_str!("brand.css"))
-        .replace("/* BOARD_SCRIPT */", &BOARD_SCRIPT.concat())
+        .replace("/* BOARD_IMPORTS */", imports)
 }
-
-/// The board script in execution order. The parts form one script in one element, so they
-/// share one scope. The file names in src/board sort in this order.
-const BOARD_SCRIPT: [&str; 6] = [
-    include_str!("board/10-shell.js"),
-    include_str!("board/20-session.js"),
-    include_str!("board/30-rows.js"),
-    include_str!("board/35-history.js"),
-    include_str!("board/40-pages.js"),
-    include_str!("board/50-cards.js"),
-];
 
 pub(super) fn tree_page() -> String {
     include_str!("tree.html")
@@ -81,24 +70,4 @@ pub(super) fn tree_page() -> String {
         .replace("/* BRAND_STYLE */", include_str!("brand.css"))
         .replace("/* TREE_STYLE */", include_str!("tree.css"))
         .replace("/* TREE_SCRIPT */", include_str!("tree.js"))
-}
-
-#[cfg(test)]
-mod tests {
-    /// Every file of src/board is a part of the script, in file name order. The browser checks
-    /// join the parts in the same order.
-    #[test]
-    fn board_script_holds_every_part_in_name_order() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/board");
-        let mut names: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|entry| entry.unwrap().path())
-            .collect();
-        names.sort();
-        let joined: String = names
-            .iter()
-            .map(|path| std::fs::read_to_string(path).unwrap())
-            .collect();
-        assert_eq!(joined, super::BOARD_SCRIPT.concat());
-    }
 }
