@@ -76,7 +76,7 @@ function renderTree(schema){
     const card=element('article','',('type '+node.className).trim());card.dataset.kind=id;card.tabIndex=0;
     const color=definitions[id]?.color||"#63756b";if(/^#[0-9a-f]{6}$/i.test(color||''))card.style.setProperty('--object-color',color);
     const size=definitions[id]?.title_size;
-    card.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:18)+'px');
+    card.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:15)+'px');
     card.append(element('h2',node.title),element('small',node.label));
     if(definitions[id]){
       const t=definitions[id],related=references.filter(edge=>edge.source===id||edge.target===id).map(edge=>edge.text);

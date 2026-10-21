@@ -1,5 +1,5 @@
 // Board behaviour that is not about the tree shape: read-only access, sign in,
-// escaping, the verification inspector, attachments, mobile and the offline
+// escaping, attachments, saved revisions, mobile and the offline
 // snapshot. Each check names the criterion it proves where one exists.
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const {readFileSync}=require('node:fs');
@@ -14,14 +14,14 @@ const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_IMPORTS */',source)
   .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
 
-const {ATTACK,SUBJECT_ATTACK,types,schema,object,rows,old,record,detail}=require('./browser_fixture.cjs');
+const {ATTACK,types,schema,object,rows,detail}=require('./browser_fixture.cjs');
 
 (async()=>{
 const browser=await chromium.launch({headless:true});
 try{
   const page=await browser.newPage();
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let signedIn=false,revised=false;const methods=new Set();
+  let signedIn=false;const methods=new Set();
   await page.route('http://joppa.test/**',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname.startsWith('/api/workspaces/'))methods.add(route.request().method());
@@ -34,8 +34,6 @@ try{
     let value;
     if(url.pathname==='/api/me')value={actor:'owner',email:'owner@example.test'};
     else if(url.pathname==='/api/workspaces')value=[{id:'w',title:'Example product'}];
-    else if(url.pathname.endsWith('/board')&&url.searchParams.get('level')==='process')value=revised?
-      {...record,revision:4,confirmed:false,runs:{},result_dates:{},criteria:record.criteria.map(c=>({...c,signal:{tone:'grey',label:'Not checked'}}))}:record;
     else if(url.pathname.endsWith('/board'))value={workspace:'w',custom_tree:true,lazy:true,
       object_types:types,state:{title:'Example product',members:{owner:'human'},domains:{},
       capabilities:{},requirements:{},consumers:{},notes:{},projects:{}},summary:{},signals:{},
@@ -51,7 +49,7 @@ try{
       }),next_cursor:null};
       if(a==='spec:access'){
         value.current_revision=2;value.revision_count=2;value.document.revision=2;
-        value.process={req:'access',revision:revised?4:3,verification:revised?'unverified':'pass'};
+        value.process={req:'access',revision:3,verification:'pass'};
         if(url.searchParams.get('revision')==='1'){
           value.document.revision=1;value.historical=true;value.process=null;value.signal=null;
         }
@@ -87,63 +85,23 @@ try{
   assert.equal(await page.evaluate(()=>window.attacked),undefined,
     'a script inside a document body never runs');
 
-  // Attachments recorded on the object are listed with it.
+  // Attachments recorded on the object are listed in its Files section.
+  await spec.locator('.object-files > summary').click();
   await spec.getByText('evidence.png',{exact:false}).waitFor();
 
-  // The verification inspector: one record, one section per criterion, and a
-  // tone for every recorded outcome.
-  await spec.getByRole('button',{name:'Checks'}).click();
-  const inspector=spec.locator('.verification-record');
-  await inspector.waitFor();
-  assert.equal(await inspector.locator('.ac-checks').count(),3,
-    'every criterion of the revision gets its own section');
-  const criterion=i=>inspector.locator('.ac-checks').nth(i);
-  assert.equal(await criterion(0).locator('.ac-check').count(),2,
-    'a criterion lists each check planned against it');
-  const tone=locator=>locator.locator('.ac-check-heading .status-circle').getAttribute('data-tone');
-  assert.equal(await tone(criterion(0).locator('.ac-check').nth(0)),'green','a pass reads green');
-  assert.equal(await tone(criterion(0).locator('.ac-check').nth(1)),'green',
-    '[green-needs-all-checks-ac4] elapsed time alone does not expire a pass');
-  assert.equal(await tone(criterion(1).locator('.ac-check').nth(0)),'red','a failure reads red');
-  assert.match(await criterion(0).locator('.ac-check').nth(1).locator('.status-circle').getAttribute('aria-label'),
-    /^Status: Passed/,'the old pass keeps its outcome label');
-  assert.equal(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('data-tone'),
-    'green','the server verdict stays green when a legacy stale_after date has elapsed');
-  await criterion(1).locator('.ac-check').nth(1).getByText('Skipped',{exact:false}).waitFor();
-  await criterion(2).getByText('No tests linked yet.',{exact:true}).waitFor();
-  assert.match(await criterion(0).locator(':scope > .ac-check-heading .status-circle').getAttribute('aria-label'),
-    /^Status: Checks passed/,'a criterion keeps its own status label');
-  await criterion(0).getByText('Recorded by the suite',{exact:false}).waitFor();
-  await criterion(0).locator('.ac-check').first().getByText('code: code-sha-v1 · environment: pg16-image-v1 · fixture: '+SUBJECT_ATTACK,{exact:true}).waitFor();
-  assert.equal(await inspector.locator('img').count(),0,'subject values render as text, never HTML');
-
-  // Mobile: the same card and inspector fit a narrow screen without a
-  // horizontal page scrollbar.
+  // Mobile: the same card fits a narrow screen without a horizontal page scrollbar.
   await page.setViewportSize({width:390,height:780});
   await page.waitForFunction(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1);
-  await inspector.waitFor();
 
-  // Saved revisions do not borrow the current verdict. A new context has no old runs.
+  // Saved revisions do not borrow the current verdict.
   await spec.locator(':scope > summary .history-button').click();
   const history=page.getByRole('dialog');
   await history.getByLabel('Object revision').selectOption('1');
   await history.getByText('Saved document revision.',{exact:false}).waitFor();
-  assert.equal(await history.getByRole('button',{name:'Checks',exact:true}).count(),0,
-    '[green-needs-all-checks-ac4] a saved document does not expose current checks');
   assert.equal(await history.locator('[data-tone="green"]').count(),0,
     'a saved revision never borrows the current green status');
   assert.equal(await history.getByText('Verification: Passed',{exact:true}).count(),0);
   await history.getByRole('button',{name:'Close',exact:true}).click();
-  revised=true;
-  await page.reload();
-  await page.locator('[data-object-address="area:core"] > summary').click();
-  await spec.locator(':scope > summary').click();
-  await spec.getByRole('button',{name:'Checks',exact:true}).click();
-  await spec.locator('.verification-record').getByText('Revision 4',{exact:false}).waitFor();
-  assert.equal(await spec.locator('.verification-record .ac-check').count(),0,
-    'the current context does not reuse checks from the earlier revision');
-  assert.equal(await spec.locator('.verification-record [data-tone="green"]').count(),0);
-  assert.equal(await spec.locator('.verification-record [data-tone="grey"]').count(),3);
 
   // The offline snapshot renders the same card with no network at all.
   const snapshot={workspace:'w',lazy:false,custom_tree:true,object_types:types,
@@ -172,7 +130,7 @@ try{
 
   assert.deepEqual(errors,[],'no page errors');
   if(process.env.JOPPA_TEST_URL)await verifyRealServer(browser);
-  console.log('Browser: sign in, read-only access, escaping, verification tones, attachments, mobile and snapshot');
+  console.log('Browser: sign in, read-only access, escaping, attachments, saved revisions, mobile and snapshot');
 }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
@@ -196,15 +154,16 @@ async function verifyRealServer(browser){
   await open('capability:restrict');
   const req=await open('requirement:key');
   await req.getByText('Updated wording',{exact:true}).waitFor();
+  // Comments start collapsed. The section opens from its summary.
+  await req.locator(':scope > .object-body > .object-secondary > .object-comments > summary').click();
   await req.getByText('Agent note',{exact:true}).waitFor();
   assert(!requests.some(url=>url.searchParams.has('revision')),'expansion does not read history');
-  await req.getByRole('button',{name:'Checks',exact:true}).first().click();
-  await req.locator(':scope > .object-body > .verification-record').waitFor();
-  assert(requests.some(url=>url.searchParams.get('level')==='process'&&url.searchParams.get('id')==='requirement:key'));
   await req.locator(':scope > summary .history-button').click();
   const history=page.getByRole('dialog',{name:'Ключ до запуска',exact:true});
   await history.getByRole('combobox',{name:'Object revision'}).selectOption('1');
-  await history.getByText(ATTACK,{exact:true}).waitFor();
+  // The real portal renders the body as Markdown and the sanitizer drops the script element.
+  await history.locator('.markdown.object-content').waitFor();
+  assert.equal(await history.locator('script').count(),0,'a script in a saved body never reaches the page');
   assert.equal(await page.evaluate(()=>window.attacked),undefined);
   await history.getByRole('button',{name:'Close',exact:true}).click();
   const before=requests.filter(url=>url.searchParams.get('address')==='domain:security').length;

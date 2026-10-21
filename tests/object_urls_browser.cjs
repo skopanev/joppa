@@ -58,6 +58,8 @@ const url=(address,revision,workspace='w')=>{
       else if(target.pathname.endsWith('/board'))value={workspace:target.pathname.split('/')[3],lazy:true,object_types:types,
         state:{title:'Workspace one',members:{owner:'human'},requirements:{}},launch:{configured:false},system_ids:{}};
       else if(target.pathname.endsWith('/tree'))value={schema:{revision:1,types}};
+      // No criterion of this fixture lists tests.
+      else if(target.pathname.endsWith('/tests'))value={items:[],tests:[]};
       else if(target.pathname.endsWith('/objects')){
         const address=target.searchParams.get('address'),workspace=target.pathname.split('/')[3];
         if(address){
@@ -72,7 +74,8 @@ const url=(address,revision,workspace='w')=>{
       return route.fulfill({status,json:value});
     });
     const selected=address=>page.locator('.object-page > .common-object[data-object-address="'+address+'"]');
-    const ready=async address=>{await selected(address).locator(':scope > .object-body > .object-secondary').waitFor();};
+    // The body is ready once its secondary part exists. The properties in it stay hidden until the row button opens them.
+    const ready=async address=>{await selected(address).locator(':scope > .object-body > .object-secondary').waitFor({state:'attached'});};
     const follow=async address=>{
       const links=page.locator('.object-page > .common-object > .object-body > .object-secondary > .object-relations');
       await links.locator(':scope > summary').click();
@@ -86,7 +89,7 @@ const url=(address,revision,workspace='w')=>{
     assert.equal(requests.some(r=>r.includes('address=measure')),false,'Child bodies are not read before expansion');
     assert.equal(await page.getByRole('tab').count(),0,'The item page omits root navigation and filters');
     assert.equal(await selected('folder:alpha').locator('.type-badge').first().innerText(),'FOLD','The badge comes from the schema');
-    assert.equal(await selected('folder:alpha').locator(':scope > summary .verification-chip').innerText(),'1','The direct page uses the current object count');
+    assert.equal(await selected('folder:alpha').locator(':scope > summary .verification-chip').innerText(),'1 Measure','The direct page uses the current object count');
 
     await follow('incoming:beta');
     assert.equal(new URL(page.url()).searchParams.get('object'),'incoming:beta');
@@ -114,7 +117,7 @@ const url=(address,revision,workspace='w')=>{
     assert.equal(Array.from(title).length,24,'The title preview length comes from the schema');
     assert.ok(title.endsWith('…'));
     assert.equal(await measure.locator('.object-full-title').isVisible(),false,'The full title does not repeat in the main body');
-    await measure.locator('.object-details > summary').click();
+    await measure.locator(':scope > summary .fields-button').click();
     await page.waitForFunction(()=>document.getAnimations().length===0);
     assert.equal(await measure.locator('.object-full-title').isVisible(),true);
     assert.equal(await measure.locator('.object-full-title p').innerText(),records['measure:r/1'].title,'Details preserves all title text');

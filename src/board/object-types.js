@@ -7,7 +7,7 @@ export function applyObjectColor(node,kind){
   const color=type.color||'#63756b';
   if(/^#[0-9a-f]{6}$/i.test(color))node.style.setProperty('--object-color',color);
   const size=type.title_size;
-  node.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:18)+'px');
+  node.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:15)+'px');
 }
 export function objectTitlePreview(title,kind){
   const limit=state.data.objectTypes?.[kind]?.title_preview_length||64,characters=Array.from(title);
