@@ -797,6 +797,7 @@ pub(crate) fn may_edit_tree(w: &Workspace, actor: &str) -> bool {
     actor == w.admin || w.members.contains_key(actor)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn set_schema(
     w: &mut Workspace,
     actor: &str,

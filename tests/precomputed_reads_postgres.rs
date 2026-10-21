@@ -15,7 +15,7 @@ fn test_name(domain: usize, n: usize) -> String {
 
 /// The fixture outcome of each test: even numbers pass, odd numbers fail.
 fn passes(n: usize) -> bool {
-    n % 2 == 0
+    n.is_multiple_of(2)
 }
 
 async fn batch(pool: &deadpool_postgres::Pool, ws: &str, commands: Vec<Value>) -> Result<()> {

@@ -41,7 +41,7 @@ pub async fn read_history(
         None | Some(Value::Null) => false,
         Some(value) => value
             .as_bool()
-            .ok_or_else(|| commands::ClientField("all must be true or false"))?,
+            .ok_or(commands::ClientField("all must be true or false"))?,
     };
     let after = match args.get("cursor").and_then(Value::as_str) {
         Some(cursor) => cursor_position(cursor)?,

@@ -100,11 +100,13 @@ fn a_replay_keeps_an_agent_membership_from_before_the_epoch() -> Result<()> {
         serde_json::from_value(json!({"op":"workspace","title":"Old journal"}))?,
         serde_json::from_value(json!({"op":"member","id":"lane-1","role":"agent"}))?,
     ];
-    let mut j = Workspace::default();
-    j.replay_epochs = commands::REPLAY_RULES
-        .iter()
-        .map(|rule| ((*rule).to_owned(), 1))
-        .collect();
+    let mut j = Workspace {
+        replay_epochs: commands::REPLAY_RULES
+            .iter()
+            .map(|rule| ((*rule).to_owned(), 1))
+            .collect(),
+        ..Default::default()
+    };
     j.replay_epochs.insert(commands::HUMAN_MEMBERS.into(), 3);
     for (i, command) in journal.iter().enumerate() {
         commands::apply_replay(
