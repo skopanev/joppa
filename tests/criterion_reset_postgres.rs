@@ -1,6 +1,6 @@
 //! A change of a group, a test-list save and a spec archive reset the criteria below
 //! them in the store: in the same batch, after journal replay, and not at all when the
-//! command fails. An identical repeat of a clean report after the change is a new
+//! command fails. An identical repeat of a record after the change is a new
 //! receipt that counts after it.
 use anyhow::{Result, ensure};
 use joppa::store::{self, BatchOperation};
@@ -67,7 +67,7 @@ fn save_g(revision: &Value, body: &str) -> Value {
 }
 
 /// G holds spec R with criterion A; sibling group H holds spec RH with criterion D.
-/// Both list A and B, one clean full run passes both, and both are assessed ready.
+/// Both list A and B, one record passes both, and both are assessed ready.
 async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     let ws = format!("reset-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -118,14 +118,13 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     Ok(ws)
 }
 
-/// The clean full C1 report that passes A and B.
+/// The C1 record that passes A and B.
 async fn upload_c1(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
-    let junit = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses" /></testsuite></testsuite></testsuites>"#;
-    store::upload_report(
+    store::record_results(
         pool,
         ws,
         "planner",
-        serde_json::from_value(json!({"stamp":{"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}))?,
+        &json!({"commit":"c1c1c1c","results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"}]}),
     )
     .await
 }
@@ -302,19 +301,14 @@ async fn events(pool: &deadpool_postgres::Pool, ws: &str) -> Result<i64> {
         .get(0))
 }
 
-/// A full run that passes A and B and fails the check of red criterion B.
-async fn upload_full(
-    pool: &deadpool_postgres::Pool,
-    ws: &str,
-    commit: &str,
-    order: i64,
-) -> Result<Value> {
-    let junit = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses" /><testcase name="rejects"><failure message="boom"/></testcase></testsuite></testsuite></testsuites>"#;
-    store::upload_report(
+/// A record that passes A and B and fails the check of red criterion B.
+async fn upload_full(pool: &deadpool_postgres::Pool, ws: &str, commit: &str) -> Result<Value> {
+    let rejects = "tests/auth/login.test.ts > login > rejects";
+    store::record_results(
         pool,
         ws,
         "planner",
-        serde_json::from_value(json!({"stamp":{"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}))?,
+        &json!({"commit":commit,"results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"},{"test":rejects,"status":"fail","message":"boom"}]}),
     )
     .await
 }
@@ -332,7 +326,7 @@ async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
     // Red criterion B is a sibling of A under R.
     write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"b","revision":0,"parent":"spec:r","data":{"title":"b","owner":"owner"},"reason":"Create the criterion"})).await?;
     write(&pool, &ws, "planner", json!({"op":"set_ac_tests","target":"criterion:b","tests":["tests/auth/login.test.ts > login > rejects"],"reason":"Bind the tests"})).await?;
-    upload_full(&pool, &ws, "c2c2c2c", 2).await?;
+    upload_full(&pool, &ws, "c2c2c2c").await?;
     let b = status(&pool, &ws, "criterion:b").await?;
     ensure!(b["status"] == "red", "{b}");
     // Fixture 5: the planner saves the identical list of A.
@@ -351,7 +345,7 @@ async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
     // A turns green and ready again; fixture 6: the owner archives B.
     let req = read(&pool, &ws, "spec:r").await?["process"]["revision"].clone();
     write(&pool, &ws, "planner", json!({"op":"assess","req":"spec:r","revision":req,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
-    upload_full(&pool, &ws, "c3c3c3c", 3).await?;
+    upload_full(&pool, &ws, "c3c3c3c").await?;
     ensure!(
         status(&pool, &ws, "criterion:a").await?["status"] == "green",
         "A must be green before the archive"
@@ -461,7 +455,7 @@ async fn the_planning_read_sees_the_receipt_of_an_identical_upload() -> Result<(
     let (id, receipts) = c1_receipts(&pool, &ws).await?;
     let reply = upload_c1(&pool, &ws).await?;
     ensure!(
-        reply["report"] == id && reply["replayed"] == true,
+        reply["record"] == id && reply["replayed"] == true,
         "{reply}"
     );
     ensure!(
@@ -469,7 +463,7 @@ async fn the_planning_read_sees_the_receipt_of_an_identical_upload() -> Result<(
         "the repeat must add one receipt"
     );
     let s = status(&pool, &ws, "criterion:a").await?;
-    ensure!(s["status"] == "green", "after the upload: {s}");
+    ensure!(s["status"] == "green", "after the record: {s}");
     // The planning read gives green as well: the claim is refused.
     let refused = claim(pool.clone(), ws.clone()).await;
     ensure!(

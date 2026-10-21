@@ -1,4 +1,4 @@
-//! Record test outcomes for one commit in one MCP call, without JUnit or a stamp.
+//! Record test outcomes for one commit in one MCP call. It is the only way to write results.
 //!
 //! The member supplies the commit and the results. Joppa supplies the actor from the
 //! session and the time from its server clock: a call that supplies actor or at is

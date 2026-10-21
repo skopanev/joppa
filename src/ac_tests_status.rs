@@ -1,28 +1,33 @@
-//! Criterion status from clean default-branch reports.
+//! Criterion status from recorded test results.
 //!
-//! Each listed test counts with its latest result. The deciding report for a test
-//! is the newest one (by default-branch commit order, then by upload) that either
-//! ran the test or was a full run. On that commit, red wins: a failure or an
-//! absence from a full run beats a pass. A criterion is green only when every
-//! listed test passes; it shows the oldest commit among its tests.
-//! A filter such as `bun test -t` reports every other test as skipped, so skipped
-//! and todo results count only in full runs; a partial run did not run those tests.
-//! A change above a criterion sets its boundary. Reports received at or before it do
+//! Each listed test counts with its latest result. The deciding record for a test is
+//! the newest one that names the test. On the commit of that record, red wins: a
+//! failure in any record of the commit beats a pass. A criterion is green only when
+//! every listed test passes; it shows the oldest commit among its tests.
+//! A skip or todo counts only in a record. Older stored reports did not run those tests.
+//! A change above a criterion sets its boundary. Records received at or before it do
 //! not count. After it, the latest eligible result of each listed test decides, also
-//! when the results come from several partial runs. An identical repeat of a report is
+//! when the results come from several records. An identical repeat of a record is
 //! a new receipt of it, and its latest receipt decides whether it came after the change.
 //! After a change, a draft list is decided once every listed test has an eligible result.
-use super::TestResult;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TestResult {
+    pub address: String,
+    /// One of pass, fail, skipped, todo.
+    pub status: String,
+    pub duration_ms: Option<i64>,
+    pub message: Option<String>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Report {
     pub id: i64,
     pub commit: String,
-    /// First-parent position on the default branch. Higher is newer.
+    /// Receipt order in the workspace. Higher is newer.
     pub order: i64,
-    pub full: bool,
-    /// A record_results report: its skip and todo results count, and it has no missing tests.
+    /// A record_results report: its skip and todo results count.
     pub recorded: bool,
     /// First receipt; it orders reports with the same commit order.
     pub received_us: i64,
@@ -58,7 +63,7 @@ impl Boundary {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct TestStatus {
     pub address: String,
-    /// One of pass, fail, missing, skipped, todo, not_run.
+    /// One of pass, fail, skipped, todo, not_run.
     pub status: String,
     pub commit: Option<String>,
     pub message: Option<String>,
@@ -78,7 +83,7 @@ pub struct CriterionStatus {
 }
 
 fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> TestStatus {
-    let counts_skips = |id: i64| reports.iter().any(|r| r.id == id && (r.full || r.recorded));
+    let counts_skips = |id: i64| reports.iter().any(|r| r.id == id && r.recorded);
     let results: Vec<(i64, TestResult)> = all
         .iter()
         .filter(|(id, r)| counts_skips(*id) || !matches!(r.status.as_str(), "skipped" | "todo"))
@@ -96,7 +101,7 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
             .cmp(&a.order)
             .then(b.received_us.cmp(&a.received_us))
     });
-    let Some(deciding) = ordered.into_iter().find(|r| r.full || ran(r)) else {
+    let Some(deciding) = ordered.into_iter().find(|r| ran(r)) else {
         return TestStatus {
             address: address.into(),
             status: "not_run".into(),
@@ -114,12 +119,9 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
         .filter(|(id, r)| r.address == address && same_commit.iter().any(|report| report.id == *id))
         .map(|(_, r)| r)
         .collect();
-    let missing = same_commit.iter().any(|report| report.full && !ran(report));
     let failed = rows.iter().find(|r| r.status == "fail");
     let (status, message) = if let Some(failure) = failed {
         ("fail", failure.message.clone())
-    } else if missing {
-        ("missing", Some("the test is absent from a full run".into()))
     } else if rows.iter().any(|r| r.status == "skipped") {
         ("skipped", None)
     } else if rows.iter().any(|r| r.status == "todo") {
@@ -166,10 +168,7 @@ pub fn criterion_status(
         ("grey", Some("tests_draft"))
     } else if boundary == Boundary::Unreadable {
         ("grey", Some("the reset time cannot be read"))
-    } else if statuses
-        .iter()
-        .any(|t| t.status == "fail" || t.status == "missing")
-    {
+    } else if statuses.iter().any(|t| t.status == "fail") {
         ("red", None)
     } else if !statuses.iter().all(|t| t.status == "pass") {
         ("grey", Some("not all tests passed"))

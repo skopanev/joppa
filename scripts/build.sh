@@ -27,7 +27,7 @@ if [ "$(uname -s)" != Linux ]; then
         test-only) name=test:only; shift ;;
         test) name=test:rust; shift ;;
         browser) name=test:browser; shift ;;
-        build|lint|report|gate|fmt|review) name=$1; shift ;;
+        build|lint|gate|fmt|review) name=$1; shift ;;
         *) echo 'build: use a configured bun run command' >&2; exit 2 ;;
     esac
     database=${JOPPA_TEST_DATABASE_URL:-}
@@ -181,11 +181,8 @@ case ${1:-} in
         shift
         exec node "$@"
         ;;
-    report)
-        exec bun scripts/joppa-report/joppa-run.ts
-        ;;
     '')
-        echo 'usage: scripts/build.sh gate ENV_FILE | lane-tests ENV_FILE | report | CARGO_ARGS...' >&2
+        echo 'usage: scripts/build.sh gate ENV_FILE | lane-tests ENV_FILE | CARGO_ARGS...' >&2
         exit 2
         ;;
     *) exec cargo "$@" ;;

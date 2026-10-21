@@ -130,7 +130,6 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         ("/agent-tokens".to_owned(), json!({"agent":"another-reader"}).to_string()),
         (format!("/agent-tokens/{id}/revoke"), String::new()),
         ("/blobs".to_owned(), "file body".to_owned()),
-        ("/reports".to_owned(), "{}".to_owned()),
     ] {
         let reply = w
             .http

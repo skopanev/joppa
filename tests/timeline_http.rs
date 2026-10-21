@@ -7,6 +7,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "common/record_http.rs"]
+mod record_http;
+
 struct Server(Child);
 impl Drop for Server {
     fn drop(&mut self) {
@@ -16,7 +19,7 @@ impl Drop for Server {
 }
 
 /// Workspace W with the members bot (agent), pat and maria (persons), and runner (agent,
-/// uploads reports).
+/// records test results).
 struct World {
     _server: Server,
     _dir: std::path::PathBuf,
@@ -175,19 +178,10 @@ impl World {
         self.command(actor, json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,
             "data":{"title":format!("Title of {address}"),"owner":"pat","body":"Current source"},"reason":reason})).await
     }
-    async fn upload(&self, actor: &str, commit: &str) -> Result<Value> {
-        let reply = self
-            .http
-            .post(format!("{}/api/workspaces/{}/reports", self.root, self.ws))
-            .bearer_auth(self.token(actor))
-            .json(&json!({"stamp":{"commit":commit,"order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},
-                "junit":"<testsuites><testsuite name=\"checks.cjs\"><testcase name=\"one\"/></testsuite></testsuites>"}))
-            .send()
-            .await?;
-        let code = reply.status();
-        let body: Value = reply.json().await?;
-        ensure!(code.is_success(), "upload: {code} {body}");
-        Ok(body)
+    async fn record(&self, actor: &str, commit: &str) -> Result<Value> {
+        let results = json!([{"test":"checks.cjs > one","status":"pass"}]);
+        let token = self.token(actor);
+        record_http::recorded(&self.http, &self.root, &self.ws, token, commit, results).await
     }
     async fn mcp(&self, token: &str, name: &str, arguments: Value) -> Result<Value> {
         let reply: Value = self
@@ -280,8 +274,8 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     let a = w.get("pat", "/objects?address=ac:a").await?;
     w.command("pat", json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["process"]["criterion"],
         "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
-    let report = w.upload("runner", "0123456789abcdef0123").await?;
-    Ok((p, report["report"].as_i64().unwrap_or_default()))
+    let report = w.record("runner", "0123456789abcdef0123").await?;
+    Ok((p, report["record"].as_i64().unwrap_or_default()))
 }
 
 // workspace-timeline-ac1
@@ -351,7 +345,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
     ensure!(
         items[4]["reason"]
             .as_str()
-            .is_some_and(|r| r.contains("0123456789ab") && r.contains("master")),
+            .is_some_and(|r| r == "Test report of commit 0123456789ab: 1 tests"),
         "{http}"
     );
     ensure!(column("revision")[..3] == [1, 2, 2], "{http}");

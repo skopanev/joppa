@@ -63,11 +63,9 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "task done").await?;
-    upload(
+    record(
         &pool,
         "c1c1c1c",
-        1,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -78,11 +76,9 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "full report").await?;
-    upload(
+    record(
         &pool,
         "c2c2c2c",
-        2,
-        true,
         &[
             ("x1", "pass"),
             ("x1", "fail"),
@@ -95,20 +91,11 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "one failing case of three").await?;
-    upload(
-        &pool,
-        "c3c3c3c",
-        3,
-        false,
-        &[("x2", "skipped"), ("y1", "pass")],
-    )
-    .await?;
+    record(&pool, "c3c3c3c", &[("x2", "skipped"), ("y1", "pass")]).await?;
     mark(&mut out, "partial report").await?;
-    upload(
+    record(
         &pool,
         "c4c4c4c",
-        4,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -118,11 +105,9 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "missing test").await?;
-    upload(
+    record(
         &pool,
         "c5c5c5c",
-        5,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "skipped"),
@@ -133,11 +118,9 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "skipped and todo").await?;
-    upload(
+    record(
         &pool,
         "c6c6c6c",
-        6,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -147,11 +130,9 @@ async fn projection_parity_dump() -> Result<()> {
         ],
     )
     .await?;
-    upload(
+    record(
         &pool,
         "c6c6c6c",
-        6,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -162,11 +143,9 @@ async fn projection_parity_dump() -> Result<()> {
     )
     .await?;
     mark(&mut out, "same commit red wins").await?;
-    upload(
+    record(
         &pool,
         "c6c6c6c",
-        6,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),

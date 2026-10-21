@@ -111,14 +111,8 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         json!({"op":"complete_task","id":task,"revision":2,"evidence":"Implemented the contract"}),
     )
     .await?;
-    let stamp = json!({"commit":"c3c3c3c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
-    w.http
-        .post(format!("{}/api/workspaces/{}/reports", w.root, w.ws))
-        .bearer_auth(&w.bot)
-        .json(&json!({"stamp":stamp,"junit":r#"<testsuites><testsuite name="checks.rs"><testcase name="key rights" /></testsuite></testsuites>"#}))
-        .send()
-        .await?
-        .error_for_status()?;
+    let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
+    record_http::recorded(&w.http, &w.root, &w.ws, &w.bot, "c3c3c3c", passed).await?;
     let object = mcp("joppa_objects", json!({"workspace":w.ws,"address":task})).await?;
     ensure!(
         object["process"]["status"] == "done"

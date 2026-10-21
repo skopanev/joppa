@@ -453,7 +453,7 @@ fn readiness_guard_preserves_the_criterion_and_legacy_results_do_not_replace_jun
         json!({"op":"finish","req":"spec:one","revision":revision,"run":"checks"}),
     );
     assert_eq!(objects::verification(&w.state, "criterion:a"), "pass");
-    // JUnit status is checked by the transactional store, not by legacy run metadata.
+    // Recorded status is checked by the transactional store, not by legacy run metadata.
     w.ok(
         "planner",
         json!({"op":"claim_planning","ac":"criterion:a","revision":object_revision}),

@@ -155,7 +155,7 @@ pub enum Command {
         id: String,
         role: String,
     },
-    /// Internal event of a test report upload: it gives the upload its journal position.
+    /// Internal event of a record of test results: it gives the record its journal position.
     /// The report itself stays in joppa.test_reports; the event changes no state.
     RecordReport {
         report: i64,

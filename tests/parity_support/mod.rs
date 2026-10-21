@@ -41,33 +41,24 @@ pub fn save(kind: &str, id: &str, parent: Option<&str>, data: Value) -> Value {
     json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Build the fixture"})
 }
 
-pub fn case(name: &str, result: &str) -> String {
-    match result {
-        "fail" => format!(r#"<testcase name="{name}"><failure message="no"/></testcase>"#),
-        "skipped" => format!(r#"<testcase name="{name}"><skipped/></testcase>"#),
-        "todo" => format!(r#"<testcase name="{name}"><skipped message="TODO"/></testcase>"#),
-        _ => format!(r#"<testcase name="{name}"/>"#),
-    }
-}
-
-pub async fn upload(
+/// Record the outcomes of `cases` for `commit` with joppa_record_results.
+pub async fn record(
     pool: &deadpool_postgres::Pool,
     commit: &str,
-    order: i64,
-    full: bool,
     cases: &[(&str, &str)],
 ) -> Result<()> {
-    let body: String = cases
+    let results: Vec<Value> = cases
         .iter()
-        .map(|(name, result)| case(name, result))
+        .map(|(name, result)| {
+            let status = if *result == "skipped" { "skip" } else { result };
+            json!({"test": format!("{FILE} > {name}"), "status": status})
+        })
         .collect();
-    let junit = format!(r#"<testsuites><testsuite name="{FILE}">{body}</testsuite></testsuites>"#);
-    let stamp = json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":full});
-    store::upload_report(
+    store::record_results(
         pool,
         ws(),
         "owner",
-        serde_json::from_value(json!({"stamp":stamp,"junit":junit}))?,
+        &json!({"commit":commit,"results":results}),
     )
     .await?;
     Ok(())

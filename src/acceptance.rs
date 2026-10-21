@@ -1,6 +1,6 @@
 //! Acceptance of a requirement revision on one commit.
-//! The store checks the commit against the test reports before this rule runs:
-//! a clean full run on the default branch where every listed test of every criterion passed.
+//! The store checks the commit against the records before this rule runs:
+//! every listed test of every criterion has a record on the commit, and it passed.
 //! Here the rule checks who accepts and binds the acceptance to the revision and the commit.
 use crate::model::Workspace;
 use anyhow::{Context, Result, ensure};

@@ -11,6 +11,8 @@ use std::{
 mod claim_time;
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
+#[path = "common/record_http.rs"]
+mod record_http;
 
 include!("spec_http/part01.rs");
 include!("spec_http/part02.rs");

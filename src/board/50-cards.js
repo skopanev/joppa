@@ -82,8 +82,8 @@ function showTestCount(chip){
   // The dot keeps the server tone of the type's status rule and the process label.
 }
 // A criterion takes its dot from its tests: green when every test passes,
-// red when one fails or is missing, grey otherwise, and grey "No tests" without tests.
-const testTone=status=>status==='pass'||status==='green'?'green':['fail','missing','red'].includes(status)?'red':'grey';
+// red when one fails, grey otherwise, and grey "No tests" without tests.
+const testTone=status=>status==='pass'||status==='green'?'green':['fail','red'].includes(status)?'red':'grey';
 function testSummary(s){
   const passed=s.tests.filter(t=>t.status==='pass').length;
   return 'Tests: '+passed+' of '+s.tests.length+' pass'+(s.commit?' · commit '+s.commit.slice(0,7):'')+(s.commits_behind?' · '+s.commits_behind+' commits behind':'')+(s.tests_draft?' · list needs saving':'');

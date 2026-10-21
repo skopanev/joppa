@@ -34,9 +34,7 @@ mod record_results;
 #[path = "store_reports.rs"]
 mod reports;
 pub use record_results::{RECORD_MAX, record_results};
-pub use reports::{
-    REPORT_MAX, ReportUpload, Stamp, criterion_tests, task_status, tests_overview, upload_report,
-};
+pub use reports::{criterion_tests, task_status, tests_overview};
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};

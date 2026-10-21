@@ -511,7 +511,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     Ok(())
 }
 
-/// Fixture 1: criterion A is ready, has valid dependencies, no green JUnit status and no
+/// Fixture 1: criterion A is ready, has valid dependencies, no green recorded status and no
 /// planning claim. L (`agent`) holds T at revision 4 and blocks it. Fixture 2 adds Task V
 /// under A in progress for `worker`.
 async fn blocked_fixture(with_v: bool) -> anyhow::Result<(Pool, String)> {

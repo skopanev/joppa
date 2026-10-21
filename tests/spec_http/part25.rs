@@ -50,6 +50,10 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
 
     let mcp_calls = [
         (
+            "joppa_record_results",
+            json!({"workspace":w.ws,"commit":"abcdef1","results":[{"test":"tests/spec_http.rs > spec > a_read_only_agent_token_cannot_write","status":"pass"}]}),
+        ),
+        (
             "joppa_command",
             json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":"note","id":"from-mcp","revision":0,"parent":null,"data":{"title":"Saved through MCP","owner":"owner","body":"Input"},"reason":"Save"}}),
         ),
@@ -66,7 +70,6 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
             json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":types,"reason":"Add a job type"}}),
         ),
     ];
-    let junit = r#"<testsuites><testsuite name="tests/spec_http.rs"><testsuite name="spec"><testcase name="a_read_only_agent_token_cannot_write" /></testsuite></testsuite></testsuites>"#;
     let http_calls = [
         ("/blobs", format!("Read-only upload {}", uuid::Uuid::new_v4())),
         (
@@ -76,10 +79,6 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
         (
             "/commands",
             json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":"note","id":"from-http","revision":0,"parent":null,"data":{"title":"Saved through HTTP","owner":"owner","body":"Input"},"reason":"Save"}}).to_string(),
-        ),
-        (
-            "/reports",
-            json!({"stamp":{"commit":"abcdef1","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}).to_string(),
         ),
     ];
 

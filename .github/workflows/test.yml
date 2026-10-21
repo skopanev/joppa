@@ -48,8 +48,6 @@ jobs:
       - run: cargo build --locked
       - run: python3 tests/http_smoke.py
       - uses: oven-sh/setup-bun@v2
-      - run: bun tests/reports_smoke.ts
-      - run: bun test scripts/joppa-report
 
       - name: Check the criteria in Chromium
         run: |

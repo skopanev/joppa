@@ -103,15 +103,11 @@ async function fixture(records, configured = types, contextOptions = {}) {
     if (configured[kind]?.question) value.question_checked = configured[kind].question;
     return useMcp ? mcp('joppa_command', {request_id: crypto.randomUUID(), command: value}) : command(value);
   };
-  const upload = (commit, order, cases, full = true) => {
-    const xml = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
-    const rows = cases.map(([name, message]) => '<testcase name="' + xml(name) + '">' +
-      (message ? '<failure message="' + xml(message) + '"/>' : '') + '</testcase>').join('');
-    return api('/reports', {stamp: {commit, order, branch: 'master', default_branch: true, dirty: false, full},
-      junit: '<testsuites><testsuite name="checks.cjs">' + rows + '</testsuite></testsuites>'});
-  };
+  // Record one commit: each case is [name] for a pass or [name, message] for a failure.
+  const record = (commit, cases) => mcp('joppa_record_results', {commit, results: cases.map(([name, message]) =>
+    message ? {test: 'checks.cjs > ' + name, status: 'fail', message} : {test: 'checks.cjs > ' + name, status: 'pass'})});
   const bind = (address, tests) => command({op: 'set_ac_tests', target: address,
-    tests: tests.map(name => 'checks.cjs > ' + name), reason: 'Use the exact uploaded checks'});
+    tests: tests.map(name => 'checks.cjs > ' + name), reason: 'Use the exact recorded checks'});
   const open = async (address, selectWorkspace = true) => {
     const response = await page.goto(live.root + '/?' + (selectWorkspace ? 'workspace=' + live.ws + '&' : '') + 'object=' + encodeURIComponent(address));
     assert.equal(response.status(), 200);
@@ -131,7 +127,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
     await command({op: 'set_tree_schema', revision: schema.current_revision, types: configured, reason: 'Configure the browser tree'}, true);
     for (const [address, record] of Object.entries(records)) await save(address, record);
   } catch (error) { await close(); throw error; }
-  return {page, requests, open, close, api, command, save, upload, bind, mcp, live};
+  return {page, requests, open, close, api, command, save, record, bind, mcp, live};
 }
 
 const criterionRecords = {
@@ -194,15 +190,16 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
   } finally { await f.close(); }
 });
 
-test('guide-teaches-reports-ac1: the guide teaches test lists and full reports, not legacy Checks', async () => {
+test('guide-teaches-reports-ac1: the guide teaches test lists and records, not legacy Checks', async () => {
   const f = await fixture({});
   try {
     assert.equal((await f.page.goto(f.live.root + '/guide')).status(), 200);
     const text = await f.page.locator('body').innerText();
     for (const legacy of [/Expected and observed/i, /runner (records|seals)/i, /check list/i, /manual check/i, /start at n\/a/i])
       assert.doesNotMatch(text, legacy);
-    assert.match(text, /every test in its list passes in the latest full report/);
-    assert.match(text, /A failed or missing test makes the criterion red/);
+    assert.match(text, /every test in its list passes in its latest record/);
+    assert.match(text, /A failed test makes the criterion red/);
+    assert.doesNotMatch(text, /full report|JUnit|pre-push/i);
     assert.match(text, /status rule: tests, children, links or none/);
   } finally { await f.close(); }
 });
@@ -380,7 +377,7 @@ test('direct-child-counts: each row uses the shared next-level count', async () 
   const f = await fixture(records, configured);
   try {
     await f.bind('proof:a', ['pass']); await f.bind('proof:b', ['pass']); await f.bind('proof:bad', ['fail']);
-    await f.upload('cccccccc', 1, [['pass'], ['fail', 'failed check']]);
+    await f.record('cccccccc', [['pass'], ['fail', 'failed check']]);
     const card = await f.open('bundle:root');
     assert.equal(await card.locator(':scope > summary .verification-chip').innerText(), '1 / 3 Branches');
     assert.equal(await card.locator('.common-object[data-object-address="branch:good"] > summary .verification-chip').innerText(), '2 / 2 Sheets');
@@ -427,7 +424,7 @@ test('old-results-history-ac2: the criterion shows both results and the failure 
   const f = await fixture(criterionRecords);
   try {
     await f.bind('ac:A', ['X', 'Y']);
-    await f.upload(commit, 1, [['X'], ['Y', 'expected 403, got 200']]);
+    await f.record(commit, [['X'], ['Y', 'expected 403, got 200']]);
     const card = await f.open('ac:A'), group = card.locator('.object-tests');
     await group.locator(':scope > summary').click();
     await group.locator('.ac-check').nth(1).waitFor();
@@ -468,8 +465,8 @@ test('time-not-stale-ac2: the oldest test commit shows five newer commits', asyn
   const f = await fixture(criterionRecords);
   try {
     await f.bind('ac:A', ['X', 'Y']);
-    await f.upload(commit, 1, [['X'], ['Y']]);
-    for (let order = 2; order <= 6; order++) await f.upload(String(order).repeat(40), order, [['other']], false);
+    await f.record(commit, [['X'], ['Y']]);
+    for (let order = 2; order <= 6; order++) await f.record(String(order).repeat(40), [['other']]);
     const card = await f.open('ac:A'), group = card.locator('.object-tests');
     await group.locator(':scope > summary').click();
     await group.locator('.ac-check').nth(1).waitFor();
@@ -487,7 +484,7 @@ test('done-is-not-green-ac3: a done Task under a green criterion shows Checks pa
       reason: 'Check completion under a green criterion'});
     await f.command({op: 'claim_task', id: 'task:T', revision: 1});
     await f.command({op: 'complete_task', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});
-    await f.upload('dddddddddddddddddddddddddddddddddddddddd', 1, [['X']]);
+    await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
     const card = await f.open('ac:A');
     const circle = card.locator('.common-object[data-object-address="task:T"] > summary .status-circle');
     assert.equal(await circle.getAttribute('data-tone'), 'green');
@@ -548,7 +545,7 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
     await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
       data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
       reason: 'Check the object page under a criterion'});
-    await f.upload('dddddddddddddddddddddddddddddddddddddddd', 1, [['X']]);
+    await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
     const addresses = ['requirement:r', 'ac:A', 'task:T'];
     const noLegacy = async (card, address) => {
       const sections = await card.locator(':scope > .object-body > .object-secondary > .object-section > summary').allTextContents();
@@ -1016,7 +1013,7 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     }
     const nodes = ['area:g1', 'area:g2', 'rule:r'];
     let order = 0;
-    const report = cases => f.upload('c' + String(++order).padStart(6, '0'), order, cases);
+    const report = cases => f.record('c' + String(++order).padStart(6, '0'), cases);
     const labels = [];
     // Each dot shows the tone of the API in the light and the dark theme.
     const check = async (fixture, expected) => {
@@ -1309,7 +1306,7 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
     'ac:M2': {title: 'Criterion without tests', parent: 'requirement:mixed'}});
   try {
     await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
-    await f.upload('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 1, [['X'], ['Y', 'failed check']]);
+    await f.record('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', [['X'], ['Y', 'failed check']]);
     await f.command({op: 'archive_object', target: 'ac:B', revision: 1, reason: 'Drop the red criterion'}, true);
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
@@ -2063,7 +2060,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     'signal:n': {title: 'Signal N'},
   }, configured);
   try {
-    // The five changes of ac1: bot saves R, P moves R, archives N, marks A ready, bot uploads a report.
+    // The five changes of ac1: bot saves R, P moves R, archives N, marks A ready, bot records test results.
     const criterion = await f.api('/objects?address=ac:A');
     await f.command({op: 'confirm', req: criterion.process.req, revision: criterion.process.revision}, true);
     await f.save('requirement:R', {title: 'Requirement R', parent: 'capability:c1'});
@@ -2073,7 +2070,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     const ready = await f.api('/objects?address=ac:A');
     await f.command({op: 'assess', req: ready.process.req, revision: ready.process.revision, ac: ready.process.criterion,
       assessment: {ready: true, reason: 'The scope of A is known'}}, true);
-    await f.upload('0123abc', 1, [['one']]);
+    await f.record('0123abc', [['one']]);
     const newest = (await f.api('/timeline?order=newest&limit=5')).items;
     assert.deepEqual(newest.map(item => item.change), ['report', 'readiness', 'archive', 'move', 'save']);
     const move = newest[3];

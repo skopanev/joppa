@@ -1,31 +1,6 @@
-//! Test report upload, criterion test status and agent tokens.
+//! Criterion test status and agent tokens.
 use super::*;
 
-/// A test run uploads its JUnit report. Only a token may upload, never a browser session.
-pub(super) async fn upload_report(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    headers: HeaderMap,
-    body: axum::body::Bytes,
-) -> ApiResult {
-    // The token is checked before the body is read. The hook prints these texts in git push.
-    let unauthorized = |text: &str| (StatusCode::UNAUTHORIZED, Json(json!({ "error": text })));
-    if !headers.contains_key(header::AUTHORIZATION) {
-        return Err(unauthorized("token required"));
-    }
-    let (actor, access) = authenticate_grant(&app, &headers)
-        .await
-        .map_err(|_| unauthorized("token is not valid"))?;
-    require_write_credential(&headers)?;
-    refuse_read_grant(access)?;
-    let upload: store::ReportUpload = serde_json::from_slice(&body).map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({"error": format!("bad report upload: {e}")})),
-        )
-    })?;
-    result(store::upload_report(&app.pool, &workspace, &actor, upload).await)
-}
 #[derive(Deserialize)]
 pub(super) struct TestsQuery {
     /// One criterion address, or several separated by commas. Without it: the overview.

@@ -32,11 +32,9 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     store::migrate(&pool).await?;
     use_workspace("counters");
     let mut n = fixture(&pool).await?;
-    upload(
+    record(
         &pool,
         "c1c1c1c",
-        1,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -60,7 +58,7 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         "reads computed status={status} rollup={rollup} waits={waits} rebuild={rebuild}"
     );
 
-    // A command, an upload, a repeat receipt and a batch of three: one rebuild each.
+    // A command, an record, a repeat receipt and a batch of three: one rebuild each.
     let before = counts();
     run(&pool, &mut n, json!({"op":"set_ac_tests","target":"ac:a2","tests":list(&["y1"]),"reason":"Save the same list"})).await?;
     ensure!(
@@ -69,11 +67,9 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         delta(before)
     );
     let before = counts();
-    upload(
+    record(
         &pool,
         "c2c2c2c",
-        2,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),
@@ -85,15 +81,13 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     .await?;
     ensure!(
         delta(before)[4] == 1,
-        "an upload rebuilds once: {:?}",
+        "an record rebuilds once: {:?}",
         delta(before)
     );
     let before = counts();
-    upload(
+    record(
         &pool,
         "c2c2c2c",
-        2,
-        true,
         &[
             ("x1", "pass"),
             ("x2", "pass"),

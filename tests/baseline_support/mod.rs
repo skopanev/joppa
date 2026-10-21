@@ -72,21 +72,22 @@ pub fn fails(report: usize, ac: usize, case: usize) -> bool {
         .is_multiple_of(97)
 }
 
-pub fn junit(report: usize) -> String {
-    let mut cases = String::new();
+/// The outcomes of one synthetic run, as joppa_record_results takes them.
+pub fn results(report: usize) -> Value {
+    let mut results = vec![];
     for ac in 0..ACS {
         for case in 0..2 {
-            let name = test_name(ac, case);
-            if fails(report, ac, case) {
-                cases.push_str(&format!(
-                    r#"<testcase name="{name}"><failure message="synthetic"/></testcase>"#
-                ));
+            let status = if fails(report, ac, case) {
+                "fail"
             } else {
-                cases.push_str(&format!(r#"<testcase name="{name}"/>"#));
-            }
+                "pass"
+            };
+            results.push(
+                json!({"test": format!("{FILE} > {}", test_name(ac, case)), "status": status}),
+            );
         }
     }
-    format!(r#"<testsuites><testsuite name="{FILE}">{cases}</testsuite></testsuites>"#)
+    Value::Array(results)
 }
 
 pub async fn build(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
@@ -144,13 +145,12 @@ pub async fn build(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
         .collect();
     write(pool, ws, &mut step, lists).await?;
     for report in 0..REPORTS {
-        let stamp = json!({"commit":format!("{:040x}", SEED as u128 * 1_000 + report as u128),"order":report + 1,
-            "branch":"master","default_branch":true,"dirty":false,"full":true});
-        store::upload_report(
+        let commit = format!("{:040x}", SEED as u128 * 1_000 + report as u128);
+        store::record_results(
             pool,
             ws,
             "owner",
-            serde_json::from_value(json!({"stamp":stamp,"junit":junit(report)}))?,
+            &json!({"commit":commit,"results":results(report)}),
         )
         .await?;
     }

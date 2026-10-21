@@ -180,7 +180,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
     let revision = p.revision("criterion:a").await?;
     refuse(&p, "blocked A", "criterion:a", revision, NOT_READY).await?;
 
-    // A passes by the JUnit report of its current test list.
+    // A passes by the record of its current test list.
     let p = people(&w).await?;
     p.ready().await?;
     p.t0().await?;
@@ -191,14 +191,8 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
         .map_err(anyhow::Error::msg)?;
     let root = w.base.split("/api/").next().unwrap();
     let base = format!("{root}/api/workspaces/{}", p.ws);
-    let stamp = json!({"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
-    w.http
-        .post(format!("{base}/reports"))
-        .bearer_auth(&w.alex)
-        .json(&json!({"stamp":stamp,"junit":junit(&[("opens", "pass"), ("refuses", "pass")])}))
-        .send()
-        .await?
-        .error_for_status()?;
+    let passed = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
+    record_http::recorded(&w.http, root, &p.ws, &w.alex, "c1c1c1c", passed).await?;
     let status: Value = w
         .http
         .get(format!("{base}/tests?ac=criterion:a"))
@@ -208,7 +202,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
         .error_for_status()?
         .json()
         .await?;
-    ensure!(status["status"] == "green", "JUnit must be green: {status}");
+    ensure!(status["status"] == "green", "the record must make A green: {status}");
     let revision = p.revision("criterion:a").await?;
     let verified = "criterion is already verified";
     refuse(&p, "verified A", "criterion:a", revision, verified).await?;

@@ -130,9 +130,6 @@ pub fn set(
     crate::objects::reset_criteria(w, &address, at)
 }
 
-#[path = "ac_tests_junit.rs"]
-mod junit;
-pub use junit::{TestResult, parse_junit};
 #[path = "ac_tests_status.rs"]
 mod status;
-pub use status::{Boundary, CriterionStatus, Report, TestStatus, criterion_status};
+pub use status::{Boundary, CriterionStatus, Report, TestResult, TestStatus, criterion_status};

@@ -1,7 +1,7 @@
 //! Synthetic-fixture baseline of the board top-level read. It changes no product code.
 //! The fixture has the shape of joppa, scaled past 700 objects: 5 domains, 25 capabilities,
 //! 76 requirements with 13 links, 202 criteria with 2 listed tests each, and 420 Tasks.
-//! 40 clean full reports cover every listed test. The test times 20 reads of the top
+//! 40 records cover every listed test. The test times 20 reads of the top
 //! level as the board makes them (kind=domain, limit=50) and prints the SQL statements
 //! by total time. It runs only on a fresh isolated joppa_test_* database.
 use anyhow::{Result, ensure};
@@ -72,14 +72,13 @@ async fn board_top_level_baseline_on_a_synthetic_fixture() -> Result<()> {
     }
     let mut upload_ms = vec![];
     for report in REPORTS..REPORTS + 20 {
-        let stamp = json!({"commit":format!("{:040x}", SEED as u128 * 1_000 + report as u128),"order":report + 1,
-            "branch":"master","default_branch":true,"dirty":false,"full":true});
+        let commit = format!("{:040x}", SEED as u128 * 1_000 + report as u128);
         let begin = Instant::now();
-        store::upload_report(
+        store::record_results(
             &pool,
             &ws,
             "owner",
-            serde_json::from_value(json!({"stamp":stamp,"junit":junit(report)}))?,
+            &json!({"commit":commit,"results":results(report)}),
         )
         .await?;
         upload_ms.push(begin.elapsed().as_micros() as f64 / 1000.0);

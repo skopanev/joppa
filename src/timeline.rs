@@ -135,15 +135,19 @@ pub fn address(command: &Value) -> Option<String> {
 pub fn reason(command: &Value) -> String {
     if command["op"] == "record_report" {
         let commit = command["commit"].as_str().unwrap_or_default();
+        // A record has no branch. Older uploaded reports keep the branch they named.
+        let branch = match command["branch"].as_str().unwrap_or_default() {
+            "" | "record" => String::new(),
+            branch => format!(" on {branch}"),
+        };
         return format!(
-            "{} {} on {}: {} tests",
+            "{} {}{branch}: {} tests",
             if command["repeat"] == true {
                 "Repeated test report of commit"
             } else {
                 "Test report of commit"
             },
             &commit[..commit.len().min(12)],
-            command["branch"].as_str().unwrap_or_default(),
             command["tests"].as_u64().unwrap_or_default()
         );
     }

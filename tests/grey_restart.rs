@@ -8,6 +8,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "common/record_http.rs"]
+mod record_http;
+
 struct Server(Child);
 impl Drop for Server {
     fn drop(&mut self) {
@@ -208,14 +211,9 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
         f.write(AGENT, json!({"op":"set_ac_tests","target":format!("criterion:{criterion}"),"tests":[A,B],"reason":"Bind the tests"})).await?;
     }
     let server = start(&url, &tokens, port).await?;
-    let junit = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses" /></testsuite></testsuite></testsuites>"#;
-    f.post(
-        "reports",
-        &f.agent,
-        json!({"stamp":{"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}),
-    )
-    .await?;
-    f.expect("step 1, after the clean full report", "green", "green")
+    let passed = json!([{"test":A,"status":"pass"},{"test":B,"status":"pass"}]);
+    record_http::recorded(&f.http, &f.root, &f.ws, &f.agent, "c1c1c1c", passed).await?;
+    f.expect("step 1, after the record", "green", "green")
         .await?;
 
     // Step 2: the owner changes only the text of G.

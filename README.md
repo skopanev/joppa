@@ -352,10 +352,8 @@ The gate runs the full suite in two workers, each with its own database.
 It does not run the browser suite. `test:browser` remains the public browser runner.
 Set `JOPPA_LANE_TEST_ENV` to the private environment file when the default path does not apply.
 The file sets `JOPPA_TEST_ADMIN_URL` for the disposable test server. Keep it outside Git.
-A full run (gate or lane-tests) writes the report into `.joppa/`. After the push is
-confirmed, `bun run report:upload` reads one line `refs/heads/master <pushed> refs/heads/master <old>`
-on stdin and uploads that report. It exits 0 only when Joppa stored it; as a Git hook it
-never blocks a push.
+Record test results with the MCP tool `joppa_record_results`: one call holds the commit
+and the outcome of each test. It is the only way to write test results.
 Each invocation drops only its own test database when it exits.
 The build wrapper clears only its private `target` directory when the `Cargo.lock` fingerprint changes.
 It logs shared lock waiting in seconds. Browser-only commands do not clear compiled artifacts.

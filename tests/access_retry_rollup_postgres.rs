@@ -194,7 +194,7 @@ async fn an_uninvited_account_cannot_write_to_a_workspace() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_report_upload_updates_the_criterion_and_every_ancestor_counter() -> Result<()> {
+async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<()> {
     // ac:precomputed-status-reads-ac2: A is the only criterion under R, C and D.
     let pool = pool().await?;
     let ws = workspace(&pool).await?;
@@ -218,15 +218,14 @@ async fn a_report_upload_updates_the_criterion_and_every_ancestor_counter() -> R
         let node = read(&pool, &ws, address).await?;
         ensure!(node["verification_summary"]["passed"] == 0, "{node}");
     }
-    let junit = r#"<testsuites><testsuite name="tests/rollup.test.ts"><testsuite name="rollup"><testcase name="passes" /></testsuite></testsuite></testsuites>"#;
-    store::upload_report(
+    store::record_results(
         &pool,
         &ws,
         "alex",
-        serde_json::from_value(json!({"stamp":{"commit":"a011cf1","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}))?,
+        &json!({"commit":"a011cf1","results":[{"test":"tests/rollup.test.ts > rollup > passes","status":"pass"}]}),
     )
     .await?;
-    // The test status of A is its verification; the read right after the upload shows it.
+    // The test status of A is its verification; the read right after the record shows it.
     let tests = store::criterion_tests(&pool, &ws, "alex", "ac:a").await?;
     ensure!(tests["status"] == "green", "{tests}");
     let a = read(&pool, &ws, "ac:a").await?;

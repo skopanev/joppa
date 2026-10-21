@@ -7,7 +7,6 @@ fn record(id: i64, commit: &str, order: i64, received_us: i64) -> Report {
         id,
         commit: commit.into(),
         order,
-        full: false,
         recorded: true,
         received_us,
         receipt_us: received_us,

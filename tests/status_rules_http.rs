@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 use std::process::{Child, Command as Process, Stdio};
 use std::time::Duration;
 
+#[path = "common/record_http.rs"]
+mod record_http;
+
 struct Server(Child);
 impl Drop for Server {
     fn drop(&mut self) {
@@ -169,35 +172,14 @@ impl World {
         }
         Ok(tones)
     }
-    /// A clean full report from bot with each test as pass or fail.
+    /// A record from bot with each test as pass or fail, on a new commit.
     async fn report(&self, cases: &[(&str, &str)]) -> Result<()> {
         self.order.set(self.order.get() + 1);
-        let rows: String = cases
-            .iter()
-            .map(|(name, status)| match *status {
-                "fail" => {
-                    format!(r#"<testcase name="{name}"><failure message="boom"/></testcase>"#)
-                }
-                _ => format!(r#"<testcase name="{name}" />"#),
-            })
-            .collect();
-        let junit = format!(
-            r#"<testsuites><testsuite name="tests/rules.test.ts"><testsuite name="rules">{rows}</testsuite></testsuite></testsuites>"#
-        );
         let order = self.order.get();
-        let stamp = json!({"commit":format!("c{order:06}"),"order":order,"branch":"master","default_branch":true,"dirty":false,"full":true});
-        let reply = self
-            .http
-            .post(format!("{}/reports", self.base))
-            .bearer_auth(&self.bot)
-            .json(&json!({"stamp": stamp, "junit": junit}))
-            .send()
-            .await?;
-        ensure!(
-            reply.status().is_success(),
-            "upload: {}",
-            reply.text().await?
-        );
+        let results = record_http::cases(SUITE, cases);
+        let ws = self.base.rsplit('/').next().unwrap();
+        let commit = format!("c{order:06}");
+        record_http::recorded(&self.http, &self.root, ws, &self.bot, &commit, results).await?;
         Ok(())
     }
     async fn save(&self, kind: &str, id: &str, parent: Option<&str>) -> Result<()> {
@@ -411,7 +393,7 @@ async fn type_status_rules_ac3_empty_nodes_are_grey_and_uncounted_children_chang
     w.save("area", "e", None).await?;
     w.save("rule", "q2", Some("area:e")).await?;
     ensure!(w.tones(&["area:e"]).await? == ["grey"]);
-    // Fixture 2: C is archived; then a new clean full report passes every test of A.
+    // Fixture 2: C is archived; then a new record passes every test of A.
     let c = w.object("check:c").await?;
     w.command(&w.owner, json!({"op":"archive_object","target":"check:c","revision":c["current_revision"],"reason":"Drop the check"})).await?;
     ensure!(

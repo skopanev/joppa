@@ -8,8 +8,6 @@
     "test": "bash scripts/build.sh lane-tests",
     "test:only": "bash scripts/build.sh test-only",
     "fmt": "bash scripts/build.sh fmt",
-    "report:upload": "JOPPA_REPORT_STRICT=1 bun scripts/joppa-report/pre-push origin joppa",
-    "report": "bash scripts/build.sh report",
     "test:rust": "bash scripts/build.sh test",
     "test:browser": "bash scripts/build.sh browser",
     "gate": "bash scripts/build.sh gate"

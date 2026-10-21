@@ -1,4 +1,4 @@
-//! Test reports over HTTP: a real server, a member token and uploaded JUnit.
+//! Test results over HTTP: a real server, a member token and records of test outcomes.
 //! Each test proves one Evidence criterion through the endpoints, not the status function.
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, sessions, store};
@@ -7,6 +7,9 @@ use std::{
     process::{Child, Command, Stdio},
     time::Duration,
 };
+
+#[path = "common/record_http.rs"]
+mod record_http;
 
 struct Server(Child);
 impl Drop for Server {
@@ -128,41 +131,14 @@ impl World {
         );
         Ok(())
     }
-    async fn upload(&self, commit: &str, order: i64, full: bool, junit: String) -> Result<()> {
-        let stamp = json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":full});
-        let reply = self
-            .http
-            .post(format!("{}/reports", self.base))
-            .bearer_auth(&self.token)
-            .json(&json!({"stamp": stamp, "junit": junit}))
-            .send()
-            .await?;
-        ensure!(
-            reply.status().is_success(),
-            "upload: {}",
-            reply.text().await?
-        );
-        Ok(())
+    /// The server address and the workspace name of this world.
+    fn root_ws(&self) -> (&str, &str) {
+        self.base.split_once("/api/workspaces/").unwrap()
     }
-    /// Post a report with any stamp and token; returns the status code and the reply body.
-    async fn raw_upload(
-        &self,
-        token: Option<&str>,
-        stamp: Value,
-        junit: String,
-    ) -> Result<(u16, Value)> {
-        let mut request = self.http.post(format!("{}/reports", self.base));
-        if let Some(token) = token {
-            request = request.bearer_auth(token);
-        }
-        let reply = request
-            .json(&json!({"stamp": stamp, "junit": junit}))
-            .send()
-            .await?;
-        Ok((
-            reply.status().as_u16(),
-            reply.json().await.unwrap_or(Value::Null),
-        ))
+    /// Record `results` for `commit` with the member token.
+    async fn record(&self, commit: &str, results: Value) -> Result<Value> {
+        let (root, ws) = self.root_ws();
+        record_http::recorded(&self.http, root, ws, &self.token, commit, results).await
     }
     /// skopanev's role in these tests: change the criterion text, which makes a new revision.
     async fn revise_text(&self, expected: u32, text: &str) -> Result<()> {
@@ -194,135 +170,9 @@ impl World {
     }
 }
 
-/// A JUnit report from `bun test` for tests/auth/login.test.ts > login.
-fn junit(cases: &[(&str, &str)]) -> String {
-    let rows: String = cases
-        .iter()
-        .map(|(name, status)| match *status {
-            "fail" => format!(r#"<testcase name="{name}"><failure message="boom"/></testcase>"#),
-            _ => format!(r#"<testcase name="{name}" />"#),
-        })
-        .collect();
-    format!(
-        r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login">{rows}</testsuite></testsuite></testsuites>"#
-    )
-}
-
-/// A Git repository with the report kit of scripts/joppa-report, its bare remote and the
-/// server of a World: `bun test` runs with the stamp preload, `git push` runs the real hook.
-/// Its first commit holds tests/auth/login.test.ts with A and B, both passing.
-struct PushRepo {
-    repo: std::path::PathBuf,
-    remote: std::path::PathBuf,
-}
-
-/// Run a tool in `dir`; returns the exit code, stdout and stderr. A missing tool fails clearly.
-fn tool(
-    dir: &std::path::Path,
-    program: &str,
-    args: &[&str],
-    envs: &[(&str, &str)],
-) -> Result<(i32, String, String)> {
-    let out = Command::new(program)
-        .args(args)
-        .current_dir(dir)
-        .envs(envs.iter().copied())
-        // A test run inside a Git hook must not touch the outer repository.
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("the push tests need {program} on PATH"))?;
-    Ok((
-        out.status.code().unwrap_or(-1),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-        String::from_utf8_lossy(&out.stderr).into_owned(),
-    ))
-}
-
-impl PushRepo {
-    fn new(w: &World) -> Result<Self> {
-        let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/joppa-report");
-        let root =
-            std::env::temp_dir().join(format!("joppa-push-{}", uuid::Uuid::new_v4().simple()));
-        let (repo, remote) = (root.join("repo"), root.join("remote.git"));
-        std::fs::create_dir_all(repo.join("tests/auth"))?;
-        std::fs::create_dir_all(repo.join(".joppa"))?;
-        let this = Self { repo, remote };
-        for args in [
-            vec![
-                "init",
-                "-q",
-                "--bare",
-                "-b",
-                "master",
-                this.remote.to_str().unwrap(),
-            ],
-            vec!["init", "-q", "-b", "master", this.repo.to_str().unwrap()],
-        ] {
-            let (code, _, err) = tool(&root, "git", &args, &[])?;
-            ensure!(code == 0, "git init: {err}");
-        }
-        std::fs::write(
-            this.repo.join("bunfig.toml"),
-            format!(
-                "[test]\npreload = [\"{kit}/stamp.ts\"]\n[test.reporter]\njunit = \".joppa/junit.xml\"\n"
-            ),
-        )?;
-        std::fs::write(this.repo.join(".gitignore"), ".joppa/\n")?;
-        std::fs::write(
-            this.repo.join("tests/auth/login.test.ts"),
-            "import { describe, expect, test } from \"bun:test\";\ndescribe(\"login\", () => {\n  test(\"opens\", () => expect(1).toBe(1));\n  test(\"refuses\", () => expect(2).toBe(2));\n});\n",
-        )?;
-        let (url, workspace) = w.base.split_once("/api/workspaces/").unwrap();
-        std::fs::write(
-            this.repo.join(".joppa/config.json"),
-            json!({"url": url, "workspace": workspace, "default_branch": "master"}).to_string(),
-        )?;
-        std::os::unix::fs::symlink(
-            format!("{kit}/pre-push"),
-            this.repo.join(".git/hooks/pre-push"),
-        )?;
-        this.git(&["config", "user.email", "alex@example.test"])?;
-        this.git(&["config", "user.name", "Alex"])?;
-        this.git(&["remote", "add", "origin", this.remote.to_str().unwrap()])?;
-        this.git(&["add", "."])?;
-        // The workspace name keeps the commit unique across test runs on one database.
-        this.git(&["commit", "-q", "-m", &format!("Fixture for {workspace}")])?;
-        Ok(this)
-    }
-    /// Run git in the repository; returns its trimmed stdout.
-    fn git(&self, args: &[&str]) -> Result<String> {
-        let (code, out, err) = tool(&self.repo, "git", args, &[])?;
-        ensure!(code == 0, "git {}: {err}", args.join(" "));
-        Ok(out.trim().to_owned())
-    }
-    /// `bun test` without a filter; returns the stamp it wrote.
-    fn bun_test(&self) -> Result<Value> {
-        let (code, out, err) = tool(&self.repo, "bun", &["test"], &[])?;
-        ensure!(code == 0, "bun test: {out}{err}");
-        Ok(serde_json::from_str(&std::fs::read_to_string(
-            self.repo.join(".joppa/stamp.json"),
-        )?)?)
-    }
-    /// The number of testcases in the JUnit report of the last run.
-    fn testcases(&self) -> Result<usize> {
-        let junit = std::fs::read_to_string(self.repo.join(".joppa/junit.xml"))?;
-        Ok(junit.matches("<testcase ").count())
-    }
-    /// `git push origin <args>` with `token` for the hook; returns the exit code and stderr.
-    fn push(&self, token: &str, args: &[&str]) -> Result<(i32, String)> {
-        let args = [&["push", "origin"], args].concat();
-        let (code, _, err) = tool(&self.repo, "git", &args, &[("JOPPA_REPORT_TOKEN", token)])?;
-        Ok((code, err))
-    }
-    /// The commit of the remote default branch.
-    fn remote_head(&self) -> Result<String> {
-        let (code, out, err) = tool(&self.remote, "git", &["rev-parse", "HEAD"], &[])?;
-        ensure!(code == 0, "remote HEAD: {err}");
-        Ok(out.trim().to_owned())
-    }
+/// Outcomes of tests/auth/login.test.ts > login, as joppa_record_results takes them.
+fn outcomes(cases: &[(&str, &str)]) -> Value {
+    record_http::cases("tests/auth/login.test.ts > login", cases)
 }
 
 async fn ready_for_planning(w: &World) -> Result<Value> {
@@ -396,16 +246,14 @@ async fn a_green_criterion_leaves_the_unstarted_list() -> Result<()> {
         )
     };
     ensure!(unstarted().await?, "a grey ready criterion is unstarted");
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(
         w.status().await?["status"] == "green",
-        "JUnit must be green"
+        "the record must make A green"
     );
     ensure!(!unstarted().await?, "a green criterion is not unstarted");
     Ok(())
@@ -413,19 +261,18 @@ async fn a_green_criterion_leaves_the_unstarted_list() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn planning_claim_refuses_junit_green_over_http_and_mcp_without_mutation() -> Result<()> {
+async fn planning_claim_refuses_a_recorded_green_over_http_and_mcp_without_mutation() -> Result<()>
+{
     let w = world().await?;
     ready_for_planning(&w).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(
         w.status().await?["status"] == "green",
-        "JUnit must be green"
+        "the record must make A green"
     );
     let before = planning_criterion(&w).await?;
     let command =
@@ -940,16 +787,10 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
         json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Link the tests"}),
     )
     .await?;
-    let stamp = json!({"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
     let root = w.base.split("/api/").next().unwrap();
     let base = format!("{root}/api/workspaces/{}", p.ws);
-    w.http
-        .post(format!("{base}/reports"))
-        .bearer_auth(&w.token)
-        .json(&json!({"stamp":stamp,"junit":junit(&[("opens", "pass"), ("refuses", "pass")])}))
-        .send()
-        .await?
-        .error_for_status()?;
+    let passed = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
+    record_http::recorded(&w.http, root, &p.ws, &w.token, "c1c1c1c", passed).await?;
     let status: Value = w
         .http
         .get(format!("{base}/tests?ac=criterion:a"))
@@ -959,7 +800,10 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
         .error_for_status()?
         .json()
         .await?;
-    ensure!(status["status"] == "green", "JUnit must be green: {status}");
+    ensure!(
+        status["status"] == "green",
+        "the record must make A green: {status}"
+    );
     let revision = p.revision("criterion:a").await?;
     p.refuse(
         "verified A",
@@ -1022,11 +866,9 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
     let w = world().await?;
     w.list(&[A]).await?;
     ready_for_planning(&w).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "fail")]),
+        outcomes(&[("opens", "pass"), ("refuses", "fail")]),
     )
     .await?;
     ensure!(
@@ -1139,11 +981,9 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
         command(json!({"op":"save_object","kind":"proof","id":id,"revision":0,"parent":parent,"data":{"title":id,"description":"The exact criterion","owner":"owner"},"reason":"Create a configured criterion"})).await?;
         command(json!({"op":"set_ac_tests","target":format!("proof:{id}"),"tests":[test],"reason":"Bind its exact test"})).await?;
     }
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "fail")]),
+        outcomes(&[("opens", "pass"), ("refuses", "fail")]),
     )
     .await?;
     for (address, total, passed, failed) in [
@@ -1204,43 +1044,13 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
     Ok(())
 }
 
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn latest_run_decides_by_commit_order_not_upload_time() -> Result<()> {
-    // latest-run-decides-ac1: the newer commit uploads first, the older one later.
-    let w = world().await?;
-    w.upload(
-        "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
-    )
-    .await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    let s = w.status().await?;
-    ensure!(
-        s["status"] == "red"
-            && s["tests"][0]["status"] == "fail"
-            && s["tests"][0]["commit"] == "c2c2c2c",
-        "{s}"
-    );
-    Ok(())
-}
-
 // status-current-only-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_listed_test_without_a_result_is_not_run_and_grey() -> Result<()> {
-    // A lists opens (X) and refuses (Y); the only report is a partial run of C with X passing.
+    // A lists opens (X) and refuses (Y); the only record of C with X passing.
     let w = world().await?;
-    w.upload("c1c1c1c", 1, false, junit(&[("opens", "pass")]))
-        .await?;
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
@@ -1265,468 +1075,6 @@ async fn a_listed_test_without_a_result_is_not_run_and_grey() -> Result<()> {
             && s["status"] == "grey"
             && s["reason"] == "not all tests passed",
         "{s}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_test_absent_from_a_full_run_is_missing() -> Result<()> {
-    // status-current-only-ac2: refuses is listed, the full run of C has only opens.
-    let w = world().await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    w.upload("c2c2c2c", 2, true, junit(&[("opens", "pass")]))
-        .await?;
-    let s = w.status().await?;
-    ensure!(
-        s["status"] == "red"
-            && s["tests"][1]["status"] == "missing"
-            && s["tests"][1]["commit"] == "c2c2c2c",
-        "{s}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn every_case_of_a_shared_address_must_pass() -> Result<()> {
-    // missing-is-not-pass-ac2: bun 1.4.2 output of test.each with one name and three cases.
-    // A green baseline where all three pass, then a later report where exactly one fails.
-    let w = world().await?;
-    let same = "tests/auth/login.test.ts > login > passkey > same name";
-    w.list(&[same]).await?;
-    let s = w.status().await?;
-    ensure!(
-        s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
-        "{s}"
-    );
-    let bun = |failing: bool| {
-        let pass = r#"<testcase name="same name" classname="passkey &gt; login" time="0.000075" file="tests/auth/login.test.ts" line="5" assertions="1" />"#;
-        let last = if failing {
-            r#"<testcase name="same name" classname="passkey &gt; login" time="0.000794" file="tests/auth/login.test.ts" line="5" assertions="1">
-          <failure type="AssertionError" message="Expected: 3&#10;Received: 2&#10;">AssertionError</failure>
-        </testcase>"#
-        } else {
-            pass
-        };
-        let failures = u8::from(failing);
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="bun test" tests="3" assertions="3" failures="{failures}" skipped="0" time="0.04">
-  <testsuite name="tests/auth/login.test.ts" file="tests/auth/login.test.ts" tests="3">
-    <testsuite name="login" file="tests/auth/login.test.ts" line="2" tests="3">
-      <testsuite name="passkey" file="tests/auth/login.test.ts" line="3" tests="3">
-        {pass}
-        {pass}
-        {last}
-      </testsuite>
-    </testsuite>
-  </testsuite>
-</testsuites>"#
-        )
-    };
-    w.upload("c1c1c1c", 1, true, bun(false)).await?;
-    let s = w.status().await?;
-    ensure!(
-        s["tests"][0]["address"] == same
-            && s["tests"][0]["status"] == "pass"
-            && s["status"] == "green",
-        "{s}"
-    );
-    w.upload("c2c2c2c", 2, true, bun(true)).await?;
-    let s = w.status().await?;
-    ensure!(
-        s["tests"][0]["address"] == same
-            && s["tests"][0]["status"] == "fail"
-            && s["status"] == "red",
-        "{s}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_partial_run_updates_only_the_tests_it_ran() -> Result<()> {
-    // no-mixed-subjects-ac1: a full run on C1, then a partial run on C2 with only opens.
-    let w = world().await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    w.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
-        .await?;
-    let s = w.status().await?;
-    ensure!(
-        s["status"] == "green"
-            && s["tests"][0]["commit"] == "c2c2c2c"
-            && s["tests"][1]["commit"] == "c1c1c1c"
-            && s["commit"] == "c1c1c1c",
-        "{s}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_full_run_absence_beats_a_partial_pass_on_the_same_commit() -> Result<()> {
-    // no-mixed-subjects-ac2: opens is listed; the full run of C omits it, a partial run of C passes it.
-    let w = world().await?;
-    w.list(&[A]).await?;
-    w.upload("c1c1c1c", 1, true, junit(&[("refuses", "pass")]))
-        .await?;
-    w.upload("c1c1c1c", 1, false, junit(&[("opens", "pass")]))
-        .await?;
-    let s = w.status().await?;
-    let x = s["tests"]
-        .as_array()
-        .and_then(|tests| tests.iter().find(|t| t["address"] == A));
-    ensure!(
-        x.is_some_and(|x| x["status"] == "missing" && x["commit"] == "c1c1c1c")
-            && s["status"] == "red",
-        "{s}"
-    );
-    Ok(())
-}
-
-fn stamp(commit: &str, order: i64, dirty: bool) -> Value {
-    json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":dirty,"full":true})
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn every_report_records_its_commit_and_uploader() -> Result<()> {
-    // no-manual-pass-ac1: bot's own token uploads; the stored report names the commit and bot.
-    let w = world().await?;
-    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
-    ensure!(
-        code == 200 && created["token"].as_str().is_some_and(|t| !t.is_empty()),
-        "{code} {created}"
-    );
-    let bot = created["token"].as_str().unwrap();
-    let (code, reply) = w
-        .raw_upload(
-            Some(bot),
-            stamp("c1c1c1c", 1, false),
-            junit(&[("opens", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 200
-            && reply["commit"] == "c1c1c1c"
-            && reply["uploader"] == "bot"
-            && reply["report"].is_i64(),
-        "{reply}"
-    );
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let row = pool
-        .get()
-        .await?
-        .query_one(
-            "SELECT commit_sha, uploader FROM joppa.test_reports WHERE id=$1",
-            &[&reply["report"].as_i64().unwrap()],
-        )
-        .await?;
-    let (commit, uploader): (String, String) = (row.get(0), row.get(1));
-    ensure!(
-        commit == "c1c1c1c" && uploader == "bot",
-        "{commit} {uploader}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_default_branch_push_uploads_the_report_of_its_commit() -> Result<()> {
-    // runner-executed-ac1: A lists X; alex runs the full suite on a clean C and pushes C.
-    let w = world().await?;
-    let member = json!({"op":"member","id":"alex","role":"human"});
-    let (code, reply) = post(
-        &w,
-        &w.owner,
-        "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":member}),
-    )
-    .await?;
-    ensure!(code == 200, "{code} {reply}");
-    let repo = PushRepo::new(&w)?;
-    let c = repo.git(&["rev-parse", "HEAD"])?;
-    let stamp = repo.bun_test()?;
-    ensure!(
-        stamp["commit"] == c.as_str() && stamp["dirty"] == false && stamp["full"] == true,
-        "{stamp}"
-    );
-    let n = repo.testcases()?;
-    let (code, out) = repo.push(&w.alex, &["master"])?;
-    ensure!(code == 0, "git push: {out}");
-    ensure!(
-        repo.remote_head()? == c,
-        "the remote default branch is not at {c}"
-    );
-    let uploaded = format!("joppa report: uploaded {n} results for {}", &c[..7]);
-    ensure!(
-        out.lines().any(|line| line == uploaded),
-        "no \"{uploaded}\" in: {out}"
-    );
-    let s = w.status().await?;
-    let x = s["tests"]
-        .as_array()
-        .and_then(|tests| tests.iter().find(|t| t["address"] == A))
-        .with_context(|| format!("no {A} in {s}"))?;
-    ensure!(x["status"] == "pass" && x["commit"] == c.as_str(), "{s}");
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let uploaders: Vec<String> = pool
-        .get()
-        .await?
-        .query(
-            "SELECT uploader FROM joppa.test_reports WHERE commit_sha=$1",
-            &[&c],
-        )
-        .await?
-        .iter()
-        .map(|row| row.get(0))
-        .collect();
-    ensure!(uploaders == ["alex"], "{uploaders:?}");
-    Ok(())
-}
-
-// runner-executed-ac2
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_default_branch_push_with_the_report_of_another_commit_uploads_nothing() -> Result<()> {
-    // X shows B; alex keeps the report for B and pushes the newer commit C.
-    let w = world().await?;
-    let member = json!({"op":"member","id":"alex","role":"human"});
-    let (code, reply) = post(
-        &w,
-        &w.owner,
-        "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":member}),
-    )
-    .await?;
-    ensure!(code == 200, "{code} {reply}");
-    let repo = PushRepo::new(&w)?;
-    let b = repo.git(&["rev-parse", "HEAD"])?;
-    let stamp = repo.bun_test()?;
-    ensure!(
-        stamp["commit"] == b.as_str() && stamp["full"] == true,
-        "{stamp}"
-    );
-    let (code, out) = repo.push(&w.alex, &["master"])?;
-    ensure!(code == 0, "git push: {out}");
-    let commit_of_x = |s: &Value| {
-        s["tests"]
-            .as_array()
-            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
-            .map(|x| x["commit"].clone())
-    };
-    let s = w.status().await?;
-    ensure!(commit_of_x(&s) == Some(json!(b)), "X is not at {b}: {s}");
-    // C comes without a new run: the stamp and the report stay for B.
-    repo.git(&["commit", "-q", "--allow-empty", "-m", "C"])?;
-    let c = repo.git(&["rev-parse", "HEAD"])?;
-    let (code, out) = repo.push(&w.alex, &["master"])?;
-    ensure!(code == 0, "git push: {out}");
-    ensure!(
-        repo.remote_head()? == c,
-        "the remote default branch is not at {c}"
-    );
-    let refused =
-        "joppa report: the report is not for the pushed default-branch commit, nothing uploaded";
-    ensure!(
-        out.lines().any(|line| line == refused),
-        "no \"{refused}\" in: {out}"
-    );
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let stored: i64 = pool
-        .get()
-        .await?
-        .query_one(
-            "SELECT count(*) FROM joppa.test_reports WHERE commit_sha=$1",
-            &[&c],
-        )
-        .await?
-        .get(0);
-    ensure!(stored == 0, "{stored} reports stored for {c}");
-    let s = w.status().await?;
-    ensure!(commit_of_x(&s) == Some(json!(b)), "X is not at {b}: {s}");
-    Ok(())
-}
-
-// runner-executed-ac3
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_push_with_no_verify_uploads_nothing() -> Result<()> {
-    // X shows B; alex has a clean full run at C and pushes C with --no-verify.
-    let w = world().await?;
-    let member = json!({"op":"member","id":"alex","role":"human"});
-    let (code, reply) = post(
-        &w,
-        &w.owner,
-        "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":member}),
-    )
-    .await?;
-    ensure!(code == 200, "{code} {reply}");
-    let repo = PushRepo::new(&w)?;
-    let b = repo.git(&["rev-parse", "HEAD"])?;
-    let stamp = repo.bun_test()?;
-    ensure!(
-        stamp["commit"] == b.as_str() && stamp["dirty"] == false && stamp["full"] == true,
-        "{stamp}"
-    );
-    let (code, out) = repo.push(&w.alex, &["master"])?;
-    ensure!(code == 0, "git push: {out}");
-    let commit_of_x = |s: &Value| {
-        s["tests"]
-            .as_array()
-            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
-            .map(|x| x["commit"].clone())
-    };
-    let before = w.status().await?;
-    ensure!(
-        commit_of_x(&before) == Some(json!(b)),
-        "X is not at {b}: {before}"
-    );
-    repo.git(&["commit", "-q", "--allow-empty", "-m", "C"])?;
-    let c = repo.git(&["rev-parse", "HEAD"])?;
-    let stamp = repo.bun_test()?;
-    ensure!(
-        stamp["commit"] == c.as_str() && stamp["dirty"] == false && stamp["full"] == true,
-        "{stamp}"
-    );
-    let (code, out) = repo.push(&w.alex, &["--no-verify", "master"])?;
-    ensure!(code == 0, "git push: {out}");
-    ensure!(
-        repo.remote_head()? == c,
-        "the remote default branch is not at {c}"
-    );
-    ensure!(!out.contains("joppa report:"), "the hook ran: {out}");
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let stored: i64 = pool
-        .get()
-        .await?
-        .query_one(
-            "SELECT count(*) FROM joppa.test_reports WHERE commit_sha=$1",
-            &[&c],
-        )
-        .await?
-        .get(0);
-    ensure!(stored == 0, "{stored} reports stored for {c}");
-    let after = w.status().await?;
-    ensure!(
-        commit_of_x(&after) == Some(json!(b)),
-        "X is not at {b}: {after}"
-    );
-    ensure!(after == before, "the reply changed: {before} -> {after}");
-    Ok(())
-}
-
-// result-has-output-ac2
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_default_branch_push_after_a_dirty_run_uploads_nothing() -> Result<()> {
-    // A lists X, X is red on C; a full run on a dirty tree at C passes X, then C is pushed.
-    let w = world().await?;
-    let repo = PushRepo::new(&w)?;
-    let c = repo.git(&["rev-parse", "HEAD"])?;
-    w.upload(
-        &c,
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
-    )
-    .await?;
-    let x_of = |s: &Value| {
-        s["tests"]
-            .as_array()
-            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
-            .map(|x| (x["status"].clone(), x["commit"].clone()))
-    };
-    let red = Some((json!("fail"), json!(c)));
-    let s = w.status().await?;
-    ensure!(x_of(&s) == red, "X is not red on {c}: {s}");
-    let rows = report_rows(&w).await?;
-    ensure!(rows.0 == 1, "one report before the push: {rows:?}");
-    // A tracked change that keeps X passing.
-    let file = repo.repo.join("tests/auth/login.test.ts");
-    let source = std::fs::read_to_string(&file)?;
-    std::fs::write(&file, format!("// Uncommitted change\n{source}"))?;
-    let stamp = repo.bun_test()?;
-    ensure!(
-        stamp["commit"] == c.as_str() && stamp["dirty"] == true && stamp["full"] == true,
-        "{stamp}"
-    );
-    let (code, out) = repo.push(&w.token, &["master"])?;
-    ensure!(code == 0, "git push: {out}");
-    ensure!(
-        repo.remote_head()? == c,
-        "the remote default branch is not at {c}"
-    );
-    let refused = "joppa report: the run was on a dirty tree, nothing uploaded";
-    ensure!(
-        out.lines().any(|line| line == refused),
-        "no \"{refused}\" in: {out}"
-    );
-    ensure!(
-        report_rows(&w).await? == rows,
-        "the push stored a report or result"
-    );
-    let s = w.status().await?;
-    ensure!(x_of(&s) == red, "X is not red on {c}: {s}");
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_upload_without_a_token_is_refused() -> Result<()> {
-    // no-manual-pass-ac2
-    let w = world().await?;
-    let (code, reply) = w
-        .raw_upload(
-            None,
-            stamp("c1c1c1c", 1, false),
-            junit(&[("opens", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 401 && reply["error"] == "token required",
-        "{code} {reply}"
-    );
-    ensure!(
-        w.status().await?["tests"][0]["status"] == "not_run",
-        "nothing was stored"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_upload_with_an_invalid_token_is_refused() -> Result<()> {
-    // no-manual-pass-ac3
-    let w = world().await?;
-    let (code, reply) = w
-        .raw_upload(
-            Some("bad"),
-            stamp("c1c1c1c", 1, false),
-            junit(&[("opens", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 401 && reply["error"] == "token is not valid",
-        "{code} {reply}"
-    );
-    ensure!(
-        w.status().await?["tests"][0]["status"] == "not_run",
-        "nothing was stored"
     );
     Ok(())
 }
@@ -1796,118 +1144,14 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
     Ok(())
 }
 
-// result-has-output-ac6
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_dirty_run_is_refused_and_does_not_count() -> Result<()> {
-    // result-has-output-ac2: opens failed on C; a dirty run at C says it passes.
-    let w = world().await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
-    )
-    .await?;
-    let (code, reply) = w
-        .raw_upload(
-            Some(&w.token),
-            stamp("c1c1c1c", 1, true),
-            junit(&[("opens", "pass"), ("refuses", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
-        "the dirty report is refused: {code} {reply}"
-    );
-    let s = w.status().await?;
-    ensure!(
-        s["status"] == "red" && s["tests"][0]["status"] == "fail",
-        "{s}"
-    );
-    Ok(())
-}
-
-// result-has-output-ac6
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_server_refuses_a_dirty_upload_from_an_agent_write_token() -> Result<()> {
-    // A lists X, X is red on C; bot's write token posts a dirty run of C where X passes.
-    let w = world().await?;
-    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
-    ensure!(
-        code == 200 && created["access"] == "write",
-        "{code} {created}"
-    );
-    let bot = created["token"].as_str().context("no token")?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
-    )
-    .await?;
-    let x_status = |s: &Value| {
-        s["tests"]
-            .as_array()
-            .and_then(|tests| tests.iter().find(|t| t["address"] == A))
-            .map(|x| x["status"].clone())
-    };
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let workspace = w.base.rsplit('/').next().unwrap();
-    let stored = || async {
-        let conn = pool.get().await?;
-        let reports: Vec<(i64, bool, String)> = conn
-            .query(
-                "SELECT id, dirty, stamp_hash FROM joppa.test_reports WHERE workspace=$1 AND commit_sha='c1c1c1c' ORDER BY id",
-                &[&workspace],
-            )
-            .await?
-            .iter()
-            .map(|r| (r.get(0), r.get(1), r.get(2)))
-            .collect();
-        let row = conn.query_one("SELECT (SELECT count(*) FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1),(SELECT count(*) FROM joppa.test_report_receipts c JOIN joppa.test_reports r ON r.id=c.report_id WHERE r.workspace=$1)", &[&workspace]).await?;
-        anyhow::Ok((reports, row.get::<_, i64>(0), row.get::<_, i64>(1)))
-    };
-    let before = w.status().await?;
-    let rows = stored().await?;
-    ensure!(
-        x_status(&before) == Some(json!("fail")) && rows.0.len() == 1,
-        "before: {before} {rows:?}"
-    );
-    let (code, reply) = w
-        .raw_upload(
-            Some(bot),
-            stamp("c1c1c1c", 1, true),
-            junit(&[("opens", "pass"), ("refuses", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
-        "{code} {reply}"
-    );
-    let after = w.status().await?;
-    ensure!(
-        x_status(&after) == Some(json!("fail")) && x_status(&after) == x_status(&before),
-        "before: {before} after: {after}"
-    );
-    ensure!(
-        stored().await? == rows,
-        "the refused upload stored a report, result or receipt"
-    );
-    Ok(())
-}
-
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> {
     // check-list-frozen-ac1 and ac2: the text changes, the list waits; saving it ends the draft for good.
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(
@@ -1928,16 +1172,14 @@ async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> 
         s["status"] == "grey" && s["tests_draft"] == false && s["tests_revision"] == 2,
         "{s}"
     );
-    w.upload(
+    w.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(
         w.status().await?["status"] == "green",
-        "a new full run after the change is green"
+        "a new record after the change is green"
     );
     Ok(())
 }
@@ -1961,10 +1203,8 @@ async fn report_rows(w: &World) -> Result<(i64, i64)> {
 
 /// A clean full C1 report passes every test of A, then the text of A changes: A is grey.
 async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
-    let (code, first) = w
-        .raw_upload(Some(&w.token), stamp("c1c1c1c", 1, false), passing())
-        .await?;
-    ensure!(code == 200 && first["replayed"] == false, "{code} {first}");
+    let first = w.record("c1c1c1c", passing()).await?;
+    ensure!(first["replayed"] == false, "{first}");
     ensure!(
         w.status().await?["status"] == "green",
         "green before the text change"
@@ -1972,12 +1212,12 @@ async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
     w.revise_text(1, "Only read and verify until launch")
         .await?;
     let s = w.status().await?;
-    ensure!(s["status"] == "grey", "before the upload: {s}");
+    ensure!(s["status"] == "grey", "before the record: {s}");
     Ok((first, s))
 }
 
-fn passing() -> String {
-    junit(&[("opens", "pass"), ("refuses", "pass")])
+fn passing() -> Value {
+    outcomes(&[("opens", "pass"), ("refuses", "pass")])
 }
 
 // check-list-frozen-ac4, fixture 1
@@ -1987,12 +1227,10 @@ async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() 
     let w = world().await?;
     let (first, before) = changed_after_c1(&w).await?;
     let rows = report_rows(&w).await?;
-    let (code, again) = w
-        .raw_upload(Some(&w.token), stamp("c1c1c1c", 1, false), passing())
-        .await?;
+    let again = w.record("c1c1c1c", passing()).await?;
     ensure!(
-        code == 200 && again["report"] == first["report"] && again["replayed"] == true,
-        "{code} {again}"
+        again["record"] == first["record"] && again["replayed"] == true,
+        "{again}"
     );
     ensure!(
         report_rows(&w).await? == rows,
@@ -2001,7 +1239,7 @@ async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() 
     let s = w.status().await?;
     ensure!(
         s["status"] == "green" && saved_list(&s) == saved_list(&before),
-        "after the upload: {s}"
+        "after the record: {s}"
     );
     let workspace = w.base.rsplit('/').next().unwrap();
     let mcp = mcp_read(
@@ -2021,11 +1259,11 @@ async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() 
 async fn a_new_c2_report_after_a_text_change_turns_the_criterion_green() -> Result<()> {
     let w = world().await?;
     let (_, before) = changed_after_c1(&w).await?;
-    w.upload("c2c2c2c", 2, true, passing()).await?;
+    w.record("c2c2c2c", passing()).await?;
     let s = w.status().await?;
     ensure!(
         s["status"] == "green" && saved_list(&s) == saved_list(&before),
-        "after the upload: {s}"
+        "after the record: {s}"
     );
     Ok(())
 }
@@ -2042,13 +1280,12 @@ async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterio
         s["status"] == "grey" && saved_list(&s) == saved_list(&before),
         "without a new report: {s}"
     );
-    // A partial report that covers only one listed test keeps the criterion grey.
-    w.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
-        .await?;
+    // A record that covers only one listed test keeps the criterion grey.
+    w.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = w.status().await?;
     ensure!(
         s["status"] == "grey" && saved_list(&s) == saved_list(&before),
-        "after partial reports: {s}"
+        "after records: {s}"
     );
     Ok(())
 }
@@ -2071,7 +1308,7 @@ async fn a_draft_list_without_a_boundary_stays_grey_after_a_full_report() -> Res
         )
         .await?;
     ensure!(removed == 1, "the text change stored no boundary");
-    w.upload("c2c2c2c", 2, true, passing()).await?;
+    w.record("c2c2c2c", passing()).await?;
     let s = w.status().await?;
     ensure!(
         s["status"] == "grey"
@@ -2083,7 +1320,7 @@ async fn a_draft_list_without_a_boundary_stays_grey_after_a_full_report() -> Res
 }
 
 /// G holds R with criterion A and child group G2 with criterion A2. Sibling group H
-/// holds criterion D. Each criterion lists A and B, one clean full run passes both,
+/// holds criterion D. Each criterion lists A and B, one record passes both,
 /// and each criterion is assessed ready.
 async fn branches(w: &World) -> Result<Planning<'_>> {
     let p = Planning {
@@ -2144,11 +1381,9 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
         )
         .await?;
     }
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     for (spec, _, criterion) in BRANCH_CRITERIA {
@@ -2168,17 +1403,10 @@ const BRANCH_CRITERIA: [(&str, &str, &str); 3] = [
 ];
 
 impl Planning<'_> {
-    async fn upload(&self, commit: &str, order: i64, full: bool, junit: String) -> Result<()> {
+    /// Record `results` for `commit` in this workspace with the member token.
+    async fn record(&self, commit: &str, results: Value) -> Result<()> {
         let root = self.w.base.split("/api/").next().unwrap();
-        let stamp = json!({"commit":commit,"order":order,"branch":"master","default_branch":true,"dirty":false,"full":full});
-        self.w
-            .http
-            .post(format!("{root}/api/workspaces/{}/reports", self.ws))
-            .bearer_auth(&self.w.token)
-            .json(&json!({"stamp": stamp, "junit": junit}))
-            .send()
-            .await?
-            .error_for_status()?;
+        record_http::recorded(&self.w.http, root, &self.ws, &self.w.token, commit, results).await?;
         Ok(())
     }
     /// GET one path of this workspace over HTTP.
@@ -2296,23 +1524,20 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     );
 
     // Partial runs after the change combine: the latest result of each test decides.
-    p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
+    p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
+    let s = tests("criterion:a").await?;
+    ensure!(s["status"] == "grey", "after one record: {s}");
+    p.record("c3c3c3c", outcomes(&[("refuses", "pass")]))
         .await?;
     let s = tests("criterion:a").await?;
-    ensure!(s["status"] == "grey", "after one partial run: {s}");
-    p.upload("c3c3c3c", 3, false, junit(&[("refuses", "pass")]))
-        .await?;
-    let s = tests("criterion:a").await?;
-    ensure!(s["status"] == "green", "after partial runs: {s}");
-    p.upload(
+    ensure!(s["status"] == "green", "after records: {s}");
+    p.record(
         "c4c4c4c",
-        4,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let s = tests("criterion:a").await?;
-    ensure!(s["status"] == "green", "after a full run: {s}");
+    ensure!(s["status"] == "green", "after a record: {s}");
     ensure!(
         tests("criterion:d").await?["status"] == "green"
             && object("criterion:d").await?["process"]["assessment"] == d_readiness,
@@ -2564,114 +1789,17 @@ async fn a_journal_of_test_list_saves_without_revision_replays_to_the_same_lists
     Ok(())
 }
 
-// result-has-output-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_dirty_failure_on_a_newer_commit_does_not_turn_green_red() -> Result<()> {
-    // result-has-output-ac2, the other way: a clean pass, then a dirty failure on a newer commit.
+async fn a_red_test_stays_red_when_a_newer_record_omits_it() -> Result<()> {
+    // defect-stays-red-ac1: opens fails on C1; a record for C2 has only refuses.
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "fail"), ("refuses", "pass")]),
     )
     .await?;
-    let (code, reply) = w
-        .raw_upload(
-            Some(&w.token),
-            stamp("c2c2c2c", 2, true),
-            junit(&[("opens", "fail"), ("refuses", "pass")]),
-        )
-        .await?;
-    ensure!(
-        code == 422 && reply["error"] == "a dirty run cannot be uploaded",
-        "the dirty report is refused: {code} {reply}"
-    );
-    let s = w.status().await?;
-    ensure!(s["status"] == "green" && s["commit"] == "c1c1c1c", "{s}");
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_shared_upload_fixture_is_accepted() -> Result<()> {
-    // The hook test sends bodies of exactly this shape to its fake Joppa.
-    let w = world().await?;
-    let fixture: Value = serde_json::from_str(include_str!("fixtures/report-upload.json"))?;
-    let (code, reply) = w
-        .raw_upload(
-            Some(&w.token),
-            fixture["stamp"].clone(),
-            fixture["junit"].as_str().unwrap().into(),
-        )
-        .await?;
-    ensure!(code == 200 && reply["tests"] == 2, "{code} {reply}");
-    ensure!(
-        w.status().await?["status"] == "green",
-        "the fixture proves both tests"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_upload_cannot_name_its_uploader() -> Result<()> {
-    // no-manual-pass-ac1: the uploader comes from the token. A body that claims one is refused.
-    let w = world().await?;
-    let mut claimed = stamp("c1c1c1c", 1, false);
-    claimed["uploader"] = json!("owner");
-    let (code, reply) = w
-        .raw_upload(Some(&w.token), claimed, junit(&[("opens", "pass")]))
-        .await?;
-    ensure!(code == 422, "{code} {reply}");
-    ensure!(
-        w.status().await?["tests"][0]["status"] == "not_run",
-        "nothing was stored"
-    );
-    let (_, reply) = w
-        .raw_upload(
-            Some(&w.token),
-            stamp("c1c1c1c", 1, false),
-            junit(&[("opens", "pass")]),
-        )
-        .await?;
-    ensure!(
-        reply["uploader"] == "agent",
-        "the token names the uploader: {reply}"
-    );
-    Ok(())
-}
-
-async fn upload_xml(
-    w: &World,
-    commit: &str,
-    order: i64,
-    full: bool,
-    default_branch: bool,
-    xml: &str,
-) -> Result<()> {
-    let mut stamp = stamp(commit, order, false);
-    stamp["full"] = json!(full);
-    stamp["default_branch"] = json!(default_branch);
-    let (code, reply) = w.raw_upload(Some(&w.token), stamp, xml.into()).await?;
-    ensure!(code == 200, "{code} {reply}");
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_red_test_stays_red_on_a_partial_run_that_skips_it() -> Result<()> {
-    // defect-stays-red-ac1: opens fails on C1; a partial report for C2 has only refuses.
-    let w = world().await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
-    )
-    .await?;
-    w.upload("c2c2c2c", 2, false, junit(&[("refuses", "pass")]))
+    w.record("c2c2c2c", outcomes(&[("refuses", "pass")]))
         .await?;
     let s = w.status().await?;
     ensure!(
@@ -2686,18 +1814,14 @@ async fn a_red_test_stays_red_on_a_partial_run_that_skips_it() -> Result<()> {
 async fn a_red_test_clears_when_a_newer_commit_passes_it() -> Result<()> {
     // defect-stays-red-ac2
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
+        outcomes(&[("opens", "fail"), ("refuses", "pass")]),
     )
     .await?;
-    w.upload(
+    w.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let s = w.status().await?;
@@ -2713,7 +1837,7 @@ async fn a_red_test_clears_when_a_newer_commit_passes_it() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
-    // missing-is-not-pass-ac1: X passes on C1; the later full report for C2 has X skipped.
+    // missing-is-not-pass-ac1: X passes on C1; the later record for C2 has X skipped.
     let w = world().await?;
     w.list(&[A]).await?;
     let s = w.status().await?;
@@ -2721,7 +1845,7 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
         s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
         "{s}"
     );
-    upload_xml(&w, "c1c1c1c", 1, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /></testsuite></testsuite></testsuites>"#).await?;
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
     let s = w.status().await?;
     ensure!(
         s["tests"][0]["address"] == A
@@ -2729,7 +1853,7 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
             && s["status"] == "green",
         "{s}"
     );
-    upload_xml(&w, "c2c2c2c", 2, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens"><skipped/></testcase></testsuite></testsuite></testsuites>"#).await?;
+    w.record("c2c2c2c", outcomes(&[("opens", "skip")])).await?;
     let s = w.status().await?;
     ensure!(
         s["tests"][0]["address"] == A
@@ -2743,7 +1867,7 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
-    // missing-is-not-pass-ac3: X passes on C1; the later full report for C2 has X as todo.
+    // missing-is-not-pass-ac3: X passes on C1; the later record for C2 has X as todo.
     let w = world().await?;
     let (code, reply) = post(
         &w,
@@ -2759,7 +1883,7 @@ async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
         s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
         "{s}"
     );
-    upload_xml(&w, "c1c1c1c", 1, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /></testsuite></testsuite></testsuites>"#).await?;
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
     let s = w.status().await?;
     ensure!(
         s["tests"][0]["address"] == A
@@ -2767,32 +1891,10 @@ async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
             && s["status"] == "green",
         "{s}"
     );
-    upload_xml(&w, "c2c2c2c", 2, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens"><skipped message="TODO"/></testcase></testsuite></testsuite></testsuites>"#).await?;
+    w.record("c2c2c2c", outcomes(&[("opens", "todo")])).await?;
     let s = w.status().await?;
     ensure!(
         s["tests"][0]["address"] == A && s["tests"][0]["status"] == "todo" && s["status"] == "grey",
-        "{s}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_report_from_a_feature_branch_does_not_change_status() -> Result<()> {
-    // result-names-subject-ac1: the criterion is grey; a passing report arrives from branch "feat".
-    let w = world().await?;
-    upload_xml(
-        &w,
-        "f1f1f1f",
-        5,
-        true,
-        false,
-        &junit(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    let s = w.status().await?;
-    ensure!(
-        s["status"] == "grey" && s["tests"][0]["status"] == "not_run",
         "{s}"
     );
     Ok(())
@@ -2881,14 +1983,17 @@ async fn the_owner_cannot_save_a_test_address_without_a_file() -> Result<()> {
     Ok(())
 }
 
-const FAILING_REFUSES: &str = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses"><failure message="expected 403, got 200" /></testcase></testsuite></testsuite></testsuites>"#;
+/// Opens passes, and refuses fails with "expected 403, got 200".
+fn failing_refuses() -> Value {
+    json!([{"test":A,"status":"pass"},{"test":B,"status":"fail","message":"expected 403, got 200"}])
+}
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
     // old-results-history-ac1: agent bot reads A over HTTP with its own token.
     let w = world().await?;
-    upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
+    w.record("c1c1c1c", failing_refuses()).await?;
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
@@ -2918,7 +2023,7 @@ async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
 async fn mcp_returns_each_test_with_status_and_commit() -> Result<()> {
     // old-results-history-ac3: agent bot calls the MCP tool joppa_tests with its own token.
     let w = world().await?;
-    upload_xml(&w, "c1c1c1c", 1, true, true, FAILING_REFUSES).await?;
+    w.record("c1c1c1c", failing_refuses()).await?;
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
@@ -3060,16 +2165,18 @@ async fn mcp_status_read_returns_all_101_criteria_in_request_order() -> Result<(
 async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {
     // time-not-stale-ac1: A is decided on C; five newer commits ran other tests only.
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     for order in 2..=6 {
-        upload_xml(&w, &format!("{order}{order}{order}{order}{order}{order}{order}"), order, false, true,
-            r#"<testsuites><testsuite name="tests/other.test.ts"><testcase name="other" /></testsuite></testsuites>"#).await?;
+        let other = json!([{"test":"tests/other.test.ts > other","status":"pass"}]);
+        w.record(
+            &format!("{order}{order}{order}{order}{order}{order}{order}"),
+            other,
+        )
+        .await?;
     }
     let s = w.status().await?;
     ensure!(
@@ -3082,21 +2189,17 @@ async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_test_tag_in_code_links_nothing() -> Result<()> {
-    // binding-pins-contract-ac1: "[ac:key-rights] other" fails in the same full report.
+    // binding-pins-contract-ac1: "[ac:key-rights] other" fails in the same record.
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(w.status().await?["status"] == "green", "green before");
-    w.upload(
+    w.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[
+        outcomes(&[
             ("opens", "pass"),
             ("refuses", "pass"),
             ("[ac:key-rights] other", "fail"),
@@ -3130,11 +2233,9 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
         task(&w).await?["done"] == false,
         "not done before any report"
     );
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
@@ -3210,23 +2311,21 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
             json!({"workspace":workspace,"task":address}),
         )
     };
-    for (commit, order, verification, cases) in [
-        (None, 0, "unverified", vec![]),
+    for (commit, verification, cases) in [
+        (None, "unverified", vec![]),
         (
             Some("c1c1c1c"),
-            1,
             "failed",
             vec![("opens", "fail"), ("refuses", "pass")],
         ),
         (
             Some("c2c2c2c"),
-            2,
             "passed",
             vec![("opens", "pass"), ("refuses", "pass")],
         ),
     ] {
         if let Some(commit) = commit {
-            w.upload(commit, order, true, junit(&cases)).await?;
+            w.record(commit, outcomes(&cases)).await?;
         }
         let finished = read("task:finished").await?;
         ensure!(
@@ -3275,19 +2374,15 @@ async fn the_joppa_tests_tool_states_that_only_complete_task_sets_done() -> Resu
 async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     // all-bound-checks-pass-ac2: a newer commit makes A red.
     let w = world().await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(task(&w).await?["done"] == false, "not completed on c1");
-    w.upload(
+    w.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
+        outcomes(&[("opens", "fail"), ("refuses", "pass")]),
     )
     .await?;
     let t = task(&w).await?;
@@ -3337,23 +2432,21 @@ async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
     let workspace = w.base.rsplit('/').next().unwrap();
-    for (commit, order, verification, status, cases) in [
+    for (commit, verification, status, cases) in [
         (
             "c1c1c1c",
-            1,
             "passed",
             "green",
             [("opens", "pass"), ("refuses", "pass")],
         ),
         (
             "c2c2c2c",
-            2,
             "failed",
             "red",
             [("opens", "fail"), ("refuses", "pass")],
         ),
     ] {
-        w.upload(commit, order, true, junit(&cases)).await?;
+        w.record(commit, outcomes(&cases)).await?;
         let response = w
             .http
             .get(format!("{}/tests?task=task:finished", w.base))
@@ -4185,7 +3278,7 @@ async fn the_read_check_fails_for_a_read_token_without_membership() -> Result<()
     Ok(())
 }
 
-const NEEDS: &str = "acceptance needs a full run on the commit where every listed test passes";
+const NEEDS: &str = "acceptance needs records on the commit where every listed test passes";
 
 impl World {
     /// Accept requirement:key at its current revision; returns the status code and the reply text.
@@ -4235,15 +3328,13 @@ async fn refused_acceptance(w: &World, commit: &str, error: &str) -> Result<()> 
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_acceptance_on_a_green_full_run_names_its_commit_and_actor() -> Result<()> {
+async fn an_acceptance_on_a_green_record_names_its_commit_and_actor() -> Result<()> {
     // acceptance-names-subject-ac1, acceptance-shows-actor-ac1
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let (code, reply) = w.accept(&w.owner, Some("c1c1c1c")).await?;
@@ -4258,15 +3349,13 @@ async fn an_acceptance_on_a_green_full_run_names_its_commit_and_actor() -> Resul
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_failing_test_on_the_full_run_refuses_acceptance() -> Result<()> {
+async fn a_failing_test_on_the_commit_refuses_acceptance() -> Result<()> {
     // accept-needs-all-passed-ac1
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
+        outcomes(&[("opens", "fail"), ("refuses", "pass")]),
     )
     .await?;
     refused_acceptance(&w, "c1c1c1c", NEEDS).await
@@ -4278,11 +3367,9 @@ async fn a_new_revision_without_a_new_run_refuses_acceptance() -> Result<()> {
     // accept-needs-all-passed-ac2, new-revision-new-acceptance-ac1
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let (code, reply) = w.accept(&w.owner, Some("c1c1c1c")).await?;
@@ -4302,31 +3389,13 @@ async fn a_new_revision_without_a_new_run_refuses_acceptance() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn passes_only_in_partial_runs_refuse_acceptance() -> Result<()> {
-    // accept-needs-all-passed-ac3
-    let w = world().await?;
-    w.list(&[A, B]).await?;
-    w.upload(
-        "c1c1c1c",
-        1,
-        false,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    refused_acceptance(&w, "c1c1c1c", NEEDS).await
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_acceptance_without_a_commit_is_refused() -> Result<()> {
     // acceptance-names-subject-ac2
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let (code, reply) = w.accept(&w.owner, None).await?;
@@ -4339,30 +3408,16 @@ async fn an_acceptance_without_a_commit_is_refused() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_skipped_test_on_the_full_run_refuses_acceptance() -> Result<()> {
+async fn a_skipped_test_on_the_commit_refuses_acceptance() -> Result<()> {
     // acceptance-names-subject-ac3
     let w = world().await?;
     w.list(&[A, B]).await?;
-    upload_xml(&w, "c1c1c1c", 1, true, true, r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses"><skipped/></testcase></testsuite></testsuite></testsuites>"#).await?;
-    refused_acceptance(&w, "c1c1c1c", NEEDS).await
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_commit_only_on_a_feature_branch_refuses_acceptance() -> Result<()> {
-    // acceptance-names-subject-ac4
-    let w = world().await?;
-    w.list(&[A, B]).await?;
-    upload_xml(
-        &w,
-        "f1f1f1f",
-        1,
-        true,
-        false,
-        &junit(&[("opens", "pass"), ("refuses", "pass")]),
+    w.record(
+        "c1c1c1c",
+        outcomes(&[("opens", "pass"), ("refuses", "skip")]),
     )
     .await?;
-    refused_acceptance(&w, "f1f1f1f", "acceptance needs a default-branch commit").await
+    refused_acceptance(&w, "c1c1c1c", NEEDS).await
 }
 
 #[tokio::test]
@@ -4371,11 +3426,9 @@ async fn an_agent_cannot_accept_a_requirement() -> Result<()> {
     // decisions-from-people-ac1
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let (code, reply) = w.accept(&w.token, Some("c1c1c1c")).await?;
@@ -4405,11 +3458,9 @@ async fn a_criterion_without_tests_refuses_acceptance() -> Result<()> {
         "revise: {}",
         reply.text().await?
     );
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     refused_acceptance(&w, "c1c1c1c", NEEDS).await
@@ -4417,12 +3468,11 @@ async fn a_criterion_without_tests_refuses_acceptance() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_listed_test_missing_from_the_full_run_refuses_acceptance() -> Result<()> {
+async fn a_listed_test_without_a_record_on_the_commit_refuses_acceptance() -> Result<()> {
     // accept-needs-all-passed-ac1: a listed test that did not run is not a pass.
     let w = world().await?;
     w.list(&[A, B]).await?;
-    w.upload("c1c1c1c", 1, true, junit(&[("opens", "pass")]))
-        .await?;
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
     refused_acceptance(&w, "c1c1c1c", NEEDS).await
 }
 
@@ -4500,25 +3550,23 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
         ("task:configured", "check:configured"),
         ("job:configured", "check:configured"),
     ];
-    for (commit, order, expected, verification, cases) in [
-        (None, 0, "grey", "unverified", vec![]),
+    for (commit, expected, verification, cases) in [
+        (None, "grey", "unverified", vec![]),
         (
             Some("c1c1c1c"),
-            1,
             "green",
             "passed",
             vec![("opens", "pass"), ("refuses", "pass")],
         ),
         (
             Some("c2c2c2c"),
-            2,
             "red",
             "failed",
             vec![("opens", "fail"), ("refuses", "pass")],
         ),
     ] {
         if let Some(commit) = commit {
-            w.upload(commit, order, true, junit(&cases)).await?;
+            w.record(commit, outcomes(&cases)).await?;
         }
         for (address, criterion) in tasks {
             let status = read(&w, bot, address).await?;
@@ -5156,7 +4204,7 @@ async fn the_workspace_owner_unblocks_without_a_claim_and_the_journal_replays() 
 const NO_TASK_CHANGES: &str = "planning produced no Task changes";
 
 impl Planning<'_> {
-    /// AC6 fixture: A is ready and grey with X listed; Y passes in a partial run. P claims A.
+    /// AC6 fixture: A is ready and grey with X listed; Y passes in a record. P claims A.
     async fn bound_plan(&self) -> Result<()> {
         // check-list-frozen-ac3: a list save clears readiness, so A is assessed after it.
         self.write(
@@ -5165,16 +4213,8 @@ impl Planning<'_> {
         )
         .await?;
         self.ready().await?;
-        let stamp = json!({"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":false});
-        let root = self.w.base.split("/api/").next().unwrap();
-        self.w
-            .http
-            .post(format!("{root}/api/workspaces/{}/reports", self.ws))
-            .bearer_auth(&self.w.token)
-            .json(&json!({"stamp":stamp,"junit":junit(&[("refuses", "pass")])}))
-            .send()
-            .await?
-            .error_for_status()?;
+        self.record("c1c1c1c", outcomes(&[("refuses", "pass")]))
+            .await?;
         let status = self.tests().await?;
         ensure!(
             status["status"] == "grey" && listed(&status) == [A],
@@ -6067,7 +5107,7 @@ const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
 
 /// check-list-frozen-ac3: area G holds R with criterion A and red sibling B; area H is
 /// another parent. A lists A and B, B lists a failing check, both are assessed ready,
-/// and one clean full run makes A green. With `plan`, the agent claims A for planning
+/// and one record makes A green. With `plan`, the agent claims A for planning
 /// and saves draft Task work:t before the run.
 async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
     let p = Planning {
@@ -6136,7 +5176,7 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
         p.claim("agent", "criterion:a").await?;
         p.write("agent", json!({"op":"save_object","kind":"work","id":"t","revision":0,"parent":"criterion:a","data":{"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"links":[],"reason":"Plan the criterion"})).await?;
     }
-    p.upload("c1c1c1c", 1, true, frozen_run()).await?;
+    p.record("c1c1c1c", frozen_run()).await?;
     let (a, b) = (
         p.ac_tests("criterion:a").await?,
         p.ac_tests("criterion:b").await?,
@@ -6148,9 +5188,9 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
     Ok(p)
 }
 
-/// A full run that passes both tests of A and fails the test of B.
-fn frozen_run() -> String {
-    junit(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "fail")])
+/// A record that passes both tests of A and fails the test of B.
+fn frozen_run() -> Value {
+    outcomes(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "fail")])
 }
 
 impl Planning<'_> {
@@ -6273,11 +5313,9 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
         anyhow::Ok(http)
     };
     ready_for_planning(&w).await?;
-    w.upload(
+    w.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     // Controls: R is at revision 1, and A is green and ready for work.
@@ -6464,7 +5502,7 @@ async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn frozen_f8_only_a_full_report_after_the_change_makes_a_green() -> Result<()> {
+async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w, false).await?;
     let before = p.ac_tests("criterion:a").await?;
@@ -6473,16 +5511,15 @@ async fn frozen_f8_only_a_full_report_after_the_change_makes_a_green() -> Result
         p.assessment("criterion:b").await?,
     );
     p.resave_a().await?;
-    // Control: the clean full report from before the change does not count.
+    // Control: the record from before the change does not count.
     p.reset(&before).await?;
-    // Control: a partial report after the change that misses a listed test stays grey.
-    p.upload("c2c2c2c", 2, false, junit(&[("opens", "pass")]))
-        .await?;
+    // Control: a record after the change that misses a listed test stays grey.
+    p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = p.ac_tests("criterion:a").await?;
-    ensure!(s["status"] == "grey", "after partial reports: {s}");
-    p.upload("c4c4c4c", 4, true, frozen_run()).await?;
+    ensure!(s["status"] == "grey", "after records: {s}");
+    p.record("c4c4c4c", frozen_run()).await?;
     let s = p.ac_tests("criterion:a").await?;
-    ensure!(s["status"] == "green", "after the full report: {s}");
+    ensure!(s["status"] == "green", "after the record: {s}");
     let mcp = p
         .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
         .await?;
@@ -6657,11 +5694,9 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     )
     .await?;
     p.confirm("spec:r2", &[("criterion:c", ready)]).await?;
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "pass")]),
     )
     .await?;
     let mut before = std::collections::BTreeMap::new();
@@ -6913,14 +5948,14 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     )
     .await?;
 
-    // A clean full report passes every listed test of A1.
+    // A record passes every listed test of A1.
     p.write(
         "agent",
         json!({"op":"set_ac_tests","target":"criterion:a1","tests":[A],"reason":"Bind the test"}),
     )
     .await?;
-    let report = junit(&[("opens", "pass"), ("refuses", "pass")]);
-    p.upload("c1c1c1c", 1, true, report.clone()).await?;
+    let report = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
+    p.record("c1c1c1c", report.clone()).await?;
     ensure!(p.status("criterion:a1").await?["status"] == "green");
     p.owner_command(
         json!({"op":"note","target":"cap:c","id":"unrelated","text":"An unrelated remark"}),
@@ -6928,8 +5963,8 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     .await?;
     for repeat in [false, true] {
         if repeat {
-            // The same clean report again is a new receipt of it.
-            p.upload("c1c1c1c", 1, true, report.clone()).await?;
+            // The same record again is a new receipt of it.
+            p.record("c1c1c1c", report.clone()).await?;
         }
         ensure!(
             p.unstarted().await?.contains(&"criterion:b1".to_owned()),
@@ -7027,17 +6062,15 @@ async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> 
             "view={view}: {t:?}"
         );
     }
-    // Release: a clean full report makes every criterion of A green.
+    // Release: a record makes every criterion of A green.
     p.write(
         "agent",
         json!({"op":"set_ac_tests","target":"criterion:a1","tests":[A],"reason":"Bind the test"}),
     )
     .await?;
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let t = listed(&p.tasks_both("available").await?);
@@ -7090,11 +6123,9 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
         .await?;
     }
     p.link("spec:b", ordering_link("spec:a")).await?;
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     // Controls: A1 and A2 are green, B1 is ready and grey, and B1 is listed.
@@ -7105,24 +6136,20 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
     let readiness = p.readiness("criterion:b1").await?;
     ensure!(readiness[0] == "ready", "{readiness}");
     ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
-    // A clean full report fails the test of A2.
-    p.upload(
+    // A record fails the test of A2.
+    p.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "fail")]),
+        outcomes(&[("opens", "pass"), ("refuses", "fail")]),
     )
     .await?;
     ensure!(p.status("criterion:a2").await?["status"] == "red");
     ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(waits_for(&b1, "spec:a"), "{b1}");
-    // A later clean full report passes every listed test of A.
-    p.upload(
+    // A later record passes every listed test of A.
+    p.record(
         "c3c3c3c",
-        3,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(p.status("criterion:a2").await?["status"] == "green");
@@ -7193,11 +6220,9 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
     // check-list-frozen-ac3: the list save clears readiness, so B1 is assessed after it.
     let ready = json!({"ready":true,"reason":"Known scope"});
     p.confirm("spec:b", &[("criterion:b1", ready)]).await?;
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     ensure!(p.status("criterion:b1").await?["status"] == "green");
@@ -7419,7 +6444,7 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
 }
 
 // pins-ignore-process-events-ac3
-// Task B blocks on criterion C, and C lists test A. Clean full reports make C green, then red.
+// Task B blocks on criterion C, and C lists test A. Records make C green, then red.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() -> Result<()> {
@@ -7445,11 +6470,9 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
     ensure!(p.status("criterion:c").await?["status"] == "grey");
     ensure!(!task_addresses(&p.tasks_both("available").await?).contains(&"work:b"));
     ensure!(task_addresses(&p.tasks_both("waiting").await?).contains(&"work:b"));
-    p.upload(
+    p.record(
         "c1c1c1c",
-        1,
-        true,
-        junit(&[("opens", "pass"), ("refuses", "pass")]),
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
     let c = p.status("criterion:c").await?;
@@ -7464,12 +6487,10 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
         b["review_required"] == false && b["process"]["assignee"].is_null(),
         "B while C is green: {b}"
     );
-    // Fixture 2: a later clean full report fails test A.
-    p.upload(
+    // Fixture 2: a later record fails test A.
+    p.record(
         "c2c2c2c",
-        2,
-        true,
-        junit(&[("opens", "fail"), ("refuses", "pass")]),
+        outcomes(&[("opens", "fail"), ("refuses", "pass")]),
     )
     .await?;
     let c = p.status("criterion:c").await?;

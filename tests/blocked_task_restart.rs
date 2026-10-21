@@ -10,6 +10,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "common/record_http.rs"]
+mod record_http;
+
 struct Server(Child);
 impl Drop for Server {
     fn drop(&mut self) {
@@ -734,7 +737,7 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
 }
 
 const HOLDER: &str = "worker-p";
-/// The two tests that criterion A binds, in the uploaded report order.
+/// The two tests that criterion A binds, in the recorded order.
 const CHECKS: [&str; 2] = [
     "tests/auth/login.test.ts > login > opens",
     "tests/auth/login.test.ts > login > refuses",
@@ -937,20 +940,9 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     let root = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
     let server = start(&url, &tokens, port).await?;
-    // P uploads the results of both tests of A: one passes and one fails.
-    let junit = r#"<testsuites><testsuite name="tests/auth/login.test.ts"><testsuite name="login"><testcase name="opens" /><testcase name="refuses"><failure message="refused" /></testcase></testsuite></testsuite></testsuites>"#;
-    let response = http
-        .post(format!("{root}/api/workspaces/{}/reports", f.ws))
-        .bearer_auth(&holder)
-        .json(&json!({"stamp":{"commit":"c1c1c1c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true},"junit":junit}))
-        .send()
-        .await?;
-    let code = response.status();
-    ensure!(
-        code.is_success(),
-        "POST reports: {code} {}",
-        response.text().await?
-    );
+    // P records the results of both tests of A: one passes and one fails.
+    let results = json!([{"test":CHECKS[0],"status":"pass"},{"test":CHECKS[1],"status":"fail","message":"refused"}]);
+    record_http::recorded(&http, &root, &f.ws, &holder, "c1c1c1c", results).await?;
 
     let addresses = || async {
         let rows = f

@@ -1,6 +1,6 @@
 // Part 8 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-/// P (bot) holds T with two notes and a partial run at def456. P or the workspace owner
+/// P (bot) holds T with two notes and a record at def456. P or the workspace owner
 /// releases T; Q (bot2) claims it and reads the same notes, commit and earlier revisions.
 async fn returned_work_handover(owner_release: bool) -> Result<()> {
     let w = world().await?;

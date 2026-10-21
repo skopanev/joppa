@@ -1,5 +1,5 @@
-//! The workspace timeline read and the journal event of a test report upload.
-//! A report upload appends a record_report event, so the journal order holds every
+//! The workspace timeline read and the journal event of a record of test results.
+//! A record appends a record_report event, so the journal order holds every
 //! recorded change and a timeline position is always a journal position.
 use super::*;
 
@@ -88,8 +88,8 @@ pub async fn read_timeline(
     }))
 }
 
-/// Append the record_report event of one accepted upload. The caller holds the
-/// transaction; a failed append rolls back the upload.
+/// Append the record_report event of one accepted record. The caller holds the
+/// transaction; a failed append rolls back the record.
 pub(super) async fn record_report(
     tx: &impl GenericClient,
     workspace: &str,

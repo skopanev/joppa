@@ -18,14 +18,8 @@ async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> R
         json!({"op":"complete_task","id":task,"revision":2,"evidence":"Implemented the contract"}),
     )
     .await?;
-    let stamp = json!({"commit":"c4c4c4c","order":1,"branch":"master","default_branch":true,"dirty":false,"full":true});
-    w.http
-        .post(format!("{}/api/workspaces/{}/reports", w.root, w.ws))
-        .bearer_auth(&w.bot)
-        .json(&json!({"stamp":stamp,"junit":r#"<testsuites><testsuite name="checks.rs"><testcase name="key rights" /></testsuite></testsuites>"#}))
-        .send()
-        .await?
-        .error_for_status()?;
+    let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
+    record_http::recorded(&w.http, &w.root, &w.ws, &w.bot, "c4c4c4c", passed).await?;
     let passed = |object: &Value| {
         object["process"]["verification"] == "pass"
             && object["signal"]["tone"] == "green"
