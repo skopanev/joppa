@@ -225,8 +225,11 @@ pids=()
 # Browser checks use a third database and the helper from the same frozen build.
 database browser
 export JOPPA_TEST_DATABASE_URL="$database_url"
-setsid bun run test:browser --test \
-  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs tests/tree_page_browser.cjs &
+# The browser files share one database. They run one at a time, because parallel files
+# make the server answer 500 and time out at random.
+setsid bun run test:browser --test --test-concurrency=1 \
+  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs tests/tree_page_browser.cjs \
+  tests/browser.cjs tests/objects_browser.cjs tests/object_urls_browser.cjs tests/generic_depth_browser.cjs &
 pids+=("$!")
 wait "${pids[0]}" || status=1
 exit "$status"
