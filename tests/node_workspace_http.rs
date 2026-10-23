@@ -33,7 +33,8 @@ struct World {
 const TYPES: &str = r#"{
     "component":{"title":"Components","role":"group","root":true,"parents":[]},
     "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-    "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+    "ac":{"title":"Criteria","role":"ac","parents":["requirement"]},
+    "task":{"title":"Tasks","role":"task","parents":["ac"]}
 }"#;
 
 async fn workspace(pool: &deadpool_postgres::Pool, prefix: &str, alex: bool) -> Result<String> {
@@ -807,6 +808,104 @@ async fn search_timeline_and_tasks_stay_in_their_own_workspace() -> Result<()> {
     ensure!(
         listed.contains(&"component:backend") && !listed.contains(&"requirement:api"),
         "{listed:?}"
+    );
+    Ok(())
+}
+
+/// P: task T under A, claimed by bot while API is green.
+async fn claimed_task(w: &World) -> Result<()> {
+    w.block_a_on_api().await?;
+    w.record("b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1", "pass")
+        .await?;
+    w.ok(&w.owner, &w.p, json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a",
+        "data":{"title":"Build login","owner":"owner","contract":"Call the API","purpose":"implementation","projects":[]},"reason":"Fixture"})).await?;
+    let t = w.revision(&w.p, "task:t").await?;
+    w.ok(
+        &w.bot,
+        &w.p,
+        json!({"op":"claim_task","id":"task:t","revision":t}),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn complete(w: &World) -> Result<Result<Value, String>> {
+    let t = w.revision(&w.p, "task:t").await?;
+    w.command(
+        &w.bot,
+        &w.p,
+        json!({"op":"complete_task","id":"task:t","revision":t,"evidence":"Called the API"}),
+    )
+    .await
+}
+
+// node-workspace-ac5
+#[tokio::test]
+async fn completion_and_acceptance_recheck_a_remote_target_under_the_locks() -> Result<()> {
+    let w = world().await?;
+    claimed_task(&w).await?;
+    // API turns red after the claim: the holder cannot complete until it is green again.
+    w.record("b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "fail")
+        .await?;
+    match complete(&w).await? {
+        Err(e) if e.contains(&w.waiting()) => {}
+        other => anyhow::bail!("completion must wait for API: {other:?}"),
+    }
+    w.record("b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3", "pass")
+        .await?;
+    complete(&w)
+        .await?
+        .map_err(|e| anyhow::anyhow!("completion after green: {e}"))?;
+    // R passes its own tests, but its acceptance waits while API is red.
+    w.ok(
+        &w.owner,
+        &w.p,
+        json!({"op":"set_ac_tests","target":"ac:a","tests":["tests/a.rs > a"],"reason":"Bind"}),
+    )
+    .await?;
+    let commit = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1";
+    w.mcp(&w.bot, "joppa_record_results", json!({"workspace":w.p,"commit":commit,"results":[{"test":"tests/a.rs > a","status":"pass"}]}))
+        .await?.map_err(|e| anyhow::anyhow!("{e}"))?;
+    w.record("b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4", "fail")
+        .await?;
+    let accept = async || {
+        let r = w.revision(&w.p, "requirement:r").await?;
+        let req = w.object(&w.owner, &w.p, "ac:a").await?["process"]["revision"].clone();
+        w.command(
+            &w.owner,
+            &w.p,
+            json!({"op":"accept_commit","target":"requirement:r","revision":req,"commit":commit}),
+        )
+        .await
+        .map(|reply| (r, reply))
+    };
+    match accept().await?.1 {
+        Err(e) if e.contains(&w.waiting()) => {}
+        other => anyhow::bail!("acceptance must wait for API: {other:?}"),
+    }
+    w.record("b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5", "pass")
+        .await?;
+    accept()
+        .await?
+        .1
+        .map_err(|e| anyhow::anyhow!("acceptance after green: {e}"))?;
+    Ok(())
+}
+
+// node-workspace-ac5
+#[tokio::test]
+async fn a_parallel_completion_and_failing_record_finish_in_one_consistent_order() -> Result<()> {
+    let w = world().await?;
+    claimed_task(&w).await?;
+    let (done, record) = tokio::join!(
+        complete(&w),
+        w.record("b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6", "fail")
+    );
+    record?;
+    let done = done?;
+    ensure!(
+        done.is_ok() || done.as_ref().is_err_and(|e| e.contains(&w.waiting())),
+        "the completion either ran first or saw the red target: {done:?}"
     );
     Ok(())
 }

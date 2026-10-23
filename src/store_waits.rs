@@ -96,3 +96,41 @@ pub(super) async fn live(
     green.extend(super::remote_status::green_targets(client, actor, state).await?);
     Ok(graph.waits(&green))
 }
+
+/// The first blocking remote target that is not ready for this actor and that applies to
+/// `root`: a link of `root` or of an ancestor, and with `below`, also a link of a node
+/// below `root`. Completion and acceptance use it under the same sorted locks as a claim.
+pub(super) async fn remote_gate(
+    client: &impl GenericClient,
+    actor: &str,
+    state: &Workspace,
+    root: &str,
+    below: bool,
+    locked: &BTreeSet<String>,
+) -> Result<Option<String>> {
+    let root = crate::objects::resolve_address(state, root).to_owned();
+    let applies = |key: &str| {
+        crate::objects::within(state, &root, key)
+            || (below && crate::objects::within(state, key, &root))
+    };
+    for (source, stored) in &state.remote_links {
+        if !applies(source)
+            || !state
+                .objects
+                .get(source)
+                .is_some_and(|o| o.current().present)
+        {
+            continue;
+        }
+        for link in stored.links.iter().filter(|l| l.blocking) {
+            ensure!(
+                locked.contains(&link.workspace),
+                "the remote links changed during this write; send it again"
+            );
+            if super::remote_status::link_status(client, actor, link).await?["satisfied"] != true {
+                return Ok(Some(link.node()));
+            }
+        }
+    }
+    Ok(None)
+}

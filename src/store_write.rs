@@ -527,12 +527,19 @@ async fn write(
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
-    // A claim reads the workspaces of its blocking remote links, so it locks them with its
-    // own workspace in sorted ID order. A record of results there waits for the claim.
+    // A claim, a completion and an acceptance read the workspaces of blocking remote links,
+    // so they lock them with their own workspace in sorted ID order. A record of results
+    // there waits for them, or comes first.
     let claims = operations.iter().any(|o| {
         matches!(
             o.command["op"].as_str(),
-            Some("claim_next_task" | "claim_task" | "claim_planning")
+            Some(
+                "claim_next_task"
+                    | "claim_task"
+                    | "claim_planning"
+                    | "complete_task"
+                    | "accept_commit"
+            )
         )
     });
     let remote_locked = if claims {
@@ -656,6 +663,17 @@ async fn write(
             }
             if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
                 super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
+                // An acceptance needs every blocking remote target of the node, its ancestors
+                // and the nodes below it ready now.
+                if let Some(target) = super::waits::remote_gate(&*tx, actor, &state, target, true, &remote_locked).await? {
+                    anyhow::bail!("{}", crate::dependencies::reason(&target));
+                }
+            }
+            if let Command::CompleteTask { req, id, .. } = &command {
+                let task = crate::objects::resolve_address(&state, &crate::tasks::address(req, id)).to_owned();
+                if let Some(target) = super::waits::remote_gate(&*tx, actor, &state, &task, false, &remote_locked).await? {
+                    anyhow::bail!("{}", crate::dependencies::reason(&target));
+                }
             }
             if let Command::ClaimPlanning { ac, revision } = &command {
                 let target = crate::planning::validate_claim(&state, ac, *revision)?;
