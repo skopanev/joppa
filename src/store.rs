@@ -38,6 +38,8 @@ pub use reports::{criterion_tests, task_status, tests_overview};
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
+#[path = "store_remote.rs"]
+pub(crate) mod remote;
 #[path = "store_timeline.rs"]
 mod timeline;
 #[path = "store_timeline_items.rs"]

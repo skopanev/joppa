@@ -37,7 +37,13 @@ pub async fn read_objects(
     );
     let unstarted = scope.work_filter == Some("unstarted");
     if let Some(key) = scope.address {
-        return read_one(&conn, workspace, public, position, prefix, scope, key).await;
+        let id = workspace.clone();
+        let mut object = read_one(&conn, workspace, public, position, prefix, scope, key).await?;
+        // Links and child workspaces across workspaces: read now, with the access of the reader.
+        if scope.revision.is_none() && !scope.history {
+            crate::store::remote::decorate(&*conn, &id, actor, &mut object).await?;
+        }
+        return Ok(object);
     }
     super::object_list::read_list(
         &conn,

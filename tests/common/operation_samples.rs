@@ -5,7 +5,9 @@ pub fn sample(op: &str, field: &str) -> Value {
     match field {
         "revision" | "expected_revision" | "size" => json!(0),
         "types" | "subject" | "data" => json!({}),
-        "tests" | "expected" | "ids" | "subject_keys" | "projects" | "acs" | "checks" => json!([]),
+        "tests" | "expected" | "ids" | "subject_keys" | "projects" | "acs" | "checks" | "links" => {
+            json!([])
+        }
         "archived" | "discovery_complete" | "ready" => json!(false),
         "assessment" => json!({"ready":true,"reason":"The contract is clear"}),
         // A blank reason passes the field check, and the refusal keeps the shared workspace.

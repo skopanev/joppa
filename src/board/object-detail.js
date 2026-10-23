@@ -10,6 +10,7 @@ import {inputQueue} from 'board/object-types.js';
 import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
 import {criterionTestsSection} from 'board/criterion-tests.js';
+import {workspaceLinksSection} from 'board/workspace-links.js';
 export function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
@@ -33,6 +34,8 @@ export function fillCommonObject(body,detail){
   const assessment=detail.process?.readiness_blocker||detail.process?.assessment;
   if(!historical&&assessment)fields.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
+  const remote=historical?null:workspaceLinksSection(detail);
+  if(remote)body.append(remote);
   const contentKey=['body','description','contract'].find(key=>typeof d[key]==='string'&&d[key].trim());
   if(contentKey)body.append(markdownBlock(d[contentKey],'object-content node-description'));
   for(const [key,value] of Object.entries(d)){

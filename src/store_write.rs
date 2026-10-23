@@ -527,11 +527,20 @@ async fn write(
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
-    tx.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-        &[&workspace],
-    )
-    .await?;
+    // A claim reads the workspaces of its blocking remote links, so it locks them with its
+    // own workspace in sorted ID order. A record of results there waits for the claim.
+    let claims = operations.iter().any(|o| {
+        matches!(
+            o.command["op"].as_str(),
+            Some("claim_next_task" | "claim_task" | "claim_planning")
+        )
+    });
+    let remote_locked = if claims {
+        super::remote::blocking_workspaces(&*tx, &workspace).await?
+    } else {
+        Default::default()
+    };
+    super::remote::lock_sorted(&*tx, &workspace, &remote_locked).await?;
     // A new workspace has no access-rule entry yet. Only the trusted CLI path
     // may create it; public HTTP/MCP writes always go through access::check.
     let cli_create = allow_workspace_create && operations[0].command["op"] == "workspace";
@@ -608,7 +617,7 @@ async fn write(
             resolve_task(&mut value, &state)?;
             // Work waits for its unsatisfied ordering dependencies; the wait is never stored.
             let waits = if matches!(value["op"].as_str(), Some("claim_next_task" | "claim_task" | "claim_planning")) {
-                super::waits::live(&*tx, &workspace, &state).await?
+                super::waits::live(&*tx, &workspace, actor, &state, &remote_locked).await?
             } else {
                 BTreeMap::new()
             };
@@ -616,6 +625,16 @@ async fn write(
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let command: Command = serde_json::from_value(value)?;
+            if let Command::SetRemoteLinks { target, links, .. } = &command {
+                let source = crate::objects::resolve_address(&state, target).to_owned();
+                super::remote::check_links(&*tx, &workspace, actor, &source, links).await?;
+            }
+            if let Command::SaveObject { data, .. } = &command
+                && let Some(child) = data.get("workspace")
+            {
+                let child = child.as_str().context("workspace is a workspace ID")?;
+                super::remote::check_child(&*tx, &workspace, actor, child).await?;
+            }
             if let Command::SaveObject { kind, question_checked, .. } = &command {
                 let schema = crate::objects::schema(&state);
                 if let Some(question) = schema.types.get(kind).and_then(|t| t.question.as_ref())

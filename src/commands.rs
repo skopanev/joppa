@@ -63,6 +63,12 @@ pub enum Command {
         revision: u32,
         reason: String,
     },
+    /// Replace the links of one object to objects of other workspaces.
+    SetRemoteLinks {
+        target: String,
+        links: Vec<crate::remote_links::RemoteLink>,
+        reason: String,
+    },
     RestoreObject {
         target: String,
         revision: u32,
@@ -540,6 +546,7 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("archive_object", &["target", "revision", "reason"], MEMBER),
+    op("set_remote_links", &["target", "links", "reason"], MEMBER),
     op("restore_object", &["target", "revision", "reason"], MEMBER),
     op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
     op(
@@ -1110,6 +1117,28 @@ pub(crate) fn apply_inner(
         }
         Command::ArchiveObject { .. } => {
             crate::objects::archive(w, actor, command, position, recorded_at)?;
+        }
+        Command::SetRemoteLinks {
+            target,
+            links,
+            reason,
+        } => {
+            nonempty(reason)?;
+            ensure!(
+                crate::objects::may_edit_tree(w, actor),
+                "workspace member required"
+            );
+            let key = crate::objects::resolve_address(w, target).to_owned();
+            ensure!(
+                w.objects.get(&key).is_some_and(|o| o.current().present),
+                "unknown object"
+            );
+            crate::remote_links::validate(links)?;
+            if links.is_empty() {
+                w.remote_links.remove(&key);
+            } else {
+                w.remote_links.insert(key, links.clone());
+            }
         }
         Command::RestoreObject { .. } => {
             crate::objects::restore(w, actor, command, position, recorded_at)?;

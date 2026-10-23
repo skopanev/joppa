@@ -13,6 +13,7 @@ pub mod planning;
 pub mod probe;
 pub mod read_shapes;
 pub mod redact;
+pub mod remote_links;
 pub mod save_examples;
 pub mod schema_nodes;
 pub mod sessions;

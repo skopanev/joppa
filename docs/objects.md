@@ -323,6 +323,32 @@ An object shows only the process fields that its type lists. Until a workspace s
 A type without `process_fields` shows no confirmation and no acceptance.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
+## Other workspaces
+
+One product can use several workspaces, for example a product workspace and one workspace for each component.
+Each workspace keeps its own tree, search, History and Tasks.
+
+A node stands for another workspace when its data has `workspace` with the ID of that workspace.
+The server refuses the own workspace, a workspace name in place of its ID, and a workspace that the writer cannot read.
+A read of the node gives `child_workspace`: the status and the green, red and total counts of the criteria of that workspace.
+A reader without access to that workspace sees only `access: false`. This status is for display. It is not evidence for a criterion of this workspace.
+
+`set_remote_links {target, links, reason}` replaces the links of one object to objects of other workspaces.
+Each link has `workspace`, `target` (kind:id), `relation`, an optional `revision` and `blocking`:
+
+```json
+{"op": "set_remote_links", "target": "ac:checkout", "reason": "Checkout uses the auth API",
+ "links": [{"workspace": "backend", "target": "requirement:auth-api", "relation": "depends_on", "revision": 3, "blocking": true}]}
+```
+
+The server refuses a target that is absent or archived, a revision above the current one, and a workspace that the writer cannot read.
+A blocking link that closes a dependency cycle across workspaces is refused.
+A read of the object gives `remote_links`, each with its current `status`: `access`, `present`, `current_revision`, `review_required` and `satisfied`.
+`review_required` is true when the target has a revision above the pinned one. Save the links again with the new revision after the review.
+A blocking link makes the object and the work below it wait until every criterion at and below the target is green.
+Claims check this wait with the access of the claimer. They lock the target workspaces, so a record of results there waits or comes first.
+An empty `links` list removes the links of the object.
+
 ## Type order
 
 Each type can set `index`, a nonnegative integer. Smaller values appear first.

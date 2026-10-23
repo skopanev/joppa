@@ -58,18 +58,41 @@ pub(super) async fn read_with_counts(
 pub(super) async fn live(
     client: &impl GenericClient,
     workspace: &str,
+    actor: &str,
     state: &Workspace,
+    locked: &BTreeSet<String>,
 ) -> Result<BTreeMap<String, String>> {
-    let graph = Graph::from_state(state);
+    let mut graph = Graph::from_state(state);
+    // A blocking remote target is one more criterion node: green when the actor can read it
+    // and each of its criteria is green.
+    for (source, targets) in super::remote::remote_edges(state) {
+        for target in targets {
+            graph.node(target.clone(), None, true);
+            graph.link(source.clone(), target);
+        }
+    }
     if !graph.has_links() {
         return Ok(BTreeMap::new());
     }
-    let statuses = super::reports::state_criterion_statuses(
-        client,
-        workspace,
-        state,
-        &graph.criteria_needed(),
-    )
-    .await?;
-    Ok(graph.waits(&green(statuses)))
+    let named: BTreeSet<&String> = state
+        .remote_links
+        .values()
+        .flatten()
+        .filter(|l| l.blocking)
+        .map(|l| &l.workspace)
+        .collect();
+    ensure!(
+        named.iter().all(|w| locked.contains(*w)),
+        "the remote links changed during this claim; send it again"
+    );
+    let local: Vec<String> = graph
+        .criteria_needed()
+        .into_iter()
+        .filter(|c| !c.starts_with('@'))
+        .collect();
+    let statuses =
+        super::reports::state_criterion_statuses(client, workspace, state, &local).await?;
+    let mut green = green(statuses);
+    green.extend(super::remote::green_targets(client, actor, state).await?);
+    Ok(graph.waits(&green))
 }
