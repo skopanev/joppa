@@ -624,6 +624,11 @@ pub fn apply(
         }
         Command::CompleteTask { evidence, .. } => {
             commands::nonempty(evidence)?;
+            // The claim gave the Task its current revision; a later repin needs a new claim.
+            ensure!(
+                crate::remote_links::changed_since(w, &key, o.current().position, false).is_none(),
+                "the remote links changed after the claim; release and claim again"
+            );
             ensure!(
                 t.assignee.as_deref() == Some(actor)
                     || w.replay_claims && !w.persistent_claims && authority,

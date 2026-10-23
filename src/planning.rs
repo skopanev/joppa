@@ -192,6 +192,10 @@ pub fn apply(
     match command {
         Command::FinishPlanning { .. } => {
             ensure!(claim.actor == actor, "planning holder required");
+            ensure!(
+                crate::remote_links::changed_since(w, &key, claim.position, true).is_none(),
+                "the remote links changed after the claim; release and claim again"
+            );
             let blocked: Vec<String> = children
                 .iter()
                 .filter(|k| {

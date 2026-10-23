@@ -1162,6 +1162,7 @@ pub(crate) fn apply_inner(
                 crate::remote_links::RemoteLinks {
                     revision: current.revision + 1,
                     links: links.clone(),
+                    position,
                 },
             );
             if repinned {

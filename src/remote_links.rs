@@ -29,6 +29,30 @@ pub struct RemoteLink {
 pub struct RemoteLinks {
     pub revision: u32,
     pub links: Vec<RemoteLink>,
+    /// The journal position of the last write of these links.
+    #[serde(default)]
+    pub position: u64,
+}
+
+/// The first object whose remote links changed after `since` and apply to `root`: links of
+/// `root` and its ancestors, and with `below`, also links of the nodes below `root`. Work
+/// that a claim started before such a change must not finish on the old pin.
+pub fn changed_since(
+    w: &crate::model::Workspace,
+    root: &str,
+    since: u64,
+    below: bool,
+) -> Option<String> {
+    let root = crate::objects::resolve_address(w, root).to_owned();
+    w.remote_links
+        .iter()
+        .filter(|(_, l)| l.position > since)
+        .map(|(source, _)| source)
+        .find(|source| {
+            crate::objects::within(w, &root, source)
+                || (below && crate::objects::within(w, source, &root))
+        })
+        .cloned()
 }
 
 impl RemoteLink {

@@ -1010,3 +1010,77 @@ async fn a_parallel_claim_and_failing_record_two_hops_away_finish_in_one_order()
     );
     Ok(())
 }
+
+/// C publishes a new revision of API, X is green on it, and A repins to it.
+async fn repin_api(w: &World) -> Result<()> {
+    let pin = w.revision(&w.c, "requirement:api").await?;
+    w.ok(
+        &w.owner,
+        &w.c,
+        World::save(
+            "requirement",
+            "api",
+            pin,
+            None,
+            json!({"title":"API","owner":"owner","body":"The API contract, version 2"}),
+        ),
+    )
+    .await?;
+    w.record("e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "pass")
+        .await?;
+    let pin = w.revision(&w.c, "requirement:api").await?;
+    w.set_links(&w.bot, &w.p, "ac:a", json!([w.link(Some(pin), true)]))
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
+}
+
+// node-workspace-ac3
+#[tokio::test]
+async fn a_repin_after_a_claim_stops_the_old_plan_and_the_old_task() -> Result<()> {
+    let w = world().await?;
+    claimed_task(&w).await?;
+    // Planning of A started on the old pin.
+    w.claim()
+        .await?
+        .map_err(|e| anyhow::anyhow!("planning claim: {e}"))?;
+    repin_api(&w).await?;
+    let changed = "the remote links changed after the claim; release and claim again";
+    match w
+        .command(
+            &w.bot,
+            &w.p,
+            json!({"op":"finish_planning","ac":"ac:a","reason":"The old plan"}),
+        )
+        .await?
+    {
+        Err(e) if e.contains(changed) => {}
+        other => anyhow::bail!("the old plan must not finish: {other:?}"),
+    }
+    match complete(&w).await? {
+        Err(e) if e.contains(changed) => {}
+        other => anyhow::bail!("the old task must not complete: {other:?}"),
+    }
+    // A new claim after the review of the new pin can complete.
+    let t = w.revision(&w.p, "task:t").await?;
+    w.ok(
+        &w.bot,
+        &w.p,
+        json!({"op":"release_task","id":"task:t","revision":t,"reason":"The pin changed"}),
+    )
+    .await?;
+    let a = w.object(&w.owner, &w.p, "ac:a").await?;
+    w.ok(&w.owner, &w.p, json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["process"]["criterion"],
+        "assessment":{"ready":true,"reason":"The new contract is reviewed"}})).await?;
+    let t = w.revision(&w.p, "task:t").await?;
+    w.ok(
+        &w.bot,
+        &w.p,
+        json!({"op":"claim_task","id":"task:t","revision":t}),
+    )
+    .await?;
+    complete(&w)
+        .await?
+        .map_err(|e| anyhow::anyhow!("completion after a new claim: {e}"))?;
+    Ok(())
+}
