@@ -182,6 +182,8 @@ the prior decision explicitly. Withdrawal blocks every AC assessment that cites 
 Read the Note revision first. The command preserves its source data, parent and links.
 The server appends a document revision. Source changes return the Note to `unprocessed`.
 `joppa_objects` supports `note_status` for any type with `inbox: true`, and `related_to` for links in either direction.
+A list read takes `fields`, a list of key names. Each item then keeps only these keys and its `address`. The envelope and `next_cursor` stay. Over HTTP, send `fields=title,signal`.
+`joppa_tests` without `ac` and `task` gives the overview of green and red criteria, the same as `GET /tests`. With `summary=true`, each criterion gives `counts` per test status in place of `tests`.
 
 ## Browser authentication
 
