@@ -14,6 +14,8 @@ export function workspaceLinksSection(detail){
   const child=detail.child_workspace,remote=detail.remote_links||[];
   if(!child&&!remote.length)return null;
   const section=E('div',undefined,'object-field workspace-links');
+  // A changed or archived target is shown, never ignored.
+  if(detail.remote_review_required)section.append(E('p','A linked object in another workspace changed or was archived. Review the link.','dependency-review'));
   if(child){
     section.append(E('small','Child workspace','type-label'));
     const line=E('p',undefined,'node-description');

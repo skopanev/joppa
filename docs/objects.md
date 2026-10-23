@@ -333,21 +333,26 @@ The server refuses the own workspace, a workspace name in place of its ID, and a
 A read of the node gives `child_workspace`: the status and the green, red and total counts of the criteria of that workspace.
 A reader without access to that workspace sees only `access: false`. This status is for display. It is not evidence for a criterion of this workspace.
 
-`set_remote_links {target, links, reason}` replaces the links of one object to objects of other workspaces.
-Each link has `workspace`, `target` (kind:id), `relation`, an optional `revision` and `blocking`:
+`set_remote_links {target, revision, links, reason}` replaces the links of one object to objects of other workspaces.
+`revision` is the `remote_links_revision` that you read, 0 when the object has no remote links. Each write raises it.
+A link can target any object of any workspace that the writer can read.
+Each link has `workspace` (its name or ID; the server stores the ID), `target` (kind:id), `relation`, `revision` and `blocking`.
+A blocking link needs `revision`, the target revision that the work depends on:
 
 ```json
-{"op": "set_remote_links", "target": "ac:checkout", "reason": "Checkout uses the auth API",
+{"op": "set_remote_links", "target": "ac:checkout", "revision": 0, "reason": "Checkout uses the auth API",
  "links": [{"workspace": "backend", "target": "requirement:auth-api", "relation": "depends_on", "revision": 3, "blocking": true}]}
 ```
 
 The server refuses a target that is absent or archived, a revision above the current one, and a workspace that the writer cannot read.
 A blocking link that closes a dependency cycle across workspaces is refused.
 A read of the object gives `remote_links`, each with its current `status`: `access`, `present`, `current_revision`, `review_required` and `satisfied`.
-`review_required` is true when the target has a revision above the pinned one. Save the links again with the new revision after the review.
-A blocking link makes the object and the work below it wait until every criterion at and below the target is green.
+`review_required` is true when the target has a revision above the pinned one, or when the target is archived or absent. The object then has `remote_review_required: true`, and the board shows a review note.
+A new, changed or removed pin resets the criteria below the object. Save the links again with the new revision after the review.
+A blocking link makes the object and the work below it wait until the target is ready: its pin is current, every criterion at and below it is green, no node there waits for a local dependency, and each blocking remote link that applies there is ready too.
+Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
 Claims check this wait with the access of the claimer. They lock the target workspaces, so a record of results there waits or comes first.
-An empty `links` list removes the links of the object.
+An empty `links` list removes the links of the object. `workspace_key` in joppa_tree and in an object read is the immutable ID of the workspace.
 
 ## Type order
 

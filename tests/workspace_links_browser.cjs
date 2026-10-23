@@ -27,7 +27,7 @@ test('node-workspace-ac7 board: a node shows its child workspace and its links t
       data: {title: 'Backend', owner: 'alex', workspace: c}, reason: 'Fixture'}, f.live.alex);
     await f.command({op: 'save_object', kind: 'note', id: 'mobile', revision: 0, parent: null,
       data: {title: 'Mobile login', owner: 'alex', body: 'Uses the API'}, reason: 'Fixture'}, f.live.alex);
-    await f.command({op: 'set_remote_links', target: 'note:mobile', reason: 'Mobile uses the API',
+    await f.command({op: 'set_remote_links', target: 'note:mobile', revision: 0, reason: 'Mobile uses the API',
       links: [{workspace: c, target: 'domain:api', relation: 'related', revision: 1, blocking: false}]}, f.live.alex);
 
     for (const [address, text, href] of [

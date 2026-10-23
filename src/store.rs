@@ -40,6 +40,8 @@ mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};
 #[path = "store_remote.rs"]
 pub(crate) mod remote;
+#[path = "store_remote_status.rs"]
+pub(crate) mod remote_status;
 #[path = "store_timeline.rs"]
 mod timeline;
 #[path = "store_timeline_items.rs"]

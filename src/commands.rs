@@ -66,6 +66,8 @@ pub enum Command {
     /// Replace the links of one object to objects of other workspaces.
     SetRemoteLinks {
         target: String,
+        /// The remote links revision that the writer read; 0 when the object has none.
+        revision: u32,
         links: Vec<crate::remote_links::RemoteLink>,
         reason: String,
     },
@@ -546,7 +548,11 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("archive_object", &["target", "revision", "reason"], MEMBER),
-    op("set_remote_links", &["target", "links", "reason"], MEMBER),
+    op(
+        "set_remote_links",
+        &["target", "revision", "links", "reason"],
+        MEMBER,
+    ),
     op("restore_object", &["target", "revision", "reason"], MEMBER),
     op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
     op(
@@ -1120,6 +1126,7 @@ pub(crate) fn apply_inner(
         }
         Command::SetRemoteLinks {
             target,
+            revision,
             links,
             reason,
         } => {
@@ -1144,17 +1151,19 @@ pub(crate) fn apply_inner(
                     .map(|l| (l.workspace, l.target, l.relation, l.revision))
                     .collect()
             };
-            let old = w
-                .remote_links
-                .get(&key)
-                .map(|l| pinned(l))
-                .unwrap_or_default();
-            let repinned = old != pinned(links);
-            if links.is_empty() {
-                w.remote_links.remove(&key);
-            } else {
-                w.remote_links.insert(key.clone(), links.clone());
-            }
+            let current = w.remote_links.get(&key).cloned().unwrap_or_default();
+            ensure!(
+                current.revision == *revision,
+                "stale remote links revision; read the object again"
+            );
+            let repinned = pinned(&current.links) != pinned(links);
+            w.remote_links.insert(
+                key.clone(),
+                crate::remote_links::RemoteLinks {
+                    revision: current.revision + 1,
+                    links: links.clone(),
+                },
+            );
             if repinned {
                 crate::objects::reset_criteria(w, &key, recorded_at)?;
             }

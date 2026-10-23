@@ -173,6 +173,16 @@ impl World {
         .await?
         .map_err(|e| anyhow::anyhow!("{address}: {e}"))
     }
+    async fn record_in(&self, ws: &str, commit: &str, status: &str) -> Result<()> {
+        self.mcp(
+            &self.bot,
+            "joppa_record_results",
+            json!({"workspace":ws,"commit":commit,"results":[{"test":TEST,"status":status}]}),
+        )
+        .await?
+        .map_err(|e| anyhow::anyhow!("record: {e}"))?;
+        Ok(())
+    }
     async fn record(&self, commit: &str, status: &str) -> Result<()> {
         self.mcp(
             &self.bot,
@@ -255,6 +265,44 @@ impl World {
             link["revision"] = json!(r);
         }
         link
+    }
+    /// The current revision of an object.
+    async fn revision(&self, ws: &str, address: &str) -> Result<u64> {
+        Ok(
+            self.object(&self.owner, ws, address).await?["current_revision"]
+                .as_u64()
+                .unwrap_or_default(),
+        )
+    }
+    /// Replace the remote links of one object, with the links revision that it reads first.
+    async fn set_links(
+        &self,
+        token: &str,
+        ws: &str,
+        target: &str,
+        links: Value,
+    ) -> Result<Result<Value, String>> {
+        let current = self.object(&self.owner, ws, target).await?["remote_links_revision"].clone();
+        self.command(token, ws, json!({"op":"set_remote_links","target":target,"revision":current,"links":links,"reason":"Link to another workspace"})).await
+    }
+    /// A depends on the current revision of API with a blocking link, and A is ready again.
+    async fn block_a_on_api(&self) -> Result<()> {
+        let pin = self.revision(&self.c, "requirement:api").await?;
+        self.set_links(
+            &self.bot,
+            &self.p,
+            "ac:a",
+            json!([self.link(Some(pin), true)]),
+        )
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let a = self.object(&self.owner, &self.p, "ac:a").await?;
+        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["process"]["criterion"],
+            "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
+        Ok(())
+    }
+    fn waiting(&self) -> String {
+        format!("waits for @{}/requirement:api, which is not green", self.c)
     }
     async fn claim(&self) -> Result<Result<Value, String>> {
         let a = self.object(&self.bot, &self.p, "ac:a").await?;
@@ -357,22 +405,23 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
 #[tokio::test]
 async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Result<()> {
     let w = world().await?;
-    let set = |links: Value| json!({"op":"set_remote_links","target":"ac:a","links":links,"reason":"Use the API contract"});
-    let pin = w.object(&w.owner, &w.c, "requirement:api").await?["current_revision"]
-        .as_u64()
-        .unwrap_or_default();
-    w.ok(&w.bot, &w.p, set(json!([w.link(Some(pin), false)])))
-        .await?;
+    let pin = w.revision(&w.c, "requirement:api").await?;
+    w.set_links(&w.bot, &w.p, "ac:a", json!([w.link(Some(pin), false)]))
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
     ensure!(
         read["process"]["assessment"]["state"] == "unassessed",
         "a new pin resets the criteria below: {read}"
     );
+    ensure!(
+        read["remote_links_revision"] == 1 && read["remote_review_required"] == false,
+        "{read}"
+    );
     let status = &read["remote_links"][0]["status"];
     ensure!(
-        status["access"] == true
-            && status["review_required"] == false
-            && status["current_revision"] == pin,
+        *status
+            == json!({"access":true,"present":true,"current_revision":pin,"review_required":false,"satisfied":false}),
         "{read}"
     );
     // C changes its contract: the pinned link now asks for a review.
@@ -390,48 +439,88 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     .await?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
     ensure!(
-        read["remote_links"][0]["status"]["review_required"] == true,
+        read["remote_links"][0]["status"]["review_required"] == true
+            && read["remote_review_required"] == true,
         "{read}"
     );
     let alex = w.object(&w.alex, &w.p, "ac:a").await?;
     ensure!(
-        alex["remote_links"][0]["status"] == json!({"access":false,"satisfied":false}),
+        alex["remote_links"][0]["status"]
+            == json!({"access":false,"present":null,"current_revision":null,"review_required":null,"satisfied":false}),
         "{alex}"
     );
-    // Refusals: a future pin, an unknown target, the own workspace and no access.
-    let mut future = w.link(Some(pin + 9), false);
-    w.refused(
-        &w.bot,
-        &w.p,
-        set(json!([future.clone()])),
-        "unknown linked revision",
+    // A stale links revision, a future pin, an unknown target, the own workspace and no access.
+    let stale =
+        json!({"op":"set_remote_links","target":"ac:a","revision":0,"links":[],"reason":"Stale"});
+    w.refused(&w.bot, &w.p, stale, "stale remote links revision")
+        .await?;
+    let mut bad = w.link(Some(pin + 9), false);
+    let refuse =
+        async |links: Value, error: &str| match w.set_links(&w.bot, &w.p, "ac:a", links).await? {
+            Err(e) if e.contains(error) => anyhow::Ok(()),
+            other => anyhow::bail!("expected {error:?}, got {other:?}"),
+        };
+    refuse(json!([bad.clone()]), "unknown linked revision").await?;
+    bad["revision"] = json!(1);
+    bad["target"] = json!("requirement:none");
+    refuse(json!([bad.clone()]), "unknown or archived object").await?;
+    bad["target"] = json!("requirement:r");
+    bad["workspace"] = json!(w.p);
+    refuse(json!([bad]), "names another workspace").await?;
+    match w
+        .set_links(&w.alex, &w.p, "ac:a", json!([w.link(Some(1), false)]))
+        .await?
+    {
+        Err(e) if e.contains(&format!("no read access to workspace {}", w.c)) => {}
+        other => anyhow::bail!("alex: {other:?}"),
+    }
+    Ok(())
+}
+
+// node-workspace-ac2
+#[tokio::test]
+async fn an_archived_target_is_shown_for_review_and_a_batch_writes_links_atomically() -> Result<()>
+{
+    let w = world().await?;
+    let pin = w.revision(&w.c, "ac:x").await?;
+    // One batch saves a note and its remote link; a refused link rolls back the note.
+    let batch = |id: &str, target: &str| {
+        json!({"workspace":w.p,"request_id":uuid::Uuid::new_v4().to_string(),"operations":[
+        {"command":{"op":"save_object","kind":"requirement","id":id,"revision":0,"parent":null,"data":{"title":"Mobile","owner":"owner","body":"Uses the API"},"reason":"Fixture"}},
+        {"command":{"op":"set_remote_links","target":format!("requirement:{id}"),"revision":0,"links":[{"workspace":w.c,"target":target,"relation":"related","revision":pin}],"reason":"Mobile uses X"}}]})
+    };
+    w.mcp(&w.bot, "joppa_batch", batch("mobile", "ac:x"))
+        .await?
+        .map_err(|e| anyhow::anyhow!("batch: {e}"))?;
+    ensure!(
+        w.mcp(&w.bot, "joppa_batch", batch("broken", "ac:none"))
+            .await?
+            .is_err(),
+        "a bad link refuses the batch"
+    );
+    ensure!(
+        w.mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"workspace":w.p,"address":"requirement:broken"})
+        )
+        .await?
+        .is_err(),
+        "the refused batch saved nothing"
+    );
+    w.ok(
+        &w.owner,
+        &w.c,
+        json!({"op":"archive_object","target":"ac:x","revision":pin,"reason":"X is retired"}),
     )
     .await?;
-    future["revision"] = json!(1);
-    future["target"] = json!("requirement:none");
-    w.refused(
-        &w.bot,
-        &w.p,
-        set(json!([future.clone()])),
-        "unknown or archived object",
-    )
-    .await?;
-    future["target"] = json!("requirement:r");
-    future["workspace"] = json!(w.p);
-    w.refused(
-        &w.bot,
-        &w.p,
-        set(json!([future])),
-        "names another workspace",
-    )
-    .await?;
-    w.refused(
-        &w.alex,
-        &w.p,
-        set(json!([w.link(Some(1), false)])),
-        &format!("no read access to workspace {}", w.c),
-    )
-    .await?;
+    let read = w.object(&w.bot, &w.p, "requirement:mobile").await?;
+    ensure!(
+        read["remote_review_required"] == true
+            && read["remote_links"][0]["status"]
+                == json!({"access":true,"present":false,"current_revision":null,"review_required":true,"satisfied":false}),
+        "{read}"
+    );
     Ok(())
 }
 
@@ -439,15 +528,9 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
 #[tokio::test]
 async fn work_waits_for_a_blocking_remote_link_until_its_target_is_green() -> Result<()> {
     let w = world().await?;
-    w.ok(&w.bot, &w.p, json!({"op":"set_remote_links","target":"ac:a","links":[w.link(None, true)],"reason":"A needs the API"})).await?;
-    let a = w.object(&w.bot, &w.p, "ac:a").await?;
-    ensure!(
-        a["process"]["assessment"]["state"] == "ready",
-        "an ordering link without a pin resets nothing: {a}"
-    );
-    let waiting = format!("waits for @{}/requirement:api, which is not green", w.c);
+    w.block_a_on_api().await?;
     match w.claim().await? {
-        Err(e) if e.contains(&waiting) => {}
+        Err(e) if e.contains(&w.waiting()) => {}
         other => anyhow::bail!("expected the wait, got {other:?}"),
     }
     w.record("2222222222222222222222222222222222222222", "pass")
@@ -458,21 +541,124 @@ async fn work_waits_for_a_blocking_remote_link_until_its_target_is_green() -> Re
     Ok(())
 }
 
+// node-workspace-ac3
+#[tokio::test]
+async fn a_green_target_with_a_newer_revision_does_not_free_work_until_a_new_pin() -> Result<()> {
+    let w = world().await?;
+    w.block_a_on_api().await?;
+    w.record("6666666666666666666666666666666666666666", "pass")
+        .await?;
+    let pin = w.revision(&w.c, "requirement:api").await?;
+    w.ok(
+        &w.owner,
+        &w.c,
+        World::save(
+            "requirement",
+            "api",
+            pin,
+            None,
+            json!({"title":"API","owner":"owner","body":"The API contract, version 2"}),
+        ),
+    )
+    .await?;
+    // The text change of API makes X grey until a new record, so record again: X is green.
+    w.record("7777777777777777777777777777777777777777", "pass")
+        .await?;
+    let read = w.object(&w.bot, &w.p, "ac:a").await?;
+    ensure!(
+        read["remote_links"][0]["status"]["review_required"] == true
+            && read["remote_links"][0]["status"]["satisfied"] == false,
+        "{read}"
+    );
+    match w.claim().await? {
+        Err(e) if e.contains(&w.waiting()) => {}
+        other => anyhow::bail!("a stale pin must not free work: {other:?}"),
+    }
+    w.block_a_on_api().await?;
+    w.claim()
+        .await?
+        .map_err(|e| anyhow::anyhow!("claim after the new pin: {e}"))?;
+    Ok(())
+}
+
+// node-workspace-ac3
+#[tokio::test]
+async fn a_red_dependency_of_a_green_target_keeps_work_waiting() -> Result<()> {
+    let w = world().await?;
+    // Q is a third workspace. API in C depends on CORE in Q; A in P depends on API.
+    let q = workspace(&w.pool, "core", false).await?;
+    w.ok(
+        &w.owner,
+        &q,
+        World::save(
+            "requirement",
+            "core",
+            0,
+            None,
+            json!({"title":"Core","owner":"owner","body":"The core rule"}),
+        ),
+    )
+    .await?;
+    w.ok(
+        &w.owner,
+        &q,
+        World::save(
+            "ac",
+            "y",
+            0,
+            Some("requirement:core"),
+            json!({"title":"Y","owner":"owner"}),
+        ),
+    )
+    .await?;
+    w.ok(
+        &w.owner,
+        &q,
+        json!({"op":"set_ac_tests","target":"ac:y","tests":[TEST],"reason":"Bind"}),
+    )
+    .await?;
+    let core = w.revision(&q, "requirement:core").await?;
+    let to_core = json!([{"workspace":q,"target":"requirement:core","relation":"depends_on","revision":core,"blocking":true}]);
+    w.set_links(&w.owner, &w.c, "requirement:api", to_core)
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    w.block_a_on_api().await?;
+
+    w.record_in(&w.c, "8888888888888888888888888888888888888888", "pass")
+        .await?;
+    w.record_in(&q, "9999999999999999999999999999999999999999", "fail")
+        .await?;
+    // X in C is green, but CORE in Q is red, so API is not ready and A waits.
+    match w.claim().await? {
+        Err(e) if e.contains(&w.waiting()) => {}
+        other => anyhow::bail!("a red transitive dependency must hold A: {other:?}"),
+    }
+    w.record_in(&q, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pass")
+        .await?;
+    w.claim()
+        .await?
+        .map_err(|e| anyhow::anyhow!("claim after CORE is green: {e}"))?;
+    Ok(())
+}
+
 // node-workspace-ac4
 #[tokio::test]
 async fn a_blocking_cycle_across_workspaces_is_refused() -> Result<()> {
     let w = world().await?;
-    w.ok(&w.bot, &w.p, json!({"op":"set_remote_links","target":"ac:a","links":[w.link(None, true)],"reason":"A needs the API"})).await?;
-    let back = json!({"workspace":w.p,"target":"ac:a","relation":"depends_on","blocking":true});
-    w.refused(&w.bot, &w.c, json!({"op":"set_remote_links","target":"requirement:api","links":[back],"reason":"API needs A"}), "dependency cycle across workspaces").await?;
-    Ok(())
+    w.block_a_on_api().await?;
+    let a = w.revision(&w.p, "ac:a").await?;
+    let back = json!([{"workspace":w.p,"target":"ac:a","relation":"depends_on","revision":a,"blocking":true}]);
+    match w.set_links(&w.bot, &w.c, "requirement:api", back).await? {
+        Err(e) if e.contains("dependency cycle across workspaces") => Ok(()),
+        other => anyhow::bail!("expected the cycle refusal, got {other:?}"),
+    }
 }
 
 // node-workspace-ac5
 #[tokio::test]
 async fn a_claim_waits_for_a_result_write_in_the_target_workspace() -> Result<()> {
     let w = world().await?;
-    w.ok(&w.bot, &w.p, json!({"op":"set_remote_links","target":"ac:a","links":[w.link(None, true)],"reason":"A needs the API"})).await?;
+    w.block_a_on_api().await?;
     w.record("3333333333333333333333333333333333333333", "pass")
         .await?;
     // A transaction holds the lock of C, as a record of results does while it writes.
@@ -519,7 +705,7 @@ async fn a_claim_waits_for_a_result_write_in_the_target_workspace() -> Result<()
 #[tokio::test]
 async fn a_parallel_claim_and_failing_record_finish_in_one_consistent_order() -> Result<()> {
     let w = world().await?;
-    w.ok(&w.bot, &w.p, json!({"op":"set_remote_links","target":"ac:a","links":[w.link(None, true)],"reason":"A needs the API"})).await?;
+    w.block_a_on_api().await?;
     w.record("4444444444444444444444444444444444444444", "pass")
         .await?;
     let (claim, record) = tokio::join!(
@@ -528,9 +714,8 @@ async fn a_parallel_claim_and_failing_record_finish_in_one_consistent_order() ->
     );
     record?;
     let claim = claim?;
-    let waiting = format!("waits for @{}/requirement:api, which is not green", w.c);
     ensure!(
-        claim.is_ok() || claim.as_ref().is_err_and(|e| e.contains(&waiting)),
+        claim.is_ok() || claim.as_ref().is_err_and(|e| e.contains(&w.waiting())),
         "the claim either ran first or saw the red target: {claim:?}"
     );
     // After both, the target is red, so a new claim waits.

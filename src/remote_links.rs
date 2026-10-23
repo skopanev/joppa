@@ -23,6 +23,14 @@ pub struct RemoteLink {
     pub blocking: bool,
 }
 
+/// The remote links of one object with their own revision. A write names the revision it
+/// read, so two writers cannot replace each other's links unseen.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteLinks {
+    pub revision: u32,
+    pub links: Vec<RemoteLink>,
+}
+
 impl RemoteLink {
     /// The key of the target in a dependency graph. Local addresses never start with @.
     pub fn node(&self) -> String {
@@ -52,6 +60,10 @@ pub fn validate(links: &[RemoteLink]) -> Result<()> {
             "blocking links must be dependencies"
         );
         ensure!(link.revision != Some(0), "unknown linked revision");
+        ensure!(
+            !link.blocking || link.revision.is_some(),
+            "a blocking remote link needs the target revision that it depends on"
+        );
         ensure!(
             unique.insert((&link.workspace, &link.target, &link.relation)),
             "duplicate remote link"

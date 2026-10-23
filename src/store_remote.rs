@@ -44,7 +44,10 @@ async fn readable(client: &impl GenericClient, own: &str, actor: &str, id: &str)
 }
 
 /// The present target with its current revision, through an object alias.
-async fn target(client: &impl GenericClient, link: &RemoteLink) -> Result<Option<(String, i32)>> {
+pub(super) async fn target(
+    client: &impl GenericClient,
+    link: &RemoteLink,
+) -> Result<Option<(String, i32)>> {
     Ok(client
         .query_opt(
             "SELECT o.address,o.revision FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.address=COALESCE((SELECT a.target FROM joppa.object_aliases a WHERE a.workspace=$1 AND a.address=$2),$2)",
@@ -119,7 +122,7 @@ async fn reaches(
         ).await? {
             queue.push_back((ws.clone(), row.get(0)));
         }
-        for link in stored_links(client, ws, address).await? {
+        for link in stored_links(client, ws, address).await?.links {
             if link.blocking {
                 let next = target(client, &link)
                     .await?
@@ -131,12 +134,12 @@ async fn reaches(
     Ok(false)
 }
 
-/// The stored remote links of one object.
-async fn stored_links(
+/// The stored remote links of one object with their revision.
+pub(super) async fn stored_links(
     client: &impl GenericClient,
     workspace: &str,
     address: &str,
-) -> Result<Vec<RemoteLink>> {
+) -> Result<crate::remote_links::RemoteLinks> {
     Ok(match client
         .query_opt(
             "SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='remote_links' AND key=$2",
@@ -145,67 +148,8 @@ async fn stored_links(
         .await?
     {
         Some(row) => serde_json::from_str(row.get(0))?,
-        None => vec![],
+        None => Default::default(),
     })
-}
-
-/// Green and total counts of the present criteria at and below an address, or of the
-/// whole workspace without one.
-async fn criteria_counts(
-    client: &impl GenericClient,
-    workspace: &str,
-    root: Option<&str>,
-) -> Result<(i64, i64, i64)> {
-    let row = client.query_one(
-        "WITH RECURSIVE sub(address) AS (SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND ($2::text IS NULL AND o.parent IS NULL OR o.address=$2)
-           UNION SELECT o.address FROM joppa.objects o JOIN sub ON o.parent=sub.address WHERE o.workspace=$1 AND o.present)
-         SELECT count(*) FILTER (WHERE o.test_status->>'status'='green'),count(*) FILTER (WHERE o.test_status->>'status'='red'),count(*)
-         FROM joppa.objects o JOIN sub ON sub.address=o.address JOIN joppa.board_cache b ON b.workspace=o.workspace
-         WHERE o.workspace=$1 AND b.first_view->'object_types'->o.kind->>'role'='ac'",
-        &[&workspace, &root],
-    ).await?;
-    Ok((row.get(0), row.get(1), row.get(2)))
-}
-
-/// The current state of one remote link for this actor. Without access, only that.
-pub(crate) async fn link_status(
-    client: &impl GenericClient,
-    actor: &str,
-    link: &RemoteLink,
-) -> Result<Value> {
-    if access::check(client, &link.workspace, actor, false)
-        .await
-        .is_err()
-    {
-        return Ok(json!({"access": false, "satisfied": false}));
-    }
-    let Some((address, current)) = target(client, link).await? else {
-        return Ok(json!({"access": true, "present": false, "satisfied": false}));
-    };
-    let (green, _, total) = criteria_counts(client, &link.workspace, Some(&address)).await?;
-    Ok(json!({
-        "access": true,
-        "present": true,
-        "current_revision": current,
-        "review_required": link.revision.is_some_and(|r| i64::from(current) > i64::from(r)),
-        "satisfied": total > 0 && green == total,
-    }))
-}
-
-/// The green remote targets that a live claim may count, for this actor. A target without
-/// access, archived, or without green criteria is not green.
-pub(super) async fn green_targets(
-    client: &impl GenericClient,
-    actor: &str,
-    state: &Workspace,
-) -> Result<BTreeSet<String>> {
-    let mut green = BTreeSet::new();
-    for link in state.remote_links.values().flatten().filter(|l| l.blocking) {
-        if link_status(client, actor, link).await?["satisfied"] == true {
-            green.insert(link.node());
-        }
-    }
-    Ok(green)
 }
 
 /// The workspaces that blocking remote links of this workspace name, from its stored state.
@@ -215,7 +159,7 @@ pub(super) async fn blocking_workspaces(
 ) -> Result<BTreeSet<String>> {
     Ok(client
         .query(
-            "SELECT DISTINCT l->>'workspace' FROM joppa.state_entries e CROSS JOIN LATERAL jsonb_array_elements(e.value) l WHERE e.workspace=$1 AND e.section='remote_links' AND (l->>'blocking')::boolean",
+            "SELECT DISTINCT l->>'workspace' FROM joppa.state_entries e CROSS JOIN LATERAL jsonb_array_elements(e.value->'links') l WHERE e.workspace=$1 AND e.section='remote_links' AND (l->>'blocking')::boolean",
             &[&workspace],
         )
         .await?
@@ -237,58 +181,6 @@ pub(super) async fn lock_sorted(
         client.execute(WORKSPACE_LOCK, &[id]).await?;
     }
     Ok(())
-}
-
-/// Remote links and a child workspace on one object read, with the access of the reader.
-pub(crate) async fn decorate(
-    client: &impl GenericClient,
-    workspace: &str,
-    actor: &str,
-    object: &mut Value,
-) -> Result<()> {
-    let Some(address) = object["address"].as_str().map(str::to_owned) else {
-        return Ok(());
-    };
-    let links = stored_links(client, workspace, &address).await?;
-    if !links.is_empty() {
-        let mut out = vec![];
-        for link in &links {
-            let mut item = json!(link);
-            item["status"] = link_status(client, actor, link).await?;
-            out.push(item);
-        }
-        object["remote_links"] = json!(out);
-    }
-    if let Some(child) = object["document"]["data"]["workspace"]
-        .as_str()
-        .map(str::to_owned)
-    {
-        object["child_workspace"] = child_summary(client, actor, &child).await?;
-    }
-    // The immutable ID that remote links and child nodes store; `workspace` is the name.
-    object["workspace_key"] = json!(workspace);
-    Ok(())
-}
-
-/// The rollup of a child workspace for this reader: display only, never evidence.
-pub(crate) async fn child_summary(
-    client: &impl GenericClient,
-    actor: &str,
-    child: &str,
-) -> Result<Value> {
-    if access::check(client, child, actor, false).await.is_err() {
-        return Ok(json!({"workspace": child, "access": false, "status": "grey"}));
-    }
-    let (green, red, total) = criteria_counts(client, child, None).await?;
-    let status = if red > 0 {
-        "red"
-    } else if total > 0 && green == total {
-        "green"
-    } else {
-        "grey"
-    };
-    Ok(json!({"workspace": child, "access": true, "status": status,
-        "criteria": {"green": green, "red": red, "total": total}}))
 }
 
 /// Check the child workspace of a saved object.
@@ -316,6 +208,7 @@ pub(super) fn remote_edges(state: &Workspace) -> BTreeMap<String, Vec<String>> {
             (
                 source.clone(),
                 links
+                    .links
                     .iter()
                     .filter(|l| l.blocking)
                     .map(RemoteLink::node)

@@ -91,7 +91,7 @@ pub struct Workspace {
     pub criterion_boundaries: BTreeMap<String, String>,
     /// The links of each object to objects of other workspaces, by source address.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub remote_links: BTreeMap<String, Vec<crate::remote_links::RemoteLink>>,
+    pub remote_links: BTreeMap<String, crate::remote_links::RemoteLinks>,
 }
 /// Всё, что человек навесил на объект сверх его собственных полей.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

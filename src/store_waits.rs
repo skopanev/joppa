@@ -77,7 +77,7 @@ pub(super) async fn live(
     let named: BTreeSet<&String> = state
         .remote_links
         .values()
-        .flatten()
+        .flat_map(|l| &l.links)
         .filter(|l| l.blocking)
         .map(|l| &l.workspace)
         .collect();
@@ -93,6 +93,6 @@ pub(super) async fn live(
     let statuses =
         super::reports::state_criterion_statuses(client, workspace, state, &local).await?;
     let mut green = green(statuses);
-    green.extend(super::remote::green_targets(client, actor, state).await?);
+    green.extend(super::remote_status::green_targets(client, actor, state).await?);
     Ok(graph.waits(&green))
 }

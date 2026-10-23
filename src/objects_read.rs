@@ -41,7 +41,7 @@ pub async fn read_objects(
         let mut object = read_one(&conn, workspace, public, position, prefix, scope, key).await?;
         // Links and child workspaces across workspaces: read now, with the access of the reader.
         if scope.revision.is_none() && !scope.history {
-            crate::store::remote::decorate(&*conn, &id, actor, &mut object).await?;
+            crate::store::remote_status::decorate(&*conn, &id, actor, &mut object).await?;
         }
         return Ok(object);
     }
