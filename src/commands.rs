@@ -908,11 +908,15 @@ pub const LIST_SAVE_RESET: &str = "list_save_reset";
 /// From this rule on, the member command accepts only people. Agents and runners enroll
 /// through the internal enroll_service event.
 pub const HUMAN_MEMBERS: &str = "human_members";
-pub const REPLAY_RULES: [&str; 4] = [
+/// From this rule on, a save of one criterion gives a new revision only to that criterion
+/// and its specification. Unchanged sibling criteria keep their revisions.
+pub const SINGLE_CRITERION_SAVE: &str = "single_criterion_save";
+pub const REPLAY_RULES: [&str; 5] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
+    SINGLE_CRITERION_SAVE,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

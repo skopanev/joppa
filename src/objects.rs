@@ -1140,6 +1140,19 @@ fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Val
 }
 /// Replay old commands into the same document ledger. Process evidence stays in its original revision.
 pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at: &str) {
+    sync_with(w, actor, command, position, at, true);
+}
+
+/// `sync` that can leave unchanged sibling criteria of a revised specification alone.
+/// With `force_siblings`, every criterion of the specification gets a new revision.
+fn sync_with(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+    force_siblings: bool,
+) {
     let rows = document_rows(w);
     let reason = serde_json::to_value(command)
         .ok()
@@ -1189,10 +1202,11 @@ pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at
         };
         let forced = forced_req.is_some_and(|req| {
             key == &requirement_address(req)
-                || w.requirements
-                    .get(req)
-                    .and_then(|q| q.revisions.last())
-                    .is_some_and(|r| r.acs.iter().any(|ac| criterion_address(&ac.id) == *key))
+                || (force_siblings
+                    && w.requirements
+                        .get(req)
+                        .and_then(|q| q.revisions.last())
+                        .is_some_and(|r| r.acs.iter().any(|ac| criterion_address(&ac.id) == *key)))
         });
         let mut data = data.clone();
         if w.schema_migrated
@@ -1912,7 +1926,10 @@ fn saved(
             {
                 keep_assessments(&mut candidate, req);
             }
-            sync(&mut candidate, actor, &cmd, position, at);
+            // A criterion save changes only that criterion: its siblings keep their revisions.
+            let siblings = schema(w).types[kind].role != "ac"
+                || !commands::rule_applies(&candidate, commands::SINGLE_CRITERION_SAVE, position);
+            sync_with(&mut candidate, actor, &cmd, position, at, siblings);
         } else {
             candidate.document_overrides.insert(key.clone());
             let owner = string(data, "owner")?;
