@@ -209,3 +209,27 @@ fn a_replayed_node_change_rebuilds_the_same_schema() {
     assert_eq!(types(&replay), types(&w));
     assert!(types(&w).get("release").is_some() && types(&w).get("epic").is_none());
 }
+
+#[test]
+fn one_command_removes_a_reference_target_and_its_user_together() {
+    let mut w = migrated();
+    let r = revision(&w);
+    let release = json!({"title":"Release","role":"group","root":true,"parents":[],
+                         "references":{"epic":{"target":"epic","title":"Epic"}}});
+    w.ok(
+        "agent",
+        json!({"op":"set_tree_schema","revision":r,"put_types":{"epic":epic(),"release":release},"reason":"Add two types"}),
+    );
+    let e = w
+        .apply(
+            "agent",
+            json!({"op":"set_tree_schema","revision":r+1,"remove_types":["epic"],"reason":"Remove the target only"}),
+        )
+        .expect_err("a reference to a removed type must be refused");
+    assert!(e.to_string().contains("unknown reference target type"), "{e}");
+    w.ok(
+        "agent",
+        json!({"op":"set_tree_schema","revision":r+1,"remove_types":["epic","release"],"reason":"Remove both"}),
+    );
+    assert!(types(&w).get("epic").is_none() && types(&w).get("release").is_none());
+}
