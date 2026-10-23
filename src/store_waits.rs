@@ -93,7 +93,7 @@ pub(super) async fn live(
     let statuses =
         super::reports::state_criterion_statuses(client, workspace, state, &local).await?;
     let mut green = green(statuses);
-    green.extend(super::remote_status::green_targets(client, actor, state).await?);
+    green.extend(super::remote_status::green_targets(client, actor, state, locked).await?);
     Ok(graph.waits(&green))
 }
 
@@ -127,7 +127,9 @@ pub(super) async fn remote_gate(
                 locked.contains(&link.workspace),
                 "the remote links changed during this write; send it again"
             );
-            if super::remote_status::link_status(client, actor, link).await?["satisfied"] != true {
+            if super::remote_status::link_status(client, actor, link, Some(locked)).await?["satisfied"]
+                != true
+            {
                 return Ok(Some(link.node()));
             }
         }

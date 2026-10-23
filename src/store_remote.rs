@@ -168,6 +168,28 @@ pub(super) async fn blocking_workspaces(
         .collect())
 }
 
+/// Every workspace that a chain of blocking remote links can reach from this workspace. A
+/// gated write locks all of them, so a record anywhere in the chain waits or comes first.
+pub(super) async fn blocking_closure(
+    client: &impl GenericClient,
+    workspace: &str,
+) -> Result<BTreeSet<String>> {
+    let mut found = BTreeSet::new();
+    let mut queue = VecDeque::from([workspace.to_owned()]);
+    while let Some(ws) = queue.pop_front() {
+        for next in blocking_workspaces(client, &ws).await? {
+            if next != workspace && found.insert(next.clone()) {
+                ensure!(
+                    found.len() <= 64,
+                    "a chain of remote links reaches more than 64 workspaces"
+                );
+                queue.push_back(next);
+            }
+        }
+    }
+    Ok(found)
+}
+
 /// Lock this workspace and the given ones in sorted ID order, so no two writes wait for
 /// each other.
 pub(super) async fn lock_sorted(

@@ -543,7 +543,7 @@ async fn write(
         )
     });
     let remote_locked = if claims {
-        super::remote::blocking_workspaces(&*tx, &workspace).await?
+        super::remote::blocking_closure(&*tx, &workspace).await?
     } else {
         Default::default()
     };

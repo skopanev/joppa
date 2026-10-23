@@ -909,3 +909,104 @@ async fn a_parallel_completion_and_failing_record_finish_in_one_consistent_order
     );
     Ok(())
 }
+
+/// Q is a third workspace: P:A depends on C:API, and C:API depends on Q:CORE. Both green.
+async fn chain_through_q(w: &World) -> Result<String> {
+    let q = workspace(&w.pool, "core", false).await?;
+    w.ok(
+        &w.owner,
+        &q,
+        World::save(
+            "requirement",
+            "core",
+            0,
+            None,
+            json!({"title":"Core","owner":"owner","body":"The core rule"}),
+        ),
+    )
+    .await?;
+    w.ok(
+        &w.owner,
+        &q,
+        World::save(
+            "ac",
+            "y",
+            0,
+            Some("requirement:core"),
+            json!({"title":"Y","owner":"owner"}),
+        ),
+    )
+    .await?;
+    w.ok(
+        &w.owner,
+        &q,
+        json!({"op":"set_ac_tests","target":"ac:y","tests":[TEST],"reason":"Bind"}),
+    )
+    .await?;
+    let core = w.revision(&q, "requirement:core").await?;
+    let to_core = json!([{"workspace":q,"target":"requirement:core","relation":"depends_on","revision":core,"blocking":true}]);
+    w.set_links(&w.owner, &w.c, "requirement:api", to_core)
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    w.block_a_on_api().await?;
+    w.record_in(&w.c, "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1", "pass")
+        .await?;
+    w.record_in(&q, "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2", "pass")
+        .await?;
+    Ok(q)
+}
+
+// node-workspace-ac5
+#[tokio::test]
+async fn a_claim_locks_every_workspace_of_a_remote_chain() -> Result<()> {
+    let w = world().await?;
+    let q = chain_through_q(&w).await?;
+    // A transaction holds the lock of Q, the second hop, as a record there does.
+    let mut conn = w.pool.get().await?;
+    let tx = conn.transaction().await?;
+    tx.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+        &[&q],
+    )
+    .await?;
+    let started = std::time::Instant::now();
+    let claim = async {
+        let result = w.claim().await;
+        (result, started.elapsed())
+    };
+    let release = async {
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        tx.commit().await
+    };
+    let ((claim, waited), released) = tokio::join!(claim, release);
+    released?;
+    claim?.map_err(|e| anyhow::anyhow!("claim after the lock: {e}"))?;
+    ensure!(
+        waited >= Duration::from_millis(550),
+        "the claim must wait for the lock of Q: {waited:?}"
+    );
+    Ok(())
+}
+
+// node-workspace-ac5
+#[tokio::test]
+async fn a_parallel_claim_and_failing_record_two_hops_away_finish_in_one_order() -> Result<()> {
+    let w = world().await?;
+    let q = chain_through_q(&w).await?;
+    let (claim, record) = tokio::join!(
+        w.claim(),
+        w.record_in(&q, "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "fail")
+    );
+    record?;
+    let claim = claim?;
+    ensure!(
+        claim.is_ok() || claim.as_ref().is_err_and(|e| e.contains(&w.waiting())),
+        "the claim either ran first or saw the red second hop: {claim:?}"
+    );
+    let status = w.object(&w.bot, &w.p, "ac:a").await?["remote_links"][0]["status"].clone();
+    ensure!(
+        status["satisfied"] == false,
+        "after both, CORE is red: {status}"
+    );
+    Ok(())
+}

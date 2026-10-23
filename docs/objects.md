@@ -351,7 +351,7 @@ A read of the object gives `remote_links`, each with its current `status`: `acce
 A new, changed or removed pin resets the criteria below the object. Save the links again with the new revision after the review.
 A blocking link makes the object and the work below it wait until the target is ready: its pin is current, every criterion at and below it is green, no node there waits for a local dependency, and each blocking remote link that applies there is ready too.
 Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
-Claims, completions (`complete_task`) and acceptances (`accept_commit`) check this wait with the access of the writer. An acceptance also checks the blocking remote links of the nodes below its target. They lock the target workspaces, so a record of results there waits or comes first.
+Claims, completions (`complete_task`) and acceptances (`accept_commit`) check this wait with the access of the writer. An acceptance also checks the blocking remote links of the nodes below its target. They lock every workspace that a chain of blocking remote links reaches, in sorted ID order, so a record of results anywhere in the chain waits or comes first. A write that reaches a workspace outside its locks fails and asks for a retry.
 An empty `links` list removes the links of the object. `workspace_key` in joppa_tree and in an object read is the immutable ID of the workspace.
 
 ## Type order
