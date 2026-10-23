@@ -2586,8 +2586,13 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 "Note migration identifiers are reserved"
             );
         }
-        Command::SetTreeSchema { types, .. } if !w.documents_migrated => ensure!(
-            !types.contains_key("intake") && !types.contains_key("point"),
+        Command::SetTreeSchema {
+            types, put_types, ..
+        } if !w.documents_migrated => ensure!(
+            [types, put_types]
+                .into_iter()
+                .flatten()
+                .all(|t| !t.contains_key("intake") && !t.contains_key("point")),
             "incoming source types are removed; use Note"
         ),
         Command::Task { acs, .. } => ensure!(acs.len() == 1, "Task must belong to exactly one AC"),

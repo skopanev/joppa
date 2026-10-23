@@ -12,6 +12,7 @@ pub mod objects;
 pub mod planning;
 pub mod probe;
 pub mod redact;
+pub mod schema_nodes;
 pub mod sessions;
 pub mod status_colors;
 pub mod store;

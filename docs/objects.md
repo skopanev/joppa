@@ -56,6 +56,24 @@ Use `set_tree_schema` to replace it:
 }
 ```
 
+To change single types, send `put_types` and `remove_types` in place of `types`:
+
+```json
+{
+  "op": "set_tree_schema",
+  "revision": 4,
+  "reason": "Add an epic level under requirements",
+  "put_types": {
+    "epic": {"title": "Epic", "role": "group", "root": false, "parents": ["requirement"]}
+  },
+  "remove_types": ["release"]
+}
+```
+
+`put_types` adds a type or replaces one type completely. Send all fields of that type. The other types stay.
+`remove_types` deletes types. The server refuses a type that present objects use, or that another type names as a parent or a reference target.
+A command with `types` cannot also have `put_types` or `remove_types`.
+A command without all three keeps every type and changes only `priorities`, `statuses` or `status_colors`.
 Preserve types and parent rules needed by existing objects.
 The server rejects a schema that makes the current tree invalid.
 Read the current schema before you replace it.

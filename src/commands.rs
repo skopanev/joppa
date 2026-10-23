@@ -15,7 +15,15 @@ pub enum Command {
     MigrateTaskClaims {},
     SetTreeSchema {
         revision: u32,
-        types: BTreeMap<String, crate::objects::TreeType>,
+        /// The whole type map. Without it, put_types and remove_types change single types.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        types: Option<BTreeMap<String, crate::objects::TreeType>>,
+        /// Types to add, or to replace completely. Other types stay.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        put_types: Option<BTreeMap<String, crate::objects::TreeType>>,
+        /// Types to delete. Present objects and other types must not use them.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remove_types: Option<Vec<String>>,
         /// The ordered priority values; without it the schema keeps its current list.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         priorities: Option<Vec<String>>,
@@ -525,7 +533,7 @@ const fn op(
 /// The public operation catalog. Help, the command schemas and remote admission use it.
 /// Internal, retired and CLI-only operations are absent.
 pub const OPERATIONS: &[Operation] = &[
-    op("set_tree_schema", &["revision", "types", "reason"], MEMBER),
+    op("set_tree_schema", &["revision", "reason"], MEMBER),
     op(
         "save_object",
         &["kind", "revision", "data", "reason"],
@@ -1026,16 +1034,24 @@ pub(crate) fn apply_inner(
         Command::SetTreeSchema {
             revision,
             types,
+            put_types,
+            remove_types,
             priorities,
             status_colors,
             statuses,
             reason,
         } => {
+            let types = crate::schema_nodes::requested_types(
+                w,
+                types.as_ref(),
+                put_types.as_ref(),
+                remove_types.as_ref(),
+            )?;
             crate::objects::set_schema(
                 w,
                 actor,
                 *revision,
-                types,
+                &types,
                 priorities.as_ref(),
                 status_colors.as_ref(),
                 statuses.as_ref(),
