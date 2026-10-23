@@ -14,13 +14,26 @@ const REMOTE_CYCLE_LOCK: i64 = 91827103;
 /// A cycle walk stops after this many nodes.
 const WALK_LIMIT: usize = 10_000;
 
-/// The immutable ID of a workspace that the actor can read, or an error with the reason.
+/// Replace each workspace name in a command with the immutable workspace ID, before the
+/// journal stores the command.
+pub(super) async fn canonical_ids(client: &impl GenericClient, value: &mut Value) -> Result<()> {
+    if value["op"] == "set_remote_links" {
+        for link in value["links"].as_array_mut().into_iter().flatten() {
+            if let Some(name) = link["workspace"].as_str().map(str::to_owned) {
+                link["workspace"] = json!(resolve_workspace(client, &name).await?);
+            }
+        }
+    }
+    if value["op"] == "save_object"
+        && let Some(name) = value["data"]["workspace"].as_str().map(str::to_owned)
+    {
+        value["data"]["workspace"] = json!(resolve_workspace(client, &name).await?);
+    }
+    Ok(())
+}
+
+/// Check that the actor can read another workspace, named by its immutable ID.
 async fn readable(client: &impl GenericClient, own: &str, actor: &str, id: &str) -> Result<()> {
-    let canonical = resolve_workspace(client, id).await?;
-    ensure!(
-        canonical == id,
-        "use the workspace ID {canonical}, not the name {id}"
-    );
     ensure!(
         id != own,
         "a remote link or a child workspace names another workspace"
@@ -252,6 +265,8 @@ pub(crate) async fn decorate(
     {
         object["child_workspace"] = child_summary(client, actor, &child).await?;
     }
+    // The immutable ID that remote links and child nodes store; `workspace` is the name.
+    object["workspace_key"] = json!(workspace);
     Ok(())
 }
 

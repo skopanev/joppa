@@ -56,6 +56,6 @@ pub async fn tree_schema(
             .collect::<std::collections::BTreeMap<_, _>>()
     );
     Ok(
-        json!({"workspace":row.get::<_,String>(2),"position":row.get::<_,i64>(3),"current_revision":current,"schema":schema}),
+        json!({"workspace":row.get::<_,String>(2),"workspace_key":workspace,"position":row.get::<_,i64>(3),"current_revision":current,"schema":schema}),
     )
 }

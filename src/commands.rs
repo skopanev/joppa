@@ -1134,10 +1134,29 @@ pub(crate) fn apply_inner(
                 "unknown object"
             );
             crate::remote_links::validate(links)?;
+            // A pin is part of the contract that the criteria below were tested against, so a
+            // new, changed or removed pin resets them. An ordering link without a pin does not.
+            let pinned = |links: &[crate::remote_links::RemoteLink]| -> BTreeSet<_> {
+                links
+                    .iter()
+                    .filter(|l| l.revision.is_some())
+                    .cloned()
+                    .map(|l| (l.workspace, l.target, l.relation, l.revision))
+                    .collect()
+            };
+            let old = w
+                .remote_links
+                .get(&key)
+                .map(|l| pinned(l))
+                .unwrap_or_default();
+            let repinned = old != pinned(links);
             if links.is_empty() {
                 w.remote_links.remove(&key);
             } else {
-                w.remote_links.insert(key, links.clone());
+                w.remote_links.insert(key.clone(), links.clone());
+            }
+            if repinned {
+                crate::objects::reset_criteria(w, &key, recorded_at)?;
             }
         }
         Command::RestoreObject { .. } => {

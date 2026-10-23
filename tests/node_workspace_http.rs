@@ -288,6 +288,35 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
         .await?;
     let read = w.object(&w.owner, &w.p, "component:backend").await?;
     ensure!(read["child_workspace"]["status"] == "green", "{read}");
+    // A workspace name is stored as the immutable ID, and reads name that ID.
+    let alias = format!("renamed-{}", uuid::Uuid::new_v4().simple());
+    w.ok(
+        &w.owner,
+        &w.c,
+        json!({"op":"rename_workspace","workspace_id":alias,"title":"Backend","reason":"New name"}),
+    )
+    .await?;
+    w.ok(
+        &w.owner,
+        &w.p,
+        World::save("component", "mobile", 0, None, node(&alias)),
+    )
+    .await?;
+    let mobile = w.object(&w.owner, &w.p, "component:mobile").await?;
+    ensure!(
+        mobile["document"]["data"]["workspace"] == json!(w.c)
+            && mobile["child_workspace"]["workspace"] == json!(w.c),
+        "{mobile}"
+    );
+    ensure!(w.object(&w.owner, &w.c, "requirement:api").await?["workspace_key"] == json!(w.c));
+    let tree = w
+        .mcp(&w.owner, "joppa_tree", json!({"workspace":alias}))
+        .await?
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    ensure!(
+        tree["workspace_key"] == json!(w.c) && tree["workspace"] == json!(alias),
+        "{tree}"
+    );
     let alex = w.object(&w.alex, &w.p, "component:backend").await?;
     ensure!(
         alex["child_workspace"] == json!({"workspace":w.c,"access":false,"status":"grey"}),
@@ -335,6 +364,10 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     w.ok(&w.bot, &w.p, set(json!([w.link(Some(pin), false)])))
         .await?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
+    ensure!(
+        read["process"]["assessment"]["state"] == "unassessed",
+        "a new pin resets the criteria below: {read}"
+    );
     let status = &read["remote_links"][0]["status"];
     ensure!(
         status["access"] == true
@@ -407,6 +440,11 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
 async fn work_waits_for_a_blocking_remote_link_until_its_target_is_green() -> Result<()> {
     let w = world().await?;
     w.ok(&w.bot, &w.p, json!({"op":"set_remote_links","target":"ac:a","links":[w.link(None, true)],"reason":"A needs the API"})).await?;
+    let a = w.object(&w.bot, &w.p, "ac:a").await?;
+    ensure!(
+        a["process"]["assessment"]["state"] == "ready",
+        "an ordering link without a pin resets nothing: {a}"
+    );
     let waiting = format!("waits for @{}/requirement:api, which is not green", w.c);
     match w.claim().await? {
         Err(e) if e.contains(&waiting) => {}

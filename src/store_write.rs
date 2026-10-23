@@ -611,6 +611,8 @@ async fn write(
             let mut value = resolve(&operation.command, &refs)?;
             generate(&mut value)?;
             fields(&value)?;
+            // The journal stores the immutable ID of another workspace, never a name.
+            super::remote::canonical_ids(&*tx, &mut value).await?;
             if value["op"] == "claim_next_task" {
                 state.claim_time_ms = Some(tx.query_one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint", &[]).await?.get(0));
             }
