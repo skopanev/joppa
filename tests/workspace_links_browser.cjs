@@ -23,22 +23,29 @@ test('node-workspace-ac7 board: a node shows its child workspace and its links t
       assert.equal(response.status, 200, JSON.stringify(await response.json()));
     };
     await inC({op: 'save_object', kind: 'domain', id: 'api', revision: 0, parent: null, data: {title: 'API contract', owner: 'alex'}, reason: 'Fixture'});
+    await inC({op: 'save_object', kind: 'domain', id: 'auth', revision: 0, parent: null, data: {title: 'Auth contract', owner: 'alex'}, reason: 'Fixture'});
     await f.command({op: 'save_object', kind: 'component', id: 'backend', revision: 0, parent: null,
       data: {title: 'Backend', owner: 'alex', workspace: c}, reason: 'Fixture'}, f.live.alex);
     await f.command({op: 'save_object', kind: 'note', id: 'mobile', revision: 0, parent: null,
       data: {title: 'Mobile login', owner: 'alex', body: 'Uses the API'}, reason: 'Fixture'}, f.live.alex);
     await f.command({op: 'set_remote_links', target: 'note:mobile', revision: 0, reason: 'Mobile uses the API',
-      links: [{workspace: c, target: 'domain:api', relation: 'related', revision: 1, blocking: false}]}, f.live.alex);
+      links: [{workspace: c, target: 'domain:api', relation: 'related', revision: 1, blocking: false},
+        {workspace: c, target: 'domain:auth', relation: 'depends_on', revision: 1, blocking: true}]}, f.live.alex);
+    // The blocking target changes after the pin: the board names the stale pin and both revisions.
+    await inC({op: 'save_object', kind: 'domain', id: 'auth', revision: 1, parent: null, data: {title: 'Auth contract v2', owner: 'alex'}, reason: 'Fixture'});
 
     for (const [address, text, href] of [
       ['component:backend', 'Child workspace', '/?workspace=' + c],
       ['note:mobile', 'Links to other workspaces', '/?workspace=' + c + '&object=domain%3Aapi'],
+      ['note:mobile', 'not ready, pin stale · changed: revision 1 → 2', '/?workspace=' + c + '&object=domain%3Aauth'],
     ]) {
       await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&object=' + encodeURIComponent(address));
       const section = f.page.locator('.workspace-links').first();
       await section.waitFor({timeout: 15000});
       assert.ok(await section.evaluate(n => n.checkVisibility()), address + ': the section is visible');
-      assert.match(await section.evaluate(n => n.textContent), new RegExp(text));
+      const shown = await section.evaluate(n => n.textContent);
+      assert.ok(shown.includes(text), address + ': ' + shown);
+      assert.ok(!shown.includes('undefined'), address + ': ' + shown);
       const links = await section.locator('a').evaluateAll(nodes => nodes.map(n => n.getAttribute('href')));
       assert.ok(links.includes(href), address + ': ' + JSON.stringify(links));
     }
