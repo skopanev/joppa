@@ -46,7 +46,7 @@ const CHANGES: &[(&str, &[&str])] = &[
             "heartbeat_task",
         ],
     ),
-    ("report", &["record_report"]),
+    ("results", &["record_report"]),
     (
         "planning",
         &["claim_planning", "finish_planning", "release_planning"],
@@ -87,9 +87,10 @@ pub fn moved(saved: &Value, previous: &Value) -> bool {
         && saved["links"] == previous["links"]
 }
 
-/// The address of a stored report. Tree addresses are kind:id, so this cannot equal one.
-pub fn report_address(report: i64) -> String {
-    format!("report/{report}")
+/// The address of a stored record of test results. Tree addresses are kind:id, so this
+/// cannot equal one.
+pub fn record_address(record: i64) -> String {
+    format!("record/{record}")
 }
 
 /// The object that the command changes, before alias resolution. None for a command
@@ -99,7 +100,7 @@ pub fn address(command: &Value) -> Option<String> {
     let op = command["op"].as_str().unwrap_or_default();
     match op {
         "save_object" => Some(format!("{}:{}", text("kind")?, text("id")?)),
-        "record_report" => command["report"].as_i64().map(report_address),
+        "record_report" => command["report"].as_i64().map(record_address),
         "assess" | "claim_planning" | "finish_planning" | "release_planning" => {
             text("ac").map(crate::objects::criterion_address)
         }
@@ -143,9 +144,9 @@ pub fn reason(command: &Value) -> String {
         return format!(
             "{} {}{branch}: {} tests",
             if command["repeat"] == true {
-                "Repeated test report of commit"
+                "Repeated test results of commit"
             } else {
-                "Test report of commit"
+                "Test results of commit"
             },
             &commit[..commit.len().min(12)],
             command["tests"].as_u64().unwrap_or_default()
@@ -179,7 +180,7 @@ mod tests {
             (json!({"op":"assess"}), "readiness"),
             (json!({"op":"set_priority"}), "priority"),
             (json!({"op":"claim_task"}), "task"),
-            (json!({"op":"record_report"}), "report"),
+            (json!({"op":"record_report"}), "results"),
             (
                 json!({"op":"set_domain_archived","archived":true}),
                 "archive",
@@ -213,7 +214,7 @@ mod tests {
                 json!({"op":"claim_task","req":"r","id":"t"}),
                 Some("task:r/t"),
             ),
-            (json!({"op":"record_report","report":7}), Some("report/7")),
+            (json!({"op":"record_report","report":7}), Some("record/7")),
             (json!({"op":"edit_domain","id":"d"}), Some("domain:d")),
             (
                 json!({"op":"set_domain_archived","id":"d"}),

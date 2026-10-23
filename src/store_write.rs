@@ -698,6 +698,10 @@ async fn write(
                     && let Some(question) = crate::objects::schema(&state).types[kind].question.as_ref() {
                     saved["question"] = json!(question);
                 }
+                if let Some(hint) = crate::ac_tests::draft_hint(&state, &address) {
+                    saved["tests_draft"] = json!(true);
+                    saved["hint"] = json!(hint);
+                }
                 Some(saved)
             }else{None};
             if let Some(name) = &operation.reference { refs.insert(name.clone(), resolved); }

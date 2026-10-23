@@ -53,6 +53,8 @@ pub(super) struct ObjectQuery {
     note_status: Option<String>,
     related_to: Option<String>,
     work_filter: Option<String>,
+    /// Comma-separated keys to keep in each list item; the address always stays.
+    fields: Option<String>,
 }
 pub(super) async fn objects(
     State(app): State<App>,
@@ -79,7 +81,16 @@ pub(super) async fn objects(
                 work_filter: q.work_filter.as_deref(),
             },
         )
-        .await,
+        .await
+        .map(|reply| {
+            let fields: Option<Vec<String>> = q.fields.as_deref().map(|f| {
+                f.split(',')
+                    .filter(|k| !k.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            });
+            joppa::read_shapes::keep_item_fields(reply, fields.as_deref())
+        }),
     )
 }
 #[derive(Deserialize)]

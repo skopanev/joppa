@@ -54,6 +54,19 @@ pub fn validate_address(address: &str) -> Result<()> {
     Ok(())
 }
 
+/// After a text change of a criterion, its saved test list is a draft until the list
+/// is saved again. The hint tells the writer this.
+pub fn draft_hint(w: &crate::model::Workspace, address: &str) -> Option<String> {
+    let list = w.ac_tests.get(address).and_then(AcTests::current)?;
+    let data = &w.objects.get(address)?.current().data;
+    (!list.tests.is_empty() && list.text_hash != text_hash(data)).then(|| {
+        format!(
+            "The test list of {address} is now a draft. Send set_ac_tests {{target, tests, revision: {}, reason}} with the same list to end the draft.",
+            list.revision
+        )
+    })
+}
+
 /// Hash of the text that the test list was written against.
 pub fn text_hash(data: &serde_json::Value) -> String {
     let text = format!(

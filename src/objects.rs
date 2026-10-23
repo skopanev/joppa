@@ -1462,7 +1462,7 @@ fn revise(
         carry_tasks: true,
     })
 }
-fn native_document_fields(kind: &str) -> Option<&'static [&'static str]> {
+pub(crate) fn native_document_fields(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
         "domain" => Some(&["title", "owner", "description", "archived"]),
         "capability" | "consumer" => Some(&["title", "owner", "description"]),
@@ -2729,12 +2729,15 @@ pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
         Some(a) if a.ready => "ready",
         Some(_) => "waiting",
     };
-    Some(
-        json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
+    let mut out = json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
         "reason":ac.assessment.as_ref().map(|a| &a.reason),
         "recipient":ac.assessment.as_ref().and_then(|a| a.owner.as_ref()),
-        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())}),
-    )
+        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())});
+    if state == "unassessed" {
+        // The next step: the command that sets readiness, without the assessment itself.
+        out["next"] = json!({"op":"assess","req":req,"revision":r.number,"ac":ac.id});
+    }
+    Some(out)
 }
 
 /// Return the first assessment that prevents readiness, with a cycle guard.
@@ -2969,7 +2972,7 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             (_, Some("fail")) => ("red", "Checks failed"),
             (Some(true), Some("pass")) => ("green", "Checks passed"),
             (Some(false), _) if p["readiness_blocker"]["state"] == "unassessed" => {
-                ("yellow", "Readiness not assessed")
+                ("yellow", "Readiness not assessed: send assess")
             }
             (Some(false), _) => ("yellow", "Readiness decision required"),
             (Some(true), _) if p["readiness_blocker"].is_null() => ("grey", "Ready for work"),

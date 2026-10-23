@@ -2072,7 +2072,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
       assessment: {ready: true, reason: 'The scope of A is known'}}, true);
     await f.record('0123abc', [['one']]);
     const newest = (await f.api('/timeline?order=newest&limit=5')).items;
-    assert.deepEqual(newest.map(item => item.change), ['report', 'readiness', 'archive', 'move', 'save']);
+    assert.deepEqual(newest.map(item => item.change), ['results', 'readiness', 'archive', 'move', 'save']);
     const move = newest[3];
     assert.deepEqual([move.address, move.revision, newest[4].address, newest[4].revision], ['requirement:R', 2, 'requirement:R', 1]);
     for (const viewport of [{width: 1280, height: 900}, {width: 390, height: 844}]) {
@@ -2096,7 +2096,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
           expected, viewport.width + ': row ' + (index + 1));
       }
       assert.deepEqual(await rows.locator('.timeline-object').evaluateAll(nodes => nodes.slice(0, 5).map(node => node.textContent)),
-        ['Test report 0123abc', 'Criterion A', 'Signal N', 'Requirement R', 'Requirement R']);
+        ['Test results 0123abc', 'Criterion A', 'Signal N', 'Requirement R', 'Requirement R']);
       for (const index of [0, 4]) {
         const box = await rows.nth(index).boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, viewport.width + ': ' + JSON.stringify(box));

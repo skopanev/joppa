@@ -17,7 +17,7 @@ export function statusCircle(signal,number){
 export function assessmentHint(a){
   if(!a)return '';
   if(a.state==='dependency')return '\nWaits for: '+a.target;
-  if(a.state==='unassessed')return '\nReadiness: Not assessed';
+  if(a.state==='unassessed')return '\nReadiness: Not assessed. Next step: assess';
   if(a.state==='waiting')return '\nQuestion: '+a.reason+'\nRecipient: '+personLabel(a.recipient||'Unassigned');
   return '\nReadiness: Ready';
 }

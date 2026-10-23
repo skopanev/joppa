@@ -519,6 +519,7 @@ pub(super) async fn read_requirement(
             addresses.push(format!("ac:{req}/{}", ac.id));
         }
     }
+    mark_present(client, workspace, &addresses, &revision, &mut out).await?;
     let mut notes = json!({});
     for row in client.query("SELECT key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section='notes' AND key=ANY($2)", &[&workspace,&addresses]).await? {
         notes[row.get::<_,String>(0)] = serde_json::from_str(row.get(1))?;
@@ -543,6 +544,48 @@ pub(super) async fn read_requirement(
     }
     out["system_ids"] = ids;
     Ok(out)
+}
+
+/// An archived requirement or criterion stays in the requirement record, so a read
+/// marks each one with `present` from the object tree, and an archived requirement
+/// with `archived: true`.
+async fn mark_present(
+    client: &impl GenericClient,
+    workspace: &str,
+    addresses: &[String],
+    revision: &crate::model::Revision,
+    out: &mut Value,
+) -> Result<()> {
+    let present: std::collections::HashMap<String, bool> = client
+        .query(
+            "SELECT address,present FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
+            &[&workspace, &addresses],
+        )
+        .await?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    let req_present = present.get(&addresses[0]).copied().unwrap_or(true);
+    out["requirement"]["present"] = json!(req_present);
+    if !req_present {
+        out["requirement"]["archived"] = json!(true);
+    }
+    for (i, ac) in revision.acs.iter().enumerate() {
+        let known = [
+            crate::objects::criterion_address(&ac.id),
+            format!(
+                "ac:{}/{}",
+                addresses[0].trim_start_matches("requirement:"),
+                ac.id
+            ),
+        ];
+        let live = known
+            .iter()
+            .find_map(|a| present.get(a).copied())
+            .unwrap_or(true);
+        out["requirement"]["revisions"][0]["acs"][i]["present"] = json!(live);
+    }
+    Ok(())
 }
 
 /// Explicit full snapshots include history without executing journal commands.

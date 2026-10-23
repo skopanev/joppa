@@ -78,8 +78,9 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
     ensure!(
         entry["op"] == "record_report"
             && entry["actor"] == "bot"
-            && entry["title"] == format!("Test report {C}")
+            && entry["title"] == format!("Test results {C}")
             && entry["report"] == reply["record"]
+            && entry["record"] == reply["record"]
             && entry["position"] == reply["position"],
         "{entry} {reply}"
     );

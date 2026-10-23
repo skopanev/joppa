@@ -61,6 +61,12 @@ pub async fn read_item_scoped(
         scope.req.is_none() && scope.target.is_none(),
         "item_id cannot be combined with req or target"
     );
+    // An address has a colon; a system ID never has one. The shape alone decides,
+    // so this error tells nothing about other workspaces.
+    ensure!(
+        !id.contains(':'),
+        "item_id takes a copied system ID such as joppa-A-WY86JU3XHX. For an address such as {id}, use joppa_objects {{workspace, address}} or joppa_read {{workspace, target}}"
+    );
     let conn = pool.get().await?;
     let row = conn
         .query_opt(

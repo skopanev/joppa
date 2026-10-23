@@ -226,7 +226,10 @@ fn one_command_removes_a_reference_target_and_its_user_together() {
             json!({"op":"set_tree_schema","revision":r+1,"remove_types":["epic"],"reason":"Remove the target only"}),
         )
         .expect_err("a reference to a removed type must be refused");
-    assert!(e.to_string().contains("unknown reference target type"), "{e}");
+    assert!(
+        e.to_string().contains("unknown reference target type"),
+        "{e}"
+    );
     w.ok(
         "agent",
         json!({"op":"set_tree_schema","revision":r+1,"remove_types":["epic","release"],"reason":"Remove both"}),

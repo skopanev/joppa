@@ -7,6 +7,9 @@ pub(super) struct TestsQuery {
     ac: Option<String>,
     /// A task address: done while its criterion is green.
     task: Option<String>,
+    /// true: each criterion gives counts per test status in place of tests[].
+    #[serde(default)]
+    summary: bool,
 }
 pub(super) async fn criterion_tests(
     State(app): State<App>,
@@ -22,13 +25,24 @@ pub(super) async fn criterion_tests(
         return result(store::tests_overview(&app.pool, &workspace, &actor).await);
     };
     let targets: Vec<&str> = ac.split(',').filter(|a| !a.is_empty()).collect();
+    let shape = |item: Value| {
+        if q.summary {
+            joppa::read_shapes::test_summary(item)
+        } else {
+            item
+        }
+    };
     if targets.len() == 1 {
-        return result(store::criterion_tests(&app.pool, &workspace, &actor, targets[0]).await);
+        return result(
+            store::criterion_tests(&app.pool, &workspace, &actor, targets[0])
+                .await
+                .map(shape),
+        );
     }
     let mut items = vec![];
     for target in targets {
         match store::criterion_tests(&app.pool, &workspace, &actor, target).await {
-            Ok(status) => items.push(status),
+            Ok(status) => items.push(shape(status)),
             Err(e) => return result(Err(e)),
         }
     }

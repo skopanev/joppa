@@ -310,7 +310,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
     }
     let column = |field: &str| items.iter().map(|i| i[field].clone()).collect::<Vec<_>>();
     ensure!(
-        column("change") == ["save", "move", "archive", "readiness", "report"],
+        column("change") == ["save", "move", "archive", "readiness", "results"],
         "{http}"
     );
     ensure!(
@@ -328,7 +328,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
                 json!("requirement:r"),
                 json!("signal:n"),
                 json!("ac:a"),
-                json!(format!("report/{report}"))
+                json!(format!("record/{report}"))
             ],
         "{http}"
     );
@@ -345,7 +345,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
     ensure!(
         items[4]["reason"]
             .as_str()
-            .is_some_and(|r| r == "Test report of commit 0123456789ab: 1 tests"),
+            .is_some_and(|r| r == "Test results of commit 0123456789ab: 1 tests"),
         "{http}"
     );
     ensure!(column("revision")[..3] == [1, 2, 2], "{http}");
