@@ -51,7 +51,10 @@ mod waits;
 pub use timeline::{TimelineScope, read_timeline};
 #[path = "store_history.rs"]
 mod history;
+#[path = "store_references.rs"]
+mod references;
 pub use history::{HISTORY_LIMIT, mark_history, read_history};
+pub use references::workspace_references;
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 #[path = "store_setup.rs"]

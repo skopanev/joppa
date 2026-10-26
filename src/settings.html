@@ -41,6 +41,9 @@ try{
 .settings .danger .action{color:var(--fail);border-color:var(--fail)}
 #delete-confirm{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0}
 #delete-confirm[hidden]{display:none}
+#delete-references{margin:0 0 .6em;color:var(--text)}
+#delete-references ul{margin:.3em 0;padding-left:1.2em}
+
 .back-link{color:var(--link);text-decoration:none;white-space:nowrap}
 /* Rename and New workspace sit next to the workspace drop-down, as header controls. */
 .icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;color:var(--muted);flex:none}
@@ -52,7 +55,7 @@ try{
 </style>
 <body class="authenticated">
 <header class="app-header">
-  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong></a>
+  <a class="brand" href="/" aria-label="Joppa board"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><strong class="brand-word">joppa<span>.</span></strong><span class="tagline">AI first product specification</span></a>
   <label class="workspace-label"><span class="sr-only">Workspace</span><select id="workspace-select" name="workspace" aria-label="Workspace" disabled></select></label>
   <button id="rename-open" class="icon-button" type="button" aria-label="Rename workspace" title="Rename workspace" hidden><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
   <button id="create-open" class="header-button" type="button">+ New workspace</button>
@@ -62,13 +65,7 @@ try{
       <svg id="moon-svg" class="theme-icon theme-moon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       <svg id="sun-svg" class="theme-icon theme-sun" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
     </button>
-    <details id="account-menu">
-      <summary id="identity"></summary>
-      <div class="account-options">
-        <a href="/">Board</a>
-        <button id="logout" type="button">Sign out</button>
-      </div>
-    </details>
+    <button id="logout" class="header-button" type="button">Sign out</button>
   </nav>
 </header>
 <main class="settings">
@@ -98,6 +95,7 @@ try{
       </form>
       <div id="delete-workspace" class="danger">
         <button id="delete-button" class="action" type="button">Delete workspace</button>
+        <div id="delete-references" hidden></div>
         <p id="delete-confirm" hidden><span>Delete this workspace and all of its data for every member? You cannot undo this.</span> <button id="delete-confirm-button" class="action" type="button">Delete for everyone</button> <button id="delete-cancel-button" class="action" type="button">Cancel</button></p>
         <p id="delete-error" role="alert"></p>
       </div>
@@ -110,6 +108,12 @@ try{
 // member IDs and agent tokens stay off this page.
 const $=id=>document.getElementById(id);
 const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
+// A long request disables its button and shows a spinner in it until the answer comes.
+const busy=(button,on)=>{
+  button.disabled=on;button.setAttribute('aria-busy',String(on));
+  button.querySelector(':scope > .spinner')?.remove();
+  if(on){const spin=document.createElement('span');spin.className='spinner';spin.setAttribute('aria-hidden','true');button.prepend(spin);}
+};
 const send=async(url,method,body,failure)=>{
   const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});
   const value=await response.json().catch(()=>({}));
@@ -158,7 +162,7 @@ const show=()=>{
   // The pencil renames the selected workspace, so only its owner sees it.
   $('rename-open').hidden=!own;if(!own)$('rename-workspace').hidden=true;
   for(const id of ['grant-error','rename-error','delete-error'])$(id).textContent='';
-  $('delete-confirm').hidden=true;$('delete-button').hidden=false;
+  $('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;
 };
 // A reload keeps the selection when the workspace is still listed.
 const load=async selected=>{
@@ -187,26 +191,21 @@ drawer('rename-open','rename-workspace','rename-title');
 // Remove takes one member, email or domain away from the selected workspace at once.
 const remove=async(removal,button)=>{
   const workspace=select.value;
-  button.disabled=true;$('grant-error').textContent='';
+  busy(button,true);$('grant-error').textContent='';
   try{
     await send('/api/access/remove','POST',{workspace,...removal},'Could not remove the access.');
     await load(workspace);
-  }catch(e){$('grant-error').textContent=e.message;button.disabled=false;}
+  }catch(e){$('grant-error').textContent=e.message;busy(button,false);}
 };
-// The account menu shows the signed-in person, as on the board.
-send('/api/me','GET',undefined,'').then(me=>{$('identity').textContent=me.name||me.email||me.actor||'Account';$('identity').title=me.email||'';},()=>{$('identity').textContent='Account';});
-$('logout').onclick=async()=>{await fetch('/auth/logout',{method:'POST'});location.assign('/');};
-document.addEventListener('click',event=>{if(!$('account-menu').contains(event.target))$('account-menu').open=false;},true);
-// A long name wraps the menu to the left edge of a narrow screen. Then the options open to the right.
-// The click sets the side before the menu opens, so the first frame of the open menu is on screen.
-$('identity').addEventListener('click',()=>{const right=$('account-menu').getBoundingClientRect().right;document.querySelector('.account-options').classList.toggle('to-right',right<Math.min(190,innerWidth-32));});
+// The header shows no name of the signed-in person, only Sign out.
+$('logout').onclick=async()=>{busy($('logout'),true);await fetch('/auth/logout',{method:'POST'});location.assign('/');};
 load(sessionStorage.getItem('joppa-workspace')).catch(e=>{$('workspace-error').textContent=e.message;});
 // One field adds an email or a whole domain: a value with "@" is an email, any other value is a domain.
 $('grant-access').onsubmit=async event=>{
   event.preventDefault();
   const button=$('grant-button'),input=$('grant-address'),workspace=select.value;
   if(button.disabled)return;
-  button.disabled=true;$('grant-error').textContent='';
+  busy(button,true);$('grant-error').textContent='';
   const value=input.value.trim(),email=value.includes('@');
   try{
     await send(email?'/api/email-grants':'/api/domain-grants','POST',email?{workspace,email:value}:{workspace,domain:value},
@@ -214,44 +213,58 @@ $('grant-access').onsubmit=async event=>{
     input.value='';
     await load(workspace);
   }catch(e){$('grant-error').textContent=e.message;}
-  button.disabled=false;
+  busy(button,false);
 };
 $('rename-workspace').onsubmit=async event=>{
   event.preventDefault();
   const button=$('rename-button'),workspace=select.value;
   if(button.disabled)return;
-  button.disabled=true;$('rename-error').textContent='';
+  busy(button,true);$('rename-error').textContent='';
   try{
     await send('/api/workspaces/'+encodeURIComponent(workspace)+'/rename','POST',{title:$('rename-title').value},'Could not rename the workspace.');
     await load(workspace);
     $('rename-workspace').hidden=true;
   }catch(e){$('rename-error').textContent=e.message;}
-  button.disabled=false;
+  busy(button,false);
 };
-// Delete asks once more on the page before it sends the request.
-$('delete-button').onclick=()=>{$('delete-button').hidden=true;$('delete-confirm').hidden=false;};
-$('delete-cancel-button').onclick=()=>{$('delete-confirm').hidden=true;$('delete-button').hidden=false;};
+// Delete asks once more on the page before it sends the request. It first names the workspaces
+// that link to this one: the deletion removes those links from them.
+$('delete-button').onclick=async()=>{
+  const button=$('delete-button'),workspace=select.value,list=$('delete-references');
+  busy(button,true);$('delete-error').textContent='';
+  try{
+    const value=await send('/api/workspaces/'+encodeURIComponent(workspace)+'/references','GET',undefined,'Could not read the links to this workspace.');
+    const items=value.workspaces.map(w=>element('li',w.title+' ('+w.objects.length+(w.objects.length===1?' object':' objects')+')'));
+    const ul=document.createElement('ul');ul.append(...items);
+    list.replaceChildren(element('span','These workspaces link to this workspace:'),ul,
+      element('span','After the deletion, these links are removed from those workspaces.'));
+    list.hidden=!items.length;
+    button.hidden=true;$('delete-confirm').hidden=false;
+  }catch(e){$('delete-error').textContent=e.message;}
+  busy(button,false);
+};
+$('delete-cancel-button').onclick=()=>{$('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;};
 $('delete-confirm-button').onclick=async()=>{
   const button=$('delete-confirm-button'),workspace=select.value;
-  button.disabled=true;$('delete-error').textContent='';
+  busy(button,true);$('delete-cancel-button').disabled=true;$('delete-error').textContent='';
   try{
     await send('/api/workspaces/'+encodeURIComponent(workspace)+'/delete','POST',undefined,'Could not delete the workspace.');
     if(sessionStorage.getItem('joppa-workspace')===workspace)sessionStorage.removeItem('joppa-workspace');
     await load();
   }catch(e){$('delete-error').textContent=e.message;}
-  button.disabled=false;
+  busy(button,false);$('delete-cancel-button').disabled=false;
 };
 const form=$('create-workspace'),title=$('workspace-title'),create=$('create-workspace-button'),error=$('create-workspace-error');
 form.onsubmit=async event=>{
   event.preventDefault();
   if(create.disabled)return;
-  create.disabled=true;error.textContent='';
+  busy(create,true);error.textContent='';
   try{
     const value=await send('/api/workspaces','POST',{title:title.value},'Could not create the workspace.');
     // The board opens the new workspace through its usual selection.
     sessionStorage.setItem('joppa-workspace',value.id);
     location.assign('/?workspace='+encodeURIComponent(value.id));
-  }catch(e){error.textContent=e.message;create.disabled=false;}
+  }catch(e){error.textContent=e.message;busy(create,false);}
 };
 </script>
 </body>

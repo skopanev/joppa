@@ -104,6 +104,10 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/rename", post(rename_workspace))
         .route("/api/workspaces/{workspace}/priority", post(set_priority))
         .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
+        .route(
+            "/api/workspaces/{workspace}/references",
+            get(workspace_references),
+        )
         .route("/api/workspaces/{workspace}/board", get(board))
         .route("/api/workspaces/{workspace}/objects", get(objects))
         .route("/api/workspaces/{workspace}/search", get(search))

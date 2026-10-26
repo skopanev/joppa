@@ -58,7 +58,12 @@ const CHANGES: &[(&str, &[&str])] = &[
     ("schema", &["set_tree_schema", "reorder_tree"]),
     (
         "workspace",
-        &["workspace", "rename_workspace", "delete_workspace"],
+        &[
+            "workspace",
+            "rename_workspace",
+            "delete_workspace",
+            "remove_workspace_references",
+        ],
     ),
 ];
 

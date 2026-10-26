@@ -692,7 +692,7 @@ async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
@@ -788,6 +788,9 @@ async fn write(
         .iter()
         .any(|e| matches!(e.command, Command::DeleteWorkspace { .. }))
     {
+        // The workspaces that named it lose those references first, each with its own event.
+        result["removed_references"] =
+            json!(super::references::remove(&*tx, &workspace, &state.title).await?);
         tx.execute("SELECT joppa.purge_workspace($1)", &[&workspace])
             .await?;
     }

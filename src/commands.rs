@@ -161,6 +161,12 @@ pub enum Command {
         owner: String,
         reason: String,
     },
+    /// Internal event of a workspace deletion: remove the remote links and child workspace
+    /// bindings that name the deleted workspace. Public command entry points reject it.
+    RemoveWorkspaceReferences {
+        workspace: String,
+        reason: String,
+    },
     /// Internal enrollment event; public command entry points reject this operation.
     EnrollMember {
         id: String,
@@ -984,6 +990,17 @@ pub(crate) fn apply_inner(
         w.members.insert(id.clone(), "human".into());
         return Ok(());
     }
+    // The internal actor of a deletion is no member; the removal checks the actor itself.
+    if let Command::RemoveWorkspaceReferences { workspace, reason } = command {
+        return crate::workspace_references::remove(
+            w,
+            actor,
+            workspace,
+            reason,
+            position,
+            recorded_at,
+        );
+    }
     if let Command::Workspace { title } = command {
         ensure!(w.admin.is_empty(), "workspace exists");
         nonempty(title)?;
@@ -1171,6 +1188,9 @@ pub(crate) fn apply_inner(
         }
         Command::RestoreObject { .. } => {
             crate::objects::restore(w, actor, command, position, recorded_at)?;
+        }
+        Command::RemoveWorkspaceReferences { .. } => {
+            unreachable!("applied before the member check")
         }
         Command::SetAcTests {
             target,

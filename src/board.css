@@ -187,6 +187,9 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .common-object.is-loading>summary{cursor:progress}
 .common-object.is-loading>summary .status-circle{background:none;box-sizing:border-box;border:1.5px solid var(--signal);border-right-color:transparent;animation:branch-spin .6s linear infinite}
 @keyframes branch-spin{to{transform:rotate(360deg)}}
+/* A long request shows the same spinner inside its button. */
+.spinner{display:inline-block;width:.8em;height:.8em;margin-right:.45em;vertical-align:-.1em;box-sizing:border-box;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:branch-spin .6s linear infinite}
+button[aria-busy=true]{cursor:progress}
 .common-object>summary:before{content:none}
 .note-section>summary:before,.object-section>summary:before{
   content:'›';flex:none;width:.7rem;font-size:14px;line-height:1;color:var(--muted);transition:transform .15s;display:inline-block;text-align:center}

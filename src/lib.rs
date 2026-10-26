@@ -22,3 +22,4 @@ pub mod store;
 pub mod tasks;
 pub mod timeline;
 pub mod tree_order;
+pub mod workspace_references;

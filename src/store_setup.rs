@@ -117,6 +117,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
     migrate_notes_in(&*tx).await?;
     refresh_readiness_in(&*tx).await?;
     write::migrate_legacy_receipts(&*tx).await?;
+    super::references::remove_dangling(&*tx).await?;
     tx.commit().await?;
     Ok(())
 }

@@ -138,6 +138,15 @@ pub(super) async fn set_priority() -> ApiResult {
         Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
     ))
 }
+/// The owner reads the workspaces that link to this workspace, before a deletion.
+pub(super) async fn workspace_references(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    result(store::workspace_references(&app.pool, &workspace, &actor).await)
+}
 /// The owner deletes a workspace from a signed-in browser. No row of it stays.
 pub(super) async fn delete_workspace(
     State(app): State<App>,
@@ -156,7 +165,7 @@ pub(super) async fn delete_workspace(
     result(
         store::execute(&app.pool, &workspace, &actor, &request_id, &command)
             .await
-            .map(|_| json!({"id": workspace, "deleted": true})),
+            .map(|r| json!({"id": workspace, "deleted": true, "removed_references": r["removed_references"]})),
     )
 }
 #[derive(Deserialize)]
