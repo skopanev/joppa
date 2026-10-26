@@ -699,8 +699,8 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       await select.locator('option[value="' + owned + '"]').waitFor({state: 'attached'});
       await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
       f.page.off('request', record);
-      // The page reads two lists and no single workspace.
-      assert.deepEqual(reads.sort(), ['/api/access', '/api/me', '/api/workspaces']);
+      // The page reads two lists, no single workspace and no name of the person.
+      assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
       await select.selectOption(owned);
       // One list holds the members, then the emails that have not signed in. The agent member is not on the page.
       // Maria has a Google identity, so her row shows "name <email>", and her email grant has no second row.
