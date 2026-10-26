@@ -283,7 +283,7 @@ pub fn subjects(w: &Workspace, key: &str) -> Result<Vec<String>> {
         ensure!(seen.insert(key), "tree parent cycle");
         let o = w.objects.get(key).context("unknown subject context")?;
         subjects.extend(
-            objects::reference_targets(w, &o.kind, &o.current().data)?
+            objects::stored_reference_targets(w, &o.kind, &o.current().data)?
                 .into_iter()
                 .filter(|(_, _, subject)| *subject)
                 .map(|(_, target, _)| target.split_once(':').unwrap().1.to_owned()),

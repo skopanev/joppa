@@ -61,10 +61,12 @@ fn subject_of(state: &Workspace, key: &str, target: &str) -> bool {
         let Some(o) = state.objects.get(&address) else {
             return false;
         };
-        if crate::objects::reference_targets(state, &o.kind, &o.current().data).is_ok_and(|refs| {
-            refs.iter()
-                .any(|(_, resolved, subject)| *subject && resolved == target)
-        }) {
+        if crate::objects::stored_reference_targets(state, &o.kind, &o.current().data).is_ok_and(
+            |refs| {
+                refs.iter()
+                    .any(|(_, resolved, subject)| *subject && resolved == target)
+            },
+        ) {
             return true;
         }
         current = o.current().parent.clone();

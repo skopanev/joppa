@@ -3476,7 +3476,7 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
     types["record"] = types["project"].clone();
     types["record"]["parents"] = json!(["*"]);
     command(&w,json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check configured task and criterion names"})).await?;
-    command(&w,json!({"op":"save_object","kind":"check","id":"configured","revision":0,"parent":"requirement:key","data":{"title":"The configured result passes","description":"Check the configured contract","owner":"owner","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Create a configured criterion"})).await?;
+    command(&w,json!({"op":"save_object","kind":"check","id":"configured","revision":0,"parent":"requirement:key","data":{"title":"The configured result passes","description":"Check the configured contract","owner":"owner","consumer":"customer","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Create a configured criterion"})).await?;
     command(&w,json!({"op":"set_ac_tests","target":"check:configured","tests":[A,B],"reason":"Bind the configured criterion"})).await?;
     for (kind, id, parent) in [
         ("job", "native", "ac:key-rights"),

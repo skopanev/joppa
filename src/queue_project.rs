@@ -31,7 +31,7 @@ pub(in crate::store) async fn project(
                     break;
                 };
                 for (_, target, subject) in
-                    crate::objects::reference_targets(state, &o.kind, &o.current().data)
+                    crate::objects::stored_reference_targets(state, &o.kind, &o.current().data)
                         .unwrap_or_default()
                 {
                     targets.insert(target.clone());

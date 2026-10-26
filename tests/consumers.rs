@@ -115,7 +115,8 @@ async fn consumer_refs_and_requirement_revisions_roundtrip_through_postgres() ->
     }
     let first = json!({"op":"revise","req":"r","expected_revision":0,"capability":"c","consumers":["buyer","support"],"title":"Access persists","body":"Paid access","owner":"owner","reason":"Initial scope","acs":[{"id":"ios","text":"Access persists on iOS"}]});
     store::execute_input(&pool, &ws, "owner", "rev-1", &first).await?;
-    let missing = json!({"op":"revise","req":"r","expected_revision":1,"capability":"c","title":"Access persists","body":"Paid access","owner":"owner","reason":"Missing consumer","acs":[{"id":"ios","text":"Access persists on iOS"}]});
+    // A new criterion takes the first consumer of the revise, so a revise without one is refused.
+    let missing = json!({"op":"revise","req":"r","expected_revision":1,"capability":"c","title":"Access persists","body":"Paid access","owner":"owner","reason":"Missing consumer","acs":[{"id":"ios","text":"Access persists on iOS"},{"id":"web","text":"Access persists on the web"}]});
     assert!(
         store::execute_input(&pool, &ws, "owner", "missing", &missing)
             .await

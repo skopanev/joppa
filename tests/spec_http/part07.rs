@@ -63,7 +63,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
             history.get("status").is_none() && history["requirement"].get("revisions").is_none(),
             "Counts-only history included document status: {history}"
         );
-        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","description":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
+        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","description":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
         let current = read(&w, bot, json!({"workspace":w.ws,"req":address})).await?;
         ensure!(
             current["status"] != "no criteria",

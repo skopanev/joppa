@@ -248,7 +248,8 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", None).await?["current_revision"],
-        6
+        // migrate_consumers adds one revision: one consumer per criterion.
+        7
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", Some(0)).await?["schema"]["revision"],

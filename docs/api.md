@@ -53,6 +53,7 @@ set_domain_archived: id, archived (true|false), reason; workspace owner only; su
 edit_capability: id, title, owner:null (unchanged), reason; workspace owner, or agent changing an unconfirmed title without changing owner
 revise: req, expected_revision (0 for new), capability, consumers:[id,...], title, body, owner, reason,
         acs:[{id,text,depends_on:[],owner:null,before_launch:false}]
+        A new criterion takes the first valid consumer of `consumers` as its single `consumer`.
 link_source: req, revision, id, kind, uri (optional), external_id:null, version, relation (origin|supports|contradicts|decision)
       Supply a nonempty uri or external_id. Omit uri when the source exists only
       in an external tool. The journal and reads store an omitted URI as an empty

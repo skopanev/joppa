@@ -63,7 +63,7 @@ pub async fn fixture(pool: &deadpool_postgres::Pool) -> Result<usize> {
                 "ac",
                 id,
                 Some(parent),
-                json!({"title":format!("Criterion {id}"),"owner":"owner","description":gwt}),
+                json!({"title":format!("Criterion {id}"),"owner":"owner","consumer":"user","description":gwt}),
             ),
         )
         .await?;

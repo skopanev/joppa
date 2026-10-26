@@ -80,6 +80,7 @@ async fn ensure_notes(
             !state.persistent_claims,
             Command::MigratePersistentClaims {},
         ),
+        (!state.consumers_migrated, Command::MigrateConsumers {}),
     ] {
         if !needed {
             continue;

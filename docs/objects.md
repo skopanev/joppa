@@ -371,7 +371,10 @@ The default recipe places Domain before Consumer, Note and Project.
 Each type can define `references`, a map from document fields to reference rules.
 The diagram, validation, related-object index and queue priorities use these rules.
 Type names do not create reference rules automatically.
-The default recipe defines `requirement.consumers` and `task.projects`. Each workspace can replace or remove them.
+The default recipe defines `ac.consumer` (one consumer, required) and `task.projects`. Each workspace can replace or remove them.
+The migrate_consumers event converts a workspace once: it moves the consumer references from requirements to a single
+`consumer` on each criterion type. Each live criterion gets one new revision with the first valid consumer of its old list,
+else of its requirement. The text, the tests and the readiness of the criterion do not change.
 
 ```json
 {

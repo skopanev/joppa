@@ -139,6 +139,9 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             Value::Null
         };
         let mut command = json!({"op":"save_object","kind":kind,"id":"new","revision":0,"parent":parent,"data":{"title":"The input changes the contract","owner":"owner","description":invalid},"reason":"Check the configured text rule"});
+        if kind == "ac" {
+            command["data"]["consumer"] = json!("customer");
+        }
         let request_id = uuid::Uuid::new_v4().to_string();
         if missing == "Given:" {
             let question_error = format!(

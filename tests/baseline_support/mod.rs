@@ -130,7 +130,7 @@ pub async fn build(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
     write(pool, ws, &mut step, reqs).await?;
     let acs = (0..ACS)
         .map(|a| save("ac", &format!("a{a}"), Some(format!("requirement:r{}", a % REQS)),
-            json!({"title":format!("Criterion {a}"),"owner":"owner",
+            json!({"title":format!("Criterion {a}"),"owner":"owner","consumer":"user",
                 "description":"Given: a state.\nWhen: an action.\nThen: a result.\nEvidence: a check."})))
         .collect();
     write(pool, ws, &mut step, acs).await?;

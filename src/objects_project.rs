@@ -29,6 +29,7 @@ pub(in crate::store) async fn project(
             Command::SetTreeSchema { .. }
                 | Command::MigrateSchema {}
                 | Command::MigrateDocuments {}
+                | Command::MigrateConsumers {}
         )
     });
     // A redaction rewrites the stored revisions of its object; nothing else may.
@@ -116,7 +117,7 @@ pub(in crate::store) async fn project(
             }
             if state.schema_migrated
                 && r.present
-                && let Ok(targets) = objects::reference_targets(state, &obj.kind, &r.data)
+                && let Ok(targets) = objects::stored_reference_targets(state, &obj.kind, &r.data)
             {
                 for (field, target, _) in targets {
                     links.push(json!({"source":address,"target":target,"relation":format!("reference:{field}"),"revision":null,"blocking":false}));

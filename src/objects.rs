@@ -161,7 +161,15 @@ impl Object {
         self.revisions.last().expect("object has a revision")
     }
 }
+/// The built-in tree of a new workspace: each criterion names one consumer.
 pub fn defaults() -> BTreeMap<String, TreeType> {
+    let mut types = schema_migration_defaults();
+    crate::consumer_migration::convert_types(&mut types);
+    types
+}
+/// The built-in tree as the migrate_schema event saw it, with the consumers of a
+/// requirement. An old journal replays from these types, so they never change.
+pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
     [
         ("domain", "Domain", "group", true, vec![]),
         ("capability", "Capability", "group", false, vec!["domain"]),
@@ -253,7 +261,7 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
     .collect()
 }
 pub fn legacy_defaults() -> BTreeMap<String, TreeType> {
-    let mut types = defaults();
+    let mut types = schema_migration_defaults();
     for t in types.values_mut() {
         t.index = None;
         t.parent_gate = None;
@@ -315,7 +323,7 @@ pub fn migrate_schema(w: &mut Workspace, actor: &str, position: u64, at: &str) -
         return Ok(());
     }
     let mut current = schema(w);
-    let preset = defaults();
+    let preset = schema_migration_defaults();
     let kinds: BTreeSet<_> = current.types.keys().cloned().collect();
     for (kind, t) in &mut current.types {
         if let Some(default) = preset.get(kind) {
@@ -371,10 +379,28 @@ pub fn migrate_documents(w: &mut Workspace, actor: &str, position: u64, at: &str
     Ok(())
 }
 
+/// The reference targets of a document for a write: a required reference must be there.
 pub fn reference_targets(
     w: &Workspace,
     kind: &str,
     data: &Value,
+) -> Result<Vec<(String, String, bool)>> {
+    targets_of(w, kind, data, true)
+}
+/// The reference targets of a stored document for a read. A document from before a
+/// required reference existed still gives its other targets.
+pub fn stored_reference_targets(
+    w: &Workspace,
+    kind: &str,
+    data: &Value,
+) -> Result<Vec<(String, String, bool)>> {
+    targets_of(w, kind, data, false)
+}
+fn targets_of(
+    w: &Workspace,
+    kind: &str,
+    data: &Value,
+    enforce_required: bool,
 ) -> Result<Vec<(String, String, bool)>> {
     let t = schema(w)
         .types
@@ -393,7 +419,7 @@ pub fn reference_targets(
             _ => bail!("reference {field} has invalid cardinality"),
         };
         ensure!(
-            !rule.required || !values.is_empty(),
+            !enforce_required || !rule.required || !values.is_empty(),
             "reference {field} is required"
         );
         let mut seen = BTreeSet::new();
@@ -438,7 +464,7 @@ pub fn referenced(w: &Workspace, key: &str, target: &str) -> bool {
         let Some(o) = w.objects.get(key) else {
             return false;
         };
-        if reference_targets(w, &o.kind, &o.current().data)
+        if stored_reference_targets(w, &o.kind, &o.current().data)
             .is_ok_and(|refs| refs.iter().any(|(_, id, _)| id == target))
         {
             return true;
@@ -722,6 +748,7 @@ fn builtin_tree(w: &Workspace) -> bool {
             TASK_GATE_SCHEMA_REASON,
             REFERENCES_SCHEMA_REASON,
             ROLES_SCHEMA_REASON,
+            crate::consumer_migration::REASON,
         ]
         .contains(&r.reason.as_str())
     })
@@ -1245,7 +1272,7 @@ fn sync_with(
             && let Some(previous) = obj.revisions.last()
             && let Some(t) = w.tree_schema.last().and_then(|s| s.types.get(kind))
         {
-            for field in defaults()
+            for field in schema_migration_defaults()
                 .get(kind)
                 .into_iter()
                 .flat_map(|t| t.references.keys())
@@ -1254,6 +1281,13 @@ fn sync_with(
                     data.as_object_mut().unwrap().remove(field);
                 }
             }
+        }
+        // Only a new criterion takes a consumer here; a stored one keeps its document.
+        if obj.revisions.is_empty()
+            && let Some(t) = configured.types.get(kind)
+        {
+            let requirement = parent.as_ref().and_then(|p| rows.get(p)).map(|(_, _, d)| d);
+            crate::consumer_migration::fill(t, &mut data, requirement);
         }
         let changed = obj
             .revisions
@@ -2037,7 +2071,7 @@ fn saved(
                 normalized[field] = value.clone();
             }
             if !w.documents_migrated {
-                for field in defaults()
+                for field in schema_migration_defaults()
                     .get(kind)
                     .into_iter()
                     .flat_map(|t| t.references.keys())
@@ -2580,7 +2614,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateTasks {}
         | Command::MigrateSchema {}
         | Command::MigrateDocuments {}
-        | Command::MigrateTaskClaims {} => {
+        | Command::MigrateTaskClaims {}
+        | Command::MigrateConsumers {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }

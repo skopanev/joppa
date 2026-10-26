@@ -185,7 +185,8 @@ impl World {
     async fn save(&self, kind: &str, id: &str, parent: Option<&str>) -> Result<()> {
         self.save_for(kind, id, parent, None).await
     }
-    /// Save a node; a type that requires consumers names consumer `person`.
+    /// Save a node; a type that requires consumers names consumer `person`. A configured
+    /// tree reads the list `consumers`, the built-in tree the single `consumer`.
     async fn save_for(
         &self,
         kind: &str,
@@ -196,6 +197,7 @@ impl World {
         let mut data = json!({"title":id,"owner":"owner","body":"The contract","description":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
         if let Some(consumer) = consumer {
             data["consumers"] = json!([consumer]);
+            data["consumer"] = json!(consumer);
         }
         self.command(&self.owner, json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Build the tree"})).await?;
         Ok(())

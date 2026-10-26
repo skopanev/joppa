@@ -651,7 +651,7 @@ async fn write(
                     return Err(crate::objects::RequiredField(format!("Check that the title and description answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
                 }
             }
-            if let Command::Revise { req, consumers, capability, .. } = &command {
+            if let Command::Revise { req, consumers, capability, acs, .. } = &command {
                 ensure!(capability.is_some() || req.contains(':'), "legacy revise requires a Capability; use save_object for a custom tree");
                 if state.schema_migrated {
                     let mut data = state.objects.get(&crate::objects::requirement_address(req)).map(|o| o.current().data.clone()).unwrap_or_else(|| json!({}));
@@ -659,6 +659,7 @@ async fn write(
                     let req_address = crate::objects::requirement_address(req);
                     let kind = req_address.split_once(':').unwrap().0;
                     crate::objects::reference_targets(&state, kind, &data)?;
+                    crate::consumer_migration::check_revise(&state, consumers, acs)?;
                 } else { ensure!(!consumers.is_empty(), "REQ requires at least one consumer"); }
             }
             if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
@@ -692,7 +693,7 @@ async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

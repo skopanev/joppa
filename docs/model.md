@@ -70,12 +70,11 @@ into separate commitments when they can be accepted independently.
 ### The REQ card
 
 Each REQ has one owner who answers for its meaning and accepts its result.
-Each REQ names one or more consumers from the workspace consumer list. A consumer
-is a role or group that receives the same promised behavior, not necessarily a
-workspace member. Every AC applies to all consumers of its REQ; ACs have no
-separate consumer field. If behavior or acceptance differs between consumers,
-write separate REQs. Correcting the consumer list on an existing REQ creates a
-new revision under the same ID, with all AC checks reset as usual.
+Each AC names exactly one consumer from the workspace consumer list, in its field
+`consumer`. A consumer is a role, a group or an application that receives the promised
+behavior, not necessarily a workspace member. A green AC therefore closes one consumer
+without doubt. A REQ and every level above it name no consumer. If two consumers need
+the same behavior, write one AC for each consumer.
 People and agents formulate REQ and ACs together. Agents help make conditions
 clear and testable; authorized people decide business policy and scope.
 
@@ -89,8 +88,8 @@ preserves who changed what and when, including previous wording and removed
 ACs. Each revision owns its check results and acceptance. **Every AC in a new
 revision starts at n/a**, including unchanged ones. Comments alone do not create
 revisions. See the [process](process.md).
-Changing the capability or consumer list uses the same REQ ID and a new revision
-with a reason. Previous revisions keep their original capability and consumers.
+Changing the capability uses the same REQ ID and a new revision with a reason.
+Previous revisions keep their original capability and their old consumer lists.
 Sources can be linked to a revision with a type, a URI or external identifier,
 a source version and a relation to the requirement.
 Linking or withdrawing a source records an event.

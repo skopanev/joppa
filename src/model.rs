@@ -39,6 +39,9 @@ pub struct Workspace {
     pub tasks_migrated: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub schema_migrated: bool,
+    /// The migrate_consumers event ran: each criterion names one consumer.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub consumers_migrated: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub documents_migrated: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
