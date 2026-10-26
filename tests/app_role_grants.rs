@@ -92,6 +92,17 @@ async fn owner_manages_workspace_ac3_the_install_role_runs_the_settings_writes()
         // A redaction rewrites stored revisions of the note.
         execute(&app, &ws, "owner", json!({"op":"save_object","kind":"note","id":"secret","revision":0,"parent":null,"data":{"title":"Secret note","owner":"owner","body":"Token s3cr3t"},"links":[],"reason":"Save"})).await?;
         execute(&app, &ws, "owner", json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"})).await?;
+        // owner-manages-workspace-ac2: the deletion removes every row of the workspace.
+        // The role itself cannot delete a journal row, also with the purge setting.
+        let conn = app.get().await?;
+        let refused = conn.batch_execute(&format!("BEGIN; SELECT set_config('joppa.purge_workspace','{ws}',true); DELETE FROM joppa.events WHERE workspace='{ws}'")).await;
+        conn.batch_execute("ROLLBACK").await?;
+        let refused = refused.err().context("the application role deleted journal rows")?;
+        ensure!(format!("{refused:?}").contains("permission denied"), "{refused:?}");
+        drop(conn);
+        execute(&app, &ws, "owner", json!({"op":"delete_workspace","reason":"Owner order"})).await?;
+        let left: i64 = admin.get().await?.query_one("SELECT (SELECT count(*) FROM joppa.events WHERE workspace=$1)+(SELECT count(*) FROM joppa.workspaces WHERE id=$1)+(SELECT count(*) FROM joppa.state_entries WHERE workspace=$1)", &[&ws]).await?.get(0);
+        ensure!(left == 0, "{left} rows of the deleted workspace stay");
         Ok(())
     }
     .await;

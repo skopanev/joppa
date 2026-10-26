@@ -783,6 +783,14 @@ async fn write(
     if base_position == 0 {
         tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
     }
+    // A deleted workspace leaves the database with every row of it, this request included.
+    if events
+        .iter()
+        .any(|e| matches!(e.command, Command::DeleteWorkspace { .. }))
+    {
+        tx.execute("SELECT joppa.purge_workspace($1)", &[&workspace])
+            .await?;
+    }
     tx.commit().await?;
     Ok(result)
 }

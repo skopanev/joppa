@@ -132,6 +132,7 @@ GRANT UPDATE(display_name, hosted_domain) ON joppa.google_identities TO joppa_ap
 GRANT DELETE ON joppa.object_links TO joppa_app;
 GRANT DELETE ON joppa.email_grants, joppa.domain_grants TO joppa_app;
 GRANT UPDATE(document) ON joppa.object_revisions TO joppa_app;
+GRANT EXECUTE ON FUNCTION joppa.purge_workspace(text) TO joppa_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_app;
 SQL
 then

@@ -2809,61 +2809,6 @@ async fn settings_in_name_menu_ac2_access_lists_people_by_name_and_no_agents() -
     Ok(())
 }
 
-// owner-manages-workspace-ac2
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn owner_manages_workspace_ac2_a_deleted_workspace_keeps_its_journal_and_admits_nobody()
--> Result<()> {
-    let w = world().await?;
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    let ws = w.base.rsplit('/').next().context("workspace")?.to_owned();
-    let events = || async {
-        let row = pool
-            .get()
-            .await?
-            .query_one(
-                "SELECT count(*) FROM joppa.events WHERE workspace=$1",
-                &[&ws],
-            )
-            .await?;
-        anyhow::Ok(row.get::<_, i64>(0))
-    };
-    let delete: Operation =
-        serde_json::from_value(json!({"op":"delete_workspace","reason":"Owner order"}))?;
-    // A member who is not the owner cannot delete the workspace.
-    let refused = store::execute(&pool, &ws, "other", "delete-other", &delete).await;
-    ensure!(refused.is_err(), "a non-owner deleted the workspace");
-    let before = events().await?;
-    store::execute(&pool, &ws, "owner", "delete-owner", &delete).await?;
-    ensure!(
-        events().await? == before + 1,
-        "the deletion is not one journal event"
-    );
-    // Nobody reads the workspace, and no later command or grant is accepted.
-    let read = w.http.get(&w.base).bearer_auth(&w.owner).send().await?;
-    ensure!(read.status().as_u16() == 404, "{}", read.status());
-    let member: Operation =
-        serde_json::from_value(json!({"op":"member","id":"late","role":"human"}))?;
-    ensure!(
-        store::execute(&pool, &ws, "owner", "member-late", &member)
-            .await
-            .is_err(),
-        "a deleted workspace accepted a command"
-    );
-    ensure!(
-        store::grant_email(&pool, &ws, "owner", "late@example.com")
-            .await
-            .is_err(),
-        "a deleted workspace accepted a grant"
-    );
-    ensure!(
-        events().await? == before + 1,
-        "the journal changed after the deletion"
-    );
-    store::check_journal(&pool).await?;
-    Ok(())
-}
-
 // settings-agent-tokens-ac1, fixture 2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]

@@ -78,6 +78,7 @@ GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa
 GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_runtime;
 GRANT DELETE ON joppa.object_links, joppa.task_queue TO joppa_runtime;
 GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_runtime;
+GRANT EXECUTE ON FUNCTION joppa.purge_workspace(text) TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;
 ```
 
@@ -87,7 +88,9 @@ INSERT is an administrative path, not a substitute for the command API.
 
 The runtime role cannot update/delete events, own tables or disable triggers.
 Even normal UPDATE, DELETE and TRUNCATE by the table owner encounter WORM
-triggers. A database superuser can bypass those protections. Physical storage,
+triggers. A database superuser can bypass those protections. Only the function
+`joppa.purge_workspace` deletes journal rows: it removes every row of a workspace
+that its owner deletes. The runtime role can only execute it. Physical storage,
 backups and protection against infrastructure administrators are separate duties.
 
 ## Compatibility

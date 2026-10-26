@@ -179,12 +179,9 @@ async fn join(tx: &impl GenericClient, actor: &str, workspaces: &BTreeSet<String
         .await?;
         let (mut state, base_position) = state_rows::current(tx, workspace).await?;
         let previous = state.clone();
-        ensure!(
-            !state.admin.is_empty(),
-            "Access rule refers to an unknown workspace"
-        );
-        // A grant to a deleted workspace admits nobody.
-        if state.deleted_at.is_some() {
+        // A rule for a deleted workspace admits nobody. A deletion removes the workspace,
+        // so the rule then names an unknown workspace.
+        if state.admin.is_empty() || state.deleted_at.is_some() {
             continue;
         }
         if let Some(role) = state.members.get(actor) {

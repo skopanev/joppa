@@ -133,7 +133,7 @@ pub enum Command {
         id: String,
         reason: String,
     },
-    /// The owner deletes the workspace. The journal stays; nobody reads or writes it again.
+    /// The owner deletes the workspace. The write then removes every row of it from the database.
     DeleteWorkspace {
         reason: String,
     },

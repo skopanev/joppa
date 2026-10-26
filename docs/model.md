@@ -105,6 +105,8 @@ a new revision does not erase it from earlier revisions.
 Revision state is computed from immutable records. PostgreSQL rejects UPDATE,
 DELETE and TRUNCATE of the journal. This is application/database WORM, not a
 promise against a database superuser; see [storage and trust](storage.md).
+The one exception is the deletion of a workspace by its owner. It removes every
+row of that workspace, its journal included.
 
 ## AC — one acceptance condition
 

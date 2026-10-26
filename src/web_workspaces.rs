@@ -138,7 +138,7 @@ pub(super) async fn set_priority() -> ApiResult {
         Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
     ))
 }
-/// The owner deletes a workspace from a signed-in browser. The journal stays.
+/// The owner deletes a workspace from a signed-in browser. No row of it stays.
 pub(super) async fn delete_workspace(
     State(app): State<App>,
     Path(workspace): Path<String>,
