@@ -39,6 +39,7 @@ Actor is supplied by authentication, not by command fields. Null means optional;
 ```text
 workspace: title (server administrative CLI only; rejected by HTTP API and MCP)
 rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
+delete_workspace: reason; workspace owner only; removes every row of the workspace. Before the purge, each workspace whose remote links or child workspace bindings name it gets one internal remove_workspace_references event that removes them. The result lists them in removed_references. The owner reads that list first with GET /api/workspaces/{workspace}/references.
 member: id, role (human); workspace owner only. An agent enrolls through its agent token, not through member. An older journal event keeps its agent or runner role in a replay.
 consumer: id, title, description, owner (human member)
 edit_consumer: id, title, description, owner, reason; consumer owner or workspace owner
