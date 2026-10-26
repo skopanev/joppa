@@ -32,7 +32,7 @@ def seed(command):
 subprocess.run([binary, 'migrate'], env=env, check=True, stdout=subprocess.DEVNULL)
 for command in [
     {'op':'workspace', 'title':'Task reporter fixture'},
-    {'op':'member', 'id':'runner', 'role':'runner'},
+    {'op':'enroll_service', 'id':'runner', 'role':'runner'},
     {'op':'domain', 'id':'d', 'title':'Checks', 'authority':'owner'},
     {'op':'capability', 'id':'c', 'title':'Reporting', 'domain':'d'},
     {'op':'consumer', 'id':'user', 'title':'Test contributor', 'owner':'owner'},
