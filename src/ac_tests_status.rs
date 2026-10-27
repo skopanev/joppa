@@ -19,6 +19,12 @@ pub struct TestResult {
     pub status: String,
     pub duration_ms: Option<i64>,
     pub message: Option<String>,
+    /// The status name of a schema with its own names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_name: Option<String>,
+    /// The extra fields from the schema result shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +73,12 @@ pub struct TestStatus {
     pub status: String,
     pub commit: Option<String>,
     pub message: Option<String>,
+    /// The status name of the deciding result, when the schema has its own names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_name: Option<String>,
+    /// The extra fields of the deciding result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<serde_json::Value>,
     #[serde(skip)]
     order: Option<i64>,
 }
@@ -107,6 +119,8 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
             status: "not_run".into(),
             commit: None,
             message: None,
+            status_name: None,
+            fields: None,
             order: None,
         };
     };
@@ -119,21 +133,21 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
         .filter(|(id, r)| r.address == address && same_commit.iter().any(|report| report.id == *id))
         .map(|(_, r)| r)
         .collect();
-    let failed = rows.iter().find(|r| r.status == "fail");
-    let (status, message) = if let Some(failure) = failed {
-        ("fail", failure.message.clone())
-    } else if rows.iter().any(|r| r.status == "skipped") {
-        ("skipped", None)
-    } else if rows.iter().any(|r| r.status == "todo") {
-        ("todo", None)
-    } else {
-        ("pass", None)
-    };
+    let status = ["fail", "skipped", "todo"]
+        .into_iter()
+        .find(|s| rows.iter().any(|r| r.status == *s))
+        .unwrap_or("pass");
+    // The deciding row gives the message, the status name and the fields.
+    let row = rows.iter().find(|r| r.status == status);
     TestStatus {
         address: address.into(),
         status: status.into(),
         commit: Some(deciding.commit.clone()),
-        message,
+        message: row
+            .filter(|_| status == "fail")
+            .and_then(|r| r.message.clone()),
+        status_name: row.and_then(|r| r.status_name.clone()),
+        fields: row.and_then(|r| r.fields.clone()),
         order: Some(deciding.order),
     }
 }

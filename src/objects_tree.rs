@@ -19,6 +19,7 @@ pub async fn tree_schema(
             priorities: None,
             status_colors: None,
             statuses: None,
+            test_results: None,
             actor: row.get(0),
             at: String::new(),
             position: 0,
@@ -39,6 +40,8 @@ pub async fn tree_schema(
         selected.statuses.as_ref(),
         selected.status_colors.as_ref()
     ));
+    // Readers see the result shape that applies, also the built-in one.
+    schema["test_results"] = crate::result_shape::effective(selected.test_results.as_ref());
     // The tree page shows the values that apply: priority levels, link relations and the
     // status rule of each type.
     schema["priority_levels"] = json!(

@@ -78,8 +78,8 @@ async fn statuses_for_criteria(
         .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),received_us:r.get(3),receipt_us:r.get(4),recorded:r.get(5) }).collect();
     let tests: Vec<String> = tests.into_iter().collect();
     let results: Vec<(i64,TestResult)> = client
-        .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
-        .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4) })).collect();
+        .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message,t.status_name,t.fields::text FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
+        .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4),status_name:r.get(5),fields:r.get::<_,Option<String>>(6).and_then(|f| serde_json::from_str(&f).ok()) })).collect();
     // Each criterion reads only the results of its own tests. The grouping keeps every row,
     // duplicates included, and preserves the input order for each address (the query has no
     // ORDER BY), so a status costs its own results and not every result of the workspace.

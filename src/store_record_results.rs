@@ -5,8 +5,10 @@
 //! refused before any write. Each record is newer than every earlier report, so the
 //! latest record of a test decides it. A record names only the tests it ran: an
 //! omitted test gets no result, and a skip or todo in a record is never a pass.
+//! The tree schema can give the status names and extra fields, see result_shape.
 use super::*;
 use crate::ac_tests::TestResult;
+use crate::result_shape::ResultShape;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -23,7 +25,6 @@ struct Record {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Outcome {
     test: String,
     status: String,
@@ -31,10 +32,14 @@ struct Outcome {
     message: Option<String>,
     #[serde(default)]
     duration_ms: Option<i64>,
+    /// The extra fields. The schema result shape decides which are permitted.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, Value>,
 }
 
-/// Check the input and turn it into stored results. Nothing is written here.
-fn parse(args: &Value) -> Result<(String, Vec<TestResult>)> {
+/// Check the input against the result shape and turn it into stored results. Nothing is
+/// written here.
+fn parse(args: &Value, shape: Option<&ResultShape>) -> Result<(String, Vec<TestResult>)> {
     let mut input = args.clone();
     if let Some(map) = input.as_object_mut() {
         map.remove("workspace");
@@ -66,13 +71,8 @@ fn parse(args: &Value) -> Result<(String, Vec<TestResult>)> {
     let mut results = Vec::with_capacity(record.results.len());
     for outcome in record.results {
         ensure!(!outcome.test.trim().is_empty(), "each result needs a test");
-        let status = match outcome.status.as_str() {
-            "pass" => "pass",
-            "fail" => "fail",
-            "skip" => "skipped",
-            "todo" => "todo",
-            _ => anyhow::bail!("status must be pass, fail, skip or todo"),
-        };
+        let checked = crate::result_shape::check(shape, &outcome.status, outcome.extra)
+            .map_err(|e| anyhow::anyhow!("{}: {e}", outcome.test))?;
         let mut message = outcome.message.filter(|m| !m.is_empty());
         if let Some(text) = message.as_mut().filter(|m| m.len() > MESSAGE_MAX) {
             let mut end = MESSAGE_MAX;
@@ -83,9 +83,11 @@ fn parse(args: &Value) -> Result<(String, Vec<TestResult>)> {
         }
         results.push(TestResult {
             address: outcome.test,
-            status: status.into(),
+            status: checked.status.into(),
             duration_ms: outcome.duration_ms,
             message,
+            status_name: checked.status_name,
+            fields: checked.fields,
         });
     }
     Ok((record.commit, results))
@@ -98,12 +100,6 @@ pub async fn record_results(
     actor: &str,
     args: &Value,
 ) -> Result<Value> {
-    let (commit, results) = parse(args)?;
-    let body = serde_json::to_string(&results)?;
-    let hash = format!(
-        "{:x}",
-        Sha256::digest(format!("record\n{commit}\n{body}").as_bytes())
-    );
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
@@ -113,6 +109,19 @@ pub async fn record_results(
         &[&workspace],
     )
     .await?;
+    // The latest schema revision gives the result shape.
+    let shape: Option<ResultShape> = tx
+        .query_opt("SELECT (value->'test_results')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace])
+        .await?
+        .and_then(|row| row.get::<_, Option<String>>(0))
+        .map(|text| serde_json::from_str(&text))
+        .transpose()?;
+    let (commit, results) = parse(args, shape.as_ref())?;
+    let body = serde_json::to_string(&results)?;
+    let hash = format!(
+        "{:x}",
+        Sha256::digest(format!("record\n{commit}\n{body}").as_bytes())
+    );
     let event = |report: i64, repeat: bool| Command::RecordReport {
         report,
         commit: commit.clone(),
@@ -142,7 +151,7 @@ pub async fn record_results(
     };
     let id: i64 = row.get(0);
     tx.execute(
-        "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message) SELECT $1,x.address,x.status,x.duration_ms,x.message FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text)",
+        "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message,status_name,fields) SELECT $1,x.address,x.status,x.duration_ms,x.message,x.status_name,x.fields FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text,status_name text,fields jsonb)",
         &[&id, &body],
     ).await?;
     let position =
@@ -155,12 +164,17 @@ pub async fn record_results(
 
 #[cfg(test)]
 mod tests {
-    use super::parse;
     use serde_json::json;
+
+    fn parse_default(
+        args: &serde_json::Value,
+    ) -> anyhow::Result<(String, Vec<crate::ac_tests::TestResult>)> {
+        super::parse(args, None)
+    }
 
     #[test]
     fn a_record_maps_skip_and_keeps_the_failure_message() {
-        let (commit, rows) = parse(&json!({"workspace":"w","commit":"abcdef1","results":[
+        let (commit, rows) = parse_default(&json!({"workspace":"w","commit":"abcdef1","results":[
             {"test":"a","status":"pass"},{"test":"b","status":"fail","message":"expected 2, got 3"},
             {"test":"c","status":"skip"},{"test":"d","status":"todo","duration_ms":4}]}))
         .unwrap();
@@ -177,9 +191,9 @@ mod tests {
                 .map(|i| json!({"test": format!("t{i}"), "status": "pass"}))
                 .collect()
         };
-        let (_, parsed) = parse(&json!({"commit":"abcdef1","results":rows(1000)})).unwrap();
+        let (_, parsed) = parse_default(&json!({"commit":"abcdef1","results":rows(1000)})).unwrap();
         assert_eq!(parsed.len(), 1000);
-        let error = parse(&json!({"commit":"abcdef1","results":rows(1001)})).unwrap_err();
+        let error = parse_default(&json!({"commit":"abcdef1","results":rows(1001)})).unwrap_err();
         assert!(
             error.to_string().contains("at most 1000 results"),
             "{error}"
@@ -214,7 +228,7 @@ mod tests {
                 "pass, fail, skip or todo",
             ),
         ] {
-            let message = parse(&input).unwrap_err().to_string();
+            let message = parse_default(&input).unwrap_err().to_string();
             assert!(message.contains(error), "{input}: {message}");
         }
     }

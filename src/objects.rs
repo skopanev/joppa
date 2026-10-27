@@ -99,6 +99,9 @@ pub struct SchemaRevision {
     /// The ordered status tones with a light and a dark colour; a higher entry wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statuses: Option<Vec<crate::status_colors::Status>>,
+    /// The shape of a test result. Without it the built-in shape applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_results: Option<crate::result_shape::ResultShape>,
     pub actor: String,
     pub at: String,
     pub position: u64,
@@ -312,6 +315,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             priorities: None,
             status_colors: None,
             statuses: None,
+            test_results: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -530,6 +534,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         priorities: previous_schema.priorities.clone(),
         status_colors: previous_schema.status_colors.clone(),
         statuses: previous_schema.statuses.clone(),
+        test_results: previous_schema.test_results.clone(),
         actor: actor.into(),
         at: at.into(),
         position,
@@ -833,6 +838,7 @@ pub fn set_schema(
     priorities: Option<&Vec<String>>,
     status_colors: Option<&BTreeMap<String, String>>,
     statuses: Option<&Vec<crate::status_colors::Status>>,
+    test_results: Option<&crate::result_shape::ResultShape>,
     reason: &str,
     position: u64,
     at: &str,
@@ -862,6 +868,9 @@ pub fn set_schema(
     }
     if let Some(list) = statuses {
         crate::status_colors::validate_statuses(list)?;
+    }
+    if let Some(shape) = test_results {
+        crate::result_shape::validate(shape)?;
     }
     for (kind, t) in types {
         commands::identifier(kind)?;
@@ -1004,12 +1013,14 @@ pub fn set_schema(
     let priorities = priorities.cloned().or_else(|| schema(w).priorities);
     let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);
     let statuses = statuses.cloned().or_else(|| schema(w).statuses);
+    let test_results = test_results.cloned().or_else(|| schema(w).test_results);
     w.tree_schema.push(SchemaRevision {
         revision: revision + 1,
         types: types.clone(),
         priorities,
         status_colors,
         statuses,
+        test_results,
         actor: actor.into(),
         at: at.into(),
         position,

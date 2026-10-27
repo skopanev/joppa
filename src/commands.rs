@@ -37,6 +37,9 @@ pub enum Command {
         /// The ordered status tones with light and dark colours; without it they stay.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         statuses: Option<Vec<crate::status_colors::Status>>,
+        /// The shape of a test result; without it the schema keeps its current shape.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        test_results: Option<crate::result_shape::ResultShape>,
         reason: String,
     },
     /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
@@ -1087,6 +1090,7 @@ pub(crate) fn apply_inner(
             priorities,
             status_colors,
             statuses,
+            test_results,
             reason,
         } => {
             let types = crate::schema_nodes::requested_types(
@@ -1103,6 +1107,7 @@ pub(crate) fn apply_inner(
                 priorities.as_ref(),
                 status_colors.as_ref(),
                 statuses.as_ref(),
+                test_results.as_ref(),
                 reason,
                 position,
                 recorded_at,

@@ -320,6 +320,26 @@ The tones are red, purple, yellow, orange, grey and green. Each colour is `#RRGG
 A higher entry wins over a lower one: the list order is the default order of a children rule.
 A tone that the list omits keeps its default colours. A schema change without `statuses` keeps the current list.
 joppa_tree shows the list that applies. The older `status_colors` map still works and sets one colour for both themes.
+The schema can set `test_results`, the shape of a test result:
+
+```json
+{
+  "statuses": {"passed": "pass", "failed": "fail", "broken": "fail", "skipped": "skip"},
+  "fields": [
+    {"name": "browser", "type": "enum", "values": ["chromium", "webkit"], "required": true},
+    {"name": "run_url", "title": "Run", "type": "text"},
+    {"name": "retries", "type": "number"}
+  ]
+}
+```
+
+`statuses` gives the status names that `joppa_record_results` accepts. Each name counts as `pass`, `fail`, `skip` or `todo`.
+The map needs a name that counts as `pass` and a name that counts as `fail`. Without the map the names are `pass`, `fail`, `skip` and `todo`.
+`fields` lists the extra fields of a result. A field has the type `text`, `number` or `enum`. An `enum` field lists its `values`.
+The names `test`, `status`, `message`, `duration_ms`, `commit`, `actor` and `at` are built-in. A field cannot use them.
+The server refuses a result with an unknown status name, an unknown field, a missing required field or a value of the wrong type.
+The criterion status uses only the outcome. `joppa_tests` shows the status name and the fields of the deciding result.
+A schema change without `test_results` keeps the current shape. joppa_tree shows the shape that applies.
 A type can set `process_fields`: `confirmed` for a requirement or a criterion, and `acceptance` for a requirement.
 An object shows only the process fields that its type lists. Until a workspace saves its own schema with `set_tree_schema`, the built-in tree shows both on a requirement and `confirmed` on a criterion.
 A type without `process_fields` shows no confirmation and no acceptance.

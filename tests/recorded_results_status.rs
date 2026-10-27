@@ -21,6 +21,8 @@ fn result(id: i64, address: &str, status: &str) -> (i64, TestResult) {
             status: status.into(),
             duration_ms: None,
             message: None,
+            status_name: None,
+            fields: None,
         },
     )
 }
