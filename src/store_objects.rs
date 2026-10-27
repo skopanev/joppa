@@ -22,6 +22,8 @@ mod tone_items;
 use tone_items::add_status_tones;
 #[path = "objects_summaries.rs"]
 mod summary_items;
+#[path = "objects_value_tones.rs"]
+mod value_tones;
 use summary_items::add_verification_summaries;
 #[path = "objects_projection.rs"]
 mod projection;

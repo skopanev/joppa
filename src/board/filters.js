@@ -7,11 +7,13 @@ import {personLabel} from 'board/format.js';
 import {inputQueue} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
-export function commonObjectFilters(root,contents){
+import {resultFilters,valueSignal} from 'board/result-filter.js';
+export function commonObjectFilters(root,contents,redraw){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
   const owner=picker('Object owner',[['','All owners'],...Object.keys(state.data.state.members).map(id=>[id,personLabel(id)])]);
   const status=picker('Object status',[['','All statuses']]);const markStatus=statusFilter(status);
+  resultFilters(controls,redraw);
   // The search box uses the server search of joppa_search and combines with the other filters.
   const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
   const update=async()=>{const mine=++request,generation=state.loadNumber;const selected={kind:state.data.activeRootKind,owner:owner.value,status:status.value,query:search.value.trim()};const filtering=Boolean(selected.owner||selected.status||selected.query);state.data.filterActive=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
@@ -22,7 +24,7 @@ export function commonObjectFilters(root,contents){
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==state.loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
     let found;
     if(selected.query){const reply=await api('workspaces/'+encodeURIComponent(state.ws)+'/search?'+new URLSearchParams({q:selected.query,limit:'50'}));if(mine!==request||generation!==state.loadNumber||!controls.isConnected)return;found=new Set(reply.items.map(item=>item.kind+':'+item.id));}
-    const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||item.signal?.tone===selected.status)&&(!found||found.has(item.address)));
+    const rows=items.filter(item=>(selected.kind||!inputQueue(item.kind))&&(!selected.owner||item.owner===selected.owner)&&(!selected.status||valueSignal(item)?.tone===selected.status)&&(!found||found.has(item.address)));
     holder.replaceChildren(...rows.map(commonObjectCard));if(!rows.length)holder.append(E('p','No objects match these filters.','hint'));
   }catch(e){if(mine===request)notify(e);}};
   state.data.filterActive=false;state.data.filterUpdate=update;

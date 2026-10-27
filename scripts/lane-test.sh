@@ -228,7 +228,7 @@ export JOPPA_TEST_DATABASE_URL="$database_url"
 # The browser files share one database. They run one at a time, because parallel files
 # make the server answer 500 and time out at random.
 setsid bun run test:browser --test --test-concurrency=1 \
-  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs tests/tree_page_browser.cjs \
+  --test-reporter=spec --test-reporter-destination=stdout tests/grey_ac_browser.cjs tests/board_criteria_browser.cjs tests/board_filters_browser.cjs tests/board_result_filter_browser.cjs tests/tree_page_browser.cjs \
   tests/browser.cjs tests/objects_browser.cjs tests/object_urls_browser.cjs tests/generic_depth_browser.cjs \
   tests/workspace_links_browser.cjs &
 pids+=("$!")

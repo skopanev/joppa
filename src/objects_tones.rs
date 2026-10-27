@@ -12,6 +12,7 @@ pub(super) async fn add_status_tones(
     workspace: &str,
     items: &mut [Value],
     types: &std::collections::BTreeMap<String, objects::TreeType>,
+    value: Option<(&str, &str)>,
 ) -> Result<()> {
     crate::probe::count(&crate::probe::ROLLUP);
     use std::collections::{BTreeMap, BTreeSet};
@@ -141,6 +142,20 @@ pub(super) async fn add_status_tones(
             &BTreeSet::new(),
         )
         .await?
+    };
+    // A board value replaces each criterion status with its status for that value.
+    let statuses: BTreeMap<String, Value> = match value {
+        None => statuses,
+        Some((field, v)) => statuses
+            .into_iter()
+            .map(|(a, mut s)| match s["values"][field][v].take() {
+                Value::Null => (a, s),
+                mut one => {
+                    one["tests_revision"] = s["tests_revision"].take();
+                    (a, one)
+                }
+            })
+            .collect(),
     };
     fn tone(
         address: &str,

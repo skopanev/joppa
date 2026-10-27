@@ -49,7 +49,7 @@ async function renderObjectTree(){
   if(selection.get('view')==='timeline')return renderTimelinePage(root,generation);
   if(state.data.launch.configured)root.append(E('p',state.data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(state.data.launch.blocker_count??state.data.launch.blockers?.length),'hint'));
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
-  commonObjectFilters(root,contents);root.append(contents);
+  commonObjectFilters(root,contents,()=>renderObjectTree());root.append(contents);
   for(const kind of inboxKinds().filter(kind=>state.data.objectTypes[kind].root))commonNotes(root,undefined,kind);
   rootCollectionTabs(root);
 }

@@ -1,6 +1,6 @@
 //! The test status of one criterion, from the recorded test results.
 use super::*;
-use crate::ac_tests::{AcTests, Boundary, Report, TestResult, criterion_status, text_hash};
+use crate::ac_tests::{AcTests, Boundary, Report, TestResult, text_hash};
 
 #[path = "reports_overview.rs"]
 mod overview;
@@ -56,13 +56,16 @@ pub(super) async fn state_criterion_statuses(
             ))
         })
         .collect();
-    statuses_for_criteria(client, workspace, criteria).await
+    let board =
+        crate::result_shape::board_fields(crate::objects::schema(state).test_results.as_ref());
+    statuses_for_criteria(client, workspace, criteria, &board).await
 }
 
 async fn statuses_for_criteria(
     client: &impl GenericClient,
     workspace: &str,
     criteria: Vec<(String, Value, Option<AcTests>, Boundary)>,
+    board: &[(String, Vec<String>)],
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
@@ -100,7 +103,7 @@ async fn statuses_for_criteria(
             .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
             .collect();
         let mut status =
-            serde_json::to_value(criterion_status(tests, draft, boundary, &reports, &own))?;
+            crate::result_values::status_by_value(tests, draft, boundary, &reports, &own, board)?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

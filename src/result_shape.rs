@@ -55,6 +55,10 @@ pub struct ResultField {
     /// The permitted values of an enum field. Other types have none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
+    /// The board filters by this field: each value gets its own status. Only a required
+    /// enum field can set it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub board: bool,
 }
 
 /// One result after the check against the shape.
@@ -147,8 +151,23 @@ pub fn validate(shape: &ResultShape) -> Result<()> {
                 "only an enum field has values: {name}"
             );
         }
+        ensure!(
+            !field.board || (field.kind == "enum" && field.required),
+            "board field {name} must be a required enum field"
+        );
     }
     Ok(())
+}
+
+/// The board fields of the shape, each with its values in the schema order.
+pub fn board_fields(shape: Option<&ResultShape>) -> Vec<(String, Vec<String>)> {
+    shape
+        .map(|s| s.fields.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter(|f| f.board)
+        .map(|f| (f.name.clone(), f.values.clone()))
+        .collect()
 }
 
 /// The status names that apply, each with its outcome.

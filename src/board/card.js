@@ -7,6 +7,7 @@ import {copyButton} from 'board/clipboard.js';
 import {objectPart} from 'board/api.js';
 import {stopBranchAnimation,animateBranchHeight,enableBranchMotion,resizeBranch} from 'board/motion.js';
 import {nodeTitle} from 'board/status.js';
+import {valueSignal} from 'board/result-filter.js';
 import {applyObjectColor,objectTitlePreview,objectTypeLabel,inputQueue,verificationChildTitle} from 'board/object-types.js';
 import {appendObjectChildren,appendObjectPage} from 'board/object-list.js';
 import {fillCommonObject} from 'board/object-detail.js';
@@ -15,7 +16,7 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
   const tone=item.review_required?'purple':item.work_ready?'grey':'yellow';
-  const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
+  const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?valueSignal(item):{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
   const repeatsParent=item.title===parentTitle;
   const heading=repeatsParent?state.data.objectTypes[item.kind].title+' · '+signal.label:item.title;
   const preview=objectTitlePreview(heading,item.kind);

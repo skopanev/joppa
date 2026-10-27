@@ -340,6 +340,11 @@ The names `test`, `status`, `message`, `duration_ms`, `commit`, `actor` and `at`
 The server refuses a result with an unknown status name, an unknown field, a missing required field or a value of the wrong type.
 The criterion status uses only the outcome. `joppa_tests` shows the status name and the fields of the deciding result.
 A schema change without `test_results` keeps the current shape. joppa_tree shows the shape that applies.
+A field can set `"board": true`. Only a required `enum` field can set it.
+Each value of a board field gets its own criterion status from the results with that value. The latest result of a test for that value decides the test.
+The criterion status combines the values: red when one value is red, green when every value is green, and grey otherwise. A value without results is grey.
+`joppa_tests` shows the status of each value in `values`. Each object row stores `value_tones`, the tone of the row for each `field:value`.
+The board offers one filter for each board field. With a value selected, each row dot shows the tone for that value.
 A type can set `process_fields`: `confirmed` for a requirement or a criterion, and `acceptance` for a requirement.
 An object shows only the process fields that its type lists. Until a workspace saves its own schema with `set_tree_schema`, the built-in tree shows both on a requirement and `confirmed` on a criterion.
 A type without `process_fields` shows no confirmation and no acceptance.

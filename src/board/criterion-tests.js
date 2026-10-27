@@ -5,6 +5,7 @@ import {api} from 'board/api.js';
 import {statusCircle} from 'board/status.js';
 import {when} from 'board/format.js';
 import {objectSection} from 'board/object-detail.js';
+import {valueStatus} from 'board/result-filter.js';
 // A criterion takes its dot from its tests: green when every test passes,
 // red when one fails, grey otherwise, and grey "No tests" without tests.
 const testTone=status=>status==='pass'||status==='green'?'green':['fail','red'].includes(status)?'red':'grey';
@@ -18,7 +19,7 @@ export async function applyTestStatuses(items){
   const ready=new Set(items.filter(item=>item.signal?.label==='Ready for work').map(item=>item.address));
   let reply;
   try{reply=await api('workspaces/'+encodeURIComponent(state.ws)+'/tests?ac='+encodeURIComponent(criteria.join(',')));}catch{return;}
-  for(const status of reply.items||[reply]){
+  for(const status of (reply.items||[reply]).map(valueStatus)){
     for(const card of document.querySelectorAll('.common-object[data-object-address="'+CSS.escape(status.address)+'"]')){
       const dot=card.querySelector(':scope > summary .status-circle');
       // A criterion without tests is grey "No tests", so yellow on the board means mixed only.
@@ -31,7 +32,7 @@ export async function applyTestStatuses(items){
 // The tests that prove a criterion, each with its latest result.
 export function criterionTestsSection(address){
   const group=objectSection('Tests','object-tests');
-  api('workspaces/'+encodeURIComponent(state.ws)+'/tests?ac='+encodeURIComponent(address)).then(s=>{
+  api('workspaces/'+encodeURIComponent(state.ws)+'/tests?ac='+encodeURIComponent(address)).then(valueStatus).then(s=>{
     group.querySelector(':scope > summary').textContent='Tests '+s.tests.length;
     if(!s.tests.length){group.append(E('p','No tests are listed for this criterion.','hint'));return;}
     group.append(E('p',testSummary(s),'node-meta'));

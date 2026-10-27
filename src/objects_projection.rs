@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 1;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 2;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]
@@ -21,7 +21,12 @@ impl std::fmt::Display for ProjectionNotReady {
 impl std::error::Error for ProjectionNotReady {}
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
-const FIELDS: [&str; 3] = ["work_ready", "waits_for", "verification_summary"];
+const FIELDS: [&str; 4] = [
+    "work_ready",
+    "waits_for",
+    "verification_summary",
+    "value_tones",
+];
 const PROCESS_FIELDS: [&str; 2] = ["verification", "readiness_blocker"];
 const SIGNAL_FIELDS: [&str; 2] = ["tone", "label"];
 
@@ -103,7 +108,8 @@ pub(in crate::store) async fn rebuild(
         .map(|(kind, _)| kind.clone())
         .collect();
     add_verification_summaries(client, workspace, &mut items, &types).await?;
-    add_status_tones(client, workspace, &mut items, &types).await?;
+    add_status_tones(client, workspace, &mut items, &types, None).await?;
+    super::value_tones::add(client, workspace, state, &base, &mut items, &types).await?;
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts, &criteria).await?;
     let patches: Vec<Value> = base
