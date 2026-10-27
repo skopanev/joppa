@@ -6,9 +6,9 @@ const {fixture} = require('./board_fixture.cjs');
 
 test('board-filters-and-theme-ac1 filters: tabs, filters and search update the same document', async () => {
   const types = {
-    domain: {title: 'Domains', role: 'group', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', parents: ['domain']},
-    note: {title: 'Inbox', role: 'document', root: true, parents: [], inbox: true},
+    domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['domain']},
+    note: {title: 'Inbox', role: 'document', status:'none', root: true, parents: [], inbox: true},
   };
   const f = await fixture(types);
   try {

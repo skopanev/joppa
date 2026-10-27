@@ -1,44 +1,66 @@
-//! The shape of a test result in the tree schema: the status names and the extra fields.
+//! The test rules of a workspace: the block `test_results` of the tree schema.
 //!
-//! A schema without `test_results` uses the built-in shape: the status is pass, fail, skip
-//! or todo, and a result has an optional message and duration_ms. A saved shape can give
-//! its own status names. Each name counts as one outcome: pass, fail, skip or todo. A saved
-//! shape can also add fields of the type text, number or enum. The fields test, status,
-//! message and duration_ms stay built-in, and commit stays on the record.
-use anyhow::{Result, bail, ensure};
+//! The block holds every rule of tests and results. It gives the status names of a
+//! result and the outcome that each name counts as, the fields of a result, the form of a
+//! test name, the limits, and the rules that make a criterion green, red or grey. The
+//! live code reads only this block. The event migrate_test_rules writes the block into
+//! each workspace, see test_rules. The fields test, status and commit are the frame of a
+//! record, and pass, fail, skip and todo are the outcomes that the rules use.
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The outcomes that a status name can count as.
 pub const OUTCOMES: [&str; 4] = ["pass", "fail", "skip", "todo"];
 /// Field names that the record or the server already uses.
-const RESERVED: [&str; 7] = [
-    "test",
-    "status",
-    "message",
-    "duration_ms",
-    "commit",
-    "actor",
-    "at",
-];
-const FIELD_TYPES: [&str; 3] = ["text", "number", "enum"];
-const MAX_FIELDS: usize = 20;
+pub(crate) const RESERVED: [&str; 5] = ["test", "status", "commit", "actor", "at"];
+pub(crate) const FIELD_TYPES: [&str; 4] = ["text", "number", "enum", "ref"];
+const SAME_COMMIT: [&str; 2] = ["fail_wins", "latest_wins"];
+pub(crate) const MAX_FIELDS: usize = 20;
 const MAX_STATUSES: usize = 20;
-const MAX_VALUES: usize = 50;
-/// A text value or an enum value keeps at most this number of characters.
-const TEXT_MAX: usize = 1024;
+pub(crate) const MAX_VALUES: usize = 50;
+/// The largest limit that the schema can set for a text field or a test name.
+pub(crate) const MAX_TEXT: usize = 64 * 1024;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// A missing key reads as empty only in a block that an older journal saved. The event
+/// migrate_test_rules completes that block, and set_tree_schema refuses an incomplete one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ResultShape {
-    /// Each accepted status name with the outcome that it counts as. Without it the
-    /// names are pass, fail, skip and todo.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statuses: Option<BTreeMap<String, String>>,
-    /// The extra fields of a result, in the order that readers show them.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Each accepted status name with the outcome that it counts as.
+    pub statuses: BTreeMap<String, String>,
+    /// The fields of a result, in the order that readers show them.
     pub fields: Vec<ResultField>,
+    /// The form of a test name.
+    pub name: NameRule,
+    /// The largest number of tests in the list of one criterion.
+    pub max_tests: usize,
+    /// The largest number of results in one record.
+    pub max_results: usize,
+    /// fail_wins: a failure in any record of a commit decides the test on that commit.
+    /// latest_wins: only the newest record decides the test.
+    pub same_commit: String,
+    /// A change at or above a criterion makes the earlier records stop counting.
+    pub reset_on_change: bool,
+    /// A criterion is green when the outcome of every listed test is in this list.
+    pub green_if_all: Vec<String>,
+    /// A criterion is red when the outcome of one listed test is in this list.
+    pub red_if_any: Vec<String>,
+    /// The text field that readers show as the message of a failure.
+    pub failure_field: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct NameRule {
+    /// The text between the parts of a name, such as the file and the test.
+    pub separator: String,
+    /// The smallest number of parts.
+    pub min_parts: usize,
+    /// The first part is a file name with an extension, such as tests/login.rs.
+    pub file_extension: bool,
+    /// The largest number of characters.
+    pub max_length: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,32 +69,45 @@ pub struct ResultField {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// One of text, number or enum.
+    /// One of text, number, enum or ref.
     #[serde(rename = "type")]
     pub kind: String,
+    /// The type of the schema whose objects a ref field names, such as asset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub required: bool,
     /// The permitted values of an enum field. Other types have none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
-    /// The board filters by this field: each value gets its own status. Only a required
-    /// enum field can set it.
+    /// A longer text value keeps its first max_length characters. Only a text field has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// The board filters by this enum or ref field: each value gets its own status. A result
+    /// without the field counts for every value.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub board: bool,
+    /// The reference field of a criterion that lists the values that apply to it, or holds
+    /// the explicit value all. Only a board field has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applies: Option<String>,
 }
 
-/// One result after the check against the shape.
-#[derive(Debug, PartialEq)]
-pub struct Checked {
-    /// The stored outcome: pass, fail, skipped or todo.
-    pub status: &'static str,
-    /// The status name of a shape with its own names.
-    pub status_name: Option<String>,
-    /// The extra fields, when the result has some.
-    pub fields: Option<Value>,
-}
+/// The keys that a block in set_tree_schema must have.
+pub const KEYS: [&str; 10] = [
+    "statuses",
+    "fields",
+    "name",
+    "max_tests",
+    "max_results",
+    "same_commit",
+    "reset_on_change",
+    "green_if_all",
+    "red_if_any",
+    "failure_field",
+];
 
-fn name_ok(name: &str) -> bool {
+pub(crate) fn field_name_ok(name: &str) -> bool {
     (1..=40).contains(&name.len())
         && name.starts_with(|c: char| c.is_ascii_lowercase())
         && name
@@ -80,164 +115,77 @@ fn name_ok(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
-fn text_ok(value: &str) -> bool {
+pub(crate) fn text_ok(value: &str) -> bool {
     !value.trim().is_empty()
-        && value.chars().count() <= TEXT_MAX
+        && value.chars().count() <= 1024
         && !value.chars().any(char::is_control)
 }
 
-/// Refuse a shape with a bad status name, an unknown outcome or a bad field.
-pub fn validate(shape: &ResultShape) -> Result<()> {
-    if let Some(statuses) = &shape.statuses {
-        ensure!(
-            (1..=MAX_STATUSES).contains(&statuses.len()),
-            "test_results.statuses has 1 to {MAX_STATUSES} names"
-        );
-        for (name, outcome) in statuses {
-            ensure!(
-                (1..=32).contains(&name.chars().count())
-                    && name.chars().all(|c| !c.is_whitespace() && !c.is_control()),
-                "a test status name has 1 to 32 characters without spaces"
-            );
-            ensure!(
-                OUTCOMES.contains(&outcome.as_str()),
-                "status {name} must count as pass, fail, skip or todo"
-            );
-        }
-        for needed in ["pass", "fail"] {
-            ensure!(
-                statuses.values().any(|o| o == needed),
-                "test_results.statuses needs a name that counts as {needed}"
-            );
-        }
-    }
-    ensure!(
-        shape.fields.len() <= MAX_FIELDS,
-        "test_results.fields has at most {MAX_FIELDS} fields"
-    );
+fn outcomes_ok(list: &[String]) -> bool {
     let mut seen = BTreeSet::new();
-    for field in &shape.fields {
-        let name = field.name.as_str();
+    !list.is_empty()
+        && list
+            .iter()
+            .all(|o| OUTCOMES.contains(&o.as_str()) && seen.insert(o))
+}
+
+/// Refuse a block with a bad status name, field, name rule, limit or criterion rule.
+pub fn validate(shape: &ResultShape) -> Result<()> {
+    let statuses = &shape.statuses;
+    ensure!(
+        (1..=MAX_STATUSES).contains(&statuses.len()),
+        "test_results.statuses has 1 to {MAX_STATUSES} names"
+    );
+    for (name, outcome) in statuses {
         ensure!(
-            name_ok(name),
-            "a result field name uses a-z, 0-9 and _, starts with a letter and has at most 40 characters"
+            (1..=32).contains(&name.chars().count())
+                && name.chars().all(|c| !c.is_whitespace() && !c.is_control()),
+            "a test status name has 1 to 32 characters without spaces"
         );
         ensure!(
-            !RESERVED.contains(&name),
-            "result field {name} is built-in; use another name"
-        );
-        ensure!(seen.insert(name), "result field {name} appears twice");
-        ensure!(
-            field.title.as_deref().is_none_or(text_ok),
-            "result field {name} needs a title of 1 to {TEXT_MAX} characters"
-        );
-        ensure!(
-            FIELD_TYPES.contains(&field.kind.as_str()),
-            "result field {name} has the type text, number or enum"
-        );
-        if field.kind == "enum" {
-            let mut values = BTreeSet::new();
-            ensure!(
-                (1..=MAX_VALUES).contains(&field.values.len())
-                    && field
-                        .values
-                        .iter()
-                        .all(|v| text_ok(v) && values.insert(v.as_str())),
-                "enum field {name} needs 1 to {MAX_VALUES} different values"
-            );
-        } else {
-            ensure!(
-                field.values.is_empty(),
-                "only an enum field has values: {name}"
-            );
-        }
-        ensure!(
-            !field.board || (field.kind == "enum" && field.required),
-            "board field {name} must be a required enum field"
+            OUTCOMES.contains(&outcome.as_str()),
+            "status {name} must count as pass, fail, skip or todo"
         );
     }
+    for needed in ["pass", "fail"] {
+        ensure!(
+            statuses.values().any(|o| o == needed),
+            "test_results.statuses needs a name that counts as {needed}"
+        );
+    }
+    let name = &shape.name;
+    ensure!(
+        text_ok(&name.separator)
+            && (1..=10).contains(&name.min_parts)
+            && (1..=MAX_TEXT).contains(&name.max_length),
+        "test_results.name needs a separator, min_parts from 1 to 10 and max_length from 1 to {MAX_TEXT}"
+    );
+    ensure!(
+        (1..=1000).contains(&shape.max_tests) && (1..=1000).contains(&shape.max_results),
+        "test_results.max_tests and max_results are from 1 to 1000"
+    );
+    ensure!(
+        SAME_COMMIT.contains(&shape.same_commit.as_str()),
+        "test_results.same_commit is fail_wins or latest_wins"
+    );
+    ensure!(
+        outcomes_ok(&shape.green_if_all) && outcomes_ok(&shape.red_if_any),
+        "test_results.green_if_all and red_if_any list different outcomes"
+    );
+    ensure!(
+        shape
+            .green_if_all
+            .iter()
+            .all(|o| !shape.red_if_any.contains(o)),
+        "an outcome cannot be in green_if_all and red_if_any"
+    );
+    crate::result_check::validate_fields(&shape.fields)?;
+    ensure!(
+        shape.failure_field.as_ref().is_none_or(|f| shape
+            .fields
+            .iter()
+            .any(|x| &x.name == f && x.kind == "text")),
+        "test_results.failure_field names a text field of the block"
+    );
     Ok(())
-}
-
-/// The board fields of the shape, each with its values in the schema order.
-pub fn board_fields(shape: Option<&ResultShape>) -> Vec<(String, Vec<String>)> {
-    shape
-        .map(|s| s.fields.as_slice())
-        .unwrap_or_default()
-        .iter()
-        .filter(|f| f.board)
-        .map(|f| (f.name.clone(), f.values.clone()))
-        .collect()
-}
-
-/// The status names that apply, each with its outcome.
-pub fn statuses(shape: Option<&ResultShape>) -> BTreeMap<String, String> {
-    shape
-        .and_then(|s| s.statuses.clone())
-        .unwrap_or_else(|| OUTCOMES.map(|o| (o.to_owned(), o.to_owned())).into())
-}
-
-/// The shape that applies, for readers: the status names and the fields.
-pub fn effective(shape: Option<&ResultShape>) -> Value {
-    json!({
-        "statuses": statuses(shape),
-        "fields": shape.map(|s| s.fields.clone()).unwrap_or_default(),
-    })
-}
-
-/// Check one result against the shape and give the stored values.
-pub fn check(
-    shape: Option<&ResultShape>,
-    status: &str,
-    extra: Map<String, Value>,
-) -> Result<Checked> {
-    let named = shape.is_some_and(|s| s.statuses.is_some());
-    let names = statuses(shape);
-    let Some(outcome) = names.get(status) else {
-        if named {
-            let list: Vec<&str> = names.keys().map(String::as_str).collect();
-            bail!("status must be one of: {}", list.join(", "));
-        }
-        bail!("status must be pass, fail, skip or todo");
-    };
-    let declared = shape.map(|s| s.fields.as_slice()).unwrap_or_default();
-    for key in extra.keys() {
-        ensure!(
-            declared.iter().any(|f| &f.name == key),
-            "invalid record_results input: unknown result field `{key}`; the tree schema test_results lists the fields"
-        );
-    }
-    for field in declared {
-        let name = &field.name;
-        let Some(value) = extra.get(name) else {
-            ensure!(!field.required, "result field {name} is required");
-            continue;
-        };
-        let fits = match field.kind.as_str() {
-            "number" => value.is_number(),
-            "enum" => value
-                .as_str()
-                .is_some_and(|v| field.values.iter().any(|x| x == v)),
-            _ => value.as_str().is_some_and(text_ok),
-        };
-        ensure!(
-            fits,
-            "result field {name} needs {}",
-            match field.kind.as_str() {
-                "number" => "a number".to_owned(),
-                "enum" => format!("one of: {}", field.values.join(", ")),
-                _ => format!("a text of 1 to {TEXT_MAX} characters"),
-            }
-        );
-    }
-    Ok(Checked {
-        status: match outcome.as_str() {
-            "pass" => "pass",
-            "fail" => "fail",
-            "skip" => "skipped",
-            _ => "todo",
-        },
-        status_name: named.then(|| status.to_owned()),
-        fields: (!extra.is_empty()).then_some(Value::Object(extra)),
-    })
 }

@@ -32,8 +32,8 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
     let w = world().await?;
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
-    types["work"] = json!({"title":"Work","role":"task","root":false,"parents":["*"]});
-    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    types["work"] = json!({"title":"Work","role":"task","status":"none","root":false,"parents":["*"]});
+    types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check archive with configured Task and parent names"})).await?;
     w.command(json!({"op":"save_object","kind":"record","id":"parent","revision":0,"parent":null,"data":{"title":"Parent record","owner":"owner"},"reason":"Create a configured parent"})).await?;
     for (index, (parent, kind)) in [("ac:key-rights", "task"), ("record:parent", "work")]
@@ -108,7 +108,7 @@ async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<(
         let done = ready_task(&w, "a-done", "arch-a").await?;
         w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
             .await?;
-        w.command_as(&w.bot, json!({"op":"complete_task","id":done,"revision":2,"evidence":"Implemented the contract"})).await?;
+        w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":done,"revision":2,"evidence":"Implemented the contract"})).await?;
         let retired = ready_task(&w, "a-retired", "arch-a").await?;
         w.command(json!({"op":"retire_task","id":retired,"revision":1,"reason":"The owner no longer needs this work"})).await?;
         ready_task(&w, "b-open", "arch-b").await?;

@@ -307,9 +307,9 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
-        "spec":{"title":"Specification","role":"requirement","root":true},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["*"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["*"],"parent_gate":"ready"}
     },"reason":"Configure semantic roles"}),
     );
     for id in ["a", "b"] {

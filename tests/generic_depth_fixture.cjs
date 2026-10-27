@@ -12,7 +12,7 @@ const chain=[['portfolio','Portfolio','group'],['stream','Stream','group'],['epi
 const types={};
 chain.forEach(([kind,title,role],i)=>{types[kind]={title,role,index:i*10,root:i===0,
   parents:i===0?[]:[chain[i-1][0]],title_size:[21,18,16,17,16,15][i]};});
-types.intake={title:'Intake',role:'document',index:70,root:true,parents:[],inbox:true,
+types.intake={title:'Intake',role:'document', status:'none',index:70,root:true,parents:[],inbox:true,
   description:'Customer input to review.'};
 const schema={workspace:'w',current_revision:3,schema:{revision:3,actor:'owner',
   at:'2026-10-06T09:00:00Z',reason:'Six configured levels',types}};

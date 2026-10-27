@@ -88,15 +88,20 @@ async fn help_with_a_workspace_gives_one_save_example_for_each_type() -> Result<
 
 // clarity point 6
 #[tokio::test]
-async fn a_criterion_save_that_makes_the_test_list_a_draft_says_how_to_end_it() -> Result<()> {
+async fn a_criterion_save_keeps_its_test_list_in_the_document() -> Result<()> {
     let w = world(&[TEST]).await?;
-    let saved = ok(w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r",
-        "data":{"title":"A","owner":"owner","description":"Given R, then A holds."},"reason":"Clarify A"})).await?, "save")?;
-    ensure!(saved["object"]["tests_draft"] == true, "{saved}");
-    let hint = saved["object"]["hint"].as_str().unwrap_or_default();
+    // The test list is the field tests of the document: a text change keeps it, and no
+    // draft waits for another save.
+    let saved = ok(w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r",
+        "data":{"title":"A","owner":"owner","description":"Given R, then A holds.","tests":[TEST]},"reason":"Clarify A"})).await?, "save")?;
+    ensure!(saved["object"].get("tests_draft").is_none(), "{saved}");
+    let tests = ok(
+        w.mcp(&w.alex, "joppa_tests", json!({"ac": A})).await?,
+        "joppa_tests",
+    )?;
     ensure!(
-        hint.contains("is now a draft") && hint.contains("set_ac_tests"),
-        "{hint}"
+        tests["tests"][0]["address"] == TEST && tests["tests_revision"] == 3,
+        "{tests}"
     );
     Ok(())
 }

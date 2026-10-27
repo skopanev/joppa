@@ -65,9 +65,9 @@ async fn a_member_writes_a_requirement_and_work_starts_after_ready() -> Result<(
     .await?;
     let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
     write(&pool, &ws, "owner", json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"A tree without process fields","types":{
-        "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]},
-        "task":{"title":"Tasks","role":"task","parents":["ac"],"parent_gate":"ready"}
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
+        "task":{"title":"Tasks","role":"task","status":"none","parents":["ac"],"parent_gate":"ready"}
     }})).await?;
     // R and its criterion A are one change: one batch.
     let operations: Vec<store::BatchOperation> = [

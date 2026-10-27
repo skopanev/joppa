@@ -42,8 +42,8 @@ async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
     store::enroll_service(pool, &ws, "owner", "bot", "agent").await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     }})).await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"}),
@@ -57,7 +57,18 @@ async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
 
 async fn set_shape(pool: &deadpool_postgres::Pool, ws: &str, shape: Value) -> Result<Value> {
     let tree = store::tree_schema(pool, ws, "bot", None).await?;
-    write(pool, ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Set the result shape","test_results":shape})).await
+    // The command sends the whole block: the current rules with the changed keys.
+    let mut block = tree["schema"]["test_results"].clone();
+    for (key, value) in shape.as_object().cloned().unwrap_or_default() {
+        if key == "fields" {
+            let mut fields = block["fields"].as_array().cloned().unwrap_or_default();
+            fields.extend(value.as_array().cloned().unwrap_or_default());
+            block["fields"] = json!(fields);
+        } else {
+            block[key] = value;
+        }
+    }
+    write(pool, ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Set the result shape","test_results":block})).await
 }
 
 async fn record(pool: &deadpool_postgres::Pool, ws: &str, results: Value) -> Result<Value> {
@@ -69,7 +80,7 @@ fn browser_shape() -> Value {
         "statuses": {"passed": "pass", "broken": "fail"},
         "fields": [
             {"name": "browser", "type": "enum", "values": ["chromium", "webkit"], "required": true},
-            {"name": "run_url", "title": "Run", "type": "text"}
+            {"name": "run_url", "title": "Run", "type": "text", "max_length": 200}
         ]
     })
 }
@@ -79,11 +90,11 @@ fn browser_shape() -> Value {
 async fn a_workspace_without_a_shape_keeps_the_built_in_result() -> Result<()> {
     let pool = pool().await?;
     let ws = fixture(&pool).await?;
+    // The schema of a new workspace holds the older rules as data.
     let tree = store::tree_schema(&pool, &ws, "bot", None).await?;
     ensure!(
-        tree["schema"]["test_results"]
-            == json!({"statuses": {"fail": "fail", "pass": "pass", "skip": "skip", "todo": "todo"}, "fields": []}),
-        "built-in shape: {tree}"
+        tree["schema"]["test_results"] == serde_json::to_value(joppa::test_rules::legacy())?,
+        "the rules in the schema: {tree}"
     );
     record(
         &pool,
@@ -95,7 +106,7 @@ async fn a_workspace_without_a_shape_keeps_the_built_in_result() -> Result<()> {
     ensure!(s["status"] == "green", "{s}");
     let test = &s["tests"][0];
     ensure!(
-        test.get("status_name").is_none() && test.get("fields").is_none(),
+        test["status_name"] == "pass" && test.get("fields").is_none(),
         "{test}"
     );
     let error = record(
@@ -117,9 +128,11 @@ async fn a_saved_shape_decides_the_status_names_and_the_fields() -> Result<()> {
     let ws = fixture(&pool).await?;
     set_shape(&pool, &ws, browser_shape()).await?;
     let tree = store::tree_schema(&pool, &ws, "bot", None).await?;
+    let block = &tree["schema"]["test_results"];
     ensure!(
-        tree["schema"]["test_results"]
-            == json!({"statuses": browser_shape()["statuses"], "fields": browser_shape()["fields"]}),
+        block["statuses"] == browser_shape()["statuses"]
+            && block["fields"].as_array().is_some_and(|f| f.len() == 4)
+            && block["failure_field"] == "message",
         "saved shape: {tree}"
     );
     ensure!(
@@ -204,11 +217,24 @@ async fn a_schema_change_without_a_shape_keeps_it_and_a_bad_shape_is_refused() -
     let error = set_shape(
         &pool,
         &ws,
-        json!({"fields": [{"name": "commit", "type": "text"}]}),
+        json!({"fields": [{"name": "commit", "type": "text", "max_length": 10}]}),
     )
     .await
     .unwrap_err()
     .to_string();
-    ensure!(error.contains("result field commit is built-in"), "{error}");
+    ensure!(
+        error.contains("result field commit is part of the record"),
+        "{error}"
+    );
+    // A block without every rule is refused.
+    let tree = store::tree_schema(&pool, &ws, "bot", None).await?;
+    let error = write(&pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Part of the rules","test_results":{"statuses":{"ok":"pass","bad":"fail"}}}))
+        .await
+        .unwrap_err()
+        .to_string();
+    ensure!(
+        error.contains("test_results needs every rule; missing: fields, name"),
+        "{error}"
+    );
     Ok(())
 }

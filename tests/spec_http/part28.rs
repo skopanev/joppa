@@ -35,7 +35,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     let mut covered = vec![];
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
-    types["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    types["job"] = json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     member_runs(&w, &help, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
     for id in ["a", "b", "c"] {
         w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
@@ -121,7 +121,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         json!({"op":"claim_task","id":"job:c","revision":revision("job:c").await?}),
     )
     .await?;
-    covered.push(check_callers(&w, &help, bot, json!({"op":"complete_task","id":"job:c","revision":revision("job:c").await?,"evidence":"Implemented and checked"}), &w.bot, "Task is not claimed unfinished work").await?);
+    covered.push(check_callers(&w, &help, bot, json!({"op":"complete_task","commit":"c0ffee0","id":"job:c","revision":revision("job:c").await?,"evidence":"Implemented and checked"}), &w.bot, "Task is not claimed unfinished work").await?);
     w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
     covered.push(

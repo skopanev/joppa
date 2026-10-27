@@ -110,8 +110,10 @@ pub(super) async fn add_verification_summaries(
         Err(error) => return Err(error),
     };
     for item in items {
-        // A saved test list makes the criterion status the Task verification.
+        // A saved test list made the criterion status the Task verification before
+        // migrate_test_rules. After it a Task has no verification, so this changes nothing.
         if let Some(status) = task_parent(item)
+            .filter(|_| item["process"].get("verification").is_some())
             .and_then(|parent| statuses.get(&parent))
             .filter(|s| !s["tests_revision"].is_null())
             && let Some(verification) = match status["status"].as_str() {

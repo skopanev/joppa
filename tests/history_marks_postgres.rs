@@ -82,7 +82,7 @@ async fn workspace(pool: &deadpool_postgres::Pool, tasks: usize) -> Result<Strin
     .await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Use root Tasks","types":{
-        "task":{"title":"Tasks","role":"task","root":true,"parents":["*"]}
+        "task":{"title":"Tasks","role":"task","status":"none","root":true,"parents":["*"]}
     }})).await?;
     for i in 1..=tasks {
         write(pool, &ws, json!({"op":"save_object","kind":"task","id":format!("t{i}"),"revision":0,"parent":null,"data":{"title":format!("Task {i}"),"owner":"owner","contract":"Implement the agreed part","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;

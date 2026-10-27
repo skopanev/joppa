@@ -48,6 +48,7 @@ fn before() -> World {
             required: false,
             multiple: true,
             verification_subject: false,
+            allow_all: false,
         },
     );
     w.ok("owner", json!({"op":"set_tree_schema","revision":schema.revision,"types":schema.types,"reason":"Criteria list their consumers"}));

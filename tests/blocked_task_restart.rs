@@ -333,9 +333,9 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
     }
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     f.write(PLANNER, json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;
     for (_, _, criterion) in FIXTURES {
@@ -638,9 +638,9 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
     }
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
-        "story":{"title":"Story","role":"requirement","root":true,"parents":[]},
-        "rule":{"title":"Rule","role":"ac","parents":["story"]},
-        "job":{"title":"Job","role":"task","parents":["rule"],"parent_gate":"ready"}
+        "story":{"title":"Story","role":"requirement","status":"children","root":true,"parents":[]},
+        "rule":{"title":"Rule","role":"ac","status":"tests","parents":["story"]},
+        "job":{"title":"Job","role":"task","status":"none","parents":["rule"],"parent_gate":"ready"}
     }})).await?;
     f.write(OWNER, json!({"op":"save_object","kind":"story","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;
     for (_, criterion, _) in PLANS {
@@ -881,9 +881,9 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     .await?;
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     f.write(OWNER, json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;
     for id in ["a", "b"] {
@@ -906,7 +906,7 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     f.task(
         HOLDER,
         "work:t2",
-        json!({"op":"complete_task","evidence":"Implemented the agreed mechanism"}),
+        json!({"op":"complete_task","commit":"c0ffee0","evidence":"Implemented the agreed mechanism"}),
     )
     .await?;
     f.task(HOLDER, "work:t1", json!({"op":"claim_task"}))

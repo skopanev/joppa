@@ -201,7 +201,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         operations = mcp('joppa_help', {})['operations']
         assert 'archive_object' in operations and 'restore_object' in operations
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
-        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 5
+        # migrate_test_rules adds the sixth revision: the test rules and the status rule of each type.
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 6
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
                   'data':{'title':'Source note','owner':'owner','body':'Original text'},
                   'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -212,7 +213,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert old['document']['data']['body'] == 'Original text'
         assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 5
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 6
         empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
             'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
                 'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
@@ -479,11 +480,11 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         configured = mcp('joppa_tree', {'workspace': mcp_ws})
         types = configured['schema']['types']
         types.update({
-            'spec': {'title':'Spec','role':'requirement','root':True,'parents':['*']},
-            'epic': {'title':'Epic','role':'requirement','root':True,'parents':['*']},
-            'section': {'title':'Section','role':'group','root':True,'parents':['*']},
-            'measure': {'title':'Measure','role':'ac','root':False,'parents':['*']},
-            'rule': {'title':'Rule','role':'ac','root':False,'parents':['*']},
+            'spec': {'title':'Spec','role':'requirement','root':True,'parents':['*'],'status':'children'},
+            'epic': {'title':'Epic','role':'requirement','root':True,'parents':['*'],'status':'children'},
+            'section': {'title':'Section','role':'group','root':True,'parents':['*'],'status':'children'},
+            'measure': {'title':'Measure','role':'ac','root':False,'parents':['*'],'status':'tests'},
+            'rule': {'title':'Rule','role':'ac','root':False,'parents':['*'],'status':'tests'},
         })
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-schema','command':
             {'op':'set_tree_schema','revision':configured['current_revision'],'types':types,'reason':'Configure workflow types'}}, owner_token)

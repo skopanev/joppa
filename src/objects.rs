@@ -84,6 +84,9 @@ pub struct ReferenceRule {
     pub multiple: bool,
     #[serde(default)]
     pub verification_subject: bool,
+    /// The reference also takes the explicit value all: every object of the target type.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_all: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SchemaRevision {
@@ -99,9 +102,13 @@ pub struct SchemaRevision {
     /// The ordered status tones with a light and a dark colour; a higher entry wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statuses: Option<Vec<crate::status_colors::Status>>,
-    /// The shape of a test result. Without it the built-in shape applies.
+    /// The test rules: the block test_results, see result_shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test_results: Option<crate::result_shape::ResultShape>,
+    /// With true, set_tree_schema refuses a type without a status rule. With false, it saves
+    /// the type, and its nodes take the tone of an unset rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_required: Option<bool>,
     pub actor: String,
     pub at: String,
     pub position: u64,
@@ -150,6 +157,11 @@ pub struct ObjectRevision {
     pub position: u64,
     pub reason: String,
     pub present: bool,
+    /// When this revision changes only the test list: [this revision, the revision of the
+    /// contract]. Pins and Task reviews compare the contract, so a new test list asks for no
+    /// review. A revision that copies this one has another number, so the pair stops counting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract: Option<[u32; 2]>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Object {
@@ -168,6 +180,10 @@ impl Object {
 pub fn defaults() -> BTreeMap<String, TreeType> {
     let mut types = schema_migration_defaults();
     crate::consumer_migration::convert_types(&mut types);
+    // The built-in tree names the status rule of each type.
+    for t in types.values_mut() {
+        t.status = Some(role_status_rule(t).to_owned());
+    }
     types
 }
 /// The built-in tree as the migrate_schema event saw it, with the consumers of a
@@ -243,6 +259,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     required: true,
                     multiple: true,
                     verification_subject: false,
+                    allow_all: false,
                 },
             );
         }
@@ -255,6 +272,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     required: false,
                     multiple: true,
                     verification_subject: true,
+                    allow_all: false,
                 },
             );
             t.parent_decision = true;
@@ -316,6 +334,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             status_colors: None,
             statuses: None,
             test_results: None,
+            status_required: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,
@@ -413,6 +432,10 @@ fn targets_of(
         .context("unknown object type")?;
     let mut targets = vec![];
     for (field, rule) in &t.references {
+        // The explicit value all names every object of the target type.
+        if rule.allow_all && data.get(field).and_then(Value::as_str) == Some("all") {
+            continue;
+        }
         let values: Vec<&str> = match data.get(field) {
             None | Some(Value::Null) => vec![],
             Some(Value::Array(values)) if rule.multiple => values
@@ -535,6 +558,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         status_colors: previous_schema.status_colors.clone(),
         statuses: previous_schema.statuses.clone(),
         test_results: previous_schema.test_results.clone(),
+        status_required: previous_schema.status_required,
         actor: actor.into(),
         at: at.into(),
         position,
@@ -711,8 +735,15 @@ fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
 pub const STATUS_RULES: [&str; 4] = ["tests", "children", "links", "none"];
 pub const STATUS_TONES: [&str; 3] = ["red", "grey", "green"];
 
-/// The status rule of a type: its own rule, else the default of its role.
+/// The status rule of a type. A type without a rule has the rule unset: its nodes take
+/// the tone orange.
 pub fn status_rule(t: &TreeType) -> &str {
+    t.status.as_deref().unwrap_or("unset")
+}
+
+/// The status rule that the role of a type gave before migrate_test_rules. Only the
+/// migration and the replay of older events use it.
+pub fn role_status_rule(t: &TreeType) -> &str {
     t.status.as_deref().unwrap_or(match t.role.as_str() {
         "ac" => "tests",
         "group" | "requirement" => "children",
@@ -838,7 +869,8 @@ pub fn set_schema(
     priorities: Option<&Vec<String>>,
     status_colors: Option<&BTreeMap<String, String>>,
     statuses: Option<&Vec<crate::status_colors::Status>>,
-    test_results: Option<&crate::result_shape::ResultShape>,
+    test_results: Option<&Value>,
+    status_required: Option<bool>,
     reason: &str,
     position: u64,
     at: &str,
@@ -869,8 +901,17 @@ pub fn set_schema(
     if let Some(list) = statuses {
         crate::status_colors::validate_statuses(list)?;
     }
-    if let Some(shape) = test_results {
-        crate::result_shape::validate(shape)?;
+    let test_results = test_results
+        .map(|raw| crate::test_rules::parse_block(w, raw))
+        .transpose()?;
+    for field in test_results.iter().flat_map(|s| &s.fields) {
+        if let Some(target) = &field.target {
+            ensure!(
+                types.contains_key(target),
+                "ref field {} targets the unknown type {target}",
+                field.name
+            );
+        }
     }
     for (kind, t) in types {
         commands::identifier(kind)?;
@@ -1013,10 +1054,20 @@ pub fn set_schema(
     let priorities = priorities.cloned().or_else(|| schema(w).priorities);
     let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);
     let statuses = statuses.cloned().or_else(|| schema(w).statuses);
-    let test_results = test_results.cloned().or_else(|| schema(w).test_results);
+    let test_results = test_results.or_else(|| schema(w).test_results);
+    let status_required = status_required.or_else(|| schema(w).status_required);
+    if status_required == Some(true) {
+        for (kind, t) in types {
+            ensure!(
+                t.status.is_some(),
+                "type {kind} needs a status rule: tests, children, links or none"
+            );
+        }
+    }
     w.tree_schema.push(SchemaRevision {
         revision: revision + 1,
         types: types.clone(),
+        status_required,
         priorities,
         status_colors,
         statuses,
@@ -1327,6 +1378,7 @@ fn sync_with(
                     .filter(|_| spec)
                     .map_or_else(|| reason.clone(), str::to_owned),
                 present: true,
+                contract: None,
             });
         }
     }
@@ -1856,10 +1908,34 @@ pub fn save(
     position: u64,
     at: &str,
 ) -> Result<()> {
-    if let Some(candidate) = saved(w, actor, command, position, at, false)? {
+    if let Some(mut candidate) = saved(w, actor, command, position, at, false)? {
+        mark_contract(w, &mut candidate, command);
         *w = candidate;
     }
     Ok(())
+}
+
+/// A new revision that changes only the test list keeps the contract revision of the
+/// revision before it.
+fn mark_contract(w: &Workspace, candidate: &mut Workspace, command: &Command) {
+    let Command::SaveObject { kind, id, .. } = command else {
+        return;
+    };
+    let key = address(kind, id);
+    let Some(old) = w.objects.get(resolve_address(w, &key)).map(Object::current) else {
+        return;
+    };
+    let target = resolve_address(candidate, &key).to_owned();
+    let Some(new) = candidate
+        .objects
+        .get_mut(&target)
+        .and_then(|o| o.revisions.last_mut())
+    else {
+        return;
+    };
+    if new.revision != old.revision && tests_only_change(old, new) {
+        new.contract = Some([new.revision, contract_of(old)]);
+    }
 }
 /// A live save whose normalized data, parent and links equal the current revision changes nothing.
 pub fn unchanged_save(
@@ -1942,6 +2018,9 @@ fn saved(
         schema(w).types.get(kind).context("unknown object type")?,
         data,
     )?;
+    if w.test_rules_migrated {
+        crate::ac_tests::validate_field(w, kind, data)?;
+    }
     parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;
     if w.schema_migrated {
@@ -1977,7 +2056,20 @@ fn saved(
     } else {
         None
     };
-    if (!unchanged || schema(w).types[kind].role == "requirement") && !generic_task {
+    // A change of only the test list is no change of the specification: the document gets a
+    // revision, and the specification keeps its revision.
+    let tests_only = w.test_rules_migrated
+        && old.as_ref().is_some_and(|o| {
+            let without = |d: &Value| {
+                let mut d = d.clone();
+                if let Some(map) = d.as_object_mut() {
+                    map.remove("tests");
+                }
+                d
+            };
+            without(&o.current().data) == without(data) && o.current().parent == *parent
+        });
+    if (!unchanged && !tests_only || schema(w).types[kind].role == "requirement") && !generic_task {
         if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
             candidate.document_overrides.remove(&key);
             commands::apply_inner(&mut candidate, actor, &cmd, position, at)?;
@@ -2167,6 +2259,7 @@ fn saved(
         position,
         reason: reason.clone(),
         present: true,
+        contract: None,
     });
     candidate.objects.insert(key.clone(), object);
     validate_links(&candidate, &key, links, &kept)?;
@@ -2189,6 +2282,7 @@ fn saved(
 /// only orders work, so a change of those links alone resets nothing.
 pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
     let types = schema(w).types;
+    let migrated = w.test_rules_migrated;
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
@@ -2216,6 +2310,11 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
                         || TEXT_FIELDS
                             .iter()
                             .any(|field| before.data.get(field) != current.data.get(field))
+                        // A new test list resets the criterion. The migration moves a list
+                        // into the document and changes no status.
+                        || (migrated
+                            && before.data.get("tests") != current.data.get("tests")
+                            && current.reason != crate::test_rules::REASON)
                 })
         })
         .map(|(key, _)| key.clone())
@@ -2276,14 +2375,43 @@ pub fn pin_current(w: &Workspace, target: &str, pin: Option<u32>) -> bool {
     let (Some(pin), Some(o)) = (pin, w.objects.get(key)) else {
         return false;
     };
-    let current = o.current().revision;
+    // The last revisions that change only the test list keep a pin current.
+    let (contract, current) = (contract_revision(o), o.current().revision);
     o.current().present
-        && w.task_process.get(key).map_or(pin == current, |t| {
-            t.retired.is_none()
-                && t.origin_revision >= 1
-                && t.origin_revision <= pin
-                && pin <= current
-        })
+        && w.task_process
+            .get(key)
+            .map_or(contract <= pin && pin <= current, |t| {
+                t.retired.is_none()
+                    && t.origin_revision >= 1
+                    && t.origin_revision <= pin
+                    && pin <= current
+            })
+}
+/// The revision of the contract of an object: the current revision before the last
+/// revisions that change only the test list.
+pub fn contract_revision(o: &Object) -> u32 {
+    contract_of(o.current())
+}
+fn contract_of(r: &ObjectRevision) -> u32 {
+    match r.contract {
+        Some([revision, contract]) if revision == r.revision => contract,
+        _ => r.revision,
+    }
+}
+/// The revision `after` changes only the field tests of `before`.
+pub fn tests_only_change(before: &ObjectRevision, after: &ObjectRevision) -> bool {
+    let without = |d: &Value| {
+        let mut d = d.clone();
+        if let Some(map) = d.as_object_mut() {
+            map.remove("tests");
+        }
+        d
+    };
+    before.data.get("tests") != after.data.get("tests")
+        && before.parent == after.parent
+        && before.links == after.links
+        && before.present == after.present
+        && without(&before.data) == without(&after.data)
 }
 /// A Task type: its dependencies pin the target contract.
 pub fn task_kind(w: &Workspace, kind: &str) -> bool {
@@ -2302,13 +2430,15 @@ pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
 /// A criterion with a saved test list: its test status from reports decides a link to it.
 pub fn report_decided(w: &Workspace, key: &str) -> bool {
     let key = resolve_address(w, key);
-    w.objects
-        .get(key)
-        .is_some_and(|o| schema(w).types.get(&o.kind).is_some_and(|t| t.role == "ac"))
-        && w.ac_tests
-            .get(key)
-            .and_then(|t| t.current())
-            .is_some_and(|r| !r.tests.is_empty())
+    w.objects.get(key).is_some_and(|o| {
+        schema(w).types.get(&o.kind).is_some_and(|t| {
+            if w.test_rules_migrated {
+                status_rule(t) == "tests"
+            } else {
+                t.role == "ac"
+            }
+        })
+    }) && crate::ac_tests::listed(w, key).is_some_and(|r| !r.tests.is_empty())
 }
 
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
@@ -2654,7 +2784,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateDocuments {}
         | Command::MigrateTaskClaims {}
         | Command::MigrateConsumers {}
-        | Command::MigrateConsumerDrops {} => {
+        | Command::MigrateConsumerDrops {}
+        | Command::MigrateTestRules {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }
@@ -2687,10 +2818,18 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
             "incoming source types are removed; use Note"
         ),
         Command::Task { acs, .. } => ensure!(acs.len() == 1, "Task must belong to exactly one AC"),
-        Command::CompleteTask { req, id, .. } => ensure!(
-            work_ready(w, &crate::tasks::address(req, id)),
-            "Task has an unmet dependency or a changed dependency revision"
-        ),
+        Command::CompleteTask {
+            req, id, commit, ..
+        } => {
+            ensure!(
+                !w.test_rules_migrated || commit.is_some(),
+                "missing field `commit`: complete_task needs the git sha where the Task is ready"
+            );
+            ensure!(
+                work_ready(w, &crate::tasks::address(req, id)),
+                "Task has an unmet dependency or a changed dependency revision"
+            )
+        }
         Command::ReviewTask {
             req,
             revision,
@@ -2985,7 +3124,10 @@ pub fn verification(w: &Workspace, key: &str) -> &'static str {
 pub fn process(w: &Workspace, key: &str) -> Value {
     let key = resolve_address(w, key);
     if let Some(mut p) = crate::tasks::process(w, key) {
-        p["verification"] = json!(verification(w, key));
+        // After migrate_test_rules a Task shows only its own state and its commit.
+        if !w.test_rules_migrated {
+            p["verification"] = json!(verification(w, key));
+        }
         return p;
     }
     let Some(o) = w.objects.get(key) else {
@@ -3110,6 +3252,16 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
 
 /// Tone and label of a Task whose signal is not decided by an earlier rule.
 pub fn task_signal(p: &Value) -> (&'static str, &'static str) {
+    if p.get("verification").is_none() {
+        return match p["status"].as_str() {
+            Some("done") => ("green", "Work complete"),
+            Some("in_progress") => ("yellow", "Task in progress"),
+            _ if p["readiness_blocker"].is_object() => {
+                ("yellow", "Task waits for parent readiness")
+            }
+            _ => ("grey", "Task open"),
+        };
+    }
     match p["status"].as_str() {
         Some("done") if p["verification"] == "pass" => ("green", "Work complete · Checks passed"),
         Some("done") if p["verification"] == "fail" => ("red", "Work complete · Checks failed"),

@@ -15,7 +15,7 @@ Put suggestions and decisions in the REQ card. Ordinary comments do not block wo
 Use decider on ACs needing specialist approval; link their decision for this formulation before ready=true. Reuse a prior decision only with unchanged REQ context and AC.
 Tasks can belong to any parent permitted by the schema. The default Task parent gate checks readiness. Repositories belong on tasks, not the business tree.
 A change to the text, links or parent of an object makes the criteria below it grey. Comments and priorities change no status. Only test records after the change count. Confirm wording with the owner. Only the owner accepts, after all criteria are green.
-Save the test list of a criterion with set_ac_tests, by file and test name. Record the results of each commit with joppa_record_results. One test can prove several criteria. A test without a record keeps the criterion grey.
+Save the test list of a criterion in its field tests, with save_object or the short command set_ac_tests, by test name. The tree schema block test_results gives the form of a name and every test rule. Record the results of each commit with joppa_record_results. One test can prove several criteria. A test without a record keeps the criterion grey.
 A completed task is not proof of an AC. A decision task references the actual decision comment.
 Never edit history, overwrite evidence, hide failed tests, select an older green run, or copy results to a new revision.
 Interactive browser-approved clients act as the signed-in user. Never treat that credential as a human decision: confirm wording, accept work, or record specialist decisions only on explicit user instruction. Unattended agents must use a separate agent identity.

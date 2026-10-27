@@ -487,6 +487,11 @@ fn fields(value: &Value) -> Result<()> {
     for (op, field, refusal) in [
         ("accept_commit", "commit", "acceptance needs a commit"),
         ("task", "contract", "Task needs a technical contract"),
+        (
+            "complete_task",
+            "commit",
+            "complete_task needs the git sha where the Task is ready",
+        ),
     ] {
         if value["op"] == op && value.get(field).is_none_or(Value::is_null) {
             anyhow::bail!("missing field `{field}`: {refusal}");
@@ -693,7 +698,7 @@ async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

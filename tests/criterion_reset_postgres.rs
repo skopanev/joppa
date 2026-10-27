@@ -87,9 +87,9 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     .await?;
     let schema = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, "owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure groups","types":{
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
     }})).await?;
     for (area, spec, criterion) in [("g", "r", "a"), ("h", "rh", "d")] {
         write(pool, &ws, "owner", json!({"op":"save_object","kind":"area","id":area,"revision":0,"parent":null,"data":{"title":area.to_uppercase(),"body":"Group scope","owner":"owner"},"reason":"Create the group"})).await?;
@@ -129,13 +129,15 @@ async fn upload_c1(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     .await
 }
 
-/// The owner changes the text of criterion A, so A is grey with a draft list.
+/// The owner changes the text of criterion A and keeps its tests, so A is grey until a
+/// newer record.
 async fn change_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
-    let a = read(pool, ws, "criterion:a").await?["current_revision"].clone();
-    write(pool, ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a,"parent":"spec:r","data":{"title":"a changed","owner":"owner"},"reason":"Sharper wording"})).await?;
+    let a = read(pool, ws, "criterion:a").await?;
+    let tests = a["document"]["data"]["tests"].clone();
+    write(pool, ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a["current_revision"],"parent":"spec:r","data":{"title":"a changed","owner":"owner","tests":tests},"reason":"Sharper wording"})).await?;
     let s = status(pool, ws, "criterion:a").await?;
     ensure!(
-        s["status"] == "grey" && s["tests_draft"] == true,
+        s["status"] == "grey" && s["tests"].as_array().is_some_and(|t| t.len() == 2),
         "after the change: {s}"
     );
     Ok(())

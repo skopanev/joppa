@@ -8,7 +8,7 @@ async fn an_account_without_membership_cannot_comment_on_an_object() -> Result<(
     let mut types = schema["schema"]["types"].clone();
     let question = "Which fact does this record preserve?";
     types["record"] =
-        json!({"title":"Record","role":"document","root":true,"parents":[],"question":question});
+        json!({"title":"Record","role":"document","status":"none","root":true,"parents":[],"question":question});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use a configured document type"})).await?;
     w.command(json!({"op":"save_object","kind":"record","id":"one","revision":0,"parent":null,"data":{"title":"A recorded fact","owner":"owner","body":"The current boundary"},"question_checked":question,"reason":"Prepare the comment target"})).await?;
     let absent = format!("absent-{}", uuid::Uuid::new_v4().simple());

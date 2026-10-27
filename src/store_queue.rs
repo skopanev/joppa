@@ -165,6 +165,10 @@ pub(super) async fn read(
             else {
                 continue;
             };
+            // After migrate_test_rules a Task has no verification.
+            if item["verification"].is_null() {
+                continue;
+            }
             let Some(verification) = (match status["status"].as_str() {
                 Some("green") => Some("pass"),
                 Some("red") => Some("fail"),

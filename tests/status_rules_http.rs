@@ -220,7 +220,8 @@ impl World {
         types["rule"] =
             json!({"title":"Rules","role":"requirement","parents":["area"],"status":"children"});
         types["check"] = json!({"title":"Checks","role":"ac","parents":["rule"],"status":"tests"});
-        types["memo"] = json!({"title":"Memos","role":"document","parents":["rule"]});
+        types["memo"] =
+            json!({"title":"Memos","role":"document","status":"none","parents":["rule"]});
         let task = types
             .as_object()
             .and_then(|t| t.iter().find(|(_, v)| v["role"] == "task"))
@@ -282,7 +283,7 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
             && types["rule"]["status"] == "children"
             && types["area"]["status"] == "children"
             && types["area"]["status_order"] == json!(["red", "grey", "green"])
-            && types["memo"].get("status").is_none(),
+            && types["memo"]["status"] == "none",
         "{types}"
     );
     for (field, value, error) in [
@@ -417,10 +418,17 @@ async fn type_status_rules_ac5_a_schema_without_status_rules_uses_the_defaults()
     let w = world().await?;
     let tree = w.tree().await?;
     let types = &tree["schema"]["types"];
+    // The schema of a new workspace names the rule of each type: the rules that the
+    // roles gave before.
     ensure!(
-        types
-            .as_object()
-            .is_some_and(|t| t.values().all(|v| v.get("status").is_none())),
+        types.as_object().is_some_and(|t| t.values().all(|v| {
+            let rule = match v["role"].as_str() {
+                Some("ac") => "tests",
+                Some("group" | "requirement") => "children",
+                _ => "none",
+            };
+            v["status"] == rule
+        })),
         "{types}"
     );
     let kind = |role: &str| -> Result<String> {
@@ -811,12 +819,12 @@ async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_
     let revision = w.object(&t).await?["current_revision"].clone();
     w.command(
         &w.bot,
-        json!({"op":"complete_task","id":t,"revision":revision,"evidence":"The login page works"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":t,"revision":revision,"evidence":"The login page works"}),
     )
     .await?;
     let done = w.object(&t).await?;
     ensure!(
-        done["process"]["status"] == "done" && done["process"]["verification"] == "none",
+        done["process"]["status"] == "done" && done["process"].get("verification").is_none(),
         "{}",
         done["process"]
     );
@@ -932,7 +940,7 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
     let revision = w.object(&t).await?["current_revision"].clone();
     w.command(
         &w.bot,
-        json!({"op":"complete_task","id":t,"revision":revision,"evidence":"Implemented"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":t,"revision":revision,"evidence":"Implemented"}),
     )
     .await?;
     ensure!(w.tones(&["user:u"]).await? == ["green"], "fixture 3");

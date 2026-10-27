@@ -38,7 +38,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
         json!({"op":"claim_task","id":t,"revision":read(&t).await?["current_revision"]}),
     )
     .await?;
-    w.command_as(&w.bot, json!({"op":"complete_task","id":t,"revision":read(&t).await?["current_revision"],"evidence":"Implemented the contract"})).await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":t,"revision":read(&t).await?["current_revision"],"evidence":"Implemented the contract"})).await?;
     let done = read(&t).await?;
     ensure!(
         done["current_revision"] == 4
@@ -159,7 +159,7 @@ async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Resu
             task["process"]["assignee"] == "bot" && task["process"]["status"] == "in_progress",
             "{task}"
         );
-        completions.push(json!({"command":{"op":"complete_task","id":id,"revision":task["current_revision"],"evidence":"Implemented the criterion and ran its checks"}}));
+        completions.push(json!({"command":{"op":"complete_task","commit":"c0ffee0","id":id,"revision":task["current_revision"],"evidence":"Implemented the criterion and ran its checks"}}));
     }
     mcp_value(&w, "joppa_batch", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"operations":completions})).await?;
     let mut done = vec![];

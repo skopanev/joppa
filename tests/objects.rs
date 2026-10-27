@@ -305,7 +305,7 @@ fn ac_annotations_use_one_address_and_completed_tasks_keep_their_ac() {
         "agent",
         json!({"op":"claim_task","req":"r","revision":1,"id":"t"}),
     );
-    w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"t","evidence":"Merged the change"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"t","evidence":"Merged the change"}));
     let mut next = revision(1);
     next["carry_tasks"] = json!(true);
     w.ok("agent", next);
@@ -334,7 +334,7 @@ fn completed_tasks_remain_under_removed_historical_acs() {
         "agent",
         json!({"op":"claim_task","req":"r","revision":1,"id":"t"}),
     );
-    w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"t","evidence":"Merged the change"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"t","evidence":"Merged the change"}));
     let mut next = revision(1);
     next["carry_tasks"] = json!(true);
     next["acs"] = json!([{"id":"key","text":"Before production key has exactly read and verify permissions","before_launch":true}]);
@@ -631,7 +631,7 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
     types.insert(
         "incoming".into(),
         serde_json::from_value(
-            json!({"title":"Incoming","role":"document","root":true,"parents":["*"],"inbox":true}),
+            json!({"title":"Incoming","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}),
         )
         .unwrap(),
     );
@@ -735,7 +735,7 @@ fn requirement_dependencies_follow_tests_and_completed_work_loses_verification()
         "agent",
         json!({"op":"claim_task","id":"task:dependent","revision":1}),
     );
-    w.ok("agent",json!({"op":"complete_task","id":"task:dependent","revision":2,"evidence":"Access implementation delivered"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","id":"task:dependent","revision":2,"evidence":"Access implementation delivered"}));
     let completion = w.state.task_process["task:dependent"].done.clone();
     assert_eq!(
         objects::process(&w.state, "task:dependent")["verification"],

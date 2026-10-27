@@ -85,8 +85,8 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["note"]["required_fields"] = json!({"source":"a signal needs a source"});
-    types["feedback"] = json!({"title":"Feedback","role":"document","root":true,"parents":["*"],"required_fields":{"source":"a signal needs a source"}});
-    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    types["feedback"] = json!({"title":"Feedback","role":"document","status":"none","root":true,"parents":["*"],"required_fields":{"source":"a signal needs a source"}});
+    types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]});
     let schema_command = json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Require the configured source field"});
     let error = w.refused(schema_command.clone()).await?;
     ensure!(error.contains("a signal needs a source"), "{error}");

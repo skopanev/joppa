@@ -34,12 +34,12 @@ async fn custom_verification_projection_preserves_addresses_history_and_nearest_
     }
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let types = json!({
-        "spec":{"title":"Spec","role":"requirement","root":true,"parents":["*"]},
-        "epic":{"title":"Epic","role":"requirement","root":true,"parents":["*"]},
-        "section":{"title":"Section","role":"group","root":true,"parents":["*"]},
-        "measure":{"title":"Measure","role":"ac","root":false,"parents":["*"]},
-        "rule":{"title":"Rule","role":"ac","root":false,"parents":["*"]},
-        "work":{"title":"Work","role":"task","root":false,"parents":["*"],"parent_gate":"ready"}
+        "spec":{"title":"Spec","role":"requirement","status":"children","root":true,"parents":["*"]},
+        "epic":{"title":"Epic","role":"requirement","status":"children","root":true,"parents":["*"]},
+        "section":{"title":"Section","role":"group","status":"children","root":true,"parents":["*"]},
+        "measure":{"title":"Measure","role":"ac","status":"tests","root":false,"parents":["*"]},
+        "rule":{"title":"Rule","role":"ac","status":"tests","root":false,"parents":["*"]},
+        "work":{"title":"Work","role":"task","status":"none","root":false,"parents":["*"],"parent_gate":"ready"}
     });
     apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use configured type names"})).await?;
     for (kind, id, parent, data) in [

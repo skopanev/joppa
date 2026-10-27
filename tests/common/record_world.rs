@@ -65,8 +65,8 @@ pub async fn world(tests: &[&str]) -> Result<World> {
         store::execute_remote_input(&pool, &ws, actor, &id, &command).await
     };
     write("owner", json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     }})).await?;
     write("bot", json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"})).await?;
     write("bot", json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"A","owner":"owner"},"reason":"Create"})).await?;

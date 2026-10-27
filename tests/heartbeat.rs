@@ -56,7 +56,7 @@ fn fixture(timed: bool) -> Result<Workspace> {
     at(
         &mut w,
         "owner",
-        json!({"op":"set_tree_schema","revision":revision,"types":{"job":{"title":"Jobs","role":"task","root":true,"parents":["*"]}},"reason":"Configured work"}),
+        json!({"op":"set_tree_schema","revision":revision,"types":{"job":{"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]}},"reason":"Configured work"}),
         0,
     )?;
     at(
@@ -92,7 +92,7 @@ fn elapsed_time_never_returns_claimed_work() -> Result<()> {
         at(
             &mut w,
             "bot",
-            json!({"op":"complete_task","id":"job:one","revision":2,"evidence":"Verified work"}),
+            json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":2,"evidence":"Verified work"}),
             minute,
         )?;
         assert!(w.task_process["job:one"].done.is_some());
@@ -165,7 +165,7 @@ fn journal_cutover_preserves_old_reclaims_and_delayed_completion() -> Result<()>
         22,
     )?;
     let mut live = w.clone();
-    let command = json!({"op":"complete_task","id":"job:one","revision":3,"evidence":"Verified after one day"});
+    let command = json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":3,"evidence":"Verified after one day"});
     let time = "2026-10-12T00:00:00Z";
     commands::apply(
         &mut live,
@@ -204,8 +204,7 @@ fn only_the_holder_or_workspace_owner_can_release_and_old_holder_cannot_complete
     )?;
     assert_eq!(w.objects["job:one"].current().data, document);
     let before = serde_json::to_value(&w)?;
-    let command =
-        json!({"op":"complete_task","id":"job:one","revision":3,"evidence":"Late completion"});
+    let command = json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":3,"evidence":"Late completion"});
     assert_eq!(
         at(&mut w, "bot", command, 11).unwrap_err().to_string(),
         "Task is not claimed unfinished work"
@@ -219,8 +218,7 @@ fn only_the_holder_or_workspace_owner_can_release_and_old_holder_cannot_complete
     )?;
     let before = serde_json::to_value(&w)?;
     for actor in ["bot", "owner"] {
-        let command =
-            json!({"op":"complete_task","id":"job:one","revision":4,"evidence":"Late completion"});
+        let command = json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":4,"evidence":"Late completion"});
         assert_eq!(
             at(&mut w, actor, command, 12).unwrap_err().to_string(),
             "Task is not claimed unfinished work"

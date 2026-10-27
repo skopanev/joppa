@@ -31,10 +31,10 @@ struct World {
 }
 
 const TYPES: &str = r#"{
-    "component":{"title":"Components","role":"group","root":true,"parents":[]},
-    "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-    "ac":{"title":"Criteria","role":"ac","parents":["requirement"]},
-    "task":{"title":"Tasks","role":"task","parents":["ac"]}
+    "component":{"title":"Components","role":"group","status":"children","root":true,"parents":[]},
+    "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
+    "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
+    "task":{"title":"Tasks","role":"task","status":"none","parents":["ac"]}
 }"#;
 
 async fn workspace(pool: &deadpool_postgres::Pool, prefix: &str, alex: bool) -> Result<String> {
@@ -422,7 +422,7 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     let status = &read["remote_links"][0]["status"];
     ensure!(
         *status
-            == json!({"access":true,"present":true,"current_revision":pin,"review_required":false,"satisfied":false}),
+            == json!({"access":true,"present":true,"current_revision":pin,"contract_revision":pin,"review_required":false,"satisfied":false}),
         "{read}"
     );
     // C changes its contract: the pinned link now asks for a review.
@@ -834,7 +834,7 @@ async fn complete(w: &World) -> Result<Result<Value, String>> {
     w.command(
         &w.bot,
         &w.p,
-        json!({"op":"complete_task","id":"task:t","revision":t,"evidence":"Called the API"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":"task:t","revision":t,"evidence":"Called the API"}),
     )
     .await
 }

@@ -122,7 +122,7 @@ async fn an_owner_schema_save_over_http_adds_one_revision_and_keeps_the_old_one(
         "risk already exists: {before}"
     );
     let mut types = old_types.clone();
-    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"]});
+    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"]});
     let reply = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
@@ -181,8 +181,8 @@ async fn an_owner_schema_save_on_a_stale_revision_over_http_is_refused_and_chang
     let mut risk = before["schema"]["types"].clone();
     ensure!(risk.get("risk").is_none(), "risk already exists: {before}");
     let mut job = risk.clone();
-    risk["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"]});
-    job["job"] = json!({"title":"Jobs","role":"task","root":true,"parents":["*"]});
+    risk["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"]});
+    job["job"] = json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":n,"types":risk,"reason":"Add risk"}))
         .await?;
     let control = tree(&w).await?;

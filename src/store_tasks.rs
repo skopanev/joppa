@@ -425,7 +425,7 @@ pub(super) fn queue_entries(
             "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
             "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at,
             "claim":t.claim,"unclaimed_eligible":unclaimed_error.is_none(),"unclaimed_error":unclaimed_error,
-            "origin_revision":t.origin_revision,"verification":crate::objects::verification(state,key),"signal":crate::objects::signal(state,key),
+            "origin_revision":t.origin_revision,"verification":(!state.test_rules_migrated).then(|| crate::objects::verification(state,key)),"signal":crate::objects::signal(state,key),
             "claim_req":crate::tasks::requirement(state,key)
         })));
     }

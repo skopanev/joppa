@@ -37,13 +37,27 @@ fn a_recorded_skip_or_todo_is_never_a_pass() {
     let x = tests(&["x"]);
     let reports = [record(1, "c1", 1, 10), record(2, "c1", 2, 20)];
     let rows = [result(1, "x", "pass"), result(2, "x", "skipped")];
-    let s = criterion_status(&x, false, Boundary::None, &reports, &rows);
+    let s = criterion_status(
+        &x,
+        false,
+        Boundary::None,
+        &reports,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "skipped")
     );
     let rows = [result(1, "x", "pass"), result(2, "x", "todo")];
-    let s = criterion_status(&x, false, Boundary::None, &reports, &rows);
+    let s = criterion_status(
+        &x,
+        false,
+        Boundary::None,
+        &reports,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "todo")
@@ -56,7 +70,14 @@ fn an_omitted_test_gets_no_result_and_is_never_missing() {
     let listed = tests(&["p", "f", "o"]);
     let reports = [record(1, "c1", 1, 10)];
     let rows = [result(1, "p", "pass"), result(1, "f", "fail")];
-    let s = criterion_status(&listed, false, Boundary::None, &reports, &rows);
+    let s = criterion_status(
+        &listed,
+        false,
+        Boundary::None,
+        &reports,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     let statuses: Vec<_> = s.tests.iter().map(|t| t.status.as_str()).collect();
     assert_eq!(statuses, ["pass", "fail", "not_run"]);
     assert_eq!(s.status, "red");
@@ -70,12 +91,20 @@ fn records_after_a_change_combine_and_the_latest_record_decides() {
     let reports = [record(1, "c1", 1, 101), record(2, "c1", 2, 102)];
     let rows = [result(1, "x", "pass"), result(2, "y", "pass")];
     assert_eq!(
-        criterion_status(&both, false, at, &reports, &rows).status,
+        criterion_status(
+            &both,
+            false,
+            at,
+            &reports,
+            &rows,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "green"
     );
     let old = [record(1, "c1", 1, 99), record(2, "c1", 2, 100)];
     assert_eq!(
-        criterion_status(&both, false, at, &old, &rows).status,
+        criterion_status(&both, false, at, &old, &rows, &joppa::test_rules::legacy()).status,
         "grey"
     );
     let later = [
@@ -89,7 +118,15 @@ fn records_after_a_change_combine_and_the_latest_record_decides() {
         result(3, "x", "fail"),
     ];
     assert_eq!(
-        criterion_status(&both, false, at, &later, &rows).status,
+        criterion_status(
+            &both,
+            false,
+            at,
+            &later,
+            &rows,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "red"
     );
 }

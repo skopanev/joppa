@@ -219,6 +219,10 @@ pub fn apply(
                     t.revisions
                         .iter()
                         .any(|r| r.actor == actor && r.position > claim.position)
+                }) || w.objects.get(&key).is_some_and(|o| {
+                    o.revisions
+                        .iter()
+                        .any(|r| r.actor == actor && r.position > claim.position)
                 }),
                 "planning produced no Task changes"
             );

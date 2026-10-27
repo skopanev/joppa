@@ -34,13 +34,13 @@ fn setup_custom() -> World {
         json!({"op":"enroll_service","id":"runner","role":"runner"}),
     );
     let types = json!({
-        "spec":{"title":"Spec","role":"requirement","root":true,"parents":["*"]},
-        "epic":{"title":"Epic","role":"requirement","root":true,"parents":["*"]},
-        "section":{"title":"Section","role":"group","root":true,"parents":["*"]},
-        "measure":{"title":"Measure","role":"ac","root":false,"parents":["*"]},
-        "rule":{"title":"Rule","role":"ac","root":false,"parents":["*"]},
-        "work":{"title":"Work","role":"task","root":false,"parents":["*"],"parent_gate":"ready"},
-        "source":{"title":"Input","role":"document","root":true,"parents":["*"],"inbox":true}
+        "spec":{"title":"Spec","role":"requirement","status":"children","root":true,"parents":["*"]},
+        "epic":{"title":"Epic","role":"requirement","status":"children","root":true,"parents":["*"]},
+        "section":{"title":"Section","role":"group","status":"children","root":true,"parents":["*"]},
+        "measure":{"title":"Measure","role":"ac","status":"tests","root":false,"parents":["*"]},
+        "rule":{"title":"Rule","role":"ac","status":"tests","root":false,"parents":["*"]},
+        "work":{"title":"Work","role":"task","status":"none","root":false,"parents":["*"],"parent_gate":"ready"},
+        "source":{"title":"Input","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}
     });
     w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure all type names"}));
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
@@ -202,7 +202,7 @@ fn configured_types_verify_without_default_type_names_and_keep_ids_separate() {
     );
     let cmd = json!({"op":"claim_task","id":"work:implement","revision":1});
     w.ok("agent", cmd);
-    w.ok("agent",json!({"op":"complete_task","id":"work:implement","revision":2,"evidence":"The change exists"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","id":"work:implement","revision":2,"evidence":"The change exists"}));
     assert_eq!(
         objects::verification(&w.state, "measure:same"),
         "unverified"
@@ -353,8 +353,8 @@ fn custom_workflow_ids_do_not_collide_with_legacy_verification_ids() {
     let mut types = objects::schema(&w.state).types;
     let custom: std::collections::BTreeMap<String, objects::TreeType> =
         serde_json::from_value(json!({
-            "spec":{"title":"Spec","role":"requirement","root":true,"parents":["*"]},
-            "measure":{"title":"Measure","role":"ac","root":false,"parents":["*"]}
+            "spec":{"title":"Spec","role":"requirement","status":"children","root":true,"parents":["*"]},
+            "measure":{"title":"Measure","role":"ac","status":"tests","root":false,"parents":["*"]}
         }))
         .unwrap();
     types.extend(custom);
@@ -406,8 +406,8 @@ fn old_type_names_do_not_select_verification_when_the_schema_assigns_other_roles
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":0,"types":{
-        "requirement":{"title":"Group","role":"group","root":true,"parents":[]},
-        "ac":{"title":"Input","role":"document","root":true,"parents":["*"],"inbox":true}
+        "requirement":{"title":"Group","role":"group","status":"children","root":true,"parents":[]},
+        "ac":{"title":"Input","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}
     },"reason":"Configure behavior independently of type names"}),
     );
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();

@@ -41,7 +41,7 @@ fn revision(w: &World) -> u32 {
 }
 
 fn epic() -> Value {
-    json!({"title":"Epic","role":"group","root":true,"parents":[]})
+    json!({"title":"Epic","role":"group","status":"children","root":true,"parents":[]})
 }
 
 #[test]
@@ -214,7 +214,7 @@ fn a_replayed_node_change_rebuilds_the_same_schema() {
 fn one_command_removes_a_reference_target_and_its_user_together() {
     let mut w = migrated();
     let r = revision(&w);
-    let release = json!({"title":"Release","role":"group","root":true,"parents":[],
+    let release = json!({"title":"Release","role":"group","status":"children","root":true,"parents":[],
                          "references":{"epic":{"target":"epic","title":"Epic"}}});
     w.ok(
         "agent",

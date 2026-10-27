@@ -24,6 +24,7 @@ fn rule(target: &str, multiple: bool, required: bool) -> ReferenceRule {
         multiple,
         required,
         verification_subject: false,
+        allow_all: false,
     }
 }
 
@@ -58,7 +59,7 @@ fn custom_task_references_use_the_schema_without_consumers_or_projects() {
         "agent",
         json!({"op":"claim_task","id":"task:custom","revision":revision}),
     );
-    w.ok("agent",json!({"op":"complete_task","id":"task:custom","revision":revision+1,"evidence":"Implemented the contract"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","id":"task:custom","revision":revision+1,"evidence":"Implemented the contract"}));
     assert!(w.state.task_process["task:custom"].done.is_some());
 }
 

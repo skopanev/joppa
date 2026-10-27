@@ -29,7 +29,7 @@ async fn completing_a_task_stores_exact_evidence_and_bot_event_actor() -> Result
         claimed["process"]["status"] == "in_progress" && claimed["process"]["assignee"] == "bot",
         "{claimed}"
     );
-    w.command_as(&w.bot, json!({"op":"complete_task","id":address,"revision":claimed["current_revision"],"evidence":evidence})).await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":claimed["current_revision"],"evidence":evidence})).await?;
     let tool = read(address).await?;
     ensure!(
         tool["process"]["status"] == "done" && tool["process"]["done"] == evidence,

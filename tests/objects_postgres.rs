@@ -190,7 +190,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
             references: Default::default(),
             required_fields: Default::default(),
             parent_decision: false,
-            status: None,
+            status: Some("none".into()),
             status_order: None,
             process_fields: None,
             inbox: None,
@@ -248,8 +248,9 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", None).await?["current_revision"],
-        // migrate_consumers adds one revision: one consumer per criterion.
-        7
+        // migrate_consumers adds one revision: one consumer per criterion. migrate_test_rules
+        // adds one more: the test rules and the status rule of each type.
+        8
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", Some(0)).await?["schema"]["revision"],

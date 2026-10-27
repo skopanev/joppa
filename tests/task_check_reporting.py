@@ -99,13 +99,14 @@ with tempfile.TemporaryDirectory(prefix='joppa-task-reporter-') as temp:
             return receipt
         success = report(0)
         passed = call('joppa_objects', address='task:one')
-        assert passed['process']['verification'] == 'pass'
+        # A Task shows its own state: a run records its outcome on the requirement, not on the Task.
+        assert 'verification' not in passed['process']
         assert passed['process']['status'] == 'open'
         assert call('joppa_read',req='r')['requirement']['revisions'][0]['confirmed'] is False
         manifest['checks'][0]['command'] = ['/bin/false']
         failure = report(1)
         failed = call('joppa_objects', address='task:one')
-        assert failed['process']['verification'] == 'fail'
+        assert 'verification' not in failed['process']
         assert failed['process']['status'] == 'open'
         source = call('joppa_read',req='r')['requirement']['revisions'][0]
         assert source['runs'][success['run']]['results']['[a] exact process']['outcome'] == 'pass'

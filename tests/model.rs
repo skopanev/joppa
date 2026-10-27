@@ -46,7 +46,7 @@ fn independent_acs_and_cross_repository_tasks_do_not_fake_green() {
     w.ok("agent", assess("key", false));
     let mut task = json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement iOS access","acs":["ios"],"projects":["app","backend","infra"],"purpose":"implementation","assignee":"agent"});
     w.ok("agent", task.clone());
-    w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"t","evidence":"three changes merged"}));
+    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"t","evidence":"three changes merged"}));
     assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "n/a");
     task["id"] = json!("t2");
     task["acs"] = json!(["key"]);
@@ -64,7 +64,7 @@ fn unassigned_task_can_be_claimed_only_when_its_ac_is_ready() {
     w.no("agent", claim.clone());
     w.no(
         "agent",
-        json!({"op":"complete_task","req":"r","revision":1,"id":"free","evidence":"merge"}),
+        json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"free","evidence":"merge"}),
     );
     w.ok("agent", assess("ios", true));
     w.ok("agent", claim.clone());
@@ -82,7 +82,7 @@ fn unassigned_task_can_be_claimed_only_when_its_ac_is_ready() {
     );
     w.ok(
         "owner",
-        json!({"op":"complete_task","req":"r","revision":1,"id":"free","evidence":"merge abc"}),
+        json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"free","evidence":"merge abc"}),
     );
     assert_eq!(w.summary(1)["acs"]["ios"]["verification"], "n/a");
 }
@@ -110,7 +110,7 @@ fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
     for id in ["finished", "ongoing"] {
         w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
         if id == "finished" {
-            w.ok("agent",json!({"op":"complete_task","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
+            w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
         }
     }
     let mut next = revision(1);
@@ -124,7 +124,7 @@ fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
     );
     assert!(r.tasks.values().all(|task| task.review_required));
     assert_eq!(r.tasks["ongoing"].origin_revision, 1);
-    let complete = json!({"op":"complete_task","req":"r","revision":2,"id":"ongoing","evidence":"merged build def"});
+    let complete = json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":2,"id":"ongoing","evidence":"merged build def"});
     w.no("agent", complete.clone());
     let review = json!({"op":"review_task","req":"r","revision":2,"id":"ongoing","ac":"ios","reason":"Still implements unchanged iOS condition"});
     w.no("agent", review.clone());
@@ -170,7 +170,7 @@ fn later_revision_recovers_historical_tasks_and_owner_can_retire_one() {
     );
     w.no(
         "agent",
-        json!({"op":"complete_task","req":"r","revision":3,"id":"old","evidence":"merged"}),
+        json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":3,"id":"old","evidence":"merged"}),
     );
     let mut fourth = revision(3);
     fourth["carry_tasks"] = json!(true);

@@ -45,18 +45,15 @@ pub(super) async fn list_rows(
             WHERE p.parent IS NOT NULL AND p.kind<>ALL($11::text[]) AND p.kind<>ALL($12::text[])
         ), work_counts AS (
             SELECT address,COUNT(*) FILTER (WHERE status NOT IN ('done','retired') AND NOT blocked) AS active,
-                COUNT(*) FILTER (WHERE status='done') AS done,COUNT(*) FILTER (WHERE status='retired') AS retired,
-                COUNT(*) FILTER (WHERE status='done' AND verification='pass') AS done_pass,
-                COUNT(*) FILTER (WHERE status='done' AND verification='fail') AS done_fail,
-                COUNT(*) FILTER (WHERE status='done' AND verification NOT IN ('pass','fail')) AS done_unverified
+                COUNT(*) FILTER (WHERE status='done') AS done,COUNT(*) FILTER (WHERE status='retired') AS retired
             FROM task_parents GROUP BY address
         )
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,
             (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
-            jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0),
-                'done_verification',jsonb_build_object('pass',COALESCE(w.done_pass,0),'fail',COALESCE(w.done_fail,0),'unverified',COALESCE(w.done_unverified,0)))::text,o.process::text
+            jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text,o.process::text,
+            CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END
         FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address
@@ -117,7 +114,7 @@ pub(super) async fn list_rows(
         rows
     };
     let more = rows.len() > limit;
-    let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
+    let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"contract_revision":r.get::<_,i32>(17),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     for (item, row) in items.iter_mut().zip(rows.iter()) {
         if criterion_kinds
             .iter()

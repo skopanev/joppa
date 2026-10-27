@@ -330,6 +330,7 @@ pub fn apply(
                     purpose: purpose.clone(),
                     assignee: assignee.clone(),
                     done: None,
+                    commit: None,
                     contract: contract.clone(),
                     created_at: position,
                     created_by: actor.into(),
@@ -485,6 +486,7 @@ pub fn apply(
             revision: n,
             id,
             evidence,
+            ..
         } => {
             nonempty(evidence)?;
             let decisions = w

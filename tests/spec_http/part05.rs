@@ -6,7 +6,7 @@
 async fn refused_completion(w: &World, token: &str, address: &str, mcp: bool) -> Result<Value> {
     let task = w.get(&format!("address={address}")).await?;
     let saved = saved_rows(w).await?;
-    let complete = json!({"op":"complete_task","id":address,"revision":task["current_revision"],"evidence":"Implemented the contract and recorded checks"});
+    let complete = json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":task["current_revision"],"evidence":"Implemented the contract and recorded checks"});
     let request = json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":complete});
     let error = if mcp {
         let result = mcp_call(
@@ -80,7 +80,7 @@ async fn blank_completion_evidence_is_refused_over_http_and_mcp() -> Result<()> 
         .await?
         .get(0);
     let request_id = uuid::Uuid::new_v4().to_string();
-    let complete = json!({"op":"complete_task","id":"task:blank-evidence","revision":claimed["current_revision"],"evidence":"  "});
+    let complete = json!({"op":"complete_task","commit":"c0ffee0","id":"task:blank-evidence","revision":claimed["current_revision"],"evidence":"  "});
     let response = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))

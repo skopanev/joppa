@@ -42,9 +42,9 @@ async fn write(
 
 fn types() -> Value {
     json!({
-        "domain":{"title":"Domains","role":"group","root":true,"parents":[]},
-        "requirement":{"title":"Requirements","role":"requirement","parents":["domain"]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["domain"]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     })
 }
 

@@ -33,7 +33,7 @@ pub use grants::{
 mod record_results;
 #[path = "store_reports.rs"]
 mod reports;
-pub use record_results::{RECORD_MAX, record_results};
+pub use record_results::record_results;
 pub use reports::{criterion_tests, task_status, tests_overview};
 #[path = "store_tasks.rs"]
 mod tasks;
@@ -85,6 +85,7 @@ async fn ensure_notes(
             !state.consumer_drops_noted,
             Command::MigrateConsumerDrops {},
         ),
+        (!state.test_rules_migrated, Command::MigrateTestRules {}),
     ] {
         if !needed {
             continue;

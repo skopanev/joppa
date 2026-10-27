@@ -202,7 +202,7 @@ async fn block_and_blocked_task_actions_refuse_exact_cases_over_http_and_mcp() -
         "Task is blocked for planning",
     )
     .await?;
-    refuse_task_action(&w, "L completes blocked T", l, json!({"op":"complete_task","id":"task:t","revision":5,"evidence":"Implemented and checked"}), "Task is not claimed unfinished work").await?;
+    refuse_task_action(&w, "L completes blocked T", l, json!({"op":"complete_task","commit":"c0ffee0","id":"task:t","revision":5,"evidence":"Implemented and checked"}), "Task is not claimed unfinished work").await?;
     refuse_task_action(
         &w,
         "S releases blocked T",

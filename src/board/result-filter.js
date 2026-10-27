@@ -5,6 +5,8 @@ import {state} from 'board/state.js';
 import {E} from 'board/dom.js';
 export function valueSignal(item){
   const key=state.resultValue;const tone=key&&item.signal?.tone?item.value_tones?.[key]:undefined;
+  // A value that does not apply to the criterion has the tone none.
+  if(tone==='none')return {...item.signal,tone:'grey',label:'Not for '+key.replace(':',' = ')};
   return tone?{...item.signal,tone,label:item.signal.label+' ('+key.replace(':',' = ')+')'}:item.signal;
 }
 // The test status of a criterion for the selected value, or its own status.

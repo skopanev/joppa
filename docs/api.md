@@ -88,7 +88,7 @@ claim_next_task: project (optional), purpose (optional), priorities (optional
       the same project, purpose and priorities. It applies the same ordering and
       returns no Task when none is available; a later claim_task may lose a race.
 release_task: revision, id, reason; the holder or workspace owner returns unfinished work to the queue
-complete_task: revision, id, evidence; only the current holder completes claimed work
+complete_task: revision, id, evidence, commit; only the current holder completes claimed work, and commit is the git sha where the Task is ready
       A decision Task under the default AC gate needs the actual specialist decision comment ID.
 review_task: revision, id, reason; Task owner or workspace owner confirms the current parent contract
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result

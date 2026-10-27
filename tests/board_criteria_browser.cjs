@@ -6,7 +6,7 @@ const {readFileSync} = require('node:fs');
 const path = require('node:path');
 const {fixture, root} = require('./board_fixture.cjs');
 
-const domains = {domain: {title: 'Domains', role: 'group', root: true, parents: [], badge: 'D'}};
+const domains = {domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'D'}};
 
 test('ea0ca1c0 history-tab: History pages 25 rows with Load more, dates and Show processed too', async () => {
   const f = await fixture(domains);
@@ -42,8 +42,8 @@ test('ea0ca1c0 history-tab: History pages 25 rows with Load more, dates and Show
 
 test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its tone', async () => {
   const types = {
-    requirement: {title: 'Requirements', role: 'requirement', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', parents: ['requirement']},
+    requirement: {title: 'Requirements', role: 'requirement', status:'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement']},
   };
   const statuses = [{tone: 'green', light: '#22a559', dark: '#2fbf6a'}, {tone: 'grey', light: '#c8c3b8', dark: '#8a8f96'}];
   const f = await fixture(types, statuses);
@@ -69,9 +69,9 @@ test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its to
 
 test('5c9f319a tree-lanes: two edges never share one vertical segment', async () => {
   const types = {
-    alpha: {title: 'Alpha', role: 'group', root: true, parents: []},
-    beta: {title: 'Beta', role: 'group', root: true, parents: []},
-    child: {title: 'Child', role: 'document', parents: ['alpha', 'beta']},
+    alpha: {title: 'Alpha', role: 'group', status:'children', root: true, parents: []},
+    beta: {title: 'Beta', role: 'group', status:'children', root: true, parents: []},
+    child: {title: 'Child', role: 'document', status:'none', parents: ['alpha', 'beta']},
   };
   const f = await fixture(types);
   try {

@@ -4,10 +4,66 @@
 //! status from the results with that value: the latest result of a test for that value
 //! decides the test. The criterion status combines the values: red when one value is red,
 //! green when every value is green, and grey otherwise. A value without results is grey.
-//! A workspace without a board field keeps the status of all its results.
+//! A result without the field counts for every value, such as a shared backend test.
+//! A board field can name the reference field of a criterion that lists the values that
+//! apply to it, or holds the explicit value all. A value that does not apply has the status
+//! n/a and does not count. A workspace without a board field keeps the status of all its
+//! results.
 use crate::ac_tests::{Boundary, CriterionStatus, Report, TestResult, criterion_status};
+use crate::result_shape::ResultShape;
 use anyhow::Result;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
+use std::collections::BTreeSet;
+
+/// A board field with its values: the enum values in the schema order, or the present
+/// objects of the target type of a ref field.
+#[derive(Clone, Debug)]
+pub struct BoardField {
+    pub name: String,
+    pub values: Vec<String>,
+    pub applies: Option<String>,
+}
+
+/// The board fields of the block of the workspace.
+pub fn board_fields(shape: &ResultShape, w: &crate::model::Workspace) -> Vec<BoardField> {
+    shape
+        .fields
+        .iter()
+        .filter(|f| f.board)
+        .map(|f| BoardField {
+            name: f.name.clone(),
+            values: match &f.target {
+                Some(target) => w
+                    .objects
+                    .values()
+                    .filter(|o| &o.kind == target && o.current().present)
+                    .map(|o| o.id.clone())
+                    .collect(),
+                None => f.values.clone(),
+            },
+            applies: f.applies.clone(),
+        })
+        .collect()
+}
+
+/// The values of a board field that apply to a criterion document.
+fn applying(field: &BoardField, data: &Value) -> BTreeSet<String> {
+    let all = || field.values.iter().cloned().collect();
+    let Some(name) = &field.applies else {
+        return all();
+    };
+    match data.get(name) {
+        Some(Value::Array(list)) => list
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|v| v.rsplit(':').next().unwrap_or(v).to_owned())
+            .collect(),
+        Some(Value::String(v)) if v != "all" => {
+            [v.rsplit(':').next().unwrap_or(v).to_owned()].into()
+        }
+        _ => all(),
+    }
+}
 
 /// Test statuses from the worst to the best. The criterion shows the worst of the values.
 const WORST_FIRST: [&str; 5] = ["fail", "not_run", "skipped", "todo", "pass"];
@@ -15,39 +71,47 @@ const WORST_FIRST: [&str; 5] = ["fail", "not_run", "skipped", "todo", "pass"];
 const OWN_REASONS: [&str; 3] = ["no tests", "tests_draft", "the reset time cannot be read"];
 
 /// The criterion status with `values`: for each board field, the status of each value.
+#[allow(clippy::too_many_arguments)]
 pub fn status_by_value(
     tests: &[String],
     draft: bool,
     boundary: Boundary,
     reports: &[Report],
     own: &[(i64, TestResult)],
-    board: &[(String, Vec<String>)],
+    rules: &ResultShape,
+    board: &[BoardField],
+    data: &Value,
 ) -> Result<Value> {
-    let base = criterion_status(tests, draft, boundary, reports, own);
+    let base = criterion_status(tests, draft, boundary, reports, own, rules);
     if board.is_empty() {
         return Ok(serde_json::to_value(base)?);
     }
     let mut values = Map::new();
     let mut all = vec![];
-    for (field, list) in board {
+    for field in board {
+        let applies = applying(field, data);
         let mut by_value = Map::new();
-        for value in list {
+        for value in &field.values {
+            if !applies.contains(value) {
+                by_value.insert(value.clone(), json!({"status": "n/a"}));
+                continue;
+            }
             let mine: Vec<(i64, TestResult)> = own
                 .iter()
                 .filter(|(_, r)| {
                     r.fields
                         .as_ref()
-                        .and_then(|f| f.get(field))
+                        .and_then(|f| f.get(&field.name))
                         .and_then(Value::as_str)
-                        == Some(value.as_str())
+                        .is_none_or(|v| v == value)
                 })
                 .cloned()
                 .collect();
-            let status = criterion_status(tests, draft, boundary, reports, &mine);
+            let status = criterion_status(tests, draft, boundary, reports, &mine, rules);
             by_value.insert(value.clone(), serde_json::to_value(&status)?);
             all.push(status);
         }
-        values.insert(field.clone(), Value::Object(by_value));
+        values.insert(field.name.clone(), Value::Object(by_value));
     }
     let mut status = serde_json::to_value(combine(base, &all))?;
     status["values"] = Value::Object(values);

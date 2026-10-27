@@ -38,7 +38,7 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
                 && claimed["process"]["assignee"] == "bot",
             "{claimed}"
         );
-        w.command_as(&w.bot, json!({"op":"complete_task","id":address,"revision":claimed["current_revision"],"evidence":"Implemented the contract; test evidence is still absent"})).await?;
+        w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":claimed["current_revision"],"evidence":"Implemented the contract; test evidence is still absent"})).await?;
         let http: Value = w
             .http
             .get(format!("{}/api/workspaces/{}/objects", w.root, w.ws))
@@ -53,7 +53,7 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
         ensure!(http == tool, "HTTP and MCP disagree: {http} / {tool}");
         ensure!(
             http["process"]["status"] == "done"
-                && http["process"]["verification"] == "unverified"
+                && http["process"].get("verification").is_none()
                 && http["document"]["actor"] == "bot",
             "{http}"
         );
@@ -108,7 +108,7 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         .await?;
     w.command_as(
         &w.bot,
-        json!({"op":"complete_task","id":task,"revision":2,"evidence":"Implemented the contract"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":task,"revision":2,"evidence":"Implemented the contract"}),
     )
     .await?;
     let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
@@ -116,14 +116,14 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
     let object = mcp("joppa_objects", json!({"workspace":w.ws,"address":task})).await?;
     ensure!(
         object["process"]["status"] == "done"
-            && object["process"]["verification"] == "pass"
+            && object["process"].get("verification").is_none()
             && object["signal"]["tone"] == "green"
-            && object["signal"]["label"] == "Work complete · Checks passed",
+            && object["signal"]["label"] == "Work complete",
         "{object}"
     );
     let tests = mcp("joppa_tests", json!({"workspace":w.ws,"task":task})).await?;
     ensure!(
-        tests["verification"] == "passed" && tests["criterion"]["status"] == "green",
+        tests["done"] == true && tests["commit"] == "c0ffee0",
         "{tests}"
     );
     let list = mcp(
@@ -137,12 +137,12 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         .ok_or_else(|| anyhow::anyhow!("the list needs the task: {list}"))?;
     ensure!(
         row["process"]["status"] == "done"
-            && row["process"]["verification"] == "pass"
+            && row["process"].get("verification").is_none()
             && row["signal"]["tone"] == "green"
-            && row["signal"]["label"] == "Work complete · Checks passed",
+            && row["signal"]["label"] == "Work complete",
         "{row}"
     );
-    // The Task queue reads the same verification and signal.
+    // The Task queue reads the same state and signal.
     let queue = mcp("joppa_tasks", json!({"workspace":w.ws,"view":"all"})).await?;
     let entry = queue["tasks"]
         .as_array()
@@ -150,12 +150,12 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         .ok_or_else(|| anyhow::anyhow!("the queue needs the task: {queue}"))?;
     ensure!(
         entry["status"] == "done"
-            && entry["verification"] == "pass"
+            && entry["verification"].is_null()
             && entry["signal"]["tone"] == "green"
-            && entry["signal"]["label"] == "Work complete · Checks passed",
+            && entry["signal"]["label"] == "Work complete",
         "{entry}"
     );
-    // A new test list that has not run makes the criterion grey, so T reads Unverified.
+    // A new test list that has not run makes the criterion grey, and T stays complete.
     w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights","checks.rs > new key check"],"reason":"Add a check that has not run"})).await?;
     let object = mcp("joppa_objects", json!({"workspace":w.ws,"address":task})).await?;
     let list = mcp(
@@ -170,9 +170,9 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
     for read in [&object, row] {
         ensure!(
             read["process"]["status"] == "done"
-                && read["process"]["verification"] == "unverified"
-                && read["signal"]["tone"] == "grey"
-                && read["signal"]["label"] == "Work complete · Unverified",
+                && read["process"].get("verification").is_none()
+                && read["signal"]["tone"] == "green"
+                && read["signal"]["label"] == "Work complete",
             "{read}"
         );
     }
@@ -193,7 +193,7 @@ async fn an_unreadable_task_criterion_keeps_a_mixed_list_readable() -> Result<()
         json!({"op":"claim_task","id":"task:checked","revision":1}),
     )
     .await?;
-    w.command_as(&w.bot, json!({"op":"complete_task","id":"task:checked","revision":2,"evidence":"Implemented the contract"})).await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":"task:checked","revision":2,"evidence":"Implemented the contract"})).await?;
     let all = w.get("parent=*&limit=100").await?;
     let addresses: Vec<&str> = all["items"]
         .as_array()
@@ -210,10 +210,10 @@ async fn an_unreadable_task_criterion_keeps_a_mixed_list_readable() -> Result<()
         "{addresses:?}"
     );
     let broken = w.pool.get().await?.execute(
-        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='ac_tests' AND key='ac:aaa-rule'",
+        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='objects' AND key='ac:aaa-rule'",
         &[&w.ws],
     ).await?;
-    ensure!(broken == 1, "the saved list must exist");
+    ensure!(broken == 1, "the criterion document must exist");
     // The page holds requirement:key with its summary and the Task, but not requirement:aaa.
     let page = w
         .get(&format!(
@@ -227,9 +227,9 @@ async fn an_unreadable_task_criterion_keeps_a_mixed_list_readable() -> Result<()
             && summary["verification_summary"]["total"] == 1
             && task["address"] == "task:checked"
             && task["process"]["status"] == "done"
-            && task["process"]["verification"] == "unverified"
-            && task["signal"]["tone"] == "grey"
-            && task["signal"]["label"] == "Work complete · Unverified",
+            && task["process"].get("verification").is_none()
+            && task["signal"]["tone"] == "green"
+            && task["signal"]["label"] == "Work complete",
         "{page}"
     );
     Ok(())

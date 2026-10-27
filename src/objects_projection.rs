@@ -108,7 +108,10 @@ pub(in crate::store) async fn rebuild(
         .map(|(kind, _)| kind.clone())
         .collect();
     add_verification_summaries(client, workspace, &mut items, &types).await?;
-    add_status_tones(client, workspace, &mut items, &types, None).await?;
+    // Before migrate_test_rules a done Task that links to a node counted with the status
+    // of its parent criterion. After it a Task counts with its own tone.
+    let task_parents = !state.test_rules_migrated;
+    add_status_tones(client, workspace, &mut items, &types, None, task_parents).await?;
     super::value_tones::add(client, workspace, state, &base, &mut items, &types).await?;
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts, &criteria).await?;

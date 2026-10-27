@@ -89,8 +89,8 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["observation"] =
-        json!({"title":"Observation","role":"document","root":true,"parents":["*"]});
-    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+        json!({"title":"Observation","role":"document","status":"none","root":true,"parents":["*"]});
+    types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Add ordinary document types"})).await?;
     for id in ["original", "archived"] {
         w.command(json!({"op":"save_object","kind":"observation","id":id,"revision":0,"parent":null,"data":{"title":"An observation","owner":"owner","description":"Original text"},"reason":"Keep original text"})).await?;

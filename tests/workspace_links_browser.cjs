@@ -6,8 +6,8 @@ const {fixture} = require('./board_fixture.cjs');
 
 test('node-workspace-ac7 board: a node shows its child workspace and its links to another workspace', async () => {
   const f = await fixture({
-    component: {title: 'Components', role: 'group', root: true, parents: []},
-    note: {title: 'Notes', role: 'document', root: true, parents: ['*']},
+    component: {title: 'Components', role: 'group', status:'children', root: true, parents: []},
+    note: {title: 'Notes', role: 'document', status:'none', root: true, parents: ['*']},
   });
   try {
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));

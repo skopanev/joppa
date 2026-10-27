@@ -124,16 +124,17 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     .await?;
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     let current = task_detail(&pool, &ws, &address).await?;
-    apply(&pool, &ws, "agent", json!({"op":"complete_task","id":address,"revision":current["current_revision"],"evidence":"The fixture implementation is complete"})).await?;
+    apply(&pool, &ws, "agent", json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":current["current_revision"],"evidence":"The fixture implementation is complete"})).await?;
     let done = candidates(&pool, &ws).await?;
     assert_eq!(criteria(&done), vec!["ios"]);
     assert_eq!(
         done["items"][0]["work_summary"],
-        json!({"active":0,"done":1,"retired":0,"done_verification":{"pass":0,"fail":0,"unverified":1}})
+        json!({"active":0,"done":1,"retired":0})
     );
-    assert_eq!(
-        task_detail(&pool, &ws, &address).await?["process"]["verification"],
-        "unverified"
+    assert!(
+        task_detail(&pool, &ws, &address).await?["process"]
+            .get("verification")
+            .is_none()
     );
     apply(&pool, &ws, "agent", task("two")).await?;
     let all = store::task_queue(&pool, &ws, "agent", "all", 100, None).await?;
@@ -148,7 +149,7 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
     assert_eq!(criteria(&retired_page), vec!["ios"]);
     assert_eq!(
         retired_page["items"][0]["work_summary"],
-        json!({"active":0,"done":1,"retired":1,"done_verification":{"pass":0,"fail":0,"unverified":1}})
+        json!({"active":0,"done":1,"retired":1})
     );
     assert_eq!(
         store::task_queue(&pool, &ws, "agent", "all", 100, None).await?["tasks"]
@@ -349,7 +350,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     )
     .await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
-    let types = json!({"spec":{"title":"Specification","role":"requirement","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","inbox":true,"root":true,"parents":["*"]}});
+    let types = json!({"spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","status":"tests","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","status":"children","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","status":"none","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","status":"none","inbox":true,"root":true,"parents":["*"]}});
     apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use arbitrary type names"})).await?;
     for (kind, id, parent, data) in [
         (
@@ -448,7 +449,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             .as_array()
             .unwrap()
             .iter()
-            .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0,"done_verification":{"pass":0,"fail":0,"unverified":0}}))
+            .all(|item| item["work_summary"] == json!({"active":0,"done":0,"retired":0}))
     );
     let ordinary_after = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
     let mut expected = ordinary_before["items"].clone();
@@ -502,7 +503,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     assert_eq!(criteria(&retired_page).len(), 2);
     assert_eq!(
         retired_page["items"][0]["work_summary"],
-        json!({"active":0,"done":0,"retired":1,"done_verification":{"pass":0,"fail":0,"unverified":0}})
+        json!({"active":0,"done":0,"retired":1})
     );
     assert_eq!(
         task_detail(&pool, &ws, "job:one").await?["process"]["status"],
@@ -534,9 +535,9 @@ async fn blocked_fixture(with_v: bool) -> anyhow::Result<(Pool, String)> {
     }
     let schema = store::tree_schema(&pool, &ws, "owner", None).await?;
     apply(&pool, &ws, "owner", json!({"op":"set_tree_schema","revision":schema["current_revision"],"reason":"Configure planning roles","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     let work = |id: &str| json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Set the work"});
     for command in [
@@ -618,7 +619,7 @@ async fn a_blocked_task_does_not_keep_its_criterion_out_of_unstarted_work() -> a
 
     // Fixture 2 without a planning claim: A returns after V ends.
     let (pool, ws) = blocked_fixture(true).await?;
-    apply(&pool, &ws, "worker", json!({"op":"complete_task","id":"work:v","revision":2,"evidence":"The ordinary work is complete"})).await?;
+    apply(&pool, &ws, "worker", json!({"op":"complete_task","commit":"c0ffee0","id":"work:v","revision":2,"evidence":"The ordinary work is complete"})).await?;
     let page = candidates(&pool, &ws).await?;
     assert_eq!(criteria(&page), vec!["criterion:a"]);
     store::check_journal(&pool).await?;

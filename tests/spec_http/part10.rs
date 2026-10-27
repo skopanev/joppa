@@ -15,7 +15,7 @@ async fn an_archived_capability_leaves_the_list_when_done_and_retired_tasks_rema
         .await?;
     w.command_as(
         &w.bot,
-        json!({"op":"complete_task","id":done,"revision":2,"evidence":"Implemented the contract"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":done,"revision":2,"evidence":"Implemented the contract"}),
     )
     .await?;
     let retired = ready_task(&w, "spent-retired", "spent-a").await?;
@@ -159,7 +159,7 @@ async fn a_member_who_is_not_the_owner_changes_the_tree_over_http() -> Result<()
     let n = n.unwrap();
     let mut types = before["schema"]["types"].clone();
     ensure!(types.get("risk").is_none(), "{before}");
-    types["risk"] = json!({"title":"Risk","role":"document","root":true,"parents":["*"]});
+    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":true,"parents":["*"]});
     let save = json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add risk"});
     // eve is not a member, so the access layer refuses her.
     let (ok, reply) = send_as(&w, &w.eve, &save).await?;
@@ -188,7 +188,7 @@ async fn an_agent_member_changes_the_tree_over_http() -> Result<()> {
     let n = n.unwrap();
     let mut types = before["schema"]["types"].clone();
     ensure!(types.get("risk").is_none(), "{before}");
-    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
+    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
     let (status, reply) = text_rule_request(
         &w,
         &w.bot,

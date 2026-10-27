@@ -97,7 +97,9 @@ pub(crate) fn context(w: &Workspace, key: &str) -> Option<(String, u32)> {
         p.to_owned(),
         w.task_process
             .get(p)
-            .map_or(w.objects.get(p)?.current().revision, |t| t.origin_revision),
+            .map_or(objects::contract_revision(w.objects.get(p)?), |t| {
+                t.origin_revision
+            }),
     ))
 }
 
@@ -417,6 +419,7 @@ pub fn save(
         purpose: purpose.clone(),
         assignee: None,
         done: None,
+        commit: None,
         contract: String::new(),
         created_at: position,
         created_by: actor.into(),
@@ -459,7 +462,7 @@ pub fn save(
                     p.to_owned(),
                     w.task_process
                         .get(p)
-                        .map_or(o.current().revision, |t| t.origin_revision),
+                        .map_or(objects::contract_revision(o), |t| t.origin_revision),
                 )
             })
         });
@@ -622,8 +625,23 @@ pub fn apply(
             t.blocked = None;
             reason
         }
-        Command::CompleteTask { evidence, .. } => {
+        Command::CompleteTask {
+            evidence, commit, ..
+        } => {
             commands::nonempty(evidence)?;
+            // After migrate_test_rules a Task names the git sha where it is ready.
+            if w.test_rules_migrated {
+                let sha = commit
+                    .as_deref()
+                    .context("missing field `commit`: complete_task needs the git sha where the Task is ready")?;
+                ensure!(
+                    (7..=64).contains(&sha.len())
+                        && sha
+                            .chars()
+                            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+                    "commit must be a lowercase git sha"
+                );
+            }
             // The claim gave the Task its current revision; a later repin needs a new claim.
             ensure!(
                 crate::remote_links::changed_since(w, &key, o.current().position, false).is_none(),
@@ -678,6 +696,7 @@ pub fn apply(
                 );
             }
             t.done = Some(evidence.clone());
+            t.commit = commit.clone();
             t.claim = None;
             "Task completed"
         }
@@ -845,6 +864,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             actor,
             schema.revision,
             &schema.types,
+            None,
             None,
             None,
             None,

@@ -342,9 +342,9 @@ async fn planning(w: &World) -> Result<Planning<'_>> {
     }
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     p.save(
         "spec:one",
@@ -878,8 +878,8 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
     // check-list-frozen-ac3: each list save resets the criterion, so the batch assesses it again.
     let assess = json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"Known work scope"}});
     let before = planning_criterion(&w).await?;
-    let claim =
-        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
+    // The list save in the batch gives the criterion its next revision.
+    let claim = json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"].as_u64().unwrap_or(0) + 1});
     let reply = planning_batch(&w, json!([
         {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A,B],"reason":"Include the failing check"}},
         {"command":assess},
@@ -901,8 +901,8 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
         "op":"release_planning","ac":"ac:key-rights","reason":"Check the opposite batch transition"}})).await?;
     ensure!(code == 200, "{code} {reply}");
     let before = planning_criterion(&w).await?;
-    let claim =
-        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
+    // The list save in the batch gives the criterion its next revision.
+    let claim = json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"].as_u64().unwrap_or(0) + 1});
     let reply = planning_batch(&w, json!([
         {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A],"reason":"Use the passing check"}},
         {"command":assess},
@@ -957,7 +957,12 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
         ("proof", "ac", Some("sheet"), "Proofs"),
         ("extra", "document", Some("bundle"), "Extra"),
     ] {
-        types[kind] = json!({"title":title,"role":role,"root":parent.is_none(),"parents":parent.into_iter().collect::<Vec<_>>()});
+        let status = match role {
+            "ac" => "tests",
+            "group" | "requirement" => "children",
+            _ => "none",
+        };
+        types[kind] = json!({"title":title,"role":role,"status":status,"root":parent.is_none(),"parents":parent.into_iter().collect::<Vec<_>>()});
     }
     command(json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Count configured tree levels"})).await?;
     for (kind, id, parent) in [
@@ -1137,8 +1142,11 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
     data["test_results"] = json!([{"address": A, "status": "pass"}]);
     let (code, reply) = save(data, criterion).await?;
     let after = w.status().await?;
+    // A save gives the document a revision, so only tests_revision may change.
     ensure!(
-        after == before && x_status(&after) == Some(json!("not_run")),
+        after["status"] == before["status"]
+            && after["tests"] == before["tests"]
+            && x_status(&after) == Some(json!("not_run")),
         "fixture 2 ({code} {reply}): {before} {after}"
     );
     Ok(())
@@ -1146,8 +1154,8 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> {
-    // check-list-frozen-ac1 and ac2: the text changes, the list waits; saving it ends the draft for good.
+async fn a_text_change_greys_the_criterion_until_a_newer_record() -> Result<()> {
+    // check-list-frozen-ac1 and ac2: the text changes, and only a newer record counts.
     let w = world().await?;
     w.record(
         "c1c1c1c",
@@ -1161,15 +1169,9 @@ async fn a_text_change_makes_the_list_a_draft_until_it_is_saved() -> Result<()> 
     w.revise_text(1, "Only read and verify until launch")
         .await?;
     let s = w.status().await?;
-    ensure!(
-        s["status"] == "grey" && s["reason"] == "tests_draft" && s["tests_draft"] == true,
-        "{s}"
-    );
-    w.list(&[A, B]).await?;
-    let s = w.status().await?;
     // check-list-frozen-ac2: the report before the text change no longer counts.
     ensure!(
-        s["status"] == "grey" && s["tests_draft"] == false && s["tests_revision"] == 2,
+        s["status"] == "grey" && s["reason"] == "not all tests passed" && listed(&s) == [A, B],
         "{s}"
     );
     w.record(
@@ -1293,10 +1295,11 @@ async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterio
 // check-list-frozen-ac4
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_draft_list_without_a_boundary_stays_grey_after_a_full_report() -> Result<()> {
+async fn a_text_change_without_a_stored_boundary_counts_a_newer_record() -> Result<()> {
     let w = world().await?;
     let (_, before) = changed_after_c1(&w).await?;
-    // A criterion whose list became a draft before boundaries were stored has none.
+    // A criterion whose text changed before boundaries were stored has none. The test
+    // list is a field of its document, so no draft waits for another save.
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let workspace = w.base.rsplit('/').next().unwrap();
     let removed = pool
@@ -1311,10 +1314,8 @@ async fn a_draft_list_without_a_boundary_stays_grey_after_a_full_report() -> Res
     w.record("c2c2c2c", passing()).await?;
     let s = w.status().await?;
     ensure!(
-        s["status"] == "grey"
-            && s["reason"] == "tests_draft"
-            && saved_list(&s) == saved_list(&before),
-        "a draft without a boundary: {s}"
+        s["status"] == "green" && saved_list(&s) == saved_list(&before),
+        "a text change without a boundary: {s}"
     );
     Ok(())
 }
@@ -1343,9 +1344,9 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
     .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure nested groups","types":{
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
     }})).await?;
     for (key, parent) in [
         ("area:g", None),
@@ -1578,13 +1579,14 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
-    // reduced-coverage-reviewed-ac1: the agent removes one test; the list keeps its own history.
+    // reduced-coverage-reviewed-ac1: the agent removes one test; the document of the
+    // criterion gets a new revision.
     let w = world().await?;
-    ensure!(w.status().await?["tests_revision"] == 1, "first list");
+    ensure!(w.status().await?["tests_revision"] == 2, "first list");
     w.list(&[A]).await?;
     let s = w.status().await?;
     ensure!(
-        s["tests_revision"] == 2
+        s["tests_revision"] == 3
             && s["tests"].as_array().map(Vec::len) == Some(1)
             && s["tests_saved_by"] == "agent",
         "{s}"
@@ -1634,26 +1636,27 @@ async fn journal_count(pool: &deadpool_postgres::Pool, workspace: &str) -> Resul
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_stale_test_list_save_is_refused_and_a_current_or_absent_revision_saves() -> Result<()> {
-    // checks-listed-first-ac4: criterion C has [A] at tests_revision 2.
+    // checks-listed-first-ac4: criterion C has [A] at tests_revision 3, the revision of
+    // its document.
     let w = world().await?;
     w.list(&[A]).await?;
     let s = w.status().await?;
-    ensure!(listed(&s) == [A] && s["tests_revision"] == 2, "{s}");
-    let (code, reply) = save_list(&w, &[A, B], Some(1)).await?;
+    ensure!(listed(&s) == [A] && s["tests_revision"] == 3, "{s}");
+    let (code, reply) = save_list(&w, &[A, B], Some(2)).await?;
     ensure!(
         code == 409 && reply["error"] == STALE_LIST,
         "{code} {reply}"
     );
     let s = w.status().await?;
-    ensure!(listed(&s) == [A] && s["tests_revision"] == 2, "{s}");
-    let (code, reply) = save_list(&w, &[A, B], Some(2)).await?;
+    ensure!(listed(&s) == [A] && s["tests_revision"] == 3, "{s}");
+    let (code, reply) = save_list(&w, &[A, B], Some(3)).await?;
     ensure!(code == 200, "{code} {reply}");
     let s = w.status().await?;
-    ensure!(listed(&s) == [A, B] && s["tests_revision"] == 3, "{s}");
+    ensure!(listed(&s) == [A, B] && s["tests_revision"] == 4, "{s}");
     let (code, reply) = save_list(&w, &[B], None).await?;
     ensure!(code == 200, "{code} {reply}");
     let s = w.status().await?;
-    ensure!(listed(&s) == [B] && s["tests_revision"] == 4, "{s}");
+    ensure!(listed(&s) == [B] && s["tests_revision"] == 5, "{s}");
     Ok(())
 }
 
@@ -1677,15 +1680,13 @@ async fn concurrent_first_test_list_saves_with_revision_zero_accept_exactly_one(
             .json::<Value>()
             .await
     };
+    // A criterion without tests has an empty list at its document revision.
     let s = read().await?;
-    ensure!(
-        listed(&s).is_empty() && s["tests_revision"].is_null(),
-        "{s}"
-    );
+    ensure!(listed(&s).is_empty() && s["tests_revision"] == 1, "{s}");
     let save = |actor: &'static str, tests: Value| {
         p.write(
             actor,
-            json!({"op":"set_ac_tests","target":"criterion:a","tests":tests,"revision":0,"reason":"Link the tests"}),
+            json!({"op":"set_ac_tests","target":"criterion:a","tests":tests,"revision":1,"reason":"Link the tests"}),
         )
     };
     let (first, second) = tokio::join!(save("agent", json!([A])), save("other", json!([B])));
@@ -1696,7 +1697,7 @@ async fn concurrent_first_test_list_saves_with_revision_zero_accept_exactly_one(
     };
     ensure!(format!("{refusal:#}") == STALE_LIST, "{refusal:#}");
     let s = read().await?;
-    ensure!(listed(&s) == [winner] && s["tests_revision"] == 1, "{s}");
+    ensure!(listed(&s) == [winner] && s["tests_revision"] == 2, "{s}");
     Ok(())
 }
 
@@ -1720,7 +1721,7 @@ async fn a_batch_with_a_stale_test_list_save_changes_nothing() -> Result<()> {
     let objects_before = objects().await?;
     let status_before = w.status().await?;
     let count_before = journal_count(&pool, workspace).await?;
-    ensure!(status_before["tests_revision"] == 1, "{status_before}");
+    ensure!(status_before["tests_revision"] == 2, "{status_before}");
     let reply = planning_batch(&w, json!([
         {"command":{"op":"save_object","kind":"note","id":"batch-note","revision":0,"parent":null,"data":{"title":"batch-note","owner":"owner","body":"Signal"},"links":[],"reason":"Save"}},
         {"command":{"op":"set_ac_tests","target":"ac:key-rights","tests":[A],"revision":0,"reason":"Stale list"}}
@@ -1770,7 +1771,7 @@ async fn a_journal_of_test_list_saves_without_revision_replays_to_the_same_lists
     ensure!(saves == 3, "{saves} list saves without revision");
     let before = w.status().await?;
     ensure!(
-        listed(&before) == [B, A] && before["tests_revision"] == 3,
+        listed(&before) == [B, A] && before["tests_revision"] == 4,
         "{before}"
     );
     // Remove the stored lists and the board, then rebuild the workspace from its journal.
@@ -1931,11 +1932,9 @@ async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
             .await?;
         anyhow::Ok(s)
     };
+    // A fresh criterion has an empty list at its first document revision.
     let s = read().await?;
-    ensure!(
-        s["tests"] == json!([]) && s["tests_saved_by"].is_null(),
-        "{s}"
-    );
+    ensure!(s["tests"] == json!([]) && s["tests_revision"] == 1, "{s}");
     let command = json!({"op":"set_ac_tests","target":"ac:key-audit","tests":["a.test.ts > login > ok"],"reason":"Link the test"});
     let reply = w
         .http
@@ -2249,12 +2248,9 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
         json!({"workspace":workspace,"task":"task:key/t1"}),
     )
     .await?;
+    // A green criterion does not complete the Task and gives it no commit.
     ensure!(
-        t["done"] == false
-            && t["verification"] == "passed"
-            && t["criterion"]["address"] == "ac:key-rights"
-            && t["criterion"]["status"] == "green"
-            && t["criterion"]["commit"] == "c1c1c1c",
+        t["done"] == false && t["commit"].is_null() && t.get("verification").is_none(),
         "{t}"
     );
     let object = mcp_read(
@@ -2291,7 +2287,7 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
         ),
         (
             &w.token,
-            json!({"op":"complete_task","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
+            json!({"op":"complete_task","commit":"c0ffee0","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
         ),
     ] {
         let (code, reply) = post(
@@ -2327,16 +2323,15 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
         if let Some(commit) = commit {
             w.record(commit, outcomes(&cases)).await?;
         }
+        // Only complete_task sets done and commit; records change neither.
+        let _ = verification;
         let finished = read("task:finished").await?;
         ensure!(
-            finished["done"] == true && finished["verification"] == verification,
+            finished["done"] == true && finished["commit"] == "c0ffee0",
             "{finished}"
         );
         let open = read("task:key/t1").await?;
-        ensure!(
-            open["done"] == false && open["verification"] == verification,
-            "{open}"
-        );
+        ensure!(open["done"] == false && open["commit"].is_null(), "{open}");
     }
     Ok(())
 }
@@ -2361,8 +2356,8 @@ async fn the_joppa_tests_tool_states_that_only_complete_task_sets_done() -> Resu
         .and_then(|t| t["description"].as_str())
         .ok_or_else(|| anyhow::anyhow!("no joppa_tests: {reply}"))?;
     ensure!(
-        description.contains("Only complete_task sets done")
-            && description.contains("verification follows the criterion status")
+        description.contains("Only complete_task sets done and commit")
+            && !description.contains("verification follows the criterion status")
             && !description.contains("while its criterion is green"),
         "{description}"
     );
@@ -2387,10 +2382,7 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     .await?;
     let t = task(&w).await?;
     ensure!(
-        t["done"] == false
-            && t["verification"] == "failed"
-            && t["criterion"]["status"] == "red"
-            && t["criterion"]["commit"] == "c2c2c2c",
+        t["done"] == false && t["commit"].is_null() && t.get("verification").is_none(),
         "{t}"
     );
     Ok(())
@@ -2416,7 +2408,7 @@ async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()
         ),
         (
             &w.token,
-            json!({"op":"complete_task","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
+            json!({"op":"complete_task","commit":"c0ffee0","id":"task:finished","revision":2,"evidence":"Implemented the contract"}),
         ),
     ] {
         let (code, reply) = post(
@@ -2463,13 +2455,11 @@ async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()
             json!({"workspace":workspace,"task":"task:finished"}),
         )
         .await?;
+        // The Task keeps its own state and commit; the criterion status does not change it.
+        let _ = (verification, status);
         for (via, t) in [("HTTP", &http), ("MCP", &mcp)] {
             ensure!(
-                t["done"] == true
-                    && t["verification"] == verification
-                    && t["criterion"]["address"] == "ac:key-rights"
-                    && t["criterion"]["status"] == status
-                    && t["criterion"]["commit"] == commit,
+                t["done"] == true && t["commit"] == "c0ffee0" && t.get("verification").is_none(),
                 "{via} {commit}: {t}"
             );
         }
@@ -3514,14 +3504,15 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
             w.record(commit, outcomes(&cases)).await?;
         }
         for (address, criterion) in tasks {
+            // A configured Task role reads its own state: the criterion status does not
+            // reach the Task.
+            let _ = (criterion, expected, verification);
             let status = read(&w, bot, address).await?;
             ensure!(
                 status["address"] == address
-                    && status["verification"] == verification
                     && status["done"] == false
-                    && status["criterion"]["address"] == criterion
-                    && status["criterion"]["status"] == expected
-                    && status["criterion"]["commit"] == json!(commit),
+                    && status["commit"].is_null()
+                    && status.get("verification").is_none(),
                 "{status}"
             );
         }
@@ -5075,11 +5066,11 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
     .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"]},
-        "signal":{"title":"Signal","role":"document","root":true,"parents":["*"],"inbox":true}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"]},
+        "signal":{"title":"Signal","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}
     }})).await?;
     for key in ["area:g", "area:h"] {
         p.save(
@@ -5589,9 +5580,9 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
     }})).await?;
     // P holds R with criteria A and B, and R2 with criterion C.
     p.save(
@@ -5724,10 +5715,10 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     .await?;
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ordered work","types":{
-        "cap":{"title":"Capability","role":"group","root":true,"parents":[]},
-        "spec":{"title":"Specification","role":"requirement","parents":["cap"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "cap":{"title":"Capability","role":"group","status":"children","root":true,"parents":[]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["cap"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     for (key, parent) in [
         ("cap:c", None),
@@ -6354,7 +6345,7 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
         json!({"op":"claim_task","id":"work:t","revision":p.revision("work:t").await?}),
     )
     .await?;
-    p.write("agent", json!({"op":"complete_task","id":"work:t","revision":p.revision("work:t").await?,"evidence":"commit abc123 on master"})).await?;
+    p.write("agent", json!({"op":"complete_task","commit":"c0ffee0","id":"work:t","revision":p.revision("work:t").await?,"evidence":"commit abc123 on master"})).await?;
     let t = p.object_both("work:t").await?;
     ensure!(done_without_review(&t), "T after completion: {t}");
     let spec = p.revision("spec:one").await?;
@@ -6408,7 +6399,8 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
         &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
     )
     .await?;
-    ensure!(p.revision("criterion:c").await? == pin);
+    // The list save gives C a revision that changes only its tests, so the pin stays current.
+    ensure!(p.revision("criterion:c").await? == pin + 1);
     p.save("work:b", Some("criterion:a"), json!({"title":"B","owner":"owner","contract":"Use the prerequisite","purpose":"implementation"}),
         json!([{"target":"criterion:c","relation":"depends_on","revision":pin,"blocking":true}])).await?;
     // Control: B waits while C is grey.

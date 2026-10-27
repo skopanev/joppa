@@ -17,6 +17,8 @@ pub enum Command {
     MigrateConsumers {},
     /// Internal migration event: a comment on each criterion that lost consumers, see consumer_drops.
     MigrateConsumerDrops {},
+    /// Internal migration event: the schema gets every test rule, see test_rules.
+    MigrateTestRules {},
     SetTreeSchema {
         revision: u32,
         /// The whole type map. Without it, put_types and remove_types change single types.
@@ -37,9 +39,12 @@ pub enum Command {
         /// The ordered status tones with light and dark colours; without it they stay.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         statuses: Option<Vec<crate::status_colors::Status>>,
-        /// The shape of a test result; without it the schema keeps its current shape.
+        /// The test rules; without them the schema keeps its current rules.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        test_results: Option<crate::result_shape::ResultShape>,
+        test_results: Option<serde_json::Value>,
+        /// With true, each type needs a status rule; without it the schema keeps its flag.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status_required: Option<bool>,
         reason: String,
     },
     /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
@@ -425,6 +430,9 @@ pub enum Command {
         revision: u32,
         id: String,
         evidence: String,
+        /// The git sha where the Task is ready.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        commit: Option<String>,
     },
     ReviewTask {
         #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -690,7 +698,11 @@ pub const OPERATIONS: &[Operation] = &[
         &["revision", "id", "reason", "evidence"],
         HOLDER_OR_OWNER,
     ),
-    op("complete_task", &["revision", "id", "evidence"], HOLDER),
+    op(
+        "complete_task",
+        &["revision", "id", "evidence", "commit"],
+        HOLDER,
+    ),
     op("review_task", &["revision", "id", "reason"], MEMBER),
     op("retire_task", &["revision", "id", "reason"], MEMBER),
     op(
@@ -1050,6 +1062,9 @@ pub(crate) fn apply_inner(
         Command::MigrateConsumerDrops {} => {
             crate::consumer_drops::apply(w, actor, recorded_at)?;
         }
+        Command::MigrateTestRules {} => {
+            crate::test_rules::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigrateNotes {} => {
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;
@@ -1091,6 +1106,7 @@ pub(crate) fn apply_inner(
             status_colors,
             statuses,
             test_results,
+            status_required,
             reason,
         } => {
             let types = crate::schema_nodes::requested_types(
@@ -1108,6 +1124,7 @@ pub(crate) fn apply_inner(
                 status_colors.as_ref(),
                 statuses.as_ref(),
                 test_results.as_ref(),
+                *status_required,
                 reason,
                 position,
                 recorded_at,

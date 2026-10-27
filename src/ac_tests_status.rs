@@ -1,15 +1,19 @@
 //! Criterion status from recorded test results.
 //!
 //! Each listed test counts with its latest result. The deciding record for a test is
-//! the newest one that names the test. On the commit of that record, red wins: a
-//! failure in any record of the commit beats a pass. A criterion is green only when
-//! every listed test passes; it shows the oldest commit among its tests.
+//! the newest one that names the test. The block test_results of the tree schema gives
+//! the rules. With same_commit fail_wins, a failure in any record of the commit of that
+//! record beats a pass. With latest_wins, only the deciding record counts. A criterion is
+//! green when the outcome of every listed test is in green_if_all, and red when one is in
+//! red_if_any. It shows the oldest commit among its tests.
 //! A skip or todo counts only in a record. Older stored reports did not run those tests.
-//! A change above a criterion sets its boundary. Records received at or before it do
+//! With reset_on_change, a change above a criterion sets its boundary. Records received at or before it do
 //! not count. After it, the latest eligible result of each listed test decides, also
 //! when the results come from several records. An identical repeat of a record is
 //! a new receipt of it, and its latest receipt decides whether it came after the change.
 //! After a change, a draft list is decided once every listed test has an eligible result.
+use crate::result_shape::ResultShape;
+use crate::test_rules::outcome;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -94,7 +98,12 @@ pub struct CriterionStatus {
     pub tests: Vec<TestStatus>,
 }
 
-fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> TestStatus {
+fn test_status(
+    address: &str,
+    reports: &[Report],
+    all: &[(i64, TestResult)],
+    rules: &ResultShape,
+) -> TestStatus {
     let counts_skips = |id: i64| reports.iter().any(|r| r.id == id && r.recorded);
     let results: Vec<(i64, TestResult)> = all
         .iter()
@@ -126,7 +135,10 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
     };
     let same_commit: Vec<&Report> = reports
         .iter()
-        .filter(|r| r.commit == deciding.commit)
+        .filter(|r| match rules.same_commit.as_str() {
+            "fail_wins" => r.commit == deciding.commit,
+            _ => r.id == deciding.id,
+        })
         .collect();
     let rows: Vec<&TestResult> = results
         .iter()
@@ -143,9 +155,15 @@ fn test_status(address: &str, reports: &[Report], all: &[(i64, TestResult)]) -> 
         address: address.into(),
         status: status.into(),
         commit: Some(deciding.commit.clone()),
-        message: row
-            .filter(|_| status == "fail")
-            .and_then(|r| r.message.clone()),
+        // Older rows keep the message in its own column. Newer rows keep it in the
+        // failure field.
+        message: row.filter(|_| status == "fail").and_then(|r| {
+            r.message.clone().or_else(|| {
+                let field = rules.failure_field.as_deref()?;
+                let fields = r.fields.as_ref()?;
+                fields.get(field)?.as_str().map(String::from)
+            })
+        }),
         status_name: row.and_then(|r| r.status_name.clone()),
         fields: row.and_then(|r| r.fields.clone()),
         order: Some(deciding.order),
@@ -158,7 +176,13 @@ pub fn criterion_status(
     boundary: Boundary,
     reports: &[Report],
     results: &[(i64, TestResult)],
+    rules: &ResultShape,
 ) -> CriterionStatus {
+    let boundary = if rules.reset_on_change {
+        boundary
+    } else {
+        Boundary::None
+    };
     let eligible: Vec<Report> = reports
         .iter()
         .filter(|r| match boundary {
@@ -171,7 +195,7 @@ pub fn criterion_status(
     let reports = eligible.as_slice();
     let statuses: Vec<TestStatus> = tests
         .iter()
-        .map(|t| test_status(t, reports, results))
+        .map(|t| test_status(t, reports, results, rules))
         .collect();
     // After a change, a draft list is decided when every listed test has an eligible result.
     let decided_after_change =
@@ -182,9 +206,15 @@ pub fn criterion_status(
         ("grey", Some("tests_draft"))
     } else if boundary == Boundary::Unreadable {
         ("grey", Some("the reset time cannot be read"))
-    } else if statuses.iter().any(|t| t.status == "fail") {
+    } else if statuses
+        .iter()
+        .any(|t| rules.red_if_any.iter().any(|o| o == outcome(&t.status)))
+    {
         ("red", None)
-    } else if !statuses.iter().all(|t| t.status == "pass") {
+    } else if !statuses
+        .iter()
+        .all(|t| rules.green_if_all.iter().any(|o| o == outcome(&t.status)))
+    {
         ("grey", Some("not all tests passed"))
     } else {
         ("green", None)

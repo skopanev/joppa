@@ -19,7 +19,7 @@ const C: &str = "c0c0c0c";
 /// The stored outcomes of one commit as (test, status, message), in test order.
 async fn outcomes(w: &World, commit: &str) -> Result<Vec<(String, String, Option<String>)>> {
     let conn = w.pool.get().await?;
-    let rows = conn.query("SELECT t.address,t.status,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.commit_sha=$2 ORDER BY t.address,t.status", &[&w.ws, &commit]).await?;
+    let rows = conn.query("SELECT t.address,t.status,COALESCE(t.message,t.fields->>'message') FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.commit_sha=$2 ORDER BY t.address,t.status", &[&w.ws, &commit]).await?;
     Ok(rows
         .iter()
         .map(|r| (r.get(0), r.get(1), r.get(2)))
@@ -96,7 +96,7 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
     ensure!(inside, "at {at} is not between {t0} and {t1}");
     // The record of the entry holds the four supplied outcomes and no outcome for O.
     let id = entry["report"].as_i64().unwrap_or_default();
-    let stored = conn.query("SELECT r.commit_sha,r.uploader,t.address,t.status,t.message FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.id=$1 ORDER BY t.address", &[&id]).await?;
+    let stored = conn.query("SELECT r.commit_sha,r.uploader,t.address,t.status,COALESCE(t.message,t.fields->>'message') FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.id=$1 ORDER BY t.address", &[&id]).await?;
     let stored: Vec<(String, String, String, String, Option<String>)> = stored
         .iter()
         .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3), r.get(4)))

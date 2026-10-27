@@ -6,11 +6,11 @@ const {fixture} = require('./board_fixture.cjs');
 
 test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace configuration exactly', async () => {
   const types = {
-    area: {title: 'Areas', role: 'group', root: true, parents: []},
-    rule: {title: 'Rules', role: 'requirement', parents: ['area']},
-    check: {title: 'Checks', role: 'ac', parents: ['rule']},
+    area: {title: 'Areas', role: 'group', status:'children', root: true, parents: []},
+    rule: {title: 'Rules', role: 'requirement', status:'children', parents: ['area']},
+    check: {title: 'Checks', role: 'ac', status:'tests', parents: ['rule']},
     work: {title: 'Work', role: 'task', parents: ['check'], status: 'links'},
-    memo: {title: 'Memos', role: 'document', root: true, parents: ['*']},
+    memo: {title: 'Memos', role: 'document', status:'none', root: true, parents: ['*']},
   };
   const f = await fixture(types);
   try {

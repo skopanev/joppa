@@ -495,7 +495,7 @@ fn decision_task_owner_can_collect_the_configured_parent_decision() {
     );
     action(&mut w, "legal", "task:decision", "claim_task", json!({}));
     let revision = w.state.objects["task:decision"].current().revision;
-    w.no("legal",json!({"op":"complete_task","id":"task:decision","revision":revision,"evidence":"A free text decision"}));
+    w.no("legal",json!({"op":"complete_task","commit":"c0ffee0","id":"task:decision","revision":revision,"evidence":"A free text decision"}));
     w.ok("owner",json!({"op":"comment","req":"r","revision":1,"id":"decision","text":"The iOS contract is approved","kind":"decision","ac":"ios","reply_to":null}));
     action(
         &mut w,

@@ -46,6 +46,7 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
             required: true,
             multiple: true,
             verification_subject: true,
+            allow_all: false,
         },
     )]
     .into();

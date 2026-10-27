@@ -6,14 +6,16 @@ const {fixture} = require('./board_fixture.cjs');
 
 test('board-field-filter: the board shows the tone of each row for the selected value', async () => {
   const types = {
-    requirement: {title: 'Requirements', role: 'requirement', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', parents: ['requirement']},
+    requirement: {title: 'Requirements', role: 'requirement', status:'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement']},
   };
   const f = await fixture(types);
   try {
+    // The command sends the whole block of test rules with the added board field.
     const tree = await f.api('/tree');
-    await f.command({op: 'set_tree_schema', revision: tree.current_revision, reason: 'Add the app board field',
-      test_results: {fields: [{name: 'app', title: 'App', type: 'enum', values: ['ios', 'android'], required: true, board: true}]}}, f.live.owner);
+    const block = tree.schema.test_results;
+    block.fields = [...block.fields, {name: 'app', title: 'App', type: 'enum', values: ['ios', 'android'], required: true, board: true}];
+    await f.command({op: 'set_tree_schema', revision: tree.current_revision, reason: 'Add the app board field', test_results: block}, f.live.owner);
     await f.save('requirement:r', 'Sign in');
     await f.save('ac:a', 'Email sign-in works', 'requirement:r');
     await f.command({op: 'set_ac_tests', target: 'ac:a', tests: ['tests/app.rs > sign_in'], reason: 'Bind'});

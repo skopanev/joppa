@@ -100,7 +100,8 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     let mut types = schema["schema"]["types"].clone();
     types["job"] = types["task"].clone();
     types["job"]["parents"] = json!(["*"]);
-    types["section"] = json!({"title":"Section","role":"group","parents":["*"],"root":true});
+    types["section"] =
+        json!({"title":"Section","role":"group","status":"children","parents":["*"],"root":true});
     apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use custom Task names through an intermediate group"})).await?;
     apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"section","id":"nested","revision":0,"parent":"ac:ios","data":{"title":"Nested work","owner":"owner"},"reason":"Place work at an arbitrary depth"})).await?;
     for id in ["one", "two"] {
@@ -123,9 +124,10 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     assert_eq!(retry["replayed"], true);
     finish(&pool, &ws, "current", 1, "pass").await?;
     for key in ["job:one", "job:two"] {
-        assert_eq!(
-            detail(&pool, &ws, key).await?["process"]["verification"],
-            "pass"
+        assert!(
+            detail(&pool, &ws, key).await?["process"]
+                .get("verification")
+                .is_none()
         );
     }
     assert_eq!(
@@ -139,7 +141,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         "agent",
         "job:one",
         "complete_task",
-        json!({"evidence":"Fixture result delivered"}),
+        json!({"evidence":"Fixture result delivered","commit":"c0ffee0"}),
     )
     .await?;
     action(
@@ -168,8 +170,8 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         .find(|item| item["id"] == "ios")
         .unwrap();
     assert_eq!(
-        ios["work_summary"]["done_verification"],
-        json!({"pass":1,"fail":0,"unverified":0})
+        ios["work_summary"],
+        json!({"active":0,"done":1,"retired":1})
     );
     let queue = store::task_queue(&pool, &ws, "agent", "all", 100, None).await?;
     let task = queue["tasks"]
@@ -178,7 +180,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         .iter()
         .find(|task| task["address"] == "job:one")
         .unwrap();
-    assert_eq!(task["verification"], "pass");
+    assert!(task["verification"].is_null());
     assert_eq!(task["origin_revision"], 1);
     assert_eq!(task["status"], "done");
     let journal:i64=conn.query_one(r#"SELECT COALESCE(SUM(calls),0)::bigint FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query ~* '(FROM|JOIN)\s+joppa\.events'"#,&[]).await?.get(0);
@@ -221,32 +223,37 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         json!({"reason":"Review the carried contract"}),
     )
     .await?;
-    assert_eq!(
-        detail(&pool, &ws, "job:one").await?["process"]["verification"],
-        "unverified"
+    assert!(
+        detail(&pool, &ws, "job:one").await?["process"]
+            .get("verification")
+            .is_none()
     );
     apply(&pool, &ws, "owner", scope(2)).await?;
     apply(&pool, &ws, "runner", bound("reduced", 2, &["job:one"])).await?;
     finish(&pool, &ws, "reduced", 2, "pass").await?;
-    assert_eq!(
-        detail(&pool, &ws, "job:one").await?["process"]["verification"],
-        "unverified"
+    assert!(
+        detail(&pool, &ws, "job:one").await?["process"]
+            .get("verification")
+            .is_none()
     );
     apply(&pool,&ws,"owner",json!({"op":"review_coverage","req":"r","revision":2,"run":"reduced","reason":"Review the retired Task coverage reduction"})).await?;
-    assert_eq!(
-        detail(&pool, &ws, "job:one").await?["process"]["verification"],
-        "pass"
+    assert!(
+        detail(&pool, &ws, "job:one").await?["process"]
+            .get("verification")
+            .is_none()
     );
     apply(&pool, &ws, "runner", bound("newer", 2, &["job:one"])).await?;
-    assert_eq!(
-        detail(&pool, &ws, "job:one").await?["process"]["verification"],
-        "unverified"
+    assert!(
+        detail(&pool, &ws, "job:one").await?["process"]
+            .get("verification")
+            .is_none()
     );
     finish(&pool, &ws, "newer", 2, "fail").await?;
     let failed = detail(&pool, &ws, "job:one").await?;
-    assert_eq!(failed["process"]["verification"], "fail");
+    // A failing run keeps the Task done and shows no verification on it.
+    assert!(failed["process"].get("verification").is_none());
     assert_eq!(failed["process"]["status"], "done");
-    assert_eq!(failed["signal"]["tone"], "red");
+    assert_eq!(failed["signal"]["tone"], "green");
     let failed_candidates = store::read_objects(
         &pool,
         &ws,
@@ -264,8 +271,8 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         .find(|item| item["id"] == "ios")
         .unwrap();
     assert_eq!(
-        failed_ios["work_summary"]["done_verification"],
-        json!({"pass":0,"fail":1,"unverified":0})
+        failed_ios["work_summary"],
+        json!({"active":0,"done":1,"retired":1})
     );
     println!(
         "Task evidence: shared=true, no_fake_confirmation=true, current_queue=true, journal_selects=0, stored_prior_checks=true, coverage_review=true, newer_pending=true, failure_keeps_done=true"

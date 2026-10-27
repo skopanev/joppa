@@ -200,9 +200,9 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
     .await?;
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure groups","types":{
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
     }})).await?;
     for (area, spec, criterion) in [("g", "r", "a"), ("h", "rh", "d")] {
         f.write(OWNER, json!({"op":"save_object","kind":"area","id":area,"revision":0,"parent":null,"data":{"title":area.to_uppercase(),"body":"Group scope","owner":OWNER},"reason":"Create the group"})).await?;

@@ -69,18 +69,20 @@ async fn link_state(
             None,
         ));
     }
-    let Some((address, current)) = super::remote::target(client, link).await? else {
+    let Some((address, current, contract)) = super::remote::target_contract(client, link).await?
+    else {
         // An archived or absent target asks for review; it never satisfies a dependency.
         return Ok((
             json!({"access":true,"present":false,"current_revision":null,"review_required":true,"satisfied":false}),
             None,
         ));
     };
+    // A pin stays current from the contract revision to the current revision.
     let stale = link
         .revision
-        .is_some_and(|r| i64::from(current) > i64::from(r));
+        .is_some_and(|r| i64::from(contract) > i64::from(r));
     Ok((
-        json!({"access":true,"present":true,"current_revision":current,"review_required":stale,"satisfied":false}),
+        json!({"access":true,"present":true,"current_revision":current,"contract_revision":contract,"review_required":stale,"satisfied":false}),
         (!stale).then_some(address),
     ))
 }

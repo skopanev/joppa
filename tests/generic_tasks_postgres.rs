@@ -52,7 +52,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
                 references: Default::default(),
                 required_fields: Default::default(),
                 parent_decision: false,
-                status: None,
+                status: Some("none".into()),
                 status_order: None,
                 process_fields: None,
                 inbox: None,
@@ -134,7 +134,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         .iter()
         .find(|t| t["address"] == second_address)
         .unwrap();
-    store::execute_remote_input(&pool,&ws,actor,"complete",&json!({"op":"complete_task","id":second_address,"revision":current["revision"],"evidence":"The specified behavior works"})).await?;
+    store::execute_remote_input(&pool,&ws,actor,"complete",&json!({"op":"complete_task","commit":"c0ffee0","id":second_address,"revision":current["revision"],"evidence":"The specified behavior works"})).await?;
     let system_id = second["system_ids"]["task"][second_id].as_str().unwrap();
     let read = store::read_item_scoped(
         &pool,
@@ -181,7 +181,8 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     );
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
-    types["ac"] = json!({"title":"Criterion","role":"ac","root":false,"parents":["spec"]});
+    types["ac"] =
+        json!({"title":"Criterion","role":"ac","status":"tests","root":false,"parents":["spec"]});
     store::execute_remote_input(&pool,&ws,"owner","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
     let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","description":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
     let ac_id = ac["system_ids"]["ac"]["standalone"].as_str().unwrap();
@@ -271,9 +272,9 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     .await?;
     let schema = store::tree_schema(&pool, &ws, "owner", None).await?;
     write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ready criteria","types":{
-        "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-        "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+        "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     write("agent", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;
     write("agent", json!({"op":"save_object","kind":"criterion","id":"a","revision":0,"parent":"spec:one","data":{"title":"a","owner":"owner"},"reason":"Set the criterion"})).await?;
@@ -313,7 +314,7 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     let a = read("work:a").await?;
     assert_eq!(a["process"]["status"], "in_progress");
     assert_eq!(read("work:b").await?["review_required"], false);
-    write("agent", json!({"op":"complete_task","id":"work:a","revision":a["current_revision"],"evidence":"The source is complete"})).await?;
+    write("agent", json!({"op":"complete_task","commit":"c0ffee0","id":"work:a","revision":a["current_revision"],"evidence":"The source is complete"})).await?;
     let a = read("work:a").await?;
     assert_eq!(a["process"]["status"], "done");
     assert!(a["current_revision"].as_u64() > pins[0].as_u64());

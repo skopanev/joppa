@@ -13,13 +13,21 @@ pub(super) async fn add(
     items: &mut [Value],
     types: &BTreeMap<String, objects::TreeType>,
 ) -> Result<()> {
-    let board = crate::result_shape::board_fields(objects::schema(state).test_results.as_ref());
+    let board = crate::result_values::board_fields(&crate::test_rules::rules(state)?, state);
     let mut tones = BTreeMap::<String, serde_json::Map<String, Value>>::new();
-    for (field, values) in &board {
-        for value in values {
+    for field in &board {
+        let field_name = &field.name;
+        for value in &field.values {
             let mut copy = base.to_vec();
-            super::add_status_tones(client, workspace, &mut copy, types, Some((field, value)))
-                .await?;
+            super::add_status_tones(
+                client,
+                workspace,
+                &mut copy,
+                types,
+                Some((field_name, value)),
+                !state.test_rules_migrated,
+            )
+            .await?;
             for item in &copy {
                 let (Some(address), Some(tone)) =
                     (item["address"].as_str(), item["signal"]["tone"].as_str())
@@ -29,7 +37,7 @@ pub(super) async fn add(
                 tones
                     .entry(address.into())
                     .or_default()
-                    .insert(format!("{field}:{value}"), json!(tone));
+                    .insert(format!("{field_name}:{value}"), json!(tone));
             }
         }
     }

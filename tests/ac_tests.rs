@@ -43,7 +43,14 @@ fn each_test_counts_with_its_latest_result() {
         result(1, "y", "pass"),
         result(2, "x", "pass"),
     ];
-    let s = criterion_status(&tests(&["x", "y"]), false, Boundary::None, &reports, &rows);
+    let s = criterion_status(
+        &tests(&["x", "y"]),
+        false,
+        Boundary::None,
+        &reports,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.status, "green");
     assert_eq!(s.commit.as_deref(), Some("c1"));
     assert_eq!(s.commits_behind, Some(1));
@@ -51,7 +58,15 @@ fn each_test_counts_with_its_latest_result() {
     let late_old = [report(1, "c2", 2, false, 10), report(2, "c1", 1, false, 20)];
     let rows = [result(1, "x", "fail"), result(2, "x", "pass")];
     assert_eq!(
-        criterion_status(&tests(&["x"]), false, Boundary::None, &late_old, &rows).status,
+        criterion_status(
+            &tests(&["x"]),
+            false,
+            Boundary::None,
+            &late_old,
+            &rows,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "red"
     );
 }
@@ -65,6 +80,7 @@ fn one_failing_case_of_a_test_makes_it_red() {
         Boundary::None,
         &cases,
         &[result(1, "x", "pass"), result(1, "x", "fail")],
+        &joppa::test_rules::legacy(),
     );
     assert_eq!(
         s.status, "red",
@@ -76,12 +92,26 @@ fn one_failing_case_of_a_test_makes_it_red() {
 fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
     let reports = [report(1, "c", 1, false, 10)];
     assert_eq!(
-        criterion_status(&[], false, Boundary::None, &reports, &[])
-            .reason
-            .as_deref(),
+        criterion_status(
+            &[],
+            false,
+            Boundary::None,
+            &reports,
+            &[],
+            &joppa::test_rules::legacy()
+        )
+        .reason
+        .as_deref(),
         Some("no tests")
     );
-    let s = criterion_status(&tests(&["x"]), false, Boundary::None, &reports, &[]);
+    let s = criterion_status(
+        &tests(&["x"]),
+        false,
+        Boundary::None,
+        &reports,
+        &[],
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "not_run")
@@ -94,6 +124,7 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
             Boundary::None,
             &recorded,
             &[result(1, "x", skipped)],
+            &joppa::test_rules::legacy(),
         );
         assert_eq!(s.status, "grey");
     }
@@ -105,6 +136,7 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
         Boundary::None,
         &filtered,
         &[result(1, "x", "pass"), result(2, "x", "skipped")],
+        &joppa::test_rules::legacy(),
     );
     assert_eq!(
         (s.status.as_str(), s.commit.as_deref()),
@@ -116,6 +148,7 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
         Boundary::None,
         &reports,
         &[result(1, "x", "pass")],
+        &joppa::test_rules::legacy(),
     );
     assert_eq!(
         (s.status.as_str(), s.reason.as_deref()),
@@ -192,6 +225,7 @@ fn clock_time_alone_never_changes_status() {
         Boundary::None,
         &[report(1, "c", 1, true, 10)],
         &rows,
+        &joppa::test_rules::legacy(),
     );
     let later = criterion_status(
         &tests(&["x"]),
@@ -199,6 +233,7 @@ fn clock_time_alone_never_changes_status() {
         Boundary::None,
         &[report(1, "c", 1, true, 10 + 7 * DAY_MS)],
         &rows,
+        &joppa::test_rules::legacy(),
     );
     assert_eq!(
         (now.status.as_str(), now.commit.as_deref()),
@@ -248,9 +283,16 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
     let pass = |id| [result(id, "x", "pass"), result(id, "y", "pass")];
     let old = [report(1, "c1", 1, true, 99), report(2, "c1", 1, true, 100)];
     let rows: Vec<_> = pass(1).into_iter().chain(pass(2)).collect();
-    let s = criterion_status(&both, false, Boundary::None, &old, &rows);
+    let s = criterion_status(
+        &both,
+        false,
+        Boundary::None,
+        &old,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.status, "green", "without a boundary every report counts");
-    let s = criterion_status(&both, false, at, &old, &rows);
+    let s = criterion_status(&both, false, at, &old, &rows, &joppa::test_rules::legacy());
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
         ("grey", "not_run")
@@ -263,47 +305,128 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
     ];
     let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
     assert_eq!(
-        criterion_status(&both, false, Boundary::None, &partial, &rows).status,
+        criterion_status(
+            &both,
+            false,
+            Boundary::None,
+            &partial,
+            &rows,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "green"
     );
-    let s = criterion_status(&both, false, at, &partial, &rows);
+    let s = criterion_status(
+        &both,
+        false,
+        at,
+        &partial,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.status, "green");
     // One record after the boundary that passes every test is green.
     let full = [report(5, "c4", 4, true, 101)];
     assert_eq!(
-        criterion_status(&both, false, at, &full, &pass(5)).status,
+        criterion_status(
+            &both,
+            false,
+            at,
+            &full,
+            &pass(5),
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "green"
     );
     // An eligible failure stays red, also on a draft list.
     let failed = [result(5, "x", "fail"), result(5, "y", "pass")];
     assert_eq!(
-        criterion_status(&both, false, at, &full, &failed).status,
+        criterion_status(
+            &both,
+            false,
+            at,
+            &full,
+            &failed,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "red"
     );
     assert_eq!(
-        criterion_status(&both, true, at, &full, &failed).status,
+        criterion_status(
+            &both,
+            true,
+            at,
+            &full,
+            &failed,
+            &joppa::test_rules::legacy()
+        )
+        .status,
         "red"
     );
     // check-list-frozen-ac4: an eligible record decides a draft list after the change.
-    let s = criterion_status(&both, true, at, &full, &pass(5));
+    let s = criterion_status(
+        &both,
+        true,
+        at,
+        &full,
+        &pass(5),
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
     // After the change, records that give every listed test a result decide a draft.
     let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
-    let s = criterion_status(&both, true, at, &partial, &rows);
+    let s = criterion_status(
+        &both,
+        true,
+        at,
+        &partial,
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
     // A draft with a listed test that has no eligible result, or without a boundary, stays a draft.
-    let s = criterion_status(&both, true, at, &partial[..1], &rows[..1]);
+    let s = criterion_status(
+        &both,
+        true,
+        at,
+        &partial[..1],
+        &rows[..1],
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.reason.as_deref(), Some("tests_draft"));
-    let s = criterion_status(&both, true, Boundary::None, &full, &pass(5));
+    let s = criterion_status(
+        &both,
+        true,
+        Boundary::None,
+        &full,
+        &pass(5),
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.reason.as_deref(), Some("tests_draft"));
     // A report first received before the boundary counts after an identical repeat.
     let mut repeated = report(1, "c1", 1, true, 99);
     repeated.receipt_us = 101;
-    let s = criterion_status(&both, true, at, &[repeated], &pass(1));
+    let s = criterion_status(
+        &both,
+        true,
+        at,
+        &[repeated],
+        &pass(1),
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.status, "green");
     // A boundary that cannot be read gives grey, whatever the reports say.
     assert_eq!(Boundary::read(Some("not a time")), Boundary::Unreadable);
-    let s = criterion_status(&both, false, Boundary::Unreadable, &full, &pass(5));
+    let s = criterion_status(
+        &both,
+        false,
+        Boundary::Unreadable,
+        &full,
+        &pass(5),
+        &joppa::test_rules::legacy(),
+    );
     assert_eq!(s.status, "grey");
     assert_eq!(Boundary::read(None), Boundary::None);
     assert_eq!(

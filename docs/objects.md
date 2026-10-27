@@ -320,34 +320,57 @@ The tones are red, purple, yellow, orange, grey and green. Each colour is `#RRGG
 A higher entry wins over a lower one: the list order is the default order of a children rule.
 A tone that the list omits keeps its default colours. A schema change without `statuses` keeps the current list.
 joppa_tree shows the list that applies. The older `status_colors` map still works and sets one colour for both themes.
-The schema can set `test_results`, the shape of a test result:
+The schema holds every test rule in the block `test_results`. The code reads the rules only from this block:
 
 ```json
 {
-  "statuses": {"passed": "pass", "failed": "fail", "broken": "fail", "skipped": "skip"},
+  "statuses": {"pass": "pass", "fail": "fail", "skip": "skip", "todo": "todo"},
   "fields": [
-    {"name": "browser", "type": "enum", "values": ["chromium", "webkit"], "required": true},
-    {"name": "run_url", "title": "Run", "type": "text"},
-    {"name": "retries", "type": "number"}
-  ]
+    {"name": "message", "title": "Failure message", "type": "text", "max_length": 8192},
+    {"name": "duration_ms", "title": "Duration in milliseconds", "type": "number"},
+    {"name": "app", "type": "enum", "values": ["ios", "android"], "board": true}
+  ],
+  "name": {"separator": " > ", "min_parts": 2, "file_extension": true, "max_length": 400},
+  "max_tests": 200,
+  "max_results": 1000,
+  "same_commit": "fail_wins",
+  "reset_on_change": true,
+  "draft_on_text_change": true,
+  "draft_fields": ["title", "description"],
+  "green_if_all": ["pass"],
+  "red_if_any": ["fail"],
+  "failure_field": "message"
 }
 ```
 
-`statuses` gives the status names that `joppa_record_results` accepts. Each name counts as `pass`, `fail`, `skip` or `todo`.
-The map needs a name that counts as `pass` and a name that counts as `fail`. Without the map the names are `pass`, `fail`, `skip` and `todo`.
-`fields` lists the extra fields of a result. A field has the type `text`, `number` or `enum`. An `enum` field lists its `values`.
-The names `test`, `status`, `message`, `duration_ms`, `commit`, `actor` and `at` are built-in. A field cannot use them.
+- `statuses` gives the status names that `joppa_record_results` accepts. Each name counts as the outcome `pass`, `fail`, `skip` or `todo`. The map needs a name for `pass` and a name for `fail`.
+- `fields` lists the fields of a result. A field has the type `text`, `number` or `enum`. A `text` field has `max_length`: a longer value keeps its first `max_length` characters. An `enum` field lists its `values`.
+- `name` gives the form of a test name in a test list. `max_tests` limits a test list, and `max_results` limits one record.
+- `same_commit`: with `fail_wins`, a failure in any record of the commit of the newest record decides the test. With `latest_wins`, only the newest record decides it.
+- `reset_on_change`: a change at or above a criterion makes the earlier records stop counting.
+- `draft_on_text_change`: a change of a `draft_fields` field makes the saved test list a draft until it is saved again.
+- `green_if_all` and `red_if_any` give the outcomes that make a criterion green or red. An acceptance needs the `green_if_all` outcomes on its commit.
+- `failure_field` names the text field that readers show as the message of a failure.
+
+The names `test`, `status`, `commit`, `actor` and `at` are part of the record. A field cannot use them.
 The server refuses a result with an unknown status name, an unknown field, a missing required field or a value of the wrong type.
-The criterion status uses only the outcome. `joppa_tests` shows the status name and the fields of the deciding result.
-A schema change without `test_results` keeps the current shape. joppa_tree shows the shape that applies.
-A field can set `"board": true`. Only a required `enum` field can set it.
-Each value of a board field gets its own criterion status from the results with that value. The latest result of a test for that value decides the test.
+A `set_tree_schema` command with `test_results` sends every rule. A command without `test_results` keeps the current block.
+The event `migrate_test_rules` wrote the block above into each workspace that existed before it, with its status names and its fields. A new workspace gets the same block.
+Each type of the schema names its status rule in `status` (`tests`, `children`, `links` or `none`) and its process fields in `process_fields`. No rule comes from the role of a type.
+The schema flag `status_required` decides a type without `status`. With `true`, `set_tree_schema` refuses the type. With `false`, the schema saves it, and its nodes have the rule `unset` and the tone orange.
+The test list of a node is the field `tests` of its document, a list of test names. Any type with `status: "tests"` takes it, also a domain. The node can have children, and only its tests give its tone.
+`save_object` with `data.tests` saves the list. The short command `set_ac_tests {target, tests, revision, reason}` saves only that field as an ordinary revision of the document. Its `revision` is the document revision, which `joppa_tests` gives as `tests_revision`.
+A new list resets the criterion, and so does a save of the same list with `set_ac_tests`. A revision that changes only the list keeps the pins of Tasks and asks for no Task review, and it gives the specification no new revision.
+A node with `status: "tests"` and no list has an empty list at its document revision: `joppa_tests` gives that revision as `tests_revision`, and `set_ac_tests` needs it.
+An object read gives `contract_revision` next to `current_revision`, and each list row gives it next to `revision`. A revision that changes only the list keeps the contract revision of the revision before it. A pin on a non-Task object is current when `contract_revision <= pin <= current_revision`, also for a link to another workspace.
+A result field can have the type `ref` with a `target` type, such as `asset`. Its value names a present object of that type by id or address. A new object of the type is a new value, with no change of the schema.
+An `enum` or `ref` field can set `"board": true`. Each value of a board field gets its own criterion status from the results with that value. A result without the field counts for every value.
+A board field can set `applies`, the reference field of a criterion that lists the values that apply to it. A reference with `"allow_all": true` also takes the explicit value `all`. A value that does not apply has the status `n/a`: it does not count, and the board shows "Not for" that value.
 The criterion status combines the values: red when one value is red, green when every value is green, and grey otherwise. A value without results is grey.
 `joppa_tests` shows the status of each value in `values`. Each object row stores `value_tones`, the tone of the row for each `field:value`.
 The board offers one filter for each board field. With a value selected, each row dot shows the tone for that value.
 A type can set `process_fields`: `confirmed` for a requirement or a criterion, and `acceptance` for a requirement.
-An object shows only the process fields that its type lists. Until a workspace saves its own schema with `set_tree_schema`, the built-in tree shows both on a requirement and `confirmed` on a criterion.
-A type without `process_fields` shows no confirmation and no acceptance.
+An object shows only the process fields that its type lists. A type without `process_fields` shows no confirmation and no acceptance.
 Presentation changes create a schema revision. They do not change object revisions, parents, or verification evidence.
 
 ## Other workspaces
@@ -457,10 +480,10 @@ A task purpose can be any nonempty label. The `decision` label retains its confi
 
 ## Work and verification status
 
-Work status and verification status are separate. Completed work remains `done` when its evidence becomes invalid.
-Verification uses `pass`, `fail` and `unverified`. A completed Task passes only when its current parent evidence passes.
+A Task has the status rule `none`: its tone comes only from its own state. An open Task is grey, a Task in progress is yellow, and a done Task is green.
+`complete_task {id, revision, evidence, commit}` sets done. `commit` is the git sha where the Task is ready, and the Task keeps it.
+A Task has no verification of its own. The test status shows on the criterion, and a red criterion does not change a done Task.
 A blocking dependency on a requirement waits for its current checks to pass. Owner acceptance remains separate.
-If that requirement loses its passing checks, dependent Tasks cannot start. Completed dependent Tasks show `unverified`.
 The system preserves completion results and earlier evidence. Ordinary `related` links do not block work.
 
 ## Current read paths

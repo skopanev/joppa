@@ -5,17 +5,16 @@
 //! refused before any write. Each record is newer than every earlier report, so the
 //! latest record of a test decides it. A record names only the tests it ran: an
 //! omitted test gets no result, and a skip or todo in a record is never a pass.
-//! The tree schema can give the status names and extra fields, see result_shape.
+//! The block test_results of the tree schema gives the status names, the fields of a
+//! result and the largest record, see result_shape.
 use super::*;
 use crate::ac_tests::TestResult;
 use crate::result_shape::ResultShape;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-/// The largest number of results in one record.
-pub const RECORD_MAX: usize = 1000;
-/// A stored failure message keeps its first 8 KB.
-const MESSAGE_MAX: usize = 8 * 1024;
+/// The ids of the present objects that each ref field of the block can name.
+type Refs = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,18 +27,14 @@ struct Record {
 struct Outcome {
     test: String,
     status: String,
-    #[serde(default)]
-    message: Option<String>,
-    #[serde(default)]
-    duration_ms: Option<i64>,
-    /// The extra fields. The schema result shape decides which are permitted.
+    /// The fields of the result. The block test_results decides which are permitted.
     #[serde(flatten)]
     extra: serde_json::Map<String, Value>,
 }
 
-/// Check the input against the result shape and turn it into stored results. Nothing is
+/// Check the input against the test rules and turn it into stored results. Nothing is
 /// written here.
-fn parse(args: &Value, shape: Option<&ResultShape>) -> Result<(String, Vec<TestResult>)> {
+fn parse(args: &Value, shape: &ResultShape, refs: &Refs) -> Result<(String, Vec<TestResult>)> {
     let mut input = args.clone();
     if let Some(map) = input.as_object_mut() {
         map.remove("workspace");
@@ -65,27 +60,20 @@ fn parse(args: &Value, shape: Option<&ResultShape>) -> Result<(String, Vec<TestR
         "results must name at least one test"
     );
     ensure!(
-        record.results.len() <= RECORD_MAX,
-        "a record has at most {RECORD_MAX} results"
+        record.results.len() <= shape.max_results,
+        "a record has at most {} results",
+        shape.max_results
     );
     let mut results = Vec::with_capacity(record.results.len());
     for outcome in record.results {
         ensure!(!outcome.test.trim().is_empty(), "each result needs a test");
-        let checked = crate::result_shape::check(shape, &outcome.status, outcome.extra)
+        let checked = crate::result_check::check(shape, &outcome.status, outcome.extra, refs)
             .map_err(|e| anyhow::anyhow!("{}: {e}", outcome.test))?;
-        let mut message = outcome.message.filter(|m| !m.is_empty());
-        if let Some(text) = message.as_mut().filter(|m| m.len() > MESSAGE_MAX) {
-            let mut end = MESSAGE_MAX;
-            while !text.is_char_boundary(end) {
-                end -= 1;
-            }
-            text.truncate(end);
-        }
         results.push(TestResult {
             address: outcome.test,
             status: checked.status.into(),
-            duration_ms: outcome.duration_ms,
-            message,
+            duration_ms: None,
+            message: None,
             status_name: checked.status_name,
             fields: checked.fields,
         });
@@ -109,14 +97,31 @@ pub async fn record_results(
         &[&workspace],
     )
     .await?;
-    // The latest schema revision gives the result shape.
-    let shape: Option<ResultShape> = tx
+    // The latest schema revision gives the test rules.
+    let shape: ResultShape = tx
         .query_opt("SELECT (value->'test_results')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace])
         .await?
         .and_then(|row| row.get::<_, Option<String>>(0))
         .map(|text| serde_json::from_str(&text))
-        .transpose()?;
-    let (commit, results) = parse(args, shape.as_ref())?;
+        .transpose()?
+        .context("the tree schema has no test_results block")?;
+    // The present objects that each ref field can name.
+    let mut refs = Refs::new();
+    for field in &shape.fields {
+        if let Some(target) = &field.target {
+            let ids = tx
+                .query(
+                    "SELECT local_id FROM joppa.objects WHERE workspace=$1 AND kind=$2 AND present",
+                    &[&workspace, target],
+                )
+                .await?
+                .iter()
+                .map(|row| row.get(0))
+                .collect();
+            refs.insert(field.name.clone(), ids);
+        }
+    }
+    let (commit, results) = parse(args, &shape, &refs)?;
     let body = serde_json::to_string(&results)?;
     let hash = format!(
         "{:x}",
@@ -169,7 +174,7 @@ mod tests {
     fn parse_default(
         args: &serde_json::Value,
     ) -> anyhow::Result<(String, Vec<crate::ac_tests::TestResult>)> {
-        super::parse(args, None)
+        super::parse(args, &crate::test_rules::legacy(), &Default::default())
     }
 
     #[test]
@@ -181,7 +186,11 @@ mod tests {
         assert_eq!(commit, "abcdef1");
         let statuses: Vec<_> = rows.iter().map(|r| r.status.as_str()).collect();
         assert_eq!(statuses, ["pass", "fail", "skipped", "todo"]);
-        assert_eq!(rows[1].message.as_deref(), Some("expected 2, got 3"));
+        assert_eq!(
+            rows[1].fields,
+            Some(json!({"message": "expected 2, got 3"}))
+        );
+        assert_eq!(rows[3].fields, Some(json!({"duration_ms": 4})));
     }
 
     #[test]
@@ -225,7 +234,7 @@ mod tests {
             ),
             (
                 json!({"commit":"abcdef1","results":[{"test":"a","status":"passed"}]}),
-                "pass, fail, skip or todo",
+                "status must be one of: fail, pass, skip, todo",
             ),
         ] {
             let message = parse_default(&input).unwrap_err().to_string();

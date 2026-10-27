@@ -20,7 +20,8 @@ fn pass(tests: &[&str]) -> Value {
 /// Member bot changes the title of A, so A has a new text.
 async fn change_text(w: &World) -> Result<()> {
     let a = w.object(record_world::A).await?;
-    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["current_revision"],"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"Sharper wording"});
+    // The save keeps the test list, the field tests of the document.
+    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["current_revision"],"parent":"requirement:r","data":{"title":"A changed","owner":"owner","tests":a["document"]["data"]["tests"]},"reason":"Sharper wording"});
     w.command(&w.bot, command)
         .await?
         .map_err(|e| anyhow::anyhow!("text change: {e}"))?;

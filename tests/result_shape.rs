@@ -1,96 +1,113 @@
-//! The result shape of the tree schema: its checks and the stored values of one result.
-use joppa::result_shape::{ResultShape, check, effective, validate};
+//! The test rules of the tree schema: the check of a block and of one result.
+use joppa::result_shape::{ResultShape, validate};
+use joppa::test_rules::{legacy, validate_address};
 use serde_json::{Map, Value, json};
 
-fn shape(value: Value) -> ResultShape {
-    serde_json::from_value(value).unwrap()
+/// Check one result with no objects for ref fields.
+fn check(
+    rules: &ResultShape,
+    status: &str,
+    extra: Map<String, Value>,
+) -> anyhow::Result<joppa::result_check::Checked> {
+    joppa::result_check::check(rules, status, extra, &Default::default())
 }
 
 fn extra(value: Value) -> Map<String, Value> {
     value.as_object().cloned().unwrap()
 }
 
-fn browser_shape() -> ResultShape {
-    shape(json!({
-        "statuses": {"passed": "pass", "broken": "fail", "flaky": "fail", "ignored": "skip"},
-        "fields": [
-            {"name": "browser", "type": "enum", "values": ["chromium", "webkit"], "required": true},
-            {"name": "run_url", "title": "Run", "type": "text"},
-            {"name": "retries", "type": "number"}
-        ]
-    }))
+/// The older rules with other status names and a required app field.
+fn app_rules() -> ResultShape {
+    let mut rules = legacy();
+    rules.statuses = serde_json::from_value(
+        json!({"passed": "pass", "broken": "fail", "flaky": "fail", "ignored": "skip"}),
+    )
+    .unwrap();
+    rules.fields.push(
+        serde_json::from_value(json!({"name": "app", "type": "enum", "values": ["ios", "android"], "required": true, "board": true}))
+            .unwrap(),
+    );
+    rules.fields.push(
+        serde_json::from_value(
+            json!({"name": "run_url", "title": "Run", "type": "text", "max_length": 10}),
+        )
+        .unwrap(),
+    );
+    rules
 }
 
 #[test]
-fn without_a_shape_the_built_in_status_names_apply() {
-    let checked = check(None, "skip", Map::new()).unwrap();
+fn the_older_rules_are_a_valid_block_with_the_four_outcomes() {
+    let rules = legacy();
+    validate(&rules).unwrap();
+    let checked = check(&rules, "skip", Map::new()).unwrap();
     assert_eq!(checked.status, "skipped");
-    assert_eq!(checked.status_name, None);
-    assert_eq!(checked.fields, None);
-    let error = check(None, "passed", Map::new()).unwrap_err().to_string();
-    assert!(error.contains("pass, fail, skip or todo"), "{error}");
-    let error = check(None, "pass", extra(json!({"browser": "webkit"})))
+    assert_eq!(checked.status_name.as_deref(), Some("skip"));
+    let error = check(&rules, "passed", Map::new()).unwrap_err().to_string();
+    assert!(
+        error.contains("status must be one of: fail, pass, skip, todo"),
+        "{error}"
+    );
+    let checked = check(&rules, "fail", extra(json!({"message": "x".repeat(9000)}))).unwrap();
+    assert_eq!(
+        checked.fields.unwrap()["message"].as_str().unwrap().len(),
+        8 * 1024
+    );
+    validate_address(&rules, "tests/login.rs > email").unwrap();
+    let error = validate_address(&rules, "login > email")
         .unwrap_err()
         .to_string();
-    assert!(error.contains("unknown result field `browser`"), "{error}");
-    assert_eq!(
-        effective(None),
-        json!({"statuses": {"fail": "fail", "pass": "pass", "skip": "skip", "todo": "todo"}, "fields": []})
+    assert!(
+        error.contains("a test address needs file > name at least"),
+        "{error}"
     );
 }
 
 #[test]
-fn a_shape_maps_its_status_names_and_keeps_its_fields() {
-    let s = browser_shape();
-    validate(&s).unwrap();
+fn a_block_maps_its_status_names_and_keeps_its_fields() {
+    let rules = app_rules();
+    validate(&rules).unwrap();
     let checked = check(
-        Some(&s),
+        &rules,
         "flaky",
-        extra(json!({"browser": "webkit", "retries": 2})),
+        extra(json!({"app": "ios", "run_url": "https://ci.example/123"})),
     )
     .unwrap();
     assert_eq!(checked.status, "fail");
     assert_eq!(checked.status_name.as_deref(), Some("flaky"));
     assert_eq!(
         checked.fields,
-        Some(json!({"browser": "webkit", "retries": 2}))
+        Some(json!({"app": "ios", "run_url": "https://ci"}))
     );
-    let checked = check(Some(&s), "ignored", extra(json!({"browser": "chromium"}))).unwrap();
-    assert_eq!(checked.status, "skipped");
-}
-
-#[test]
-fn a_result_that_does_not_fit_the_shape_is_refused() {
-    let s = browser_shape();
     for (status, fields, error) in [
         (
             "pass",
-            json!({"browser": "webkit"}),
+            json!({"app": "ios"}),
             "status must be one of: broken, flaky, ignored, passed",
         ),
-        ("passed", json!({}), "result field browser is required"),
+        ("passed", json!({}), "result field app is required"),
         (
             "passed",
-            json!({"browser": "firefox"}),
-            "result field browser needs one of: chromium, webkit",
+            json!({"app": "web"}),
+            "result field app needs one of: ios, android",
         ),
         (
             "passed",
-            json!({"browser": "webkit", "retries": "two"}),
-            "result field retries needs a number",
+            json!({"app": "ios", "duration_ms": "two"}),
+            "result field duration_ms needs a number",
         ),
         (
             "passed",
-            json!({"browser": "webkit", "run_url": ""}),
+            json!({"app": "ios", "run_url": ""}),
             "result field run_url needs a text",
         ),
         (
             "passed",
-            json!({"browser": "webkit", "os": "linux"}),
+            json!({"app": "ios", "os": "linux"}),
             "unknown result field `os`",
         ),
     ] {
-        let message = check(Some(&s), status, extra(fields.clone()))
+        let message = check(&rules, status, extra(fields.clone()))
             .unwrap_err()
             .to_string();
         assert!(message.contains(error), "{status} {fields}: {message}");
@@ -98,53 +115,94 @@ fn a_result_that_does_not_fit_the_shape_is_refused() {
 }
 
 #[test]
-fn a_shape_with_a_bad_status_map_or_field_is_refused() {
-    for (value, error) in [
-        (json!({"statuses": {}}), "1 to 20 names"),
+fn a_block_with_a_bad_rule_or_field_is_refused() {
+    let base = serde_json::to_value(legacy()).unwrap();
+    for (key, value, error) in [
+        ("statuses", json!({}), "1 to 20 names"),
         (
-            json!({"statuses": {"ok": "pass"}}),
+            "statuses",
+            json!({"ok": "pass"}),
             "needs a name that counts as fail",
         ),
         (
-            json!({"statuses": {"ok": "pass", "bad": "red"}}),
+            "statuses",
+            json!({"ok": "pass", "bad": "red"}),
             "must count as pass, fail, skip or todo",
         ),
         (
-            json!({"statuses": {"o k": "pass", "bad": "fail"}}),
-            "without spaces",
+            "name",
+            json!({"separator": "", "min_parts": 2, "file_extension": true, "max_length": 400}),
+            "test_results.name needs a separator",
         ),
         (
-            json!({"fields": [{"name": "status", "type": "text"}]}),
-            "result field status is built-in",
+            "max_tests",
+            json!(0),
+            "max_tests and max_results are from 1 to 1000",
         ),
         (
-            json!({"fields": [{"name": "Browser", "type": "text"}]}),
+            "same_commit",
+            json!("newest"),
+            "same_commit is fail_wins or latest_wins",
+        ),
+        (
+            "green_if_all",
+            json!([]),
+            "green_if_all and red_if_any list different outcomes",
+        ),
+        (
+            "red_if_any",
+            json!(["pass"]),
+            "cannot be in green_if_all and red_if_any",
+        ),
+        (
+            "failure_field",
+            json!("duration_ms"),
+            "failure_field names a text field",
+        ),
+        (
+            "fields",
+            json!([{"name": "status", "type": "text", "max_length": 5}]),
+            "result field status is part of the record",
+        ),
+        (
+            "fields",
+            json!([{"name": "Browser", "type": "text", "max_length": 5}]),
             "uses a-z, 0-9 and _",
         ),
         (
-            json!({"fields": [{"name": "a", "type": "text"}, {"name": "a", "type": "number"}]}),
+            "fields",
+            json!([{"name": "a", "type": "number"}, {"name": "a", "type": "number"}]),
             "appears twice",
         ),
         (
-            json!({"fields": [{"name": "a", "type": "date"}]}),
-            "type text, number or enum",
+            "fields",
+            json!([{"name": "a", "type": "date"}]),
+            "type text, number, enum or ref",
         ),
         (
-            json!({"fields": [{"name": "a", "type": "enum"}]}),
+            "fields",
+            json!([{"name": "a", "type": "enum"}]),
             "enum field a needs 1 to 50 different values",
         ),
         (
-            json!({"fields": [{"name": "a", "type": "enum", "values": ["x", "x"]}]}),
-            "different values",
+            "fields",
+            json!([{"name": "a", "type": "text"}]),
+            "text field a needs max_length",
         ),
         (
-            json!({"fields": [{"name": "a", "type": "text", "values": ["x"]}]}),
-            "only an enum field has values",
+            "fields",
+            json!([{"name": "a", "type": "text", "max_length": 5, "board": true}]),
+            "board field a must be an enum or ref field",
         ),
     ] {
-        let message = validate(&shape(value.clone())).unwrap_err().to_string();
-        assert!(message.contains(error), "{value}: {message}");
+        let mut block = base.clone();
+        block[key] = value.clone();
+        if key == "fields" {
+            block["failure_field"] = Value::Null;
+        }
+        let shape: ResultShape = serde_json::from_value(block).unwrap();
+        let message = validate(&shape).unwrap_err().to_string();
+        assert!(message.contains(error), "{key} {value}: {message}");
     }
-    let unknown = serde_json::from_value::<ResultShape>(json!({"columns": []}));
-    assert!(unknown.is_err());
+    assert!(serde_json::from_value::<ResultShape>(json!({"columns": []})).is_err());
 }

@@ -7,8 +7,8 @@ const {fixture} = require('./board_fixture.cjs');
 
 test('owner-manages-workspace-ac4: Settings names the linking workspaces, shows a spinner and removes the links', async () => {
   const f = await fixture({
-    component: {title: 'Components', role: 'group', root: true, parents: []},
-    note: {title: 'Notes', role: 'document', root: true, parents: ['*']},
+    component: {title: 'Components', role: 'group', status:'children', root: true, parents: []},
+    note: {title: 'Notes', role: 'document', status:'none', root: true, parents: ['*']},
   });
   try {
     const request = f.page.context().request;
@@ -72,7 +72,7 @@ test('owner-manages-workspace-ac4: Settings names the linking workspaces, shows 
 });
 
 test('long-operation-spinner: a board button shows a spinner while its request runs', async () => {
-  const f = await fixture({note: {title: 'Notes', role: 'document', root: true, parents: ['*']}});
+  const f = await fixture({note: {title: 'Notes', role: 'document', status:'none', root: true, parents: ['*']}});
   try {
     await f.command({op: 'save_object', kind: 'note', id: 'mobile', revision: 0, parent: null,
       data: {title: 'Mobile login', owner: 'alex', body: 'Uses the API'}, reason: 'Fixture'}, f.live.alex);

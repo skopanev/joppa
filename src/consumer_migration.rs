@@ -30,6 +30,7 @@ fn rule() -> ReferenceRule {
         required: true,
         multiple: false,
         verification_subject: false,
+        allow_all: false,
     }
 }
 

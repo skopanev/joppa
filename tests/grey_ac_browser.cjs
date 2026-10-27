@@ -10,10 +10,10 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const root = path.join(__dirname, '..');
 const types = {
-  domain: {title: 'Domains', role: 'group', root: true, parents: [], badge: 'DOM'},
-  capability: {title: 'Capabilities', role: 'group', parents: ['domain'], badge: 'CAP'},
-  requirement: {title: 'Requirements', role: 'requirement', parents: ['capability'], badge: 'REQ'},
-  ac: {title: 'Criteria', role: 'ac', parents: ['requirement'], badge: 'AC'},
+  domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'DOM'},
+  capability: {title: 'Capabilities', role: 'group', status:'children', parents: ['domain'], badge: 'CAP'},
+  requirement: {title: 'Requirements', role: 'requirement', status:'children', parents: ['capability'], badge: 'REQ'},
+  ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement'], badge: 'AC'},
 };
 let browser, helper;
 before(async () => {
@@ -140,9 +140,9 @@ const criterionRecords = {
 describe('tests/grey_ac_browser.cjs', () => {
 test('suggested-method: the guide reads custom workspace levels and questions', async () => {
   const configured = {
-    ledger: {title: 'Ledgers', role: 'document', root: true, parents: [], question: 'Which records belong together?'},
-    entry: {title: 'Entries', role: 'document', parents: ['ledger', 'entry'], question: 'Which fact does this entry preserve?'},
-    observation: {title: 'Observations', role: 'document', root: true, parents: ['*'], question: 'Which source provided this observation?'},
+    ledger: {title: 'Ledgers', role: 'document', status:'none', root: true, parents: [], question: 'Which records belong together?'},
+    entry: {title: 'Entries', role: 'document', status:'none', parents: ['ledger', 'entry'], question: 'Which fact does this entry preserve?'},
+    observation: {title: 'Observations', role: 'document', status:'none', root: true, parents: ['*'], question: 'Which source provided this observation?'},
   };
   const f = await fixture({'ledger:one': {title: 'Product ledger'}, 'entry:one': {title: 'Recorded fact', parent: 'ledger:one'}}, configured);
   try {
@@ -206,7 +206,7 @@ test('guide-teaches-reports-ac1: the guide teaches test lists and records, not l
 
 test('type-badge: a click on a type badge toggles its row and opens no popover', async () => {
   const question = 'Which observation does this record preserve?';
-  const configured = {record: {title: 'Records', role: 'document', root: true, parents: ['record'], badge: 'REC', question}};
+  const configured = {record: {title: 'Records', role: 'document', status:'none', root: true, parents: ['record'], badge: 'REC', question}};
   const f = await fixture({'record:root': {title: 'Source'}, 'record:child': {title: 'Detail', parent: 'record:root'},
     'record:leaf': {title: 'Leaf', parent: 'record:child'}}, configured);
   try {
@@ -293,8 +293,8 @@ test('theme: the saved choice overrides or follows the system theme', async () =
 
 test('account-menu: sign out requires the user menu and ends the real session', async () => {
   const configured = {...types,
-    incoming: {title: 'Inbox', role: 'document', root: true, parents: [], inbox: true},
-    audience: {title: 'Consumers', role: 'document', root: true, parents: []},
+    incoming: {title: 'Inbox', role: 'document', status:'none', root: true, parents: [], inbox: true},
+    audience: {title: 'Consumers', role: 'document', status:'none', root: true, parents: []},
   };
   const f = await fixture({'domain:d': {title: 'Domain'},
     'incoming:one': {title: 'Incoming change'}, 'audience:one': {title: 'Product user'}}, configured);
@@ -355,11 +355,11 @@ test('account-menu: sign out requires the user menu and ends the real session', 
 
 test('direct-child-counts: each row uses the shared next-level count', async () => {
   const configured = {
-    bundle: {title: 'Bundles', role: 'group', root: true, parents: []},
-    branch: {title: 'Branches', role: 'group', parents: ['bundle']},
-    sheet: {title: 'Sheets', role: 'requirement', parents: ['branch']},
-    proof: {title: 'Proofs', role: 'ac', parents: ['sheet']},
-    extra: {title: 'Extra', role: 'document', parents: ['bundle']},
+    bundle: {title: 'Bundles', role: 'group', status:'children', root: true, parents: []},
+    branch: {title: 'Branches', role: 'group', status:'children', parents: ['bundle']},
+    sheet: {title: 'Sheets', role: 'requirement', status:'children', parents: ['branch']},
+    proof: {title: 'Proofs', role: 'ac', status:'tests', parents: ['sheet']},
+    extra: {title: 'Extra', role: 'document', status:'none', parents: ['bundle']},
   };
   const records = {
     'bundle:root': {title: 'Root'},
@@ -475,7 +475,7 @@ test('time-not-stale-ac2: the oldest test commit shows five newer commits', asyn
 });
 
 test('done-is-not-green-ac3: a done Task under a green criterion shows Checks passed', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   try {
     await f.bind('ac:A', ['X']);
@@ -483,17 +483,17 @@ test('done-is-not-green-ac3: a done Task under a green criterion shows Checks pa
       data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
       reason: 'Check completion under a green criterion'});
     await f.command({op: 'claim_task', id: 'task:T', revision: 1});
-    await f.command({op: 'complete_task', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});
+    await f.command({op: 'complete_task', commit: 'c0ffee0', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});
     await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
     const card = await f.open('ac:A');
     const circle = card.locator('.common-object[data-object-address="task:T"] > summary .status-circle');
     assert.equal(await circle.getAttribute('data-tone'), 'green');
-    assert.match(await circle.getAttribute('data-hint'), /^Status: Work complete · Checks passed(\n|$)/);
+    assert.match(await circle.getAttribute('data-hint'), /^Status: Work complete(\n|$)/);
   } finally { await f.close(); }
 });
 
 test('pins-ignore-process-events-ac4: the board marks a link changed only when the server asks for review', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   const task = (id, contract, revision = 0, links = []) => f.command({op: 'save_object', kind: 'task', id, revision, parent: 'ac:A',
     data: {title: 'Task ' + id, owner: 'owner', contract, purpose: 'implementation'}, links, reason: 'Define the Task'});
@@ -522,7 +522,7 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
 });
 
 test('retired-tasks-hidden-ac1: the board tree hides a retired Task and its page still opens', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   try {
     for (const id of ['open', 'old']) await f.command({op: 'save_object', kind: 'task', id, revision: 0, parent: 'ac:A',
@@ -538,7 +538,7 @@ test('retired-tasks-hidden-ac1: the board tree hides a retired Task and its page
 });
 
 test('tests-only-from-reports-ac1: object pages and board rows show no legacy checks block', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   try {
     await f.bind('ac:A', ['X']);
@@ -1307,7 +1307,7 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
   try {
     await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
     await f.record('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', [['X'], ['Y', 'failed check']]);
-    await f.command({op: 'archive_object', target: 'ac:B', revision: 1, reason: 'Drop the red criterion'}, true);
+    await f.command({op: 'archive_object', target: 'ac:B', revision: 2, reason: 'Drop the red criterion'}, true);
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
     assert.equal(await r.locator('.verification-chip').innerText(), '1 Criteria');
@@ -1320,7 +1320,7 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
 });
 
 test('comments-on-object-ac2: a comment shows its author and server time', async () => {
-  const configured = {record: {title: 'Records', role: 'document', root: true, parents: []}};
+  const configured = {record: {title: 'Records', role: 'document', status:'none', root: true, parents: []}};
   const address = 'record:one', text = 'Clarify this object boundary';
   const f = await fixture({[address]: {title: 'A source record'}}, configured,
     {locale: 'en-GB', timezoneId: 'Europe/Berlin'});
@@ -1661,7 +1661,7 @@ test('compact-open-object-ac2: an open object shows no side line', async () => {
   } finally { await f.close(); }
 });
 
-const markdownTypes = {...types, task: {title: 'Tasks', role: 'task', parents: ['ac']}};
+const markdownTypes = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
 const markdownBody = ['## Plan', '', '- first', '- second', '', '- [x] done item', '- [ ] open item', '',
   '| Name | Value |', '|---|---|', '| a | b |', '', 'See [docs](https://example.com/docs).', '', '> quoted', '',
   'Use `inline` code.', '', '```', 'let x = 1;', '```', '', 'Given: a', 'When: b'].join('\n');
@@ -2050,7 +2050,7 @@ test('no-dashed-focus-ac1: a mouse click leaves no focus mark on the history Clo
 
 // workspace-timeline-ac2
 test('workspace-timeline-ac2: alex reads the newest change first and opens R at the revision of its move', async () => {
-  const configured = {...types, signal: {title: 'Signals', role: 'document', root: true, parents: ['*'], inbox: true, badge: 'SIG'}};
+  const configured = {...types, signal: {title: 'Signals', role: 'document', status:'none', root: true, parents: ['*'], inbox: true, badge: 'SIG'}};
   const f = await fixture({
     'domain:d': {title: 'Domain'},
     'capability:c1': {title: 'First capability', parent: 'domain:d'},

@@ -13,6 +13,7 @@ pub(super) async fn add_status_tones(
     items: &mut [Value],
     types: &std::collections::BTreeMap<String, objects::TreeType>,
     value: Option<(&str, &str)>,
+    task_parents: bool,
 ) -> Result<()> {
     crate::probe::count(&crate::probe::ROLLUP);
     use std::collections::{BTreeMap, BTreeSet};
@@ -117,7 +118,8 @@ pub(super) async fn add_status_tones(
                 .push((row.get(0), row.get(1)));
         }
     }
-    // A done Task that links to a links node takes the test status of its parent criterion.
+    // Before migrate_test_rules a done Task that links to a links node took the test status
+    // of its parent criterion.
     let task_role = |kind: &str| types.get(kind).is_some_and(|t| t.role == "task");
     let criteria: BTreeSet<String> = ruled
         .iter()
@@ -126,7 +128,7 @@ pub(super) async fn add_status_tones(
         .chain(sources().map(|s| (s.address.clone(), s.kind.clone())))
         .chain(
             sources()
-                .filter(|s| s.done && task_role(&s.kind))
+                .filter(|s| task_parents && s.done && task_role(&s.kind))
                 .filter_map(|s| s.parent.clone()),
         )
         .filter(|(_, kind)| rule(kind) == "tests")
@@ -171,10 +173,14 @@ pub(super) async fn add_status_tones(
                 match statuses.get(address).and_then(|s| s["status"].as_str()) {
                     Some("green") => "green",
                     Some("red") => "red",
+                    // A board value that does not apply to the criterion: no tone counts.
+                    Some("n/a") => "none",
                     _ => "grey",
                 }
                 .to_owned(),
             ),
+            // A type without a status rule shows that its rule is not set.
+            "unset" => Some("orange".into()),
             "children" => {
                 if !seen.insert(address.to_owned()) {
                     return Some("grey".into());
@@ -211,7 +217,9 @@ pub(super) async fn add_status_tones(
                     let parent = s
                         .parent
                         .as_ref()
-                        .filter(|(_, k)| s.done && task_role(&s.kind) && rule(k) == "tests")
+                        .filter(|(_, k)| {
+                            task_parents && s.done && task_role(&s.kind) && rule(k) == "tests"
+                        })
                         .and_then(|(p, _)| statuses.get(p))
                         .filter(|status| !status["tests_revision"].is_null());
                     if let Some(status) = parent {

@@ -1,6 +1,6 @@
 //! The test status of one criterion, from the recorded test results.
 use super::*;
-use crate::ac_tests::{AcTests, Boundary, Report, TestResult, text_hash};
+use crate::ac_tests::{Boundary, Listed, Report, TestResult, listed};
 
 #[path = "reports_overview.rs"]
 mod overview;
@@ -48,24 +48,20 @@ pub(super) async fn state_criterion_statuses(
             let data = state.objects.get(target)?.current().data.clone();
             let boundary =
                 Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
-            Some((
-                target.clone(),
-                data,
-                state.ac_tests.get(target).cloned(),
-                boundary,
-            ))
+            Some((target.clone(), data, listed(state, target), boundary))
         })
         .collect();
-    let board =
-        crate::result_shape::board_fields(crate::objects::schema(state).test_results.as_ref());
-    statuses_for_criteria(client, workspace, criteria, &board).await
+    let rules = crate::test_rules::rules(state)?;
+    let board = crate::result_values::board_fields(&rules, state);
+    statuses_for_criteria(client, workspace, criteria, &rules, &board).await
 }
 
 async fn statuses_for_criteria(
     client: &impl GenericClient,
     workspace: &str,
-    criteria: Vec<(String, Value, Option<AcTests>, Boundary)>,
-    board: &[(String, Vec<String>)],
+    criteria: Vec<(String, Value, Option<Listed>, Boundary)>,
+    rules: &crate::result_shape::ResultShape,
+    board: &[crate::result_values::BoardField],
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
@@ -73,7 +69,7 @@ async fn statuses_for_criteria(
     }
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
-        .filter_map(|(_, _, saved, _)| saved.as_ref().and_then(AcTests::current))
+        .filter_map(|(_, _, saved, _)| saved.as_ref())
         .flat_map(|current| current.tests.iter().cloned())
         .collect();
     let reports: Vec<Report> = client
@@ -95,15 +91,16 @@ async fn statuses_for_criteria(
     }
     let mut statuses = std::collections::BTreeMap::new();
     for (address, data, saved, boundary) in criteria {
-        let current = saved.as_ref().and_then(AcTests::current);
+        let current = saved.as_ref();
         let tests = current.map(|r| r.tests.as_slice()).unwrap_or_default();
-        let draft = current.is_some_and(|r| r.text_hash != text_hash(&data));
+        let draft = current.is_some_and(|r| r.draft);
         let own: Vec<(i64, TestResult)> = tests
             .iter()
             .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
             .collect();
-        let mut status =
-            crate::result_values::status_by_value(tests, draft, boundary, &reports, &own, board)?;
+        let mut status = crate::result_values::status_by_value(
+            tests, draft, boundary, &reports, &own, rules, board, &data,
+        )?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

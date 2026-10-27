@@ -2,9 +2,9 @@
 // mocked server returns.
 const ATTACK='</script><script>window.attacked=true</script>';
 const types={
-  area:{title:'Area',index:10,role:'group',root:true,parents:[]},
-  spec:{title:'Spec',index:20,role:'requirement',root:false,parents:['area']},
-  measure:{title:'Measure',index:30,role:'ac',root:false,parents:['spec']},
+  area:{title:'Area',index:10,role:'group', status:'children',root:true,parents:[]},
+  spec:{title:'Spec',index:20,role:'requirement', status:'children',root:false,parents:['area']},
+  measure:{title:'Measure',index:30,role:'ac', status:'tests',root:false,parents:['spec']},
 };
 const schema={workspace:'w',current_revision:2,schema:{revision:2,actor:'owner',
   at:'2026-10-06T09:00:00Z',reason:'Configured tree',types}};

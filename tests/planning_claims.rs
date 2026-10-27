@@ -23,9 +23,9 @@ fn configured() -> World {
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":0,"reason":"Configure roles","types":{
-            "spec":{"title":"Specification","role":"requirement","root":true,"parents":[]},
-            "criterion":{"title":"Criterion","role":"ac","parents":["spec"]},
-            "work":{"title":"Work","role":"task","parents":["criterion"],"parent_gate":"ready"}
+            "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
+            "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+            "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
         }}),
     );
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();

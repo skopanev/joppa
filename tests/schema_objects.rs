@@ -44,12 +44,12 @@ fn required_fields_follow_configured_types_and_value_presence() {
     let mut types = objects::schema(&w.state).types;
     let names = ["domain", "ac", "task", "note", "feedback"];
     for name in names {
-        types.insert(name.into(), serde_json::from_value(json!({"title":name,"role":"document","root":true,"parents":["*"],"required_fields":{"origin":"origin is required"}})).unwrap());
+        types.insert(name.into(), serde_json::from_value(json!({"title":name,"role":"document","status":"none","root":true,"parents":["*"],"required_fields":{"origin":"origin is required"}})).unwrap());
     }
     types.insert(
         "record".into(),
         serde_json::from_value(
-            json!({"title":"Record","role":"document","root":true,"parents":["*"]}),
+            json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]}),
         )
         .unwrap(),
     );
@@ -149,7 +149,7 @@ fn required_text_rules_use_literal_markers_on_any_document_field() {
     let mut types = serde_json::to_value(objects::schema(&w.state).types).unwrap();
     let rule = json!({"contains":["left:","Right:"],"error":"Both markers are required"});
     types["note"]["required_fields"] = json!({"body":rule});
-    types["observation"] = json!({"title":"Observation","role":"document","root":true,"parents":["*"],"required_fields":{"text":rule}});
+    types["observation"] = json!({"title":"Observation","role":"document","status":"none","root":true,"parents":["*"],"required_fields":{"text":rule}});
     w.ok("owner", json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Require configured text markers"}));
     assert_eq!(
         serde_json::to_value(
@@ -218,7 +218,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
     for name in names {
         types.insert(
             name.into(),
-            json!({"title":name,"role":"document","root":true,"parents":["*"]}),
+            json!({"title":name,"role":"document","status":"none","root":true,"parents":["*"]}),
         );
     }
     w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Names do not select behavior"}));
@@ -295,13 +295,14 @@ fn migrated_criterion_edits_preserve_native_and_custom_specification_parents() {
                 multiple: true,
                 required: true,
                 verification_subject: false,
+                allow_all: false,
             },
         );
         if custom {
             types.insert(
                 "section".into(),
                 serde_json::from_value(
-                    json!({"title":"Section","role":"document","root":true,"parents":["*"]}),
+                    json!({"title":"Section","role":"document","status":"none","root":true,"parents":["*"]}),
                 )
                 .unwrap(),
             );
@@ -451,9 +452,9 @@ fn explicit_legacy_grouping_changes_do_not_depend_on_prior_criterion_edits() {
 fn criterion_edits_preserve_custom_specification_type_context() {
     let mut w = empty();
     let types = json!({
-        "area":{"title":"Area","role":"group","root":true,"parents":["area"]},
-        "spec":{"title":"Specification","role":"requirement","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","parents":["spec"]}
+        "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
+        "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
     });
     w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure named roles"}));
     save(
@@ -510,9 +511,9 @@ fn verification_uses_roles_when_former_group_names_are_verification_types() {
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
-        "consumer":{"title":"Specification","role":"requirement","root":true,"parents":["*"]},
-        "domain":{"title":"Criterion","role":"ac","parents":["*"]},
-        "capability":{"title":"Work","role":"task","parents":["*"]}
+        "consumer":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":["*"]},
+        "domain":{"title":"Criterion","role":"ac","status":"tests","parents":["*"]},
+        "capability":{"title":"Work","role":"task","status":"none","parents":["*"]}
     },"reason":"Select workflows by roles"}),
     );
     save(
@@ -591,8 +592,8 @@ fn every_type_can_order_its_own_siblings() {
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
-        "root":{"title":"Root","role":"group","root":true},
-        "entry":{"title":"Entry","role":"document","parents":["root"]}
+        "root":{"title":"Root","role":"group","status":"children","root":true},
+        "entry":{"title":"Entry","role":"document","status":"none","parents":["root"]}
     },"reason":"Configure arbitrary nesting"}),
     );
     save(
@@ -625,8 +626,8 @@ fn every_type_can_order_its_own_siblings() {
 fn native_and_custom_verification_names_use_common_process_keys() {
     for (spec, criterion) in [("requirement", "ac"), ("contract", "check")] {
         let mut w = empty();
-        let types = json!({spec:{"title":"Specification","role":"requirement","root":true},
-            criterion:{"title":"Criterion","role":"ac","parents":[spec]}});
+        let types = json!({spec:{"title":"Specification","role":"requirement","status":"children","root":true},
+            criterion:{"title":"Criterion","role":"ac","status":"tests","parents":[spec]}});
         w.ok(
             "owner",
             json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,
@@ -706,7 +707,7 @@ async fn copied_ids_search_and_rebuild_use_common_documents_for_all_names() -> a
         .map(|name| {
             (
                 (*name).into(),
-                json!({"title":name,"role":"document","root":true,"parents":["*"]}),
+                json!({"title":name,"role":"document","status":"none","root":true,"parents":["*"]}),
             )
         })
         .collect();

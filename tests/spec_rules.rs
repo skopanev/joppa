@@ -299,7 +299,7 @@ fn the_owner_adds_a_type_and_the_schema_gets_one_revision() {
         "owner",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Base"}),
     );
-    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
+    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
     w.ok(
         "owner",
         json!({"op":"set_tree_schema","revision":1,"types":types,"reason":"Add risk"}),

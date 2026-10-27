@@ -15,26 +15,26 @@ async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> R
         .await?;
     w.command_as(
         &w.bot,
-        json!({"op":"complete_task","id":task,"revision":2,"evidence":"Implemented the contract"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":task,"revision":2,"evidence":"Implemented the contract"}),
     )
     .await?;
     let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
     record_http::recorded(&w.http, &w.root, &w.ws, &w.bot, "c4c4c4c", passed).await?;
     let passed = |object: &Value| {
-        object["process"]["verification"] == "pass"
+        object["process"].get("verification").is_none()
             && object["signal"]["tone"] == "green"
-            && object["signal"]["label"] == "Work complete · Checks passed"
+            && object["signal"]["label"] == "Work complete"
     };
     let before = w.get(&format!("address={task}")).await?;
     ensure!(passed(&before), "{before}");
 
-    let row = "SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='ac_tests' AND key='ac:key-rights'";
+    let row = "SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='ac:key-rights'";
     let original: String = w.pool.get().await?.query_one(row, &[&w.ws]).await?.get(0);
     let broken = w.pool.get().await?.execute(
-        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='ac_tests' AND key='ac:key-rights'",
+        "UPDATE joppa.state_entries SET value='{\"revisions\":\"unreadable\"}'::jsonb WHERE workspace=$1 AND section='objects' AND key='ac:key-rights'",
         &[&w.ws],
     ).await?;
-    ensure!(broken == 1, "the saved list must exist");
+    ensure!(broken == 1, "the criterion document must exist");
     // The corruption is not a journal write: the read keeps the status of the last write.
     let kept = w.get(&format!("address={task}")).await?;
     ensure!(passed(&kept), "{kept}");

@@ -26,7 +26,7 @@ async fn a_completed_prerequisite_task_unblocks_its_dependent_over_mcp() -> Resu
         mcp_value(&w, "joppa_command", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":value})).await
     };
     command(json!({"op":"claim_task","id":a,"revision":object(&a).await?["current_revision"]})).await?;
-    command(json!({"op":"complete_task","id":a,"revision":object(&a).await?["current_revision"],"evidence":"Implemented the prerequisite"})).await?;
+    command(json!({"op":"complete_task","commit":"c0ffee0","id":a,"revision":object(&a).await?["current_revision"],"evidence":"Implemented the prerequisite"})).await?;
     let done = object(&a).await?;
     ensure!(done["process"]["status"] == "done", "{done}");
     ensure!(available().await?, "B is available after A is done");

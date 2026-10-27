@@ -137,8 +137,8 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     let question = "Which observation changes the current contract?";
-    types["observation"] = json!({"title":"Observation","role":"document","root":true,"parents":["*"],"question":question});
-    types["record"] = json!({"title":"Record","role":"document","root":true,"parents":["*"]});
+    types["observation"] = json!({"title":"Observation","role":"document","status":"none","root":true,"parents":["*"],"question":question});
+    types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Configure the authoring question"})).await?;
     let call = |name: &str, arguments: Value| {
         let name = name.to_owned();

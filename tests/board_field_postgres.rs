@@ -42,11 +42,16 @@ async fn fixture(pool: &deadpool_postgres::Pool, shape: Option<Value>) -> Result
     store::enroll_service(pool, &ws, "owner", "bot", "agent").await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     let mut schema = json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     }});
+    // The command sends the whole block: the current rules with the added fields.
     if let Some(shape) = shape {
-        schema["test_results"] = shape;
+        let mut block = tree["schema"]["test_results"].clone();
+        let mut fields = block["fields"].as_array().cloned().unwrap_or_default();
+        fields.extend(shape["fields"].as_array().cloned().unwrap_or_default());
+        block["fields"] = json!(fields);
+        schema["test_results"] = block;
     }
     write(pool, &ws, schema).await?;
     for command in [
@@ -195,22 +200,55 @@ async fn without_a_board_field_the_status_and_rows_do_not_change() -> Result<()>
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn only_a_required_enum_field_can_be_a_board_field() -> Result<()> {
+async fn only_an_enum_field_can_be_a_board_field() -> Result<()> {
     let pool = pool().await?;
     let ws = fixture(&pool, None).await?;
-    for field in [
-        json!({"name":"app","type":"enum","values":["ios"],"board":true}),
-        json!({"name":"app","type":"text","required":true,"board":true}),
-    ] {
-        let tree = store::tree_schema(&pool, &ws, "bot", None).await?;
-        let error = write(&pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Board field","test_results":{"fields":[field]}}))
-            .await
-            .unwrap_err()
-            .to_string();
-        ensure!(
-            error.contains("board field app must be a required enum field"),
-            "{error}"
-        );
-    }
+    let tree = store::tree_schema(&pool, &ws, "bot", None).await?;
+    let mut block = tree["schema"]["test_results"].clone();
+    block["fields"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"app","type":"text","max_length":10,"board":true}));
+    let error = write(&pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Board field","test_results":block}))
+        .await
+        .unwrap_err()
+        .to_string();
+    ensure!(
+        error.contains("board field app must be an enum or ref field"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_result_without_the_board_field_counts_for_every_value() -> Result<()> {
+    let pool = pool().await?;
+    let shape = json!({"fields":[{"name":"app","title":"App","type":"enum","values":["ios","android"],"board":true}]});
+    let ws = fixture(&pool, Some(shape)).await?;
+    // A shared test without app counts for both values.
+    record(&pool, &ws, C1, json!([{"test":X,"status":"pass"}])).await?;
+    let s = store::criterion_tests(&pool, &ws, "bot", "ac:a").await?;
+    ensure!(
+        s["status"] == "green"
+            && s["values"]["app"]["ios"]["status"] == "green"
+            && s["values"]["app"]["android"]["status"] == "green",
+        "{s}"
+    );
+    // A later failure for android only makes android red.
+    record(
+        &pool,
+        &ws,
+        C2,
+        json!([{"test":X,"status":"fail","app":"android"}]),
+    )
+    .await?;
+    let s = store::criterion_tests(&pool, &ws, "bot", "ac:a").await?;
+    ensure!(
+        s["status"] == "red"
+            && s["values"]["app"]["ios"]["status"] == "green"
+            && s["values"]["app"]["android"]["status"] == "red",
+        "{s}"
+    );
     Ok(())
 }

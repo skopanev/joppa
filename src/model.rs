@@ -45,6 +45,9 @@ pub struct Workspace {
     /// The migrate_consumer_drops event ran: each criterion that lost consumers has a comment.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub consumer_drops_noted: bool,
+    /// The migrate_test_rules event ran: the schema holds every test rule and status rule.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub test_rules_migrated: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub documents_migrated: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
@@ -302,6 +305,9 @@ pub struct Task {
     /// An unassigned task becomes in progress only after an atomic claim.
     pub assignee: Option<String>,
     pub done: Option<String>,
+    /// The git sha where the Task is ready, from complete_task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
     #[serde(default)]
     pub contract: String,
     #[serde(default)]

@@ -6,9 +6,9 @@ const root=path.join(__dirname,'..');
 const html=readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',readFileSync(path.join(root,'src/board.css'),'utf8'))
   .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8')).replace('/* BOARD_IMPORTS */',require('./board_script.cjs'));
-const types={folder:{title:'Folder',role:'group',root:true,parents:[],badge:'FOLD',title_size:21},
-  incoming:{title:'Incoming information',role:'document',root:true,parents:['*'],inbox:true},
-  measure:{title:'Measure',role:'ac',root:false,parents:['folder'],badge:'TEST',title_preview_length:24}};
+const types={folder:{title:'Folder',role:'group', status:'children',root:true,parents:[],badge:'FOLD',title_size:21},
+  incoming:{title:'Incoming information',role:'document', status:'none',root:true,parents:['*'],inbox:true},
+  measure:{title:'Measure',role:'ac', status:'tests',root:false,parents:['folder'],badge:'TEST',title_preview_length:24}};
 const records={
   'folder:alpha':{title:'Alpha',body:'Current source context',links:[{target:'incoming:beta',relation:'related'}]},
   'incoming:beta':{title:'Beta',body:'Current incoming information',links:[{target:'folder:alpha',relation:'related'},{target:'measure:r/1',revision:1,relation:'depends_on'}]},

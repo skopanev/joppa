@@ -70,9 +70,9 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
     .await?;
     let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
     batch(&pool, &ws, vec![json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "domain":{"title":"Domains","role":"group","root":true,"parents":[]},
-        "requirement":{"title":"Requirements","role":"requirement","parents":["domain"]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["domain"]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     }})]).await?;
     // 5 domains, 2 requirements in each, 20 criteria in each requirement: 200 criteria.
     let mut commands = vec![];

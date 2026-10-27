@@ -32,7 +32,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
         .await?
         .get(0);
     let request_id = uuid::Uuid::new_v4().to_string();
-    let complete = json!({"op":"complete_task","id":"task:returned","revision":4,"evidence":"Implemented the contract and recorded checks"});
+    let complete = json!({"op":"complete_task","commit":"c0ffee0","id":"task:returned","revision":4,"evidence":"Implemented the contract and recorded checks"});
     let response = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
@@ -104,7 +104,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     )
     .await?;
     let owned = w.get("address=task:owner-completion").await?;
-    let complete = json!({"op":"complete_task","id":"task:owner-completion","revision":2,"evidence":"Record the completed work"});
+    let complete = json!({"op":"complete_task","commit":"c0ffee0","id":"task:owner-completion","revision":2,"evidence":"Record the completed work"});
     let response = w
         .http
         .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
@@ -199,7 +199,7 @@ async fn released_holder_cannot_complete(p_owns_task: bool, owner_releases: bool
             "{claimed}"
         );
     }
-    w.command_as(q, json!({"op":"complete_task","id":"task:released","revision":4,"evidence":"Implemented the contract and recorded checks"})).await?;
+    w.command_as(q, json!({"op":"complete_task","commit":"c0ffee0","id":"task:released","revision":4,"evidence":"Implemented the contract and recorded checks"})).await?;
     let done = w.get("address=task:released").await?;
     ensure!(
         done["current_revision"] == 5

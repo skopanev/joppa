@@ -21,7 +21,7 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
         let claimed = w.get(&format!("address={address}")).await?;
         ensure!(
             claimed["process"]["assignee"] == "bot"
-                && claimed["process"]["verification"] == "unverified",
+                && claimed["process"].get("verification").is_none(),
             "{claimed}"
         );
         let before: i64 = conn
@@ -105,7 +105,7 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
         let updated = w.get(&format!("address={address}")).await?;
         ensure!(
             updated["document"]["data"]["context"]["verification"] == "passing"
-                && updated["process"]["verification"] == "unverified",
+                && updated["process"].get("verification").is_none(),
             "{updated}"
         );
         w.command_as(bot, json!({"op":"release_task","id":address,"revision":updated["current_revision"],"reason":"Return the tested work"})).await?;

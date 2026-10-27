@@ -70,12 +70,22 @@ pub(super) async fn project_current(
     let statuses =
         crate::status_colors::effective(current.statuses.as_ref(), current.status_colors.as_ref());
     // The board fields of the result shape: the board filters by one value of one of them.
-    let result_filters: Vec<Value> = current
-        .test_results
-        .iter()
-        .flat_map(|shape| shape.fields.iter().filter(|f| f.board))
-        .map(|f| json!({"field":f.name,"title":f.title.as_deref().unwrap_or(&f.name),"values":f.values}))
-        .collect();
+    let result_filters: Vec<Value> = crate::test_rules::rules(state)
+        .map(|rules| {
+            crate::result_values::board_fields(&rules, state)
+                .into_iter()
+                .map(|f| {
+                    let title = rules
+                        .fields
+                        .iter()
+                        .find(|r| r.name == f.name)
+                        .and_then(|r| r.title.clone())
+                        .unwrap_or_else(|| f.name.clone());
+                    json!({"field":f.name,"title":title,"values":f.values})
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"statuses":statuses,"result_filters":result_filters,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;

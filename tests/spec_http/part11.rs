@@ -103,7 +103,7 @@ async fn a_parent_rule_that_orphans_risk_objects_is_refused_over_http() -> Resul
     let n = n.unwrap();
     let mut types = before["schema"]["types"].clone();
     ensure!(types.get("risk").is_none(), "{before}");
-    types["risk"] = json!({"title":"Risk","role":"document","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
+    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
     let (status, reply) = text_rule_request(
         &w,
         &w.skopanev,

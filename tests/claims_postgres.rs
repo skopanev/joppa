@@ -63,7 +63,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
                 references: Default::default(),
                 required_fields: Default::default(),
                 parent_decision: false,
-                status: None,
+                status: Some("none".into()),
                 status_order: None,
                 process_fields: None,
                 inbox: None,
@@ -197,9 +197,9 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
     }
     let current = store::tree_schema(&pool, &ws, "owner", None).await?;
     let types = json!({
-        "spec":{"title":"Specs","role":"document","root":true,"parents":["*"]},
-        "job":{"title":"Jobs","role":"task","root":true,"parents":["*"]},
-        "work":{"title":"Work","role":"task","root":true,"parents":["*"]}
+        "spec":{"title":"Specs","role":"document","status":"none","root":true,"parents":["*"]},
+        "job":{"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]},
+        "work":{"title":"Work","role":"task","status":"none","root":true,"parents":["*"]}
     });
     store::execute_remote_input(&pool, &ws, "owner", "schema", &json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Use two configured work types"})).await?;
     for kind in ["job", "work"] {
@@ -387,7 +387,7 @@ async fn permanent_fixture(minutes: i64) -> Result<(deadpool_postgres::Pool, Str
         .await?;
     }
     let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
-    store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":{"job":{"title":"Jobs","role":"task","root":true,"parents":["*"]}},"reason":"Use configured work"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":{"job":{"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]}},"reason":"Use configured work"})).await?;
     store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation"},"reason":"Create work"})).await?;
     let request = format!(
         "test-claim-time-{}-{}",
@@ -453,7 +453,7 @@ async fn elapsed_time_keeps_claims_in_current_queues_and_replay() -> Result<()> 
         )
         .await?;
         ensure!(before == after, "refusal changes no state");
-        store::execute_remote_input(&pool,&ws,"bot","done",&json!({"op":"complete_task","id":"job:one","revision":2,"evidence":"Verified after elapsed time"})).await?;
+        store::execute_remote_input(&pool,&ws,"bot","done",&json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":2,"evidence":"Verified after elapsed time"})).await?;
         store::check_journal(&pool).await?;
     }
     Ok(())
@@ -556,7 +556,7 @@ async fn explicit_owner_release_keeps_work_and_excludes_the_old_holder() -> Resu
         &ws,
         "bot",
         "old-holder",
-        &json!({"op":"complete_task","id":"job:one","revision":4,"evidence":"Late completion"}),
+        &json!({"op":"complete_task","commit":"c0ffee0","id":"job:one","revision":4,"evidence":"Late completion"}),
     )
     .await
     .unwrap_err();

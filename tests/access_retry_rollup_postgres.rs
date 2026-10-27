@@ -79,10 +79,10 @@ async fn workspace(pool: &deadpool_postgres::Pool) -> Result<String> {
     }
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     let schema = json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "domain":{"title":"Domains","role":"group","root":true,"parents":[]},
-        "capability":{"title":"Capabilities","role":"group","parents":["domain"]},
-        "requirement":{"title":"Requirements","role":"requirement","parents":["capability"]},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"]}
+        "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
+        "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"]},
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"]},
+        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
     }});
     write(
         pool,

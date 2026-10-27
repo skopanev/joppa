@@ -59,7 +59,7 @@ async fn projection_parity_dump() -> Result<()> {
     run(
         &pool,
         &mut n,
-        json!({"op":"complete_task","id":"task:t1","revision":t1,"evidence":"Done"}),
+        json!({"op":"complete_task","commit":"c0ffee0","id":"task:t1","revision":t1,"evidence":"Done"}),
     )
     .await?;
     mark(&mut out, "task done").await?;

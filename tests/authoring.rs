@@ -638,7 +638,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         &json!({"op":"claim_task","req":"req","revision":2,"id":"open-task"}),
     )
     .await?;
-    store::execute_input(&pool,&ws,loser,"complete",&json!({"op":"complete_task","req":"req","revision":2,"id":"open-task","evidence":"merged build abc"})).await?;
+    store::execute_input(&pool,&ws,loser,"complete",&json!({"op":"complete_task","commit":"c0ffee0","req":"req","revision":2,"id":"open-task","evidence":"merged build abc"})).await?;
     assert_eq!(
         store::task_queue(&pool, &ws, loser, "mine", 50, None).await?["total"],
         0

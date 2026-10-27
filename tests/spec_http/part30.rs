@@ -201,7 +201,7 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
         json!({"op":"claim_task","id":"task:t2","revision":current("task:t2").await?}),
     )
     .await?;
-    w.command_as(&w.bot, json!({"op":"complete_task","id":"task:t2","revision":current("task:t2").await?,"evidence":"Implemented the contract"})).await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":"task:t2","revision":current("task:t2").await?,"evidence":"Implemented the contract"})).await?;
     let (ok, claimed) = send_as(
         &w,
         &w.bot,

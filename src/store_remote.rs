@@ -57,6 +57,21 @@ pub(super) async fn target(
         .map(|r| (r.get(0), r.get(1))))
 }
 
+/// The current revision of a remote target and the revision of its contract: a revision
+/// that changes only the test list keeps the contract of the revision before it.
+pub(super) async fn target_contract(
+    client: &impl GenericClient,
+    link: &RemoteLink,
+) -> Result<Option<(String, i32, i32)>> {
+    Ok(client
+        .query_opt(
+            "SELECT o.address,o.revision,CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.address=COALESCE((SELECT a.target FROM joppa.object_aliases a WHERE a.workspace=$1 AND a.address=$2),$2)",
+            &[&link.workspace, &link.target],
+        )
+        .await?
+        .map(|r| (r.get(0), r.get(1), r.get(2))))
+}
+
 /// Check the links of a set_remote_links command before the write applies it.
 pub(super) async fn check_links(
     client: &impl GenericClient,
