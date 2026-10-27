@@ -40,7 +40,7 @@ jobs:
       - run: cargo test
       - run: cargo test --test oauth -- --ignored
       - run: cargo test --test sessions -- --ignored
-      - run: cargo test --test postgres --test references --test sources --test authoring --test search --test consumers --test notes --test objects_postgres --test note_migration_postgres --test generic_tasks_postgres --test configured_references_postgres --test custom_verification_postgres --test schema_objects --test storage_rows --test incremental_projection --test readiness_metadata --test journal_probe --test read_latency --test unstarted_work --test task_check_evidence_postgres --test reports_http --test spec_http --test claims_postgres --test workspace_purge --test workspace_purge_links --test consumer_migration_postgres --test app_role_grants -- --ignored --test-threads=1
+      - run: cargo test --test postgres --test references --test sources --test authoring --test search --test consumers --test notes --test objects_postgres --test note_migration_postgres --test generic_tasks_postgres --test configured_references_postgres --test custom_verification_postgres --test schema_objects --test storage_rows --test incremental_projection --test readiness_metadata --test journal_probe --test read_latency --test unstarted_work --test task_check_evidence_postgres --test reports_http --test spec_http --test claims_postgres --test workspace_purge --test workspace_purge_links --test consumer_migration_postgres --test requirement_consumers_postgres --test app_role_grants -- --ignored --test-threads=1
       - run: cargo test --test access -- --ignored
         env:
           JOPPA_ACCESS_RULES_FILE: ${{ runner.temp }}/joppa-test-access.json

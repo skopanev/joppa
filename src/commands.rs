@@ -15,6 +15,8 @@ pub enum Command {
     MigrateTaskClaims {},
     /// Internal migration event: one consumer per criterion, see consumer_migration.
     MigrateConsumers {},
+    /// Internal migration event: a comment on each criterion that lost consumers, see consumer_drops.
+    MigrateConsumerDrops {},
     SetTreeSchema {
         revision: u32,
         /// The whole type map. Without it, put_types and remove_types change single types.
@@ -1037,6 +1039,9 @@ pub(crate) fn apply_inner(
         }
         Command::MigrateConsumers {} => {
             crate::consumer_migration::migrate(w, actor, position, recorded_at)?;
+        }
+        Command::MigrateConsumerDrops {} => {
+            crate::consumer_drops::apply(w, actor, recorded_at)?;
         }
         Command::MigrateNotes {} => {
             ensure!(actor == w.admin, "workspace owner required");

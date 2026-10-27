@@ -168,3 +168,63 @@ fn a_later_requirement_save_keeps_the_consumer_of_each_criterion() {
         "customer"
     );
 }
+
+/// The comment of the consumer migration on a criterion, if any.
+fn drop_comment(w: &World, ac: &str) -> Option<String> {
+    let address = joppa::objects::annotation_address(&w.state, ac);
+    w.state.notes.get(&address).and_then(|n| {
+        n.comments
+            .get(joppa::consumer_drops::COMMENT)
+            .map(|c| c.text.clone())
+    })
+}
+
+// one-consumer-per-criterion-ac4
+#[test]
+fn a_criterion_that_lost_consumers_gets_one_comment_that_lists_them() {
+    let mut w = before();
+    let r = w.state.objects["requirement:r"].current().clone();
+    let mut data = r.data.clone();
+    data["consumers"] = json!(["customer", "agentc"]);
+    w.ok("owner", json!({"op":"save_object","kind":"requirement","id":"r","revision":r.revision,"parent":r.parent,"data":data,"reason":"Name two consumers"}));
+    internal(&mut w, "owner", "migrate_consumers").unwrap();
+    let revisions = (
+        w.state.objects["ac:ios"].current().revision,
+        w.state.objects["ac:key"].current().revision,
+    );
+    let boundaries = w.state.criterion_boundaries.clone();
+    assert!(internal(&mut w, "agent", "migrate_consumer_drops").is_err());
+    internal(&mut w, "owner", "migrate_consumer_drops").unwrap();
+    // The own list of the criterion, else the list of its requirement.
+    assert_eq!(
+        drop_comment(&w, "ac:ios").as_deref(),
+        Some(joppa::consumer_drops::text("agentc", &["customer".into()]).as_str())
+    );
+    assert_eq!(
+        drop_comment(&w, "ac:key").as_deref(),
+        Some(joppa::consumer_drops::text("customer", &["agentc".into()]).as_str())
+    );
+    // The comment changes no revision and no status.
+    assert_eq!(
+        revisions,
+        (
+            w.state.objects["ac:ios"].current().revision,
+            w.state.objects["ac:key"].current().revision,
+        )
+    );
+    assert_eq!(w.state.criterion_boundaries, boundaries);
+    // A second event changes nothing.
+    let state = serde_json::to_value(&w.state).unwrap();
+    internal(&mut w, "owner", "migrate_consumer_drops").unwrap();
+    assert_eq!(serde_json::to_value(&w.state).unwrap(), state);
+}
+
+// one-consumer-per-criterion-ac4
+#[test]
+fn a_criterion_that_kept_its_only_consumer_gets_no_comment() {
+    let mut w = before();
+    internal(&mut w, "owner", "migrate_consumers").unwrap();
+    internal(&mut w, "owner", "migrate_consumer_drops").unwrap();
+    assert!(drop_comment(&w, "ac:ios").is_some());
+    assert_eq!(drop_comment(&w, "ac:key"), None);
+}

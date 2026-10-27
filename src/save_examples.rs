@@ -40,6 +40,13 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
     for (kind, t) in types {
         let mut data = Map::new();
         for field in data_fields(kind, t) {
+            // A requirement names no consumer, see consumer_migration.
+            if t.role == "requirement"
+                && *field == "consumers"
+                && !t.references.contains_key(*field)
+            {
+                continue;
+            }
             data.insert((*field).into(), placeholder(field));
         }
         for (field, rule) in &t.required_fields {

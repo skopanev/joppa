@@ -49,6 +49,9 @@ async fn a_new_workspace_starts_with_one_consumer_per_criterion() -> Result<()> 
         events == vec![("migrate_consumers".to_owned(), "owner".to_owned())],
         "{events:?}"
     );
+    // The comment event follows it once and finds no criterion that lost a consumer.
+    let drops: i64 = pool.get().await?.query_one("SELECT count(*) FROM joppa.events WHERE workspace=$1 AND actor='owner' AND command->>'op'='migrate_consumer_drops'", &[&ws]).await?.get(0);
+    ensure!(drops == 1, "{drops}");
     let save = |kind: &str, id: &str, parent: Option<&str>, data: Value| json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Build the tree"});
     write(
         &pool,

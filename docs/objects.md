@@ -375,6 +375,11 @@ The default recipe defines `ac.consumer` (one consumer, required) and `task.proj
 The migrate_consumers event converts a workspace once: it moves the consumer references from requirements to a single
 `consumer` on each criterion type. Each live criterion gets one new revision with the first valid consumer of its old list,
 else of its requirement. The text, the tests and the readiness of the criterion do not change.
+The migrate_consumer_drops event runs once after it. A criterion whose old list, else the list of its requirement,
+named more valid consumers gets the comment `consumer-migration`. The comment names the kept consumer and lists the
+removed ones, so the owner can add one criterion for each of them. The comment changes no revision and no status.
+A read of the current document of a requirement omits its old `consumers` field, and the save example has no such field.
+The stored revisions keep it, so no requirement gets a new verification revision. A historical read shows the stored field.
 
 ```json
 {

@@ -2615,7 +2615,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateSchema {}
         | Command::MigrateDocuments {}
         | Command::MigrateTaskClaims {}
-        | Command::MigrateConsumers {} => {
+        | Command::MigrateConsumers {}
+        | Command::MigrateConsumerDrops {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }

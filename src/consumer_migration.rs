@@ -63,7 +63,7 @@ pub fn convert_types(types: &mut BTreeMap<String, TreeType>) -> BTreeMap<String,
 }
 
 /// The consumer IDs that a document lists in these fields, in their order.
-fn listed(data: &Value, fields: &[String]) -> Vec<String> {
+pub fn listed(data: &Value, fields: &[String]) -> Vec<String> {
     fields
         .iter()
         .flat_map(|field| match data.get(field) {
@@ -175,6 +175,17 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             .push(revision);
     }
     Ok(())
+}
+
+/// A requirement names no consumer. A read of its current document omits the old
+/// `consumers` field, unless the type configures a reference with that name. The stored
+/// revisions keep the field, so the verification revisions and the checks stay.
+pub fn hide_requirement_consumers(t: Option<&TreeType>, document: &mut Value) {
+    if t.is_some_and(|t| t.role == "requirement" && !t.references.contains_key("consumers"))
+        && let Some(data) = document.get_mut("data").and_then(Value::as_object_mut)
+    {
+        data.remove("consumers");
+    }
 }
 
 /// A legacy revise names its consumers on the requirement. A criterion that the revise

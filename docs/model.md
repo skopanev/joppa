@@ -75,6 +75,9 @@ Each AC names exactly one consumer from the workspace consumer list, in its fiel
 behavior, not necessarily a workspace member. A green AC therefore closes one consumer
 without doubt. A REQ and every level above it name no consumer. If two consumers need
 the same behavior, write one AC for each consumer.
+A criterion that lost consumers in the migration to one consumer has the comment
+`consumer-migration`. It lists the removed consumers. A read of a REQ omits its old
+`consumers` field.
 People and agents formulate REQ and ACs together. Agents help make conditions
 clear and testable; authorized people decide business policy and scope.
 

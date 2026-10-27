@@ -134,7 +134,7 @@ pub async fn save_dependency(
         address: Some(source),
         ..Default::default()
     };
-    let object = super::read_objects(pool, workspace, actor, &scope).await?;
+    let object = super::objects::read_stored_objects(pool, workspace, actor, &scope).await?;
     let document = &object["document"];
     let mut links: Vec<crate::objects::ObjectLink> =
         serde_json::from_value(document["links"].clone())?;
@@ -693,7 +693,7 @@ async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport { .. } | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

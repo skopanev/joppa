@@ -42,6 +42,9 @@ pub struct Workspace {
     /// The migrate_consumers event ran: each criterion names one consumer.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub consumers_migrated: bool,
+    /// The migrate_consumer_drops event ran: each criterion that lost consumers has a comment.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub consumer_drops_noted: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub documents_migrated: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]

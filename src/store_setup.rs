@@ -142,7 +142,7 @@ pub async fn check_journal(pool: &Pool) -> Result<()> {
 }
 async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
     for row in client
-        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) OR NOT COALESCE((b.state->>'persistent_claims')::boolean,false) OR NOT COALESCE((b.state->>'consumers_migrated')::boolean,false) ORDER BY w.id", &[])
+        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) OR NOT COALESCE((b.state->>'persistent_claims')::boolean,false) OR NOT COALESCE((b.state->>'consumers_migrated')::boolean,false) OR NOT COALESCE((b.state->>'consumer_drops_noted')::boolean,false) ORDER BY w.id", &[])
         .await?
     {
         let workspace: String = row.get(0);
