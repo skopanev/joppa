@@ -1167,11 +1167,12 @@ fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Val
 }
 /// Replay old commands into the same document ledger. Process evidence stays in its original revision.
 pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at: &str) {
-    sync_with(w, actor, command, position, at, true);
+    sync_with(w, actor, command, position, at, true, None);
 }
 
 /// `sync` that can leave unchanged sibling criteria of a revised specification alone.
 /// With `force_siblings`, every criterion of the specification gets a new revision.
+/// `spec_reason` replaces the reason of the new specification revision.
 fn sync_with(
     w: &mut Workspace,
     actor: &str,
@@ -1179,6 +1180,7 @@ fn sync_with(
     position: u64,
     at: &str,
     force_siblings: bool,
+    spec_reason: Option<&str>,
 ) {
     let rows = document_rows(w);
     let reason = serde_json::to_value(command)
@@ -1300,6 +1302,7 @@ fn sync_with(
                 .last()
                 .map(|v| v.links.clone())
                 .unwrap_or_default();
+            let spec = forced_req.is_some_and(|req| key == &requirement_address(req));
             obj.revisions.push(ObjectRevision {
                 revision: obj.revisions.last().map_or(1, |r| r.revision + 1),
                 schema_revision,
@@ -1309,7 +1312,9 @@ fn sync_with(
                 actor: actor.into(),
                 at: at.into(),
                 position,
-                reason: reason.clone(),
+                reason: spec_reason
+                    .filter(|_| spec)
+                    .map_or_else(|| reason.clone(), str::to_owned),
                 present: true,
             });
         }
@@ -1338,7 +1343,13 @@ fn sync_with(
     }
 }
 
-fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> {
+/// `kept` holds the links of the current revision: one of them can keep an absent target.
+fn validate_links(
+    w: &Workspace,
+    key: &str,
+    links: &[ObjectLink],
+    kept: &[ObjectLink],
+) -> Result<()> {
     let mut unique = BTreeSet::new();
     // A Task dependency pins its target contract; another node orders work without a pin.
     let task = key
@@ -1358,7 +1369,7 @@ fn validate_links(w: &Workspace, key: &str, links: &[ObjectLink]) -> Result<()> 
             .get(resolve_address(w, &link.target))
             .context("unknown linked object in this workspace")?;
         ensure!(
-            target.current().present,
+            target.current().present || kept.contains(link),
             "linked object is absent from the current tree"
         );
         if let Some(r) = link.revision {
@@ -1925,7 +1936,11 @@ fn saved(
     if w.schema_migrated {
         reference_targets(w, kind, data)?;
     }
-    validate_links(w, &key, links)?;
+    let kept = old
+        .as_ref()
+        .map(|o| o.current().links.clone())
+        .unwrap_or_default();
+    validate_links(w, &key, links, &kept)?;
     let unchanged = old
         .as_ref()
         .is_some_and(|o| o.current().data == *data && o.current().parent == *parent);
@@ -1963,7 +1978,19 @@ fn saved(
             // A criterion save changes only that criterion: its siblings keep their revisions.
             let siblings = schema(w).types[kind].role != "ac"
                 || !commands::rule_applies(&candidate, commands::SINGLE_CRITERION_SAVE, position);
-            sync_with(&mut candidate, actor, &cmd, position, at, siblings);
+            // The specification revision names the criterion save that made it.
+            let spec_reason = (schema(w).types[kind].role == "ac"
+                && commands::rule_applies(&candidate, commands::CRITERION_SAVE_REASON, position))
+            .then(|| format!("Criterion {key} changed: {reason}"));
+            sync_with(
+                &mut candidate,
+                actor,
+                &cmd,
+                position,
+                at,
+                siblings,
+                spec_reason.as_deref(),
+            );
         } else {
             candidate.document_overrides.insert(key.clone());
             let owner = string(data, "owner")?;
@@ -2131,7 +2158,7 @@ fn saved(
         present: true,
     });
     candidate.objects.insert(key.clone(), object);
-    validate_links(&candidate, &key, links)?;
+    validate_links(&candidate, &key, links, &kept)?;
     for (address, obj) in &w.objects {
         if !obj.current().present || !within(w, address, &key) {
             continue;

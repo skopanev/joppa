@@ -84,6 +84,47 @@ fn an_older_criterion_save_in_a_replay_keeps_the_sibling_revision_it_gave() {
     assert_eq!(revision(&w, "ac:key"), sibling + 1);
 }
 
+fn spec_reason(w: &World, criterion: &str) -> String {
+    let spec = w.state.objects[criterion].current().parent.clone().unwrap();
+    w.state.objects[&spec].current().reason.clone()
+}
+
+#[test]
+fn a_criterion_save_names_the_criterion_in_the_specification_reason() {
+    let mut w = migrated();
+    edit(
+        &mut w,
+        "ac:ios",
+        "Given a paid user on iOS, then access stays.",
+    )
+    .unwrap();
+    assert_eq!(
+        spec_reason(&w, "ac:ios"),
+        "Criterion ac:ios changed: Clarify the criterion"
+    );
+    assert_eq!(
+        w.state.objects["ac:ios"].current().reason,
+        "Clarify the criterion"
+    );
+}
+
+#[test]
+fn an_older_criterion_save_in_a_replay_keeps_the_copied_specification_reason() {
+    let mut w = migrated();
+    w.state
+        .replay_epochs
+        .insert(commands::CRITERION_SAVE_REASON.into(), w.position + 100);
+    let current = w.state.objects["ac:ios"].current().clone();
+    let mut data = current.data.clone();
+    data["description"] = json!("Given a paid user on iOS, then access stays.");
+    let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
+        "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
+        "reason":"Clarify the criterion"}))
+    .unwrap();
+    commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();
+    assert_eq!(spec_reason(&w, "ac:ios"), "Clarify the criterion");
+}
+
 #[test]
 fn an_unassessed_criterion_names_the_assess_command_as_its_next_step() {
     let w = migrated();

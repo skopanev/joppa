@@ -17,6 +17,8 @@ A stale write fails. Identical retries use the same `request_id` and return the 
 
 `data`, `parent` and `links` replace the current document fields.
 Read the document before you change them. Keep fields that you do not change.
+A link to an archived or absent object is refused, unless the current revision already has the same link.
+A save of a criterion also gives its specification a new revision. Its reason is `Criterion <address> changed: <reason>`.
 Ordinary document fields can contain additional text, numbers, lists or maps after the schema migration.
 Process commands preserve those fields. A document replacement removes additional fields that you omit.
 Process evidence stays separate. Use process commands to claim work, record results or accept a requirement.

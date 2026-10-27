@@ -934,12 +934,16 @@ pub const HUMAN_MEMBERS: &str = "human_members";
 /// From this rule on, a save of one criterion gives a new revision only to that criterion
 /// and its specification. Unchanged sibling criteria keep their revisions.
 pub const SINGLE_CRITERION_SAVE: &str = "single_criterion_save";
-pub const REPLAY_RULES: [&str; 5] = [
+/// From this rule on, the specification revision that a criterion save gives names that
+/// criterion and its reason. An older save keeps the copied reason in a replay.
+pub const CRITERION_SAVE_REASON: &str = "criterion_save_reason";
+pub const REPLAY_RULES: [&str; 6] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
     SINGLE_CRITERION_SAVE,
+    CRITERION_SAVE_REASON,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.
