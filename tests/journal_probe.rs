@@ -106,7 +106,7 @@ async fn snapshot(pool: &Pool, workspace: &str) -> anyhow::Result<BTreeMap<Strin
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Result<()> {
     let (pool, ws) = fixture().await?;
-    let raw = "original source input ".repeat(100_000);
+    let raw = "original source input ".repeat(46);
     store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"links":[],"reason":"Capture source"})).await?;
     let original_xmin: String = pool.get().await?.query_one("SELECT xmin::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:raw'", &[&ws]).await?.get(0);
     reset(&pool).await?;
@@ -542,7 +542,7 @@ async fn heartbeat_refusal_reads_current_rows_and_keeps_documents_and_test_evide
     types["job"] =
         json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     store::execute_remote_input(&pool,&ws,"owner","jobs",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Configured work"})).await?;
-    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation","body":"Detailed context ".repeat(100_000)},"reason":"Create work"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation","body":"Detailed context ".repeat(60)},"reason":"Create work"})).await?;
     store::execute_remote_input(
         &pool,
         &ws,

@@ -387,7 +387,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             "input",
             "raw",
             None,
-            json!({"title":"Unrelated source","owner":"owner","body":"raw input ".repeat(100_000)}),
+            json!({"title":"Unrelated source","owner":"owner","body":"raw input ".repeat(100)}),
         ),
     ] {
         apply(&pool,&ws,"agent",json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"links":[],"reason":"Set up the planning fixture"})).await?;

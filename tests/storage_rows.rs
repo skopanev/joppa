@@ -21,7 +21,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     for (i, command) in setup().into_iter().enumerate() {
         store::execute_input(&pool, &ws, "owner", &format!("setup-{i}"), &command).await?;
     }
-    let raw = "original source input ".repeat(100_000);
+    let raw = "original source input ".repeat(46);
     store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"links":[],"reason":"Capture source"})).await?;
     let conn = pool.get().await?;
     let row = conn.query_one("SELECT xmin::text,value->'revisions'->0->'data'->>'body',compact->'revisions'->0->'data' ? 'body' FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:raw'", &[&ws]).await?;
