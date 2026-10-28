@@ -2050,7 +2050,7 @@ test('no-dashed-focus-ac1: a mouse click leaves no focus mark on the history Clo
 
 // workspace-timeline-ac2
 test('workspace-timeline-ac2: alex reads the newest change first and opens R at the revision of its move', async () => {
-  const configured = {...types, signal: {title: 'Signals', role: 'document', status:'none', root: true, parents: ['*'], inbox: true, badge: 'SIG'}};
+  const configured = {...types, signal: {title: 'Signals', role: 'document', status:'none', root: true, parents: [], inbox: true, badge: 'SIG'}};
   const f = await fixture({
     'domain:d': {title: 'Domain'},
     'capability:c1': {title: 'First capability', parent: 'domain:d'},

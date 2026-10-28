@@ -5072,7 +5072,7 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
         "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"]},
-        "signal":{"title":"Signal","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}
+        "signal":{"title":"Signal","role":"document","status":"none","root":true,"parents":[],"inbox":true}
     }})).await?;
     for key in ["area:g", "area:h"] {
         p.save(

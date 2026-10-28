@@ -10,6 +10,9 @@ pub use tree::tree_schema;
 #[path = "objects_read.rs"]
 mod object_read;
 pub use object_read::{read_objects, read_stored_objects};
+#[path = "objects_link_groups.rs"]
+mod link_groups;
+pub use link_groups::link_page;
 #[path = "objects_list.rs"]
 mod object_list;
 #[path = "objects_list_rows.rs"]

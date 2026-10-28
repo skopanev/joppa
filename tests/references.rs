@@ -45,6 +45,11 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
     let mut expected = before["state"].clone();
     expected["title"] = json!("Current product");
     expected["reference_prefix"] = json!(prefix);
+    // An explicit prefix replaces the prefix that the server derived from the title.
+    expected
+        .as_object_mut()
+        .unwrap()
+        .remove("prefix_from_title");
     assert_eq!(after["state"], expected);
     assert_eq!(
         after["history"].as_array().unwrap()[..before["history"].as_array().unwrap().len()],
@@ -55,7 +60,7 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
         for (local, id) in items.as_object().unwrap() {
             let old = id.as_str().unwrap();
             let new = after["system_ids"][kind][local].as_str().unwrap();
-            assert_eq!(new, format!("{prefix}{}", &old[ws.len()..]));
+            assert_eq!(new, format!("{prefix}{}", &old[old.len() - 13..]));
             for reference in [old, new] {
                 let found = store::read_item(&pool, reference, "owner").await?;
                 assert_eq!(found["selection"]["id"], *local);
@@ -139,7 +144,19 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
         store::list(&pool, &owner).await?,
         json!([{"id":new,"title":"Current product"}])
     );
-    assert_eq!(after["system_ids"], before["system_ids"]);
+    // A rename without a prefix derives a new prefix from the title; each old ID still reads
+    // its object, and each new ID keeps the suffix of the old one.
+    for (kind, items) in before["system_ids"].as_object().unwrap() {
+        for (local, id) in items.as_object().unwrap() {
+            let old = id.as_str().unwrap();
+            let new = after["system_ids"][kind][local].as_str().unwrap();
+            assert!(new.starts_with("current-product-") && new.ends_with(&old[old.len() - 13..]));
+            assert_eq!(
+                store::read_item(&pool, old, &owner).await?["selection"]["id"],
+                *local
+            );
+        }
+    }
     assert_eq!(
         &after["history"].as_array().unwrap()[..before["history"].as_array().unwrap().len()],
         before["history"].as_array().unwrap()

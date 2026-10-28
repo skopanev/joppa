@@ -1,38 +1,22 @@
-Resolve copied system IDs with joppa_read({"item_id":"..."}); use selection and workspace for commands. Never guess local IDs.
-A person creates a workspace in the browser. MCP cannot create one.
-One workspace is one product, possibly many repositories. Read joppa_tree for its configured types and parents. The suggested default tree is Domain -> Capability -> REQ -> AC -> Task. A workspace can configure other types.
-A node can stand for another workspace: set data.workspace to its name or ID. Link an object to objects in other workspaces with set_remote_links. A blocking remote link needs the target revision. Work waits until the target is green, its own dependencies are ready and the pin is current. A one-object read gives remote_links and child_workspace with the access of the reader.
-Read joppa_model_docs section objects. Use joppa_objects for common documents, revisions, children and links. Use save_object with the revision you read. A workspace member configures the workspace through set_tree_schema with its current revision. Use put_types and remove_types to change single types. The browser tree page is read-only.
-Create incoming source data as a Note document with save_object kind=note. Preserve earlier text through revisions. Link Notes to the objects they inform. Comments remain discussion. Keep a title to one short statement. Aim for 64 characters. Put context and conditions in body or description. Preserve the complete contract when you revise existing wording.
-Keep code reviews, diffs, and execution logs in git or the agent bus. Use Notes for product inputs and decisions. Put at most one short reference in a card comment. Preserve existing comments.
-Links connect any object types in the workspace. Use set_remote_links for objects in other workspaces. Ordinary links can have cycles. Blocking dependencies pin a target revision and cannot have cycles. A changed pin requires review. Use the workspace schema for permitted parents. Each object has at most one parent. Tasks use their own object revision.
-Read joppa_model_docs for methodology and joppa_help before commands. Record new information as a Note. Preserve original wording. Ask only for missing facts.
-PREFER ENGLISH. Write new technical text according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply. Russian is permitted under the same rules. Preserve intake and verbatim user text in their original language. Do not translate existing text. Read the technical writing rules below before authoring.
-REQ and ACs are authored jointly. People decide policy; the agent checks readiness, never invents authority.
-On every new revision assess EACH AC. If uncertain, ready=false, reason=concrete question, recipient=member.
-Do not silently add Android/Web/all mobile platforms to an iOS AC. Scope is in AC text.
-Put suggestions and decisions in the REQ card. Ordinary comments do not block work.
-Use decider on ACs needing specialist approval; link their decision for this formulation before ready=true. Reuse a prior decision only with unchanged REQ context and AC.
-Tasks can belong to any parent permitted by the schema. The default Task parent gate checks readiness. Repositories belong on tasks, not the business tree.
-A change to the text, links or parent of an object makes the criteria below it grey. Comments and priorities change no status. Only test records after the change count. Confirm wording with the owner. Only the owner accepts, after all criteria are green.
-Save the test list of a criterion in its field tests, with save_object or the short command set_ac_tests, by test name. The tree schema block test_results gives the form of a name and every test rule. Record the results of each commit with joppa_record_results. One test can prove several criteria. A test without a record keeps the criterion grey.
-A completed task is not proof of an AC. A decision task references the actual decision comment.
-Never edit history, overwrite evidence, hide failed tests, select an older green run, or copy results to a new revision.
-Interactive browser-approved clients act as the signed-in user. Never treat that credential as a human decision: confirm wording, accept work, or record specialist decisions only on explicit user instruction. Unattended agents must use a separate agent identity.
-Domains with archived=true and their capabilities are historical, not active scope. Do not add work beneath them. Restore only on explicit owner instruction; never reuse their IDs for different items.
+Read joppa_tree for the workspace types, parents, references, questions and status rules. Use those rules for the current workspace.
+Use joppa_objects to find and read current objects. Read one historical revision only when needed. Use joppa_search to find related work.
+Read joppa_help for the operation you need. Use joppa_model_docs when you need its method or detailed object rules.
+Resolve a copied public ID with joppa_read({"item_id":"..."}); never guess local IDs.
 
-For new items, omit local IDs and let Joppa generate them. The response contains the resolved command and public system IDs. Preserve existing REQ/AC IDs when editing; an omitted AC ID creates a new AC.
-Use joppa_batch for related writes: 1–100 operations in one transaction, optional ref labels, and explicit {"$ref":"label/id"} links to earlier generated IDs. Retry identical input with the same request_id; never regenerate it after a lost response.
-Agent identities may clarify unconfirmed domain/capability titles, but cannot change domain authority or edit confirmed items. Only the workspace owner confirms the tree.
+Read an object before you change it. Send its current revision. Preserve document fields, parent and links that you do not change.
+Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.
+Answer the type question before saving. Send its exact text as question_checked.
+Use joppa_batch for related writes. Retry identical input with the same request_id after a lost response.
+Set data.workspace on a node to bind a child workspace; use set_remote_links for links across workspaces.
 
-Any object takes a description, comments and attachments at its address kind:<id>, with a kind from joppa_tree, for example requirement:<id> or ac:<req>/<ac>. describe writes the explanation (2000 characters; a domain or capability keeps it in itself, an AC keeps its own inside the revision and gets a note beside it), note adds a comment, attach records a file already uploaded to the blobs endpoint. The index shows only their counts; read one object with target=<address>.
+Create incoming source information as a Note with parent:null. Use structural links to connect it to the objects it informs.
+Preserve original source text and language. Record decisions and product inputs in Notes. Keep comments for discussion.
+Use a short title. Put context, conditions and evidence in body or description. Use clean Markdown in authored text.
+Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace structural links.
 
-Read narrowly. joppa_read without req returns an index with revision_count for each requirement. Reading one req or a copied requirement/AC item_id returns ONLY the current revision and its revision comments/evidence. history=true returns revision counts only, never an event log or revision bodies. Read an older revision explicitly with revision=N: exactly one revision is returned. Never request or dump all revisions. An AC absent from the selected revision has selection.present=false; it does not silently select an older revision.
+Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.
+A completed Task records its work and Git commit. Test results prove a criterion. Task completion does not prove criterion acceptance.
+Use the configured test_results rules. Preserve failures and evidence. Record human decisions only with explicit human instruction.
 
-Use joppa_search to find current items in one accessible workspace; inspect mode and semantic_status, then read matching system IDs with joppa_read. Search ranking never proves readiness, approval or acceptance. Archived items and old wording remain in history, not current search.
-
-If authentication is needed, use the MCP client's native OAuth. In Codex CLI, run `codex mcp login joppa` in a terminal with the same Codex configuration; finish browser sign-in with Return to app, then reconnect MCP. In Codex app, use MCP server settings > Authenticate. In Claude Code or agy, use /mcp > joppa > Authenticate. If renamed, use the server name from client settings. Do not ask for API keys, manually exchange OAuth tokens, or replace HTTP MCP with a local Joppa binary.
-
-Process incoming Notes with set_note_status(target,revision,status,reason). Preserve source data. Read unprocessed Notes with joppa_objects kind=note parent=* note_status=unprocessed. Link each Note to the objects it informs. Use processed only after reviewing its input. Source edits reopen it. Type colors use optional color=#RRGGBB in set_tree_schema. Type title_size sets the board title size in pixels, from 12 to 48. Omit it to use 15 pixels.
-
-A Task follows the test status of its criterion. Missing, skipped or todo results keep it unverified. A Task does not inherit a parent pass. Keep work completion and verification separate.
+Prefer English for new technical text. Preserve existing text and quotations in their original language. Apply the writing rules below.
+Keep code reviews, diffs and execution logs in Git or the agent bus. Use the MCP client's existing OAuth login.

@@ -107,7 +107,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     assert!(old["process"].is_null() && old["signal"].is_null());
     assert!(old.get("verification_summary").is_none());
     assert!(old["annotations"].as_object().unwrap().is_empty());
-    assert!(old["incoming"].as_array().unwrap().is_empty());
+    assert!(old["link_groups"].as_array().unwrap().is_empty());
     assert_eq!(old["links"][0]["metadata_scope"], "current");
 
     assert!(
@@ -140,12 +140,16 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         },
     )
     .await?;
+    let group = store::link_page(
+        &pool, &ws, "agent", "domain:d", "incoming", "related", "note", 100, None,
+    )
+    .await?;
     assert!(
-        parent["incoming"]
+        group["items"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|v| v["source"] == "note:source")
+            .any(|v| v["address"] == "note:source")
     );
     let listed = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
     let listed_parent = listed["items"]
@@ -249,8 +253,9 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", None).await?["current_revision"],
         // migrate_consumers adds one revision: one consumer per criterion. migrate_test_rules
-        // adds one more: the test rules and the status rule of each type.
-        8
+        // adds one more: the test rules and the status rule of each type. migrate_note_parents
+        // adds one more: an inbox type has no parent.
+        9
     );
     assert_eq!(
         store::tree_schema(&pool, &ws, "agent", Some(0)).await?["schema"]["revision"],
@@ -295,11 +300,16 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     for (id, parent, links) in [
         (
             "a",
-            None,
+            None::<&str>,
             json!([{"target":"domain:d","relation":"related"}]),
         ),
         ("b", None, json!([])),
-        ("c", Some("domain:d"), json!([])),
+        // An inbox input has no parent: note c links to the domain that it informs.
+        (
+            "c",
+            None,
+            json!([{"target":"domain:d","relation":"related"}]),
+        ),
     ] {
         store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","body":"Original source","custom":"Keep this"},"links":links,"reason":"Capture input"})).await?;
     }
@@ -480,12 +490,17 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
         },
     )
     .await?;
+    let group = store::link_page(
+        &pool, &ws, "agent", "domain:d", "incoming", "related", "note", 100, None,
+    )
+    .await?;
     assert!(
-        !domain["incoming"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|item| item["source"] == "note:a")
+        domain["link_groups"].is_array()
+            && !group["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["address"] == "note:a")
     );
     let historical = store::read_objects(
         &pool,

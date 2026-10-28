@@ -279,7 +279,7 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         r["result"]["instructions"]
             .as_str()
             .unwrap()
-            .contains("codex mcp login joppa")
+            .contains("existing OAuth login")
     );
     assert_eq!(
         http.post(&resource)

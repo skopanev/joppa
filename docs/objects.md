@@ -53,7 +53,7 @@ Use `set_tree_schema` to replace it:
     "requirement": {"title": "Requirement", "role": "requirement", "root": false, "parents": ["initiative"]},
     "ac": {"title": "Acceptance criterion", "role": "ac", "root": false, "parents": ["requirement"]},
     "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac"]},
-    "note": {"title": "Note", "role": "document", "root": true, "parents": ["*"]}
+    "note": {"title": "Note", "role": "document", "root": true, "parents": [], "inbox": true}
   }
 }
 ```
@@ -96,7 +96,7 @@ A parent change cannot move existing criterion evidence to another specification
 
 Rename their display titles and set their allowed parents.
 `root: true` permits an object without a parent.
-`parents: ["*"]` permits any parent type.
+`parents: ["*"]` permits any parent type. A type with `inbox: true` has `parents: []`.
 The server rejects parent cycles.
 
 The default schema uses REQ → AC → Task. These parent rules are configuration.
@@ -147,6 +147,18 @@ Historical reads retain the original document and schema revision.
 An object can link to many objects of any type in the same workspace.
 A Note can link to two Domains. A Domain can link to another Domain.
 A link does not change tree parentage.
+In text, write a reference as [Title](kind:id). The board shows the title as a link to the object.
+
+One object read gives `links`, its outgoing links with titles, and `link_groups`: a count for each
+direction, relation and kind of the other object. It does not list the incoming links. Read one
+group in pages with `joppa_objects`:
+
+```json
+{"workspace": "product", "links_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note", "limit": 50}
+```
+
+The reply gives `items` in address order and `next_cursor`. Send `cursor` with that value for the
+next page. `next_cursor` is null on the last page.
 
 - `related` records context. Cycles are permitted.
 - `depends_on` records a dependency and pins its target revision.
@@ -166,13 +178,15 @@ It does not copy old evidence into a new verification revision.
 
 ## Notes
 
-Create new incoming information as `kind: "note"`:
+Create new incoming information as `kind: "note"`. A Note has no parent: send `parent: null`
+and link it with `related` to each object that it informs. The server refuses a Note with a
+parent. A migration moved each older Note with a parent to the root, with a `related` link to
+that parent. Omit `id`: the server makes one.
 
 ```json
 {
   "op": "save_object",
   "kind": "note",
-  "id": "customer-feedback",
   "revision": 0,
   "parent": null,
   "data": {"title": "Customer feedback", "owner": "owner", "body": "Original source text"},

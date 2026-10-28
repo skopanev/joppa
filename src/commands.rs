@@ -19,6 +19,7 @@ pub enum Command {
     MigrateConsumerDrops {},
     /// Internal migration event: the schema gets every test rule, see test_rules.
     MigrateTestRules {},
+    MigrateNoteParents {},
     SetTreeSchema {
         revision: u32,
         /// The whole type map. Without it, put_types and remove_types change single types.
@@ -1065,6 +1066,9 @@ pub(crate) fn apply_inner(
         Command::MigrateTestRules {} => {
             crate::test_rules::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigrateNoteParents {} => {
+            crate::note_parents::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigrateNotes {} => {
             ensure!(actor == w.admin, "workspace owner required");
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;
@@ -1341,6 +1345,9 @@ pub(crate) fn apply_inner(
             if let Some(prefix) = reference_prefix {
                 identifier(prefix)?;
                 w.reference_prefix = Some(prefix.clone());
+                // The server derives a prefix from the title with this reason. An explicit
+                // prefix stays until the next rename without one.
+                w.prefix_from_title = reason == crate::store::workspace_prefix::REASON;
             }
         }
         Command::ReorderTree {

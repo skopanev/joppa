@@ -72,7 +72,8 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
                 },
             );
         }
-        let parent = if t.root {
+        // An inbox object has no parent: it links to the objects that it informs.
+        let parent = if t.root || t.inbox == Some(true) {
             Value::Null
         } else {
             t.parents.first().map_or(Value::Null, |p| match p.as_str() {
@@ -80,8 +81,9 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
                 p => json!(format!("<{p}:id>")),
             })
         };
-        let mut example = json!({"op":"save_object","kind":kind,"id":"<new id>","revision":0,
-            "parent":parent,"data":data,"links":[],"reason":"<why this change>"});
+        // A new object omits id: the server makes one.
+        let mut example = json!({"op":"save_object","kind":kind,"revision":0,
+            "parent":parent,"data":data,"links":[{"target":"<kind:id>","relation":"related"}],"reason":"<why this change>"});
         if let Some(question) = &t.question {
             example["question_checked"] = json!(question);
         }

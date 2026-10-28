@@ -163,7 +163,12 @@ async fn read_one(
     } else {
         vec![]
     };
-    let incoming:Vec<Value>=conn.query("SELECT l.source,o.title,l.relation,l.revision,l.blocking FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present ORDER BY l.source", &[&workspace,&key]).await?.iter().map(|r|json!({"source":r.get::<_,String>(0),"title":r.get::<_,String>(1),"relation":r.get::<_,String>(2),"revision":r.get::<_,Option<i32>>(3),"blocking":r.get::<_,bool>(4)})).collect();
+    // The incoming links come as counts by group; a group read gives them in pages.
+    let link_groups = if n == current as u32 {
+        super::link_groups::groups(&*conn, &workspace, &key).await?
+    } else {
+        json!([])
+    };
     let projected_process: Value = serde_json::from_str(row.get(8))?;
     let annotation = projected_process["annotation_address"]
         .as_str()
@@ -198,7 +203,7 @@ async fn read_one(
             }
         }
     }
-    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"incoming":if n == current as u32 {json!(incoming)}else{json!([])},"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
+    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"link_groups":link_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
     // The contract revision: a revision that changes only the test list keeps the contract
     // of the revision before it. A pin is current from this revision to current_revision.
     let contract = document["contract"]

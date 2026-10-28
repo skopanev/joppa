@@ -12,6 +12,7 @@ pub mod embeddings_limit;
 pub mod inbox;
 mod intake;
 pub mod model;
+pub mod note_parents;
 pub mod objects;
 pub mod planning;
 pub mod probe;

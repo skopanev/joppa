@@ -35,7 +35,7 @@ const TYPES: &str = r#"{
     "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"]},
     "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"]},
     "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
-    "signal":{"title":"Signals","role":"document","status":"none","root":true,"parents":["*"],"inbox":true}
+    "signal":{"title":"Signals","role":"document","status":"none","root":true,"parents":[],"inbox":true}
 }"#;
 
 async fn world() -> Result<World> {

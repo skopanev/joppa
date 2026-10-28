@@ -180,9 +180,13 @@ impl Object {
 pub fn defaults() -> BTreeMap<String, TreeType> {
     let mut types = schema_migration_defaults();
     crate::consumer_migration::convert_types(&mut types);
-    // The built-in tree names the status rule of each type.
+    // The built-in tree names the status rule of each type. An inbox type has no parent.
     for t in types.values_mut() {
         t.status = Some(role_status_rule(t).to_owned());
+        if t.inbox == Some(true) {
+            t.parents.clear();
+            t.root = true;
+        }
     }
     types
 }
@@ -887,6 +891,7 @@ pub fn set_schema(
         !types.is_empty() && types.len() <= 100,
         "tree schema needs 1 to 100 types"
     );
+    crate::note_parents::check_schema(w, types)?;
     if let Some(values) = priorities {
         let mut seen = BTreeSet::new();
         ensure!(
@@ -2023,6 +2028,7 @@ fn saved(
     if w.test_rules_migrated {
         crate::ac_tests::validate_field(w, kind, data)?;
     }
+    crate::note_parents::check_save(w, kind, parent.as_deref())?;
     parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;
     if w.schema_migrated {
@@ -2787,7 +2793,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateTaskClaims {}
         | Command::MigrateConsumers {}
         | Command::MigrateConsumerDrops {}
-        | Command::MigrateTestRules {} => {
+        | Command::MigrateTestRules {}
+        | Command::MigrateNoteParents {} => {
             bail!("internal migration operation")
         }
         Command::Intake { .. }

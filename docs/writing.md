@@ -29,6 +29,13 @@ Include task contracts, verification scope, and expected and observed results.
 - Use vertical lists for complex text. Do not use a semicolon.
 - Start a warning with a clear command or condition. Then give the risk.
 
+## Format and object links
+
+- Write body, description and comments in clean Markdown: headings, bullet lists and code spans.
+- Write a reference to an object as a Markdown link with its title: [Title](kind:id).
+- Do not write a bare kind:id or a UUID in prose. The board shows the title and opens the object.
+- A Markdown link is text. Add a structural link with links when the objects are related.
+
 ## Preservation and authority
 
 Keep intake and verbatim user text in their original language and wording.

@@ -20,7 +20,7 @@ mod board;
 pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
-pub use objects::{ObjectScope, ProjectionNotReady, read_objects, tree_schema};
+pub use objects::{ObjectScope, ProjectionNotReady, link_page, read_objects, tree_schema};
 #[path = "store_grants.rs"]
 mod grants;
 #[path = "store_queue.rs"]
@@ -70,6 +70,7 @@ async fn ensure_notes(
     base_position: u64,
 ) -> Result<bool> {
     let mut changed = false;
+    let prefix = workspace_prefix::wanted(client, workspace, state).await?;
     for (needed, command) in [
         (!state.notes_migrated, Command::MigrateNotes {}),
         (!state.tasks_migrated, Command::MigrateTasks {}),
@@ -86,6 +87,16 @@ async fn ensure_notes(
             Command::MigrateConsumerDrops {},
         ),
         (!state.test_rules_migrated, Command::MigrateTestRules {}),
+        (!state.note_parents_migrated, Command::MigrateNoteParents {}),
+        (
+            prefix.is_some(),
+            Command::RenameWorkspace {
+                workspace_id: None,
+                title: state.title.clone(),
+                reason: workspace_prefix::REASON.into(),
+                reference_prefix: prefix.clone(),
+            },
+        ),
     ] {
         if !needed {
             continue;
@@ -241,6 +252,8 @@ pub mod search_indexer;
 pub mod search_query;
 #[path = "search_revisions.rs"]
 mod search_revisions;
+#[path = "workspace_prefix.rs"]
+pub mod workspace_prefix;
 
 #[path = "store_blobs.rs"]
 mod blobs;

@@ -53,6 +53,10 @@ pub(super) struct ObjectQuery {
     note_status: Option<String>,
     related_to: Option<String>,
     work_filter: Option<String>,
+    /// The address whose links of one group to read, with direction and relation.
+    links_of: Option<String>,
+    direction: Option<String>,
+    relation: Option<String>,
     /// Comma-separated keys to keep in each list item; the address always stays.
     fields: Option<String>,
 }
@@ -63,6 +67,22 @@ pub(super) async fn objects(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
+    if let Some(address) = q.links_of.as_deref() {
+        return result(
+            store::link_page(
+                &app.pool,
+                &workspace,
+                &actor,
+                address,
+                q.direction.as_deref().unwrap_or(""),
+                q.relation.as_deref().unwrap_or(""),
+                q.kind.as_deref().unwrap_or(""),
+                q.limit.unwrap_or(50),
+                q.cursor.as_deref(),
+            )
+            .await,
+        );
+    }
     result(
         store::read_objects(
             &app.pool,
