@@ -57,7 +57,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         && fields.is_none()
         && ["work_filter", "related_to", "note_status"]
             .iter()
-            .all(|k| a[*k].is_null());
+            .all(|k| a[*k].is_null())
+        && !inbox_kind(pool, workspace, actor, a["kind"].as_str()).await?;
     if plain {
         return store::compact_list(
             pool,
@@ -103,6 +104,20 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             )
         }
     }
+}
+
+/// An Inbox type lists unprocessed inputs first, so its list keeps the order of read_objects.
+async fn inbox_kind(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    kind: Option<&str>,
+) -> anyhow::Result<bool> {
+    let Some(kind) = kind else {
+        return Ok(false);
+    };
+    let tree = store::tree_schema(pool, workspace, actor, None).await?;
+    Ok(tree["schema"]["types"][kind]["inbox"] == true)
 }
 
 /// The criteria of a parent (direct children) or of every node with `parent: "*"`, of

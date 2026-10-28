@@ -166,7 +166,7 @@ async fn the_inbox_lists_undecided_inputs_before_decided_inputs() -> Result<()> 
             arguments["cursor"] = cursor;
         }
         let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":(crate::legacy_read_args("joppa_objects", &arguments))}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":arguments}}))
             .send().await?.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
         let page: Value = serde_json::from_str(
@@ -178,7 +178,11 @@ async fn the_inbox_lists_undecided_inputs_before_decided_inputs() -> Result<()> 
             page["items"].as_array().unwrap().len() == 1 && page["items"][0]["address"] == address,
             "{page}"
         );
-        ensure!(page["items"][0] == http["items"][i], "{page} / {http}");
+        // MCP gives the compact item of the same HTTP row.
+        ensure!(
+            page["items"][0] == joppa::read_compact::list_item(&http["items"][i], None),
+            "{page} / {http}"
+        );
         cursor = page["next_cursor"].as_str().map(|s| json!(s));
     }
     ensure!(cursor.is_none(), "the last page must finish the list");
