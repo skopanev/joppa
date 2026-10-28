@@ -76,6 +76,18 @@ async fn the_database_refuses_a_new_long_field_unless_it_replays() -> Result<()>
         format!("{:?}", refused.err()).contains(LIMIT_TEXT),
         "a changed long value passed"
     );
+    // The current row of an object has the same trigger.
+    let update = "UPDATE joppa.objects SET document = jsonb_set(document, '{data,body}', to_jsonb($2::text)) WHERE workspace = $1 AND address = 'requirement:r'";
+    let refused = conn.execute(update, &[&w.ws, &"w".repeat(1025)]).await;
+    ensure!(
+        format!("{:?}", refused.err()).contains(LIMIT_TEXT),
+        "a long field passed on joppa.objects"
+    );
+    let tx = conn.transaction().await?;
+    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
+    let rebuilt = tx.execute(update, &[&w.ws, &"w".repeat(1025)]).await?;
+    tx.commit().await?;
+    ensure!(rebuilt == 1, "the rebuild did not write joppa.objects");
     Ok(())
 }
 
