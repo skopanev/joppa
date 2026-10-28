@@ -37,6 +37,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
     let tx = conn.transaction().await?;
     tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
         .await?;
+    // Migrations rebuild projections from the journal as it is (see migration 037).
+    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     tx.batch_execute(include_str!("../migrations/001_journal.sql"))
         .await?;
     tx.batch_execute(include_str!("../migrations/002_item_ids.sql"))
@@ -136,6 +138,8 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     let tx = conn.transaction().await?;
     tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
         .await?;
+    // Migrations rebuild projections from the journal as it is (see migration 037).
+    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
@@ -195,6 +199,8 @@ pub async fn refresh_readiness_metadata(pool: &Pool) -> Result<()> {
     let tx = conn.transaction().await?;
     tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
         .await?;
+    // Migrations rebuild projections from the journal as it is (see migration 037).
+    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     refresh_readiness_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
