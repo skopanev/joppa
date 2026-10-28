@@ -62,3 +62,39 @@ test('markdown-object-link: a Markdown link [Title](kind:id) opens that object',
     await f.page.locator('.object-page .common-object[data-object-address="requirement:r"]').waitFor();
   } finally { await f.close(); }
 });
+
+test('markdown-object-link: a legacy address keeps its link and a malformed URL keeps its text', async () => {
+  const f = await fixture(types);
+  try {
+    await f.command(save('requirement', 'm', {title: 'Refunds',
+      body: 'See [Legacy](ac:r-xxx/2), [Malformed](https://%) and [Site](https://example.com/page).'}));
+    await openObject(f, 'requirement:m');
+    const box = f.page.locator('.object-page .markdown').first();
+    await box.locator('a', {hasText: 'Legacy'}).waitFor();
+    const legacy = new URL(await box.locator('a', {hasText: 'Legacy'}).getAttribute('href'), f.live.root);
+    assert.equal(legacy.searchParams.get('object'), 'ac:r-xxx/2');
+    assert.match(await box.textContent(), /Malformed/);
+    assert.equal(await box.locator('a[href]', {hasText: 'Malformed'}).count(), 0, 'a malformed URL kept its href');
+    assert.equal(await box.locator('a', {hasText: 'Site'}).getAttribute('target'), '_blank');
+  } finally { await f.close(); }
+});
+
+test('grouped-links-board: a group whose first page failed loads again when reopened', async () => {
+  const f = await fixture(types);
+  try {
+    await f.command(save('requirement', 'r', {title: 'Paid access', body: 'Fixture text'}));
+    for (let i = 0; i < 3; i++) {
+      await f.command(save('note', 'n' + i, {title: 'Input ' + i, body: 'Source'}, [{target: 'requirement:r', relation: 'related'}]));
+    }
+    let failures = 1;
+    await f.page.route(url => url.href.includes('links_of='), route => failures-- > 0 ? route.fulfill({status: 500, body: '{"error":"down"}'}) : route.continue());
+    await openObject(f, 'requirement:r');
+    const group = f.page.locator('details.link-group[data-relation="related"][data-kind="note"]');
+    await group.locator('summary').click();
+    await f.page.waitForFunction(() => document.querySelector('details.link-group').open);
+    assert.equal(await group.locator('.object-links > a').count(), 0);
+    await group.locator('summary').click();
+    await group.locator('summary').click();
+    await f.page.waitForFunction(() => document.querySelectorAll('details.link-group .object-links > a').length === 3);
+  } finally { await f.close(); }
+});
