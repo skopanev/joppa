@@ -97,8 +97,7 @@ backups and protection against infrastructure administrators are separate duties
 
 The 0.1 schema remains in `public`; migrations neither import nor overwrite it.
 Old `done_at` values cannot become verified evidence automatically, and free-text
-`by` values cannot become authenticated human decisions. The administrative
-`joppa legacy serve PORT` command can expose the old read-only board.
+`by` values cannot become authenticated human decisions.
 
 Business migration means assigning a workspace and owners, importing wording as
 new revisions, confirming it and collecting evidence. Changing a persisted event

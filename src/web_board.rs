@@ -53,22 +53,6 @@ pub(super) fn served_imports() -> String {
     json!({"imports": {"board/": "/board/"}}).to_string()
 }
 
-/// The import map of a snapshot file. Each module is a data URL, so the file opens with no
-/// server. Base64 keeps the module text free of characters that end the script element.
-pub(super) fn embedded_imports() -> String {
-    let imports: serde_json::Map<String, Value> = BOARD_MODULES
-        .iter()
-        .map(|(name, text)| {
-            let data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, text);
-            (
-                format!("board/{name}"),
-                json!(format!("data:text/javascript;base64,{data}")),
-            )
-        })
-        .collect();
-    json!({ "imports": imports }).to_string()
-}
-
 pub(super) async fn board_module(Path(name): Path<String>) -> Response {
     match BOARD_MODULES.iter().find(|(file, _)| *file == name) {
         Some((_, text)) => (

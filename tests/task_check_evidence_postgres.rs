@@ -118,8 +118,8 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
         .await?;
     let request = uuid::Uuid::new_v4().to_string();
     let command = bound("current", 1, &["job:one", "job:two"]);
-    let first = store::execute_remote_input(&pool, &ws, "runner", &request, &command).await?;
-    let retry = store::execute_remote_input(&pool, &ws, "runner", &request, &command).await?;
+    let first = store::execute_input(&pool, &ws, "runner", &request, &command).await?;
+    let retry = store::execute_input(&pool, &ws, "runner", &request, &command).await?;
     assert_eq!(first["position"], retry["position"]);
     assert_eq!(retry["replayed"], true);
     finish(&pool, &ws, "current", 1, "pass").await?;

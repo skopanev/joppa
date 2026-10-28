@@ -24,11 +24,15 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         )
         .await?;
     }
-    w.command(json!({"op":"define_verification_scope","req":"key","revision":1,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
-    w.command_as(&w.bot, json!({"op":"plan","req":"key","revision":1,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[key-rights] first-boundary","ac":"key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[key-rights] second-boundary","ac":"key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
+    // Check runs are internal now: the fixture records the partial run through the store.
+    let internal = async |actor: &str, command: Value| {
+        store::execute_input(&w.pool, &w.ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
+    };
+    internal("owner", json!({"op":"define_verification_scope","req":"key","revision":1,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
+    internal("bot", json!({"op":"plan","req":"key","revision":1,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[key-rights] first-boundary","ac":"key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[key-rights] second-boundary","ac":"key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
     let partial = json!({"check":"[key-rights] first-boundary","outcome":"pass","observed":["The first boundary holds"],"note":"Partial implementation at commit def456","link":"https://example.test/repository/commit/def456"});
-    w.command_as(
-        &w.bot,
+    internal(
+        "bot",
         json!({"op":"result","req":"key","revision":1,"run":"partial","evidence":partial}),
     )
     .await?;

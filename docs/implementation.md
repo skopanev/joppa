@@ -20,7 +20,7 @@ retained for reading; the new model never writes through it.
 | Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
 `tests/browser.cjs` checks the portal: navigation, copying references, older
-revisions, mobile layout, safe snapshots and the read-only notes panel. Browsing
+revisions, mobile layout, safe escaping and the read-only notes panel. Browsing
 must not issue product writes or change stored data. `tests/http_smoke.py` covers
 integration writes, acceptance, launch gates, the administrative binary and MCP,
 including agent-authored object notes and revision comments. `tests/sessions.rs`
@@ -34,10 +34,9 @@ magically decides it. The system stores a question and recipient, validates
 references to the appropriate person's decision and prevents disputed work from
 starting. It cannot prove legal meaning, AC completeness or test honesty.
 
-CI adapters use plan → result → finish. `scripts/run_checks.py` executes commands
-from a complete manifest. The caller attests to discovery completeness; an
-unknown omitted test cannot be detected without the repository's discovery
-integration. Previously declared checks cannot disappear within a revision.
+CI sends test results with `joppa_record_results`. The test list of a criterion
+names the tests that count. A test that the list omits cannot be detected without
+the repository's discovery integration.
 
 Acceptance identifies a run on a specific subject. The administrative `gate`
 checks that subject against target builds/configuration. Connecting it to a

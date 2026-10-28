@@ -597,11 +597,6 @@ pub const OPERATIONS: &[Operation] = &[
     op("member", &["id", "role"], OWNER),
     op("remove_member", &["id", "reason"], OWNER),
     op("consumer", &["title", "owner"], MEMBER),
-    op(
-        "edit_consumer",
-        &["id", "title", "description", "owner", "reason"],
-        MEMBER,
-    ),
     op("domain", &["title", "owner"], MEMBER),
     op("capability", &["title"], MEMBER),
     op("set_domain_archived", &["id", "archived", "reason"], OWNER),
@@ -617,12 +612,6 @@ pub const OPERATIONS: &[Operation] = &[
         AGENT_OR_OWNER,
     ),
     op(
-        "withdraw_decision",
-        &["req", "revision", "comment", "reason"],
-        MEMBER,
-    ),
-    op("project", &["repository"], MEMBER),
-    op(
         "revise",
         &[
             "expected_revision",
@@ -635,23 +624,8 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op(
-        "review_coverage",
-        &["req", "revision", "run", "reason"],
-        MEMBER,
-    ),
-    op(
-        "define_verification_scope",
-        &["req", "revision", "subject_keys", "scope", "reason"],
-        MEMBER,
-    ),
-    op(
         "link_source",
         &["req", "revision", "kind", "version", "relation"],
-        MEMBER,
-    ),
-    op(
-        "withdraw_source",
-        &["req", "revision", "id", "reason"],
         MEMBER,
     ),
     op("confirm", &["req", "revision"], MEMBER),
@@ -706,24 +680,6 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op("review_task", &["revision", "id", "reason"], MEMBER),
     op("retire_task", &["revision", "id", "reason"], MEMBER),
-    op(
-        "plan",
-        &[
-            "req",
-            "revision",
-            "subject",
-            "scope",
-            "discovery_complete",
-            "checks",
-        ],
-        MEMBER,
-    ),
-    op("result", &["req", "revision", "run", "evidence"], MEMBER),
-    op("finish", &["req", "revision", "run"], MEMBER),
-    op("accept", &["req", "revision", "run"], MEMBER),
-    op("revoke", &["req", "revision", "reason"], MEMBER),
-    op("issue", &["req", "revision", "ac", "comment"], MEMBER),
-    op("resolve", &["req", "revision", "id", "comment"], MEMBER),
 ];
 
 pub fn operation(name: &str) -> Option<&'static Operation> {

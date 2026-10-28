@@ -33,7 +33,7 @@ titles while approval and changes of authority remain with the owner.
 
 ## Run locally for development
 
-Use Rust 1.88+, PostgreSQL 16 with pgvector and Python 3 for examples/check adapters.
+Use Rust 1.90+, PostgreSQL 16 with pgvector and Python 3 for the tests.
 If a local PostgreSQL container does not already exist:
 
 ```sh
@@ -298,24 +298,11 @@ check requiring acceptance for specified builds and configurations.
 
 ## Automated checks
 
-Put the AC's local ID in the test name: `[ios-access] paid access survives login`.
-One test names one AC; an AC can have several tests. Submit the complete expected
-set and a discovery-complete assertion before execution.
-
-```sh
-python3 scripts/run_checks.py product examples/checks.json \
-  --joppa ./client/joppa
-```
-
-Set `JOPPA_MCP_URL` and a private `JOPPA_TOKEN_FILE` for the existing MCP client.
-Checks can bind Tasks with `tasks: [{"address":"task:ID","origin_revision":2}]`.
-Read the stable revision from `process.origin_revision`. Results update Task verification without completing work.
-
-Replace sample component versions and commands with real ones. The adapter seals
-the plan, executes commands without a shell, records each result and completes
-the run. Submit mixed manual/automated plans through the API. Missing/skipped
-checks and incomplete discovery cannot turn green. People still judge the
-meaning and sufficiency of tests.
+Put the test names of a criterion in its test list: `save_object` with
+`data.tests`, or `set_ac_tests`. Send each run with `joppa_record_results`:
+the commit and one result for each test. The workspace schema gives the status
+names and the rules that make a criterion green or red. See
+[objects](docs/objects.md) and [what green means](docs/green.md).
 
 ## Storage and upgrading from 0.1
 
@@ -329,8 +316,7 @@ SELECT/INSERT and sequence access, without table/schema ownership; see
 [storage](docs/storage.md). A PostgreSQL superuser can disable triggers, so
 physical immutable archiving is separate infrastructure.
 
-`joppa legacy serve 6214` exposes the retained 0.1 board. It is not a write path
-for the new model. Migration does not pretend old `done_at` flags are checks,
+Migration does not pretend old `done_at` flags are checks,
 guess owners or confirm actual business rules.
 
 ## Verify

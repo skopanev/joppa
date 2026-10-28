@@ -1,8 +1,9 @@
 use deadpool_postgres::Pool;
 use joppa::store::{self, ObjectScope};
 use serde_json::{Value, json};
+// Check runs are internal now, so the fixture writes through the internal path.
 async fn apply(pool: &Pool, ws: &str, actor: &str, command: Value) -> anyhow::Result<Value> {
-    store::execute_remote_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
+    store::execute_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
 }
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]

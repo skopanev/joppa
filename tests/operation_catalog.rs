@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
 
-/// Command variants that public writes refuse: internal events, retired inputs and CLI-only creation.
+/// Command variants that public writes refuse: internal events, retired inputs, retired check runs,
+/// typed commands that save_object replaces and CLI-only creation.
 const NOT_PUBLIC: &[&str] = &[
     "migrate_persistent_claims",
     "migrate_notes",
@@ -30,6 +31,19 @@ const NOT_PUBLIC: &[&str] = &[
     "answer",
     "route",
     "workspace",
+    "plan",
+    "result",
+    "finish",
+    "accept",
+    "revoke",
+    "issue",
+    "resolve",
+    "review_coverage",
+    "define_verification_scope",
+    "edit_consumer",
+    "project",
+    "withdraw_decision",
+    "withdraw_source",
 ];
 /// Public operation names without their own Command variant.
 const ALIASES: &[&str] = &["claim_next_task"];

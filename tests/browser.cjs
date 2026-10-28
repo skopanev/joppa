@@ -1,6 +1,6 @@
 // Board behaviour that is not about the tree shape: read-only access, sign in,
-// escaping, attachments, saved revisions, mobile and the offline
-// snapshot. Each check names the criterion it proves where one exists.
+// escaping, attachments, saved revisions and mobile. Each check names the
+// criterion it proves where one exists.
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const {readFileSync}=require('node:fs');
 const path=require('node:path');
@@ -8,13 +8,12 @@ const assert=require('node:assert/strict');
 const root=path.join(__dirname,'..');
 const source=require('./board_script.cjs');
 const style=readFileSync(path.join(root,'src/board.css'),'utf8');
-const page_html=snapshot=>readFileSync(path.join(root,'src/board.html'),'utf8')
+const page_html=()=>readFileSync(path.join(root,'src/board.html'),'utf8')
   .replace('/* BOARD_STYLE */',style)
   .replace('/* BRAND_STYLE */',readFileSync(path.join(root,'src/brand.css'),'utf8'))
-  .replace('/* BOARD_IMPORTS */',source)
-  .replace('/* SNAPSHOT */',snapshot?'window.SNAPSHOT='+JSON.stringify(snapshot).replaceAll('<','\\u003c').replaceAll('>','\\u003e').replaceAll('&','\\u0026')+';':'');
+  .replace('/* BOARD_IMPORTS */',source);
 
-const {ATTACK,types,schema,object,rows,detail}=require('./browser_fixture.cjs');
+const {ATTACK,types,schema,rows,detail}=require('./browser_fixture.cjs');
 
 (async()=>{
 const browser=await chromium.launch({headless:true});
@@ -103,34 +102,9 @@ try{
   assert.equal(await history.getByText('Verification: Passed',{exact:true}).count(),0);
   await history.getByRole('button',{name:'Close',exact:true}).click();
 
-  // The offline snapshot renders the same card with no network at all.
-  const snapshot={workspace:'w',lazy:false,custom_tree:true,object_types:types,
-    snapshot_schema:schema.schema,
-    state:{title:'Example product',members:{owner:'human'},domains:{},capabilities:{},
-      requirements:{},consumers:{},notes:{},projects:{}},
-    summary:{},signals:{},launch:{configured:false,ready:false,blockers:[]},counts:{},system_ids:{},
-    snapshot_objects:{'area:core':{...object('area:core',{title:'Core area'}),current_revision:1,
-      revisions:[{revision:1,parent:null,present:true,links:[],
-        data:{title:'Core area',owner:'owner',body:ATTACK},actor:'owner',at:'2026-10-06T09:00:00Z',
-        reason:'Create'}],annotations:{},process:null}}};
-  const offline=await browser.newPage();
-  const offlineErrors=[];offline.on('pageerror',e=>offlineErrors.push(e.message));
-  let offlineRequests=0;
-  await offline.route('**/api/**',route=>{offlineRequests++;return route.abort();});
-  await offline.route('http://joppa.test/',route=>route.fulfill({contentType:'text/html',body:page_html(snapshot)}));
-  await offline.goto('http://joppa.test/');
-  const area=offline.locator('[data-object-address="area:core"]');
-  await area.waitFor();
-  await area.locator(':scope > summary').click();
-  await area.getByText(ATTACK,{exact:false}).waitFor();
-  assert.equal(await offline.evaluate(()=>window.attacked),undefined,
-    'the snapshot escapes a document body as well');
-  assert.equal(offlineRequests,0,'the snapshot reads nothing from the network');
-  assert.deepEqual(offlineErrors,[],'the snapshot renders without errors');
-
   assert.deepEqual(errors,[],'no page errors');
   if(process.env.JOPPA_TEST_URL)await verifyRealServer(browser);
-  console.log('Browser: sign in, read-only access, escaping, attachments, saved revisions, mobile and snapshot');
+  console.log('Browser: sign in, read-only access, escaping, attachments, saved revisions and mobile');
 }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
@@ -172,20 +146,6 @@ async function verifyRealServer(browser){
   assert.equal(requests.filter(url=>url.searchParams.get('address')==='domain:security').length,before,'reopening uses the loaded card');
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'the real cards fit the mobile screen');
-  const offline=await browser.newPage();
-  const offlineErrors=[];offline.on('pageerror',error=>offlineErrors.push(error.message));
-  let network=0;
-  await offline.route('**/api/**',route=>{network++;return route.abort();});
-  await offline.goto('file://'+process.env.JOPPA_TEST_SNAPSHOT);
-  await offline.getByRole('tab',{name:'Domain',exact:true}).click();
-  for(const address of ['domain:security','capability:restrict','requirement:key']){
-    const item=offline.locator('[data-object-address="'+address+'"]');
-    await item.waitFor();await item.locator(':scope > summary').click();
-    await item.locator(':scope > .object-body > .object-children').waitFor();
-  }
-  await offline.getByText(ATTACK,{exact:true}).waitFor();
-  assert.equal(await offline.evaluate(()=>window.attacked),undefined);
-  assert.equal(network,0,'the real CLI snapshot uses no API requests');
-  assert.deepEqual(errors,[]);assert.deepEqual(offlineErrors,[]);
-  await offline.close();await page.close();
+  assert.deepEqual(errors,[]);
+  await page.close();
 }

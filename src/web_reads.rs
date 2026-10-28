@@ -1,4 +1,4 @@
-//! Read routes: the snapshot, the board, objects, the timeline, Tasks and the tree.
+//! Read routes: the board, objects, the timeline, Tasks and the tree.
 use super::*;
 
 pub(super) async fn read(

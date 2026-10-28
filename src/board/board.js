@@ -16,7 +16,7 @@ export async function load() {
   const request = ++state.loadNumber;
   let next;
   // The response and the error of an older selection are not shown.
-  try{next = window.SNAPSHOT || (await api('workspaces/' + encodeURIComponent(state.ws)+'/board'));}catch(e){if(request!==state.loadNumber)return;throw e;}
+  try{next = await api('workspaces/' + encodeURIComponent(state.ws)+'/board');}catch(e){if(request!==state.loadNumber)return;throw e;}
   if (request !== state.loadNumber) return;
   state.data = next;
   state.data.objectTypes=next.object_types||{};
@@ -39,8 +39,7 @@ function applyStatuses(statuses){
 async function renderObjectTree(){
   const root=$('tree');root.replaceChildren();
   const generation=state.loadNumber;
-  if(window.SNAPSHOT)state.data.objectTypes=state.data.snapshot_schema.types;
-  else if(!state.data.objectTypes||!Object.keys(state.data.objectTypes).length){
+  if(!state.data.objectTypes||!Object.keys(state.data.objectTypes).length){
     const configuration=await api('workspaces/'+encodeURIComponent(state.ws)+'/tree');if(generation!==state.loadNumber)return;
     state.data.objectTypes=configuration.schema.types;
   }

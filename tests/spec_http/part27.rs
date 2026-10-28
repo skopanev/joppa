@@ -6,11 +6,31 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
     let w = world().await?;
     let before = saved_rows(&w).await?;
     let valid = json!({"op":"member","id":"should-not-exist","role":"human"});
+    // The retired check-run and typed operations replay from the journal only.
+    let retired = [
+        "plan",
+        "result",
+        "finish",
+        "accept",
+        "revoke",
+        "issue",
+        "resolve",
+        "review_coverage",
+        "define_verification_scope",
+        "edit_consumer",
+        "project",
+        "withdraw_decision",
+        "withdraw_source",
+    ]
+    .map(|op| json!({"op":op,"req":"key","revision":1}));
     for command in [
         json!({"op":"made_up_operation","id":"x"}),
         json!({"op":"migrate_notes"}),
         json!({"op":"enroll_member","id":"intruder"}),
-    ] {
+    ]
+    .into_iter()
+    .chain(retired)
+    {
         let (ok, http) = send_as(&w, &w.owner, &command).await?;
         ensure!(!ok && http["error"] == "unknown operation", "{http}");
         let single = mcp_call(

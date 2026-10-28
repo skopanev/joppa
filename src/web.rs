@@ -234,7 +234,6 @@ mod board_script;
 use board_script::*;
 #[path = "web_pages.rs"]
 mod pages;
-pub use pages::snapshot;
 use pages::*;
 
 #[cfg(test)]

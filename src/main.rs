@@ -1,9 +1,6 @@
 use anyhow::{Result, bail};
 use joppa::{commands::Command, store};
 use std::io::Read;
-#[allow(dead_code, clippy::all)]
-#[rustfmt::skip]
-mod legacy;
 mod google_auth;
 mod protocol;
 mod web;
@@ -12,12 +9,6 @@ mod web_auth;
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().is_some_and(|s| s == "legacy") {
-        if args.get(1).is_some_and(|s| s == "serve") {
-            return legacy::run().await;
-        }
-        bail!("legacy supports server mode only: legacy serve PORT");
-    }
     let pool = store::pool(
         &std::env::var("JOPPA_DATABASE_URL").unwrap_or_else(|_| store::DEFAULT_URL.into()),
     )?;
@@ -80,19 +71,8 @@ async fn main() -> Result<()> {
             );
         }
         Some("list") => println!("{}", store::list(&pool, &actor()?).await?),
-        Some("board") => {
-            let workspace = args
-                .get(1)
-                .ok_or_else(|| anyhow::anyhow!("board WORKSPACE OUTPUT.html"))?;
-            let path = args
-                .get(2)
-                .ok_or_else(|| anyhow::anyhow!("output path required"))?;
-            let data = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
-            std::fs::write(path, web::snapshot(&data)?)?;
-            println!("{path}");
-        }
         _ => bail!(
-            "commands: migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list | board WORKSPACE FILE | legacy ..."
+            "commands: migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list"
         ),
     }
     Ok(())

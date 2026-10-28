@@ -42,9 +42,7 @@ rename_workspace: title, reason, reference_prefix:null, workspace_id:null; works
 delete_workspace: reason; workspace owner only; removes every row of the workspace. Before the purge, each workspace whose remote links or child workspace bindings name it gets one internal remove_workspace_references event that removes them. The result lists them in removed_references. The owner reads that list first with GET /api/workspaces/{workspace}/references.
 member: id, role (human); workspace owner only. An agent enrolls through its agent token, not through member. An older journal event keeps its agent or runner role in a replay.
 consumer: id, title, description, owner (human member)
-edit_consumer: id, title, description, owner, reason; consumer owner or workspace owner
 reorder_tree: kind (any configured type), parent (complete object address or null), expected:[id], ids:[id]; workspace owner only
-project: id, repository
 domain: id, title, owner (human member; legacy authority accepted)
 capability: id, title, domain, owner:null (defaults to domain owner)
 confirm_tree: (no fields); workspace owner validates agent draft
@@ -58,11 +56,9 @@ link_source: req, revision, id, kind, uri (optional), external_id:null, version,
       Supply a nonempty uri or external_id. Omit uri when the source exists only
       in an external tool. The journal and reads store an omitted URI as an empty
       string. When both references exist, the source retains both.
-withdraw_source: req, revision, id, reason; source author or REQ owner
 confirm: req, revision; REQ owner confirms wording
 comment: req, revision, id, text, kind (comment|decision|accept|change|reject|correction),
          reply_to:null, ac:null
-withdraw_decision: req, revision, comment, reason; only the decision author
 assess: req, revision, ac,
         assessment:{ready,reason,owner:null,decision:null}
 task (legacy creation): req, revision, id, title, acs:[id], projects:[id],
@@ -94,26 +90,6 @@ review_task: revision, id, reason; Task owner or workspace owner confirms the cu
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
       The planning holder of the parent criterion can also retire a blocked child Task.
       This authority applies only to blocked Tasks.
-review_coverage: req, revision, run, reason; REQ owner acknowledges checks removed or changed since the latest earlier plan
-define_verification_scope: req, revision, subject_keys:[component-id,...], scope, reason; REQ owner agrees the complete component set and check boundary before the first plan
-plan: req, revision, run, subject:{component:immutable-build-or-config-id},
-      scope, discovery_complete,
-      checks:[{id:"[AC-id] test name",ac:"AC-id",method:"automated"|"manual",expected:["..."]}]
-result: req, revision, run,
-        evidence:{check,outcome:"pass"|"fail"|"skip",observed:["..."],note,link:null}
-finish: req, revision, run
-accept: req, revision, run; REQ owner only, latest completed run must pass every AC
-revoke: req, revision, reason
-
-Each check links to one criterion through the sealed plan. Joppa records its
-result timestamp on the immutable event. Elapsed time alone does not expire a
-pass or change its color. A pass applies to its recorded context revision and
-subject. Another revision or subject needs another run. Include all relevant
-code, test and environment versions in `verification_scope.subject_keys`.
-The launch caller must supply the requested versions. The portal derives
-colors from the recorded verdict. An integration cannot set a color directly.
-issue: req, revision, id, ac, comment (existing comment ID); owner confirms defect
-resolve: req, revision, id, comment; owner confirms resolution, then rerun checks
 describe: target, text (2000 chars max), reason; an explanation on ANY object.
           A domain or capability keeps it in itself (they are not versioned).
           Everything else keeps it as a note beside the object — an AC's own
@@ -132,12 +108,12 @@ object's description, comments and attachments in full.
 
 ```
 
-A run covers all ACs of one revision on one subject (map of component builds/configurations).
-Missing results and skipped checks are n/a. Manual pass requires identical expected/observed sets.
-Manual evidence is submitted by a human member; automated evidence and finish by the run reporter.
-Expected tests cannot disappear between runs of one revision. To replace the verification contract, save a new revision with a reason.
-For new revisions, the first sealed plan is compared with the latest plan from any earlier revision. The card and read summary list checks whose identity, AC, method or expected evidence disappeared or changed. The REQ owner must call `review_coverage` with a reason before accepting that revision. Old journal revisions predate this rule and remain replayable.
-Before the first plan on a new revision, its REQ owner must call `define_verification_scope`. A plan's `subject` must contain exactly those component keys, its `scope` must match the agreed boundary, and it must include every project named by active tasks. Build/configuration values cannot be bare environment names such as `staging`. The first plan seals this scope contract; changing it requires another REQ revision. Older journal revisions remain readable under their historical rules. This validates the declared contract, not the semantic completeness of the owner's component list.
+The check-run operations `plan`, `result`, `finish`, `accept`, `revoke`, `issue`, `resolve`,
+`review_coverage` and `define_verification_scope` are retired. So are `edit_consumer`, `project`,
+`withdraw_decision` and `withdraw_source`: use `save_object` for consumers and projects.
+The journal replays the old events of all these operations.
+HTTP and MCP writes refuse them with `unknown operation`. Send test results with `joppa_record_results`.
+
 Tasks are independent objects. Their parent follows the workspace schema. A Task can also be a root when its type permits it.
 The default tree places Tasks under AC with `parent_gate: "ready"`. Other schemas can select different parents, nesting and gates.
 Tasks retain their history and completion results when a parent changes. A changed parent contract requires `review_task` before claim or completion.
@@ -293,8 +269,8 @@ return to their registered callback automatically.
 
 ## Automatic IDs and batches
 
-Through `joppa_command`, omit `id` when creating a domain, capability, consumer, project,
-Note, comment, task or issue. Omit `run` for a new check plan. For `revise`,
+Through `joppa_command`, omit `id` when creating a domain, capability, consumer,
+Note, comment or task. For `revise`,
 omit `req` only when `expected_revision` is 0; omit `id` on newly added ACs.
 The server assigns UUIDs and returns the resolved `command` and `system_ids`
 for domains, capabilities, REQs and ACs. Explicit local IDs remain supported.
@@ -414,37 +390,11 @@ A type with role `requirement` supports the verification workflow.
 A type with role `ac` supplies a criterion in its nearest ancestor specification.
 Use the returned `process.req`, `process.criterion` and verification revision in process commands.
 For custom types, these process keys are full addresses such as `spec:billing` and `measure:paid-access`.
-Use the same criterion key in `plan.checks[].ac` and in the automated test tag, such as `[measure:paid-access]`.
 Legacy process keys remain compatible.
 Public copied IDs are opaque. Read their type from the object response.
 
 
-## Task check evidence
-
-A sealed check can include `tasks: [{"address": "task:ID", "origin_revision": 2}]`.
-Read `process.origin_revision` from the Task. This identifies its stable contract.
-Claim, release and completion change the object revision but preserve that contract revision.
-The server rejects stale, absent, retired, foreign-context or duplicate bindings atomically.
-Task names and permitted parents follow the workspace schema.
-A criterion Task must match the check criterion. A specification Task can use any check within that context.
-
-Use the existing `plan`, `result` and `finish` operations. Seal the plan before execution.
-The latest started run decides Task verification. A newer unfinished run makes it unverified.
-All declared Task checks must pass. A failed check gives fail. Missing, skipped or absent checks give unverified.
-Task verification does not complete work or confirm its specification.
-A Task without declared bindings cannot inherit a parent pass.
-Changed contracts, source context and dependencies invalidate current evidence without deleting history.
-Required bindings cannot disappear from a later plan. Changed coverage needs the existing owner review.
-
-The existing test adapter preserves these bindings. It can use the authenticated MCP client:
-
-```sh
-python3 scripts/run_checks.py WORKSPACE checks.json --joppa ./client/joppa
-```
-
-Use the existing `JOPPA_MCP_URL` and private `JOPPA_TOKEN_FILE` settings.
-The adapter reports actual command outcomes. It seals the plan before it starts a command.
-It reports each failure and then finishes the run. No extra test runner is required.
+## Task queue over HTTP
 
 `GET /api/workspaces/:workspace/tasks` reads the same queue as `joppa_tasks`.
 Use view, limit, cursor, project, purpose and comma-separated priorities as query parameters.
