@@ -19,7 +19,7 @@ async fn inbox_order_uses_the_schema_and_rejects_a_stale_cursor() -> Result<()> 
             w.command(json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":"Input","status":status},"links":[],"reason":"Capture"})).await?;
         }
     }
-    w.command(json!({"op":"save_object","kind":"input","id":"y-nested","revision":0,"parent":"domain:security","data":{"title":"Nested input","owner":"owner","body":"Input"},"links":[],"reason":"Capture"})).await?;
+    w.command(json!({"op":"save_object","kind":"input","id":"y-nested","revision":0,"parent":null,"data":{"title":"Nested input","owner":"owner","body":"Input"},"links":[{"target":"domain:security","relation":"related"}],"reason":"Capture"})).await?;
     let first = w.get("kind=input&parent=*&limit=1").await?;
     ensure!(first["items"][0]["address"] == "input:y-nested", "{first}");
     let mut cursor = first["next_cursor"].as_str().unwrap().to_owned();
@@ -134,18 +134,19 @@ async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
 // signal-in-one-inbox-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_note_under_any_object_also_appears_in_the_inbox() -> Result<()> {
+async fn a_note_linked_to_any_object_also_appears_in_the_inbox() -> Result<()> {
     let w = world().await?;
     let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
-    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":"requirement:key","data":{"title":"Under","owner":"owner","body":"About keys"},"links":[],"reason":"Save"}))
+    // A note has no parent: it links to the object that it informs.
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":null,"data":{"title":"Under","owner":"owner","body":"About keys"},"links":[{"target":"requirement:key","relation":"related"}],"reason":"Save"}))
         .await?;
     let inbox = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     let items = inbox["items"].as_array().cloned().unwrap_or_default();
     ensure!(
         items
             .iter()
-            .any(|i| i["address"] == "note:under" && i["parent"] == "requirement:key"),
+            .any(|i| i["address"] == "note:under" && i["parent"].is_null()),
         "{inbox}"
     );
     Ok(())

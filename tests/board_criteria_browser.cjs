@@ -58,6 +58,8 @@ test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its to
     await r.locator(':scope > summary').click();
     const dot = address => r.locator('.common-object[data-object-address="' + address + '"] > summary .status-circle').first();
     await dot('ac:n').waitFor();
+    // A dot takes its colour when the board data has set the tone colours.
+    await f.page.waitForFunction(() => [...document.querySelectorAll('#tree .status-circle[data-tone]')].every(node => getComputedStyle(node).backgroundColor !== ''));
     const colours = async () => ({green: await dot('ac:g').evaluate(node => [node.dataset.tone, getComputedStyle(node).backgroundColor]),
       grey: await dot('ac:n').evaluate(node => [node.dataset.tone, getComputedStyle(node).backgroundColor])});
     assert.deepEqual(await colours(), {green: ['green', 'rgb(34, 165, 89)'], grey: ['grey', 'rgb(200, 195, 184)']});

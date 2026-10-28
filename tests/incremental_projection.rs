@@ -135,16 +135,26 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
         ("assess ios", assess("ios", true)),
         ("assess key", assess("key", true)),
     ];
-    // Three nested inputs: a change at the top must reach the bottom.
+    // Three linked inputs: a note has no parent, so each input links to the one above it.
     let nesting = vec![
         ("note top", note("top", "Top input", None, json!([]))),
         (
             "note middle",
-            note("middle", "Middle input", Some("note:top"), json!([])),
+            note(
+                "middle",
+                "Middle input",
+                None,
+                json!([{"target":"note:top","relation":"related"}]),
+            ),
         ),
         (
             "note leaf",
-            note("leaf", "Leaf input", Some("note:middle"), json!([])),
+            note(
+                "leaf",
+                "Leaf input",
+                None,
+                json!([{"target":"note:middle","relation":"related"}]),
+            ),
         ),
     ];
     // Two inputs that point at each other: an ordinary cycle is allowed and

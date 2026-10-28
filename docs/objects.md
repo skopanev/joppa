@@ -158,7 +158,10 @@ group in pages with `joppa_objects`:
 ```
 
 The reply gives `items` in address order and `next_cursor`. Send `cursor` with that value for the
-next page. `next_cursor` is null on the last page.
+next page. `next_cursor` is null on the last page. In an item, `address`, `title`, `kind` and
+`present` describe the other object now. `revision` is the target revision that the link pins, or
+null for a link without a pin. It is not the current revision of the other object: read that object
+to get its current revision.
 
 - `related` records context. Cycles are permitted.
 - `depends_on` records a dependency and pins its target revision.

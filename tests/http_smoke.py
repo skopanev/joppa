@@ -4,6 +4,7 @@ JOPPA_TEST_DATABASE_URL=... python3 tests/http_smoke.py [--browser]
 Browser needs Playwright (PLAYWRIGHT_MODULE may specify an installed module).
 """
 import json
+import re
 from html.parser import HTMLParser
 import os
 from pathlib import Path
@@ -204,7 +205,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert 'archive_object' in operations and 'restore_object' in operations
         assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
         # migrate_test_rules adds the sixth revision: the test rules and the status rule of each type.
-        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 6
+        # migrate_note_parents adds the seventh: an inbox type has no parent.
+        assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 7
         common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
                   'data':{'title':'Source note','owner':'owner','body':'Original text'},
                   'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -213,9 +215,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})
         old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1})
         assert old['document']['data']['body'] == 'Original text'
-        assert old['historical'] and old['process'] is None and not old['incoming'] and not old['annotations']
+        assert old['historical'] and old['process'] is None and not old['link_groups'] and not old['annotations']
         assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 6
+        assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 7
         empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
             'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
                 'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
@@ -284,7 +286,8 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'command':{'op':'domain','title':'Draft area','authority':'owner'}})
         draft_id = draft['command']['id']
         uuid.UUID(draft_id)
-        assert draft['system_ids']['domain'][draft_id].startswith(mcp_ws+'-D-')
+        # Item IDs start with a slug of the workspace title, MCP authoring checks.
+        assert re.match(r'^mcp-authoring-checks(-[0-9]+)?-D-', draft['system_ids']['domain'][draft_id])
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-draft-edit',
             'command':{'op':'edit_domain','id':draft_id,'title':'Clear area','authority':'owner','reason':'Clarification'}})
         batch = {'workspace':mcp_ws,'request_id':'mcp-batch','operations':[
@@ -539,8 +542,18 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op':'rename_workspace','title':'Review workspace','reason':'Name clarified'})
         after=request('/api/workspaces/'+ws)[1]
         assert after['workspace']==before['workspace']
-        assert after['position']==before['position']+1
-        assert after['index']==before['index']
+        # The rename and the prefix that the server derives from the new title: two events.
+        assert after['position']==before['position']+2
+        # The index keeps its content; each item ID keeps its suffix under the new prefix.
+        def suffixes(value):
+            if isinstance(value, dict):
+                return {k: suffixes(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [suffixes(v) for v in value]
+            if isinstance(value, str) and re.match(r'^[a-z0-9._-]+-[A-Z]-[A-Z0-9]{10}$', value):
+                return value[-13:]
+            return value
+        assert suffixes(after['index'])==suffixes(before['index'])
         assert 'state' not in after and 'history' not in after
         assert request('/api/workspaces/'+ws+'/board')[1]['state']['title']=='Review workspace'
         if '--browser' in sys.argv:

@@ -52,8 +52,9 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
         w.command(json!({"op":"retire_task","id":task,"revision":1,"reason":"The owner no longer needs this work"})).await?;
         let retired = w.get(&format!("address={task}")).await?;
         ensure!(retired["process"]["status"] == "retired", "{retired}");
-        let note = format!("note:live-child-{index}");
-        w.command(json!({"op":"save_object","kind":"note","id":format!("live-child-{index}"),"revision":0,"parent":parent,"data":{"title":"Present input","owner":"owner","body":"This input still applies"},"reason":"Keep an ordinary present child"})).await?;
+        // A note has no parent, so a configured document is the present child.
+        let note = format!("record:live-child-{index}");
+        w.command(json!({"op":"save_object","kind":"record","id":format!("live-child-{index}"),"revision":0,"parent":parent,"data":{"title":"Present input","owner":"owner","body":"This input still applies"},"reason":"Keep an ordinary present child"})).await?;
         let error: Value = serde_json::from_str(&w.refused(archive.clone()).await?)?;
         ensure!(
             error["error"] == "cannot archive an object with active children",

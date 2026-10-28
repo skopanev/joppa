@@ -132,7 +132,7 @@ async fn bot_saves_a_link_with_an_unknown_relation_over_http_and_is_refused() ->
             read["current_revision"] == 1
                 && read["document"]["links"] == json!([])
                 && read["links"] == json!([])
-                && read["incoming"] == json!([]),
+                && read["link_groups"] == json!([]),
             "{read}"
         );
     }

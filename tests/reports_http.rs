@@ -5164,7 +5164,7 @@ impl Planning<'_> {
     }
     /// Owner S saves inbox signal s under R over HTTP.
     async fn signal(&self) -> Result<()> {
-        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":"spec:r","data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[],"reason":"Record the signal"})).await
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[{"target":"spec:r","relation":"related"}],"reason":"Record the signal"})).await
     }
     /// A is grey with the test list of `before` and has no readiness assessment.
     async fn reset(&self, before: &Value) -> Result<()> {
@@ -5518,7 +5518,7 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Resul
     p.write("owner", json!({"op":"member","id":"alex","role":"human"}))
         .await?;
     for id in ["http-n", "mcp-n"] {
-        p.post_command(&w.owner, json!({"op":"save_object","kind":"signal","id":id,"revision":0,"parent":"spec:r","data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[],"reason":"Record the signal"})).await?;
+        p.post_command(&w.owner, json!({"op":"save_object","kind":"signal","id":id,"revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[{"target":"spec:r","relation":"related"}],"reason":"Record the signal"})).await?;
     }
     let state = async || -> Result<Value> {
         let a = p

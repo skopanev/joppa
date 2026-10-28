@@ -443,11 +443,13 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
             &json!({"op":"workspace","title":"Foreign product"}),
         )
         .await?;
+        // Before the rename, item IDs use the prefix that the server derived from the title.
+        let title_prefix: String = pool.get().await?.query_one("SELECT COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?.get(0);
         reset(&pool).await?;
         let result =
             store::execute_batch(&pool, &ws, "owner", "ordered-batch", &operations).await?;
         let create_index = usize::from(rename_first);
-        let expected_prefix = if rename_first { &prefix } else { &ws };
+        let expected_prefix = if rename_first { &prefix } else { &title_prefix };
         assert!(
             result["results"][create_index]["system_ids"]["domain"]["ordered"]
                 .as_str()
@@ -468,11 +470,13 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
             &json!({"op":"domain","id":"other","title":"Other domain","owner":"owner"}),
         )
         .await?;
+        // Item IDs of the foreign workspace use its own prefix, a slug of its title.
+        let foreign_prefix: String = pool.get().await?.query_one("SELECT COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&foreign]).await?.get(0);
         assert!(
             other["system_ids"]["domain"]["other"]
                 .as_str()
                 .unwrap()
-                .starts_with(&format!("{foreign}-D-"))
+                .starts_with(&format!("{foreign_prefix}-D-"))
         );
         assert_eq!(journal_selects(&pool).await?["calls"], 0);
         reset(&pool).await?;

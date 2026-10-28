@@ -350,7 +350,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     )
     .await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
-    let types = json!({"spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","status":"tests","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","status":"children","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","status":"none","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","status":"none","inbox":true,"root":true,"parents":["*"]}});
+    let types = json!({"spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":["*"]},"condition":{"title":"Condition","role":"ac","status":"tests","root":false,"parents":["*"]},"section":{"title":"Section","role":"group","status":"children","root":true,"parents":["*"]},"job":{"title":"Job","role":"task","status":"none","root":false,"parents":["*"],"parent_gate":"ready"},"input":{"title":"Input","role":"document","status":"none","inbox":true,"root":true,"parents":[]}});
     apply(&pool,&ws,"owner",json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use arbitrary type names"})).await?;
     for (kind, id, parent, data) in [
         (

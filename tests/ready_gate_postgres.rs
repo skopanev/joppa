@@ -125,7 +125,11 @@ async fn a_member_writes_a_requirement_and_work_starts_after_ready() -> Result<(
         .into_iter()
         .flatten()
         .filter(|item| {
-            item["op"] != "workspace" && item["op"] != "member" && item["op"] != "set_tree_schema"
+            // The server renames the new workspace to give it a prefix from its title.
+            item["op"] != "workspace"
+                && item["op"] != "member"
+                && item["op"] != "set_tree_schema"
+                && item["op"] != "rename_workspace"
         })
         .filter(|item| {
             !item["op"]

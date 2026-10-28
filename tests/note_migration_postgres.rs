@@ -81,7 +81,9 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
         store::read_item_scoped(&pool, &public, "owner", Scope::from_args(&json!({}))?).await?;
     assert_eq!(migrated["kind"], "note");
     assert_eq!(migrated["selection"]["kind"], "note");
-    assert_eq!(migrated["item_id"], public);
+    // The old ID reads the note; the read gives the ID with the prefix of the title.
+    let item_id = migrated["item_id"].as_str().unwrap();
+    assert!(item_id.ends_with(&public[public.len() - 13..]) && item_id != public);
     assert_eq!(migrated["document"]["data"]["body"], said);
     assert_eq!(migrated["document"]["data"]["author"], "customer");
     assert_eq!(
@@ -97,14 +99,20 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
         &pool,
         &ws,
         "owner",
+        // A note has no parent: the migration links it to its old parent instead.
         &ObjectScope {
-            parent: Some("intake:source"),
+            related_to: Some("intake:source"),
             ..Default::default()
         },
     )
     .await?;
     assert_eq!(children["items"][0]["address"], canonical);
-    assert_eq!(children["items"][0]["item_id"], public);
+    assert!(
+        children["items"][0]["item_id"]
+            .as_str()
+            .unwrap()
+            .ends_with(&public[public.len() - 13..])
+    );
     let history = store::read_item_scoped(
         &pool,
         &public,
@@ -129,7 +137,8 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     let mut data = migrated["document"]["data"].clone();
     data["body"] = json!("Updated source");
     let edited=store::execute_remote_input(&pool,&ws,"owner","edit-note",&json!({"op":"save_object","kind":"note","id":id,"revision":migrated["current_revision"],"parent":migrated["document"]["parent"],"data":data,"links":migrated["document"]["links"],"reason":"Correct the source"})).await?;
-    assert_eq!(edited["system_ids"]["note"][id], public);
+    let edited_id = edited["system_ids"]["note"][id].as_str().unwrap();
+    assert!(edited_id.ends_with(&public[public.len() - 13..]));
     store::execute_remote_input(&pool,&ws,"agent","reply-old-address",&json!({"op":"note","target":"point:source/source.1","id":"followup","text":"New discussion"})).await?;
     let current = store::read_objects(
         &pool,

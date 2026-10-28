@@ -29,12 +29,18 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
         "{requirement}"
     );
     let signal = object_as(&w, bot, "note:signal", None).await?;
+    // The read counts the incoming links by group; the group read lists them.
+    let group = w
+        .get_as(
+            bot,
+            "links_of=note:signal&direction=incoming&relation=related&kind=requirement",
+        )
+        .await?;
     ensure!(
         signal["document"]["present"] == false
-            && signal["incoming"].as_array().is_some_and(|i| i
-                .iter()
-                .any(|i| i["source"] == "requirement:dark" && i["relation"] == "related")),
-        "{signal}"
+            && signal["link_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "related" && g["kind"] == "requirement" && g["count"] == 1))
+            && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "requirement:dark")),
+        "{signal} {group}"
     );
     Ok(())
 }
@@ -65,11 +71,16 @@ async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()
             "mcp={mcp}: {b}"
         );
         let a = read("a").await?;
+        let group = w
+            .get_as(
+                &w.bot,
+                "links_of=note:a&direction=incoming&relation=depends_on&kind=note",
+            )
+            .await?;
         ensure!(
-            a["incoming"].as_array().is_some_and(|i| i
-                .iter()
-                .any(|i| i["source"] == "note:b" && i["relation"] == "depends_on")),
-            "mcp={mcp}: {a}"
+            a["link_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "depends_on" && g["kind"] == "note" && g["count"] == 1))
+                && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "note:b")),
+            "mcp={mcp}: {a} {group}"
         );
     }
     Ok(())

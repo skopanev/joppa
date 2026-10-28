@@ -100,7 +100,9 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let id = a["command"]["id"].as_str().unwrap();
     uuid::Uuid::parse_str(id)?;
     let public_id = a["system_ids"]["domain"][id].as_str().unwrap();
-    assert!(public_id.starts_with(&format!("{ws}-D-")));
+    // Item IDs start with the prefix of the workspace, a slug of its title.
+    let prefix: String = pool.get().await?.query_one("SELECT COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?.get(0);
+    assert!(public_id.starts_with(&format!("{prefix}-D-")));
     assert_eq!(
         store::read_item(&pool, public_id, "owner").await?["selection"]["id"],
         id
@@ -211,7 +213,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         a["results"][2]["system_ids"]["ac"][ac]
             .as_str()
             .unwrap()
-            .starts_with(&format!("{ws}-A-"))
+            .starts_with(&format!("{prefix}-A-"))
     );
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     // Each failed package leaves neither a partial tree nor a consumed request ID.
