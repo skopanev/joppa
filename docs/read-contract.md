@@ -49,6 +49,8 @@ roots. `kind` filters by type. Reply:
 ```
 
 - `status` is the status tone. `children` is the number of present children, only when above 0.
+- Items come in address order. `next_cursor` is the address of the last item; the next page
+  starts after it, so a new object does not move the items of a later page.
 - No `revision`, `description`, `process`, `id` or `item_id`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
@@ -123,6 +125,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
 - Next link page: `{"workspace": "w", "address": "task:t", "links_cursor": "25"}`.
+- `comments_cursor` and `links_cursor` are offsets. A comment or link added between two
+  reads moves the later items by one place. Read the first page again for a stable view.
 
 ## One revision
 
@@ -137,6 +141,7 @@ empty keys outside `document`. `"history": true` gives the revision counts.
 - `{"workspace": "w", "kind": "ac", "parent": "*"}`: every criterion in address order, 100 a
   page: `{"total": 212, "next_cursor": "100", "items": [...]}`. Send `cursor` for the next page.
   `parent` gives the direct children of one node.
+  With 101 criteria, the first page has 100 items and `next_cursor` `"100"`; the second has 1.
 - A missing `tests` key means no tests. A missing `message` means no failure message.
 
 ## Other read tools

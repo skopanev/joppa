@@ -49,3 +49,27 @@ fn old_journals_with_long_titles_still_replay() {
     )
     .expect("replay does not check title length");
 }
+
+#[test]
+fn a_type_title_max_length_refuses_one_character_more_and_names_its_limit() {
+    let mut w = World::new();
+    let mut types = serde_json::to_value(joppa::objects::schema(&w.state).types).unwrap();
+    types.as_object_mut().unwrap().remove("intake");
+    types.as_object_mut().unwrap().remove("point");
+    types["note"]["title_max_length"] = json!(64);
+    w.ok(
+        "owner",
+        json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Short note titles"}),
+    );
+    let note = |id: &str, length: usize| {
+        json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,
+            "data":{"title":title(length),"owner":"owner","body":"Context"},"links":[],
+            "reason":"Title limit test"})
+    };
+    w.ok("agent", note("fits", 64));
+    let error = w.apply("agent", note("long", 65)).unwrap_err().to_string();
+    assert!(
+        error.contains("a note title is at most 64 characters"),
+        "{error}"
+    );
+}
