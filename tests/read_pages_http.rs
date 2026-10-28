@@ -126,3 +126,23 @@ async fn a_detail_read_pages_its_links_by_25() -> Result<()> {
     );
     Ok(())
 }
+
+// read-list-compact
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_list_item_shows_the_same_tone_as_the_detail_read() -> Result<()> {
+    let w = record_world::world(&["tests/x.rs > t"]).await?;
+    w.recorded(
+        &"a".repeat(40),
+        json!([{"test":"tests/x.rs > t","status":"pass"}]),
+    )
+    .await?;
+    let list = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
+    let detail = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
+    ensure!(
+        detail["status"]["tone"] == "green" && list["items"][0]["status"] == "green",
+        "list {list} detail {}",
+        detail["status"]
+    );
+    Ok(())
+}
