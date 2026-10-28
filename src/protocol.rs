@@ -28,7 +28,7 @@ pub async fn handle(
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": json!([
             tool("joppa_list", "List accessible product workspaces", json!({}), json!([])),
-            tool("joppa_search", "Find current objects of any configured type inside one authorized workspace. Combines full-text and semantic search when embeddings are available; reports coverage. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}}), json!(["workspace","query"])),
+            tool("joppa_search", "Find objects of any configured type. Each search combines full-text and vector search and reports coverage. By default it reads the current revision of live objects in one workspace. all_versions=true also reads each past revision and archived objects; each result gives revision, historical and archived. all_workspaces=true reads each workspace that you can read; each result gives its workspace. Results are references, not acceptance evidence. Read the matching item before changes.", json!({"workspace":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":2000},"kind":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10},"all_versions":{"type":"boolean","default":false},"all_workspaces":{"type":"boolean","default":false}}), json!(["workspace","query"])),
             tool("joppa_read", "Read a schema-defined root index, one copied object, or its configured verification context. Supply workspace OR item_id. Every requirement reports revision_count. history=true returns counts only, never events or revision bodies. To read an older revision, explicitly supply revision=N; the response contains exactly one revision and its discussion/evidence. Copied requirement and AC IDs obey the same rules.", json!({"workspace":{"type":"string"},"item_id":{"type":"string"},"req":{"type":"string","description":"One requirement: current revision by default, including its ACs, tasks, runs, issues and revision comments"},"revision":{"type":"integer","minimum":1,"description":"Read exactly this revision of the selected requirement; omit for current. Works with req or a requirement/AC item_id."},"history":{"type":"boolean","default":false,"description":"Discover revision counts without revision bodies or events. Then request one revision by number."},"target":{"type":"string","description":"One object's notes: description, comments and attachments. Address as kind:id, e.g. requirement:r-xxx or ac:r-xxx/2. Cannot be combined with revision or history."}}), json!([])),
             tool("joppa_tests", "Read the test status of one criterion or of several, separated by commas: green when every listed test passes, red when one fails or is missing, grey otherwise. Each test shows its latest status, commit and failure message. A Task has no tests of its own: pass task to read done and commit. Only complete_task sets done and commit: complete_task {id, revision, evidence, commit}, where commit is the git sha where the Task is ready. The list is the field tests of the criterion document: save_object with data.tests saves it, and the short command set_ac_tests {target, tests: [\"file > describe > name\"], revision, reason} saves only that field. revision is optional: send the tests_revision you read, the document revision of the criterion, also when its list is empty. A different revision fails with \"stale test list revision; read the tests again\". Without ac and task, the reply is the overview of green and red criteria. summary=true replaces tests[] of each criterion with counts per test status.", json!({"workspace":{"type":"string"},"ac":{"type":"string"},"task":{"type":"string"},"summary":{"type":"boolean"}}), json!(["workspace"])),
             tool("joppa_tree", "Read the versioned workspace tree schema. Type index sets presentation order; smaller values appear first. Type title_size sets title size in pixels (12 to 48). Type badge sets the compact label. Type title_preview_length is the maximum title length on write and the visible title length (default 64 characters). A workspace member changes it with set_tree_schema: types replaces the whole map, put_types adds or replaces single types, remove_types deletes single types. Each type names its status rule in status: tests, children, links or none. status_required=true refuses a type without status; with false its nodes are orange (unset). A node with status tests keeps its test names in the document field tests. test_results holds every test rule: statuses maps each status name to pass, fail, skip or todo; fields lists the result fields {name, title?, type: text|number|enum|ref, target?, required?, values?, max_length?, board?, applies?}; name, max_tests, max_results, same_commit, reset_on_change, green_if_all, red_if_any and failure_field. A set_tree_schema with test_results sends every rule. board=true on an enum or ref field gives each value its own criterion status and a board filter; applies names the criterion reference that lists the values that apply, or the explicit value all. The browser page is read-only.", json!({"workspace":{"type":"string"},"revision":{"type":"integer","minimum":0}}), json!(["workspace"])),
@@ -128,7 +128,17 @@ async fn call(
                 ),
                 None => None,
             };
-            store::search::find(
+            let flag = |name: &str| match a.get(name) {
+                Some(v) => v
+                    .as_bool()
+                    .ok_or_else(|| anyhow::anyhow!("{name} must be a boolean")),
+                None => Ok(false),
+            };
+            let flags = store::search::Flags {
+                all_versions: flag("all_versions")?,
+                all_workspaces: flag("all_workspaces")?,
+            };
+            store::search::find_with(
                 pool,
                 actor,
                 field("workspace")?,
@@ -136,6 +146,7 @@ async fn call(
                 kind,
                 limit,
                 embedder,
+                flags,
             )
             .await
         }

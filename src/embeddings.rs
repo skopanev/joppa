@@ -1,9 +1,8 @@
 //! DeepInfra produces vectors; PostgreSQL stores them. No local inference.
+use crate::embeddings_limit::{InputFault, Limits, ProviderStatus, is_input_fault};
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
-use std::{sync::Arc, time::Duration};
-use tokio::sync::{Mutex, Semaphore};
-use tokio::time::Instant;
+use std::time::Duration;
 
 pub const MODEL: &str = "Qwen/Qwen3-Embedding-8B";
 pub const PROFILE: &str = "Qwen/Qwen3-Embedding-8B:4096:MRL1024:v1";
@@ -14,8 +13,7 @@ pub struct Embedder {
     http: reqwest::Client,
     key: String,
     endpoint: String,
-    slots: Arc<Semaphore>,
-    next: Arc<Mutex<Instant>>,
+    limits: Limits,
 }
 #[derive(Deserialize)]
 struct Response {
@@ -28,17 +26,20 @@ struct Entry {
 }
 
 impl Embedder {
-    pub fn from_env() -> Result<Option<Self>> {
-        let Some(key) = std::env::var("DEEPINFRA_API_KEY")
+    /// Search is always hybrid, so the server needs the provider key to start.
+    /// JOPPA_EMBEDDING_URL replaces the provider endpoint for local tests only.
+    pub fn from_env() -> Result<Self> {
+        let key = std::env::var("DEEPINFRA_API_KEY")
             .ok()
             .filter(|s| !s.trim().is_empty())
-        else {
-            return Ok(None);
-        };
-        Ok(Some(Self::new(
-            key,
-            "https://api.deepinfra.com/v1/openai/embeddings".into(),
-        )?))
+            .context(
+                "set DEEPINFRA_API_KEY: search is always hybrid and needs the embedding provider",
+            )?;
+        let endpoint = std::env::var("JOPPA_EMBEDDING_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "https://api.deepinfra.com/v1/openai/embeddings".into());
+        Self::new(key, endpoint)
     }
     // Explicit endpoint injection is for local provider-contract tests only.
     pub fn new(key: String, endpoint: String) -> Result<Self> {
@@ -56,8 +57,7 @@ impl Embedder {
                 .build()?,
             key,
             endpoint,
-            slots: Arc::new(Semaphore::new(2)),
-            next: Arc::new(Mutex::new(Instant::now())),
+            limits: Limits::default(),
         })
     }
     pub async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -65,13 +65,9 @@ impl Embedder {
             !input.is_empty() && input.len() <= 16,
             "embedding batch must contain 1–16 documents"
         );
-        let _slot = self.slots.acquire().await?;
-        // At most one provider request starts per second across indexing/search.
-        {
-            let mut next = self.next.lock().await;
-            tokio::time::sleep_until(*next).await;
-            *next = Instant::now() + Duration::from_secs(1);
-        }
+        // At most 4 open requests and 200 request starts in 60 seconds, across the
+        // indexer and the queries.
+        let _slot = self.limits.admit().await?;
         let response = self
             .http
             .post(&self.endpoint)
@@ -80,11 +76,13 @@ impl Embedder {
             .send()
             .await
             .context("embedding provider unavailable")?;
-        ensure!(
-            response.status().is_success(),
-            "embedding provider HTTP {}",
-            response.status().as_u16()
-        );
+        let status = response.status().as_u16();
+        if is_input_fault(status) {
+            return Err(InputFault(status).into());
+        }
+        if !response.status().is_success() {
+            return Err(ProviderStatus(status).into());
+        }
         let response: Response = response
             .json()
             .await

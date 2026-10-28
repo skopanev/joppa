@@ -153,6 +153,16 @@ def main():
     common(complete, write=True, address=True)
     complete.add_argument("--evidence", required=True)
 
+    find = group.add_parser("search", help="hybrid search of objects through authenticated MCP")
+    find.add_argument("query")
+    find.add_argument("--workspace")
+    find.add_argument("--url", help="MCP endpoint; defaults to JOPPA_MCP_URL")
+    find.add_argument("--token-file", help="private bearer token file; defaults to JOPPA_TOKEN_FILE")
+    find.add_argument("--kind")
+    find.add_argument("--limit", type=int, default=10)
+    find.add_argument("--all-versions", action="store_true", help="also read past revisions and archived objects")
+    find.add_argument("--all-workspaces", action="store_true", help="read each workspace that you can read")
+
     raw = group.add_parser("command", help="send a JSON operation through authenticated MCP")
     raw.add_argument("workspace")
     raw.add_argument("request_id")
@@ -161,6 +171,13 @@ def main():
 
     args = parser.parse_args()
     space = workspace(args)
+    if args.resource == "search":
+        query = {"workspace": space, "query": args.query, "limit": args.limit,
+                 "all_versions": args.all_versions, "all_workspaces": args.all_workspaces}
+        if args.kind:
+            query["kind"] = args.kind
+        print(json.dumps(mcp(args, "joppa_search", query), ensure_ascii=False, separators=(",", ":")))
+        return
     if args.resource == "command":
         try:
             value = json.load(sys.stdin)

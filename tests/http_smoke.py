@@ -72,7 +72,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     # the OAuth exchange and session binding with a local Google fixture.
     env.pop('JOPPA_GOOGLE_CLIENT_FILE', None)
     env.pop('JOPPA_LOGIN_USERS_FILE', None)
-    env.pop('DEEPINFRA_API_KEY', None)
+    # Search is always hybrid: a test key and a closed local port stand in for the provider.
+    env['DEEPINFRA_API_KEY'] = 'test-only-key'
+    env['JOPPA_EMBEDDING_URL'] = 'http://127.0.0.1:9/embeddings'
 
     server = subprocess.Popen([BIN, 'serve', str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:

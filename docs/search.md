@@ -1,102 +1,125 @@
 # Search for agents
 
-`joppa_search` finds current domains, capabilities, requirements and ACs within
-one authorized workspace. It is an MCP tool; the read-only portal has no search
-field. Read a result with `joppa_read({"item_id":"..."})` before proposing changes.
+`joppa_search` finds objects of every configured type. The board search field, the
+HTTP route `GET /api/workspaces/{workspace}/search` and the CLI command
+`joppa search` use the same search. Read a result with
+`joppa_read({"item_id":"..."})` before you propose changes.
 
 ```json
 {"workspace":"product","query":"restore a subscription after signing in","kind":"requirement","limit":10}
 ```
 
-`workspace` and `query` are required. `kind` optionally selects `domain`,
-`capability`, `requirement` or `ac`. The limit is 1–50, default 10; a query is
-1–2,000 characters. A copied system ID, including an old prefix alias, also
-matches directly and ranks first.
+`workspace` and `query` are required. `kind` selects one type. The limit is 1–50,
+default 10. A query is 1–2,000 characters. A copied system ID, also an old prefix
+alias, matches directly and ranks first.
+
+## Scope
+
+Two flags set the scope. Both are false by default.
+
+| Flag | false | true |
+|---|---|---|
+| `all_versions` | The current revision of each live object | Each revision of each object, archived objects too |
+| `all_workspaces` | The workspace of the request | Each workspace that the reader can read, and no other |
+
+The flags can be on together. On the board, two checkboxes, All versions and All
+workspaces, send them. With a checkbox on, the board lists the results. A click on a
+past revision opens that revision. A click on a result of another workspace opens
+that workspace and that object.
+
+```json
+{"workspace":"product","query":"legacy export","all_versions":true,"all_workspaces":true}
+```
 
 ## What is indexed
 
-Only current wording is searched. A document contains its title, business tree
-context and relevant REQ body. REQ documents also include discussion on that
-revision, marking withdrawn decisions as withdrawn. Removed ACs and archived
-domains/capabilities disappear from current search; their immutable history is
-still readable by ID. Search results are references, never acceptance evidence.
+A current document holds the title of the object, its tree context and the text of
+its fields. A REQ document also holds the discussion of that revision, and it marks a
+withdrawn decision as withdrawn. An archived object and an object below an archived
+group have no current document.
 
-To bound index size, each document keeps at most 60,000 content characters, and
-embedding input is the first 8,000 characters of title plus content. Full source
-text remains in the journal. Long source documents should stay linked rather
-than pasted into a requirement. Search is not a complete archive export.
+Each object revision also has a search row: its title and the fields of that
+revision. A search with `all_versions` reads these rows. A revision that the current
+document already covers is not a second result. A redaction rewrites the revision
+row. Search results are references, never acceptance evidence.
+
+Each document keeps at most 60,000 content characters. The embedding input is the
+first 8,000 characters of the title, a line break and the content. The full source
+text stays in the journal. Search is not a complete archive export.
 
 ## Full-text and vectors
 
-PostgreSQL maintains a GIN full-text index with simple, English and Russian
-lexemes. Workspace and kind use the projection's composite primary key. Literal
-ID lookup uses the permanent ID primary key. SQL parameters bind user input.
+Each search is hybrid. PostgreSQL keeps a GIN full-text index with simple, English
+and Russian lexemes. DeepInfra computes embeddings with `Qwen/Qwen3-Embedding-8B`.
+The server checks the 4,096-component response, keeps the first 1,024 components
+with the Matryoshka support of the model, and normalizes them. PostgreSQL stores
+`vector(1024)`. There is no local inference and no second vector database. See the
+provider's [embedding API](https://deepinfra.com/Qwen/Qwen3-Embedding-8B/api) and the
+model's [dimension support](https://github.com/QwenLM/Qwen3-Embedding).
 
-DeepInfra computes embeddings with `Qwen/Qwen3-Embedding-8B`. The application
-validates the 4,096-component response, retains the first 1,024 components using
-the model's Matryoshka support and normalizes them. PostgreSQL stores `vector(1024)`;
-there is no local inference or second vector database. See the provider's
-[embedding API](https://deepinfra.com/Qwen/Qwen3-Embedding-8B/api) and the model's
-[dimension support](https://github.com/QwenLM/Qwen3-Embedding).
+Vector ranking uses exact cosine distance after the workspace and kind filter. This
+avoids the filter gaps of an approximate index. Benchmark a representative corpus
+before you add an ANN index. See [pgvector](https://github.com/pgvector/pgvector).
 
-Semantic ranking currently uses exact cosine distance after filtering by
-workspace and kind. This avoids approximate-index filtering gaps for a small
-multi-workspace installation. It reads eligible vectors; it is not a claim of
-constant-time search at millions of rows. Benchmark a representative corpus
-before adding an ANN index. See [pgvector](https://github.com/pgvector/pgvector).
+The top 100 text matches and the top 100 vector matches combine by reciprocal rank
+with the constant 60. The reply gives up to `limit` results. A score is a rank value.
+It is not a probability, and it is not evidence that a requirement is satisfied.
 
-The top 100 text matches and top 100 vector matches combine by reciprocal rank
-with constant 60. The response returns up to the requested limit. Scores are
-ranking values, not probabilities or evidence that a requirement is satisfied.
+## The indexer
 
-## Freshness and failure behavior
+The server does not start without `DEEPINFRA_API_KEY`. One indexer gives each search
+row a vector:
 
-Business writes update the rebuildable text projection in the same transaction.
-Older workspaces are backfilled on their first authorized search, or by the
-embedding worker. Search returns a projection position and reads its result set
-from one repeatable database snapshot.
+- A write commit, the server start, a retry pass every 5 minutes and a reconcile pass
+  every hour wake it. It does not poll.
+- The reconcile pass brings the search rows of each workspace up to its journal. It
+  also renews a vector with an old profile.
+- It sends at most 4 provider requests at one time and at most 200 requests in 60
+  seconds, across the indexer and the queries. A request holds up to 16 texts.
+- It releases the database connection before each provider request.
+- It saves a vector only when the row still has the content hash of the text that it
+  sent. An edit during the request cannot attach an old vector to the new text.
+- A row whose hash does not change keeps its vector. A row that has the hash of
+  another row with a vector copies that vector, so the provider gets no request.
+- HTTP 400, 413 or 422 adds one attempt to the text. After 5 attempts the indexer
+  skips that text. Another error status adds no attempt, and the other texts of the
+  batch still get their vectors. A network error stops the pass until the next wake.
 
-Embeddings are asynchronous. The worker sends at most 16 documents per request,
-starts at most one provider request per second across indexing and queries, and
-allows at most two requests in flight. It retries provider failures after 30
-seconds without consuming a permanent attempt budget. Results install only if
-the document hash still matches: an edit or archive during inference cannot
-attach an old vector to new content. Reusable unchanged content keeps its vector.
-
-The response includes:
+## The reply
 
 | Field | Meaning |
 |---|---|
-| `mode` | `hybrid` when a query vector and indexed vectors are available; otherwise `full_text` |
-| `semantic_status` | `ready`, `pending`, `not_configured` or `unavailable` |
-| `indexed` / `embedded` | Current document count and embeddings using the current profile, within the requested kind |
-| `position` | Workspace journal position represented by the projection |
-| `items` | IDs, title, excerpt, REQ/revision where applicable, score and exact-ID flag |
+| `mode` | `hybrid` when the query has a vector and the scope has vectors, otherwise `full_text` |
+| `semantic_status` | `ready`, `pending` or `unavailable` |
+| `indexed` / `embedded` | The rows in scope and the rows with a vector of the current profile |
+| `position` | The journal position of the workspace of the request |
+| `workspaces` | Each workspace that the search read |
+| `items` | Each result: `workspace`, `kind`, `id`, `system_id`, `title`, `excerpt`, `req`, `revision`, `score`, `exact_id`, `historical` and `archived` |
 
-With no provider key, full-text search works immediately. A provider timeout or
-error also falls back to full-text, with `semantic_status: unavailable`.
-Pending embeddings are reported explicitly. A successful empty search does not
-prove that no relevant requirement exists.
+`historical` is true when the result is not the current revision. `archived` is true
+when the object has no current document. When the provider does not answer a query,
+the reply keeps the full-text results and sets `semantic_status` to `unavailable`.
+A successful empty search does not prove that no relevant requirement exists.
 
-Access is checked before sending a query to DeepInfra and again after the
-network call. Results and scores are restricted to the requested workspace.
-Background indexing is a trusted server operation; credentials are never exposed
-to an agent or browser. Revoked workspace access also blocks search.
+The server checks access to each workspace in scope before it sends a query to the
+provider, and again after the provider answers. Indexing is a trusted server
+operation. The key never reaches an agent or a browser. A revoked access also stops
+the search.
 
 ## Setup and recovery
 
-PostgreSQL 16 must have pgvector installed before applying migration 008. The
-server provisioning script installs the extension; the migration enables it.
-For local development and CI, use the `pgvector/pgvector:pg16` image.
+PostgreSQL 16 needs pgvector before migration 008. The provisioning script installs
+the extension, and the migration enables it. For local development and CI, use the
+`pgvector/pgvector:pg16` image.
 
-Install a private `search.env` using [the template](../server/search.env.example),
-set `DEEPINFRA_API_KEY`, and restart Joppa. The deploy script copies that file from
-the private configuration directory. Missing configuration leaves full-text
-search available and semantic search explicitly disabled.
+Install a private `search.env` from [the template](../server/search.env.example), set
+`DEEPINFRA_API_KEY`, and restart Joppa. The deploy script copies that file from the
+private configuration directory. `JOPPA_EMBEDDING_URL` replaces the provider endpoint
+for local tests only.
 
-`search_documents` and `search_state` are disposable projections. The runtime
-role can update/delete only these cache tables in addition to its existing
-SELECT/INSERT grants. Journal events, aliases, permanent IDs and command receipts
-remain immutable. To rebuild a damaged projection administratively, delete both
-projection tables' rows for the affected workspace together in one transaction;
-the next search or worker pass reconstructs them. Never edit the event journal.
+`search_documents`, `search_revisions` and `search_state` are disposable projections.
+The runtime role can update and delete only these cache tables, in addition to its
+SELECT and INSERT grants. Journal events, aliases, permanent IDs and command receipts
+stay immutable. To rebuild a damaged projection, delete the rows of the affected
+workspace from these tables in one transaction. The next search or reconcile pass
+builds them again. Never edit the event journal.

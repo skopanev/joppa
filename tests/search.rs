@@ -185,7 +185,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         0,
         "denied queries must never reach the provider"
     );
-    while store::search::index_batch(&pool, &embedder).await? > 0 {}
+    store::search_indexer::drain(&pool, &embedder).await?;
     let hybrid = store::search::find(
         &pool,
         "agent",
@@ -220,7 +220,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     provider.pause.store(true, Ordering::SeqCst);
     let p = pool.clone();
     let e = embedder.clone();
-    let indexing = tokio::spawn(async move { store::search::index_batch(&p, &e).await });
+    let indexing = tokio::spawn(async move { store::search_indexer::pass(&p, &e).await });
     provider.started.notified().await;
     store::execute_input(&pool,&ws,"owner","edit-2",&json!({"op":"edit_domain","id":"unused","title":"Archive this scope","authority":"owner","reason":"Changed again"})).await?;
     provider.resume.notify_one();
@@ -293,7 +293,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     );
     // The actual runtime grants support cache refresh without granting journal mutation.
     let role = format!("search_runtime_{}", uuid::Uuid::new_v4().simple());
-    pool.get().await?.batch_execute(&format!("CREATE ROLE {role} NOLOGIN; GRANT USAGE ON SCHEMA joppa TO {role}; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO {role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO {role}; GRANT UPDATE,DELETE ON joppa.search_documents,joppa.search_state TO {role}; GRANT UPDATE ON joppa.board_cache,joppa.objects,joppa.state_revisions,joppa.state_entries TO {role}; GRANT DELETE ON joppa.state_entries,joppa.task_queue TO {role}; GRANT DELETE ON joppa.object_links TO {role};")).await?;
+    pool.get().await?.batch_execute(&format!("CREATE ROLE {role} NOLOGIN; GRANT USAGE ON SCHEMA joppa TO {role}; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO {role}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO {role}; GRANT UPDATE,DELETE ON joppa.search_documents,joppa.search_state,joppa.search_revisions TO {role}; GRANT UPDATE ON joppa.board_cache,joppa.objects,joppa.state_revisions,joppa.state_entries TO {role}; GRANT DELETE ON joppa.state_entries,joppa.task_queue TO {role}; GRANT DELETE ON joppa.object_links TO {role};")).await?;
     let mut url = reqwest::Url::parse(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     url.query_pairs_mut()
         .append_pair("options", &format!("-c role={role}"));

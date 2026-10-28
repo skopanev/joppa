@@ -152,6 +152,8 @@ body:not(.authenticated)>.app-header,body:not(.authenticated)>.layout{display:no
 .filter-fields{display:flex;flex-wrap:wrap;gap:.2em 2em;margin:0 0 1.2em}
 .filter-fields select{width:12em;font-size:14px}
 .filter-fields .filter-search{width:12em;height:44px;padding:7px 0;font-size:14px;border:0;border-bottom:1px solid var(--rule);color:var(--heading)}
+.filter-fields .filter-check{display:inline-flex;align-items:center;gap:.3em;min-height:44px;font-size:14px;color:var(--text)}
+.search-result{display:flex;flex-direction:column;gap:.15em;padding:.6em 0;border-bottom:1px solid var(--rule);color:var(--heading);text-decoration:none}
 .filter-fields select.status-filter:not([data-tone=""]){padding-left:16px;background-image:radial-gradient(circle,var(--tone) 3.5px,transparent 4px),var(--select-arrow);background-position:left center,right 4px center;background-size:8px 8px,10px 6px}
 .status-option .status-circle{margin-right:.5em;vertical-align:1px}
 @supports not (appearance:base-select){.status-filter option[data-tone]{color:var(--tone)}}

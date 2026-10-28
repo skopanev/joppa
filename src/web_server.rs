@@ -22,10 +22,13 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         );
     }
     let oauth_origin = login.public_origin()?;
+    // Search is always hybrid: without the provider key the server does not start.
     let embedder = joppa::embeddings::Embedder::from_env()?;
-    if let Some(embedder) = embedder.clone() {
-        tokio::spawn(joppa::store::search::worker(pool.clone(), embedder));
-    }
+    tokio::spawn(joppa::store::search_indexer::run(
+        pool.clone(),
+        embedder.clone(),
+    ));
+    let embedder = Some(embedder);
     let state = App {
         pool,
         identities: Arc::new(identities),

@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-task-reporter-') as temp:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     url = f'http://127.0.0.1:{port}/mcp'
-    process = subprocess.Popen([binary, 'serve', str(port)], env={**env,'JOPPA_TOKENS_FILE':str(tokens)},
+    process = subprocess.Popen([binary, 'serve', str(port)], env={**env,'JOPPA_TOKENS_FILE':str(tokens),'DEEPINFRA_API_KEY':'test-only-key','JOPPA_EMBEDDING_URL':'http://127.0.0.1:9/embeddings'},
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     os.environ['JOPPA_TOKEN_FILE'] = str(bearer)
     os.environ['JOPPA_MCP_URL'] = url

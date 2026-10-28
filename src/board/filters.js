@@ -8,6 +8,7 @@ import {inputQueue} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
 import {resultFilters,valueSignal} from 'board/result-filter.js';
+import {searchScope,searchRows} from 'board/search-results.js';
 export function commonObjectFilters(root,contents,redraw){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const picker=(label,options)=>{const select=E('select');select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
@@ -16,10 +17,13 @@ export function commonObjectFilters(root,contents,redraw){
   resultFilters(controls,redraw);
   // The search box uses the server search of joppa_search and combines with the other filters.
   const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
+  const scope=searchScope(controls,()=>update());
   const update=async()=>{const mine=++request,generation=state.loadNumber;const selected={kind:state.data.activeRootKind,owner:owner.value,status:status.value,query:search.value.trim()};const filtering=Boolean(selected.owner||selected.status||selected.query);state.data.filterActive=filtering;contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
     if(!filtering){rootCollectionTabs(root);return;}
     for(const panel of root.querySelectorAll('.root-collection'))panel.hidden=true;
     holder.append(E('p','Loading objects…','object-loading hint'));
+    const flags=scope();
+    if(selected.query&&(flags.all_versions||flags.all_workspaces)){const reply=await api('workspaces/'+encodeURIComponent(state.ws)+'/search?'+new URLSearchParams({q:selected.query,limit:'50',all_versions:String(flags.all_versions),all_workspaces:String(flags.all_workspaces)}));if(mine!==request||generation!==state.loadNumber||!controls.isConnected)return;const rows=searchRows(reply.items);holder.replaceChildren(...rows);if(!rows.length)holder.append(E('p','No objects match this search.','hint'));return;}
     const params={parent:'*',limit:'100'};if(selected.kind)params.kind=selected.kind;if(inputQueue(selected.kind))params.note_status='unprocessed';let cursor;const items=[];
     do{const page=await objectPart(cursor?{...params,cursor}:params);if(mine!==request||generation!==state.loadNumber||!controls.isConnected)return;items.push(...page.items);cursor=page.next_cursor;}while(cursor);
     let found;

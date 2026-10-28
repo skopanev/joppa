@@ -124,7 +124,7 @@ if ! runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d joppa <<'SQL'
 GRANT CONNECT ON DATABASE joppa TO joppa_app;
 GRANT USAGE ON SCHEMA joppa TO joppa_app;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;
-GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_app;
+GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state, joppa.search_revisions TO joppa_app;
 GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_app;
 GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_app;
 GRANT DELETE ON joppa.task_queue TO joppa_app;

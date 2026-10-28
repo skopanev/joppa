@@ -257,7 +257,8 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
             .env_remove("JOPPA_LOGIN_USERS_FILE")
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
             .env_remove("JOPPA_ACCESS_RULES_FILE")
-            .env_remove("DEEPINFRA_API_KEY")
+            .env("DEEPINFRA_API_KEY", "test-only-key")
+            .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?,

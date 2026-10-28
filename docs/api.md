@@ -359,11 +359,13 @@ The `writing` section supplies the ASD-STE100 rules, language preference, and pr
 
 ## Search
 
-`joppa_search` accepts `workspace`, `query`, optional `kind` and `limit` (1–50,
-default 10). It returns current matching system IDs with explicit full-text or
-hybrid mode and embedding coverage. Workspace authorization applies before any
-provider request and before returning results. See [search](search.md) for
-freshness, archived data, provider setup and ranking limits.
+`joppa_search` accepts `workspace`, `query`, optional `kind`, `limit` (1–50,
+default 10), `all_versions` and `all_workspaces` (both false by default). The HTTP
+route `GET /api/workspaces/{workspace}/search` takes `q`, `kind`, `limit`,
+`all_versions` and `all_workspaces`. Each search is hybrid and reports its embedding
+coverage. Workspace authorization applies before any provider request and before
+returning results. See [search](search.md) for the scope flags, the indexer, archived
+data, provider setup and ranking limits.
 
 `joppa_help` also returns the full search guide under `search`, so agents can
 read indexing limits and failure behavior without a local checkout.

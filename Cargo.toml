@@ -24,6 +24,10 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-postgres = "0.7"
 quick-xml = "0.42.0"
 
+[dev-dependencies]
+# Tests of the provider rate window run on a paused clock.
+tokio = { version = "1", features = ["test-util"] }
+
 # Test binaries keep file and line in backtraces, without full debug info.
 # Full DWARF made 48 test binaries 5.4 GB and slowed every link.
 [profile.dev]

@@ -235,6 +235,12 @@ pub use items::{gate, list, read_item, read_item_scoped};
 
 #[path = "search.rs"]
 pub mod search;
+#[path = "search_indexer.rs"]
+pub mod search_indexer;
+#[path = "search_query.rs"]
+pub mod search_query;
+#[path = "search_revisions.rs"]
+mod search_revisions;
 
 #[path = "store_blobs.rs"]
 mod blobs;

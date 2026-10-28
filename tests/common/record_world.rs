@@ -96,7 +96,8 @@ pub async fn world(tests: &[&str]) -> Result<World> {
             .env_remove("JOPPA_LOGIN_USERS_FILE")
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
             .env_remove("JOPPA_ACCESS_RULES_FILE")
-            .env_remove("DEEPINFRA_API_KEY")
+            .env("DEEPINFRA_API_KEY", "test-only-key")
+            .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

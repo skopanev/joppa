@@ -778,6 +778,7 @@ async fn write(
         Some(&previous),
     )
     .await?;
+    super::search_revisions::project(&*tx, &workspace, selected.as_ref()).await?;
     let mut result = if batch {
         json!({"results":results})
     } else {
@@ -801,5 +802,6 @@ async fn write(
             .await?;
     }
     tx.commit().await?;
+    super::search_indexer::wake();
     Ok(result)
 }
