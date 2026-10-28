@@ -331,7 +331,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == 'task:'+task_req+'/mcp-open-task'
         assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
         found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
-        assert found['mode'] == 'full_text' and found['semantic_status'] == 'not_configured'
+        assert found['mode'] == 'full_text' and found['semantic_status'] == 'unavailable'
         assert found['items'][0]['system_id'] == public_id
         denied_search = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
             'params':{'name':'joppa_search','arguments':{'workspace':mcp_ws,'query':'recovery'}}},other_token)[1]
