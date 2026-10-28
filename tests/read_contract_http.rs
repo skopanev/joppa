@@ -71,6 +71,13 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
         serde_json::to_string(&first["items"])?.len() < 25 * 64,
         "{first}"
     );
+    let order: Vec<&str> = items.iter().filter_map(|i| i["address"].as_str()).collect();
+    let mut sorted = order.clone();
+    sorted.sort_unstable();
+    ensure!(
+        order == sorted && first["next_cursor"].as_str() == order.last().copied(),
+        "{first}"
+    );
     let cursor = first["next_cursor"].as_str().unwrap_or_default().to_owned();
     let second = read(
         &w,
