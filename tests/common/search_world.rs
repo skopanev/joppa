@@ -2,7 +2,8 @@
 //! unit vector on the dimension of the first keyword that the text holds, so tests choose
 //! which texts are close. It counts requests and open requests, can hold the first request,
 //! and answers 400 for a text with "rejectme", 500 for a text with "flakyword", and 503 for
-//! every text while it is down.
+//! every text while it is down. It keeps the texts of each request, and it can answer 500
+//! to each request with more than one text.
 #![allow(dead_code)]
 use anyhow::{Context, Result, ensure};
 use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
@@ -32,6 +33,8 @@ pub struct Fake {
     pub hold_first: Arc<AtomicBool>,
     pub held: Arc<Notify>,
     pub release: Arc<Notify>,
+    pub requests: Arc<Mutex<Vec<Vec<String>>>>,
+    pub refuse_batches: Arc<AtomicBool>,
 }
 
 struct Open(Arc<AtomicUsize>);
@@ -66,12 +69,17 @@ async fn embed(State(f): State<Fake>, Json(v): Json<Value>) -> (StatusCode, Json
     if f.down.load(Ordering::SeqCst) {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({})));
     }
-    let inputs: Vec<String> = v["input"]
+    let sent: Vec<String> = v["input"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|s| s.as_str().map(str::to_lowercase))
+        .filter_map(|s| s.as_str().map(str::to_owned))
         .collect();
+    f.requests.lock().unwrap().push(sent.clone());
+    if sent.len() > 1 && f.refuse_batches.load(Ordering::SeqCst) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({})));
+    }
+    let inputs: Vec<String> = sent.iter().map(|s| s.to_lowercase()).collect();
     if inputs.iter().any(|s| s.contains("rejectme")) {
         return (StatusCode::BAD_REQUEST, Json(json!({"error":"input"})));
     }

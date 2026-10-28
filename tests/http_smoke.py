@@ -384,13 +384,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert process['criteria'][0]['address'] == 'ac:key-rights'
         assert process['result_dates']['manual1']['manual-key-rights']
         assert 'state' not in process and 'history' not in process
-        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v1","environment":"config-v1"}', text=True, capture_output=True)
-        assert gate.returncode == 0, gate.stderr
-        # [launch-gate-ac1] The same code cannot reuse a pass from another environment.
-        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v1","environment":"config-v2"}', text=True, capture_output=True)
-        assert gate.returncode != 0
-        gate = subprocess.run([BIN, 'gate', ws], env=env, input='{"code":"code-sha-v2","environment":"config-v1"}', text=True, capture_output=True)
-        assert gate.returncode != 0
+        # [launch-gate] A check-run acceptance names no commit, so the gate refuses it.
+        gate = subprocess.run([BIN, 'gate', ws, 'code-sha-v1'], env=env, text=True, capture_output=True)
+        assert gate.returncode != 0 and 'no acceptance on a commit' in gate.stderr, gate.stderr
         ok({'op':'task','req':'auto','revision':1,'id':'agent-task','title':'Implement command','acs':['auto-ac'],'projects':[],'purpose':'implementation','contract':'Implement command and attach merged build evidence'})
         # The portal retains older revisions after a wording change.
         ok({'op':'revise','req':'key','expected_revision':1,'capability':'restrict',

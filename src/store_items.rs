@@ -1,4 +1,4 @@
-//! The workspace list, the gate check and reads by a global item ID.
+//! The workspace list, the launch gate and reads by a global item ID.
 use super::*;
 
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
@@ -23,27 +23,11 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
     Ok(json!(items))
 }
 
-/// The deployment caller supplies the exact target. Accepted staging evidence
-/// must never authorize a different production build or provider configuration.
-pub fn gate(card: &Value, subject: &std::collections::BTreeMap<String, String>) -> Result<()> {
-    ensure!(
-        card["launch"]["ready"] == true,
-        "launch conditions are absent or not accepted"
-    );
+/// The release caller supplies the exact commit. An acceptance on another commit never
+/// authorizes this build.
+pub fn gate(card: &Value, commit: &str) -> Result<usize> {
     let state: Workspace = serde_json::from_value(card["state"].clone())?;
-    for key in crate::objects::launch_objects(&state) {
-        let (_, r) = crate::objects::verification_context(&state, key)
-            .context("launch condition has no verification context")?;
-        let (_, run) = checks::latest(r).ok_or_else(|| anyhow::anyhow!("no verified subject"))?;
-        ensure!(
-            run.subject
-                .iter()
-                .all(|(key, value)| subject.get(key) == Some(value)),
-            "launch target differs from the verified subject for {}",
-            r.title
-        );
-    }
-    Ok(())
+    crate::launch_gate::check(&state, commit)
 }
 
 /// Resolve a globally unique reference without exposing another workspace's content.

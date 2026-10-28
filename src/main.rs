@@ -51,15 +51,12 @@ async fn main() -> Result<()> {
             );
         }
         Some("gate") => {
-            let workspace = args
-                .get(1)
-                .ok_or_else(|| anyhow::anyhow!("gate WORKSPACE < subject.json"))?;
-            let mut input = String::new();
-            std::io::stdin().read_to_string(&mut input)?;
-            let subject = serde_json::from_str(&input)?;
+            let (Some(workspace), Some(commit)) = (args.get(1), args.get(2)) else {
+                bail!("gate WORKSPACE COMMIT");
+            };
             let card = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
-            store::gate(&card, &subject)?;
-            println!("explicit launch conditions accepted for this subject");
+            let count = store::gate(&card, commit)?;
+            println!("{count} launch conditions accepted on commit {commit}");
         }
         Some("read") => {
             let workspace = args
@@ -72,7 +69,7 @@ async fn main() -> Result<()> {
         }
         Some("list") => println!("{}", store::list(&pool, &actor()?).await?),
         _ => bail!(
-            "commands: migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE | list"
+            "commands: check-journal | migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE COMMIT | list"
         ),
     }
     Ok(())

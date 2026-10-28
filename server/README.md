@@ -4,9 +4,9 @@ Target: Ubuntu 24.04 LTS, one shared vCPU, 2 GB RAM. PostgreSQL 16 stores the
 journal, pgvector embeddings and full-text search. DeepInfra performs embedding
 inference. Joppa has its own Google OAuth client and invited account list.
 
-MCP search indexes current product wording. Full-text search works without an
-external key; set the private DeepInfra configuration to enable semantic indexing
-and hybrid results. See [search setup and limits](../docs/search.md).
+MCP search indexes current product wording. Search is always hybrid: the server
+needs the private DeepInfra key in `search.env` and does not start without it.
+See [search setup and limits](../docs/search.md).
 
 ## Deploy
 
@@ -133,21 +133,20 @@ need their own private, encrypted backup, separate from the database dumps.
 
 ## Application files
 
-Use a separate private Spaces bucket and credentials for application files.
-The optional `/etc/joppa/storage.env` follows `storage.env.example` and is loaded
-only by the application service. Backup credentials belong only to the backup
-service. Both environment files are owned by root with mode 0600. Verify bucket
-scopes: a different key ID alone does not prove separation of permissions.
-The storage configuration is ready for the attachment implementation; application
-upload endpoints are not yet implemented.
+Attachments use `POST /api/workspaces/{workspace}/blobs` and hold at most 10 MB.
+Their bytes stay in the PostgreSQL table `joppa.blobs`, one row for each SHA-256
+hash, so the database backup includes them. The application does not read
+`/etc/joppa/storage.env` now. The service unit still loads the optional file, and
+the deploy script still transfers it. Backup credentials belong only to the backup
+service. Both environment files are owned by root with mode 0600.
 
 ## Semantic search configuration
 
 Use `search.env` from [the template](search.env.example) for the private DeepInfra
 key. It is installed as `/etc/joppa/search.env`, root:root 0600, and loaded by
 systemd. Restart the application after changing it. Indexing is asynchronous;
-MCP search reports the number of current and embedded documents. No key means
-full-text-only mode, not simulated semantic search. Embeddings are part of the
+MCP search reports the number of current and embedded documents. Without the key
+the server stops at start and names the missing variable. Embeddings are part of the
 PostgreSQL backup and can also be rebuilt from journal content.
 
 ## Recovery drill

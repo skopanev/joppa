@@ -72,8 +72,9 @@ Touchpoints: `src/board.js`, `src/board.css`, `tests/browser.cjs`, server summar
 
 Priority: high. Status: planned. Depends on item 1’s release contract.
 
-Problem: the administrative `joppa gate` checks accepted mandatory conditions
-and compares the recorded subject with a supplied launch target. Merely having
+Problem: the administrative `joppa gate WORKSPACE COMMIT` checks that the
+requirement of each launch condition is accepted with `accept_commit` on the
+supplied commit. Merely having
 that command does not stop a pipeline that never invokes it.
 
 Acceptance criteria:
@@ -90,7 +91,7 @@ Acceptance criteria:
 - Demonstrate a blocked mismatch and a successful verified release in the pilot
   environment, without inventing human acceptance or altering historical evidence.
 
-Touchpoints: `src/store.rs::gate`, the pilot repository’s release pipeline.
+Touchpoints: `src/launch_gate.rs`, the pilot repository’s release pipeline.
 
 ## 4. Owner and common object model
 

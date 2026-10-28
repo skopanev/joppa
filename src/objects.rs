@@ -3069,7 +3069,10 @@ pub fn launch_summary(w: &Workspace) -> Value {
         .iter()
         .filter_map(|key| {
             let context = verification_context(w, key);
-            if context.is_some_and(|(req, r)| requirement_summary(w, req, r)["accepted"] == true) {
+            // A legacy check-run acceptance or an acceptance on a commit settles the condition.
+            if context.is_some_and(|(req, r)| requirement_summary(w, req, r)["accepted"] == true)
+                || crate::launch_gate::accepted_commit(w, key).is_some()
+            {
                 return None;
             }
             let mut item = json!({"address":key});

@@ -7,6 +7,7 @@ use std::time::Duration;
 pub const MODEL: &str = "Qwen/Qwen3-Embedding-8B";
 pub const PROFILE: &str = "Qwen/Qwen3-Embedding-8B:4096:MRL1024:v1";
 pub const DIMS: usize = 1024;
+pub const ENDPOINT: &str = "https://api.deepinfra.com/v1/openai/embeddings";
 
 #[derive(Clone)]
 pub struct Embedder {
@@ -38,7 +39,7 @@ impl Embedder {
         let endpoint = std::env::var("JOPPA_EMBEDDING_URL")
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "https://api.deepinfra.com/v1/openai/embeddings".into());
+            .unwrap_or_else(|| ENDPOINT.into());
         Self::new(key, endpoint)
     }
     // Explicit endpoint injection is for local provider-contract tests only.

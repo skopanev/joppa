@@ -31,7 +31,7 @@ jobs:
             sleep 1
           done
           exit 1
-      - run: bash -n server/*.sh && python3 tests/deploy.py
+      - run: bash -n server/*.sh && python3 tests/deploy.py && python3 tests/platform_config.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -40,7 +40,7 @@ jobs:
       - run: cargo test
       - run: cargo test --test oauth -- --ignored
       - run: cargo test --test sessions -- --ignored
-      - run: cargo test --test postgres --test references --test sources --test authoring --test search --test consumers --test notes --test objects_postgres --test note_migration_postgres --test generic_tasks_postgres --test configured_references_postgres --test custom_verification_postgres --test schema_objects --test storage_rows --test incremental_projection --test readiness_metadata --test journal_probe --test read_latency --test unstarted_work --test task_check_evidence_postgres --test reports_http --test spec_http --test claims_postgres --test workspace_purge --test workspace_purge_links --test consumer_migration_postgres --test requirement_consumers_postgres --test app_role_grants -- --ignored --test-threads=1
+      - run: cargo test --test postgres --test references --test sources --test authoring --test search --test consumers --test notes --test objects_postgres --test note_migration_postgres --test generic_tasks_postgres --test configured_references_postgres --test custom_verification_postgres --test schema_objects --test storage_rows --test incremental_projection --test readiness_metadata --test journal_probe --test read_latency --test unstarted_work --test task_check_evidence_postgres --test reports_http --test spec_http --test claims_postgres --test workspace_purge --test workspace_purge_links --test consumer_migration_postgres --test requirement_consumers_postgres --test app_role_grants --test embedding_index --test search_index_storage --test interface_catalog --test cli_commands --test attachment_storage --test hybrid_search_indexer --test hybrid_search_http -- --ignored --test-threads=1
       - run: cargo test --test access -- --ignored
         env:
           JOPPA_ACCESS_RULES_FILE: ${{ runner.temp }}/joppa-test-access.json

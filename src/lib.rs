@@ -11,6 +11,7 @@ pub mod embeddings;
 pub mod embeddings_limit;
 pub mod inbox;
 mod intake;
+pub mod launch_gate;
 pub mod model;
 pub mod note_parents;
 pub mod objects;

@@ -293,8 +293,9 @@ automation uses a separate `agent` identity and private service bearer token.
 The server Rust executable handles serving, migrations and administration. It
 is not installed to user machines and does not expose stdio MCP. Administrative
 commands require `JOPPA_DATABASE_URL` and `JOPPA_ACTOR`; do not give those powers
-to user agents. `gate WORKSPACE < subject.json` remains a server-side release
-check requiring acceptance for specified builds and configurations.
+to user agents. `gate WORKSPACE COMMIT` is a server-side release check. It passes
+only when the requirement of each launch condition is accepted with `accept_commit`
+on that commit.
 
 ## Automated checks
 
