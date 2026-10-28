@@ -9,7 +9,7 @@ of the earlier release.
 - A page holds at most 25 items. A missing `next_cursor` means the last page.
 - Send the `next_cursor` value back as `cursor` (lists), `comments_cursor` or `links_cursor`.
 - Keys whose value is `null`, `""`, `[]` or `{}` are omitted, except inside `document`,
-  `data` and `command`. Those three stay byte for byte as stored. `false` and `0` stay.
+  `data`, `command` and `remote_links`. Those stay byte for byte as stored. `false` and `0` stay.
 - A top-level `items: []` stays when a list is empty.
 - Read an omitted key as empty: no value, no list, no map.
 

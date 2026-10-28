@@ -7,8 +7,9 @@ use serde_json::{Map, Value, json};
 /// The page size of object lists, comments and links.
 pub const PAGE: usize = 25;
 
-/// Keys whose values are authored or replayed data. They stay exactly as stored.
-const AUTHORED: [&str; 3] = ["document", "data", "command"];
+/// Keys whose values are authored or replayed data, or raw link entries that clients hash.
+/// They stay exactly as stored.
+const AUTHORED: [&str; 4] = ["document", "data", "command", "remote_links"];
 
 /// The first path segments that a list item can give through `fields`.
 const LIST_FIELDS: [&str; 19] = [

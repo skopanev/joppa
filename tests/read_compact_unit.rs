@@ -7,12 +7,13 @@ use serde_json::json;
 fn empty_keys_go_outside_authored_data_and_false_and_0_stay() {
     let mut reply = json!({"a":null,"b":"","c":[],"d":{},"e":false,"f":0,
         "g":{"h":null,"i":1},"document":{"data":{"note":null,"projects":[]}},"data":{"x":""},
-        "command":{"y":null}});
+        "command":{"y":null},"remote_links":[{"target":"ac:x","revision":null,"status":{}}]});
     strip_empty(&mut reply);
     assert_eq!(
         reply,
         json!({"e":false,"f":0,"g":{"i":1},"document":{"data":{"note":null,"projects":[]}},
-            "data":{"x":""},"command":{"y":null}})
+            "data":{"x":""},"command":{"y":null},
+            "remote_links":[{"target":"ac:x","revision":null,"status":{}}]})
     );
     assert_eq!(
         strip_reply(json!({"items":[],"next_cursor":null})),
