@@ -26,11 +26,11 @@ fn data_fields(kind: &str, t: &TreeType) -> &'static [&'static str] {
 
 fn placeholder(field: &str) -> Value {
     match field {
-        "title" => json!("<one short statement, at most the title_preview_length>"),
+        "title" => json!("<one concise statement (max 128 chars)>"),
         "owner" => json!("<member id>"),
         "consumers" | "depends_on" | "projects" => json!([]),
         "decision_required" | "before_launch" | "archived" => json!(false),
-        _ => json!("<text, at most 1024 characters>"),
+        _ => json!("<concise text (max 1024 chars)>"),
     }
 }
 

@@ -53,6 +53,23 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .await?;
         return Ok(rc::strip_reply(reply));
     }
+    let plain = a["address"].is_null()
+        && fields.is_none()
+        && ["work_filter", "related_to", "note_status"]
+            .iter()
+            .all(|k| a[*k].is_null());
+    if plain {
+        return store::compact_list(
+            pool,
+            workspace,
+            actor,
+            a["parent"].as_str(),
+            a["kind"].as_str(),
+            limit,
+            a["cursor"].as_str(),
+        )
+        .await;
+    }
     let history = a["history"].as_bool().unwrap_or(false);
     let reply = store::read_objects(
         pool,

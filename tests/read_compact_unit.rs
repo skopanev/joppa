@@ -22,14 +22,14 @@ fn empty_keys_go_outside_authored_data_and_false_and_0_stay() {
 
 // read-detail-pages
 #[test]
-fn a_page_gives_10_items_a_cursor_and_the_total() {
-    let entries: Vec<_> = (0..23).map(|i| json!(i)).collect();
+fn a_page_gives_25_items_a_cursor_and_the_total() {
+    let entries: Vec<_> = (0..30).map(|i| json!(i)).collect();
     let first = page(entries.clone(), None).unwrap();
-    assert_eq!(first["items"].as_array().unwrap().len(), 10);
-    assert_eq!(first["next_cursor"], "10");
-    assert_eq!(first["total"], 23);
-    let last = page(entries.clone(), Some("20")).unwrap();
-    assert_eq!(last["items"], json!([20, 21, 22]));
+    assert_eq!(first["items"].as_array().unwrap().len(), 25);
+    assert_eq!(first["next_cursor"], "25");
+    assert_eq!(first["total"], 30);
+    let last = page(entries.clone(), Some("25")).unwrap();
+    assert_eq!(last["items"], json!([25, 26, 27, 28, 29]));
     assert!(last.get("next_cursor").is_none());
     assert!(page(entries, Some("x")).is_err());
 }

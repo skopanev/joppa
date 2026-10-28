@@ -110,7 +110,7 @@ async fn the_write_tools_and_the_save_examples_name_the_limit() -> Result<()> {
     let help = w.mcp(&w.bot, "joppa_help", json!({})).await?; // mcp() adds the workspace
     let help = help.map_err(|e| anyhow::anyhow!(e))?;
     ensure!(
-        help["examples"]["requirement"]["data"]["body"] == "<text, at most 1024 characters>",
+        help["examples"]["requirement"]["data"]["body"] == "<concise text (max 1024 chars)>",
         "{}",
         help["examples"]["requirement"]
     );

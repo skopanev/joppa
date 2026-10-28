@@ -33,7 +33,11 @@ pub struct TreeType {
     pub title_size: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub badge: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "title_max_length"
+    )]
     pub title_preview_length: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
@@ -943,7 +947,7 @@ pub fn set_schema(
         ensure!(
             t.title_preview_length
                 .is_none_or(|length| (1..=256).contains(&length)),
-            "type title_preview_length must be an integer from 1 to 256 characters"
+            "type title_max_length must be an integer from 1 to 256 characters"
         );
         ensure!(
             t.status
@@ -2579,7 +2583,7 @@ pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
 }
 
 /// Default title length when a type does not set `title_preview_length`.
-pub const TITLE_LENGTH_DEFAULT: u32 = 64;
+pub const TITLE_LENGTH_DEFAULT: u32 = 128;
 /// A new title fits its row: it is at most the type's `title_preview_length`.
 /// Only new writes are checked, so old journals with long titles still replay.
 fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {

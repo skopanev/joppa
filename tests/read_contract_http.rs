@@ -43,9 +43,9 @@ fn no_empty_keys(value: &Value) -> bool {
 // read-list-compact
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_list_page_holds_at_most_10_compact_items() -> Result<()> {
+async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    for i in 1..12 {
+    for i in 1..27 {
         save_ac(&w, &format!("a{i}")).await?;
     }
     let first = read(
@@ -55,7 +55,7 @@ async fn a_list_page_holds_at_most_10_compact_items() -> Result<()> {
     )
     .await?;
     let items = first["items"].as_array().cloned().unwrap_or_default();
-    ensure!(items.len() == 10, "{first}");
+    ensure!(items.len() == 25 && first["total"] == 27, "{first}");
     for item in &items {
         let keys: Vec<&String> = item
             .as_object()
@@ -63,12 +63,12 @@ async fn a_list_page_holds_at_most_10_compact_items() -> Result<()> {
             .unwrap_or_default();
         ensure!(
             keys.iter()
-                .all(|k| ["address", "title", "status"].contains(&k.as_str())),
+                .all(|k| ["address", "title", "status", "children"].contains(&k.as_str())),
             "{item}"
         );
     }
     ensure!(
-        serde_json::to_string(&first["items"])?.len() < 1024,
+        serde_json::to_string(&first["items"])?.len() < 25 * 64,
         "{first}"
     );
     let cursor = first["next_cursor"].as_str().unwrap_or_default().to_owned();
@@ -121,11 +121,11 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
 // read-detail-pages
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_detail_read_keeps_the_document_and_pages_comments_by_10() -> Result<()> {
+async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<()> {
     let w = record_world::world(&[]).await?;
     w.command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"d","revision":0,"parent":null,"data":{"title":"D","owner":"owner","body":"Rule","note":null,"projects":[]},"reason":"Detail test"})).await?.map_err(anyhow::Error::msg)?;
     w.command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"d","revision":1,"parent":null,"data":{"title":"D2","owner":"owner","body":"Rule","note":null,"projects":[]},"reason":"Second revision"})).await?.map_err(anyhow::Error::msg)?;
-    let notes: Vec<Value> = (0..23)
+    let notes: Vec<Value> = (0..30)
         .map(|i| json!({"command":{"op":"note","target":"requirement:d","id":format!("c{i:02}"),"text":format!("Comment {i}")}}))
         .collect();
     w.mcp(
@@ -154,8 +154,8 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_10() -> Result<(
         "{detail}"
     );
     ensure!(
-        detail["comments"]["total"] == 23
-            && detail["comments"]["items"].as_array().map(Vec::len) == Some(10),
+        detail["comments"]["total"] == 30
+            && detail["comments"]["items"].as_array().map(Vec::len) == Some(25),
         "{}",
         detail["comments"]
     );
@@ -178,11 +178,11 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_10() -> Result<(
     let third = read(
         &w,
         "joppa_objects",
-        json!({"address":"requirement:d","comments_cursor":"20"}),
+        json!({"address":"requirement:d","comments_cursor":"25"}),
     )
     .await?;
     ensure!(
-        third["comments"]["items"].as_array().map(Vec::len) == Some(3)
+        third["comments"]["items"].as_array().map(Vec::len) == Some(5)
             && third["comments"].get("next_cursor").is_none(),
         "{}",
         third["comments"]

@@ -10,7 +10,7 @@ fn title(length: usize) -> String {
 
 fn refused_for_length(w: &mut World, command: serde_json::Value) {
     let error = w.apply("owner", command).unwrap_err().to_string();
-    assert!(error.contains("title is at most 64 characters"), "{error}");
+    assert!(error.contains("title is at most 128 characters"), "{error}");
 }
 
 #[test]
@@ -18,18 +18,18 @@ fn new_titles_fit_the_type_preview_length() {
     let mut w = World::new();
     refused_for_length(
         &mut w,
-        json!({"op":"capability","id":"long","title":title(65),"domain":"d"}),
+        json!({"op":"capability","id":"long","title":title(129),"domain":"d"}),
     );
     w.ok(
         "owner",
-        json!({"op":"capability","id":"short","title":title(64),"domain":"d"}),
+        json!({"op":"capability","id":"short","title":title(128),"domain":"d"}),
     );
     refused_for_length(
         &mut w,
-        json!({"op":"domain","id":"long","title":title(65),"authority":"owner"}),
+        json!({"op":"domain","id":"long","title":title(129),"authority":"owner"}),
     );
     let mut revise = common::revision(1);
-    revise["acs"][0]["text"] = json!(title(65));
+    revise["acs"][0]["text"] = json!(title(129));
     refused_for_length(&mut w, revise);
 }
 
@@ -37,7 +37,7 @@ fn new_titles_fit_the_type_preview_length() {
 fn old_journals_with_long_titles_still_replay() {
     let mut w = World::new();
     let command: Command = serde_json::from_value(
-        json!({"op":"capability","id":"old","title":title(120),"domain":"d"}),
+        json!({"op":"capability","id":"old","title":title(200),"domain":"d"}),
     )
     .unwrap();
     commands::apply_replay(

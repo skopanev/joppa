@@ -20,7 +20,9 @@ mod board;
 pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
-pub use objects::{ObjectScope, ProjectionNotReady, link_page, read_objects, tree_schema};
+pub use objects::{
+    ObjectScope, ProjectionNotReady, compact_list, link_page, read_objects, tree_schema,
+};
 #[path = "store_grants.rs"]
 mod grants;
 #[path = "store_queue.rs"]

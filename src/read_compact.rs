@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
 /// The page size of object lists, comments and links.
-pub const PAGE: usize = 10;
+pub const PAGE: usize = 25;
 
 /// Keys whose values are authored or replayed data. They stay exactly as stored.
 const AUTHORED: [&str; 3] = ["document", "data", "command"];
@@ -199,6 +199,20 @@ pub fn strip_empty(value: &mut Value) {
             map.retain(|key, v| AUTHORED.contains(&key.as_str()) || !empty(v));
         }
         Value::Array(items) => items.iter_mut().for_each(strip_empty),
+        _ => {}
+    }
+}
+
+/// Agents see the title limit of a type as `title_max_length`; the stored name stays.
+pub fn rename_title_length(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(length) = map.remove("title_preview_length") {
+                map.insert("title_max_length".into(), length);
+            }
+            map.values_mut().for_each(rename_title_length);
+        }
+        Value::Array(items) => items.iter_mut().for_each(rename_title_length),
         _ => {}
     }
 }

@@ -233,11 +233,11 @@ There is no separate comment-to-Note promotion process.
 
 ## Compact MCP reads
 
-MCP reads give small replies by default. Send `verbose: true` for the earlier full shape.
+MCP reads give small replies by default. Send `verbose: true` for the earlier full shape. `docs/read-contract.md` gives every shape with JSON.
 
-- A `joppa_objects` list gives at most 10 items a page: `address`, `title` and the status tone. Follow `next_cursor`; a missing `next_cursor` means the last page.
+- A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
-- `joppa_objects` with `address` gives the current object: `document` exactly as stored, `revisions` as `[{revision, at, actor, reason}]`, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 10. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision.
+- `joppa_objects` with `address` gives the current object: `document` exactly as stored, `revisions` as `[{revision, at, actor, reason}]`, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision.
 - Keys with `null`, `""`, `[]` or `{}` are omitted everywhere outside `document`, `data` and `command`. `false` and `0` stay. A missing `tests` key means no tests.
 - `joppa_tests` reads at most 100 criteria in one call. Send `parent` (direct children, or `*`) and `kind` (default `ac`) in place of `ac` to read every criterion in pages of 100.
 

@@ -10,7 +10,7 @@ export function applyObjectColor(node,kind){
   node.style.setProperty('--object-title-size',(Number.isInteger(size)&&size>=12&&size<=48?size:15)+'px');
 }
 export function objectTitlePreview(title,kind){
-  const limit=state.data.objectTypes?.[kind]?.title_preview_length||64,characters=Array.from(title);
+  const limit=state.data.objectTypes?.[kind]?.title_preview_length||128,characters=Array.from(title);
   return characters.length>limit?characters.slice(0,limit-1).join('').trimEnd()+'…':title;
 }
 // A type badge is a plain label: a click goes to its row, and no popover opens.
