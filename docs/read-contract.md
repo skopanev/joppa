@@ -13,6 +13,19 @@ of the earlier release.
 - A top-level `items: []` stays when a list is empty.
 - Read an omitted key as empty: no value, no list, no map.
 
+## Limits for clients that send a larger `limit`
+
+| Tool | `limit` above the page size | Paging |
+| --- | --- | --- |
+| `joppa_objects` lists, also with `fields`, `work_filter`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor`; `total` on plain lists |
+| `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` |
+| `joppa_objects` detail comments and links | fixed pages of 25 | `comments_cursor`, `links_cursor` |
+| `joppa_tasks` | unchanged: up to 100 | `next_cursor` as before |
+| `joppa_tests` with `ac` | more than 100 criteria are refused | none |
+| `joppa_tests` with `parent` or `kind` | 100 criteria a page | `next_cursor` and `total` |
+
+A client that sends `limit: 100` to `joppa_objects` gets 25 items and must follow `next_cursor`.
+
 ## List mode: `joppa_objects` without `address`
 
 Request:
