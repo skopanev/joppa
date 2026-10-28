@@ -51,6 +51,9 @@ roots. `kind` filters by type. Reply:
 - `status` is the status tone. `children` is the number of present children, only when above 0.
 - Items come in address order. `next_cursor` is the address of the last item; the next page
   starts after it, so a new object does not move the items of a later page.
+- A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
+  inputs first, then processed inputs, each group in address order. Its `next_cursor` is the
+  Inbox cursor, and `total` is absent.
 - No `revision`, `description`, `process`, `id` or `item_id`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
