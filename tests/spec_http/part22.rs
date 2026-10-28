@@ -59,7 +59,7 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
             )
         };
         ensure!(created(&files[0])? > created(&files[1])?, "{files:?}");
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":address}}})).send().await?;
         ensure!(
             response.status() == reqwest::StatusCode::OK,
             "{}",
@@ -145,7 +145,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
         let w = &w;
         async move {
             let reply = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(&name, &arguments))}}))
                 .send().await?;
             ensure!(reply.status().is_success(), "{}", reply.status());
             let reply: Value = reply.json().await?;

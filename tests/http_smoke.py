@@ -198,6 +198,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             assert 'ASD-STE100' in schema['properties']['contract']['description']
             assert 'said' not in schema['properties']
         def mcp(name, arguments, token=agent_token):
+            # These checks read the earlier full shape of the read tools (requirement:read-contract).
+            if name in ('joppa_objects', 'joppa_read', 'joppa_tests', 'joppa_search', 'joppa_timeline', 'joppa_tasks', 'joppa_history'):
+                arguments = {'verbose': True, **arguments}
             status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':name,'arguments':arguments}}, token)
             assert status == 200, (status, response)

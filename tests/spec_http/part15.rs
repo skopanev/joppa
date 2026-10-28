@@ -33,7 +33,7 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
                 .http
                 .post(format!("{}/mcp", w.root))
                 .bearer_auth(bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":{"workspace":workspace}}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":{"verbose":true,"workspace":workspace}}}))
                 .send()
                 .await?;
             ensure!(reply.status().is_success(), "{}", reply.status());

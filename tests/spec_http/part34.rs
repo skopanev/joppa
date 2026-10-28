@@ -64,7 +64,7 @@ async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> R
         "{body}"
     );
     let mcp: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.owner)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":task}}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":task}}}))
         .send().await?.error_for_status()?.json().await?;
     ensure!(
         mcp["result"]["isError"] == true

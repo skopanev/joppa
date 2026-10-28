@@ -106,8 +106,10 @@ async fn search(
         String::from_utf8_lossy(&out.stderr)
     );
     let cli: Value = serde_json::from_slice(&out.stdout).context("CLI output")?;
+    // The CLI reads the compact MCP shape: the same items without empty keys.
+    let compact = joppa::read_compact::strip_reply(tool.clone());
     ensure!(
-        http["items"] == tool["items"] && tool["items"] == cli["items"],
+        http["items"] == tool["items"] && compact["items"] == cli["items"],
         "HTTP, MCP and CLI disagree:\n{http}\n{tool}\n{cli}"
     );
     Ok(tool["items"].as_array().cloned().unwrap_or_default())

@@ -220,7 +220,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             .http
             .post(format!("{}/mcp", w.root))
             .bearer_auth(&w.alex)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":address}}}))
             .send()
             .await?;
         ensure!(response.status().is_success(), "{}", response.text().await?);

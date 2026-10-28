@@ -10,7 +10,7 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
         let name = name.to_owned();
         async move {
             let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(&name, &arguments))}}))
                 .send().await?.error_for_status()?.json().await?;
             ensure!(response["result"]["isError"] != true, "{response}");
             Ok::<Value, anyhow::Error>(serde_json::from_str(
@@ -90,7 +90,7 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
         let name = name.to_owned();
         async move {
             let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(&name, &arguments))}}))
                 .send().await?.error_for_status()?.json().await?;
             ensure!(response["result"]["isError"] != true, "{response}");
             Ok::<Value, anyhow::Error>(serde_json::from_str(

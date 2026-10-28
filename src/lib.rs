@@ -18,6 +18,7 @@ pub mod note_parents;
 pub mod objects;
 pub mod planning;
 pub mod probe;
+pub mod read_compact;
 pub mod read_shapes;
 pub mod redact;
 pub mod remote_links;

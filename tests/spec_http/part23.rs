@@ -78,7 +78,7 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
     let response=w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(&w.bot).json(&json!({"request_id":format!("test-claim-time-86400000-{}",uuid::Uuid::new_v4().simple()),"command":{"op":"claim_task","id":"job:one","revision":1}})).send().await?;
     ensure!(response.status().is_success(), "{}", response.text().await?);
     let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {
-        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?.json().await?;
+        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}})).send().await?.json().await?;
         ensure!(reply["result"]["isError"] != true, "{reply}");
         Ok(serde_json::from_str(
             reply["result"]["content"][0]["text"].as_str().unwrap(),
@@ -152,7 +152,7 @@ async fn mcp_call(w: &World, token: &str, name: &str, arguments: Value) -> Resul
         .http
         .post(format!("{}/mcp", w.root))
         .bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}}))
         .send()
         .await?
         .error_for_status()?

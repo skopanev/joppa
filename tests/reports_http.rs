@@ -579,7 +579,7 @@ impl Planning<'_> {
         let root = self.w.base.split("/api/").next().unwrap();
         arguments["workspace"] = json!(self.ws);
         Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
             .send().await?.json().await?)
     }
     /// P sends `command` through HTTP or MCP and gets the result or the error text.
@@ -1010,7 +1010,7 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
             .await?;
         let root = w.base.split("/api/").next().unwrap();
         let workspace = w.base.rsplit('/').next().unwrap();
-        let mcp: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.owner).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":address}}})).send().await?.json().await?;
+        let mcp: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.owner).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":workspace,"address":address}}})).send().await?.json().await?;
         let mcp: Value = serde_json::from_str(
             mcp["result"]["content"][0]["text"]
                 .as_str()
@@ -2569,7 +2569,7 @@ async fn a_revoked_write_token_fails_on_the_first_read_over_http_and_mcp() -> Re
     };
     let read_mcp = |token: String| {
         let request = w.http.post(format!("{root}/mcp")).bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":"note:from-bot"}}}));
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":workspace,"address":"note:from-bot"}}}));
         async move {
             let reply = request.send().await?;
             anyhow::Ok((
@@ -3085,7 +3085,7 @@ async fn mcp(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Val
         .http
         .post(format!("{root}/mcp"))
         .bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
         .send()
         .await?
         .json()
@@ -3439,7 +3439,7 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
         ensure!(code == 200, "{address}: {code} {http}");
         let root = w.base.split("/api/").next().unwrap();
         let workspace = w.base.rsplit('/').next().unwrap();
-        let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"workspace":workspace,"task":address}}})).send().await?.json().await?;
+        let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"verbose":true,"workspace":workspace,"task":address}}})).send().await?.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
         let mcp: Value = serde_json::from_str(
             response["result"]["content"][0]["text"]
@@ -6509,4 +6509,26 @@ async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_revi
         store::check_journal(&p.pool).await?;
     }
     Ok(())
+}
+
+/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
+#[allow(dead_code)]
+fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
+    let mut args = args.clone();
+    let read = [
+        "joppa_objects",
+        "joppa_read",
+        "joppa_tests",
+        "joppa_search",
+        "joppa_timeline",
+        "joppa_tasks",
+        "joppa_history",
+    ];
+    if read.contains(&tool)
+        && args.get("verbose").is_none()
+        && let Some(map) = args.as_object_mut()
+    {
+        map.insert("verbose".into(), serde_json::json!(true));
+    }
+    args
 }

@@ -169,7 +169,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(&self.owner)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"workspace":self.ws,"query":query}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"verbose":true,"workspace":self.ws,"query":query}}}))
             .send()
             .await?
             .json()
@@ -195,7 +195,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(&self.owner)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"workspace":self.ws,"query":query}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"verbose":true,"workspace":self.ws,"query":query}}}))
             .send()
             .await?
             .json()

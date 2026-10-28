@@ -5,7 +5,7 @@
 async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Result<()> {
     // req-has-criteria-ac2
     async fn read(w: &World, bot: &str, arguments: Value) -> Result<Value> {
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":arguments}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":(crate::legacy_read_args("joppa_read", &arguments))}})).send().await?;
         ensure!(response.status().is_success(), "{}", response.status());
         let response: Value = response.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");

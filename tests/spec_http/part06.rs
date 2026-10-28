@@ -188,7 +188,7 @@ async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
         } else {
             error.to_owned()
         };
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}})).send().await?;
         ensure!(response.status().is_success(), "{}", response.status());
         let response: Value = response.json().await?;
         ensure!(

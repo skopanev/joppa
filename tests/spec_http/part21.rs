@@ -88,7 +88,7 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
         if let Some(revision) = revision {
             arguments["revision"] = json!(revision);
         }
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.maria).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":arguments}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.maria).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":(crate::legacy_read_args("joppa_objects", &arguments))}})).send().await?;
         ensure!(response.status().is_success(), "{}", response.status());
         let response: Value = response.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");

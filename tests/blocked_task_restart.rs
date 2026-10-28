@@ -182,7 +182,7 @@ async fn fetch(
     }
     arguments["workspace"] = json!(ws);
     let response: Value = http.post(format!("{root}/mcp")).bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
         .send().await?.json().await?;
     ensure!(
         response["result"]["isError"] != true,
@@ -1062,4 +1062,26 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     store::check_journal(&f.pool).await?;
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
+}
+
+/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
+#[allow(dead_code)]
+fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
+    let mut args = args.clone();
+    let read = [
+        "joppa_objects",
+        "joppa_read",
+        "joppa_tests",
+        "joppa_search",
+        "joppa_timeline",
+        "joppa_tasks",
+        "joppa_history",
+    ];
+    if read.contains(&tool)
+        && args.get("verbose").is_none()
+        && let Some(map) = args.as_object_mut()
+    {
+        map.insert("verbose".into(), serde_json::json!(true));
+    }
+    args
 }

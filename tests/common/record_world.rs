@@ -134,7 +134,7 @@ impl World {
         args: Value,
     ) -> Result<(u16, Value)> {
         let mut request = self.http.post(format!("{}/mcp", self.root)).json(
-            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":args}}),
+            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(legacy_read_args(tool, &args))}}),
         );
         if let Some(token) = token {
             request = request.bearer_auth(token);
@@ -247,4 +247,26 @@ pub fn test<'a>(status: &'a Value, address: &str) -> &'a Value {
         .as_array()
         .and_then(|tests| tests.iter().find(|t| t["address"] == address))
         .unwrap_or(&Value::Null)
+}
+
+/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
+#[allow(dead_code)]
+fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
+    let mut args = args.clone();
+    let read = [
+        "joppa_objects",
+        "joppa_read",
+        "joppa_tests",
+        "joppa_search",
+        "joppa_timeline",
+        "joppa_tasks",
+        "joppa_history",
+    ];
+    if read.contains(&tool)
+        && args.get("verbose").is_none()
+        && let Some(map) = args.as_object_mut()
+    {
+        map.insert("verbose".into(), serde_json::json!(true));
+    }
+    args
 }
