@@ -7,6 +7,8 @@ const {once} = require('node:events');
 const http = require('node:http');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+// These checks read the earlier full shape of the read tools (requirement:read-contract).
+const READ_TOOLS=['joppa_objects','joppa_read','joppa_tests','joppa_search','joppa_timeline','joppa_tasks','joppa_history'];
 
 const root = path.join(__dirname, '..');
 const types = {
@@ -89,7 +91,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
   const mcp = async (name, arguments_, token = live.agent) => {
     const response = await fetch(live.root + '/mcp', {method: 'POST',
       headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
-      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(arguments_.item_id ? {} : {workspace: live.ws}), ...arguments_}}})});
+      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(READ_TOOLS.includes(name) ? {verbose: true} : {}), ...(arguments_.item_id ? {} : {workspace: live.ws}), ...arguments_}}})});
     assert.equal(response.status, 200);
     const reply = await response.json();
     assert.equal(reply.error, undefined, JSON.stringify(reply));

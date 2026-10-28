@@ -3,7 +3,7 @@
 // [ac:criterion-checkable-ac1]
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_bot_criterion_title_over_64_characters_is_refused() -> Result<()> {
+async fn a_bot_criterion_title_over_128_characters_is_refused() -> Result<()> {
     let w = world().await?;
     let reply = w
         .http
@@ -41,14 +41,14 @@ async fn a_bot_criterion_title_over_64_characters_is_refused() -> Result<()> {
         &w,
         &token,
         "fits-title",
-        criterion("fits", "a".repeat(64)),
+        criterion("fits", "a".repeat(128)),
         "http",
     )
     .await?;
     ensure!(status == 200, "{status}: {saved}");
     let (status, fits) = read("ac:fits").await?;
     ensure!(
-        status == 200 && fits["document"]["data"]["title"] == "a".repeat(64),
+        status == 200 && fits["document"]["data"]["title"] == "a".repeat(128),
         "{status}: {fits}"
     );
 
@@ -69,14 +69,14 @@ async fn a_bot_criterion_title_over_64_characters_is_refused() -> Result<()> {
         &w,
         &token,
         "long-title",
-        criterion("long", "a".repeat(65)),
+        criterion("long", "a".repeat(129)),
         "http",
     )
     .await?;
     ensure!(
         !(200..300).contains(&status)
             && denied["error"]
-                == "an ac title is at most 64 characters; put the details in the text",
+                == "an ac title is at most 128 characters; put the details in the text",
         "{status}: {denied}"
     );
     ensure!(
