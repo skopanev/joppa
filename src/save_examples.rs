@@ -30,7 +30,7 @@ fn placeholder(field: &str) -> Value {
         "owner" => json!("<member id>"),
         "consumers" | "depends_on" | "projects" => json!([]),
         "decision_required" | "before_launch" | "archived" => json!(false),
-        _ => json!("<text>"),
+        _ => json!("<text, at most 1024 characters>"),
     }
 }
 

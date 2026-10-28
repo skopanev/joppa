@@ -9,6 +9,7 @@ pub mod dependencies;
 pub mod digest_hex;
 pub mod embeddings;
 pub mod embeddings_limit;
+pub mod field_limit;
 pub mod inbox;
 mod intake;
 pub mod launch_gate;

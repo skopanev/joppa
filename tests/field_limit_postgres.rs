@@ -1,0 +1,118 @@
+//! requirement:field-length-limit over a real server and its database: a save refuses a new
+//! value over 1024 characters, the database trigger refuses the same row, a replay or a
+//! rebuild may write it, a stored long value may stay, and the MCP tools name the limit.
+#[path = "common/record_world.rs"]
+mod record_world;
+use anyhow::{Result, ensure};
+use serde_json::{Value, json};
+
+const LIMIT_TEXT: &str = "at most 1024 characters";
+
+fn requirement(id: &str, body: &Value) -> Value {
+    json!({"op":"save_object","kind":"requirement","id":id,"revision":0,"parent":null,
+        "data":{"title":"Field limit","owner":"owner","body":body},"reason":"Field limit test"})
+}
+
+// field-limit-save
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_save_refuses_a_new_value_over_1024_characters() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let at_limit = json!("я".repeat(1024));
+    let saved = w
+        .command(&w.bot, requirement("at-limit", &at_limit))
+        .await?;
+    ensure!(saved.is_ok(), "1024 characters were refused: {saved:?}");
+    for (id, body) in [
+        ("over", json!("я".repeat(1025))),
+        ("nested", json!(["short", "x".repeat(1025)])),
+    ] {
+        let refused = w.command(&w.bot, requirement(id, &body)).await?;
+        let error = refused.err().unwrap_or_default();
+        ensure!(error.contains(LIMIT_TEXT), "{id}: {error}");
+    }
+    let describe = w
+        .command(&w.bot, json!({"op":"describe","target":"requirement:at-limit","text":"x".repeat(1025),"reason":"Too long"}))
+        .await?;
+    ensure!(
+        describe
+            .err()
+            .unwrap_or_default()
+            .contains("at most 1024 characters"),
+        "a description over 1024 characters passed"
+    );
+    Ok(())
+}
+
+// field-limit-database
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_database_refuses_a_new_long_field_unless_it_replays() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let mut conn = w.pool.get().await?;
+    let long = json!({"data":{"title":"Long","description":"z".repeat(1025)}});
+    let insert = "INSERT INTO joppa.object_revisions(workspace,address,revision,document) VALUES($1,'note:direct',$2,$3::text::jsonb)";
+    let refused = conn
+        .execute(insert, &[&w.ws, &1i32, &long.to_string()])
+        .await;
+    let message = format!("{:?}", refused.err());
+    ensure!(message.contains(LIMIT_TEXT), "{message}");
+    // A replay or a rebuild sets joppa.replaying and writes the journal as it is.
+    let tx = conn.transaction().await?;
+    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
+    tx.execute(insert, &[&w.ws, &1i32, &long.to_string()])
+        .await?;
+    tx.commit().await?;
+    // A later revision may keep the stored long value and change another field.
+    let kept = json!({"data":{"title":"Changed","description":"z".repeat(1025)}});
+    conn.execute(insert, &[&w.ws, &2i32, &kept.to_string()])
+        .await?;
+    // A changed long value is refused again.
+    let changed = json!({"data":{"title":"Changed","description":"y".repeat(1025)}});
+    let refused = conn
+        .execute(insert, &[&w.ws, &3i32, &changed.to_string()])
+        .await;
+    ensure!(
+        format!("{:?}", refused.err()).contains(LIMIT_TEXT),
+        "a changed long value passed"
+    );
+    Ok(())
+}
+
+// field-limit-help
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_write_tools_and_the_save_examples_name_the_limit() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let reply: Value = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(&w.bot)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    for name in ["joppa_command", "joppa_batch"] {
+        let tool = reply["result"]["tools"]
+            .as_array()
+            .and_then(|tools| tools.iter().find(|t| t["name"] == name))
+            .cloned()
+            .unwrap_or_default();
+        ensure!(
+            tool["description"]
+                .as_str()
+                .is_some_and(|d| d.contains("at most 1024 characters")),
+            "{name} does not name the limit"
+        );
+    }
+    let help = w.mcp(&w.bot, "joppa_help", json!({})).await?; // mcp() adds the workspace
+    let help = help.map_err(|e| anyhow::anyhow!(e))?;
+    ensure!(
+        help["examples"]["requirement"]["data"]["body"] == "<text, at most 1024 characters>",
+        "{}",
+        help["examples"]["requirement"]
+    );
+    Ok(())
+}

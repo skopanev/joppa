@@ -51,8 +51,17 @@ async fn save(
     description: Option<&str>,
 ) -> Result<()> {
     let mut data = json!({"title":title,"owner":"owner"});
+    // Each field holds at most 1024 characters, so a long text goes into several fields.
     if let Some(description) = description {
-        data["description"] = json!(description);
+        let chars: Vec<char> = description.chars().collect();
+        for (i, part) in chars.chunks(1000).enumerate() {
+            let key = if i == 0 {
+                "description".to_owned()
+            } else {
+                format!("part{i}")
+            };
+            data[key] = json!(part.iter().collect::<String>());
+        }
     }
     store::execute_input(pool, ws, "owner", &uuid::Uuid::new_v4().to_string(), &json!({"op":"save_object","kind":"domain","id":id,"revision":0,"parent":null,"data":data,"reason":"Embedding input test text"})).await?;
     Ok(())

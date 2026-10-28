@@ -103,17 +103,15 @@ fn a_description_lands_where_the_object_keeps_it() {
         "a confirmed revision is never rewritten in place"
     );
 
-    // Предел объявлен и соблюдается: ровно две тысячи проходят, две тысячи
-    // один — нет. Считаются ЗНАКИ, а не байты: иначе кириллица помещалась бы
-    // вдвое короче латиницы при одинаковой на вид строке.
-    let at_limit = "я".repeat(2000);
+    // The limit is 1024 characters, not bytes: Cyrillic text gets the same room as Latin.
+    let at_limit = "я".repeat(1024);
     w.ok(
         "owner",
         json!({"op":"describe","target":"requirement:r","text":at_limit,"reason":"long"}),
     );
     w.no(
         "owner",
-        json!({"op":"describe","target":"requirement:r","text":"x".repeat(2001),"reason":"long"}),
+        json!({"op":"describe","target":"requirement:r","text":"x".repeat(1025),"reason":"long"}),
     );
 }
 

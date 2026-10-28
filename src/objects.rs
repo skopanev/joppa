@@ -2774,6 +2774,13 @@ fn validate_wait_cycle(
 }
 pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     validate_title_length(w, cmd)?;
+    if let Command::SaveObject { kind, id, data, .. } = cmd {
+        let stored = w
+            .objects
+            .get(resolve_address(w, &address(kind, id)))
+            .map(|o| &o.current().data);
+        crate::field_limit::check(data, stored)?;
+    }
     task_links_same_requirement(w, cmd)?;
     if let Command::SaveObject {
         kind,
