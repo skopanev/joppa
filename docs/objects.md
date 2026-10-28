@@ -142,6 +142,23 @@ HTTP returns 422 if a required field rule fails. MCP returns the configured erro
 Failed writes preserve the journal, revisions and request IDs.
 Historical reads retain the original document and schema revision.
 
+## Links and comments, not object text
+
+Keep each object text to its own contract. Do not add other data to it.
+
+1. Link objects with links, never with text.
+   - Send the `links` array of `save_object`: `[{"target": "task:<id>", "relation": "related"}]`. Use `depends_on` for a dependency.
+   - Use the reference fields of the schema, for example `consumer` or `projects`.
+   - Use `set_remote_links` for an object of another workspace.
+   - Do not paste lists of Tasks, tickets or addresses into `description`, `body` or `contract`.
+2. Add findings, progress and supplements as comments, never as object text.
+   - Send `{"op": "note", "target": "<kind>:<id>", "id": "<unique id>", "text": "..."}`.
+   - A comment keeps its author and time. It adds no object revision and does not reset tests.
+   - The 1024-character field limit does not apply to a comment.
+   - Do not rewrite or extend `description`, `body` or `contract` with these texts.
+
+One `joppa_batch` can save an object and add its comments atomically.
+
 ## Links and dependencies
 
 An object can link to many objects of any type in the same workspace.

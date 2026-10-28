@@ -116,3 +116,58 @@ async fn the_write_tools_and_the_save_examples_name_the_limit() -> Result<()> {
     );
     Ok(())
 }
+
+// field-limit-help
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let reply: Value = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(&w.bot)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let tools = reply["result"]["tools"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for name in ["joppa_command", "joppa_batch"] {
+        let tool = tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .cloned()
+            .unwrap_or_default();
+        let text = tool["description"].as_str().unwrap_or_default();
+        ensure!(
+            text.contains("links array of save_object")
+                && text.contains(r#"{"op":"note","target":"kind:id""#),
+            "{name} does not send links and comments out of object text"
+        );
+    }
+    let command = tools
+        .iter()
+        .find(|t| t["name"] == "joppa_command")
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        command["inputSchema"]["properties"]["command"]["properties"]["body"]["description"]
+            .as_str()
+            .is_some_and(|d| d.contains("use links and the note op")),
+        "the text field schema does not name links and the note op"
+    );
+    let help = w.mcp(&w.bot, "joppa_help", json!({})).await?;
+    let help = help.map_err(|e| anyhow::anyhow!(e))?;
+    let objects = help["objects"].as_str().unwrap_or_default();
+    ensure!(
+        objects.contains("## Links and comments, not object text")
+            && objects.contains(r#"{"op": "note", "target": "<kind>:<id>""#)
+            && objects.contains("Do not paste lists of Tasks, tickets or addresses"),
+        "joppa_help.objects does not state the two rules"
+    );
+    Ok(())
+}
