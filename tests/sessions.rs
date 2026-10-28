@@ -1,7 +1,6 @@
 use anyhow::{Result, ensure};
 use joppa::{sessions, store};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::{
     process::{Child, Command, Stdio},
     time::Duration,
@@ -67,7 +66,7 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         uuid::Uuid::new_v4().simple()
     );
     sessions::create(&pool, &other, "other-owner", None).await?;
-    let digest = format!("{:x}", Sha256::digest(token.as_bytes()));
+    let digest = joppa::digest_hex::sha256_hex(token.as_bytes());
     let row = pool
         .get()
         .await?
@@ -241,7 +240,7 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    pool.get().await?.execute("INSERT INTO joppa.browser_sessions(token_hash,actor,expires_at) VALUES($1,'owner',clock_timestamp()-interval '1 second')",&[&format!("{:x}",Sha256::digest(expired.as_bytes()))]).await?;
+    pool.get().await?.execute("INSERT INTO joppa.browser_sessions(token_hash,actor,expires_at) VALUES($1,'owner',clock_timestamp()-interval '1 second')",&[&joppa::digest_hex::sha256_hex(expired.as_bytes())]).await?;
     assert!(sessions::actor(&pool, &expired).await?.is_none());
     assert!(sessions::actor(&pool, "malformed").await?.is_none());
     let response = client

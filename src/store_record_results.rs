@@ -11,7 +11,6 @@ use super::*;
 use crate::ac_tests::TestResult;
 use crate::result_shape::ResultShape;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 /// The ids of the present objects that each ref field of the block can name.
 type Refs = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
@@ -123,10 +122,7 @@ pub async fn record_results(
     }
     let (commit, results) = parse(args, &shape, &refs)?;
     let body = serde_json::to_string(&results)?;
-    let hash = format!(
-        "{:x}",
-        Sha256::digest(format!("record\n{commit}\n{body}").as_bytes())
-    );
+    let hash = crate::digest_hex::sha256_hex(format!("record\n{commit}\n{body}").as_bytes());
     let event = |report: i64, repeat: bool| Command::RecordReport {
         report,
         commit: commit.clone(),

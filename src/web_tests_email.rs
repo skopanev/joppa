@@ -72,7 +72,7 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     // A verified email with no grant, rule or user entry cannot sign in.
     let refused = sign_in(&app, "google-maria", "maria@example.com").await;
     assert_eq!(refused.unwrap_err().0, StatusCode::FORBIDDEN);
-    let derived = format!("user-{:x}", sha2::Sha256::digest(b"google-maria"));
+    let derived = format!("user-{}", joppa::digest_hex::sha256_hex(b"google-maria"));
     let members = "SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key=$1";
     let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1";
     let sessions_of = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";

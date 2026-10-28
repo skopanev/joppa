@@ -1,10 +1,9 @@
 //! Agent tokens: the owner creates one per agent and workspace and can revoke it.
 //! A token always names its agent, so an agent never acts as a person.
 use super::*;
-use sha2::{Digest, Sha256};
 
 fn token_hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    crate::digest_hex::sha256_hex(token.as_bytes())
 }
 
 /// The one reply to a write with a read grant, on MCP and HTTP.

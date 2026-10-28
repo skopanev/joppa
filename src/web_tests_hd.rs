@@ -26,7 +26,7 @@ async fn forget_hd_fixtures(app: &App, emails: &[&str]) -> Result<()> {
 /// The stored hd of the browser session in this cookie.
 async fn session_hd(app: &App, cookie: &str) -> Option<String> {
     let token = cookie.strip_prefix("joppa_session=").unwrap();
-    let hash = format!("{:x}", sha2::Sha256::digest(token.as_bytes()));
+    let hash = joppa::digest_hex::sha256_hex(token.as_bytes());
     let conn = app.pool.get().await.unwrap();
     conn.query_one(
         "SELECT hd FROM joppa.browser_sessions WHERE token_hash=$1",
@@ -185,7 +185,7 @@ async fn domain_grant_needs_hd_a_reload_and_an_older_session_do_not_enroll_ex() 
     let older = format!("{}{id}", uuid::Uuid::new_v4().simple());
     pool.get().await?.execute(
         "INSERT INTO joppa.browser_sessions(token_hash,actor,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
-        &[&format!("{:x}", sha2::Sha256::digest(older.as_bytes())), &ex],
+        &[&joppa::digest_hex::sha256_hex(older.as_bytes()), &ex],
     ).await?;
     let older = format!("joppa_session={older}");
     assert_eq!(session_hd(&app, &older).await, None);

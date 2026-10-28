@@ -6,6 +6,7 @@ pub mod commands;
 pub mod consumer_drops;
 pub mod consumer_migration;
 pub mod dependencies;
+pub mod digest_hex;
 pub mod embeddings;
 pub mod inbox;
 mod intake;

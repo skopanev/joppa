@@ -1,14 +1,13 @@
 //! Durable browser sessions. Only token hashes are stored; revocation is append-only.
 use anyhow::Result;
 use deadpool_postgres::Pool;
-use sha2::{Digest, Sha256};
 
 /// Неделя от входа. Абсолютный срок: активность его не продлевает.
 /// Двенадцати часов не хватало — вход утром, к вечеру страница уже
 /// выкидывала на логин, и это читалось как поломка, а не как политика.
 pub const LIFETIME_SECONDS: u64 = 604_800;
 fn hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    crate::digest_hex::sha256_hex(token.as_bytes())
 }
 /// The session keeps the verified Google hd of this sign-in, in lowercase. None means no hd.
 pub async fn create(pool: &Pool, token: &str, actor: &str, hd: Option<&str>) -> Result<()> {

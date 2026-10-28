@@ -81,7 +81,7 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
     );
     assert!(before.1.is_empty());
     let sub = format!("google-maria-{id}");
-    let maria = format!("user-{:x}", sha2::Sha256::digest(sub.as_bytes()));
+    let maria = format!("user-{}", joppa::digest_hex::sha256_hex(sub.as_bytes()));
     let members = "SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key=$1";
     let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1";
     let sessions_of = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";

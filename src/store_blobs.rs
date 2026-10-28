@@ -13,14 +13,13 @@ pub const ATTACHMENT_MAX: usize = 10 * 1024 * 1024;
 /// нет намеренно — хранилище не знает про воркспейсы; правом распоряжается
 /// то место, где отпечаток попадает в журнал.
 pub async fn put_blob(pool: &Pool, bytes: &[u8]) -> Result<(String, usize)> {
-    use sha2::{Digest, Sha256};
     ensure!(!bytes.is_empty(), "an empty file carries nothing");
     ensure!(
         bytes.len() <= ATTACHMENT_MAX,
         "an attachment is at most {} MB",
         ATTACHMENT_MAX / (1024 * 1024)
     );
-    let hash = format!("{:x}", Sha256::digest(bytes));
+    let hash = crate::digest_hex::sha256_hex(bytes);
     pool.get()
         .await?
         .execute(

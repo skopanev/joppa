@@ -1,6 +1,5 @@
 //! Tests of the web routes: shared fixtures and helpers.
 use super::*;
-use sha2::Digest;
 
 fn browser(cookie: Option<&str>, origin: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
@@ -174,7 +173,7 @@ async fn add_domain(app: &App, cookie: &str, workspace: &str, domain: &str) -> A
 }
 
 fn derived(sub: &str) -> String {
-    format!("user-{:x}", sha2::Sha256::digest(sub.as_bytes()))
+    format!("user-{}", joppa::digest_hex::sha256_hex(sub.as_bytes()))
 }
 
 const MEMBER_OF: &str =

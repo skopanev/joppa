@@ -2,7 +2,6 @@
 use super::*;
 use crate::embeddings::{self, Embedder, PROFILE};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -28,7 +27,7 @@ fn document(
     content: String,
 ) -> Document {
     let content: String = content.chars().take(60_000).collect();
-    let content_hash = format!("{:x}", Sha256::digest(embedding_input(title, &content)));
+    let content_hash = crate::digest_hex::sha256_hex(embedding_input(title, &content));
     Document {
         kind: kind.into(),
         local_id: id.into(),

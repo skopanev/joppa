@@ -517,7 +517,6 @@ pub fn original_identity<'a>(w: &'a Workspace, kind: &'a str, id: &'a str) -> (&
 }
 
 pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
-    use sha2::{Digest, Sha256};
     if w.notes_migrated {
         return Ok(());
     }
@@ -531,7 +530,10 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         .map(|(key, o)| (key.clone(), o.clone()))
         .collect();
     for (key, _) in &sources {
-        let target = format!("note:source-{:x}", Sha256::digest(key.as_bytes()));
+        let target = format!(
+            "note:source-{}",
+            crate::digest_hex::sha256_hex(key.as_bytes())
+        );
         ensure!(
             !w.objects.contains_key(&target),
             "Note migration address collision"

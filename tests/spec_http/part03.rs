@@ -63,7 +63,6 @@ async fn completing_a_task_stores_exact_evidence_and_bot_event_actor() -> Result
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
-    use sha2::{Digest, Sha256};
     // files-keep-versions-ac2
     let w = world().await?;
     w.note(
@@ -75,7 +74,7 @@ async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
     )
     .await?;
     let bytes = format!("Unaccepted file {}", uuid::Uuid::new_v4());
-    let hash = format!("{:x}", Sha256::digest(bytes.as_bytes()));
+    let hash = joppa::digest_hex::sha256_hex(bytes.as_bytes());
     let before = w.get("address=note:file-target").await?;
     ensure!(before["files"] == json!([]), "{before}");
     let mut replies = Vec::new();

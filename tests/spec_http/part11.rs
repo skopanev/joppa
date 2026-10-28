@@ -157,7 +157,6 @@ async fn a_parent_rule_that_orphans_risk_objects_is_refused_over_http() -> Resul
 async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Result<()> {
     // tree-schema-safe-ac3
     // skopanev owns the workspace; note:kept sits at revision 2.
-    use sha2::{Digest, Sha256};
     let mut w = world().await?;
     w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [json!({"op":"workspace","title":"Owned by skopanev"})]
@@ -172,7 +171,7 @@ async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Re
     }
     let hash = |read: &Value| -> Result<String> {
         let document = serde_json::to_string(&read["document"])?;
-        Ok(format!("{:x}", Sha256::digest(document.as_bytes())))
+        Ok(joppa::digest_hex::sha256_hex(document.as_bytes()))
     };
     let http = w.get_as(&w.skopanev, "address=note:kept").await?;
     let mcp = object_as(&w, &w.skopanev, "note:kept", None).await?;

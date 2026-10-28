@@ -9,7 +9,6 @@
 use crate::model::Workspace;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,7 +52,7 @@ fn hash_of(fields: &[&str], data: &serde_json::Value) -> String {
         .iter()
         .map(|f| data[*f].as_str().unwrap_or_default())
         .collect();
-    format!("{:x}", Sha256::digest(text.join("\n").as_bytes()))
+    crate::digest_hex::sha256_hex(text.join("\n").as_bytes())
 }
 
 /// Apply `set_ac_tests`. After migrate_test_rules it saves the field tests of the current

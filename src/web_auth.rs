@@ -3,7 +3,6 @@ use crate::google_auth::{Google, Identity};
 use anyhow::{Result, ensure};
 use axum::http::{HeaderMap, header};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -203,7 +202,12 @@ impl Login {
             identity.email_verified && !identity.sub.is_empty(),
             "Unverified Google identity"
         );
-        let derived = || format!("user-{:x}", Sha256::digest(identity.sub.as_bytes()));
+        let derived = || {
+            format!(
+                "user-{}",
+                joppa::digest_hex::sha256_hex(identity.sub.as_bytes())
+            )
+        };
         if let Some(path) = &self.rules {
             let rules = joppa::access::Rules::read(path)?;
             ensure!(

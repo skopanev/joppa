@@ -202,12 +202,11 @@ async fn an_agent_token_without_access_writes_and_an_invalid_access_stores_nothi
     ensure!(stranger == 0, "the refused agent must not be stored");
 
     // A token row without access, as before the migration, reads as write and stays append-only.
-    use sha2::{Digest, Sha256};
     let raw = format!("jpt_{}", uuid::Uuid::new_v4().simple());
     let id: i64 = conn
         .query_one(
             "INSERT INTO joppa.agent_tokens(token_hash,agent,workspace,created_by) VALUES($1,'bot',$2,'owner') RETURNING id",
-            &[&format!("{:x}", Sha256::digest(raw.as_bytes())), &w.ws],
+            &[&joppa::digest_hex::sha256_hex(raw.as_bytes()), &w.ws],
         )
         .await?
         .get(0);

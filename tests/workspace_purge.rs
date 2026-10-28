@@ -50,10 +50,7 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
     // A blob that only W mentions leaves. A blob that K also mentions stays.
     ensure!(!blob(&pool, &own).await?, "the blob of W stays");
     ensure!(blob(&pool, &kept).await?, "the blob of K left");
-    let shared_hash = format!(
-        "{:x}",
-        <sha2::Sha256 as sha2::Digest>::digest(shared.as_bytes())
-    );
+    let shared_hash = joppa::digest_hex::sha256_hex(shared.as_bytes());
     ensure!(blob(&pool, &shared_hash).await?, "the shared blob left");
     ensure!(
         rows(&pool, &k).await? == other,

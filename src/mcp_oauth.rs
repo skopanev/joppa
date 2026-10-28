@@ -36,7 +36,7 @@ fn random() -> String {
     )
 }
 fn hash(s: &str) -> String {
-    format!("{:x}", Sha256::digest(s.as_bytes()))
+    joppa::digest_hex::sha256_hex(s.as_bytes())
 }
 fn base(app: &App) -> std::result::Result<&str, (StatusCode, Json<Value>)> {
     app.oauth_origin.as_deref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE,Json(json!({"error":"temporarily_unavailable","error_description":"Public server URL is not configured"}))))
