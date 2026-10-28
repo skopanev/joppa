@@ -58,7 +58,9 @@ roots. `kind` filters by type. Reply:
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
 With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
-filters and order. `total` is then absent.
+filters and order. `total` is then absent. A list in address order gives the bare address of
+its last item as `next_cursor`, so one sweep may mix plain pages and pages with `fields`.
+A cursor that is not an address `kind:id` is refused: `invalid object cursor`.
 
 ## Named fields
 

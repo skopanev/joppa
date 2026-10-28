@@ -53,12 +53,14 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .await?;
         return Ok(rc::strip_reply(reply));
     }
+    let inbox =
+        a["address"].is_null() && inbox_kind(pool, workspace, actor, a["kind"].as_str()).await?;
     let plain = a["address"].is_null()
         && fields.is_none()
         && ["work_filter", "related_to", "note_status"]
             .iter()
             .all(|k| a[*k].is_null())
-        && !inbox_kind(pool, workspace, actor, a["kind"].as_str()).await?;
+        && !inbox;
     if plain {
         return store::compact_list(
             pool,
@@ -91,7 +93,25 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     )
     .await?;
     match a["address"].as_str() {
-        None => Ok(rc::list(reply, fields.as_deref())),
+        None => {
+            let mut reply = reply;
+            if let Some(map) = reply.as_object_mut() {
+                map.remove("position");
+                map.remove("workspace");
+            }
+            // A list in address order gives the bare address of its last item as the cursor,
+            // as a plain list does, so one sweep may mix plain pages and pages with fields.
+            if !inbox
+                && a["work_filter"].is_null()
+                && let Some((p, address)) = reply["next_cursor"]
+                    .as_str()
+                    .and_then(|c| c.split_once(':'))
+                && p.parse::<i64>().is_ok()
+            {
+                reply["next_cursor"] = json!(address);
+            }
+            Ok(rc::list(reply, fields.as_deref()))
+        }
         Some(_) if revision.is_some() || history => Ok(rc::strip_reply(reply)),
         Some(_) => {
             let address = reply["address"].as_str().unwrap_or_default().to_owned();

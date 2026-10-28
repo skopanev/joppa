@@ -60,33 +60,43 @@ pub(super) async fn read_list(
         .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false)));
     let (after_processed, after) = if let Some(cursor) = scope.cursor {
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
-        ensure!(
-            p.parse::<i64>()? == position,
-            "object list changed; start again without cursor"
-        );
-        if inbox {
-            let (phase, address) = key
-                .split_once(':')
-                .context("invalid inbox cursor; start again without cursor")?;
+        // A list in address order also takes the bare address of its last item, as the
+        // compact MCP list gives it. That cursor stays valid across writes.
+        if p.parse::<i64>().is_err() && !inbox && !unstarted {
             ensure!(
-                ["0", "1"].contains(&phase)
-                    && address
-                        .split_once(':')
-                        .is_some_and(|(kind, id)| Some(kind) == scope.kind
-                            && !id.is_empty()
-                            && !id.contains(':')),
-                "invalid inbox cursor; start again without cursor"
-            );
-            (phase == "1", address)
-        } else {
-            ensure!(
-                key.split_once(':')
-                    .is_some_and(|(kind, id)| !kind.is_empty()
-                        && !id.is_empty()
-                        && !id.contains(':')),
+                address_cursor(cursor),
                 "invalid object cursor; start again without cursor"
             );
-            (false, key)
+            (false, cursor)
+        } else {
+            ensure!(
+                p.parse::<i64>().ok() == Some(position),
+                "object list changed; start again without cursor"
+            );
+            if inbox {
+                let (phase, address) = key
+                    .split_once(':')
+                    .context("invalid inbox cursor; start again without cursor")?;
+                ensure!(
+                    ["0", "1"].contains(&phase)
+                        && address
+                            .split_once(':')
+                            .is_some_and(|(kind, id)| Some(kind) == scope.kind
+                                && !id.is_empty()
+                                && !id.contains(':')),
+                    "invalid inbox cursor; start again without cursor"
+                );
+                (phase == "1", address)
+            } else {
+                ensure!(
+                    key.split_once(':')
+                        .is_some_and(|(kind, id)| !kind.is_empty()
+                            && !id.is_empty()
+                            && !id.contains(':')),
+                    "invalid object cursor; start again without cursor"
+                );
+                (false, key)
+            }
         }
     } else {
         (false, "")
@@ -176,4 +186,11 @@ pub(super) async fn read_list(
         plan,
     )
     .await
+}
+
+/// An object address `kind:id` with no further colon.
+pub(super) fn address_cursor(cursor: &str) -> bool {
+    cursor
+        .split_once(':')
+        .is_some_and(|(kind, id)| !kind.is_empty() && !id.is_empty() && !id.contains(':'))
 }

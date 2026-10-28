@@ -14,6 +14,12 @@ pub async fn compact_list(
     limit: usize,
     cursor: Option<&str>,
 ) -> Result<Value> {
+    ensure!(
+        cursor.is_none_or(|c| c
+            .split_once(':')
+            .is_some_and(|(kind, id)| !kind.is_empty() && !id.is_empty() && !id.contains(':'))),
+        "invalid object cursor; start again without cursor"
+    );
     let (conn, workspace) = authorized(pool, workspace, actor).await?;
     let rows = conn
         .query(
