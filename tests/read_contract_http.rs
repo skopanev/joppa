@@ -24,11 +24,11 @@ async fn save_ac(w: &record_world::World, id: &str) -> Result<()> {
     saved.map(|_| ()).map_err(anyhow::Error::msg)
 }
 
-/// True when no key outside document, data or command holds null, "", [] or {}.
+/// True when no key outside document, data, command or remote_links holds null, "", [] or {}.
 fn no_empty_keys(value: &Value) -> bool {
     match value {
         Value::Object(map) => map.iter().all(|(k, v)| {
-            ["document", "data", "command"].contains(&k.as_str())
+            ["document", "data", "command", "remote_links"].contains(&k.as_str())
                 || (!matches!(v, Value::Null)
                     && v != &json!("")
                     && v != &json!([])
