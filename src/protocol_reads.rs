@@ -49,7 +49,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             a["cursor"].as_str(),
         )
         .await?;
-        let reply = super::shapes::links(reply, a);
+        let reply = joppa::mcp_shapes::links(reply, a);
         return Ok(rc::strip_reply(reply));
     }
     let inbox =

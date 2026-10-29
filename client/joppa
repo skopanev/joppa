@@ -75,14 +75,14 @@ def task_address(args, space):
         if cursor:
             query["cursor"] = cursor
         page = mcp(args, "joppa_tasks", query)
-        matches.extend(task for task in page["items"] if task["id"] == args.id or task["id"].split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
+        matches.extend(task for task in page["items"] if task.get("address", task.get("id")) == args.id or task.get("address", task.get("id")).split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
         cursor = page.get("next_cursor")
         if not cursor:
             break
     if len(matches) != 1:
         raise JoppaError("Task ID is absent or ambiguous; supply the common Task address and --revision")
     task = matches[0]
-    return {"revision": task["revision"], "id": task["id"], **({"req": task["req"]} if task.get("req") else {})}
+    return {"revision": task["revision"], "id": task.get("address", task.get("id")), **({"req": task["req"]} if task.get("req") else {})}
 
 
 def command(args, space, value):

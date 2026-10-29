@@ -254,7 +254,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         current_group = mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})
         assert current_group['document']['present'] is True and current_group['current_revision']==3
         assert 'item_id' not in current_group
-        assert request('/api/workspaces/'+ws+'/objects?address=domain:unused')[1]['item_id']==empty['system_ids']['domain']['unused']
+        assert 'system_ids' not in empty and request('/api/workspaces/'+ws+'/objects?address=domain:unused')[1]['item_id']
         assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['document']['present'] is False
         # [ac:mcp-schema-objects-ac2] Process reads retain workspace authorization.
         assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
@@ -305,7 +305,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         draft_id = draft['command']['id']
         uuid.UUID(draft_id)
         # Item IDs start with a slug of the workspace title, MCP authoring checks.
-        assert re.match(r'^mcp-authoring-checks(-[0-9]+)?-D-', draft['system_ids']['domain'][draft_id])
+        assert re.match(r'^mcp-authoring-checks(-[0-9]+)?-D-', request('/api/workspaces/'+mcp_ws+'/objects?address=domain:'+draft_id)[1]['item_id'])
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-draft-edit',
             'command':{'op':'save_object','kind':'domain','id':draft_id,'revision':1,'parent':None,
                 'data':{'title':'Clear area','owner':'owner'},'reason':'Clarification'}})
@@ -326,7 +326,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         task_req = created['results'][1]['command']['id']
         task_ac = created['results'][2]['command']['id']
         assert created['results'][2]['command']['parent'] == 'requirement:'+task_req
-        public_id = created['results'][1]['system_ids']['requirement'][task_req]
+        public_id = request('/api/workspaces/'+mcp_ws+'/objects?address=requirement:'+task_req)[1]['item_id']
         resolved = mcp('joppa_search',{'workspace':mcp_ws,'query':public_id})['items'][0]
         assert resolved['exact_id'] is True and resolved['kind'] == 'requirement' and resolved['id'] == task_req
         task_id = 'task:mcp-open-task'
@@ -334,13 +334,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
             'data':{'title':'Restore access','owner':'owner','projects':[],'purpose':'implementation',
                 'contract':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['id'] == task_id
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['address'] == task_id
         criterion_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
         criterion_process = criterion_read['process']
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
-            'op':'assess','req':criterion_read['document']['parent'],'revision':criterion_process['revision'],'ac':'ac:'+task_ac,
+            'op':'assess','req':criterion_read['document']['parent'],'revision':criterion_process['assessment']['revision'],'ac':'ac:'+task_ac,
             'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['id'] == task_id
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['address'] == task_id
         claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
             'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
         assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == task_id
@@ -350,11 +350,11 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),'task',*arguments],
                                   env=client_env,capture_output=True,text=True,check=True)
             return json.loads(result.stdout)
-        assert client('list','--view','mine')['items'][0]['id'] == task_id
+        assert client('list','--view','mine')['items'][0]['address'] == task_id
         client('release','mcp-open-task','--reason','Handoff to another process')
         preview = client('next','--dry-run','--priority','domain:'+draft_id)
-        assert preview['task']['id'] == task_id
-        assert client('list','--view','available')['items'][0]['id'] == task_id
+        assert preview['task']['address'] == task_id
+        assert client('list','--view','available')['items'][0]['address'] == task_id
         assert client('next','--priority','requirement:'+task_req,
                       '--request-id','cli-priority-next')['command']['id'] == task_id
         client('release','mcp-open-task','--reason','Return to explicit claim')
@@ -468,7 +468,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             result = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-'+kind,'command':
                 {'op':'save_object','kind':kind,'id':ident,'revision':0,'parent':parent,
                  'data':{'title':text,'body':text,'owner':'owner'},'reason':'Define the contract'}})
-            if kind=='measure': custom_criterion_id=result['system_ids'][kind][ident]
+            if kind=='measure': custom_criterion_id=request('/api/workspaces/'+mcp_ws+'/objects?address=measure:'+ident)[1]['item_id']
         def custom(value):
             return mcp('joppa_command', {'workspace':mcp_ws,'request_id':str(uuid.uuid4()),'command':value}, owner_token)
         def internal_custom(value):

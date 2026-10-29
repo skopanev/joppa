@@ -583,8 +583,8 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
         serde_json::from_str::<Value>(current.get(4))?,
     );
     assert!(full.0);
-    assert_eq!(full.1["status"]["ready"], true);
-    conn.execute("UPDATE joppa.objects SET work_ready=false,process=jsonb_set(process,'{status,ready}','false') WHERE workspace=$1 AND address='ac:ios'", &[&ws]).await?;
+    assert_eq!(full.1["assessment"]["state"], "ready");
+    conn.execute("UPDATE joppa.objects SET work_ready=false,process=jsonb_set(process,'{assessment,state}','\"waiting\"') WHERE workspace=$1 AND address='ac:ios'", &[&ws]).await?;
     conn.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{projection_version}','\"8\"') WHERE workspace=$1", &[&ws]).await?;
     let stale = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
     assert!(!stale.get::<_, bool>(2));
@@ -592,7 +592,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     let repaired = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
     assert!(repaired.get::<_, bool>(2));
     let repaired_process: Value = serde_json::from_str(repaired.get(3))?;
-    assert_eq!(repaired_process["status"]["ready"], true);
+    assert_eq!(repaired_process["assessment"]["state"], "ready");
     assert_eq!(
         (
             repaired.get::<_, bool>(2),
@@ -603,7 +603,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     );
     let snapshot = "SELECT jsonb_build_array(b.xmin::text,b.first_view->>'projection_version',(SELECT jsonb_agg(jsonb_build_array(o.address,o.xmin::text) ORDER BY o.address) FROM joppa.objects o WHERE o.workspace=b.workspace))::text FROM joppa.board_cache b WHERE b.workspace=$1";
     let before: String = conn.query_one(snapshot, &[&ws]).await?.get(0);
-    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "14");
+    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "15");
     store::backfill_board(&pool).await?;
     assert_eq!(
         conn.query_one(snapshot, &[&ws]).await?.get::<_, String>(0),

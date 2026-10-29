@@ -37,9 +37,9 @@ pub fn process(w: &Workspace, key: &str) -> Value {
         .objects
         .get(resolve_address(w, key))
         .and_then(|o| schema(w).types.get(&o.kind).map(|t| t.role.clone()));
-    // A requirement keeps its revision: assess names it. A criterion gives it in assessment.
+    // The revision stays: assess names it. An MCP read of a criterion gives it in assessment.
     let removed: &[&str] = match role.as_deref() {
-        Some("ac") => &["revision", "status", "pending_run"],
+        Some("ac") => &["status", "pending_run"],
         Some("requirement") => &["summary"],
         _ => &[],
     };

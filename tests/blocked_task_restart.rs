@@ -597,7 +597,7 @@ fn expect_plans(
         (
             "released",
             json!({"planning_claim":null,"unstarted":true,"status":"retired","assignee":null,
-                "claimable":false,"waiting_reason":"task is retired","available":false}),
+                "claimable":false,"waiting_reason":null,"available":false}),
         ),
         (
             "claimed",

@@ -1,13 +1,11 @@
 use deadpool_postgres::Pool;
-use joppa::store;
+use joppa::{mcp_shapes as shapes, store};
 use serde_json::{Value, json};
 
 #[path = "protocol_pages.rs"]
 mod pages;
 #[path = "protocol_reads.rs"]
 mod reads;
-#[path = "protocol_shapes.rs"]
-mod shapes;
 #[path = "protocol_tests.rs"]
 mod test_reads;
 

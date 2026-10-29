@@ -160,7 +160,10 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   The `req` of a criterion is its `document.parent`, so `process` of a criterion has no `req`.
   Test results decide a criterion, so its `process` has no run `status` or `revision`: the
   requirement revision that `assess` sends is in `assessment`. `verification` shows only the
-  `pass` or `fail` of a finished run.
+  `pass` or `fail` of a finished run, on every kind of object.
+- `process.revision` of a requirement shows only when it differs from `current_revision`.
+  `process.status` of a Note shows only when it differs from `document.data.status`.
+- `review_required` shows only when it is `true`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.

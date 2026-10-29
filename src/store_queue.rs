@@ -189,6 +189,12 @@ pub(super) async fn read(
             }
         }
     }
+    // A finished Task waits for nothing.
+    for item in &mut items {
+        if matches!(item["status"].as_str(), Some("done" | "retired")) {
+            item.as_object_mut().map(|m| m.remove("waiting_reason"));
+        }
+    }
     let next = (offset + (items.len() as i64) < total)
         .then(|| format!("{position}:{now}:{}", offset + items.len() as i64));
     Ok(

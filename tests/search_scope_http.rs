@@ -59,18 +59,23 @@ async fn search(
     versions: bool,
     workspaces: bool,
 ) -> Result<Vec<Value>> {
-    let http = world::http_search(
-        root,
-        "bot",
-        ws,
-        &[
-            ("q", query),
-            ("limit", "10"),
-            ("all_versions", &versions.to_string()),
-            ("all_workspaces", &workspaces.to_string()),
-        ],
-    )
-    .await?;
+    let args = [
+        ("q", query),
+        ("limit", "10"),
+        ("all_versions", &versions.to_string()),
+        ("all_workspaces", &workspaces.to_string()),
+    ];
+    // The indexer embeds the rows after the server starts. The three reads compare one
+    // ranking, so they start when every row has its vector.
+    let mut http = world::http_search(root, "bot", ws, &args).await?;
+    for _ in 0..100 {
+        if http["semantic_status"] == "ready" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        http = world::http_search(root, "bot", ws, &args).await?;
+    }
+    ensure!(http["semantic_status"] == "ready", "{http}");
     let tool = world::mcp(
         root,
         "bot",

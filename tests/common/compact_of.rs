@@ -13,7 +13,7 @@ pub fn compact_of(http: &Value, mcp: &Value) -> Value {
         {
             map.insert("items".into(), tasks);
         }
-        rc::strip_reply(http)
+        rc::strip_reply(joppa::mcp_shapes::tasks(http))
     } else if http.get("items").is_some() && http.get("address").is_none() {
         let mut http = http.clone();
         if let Some(cursor) = mcp.get("next_cursor") {

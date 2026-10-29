@@ -74,7 +74,11 @@ fn process(reply: &mut Value) {
     );
     let process = &mut reply["process"];
     // No run gives no verification, and a copy of the revision or of the stored status goes.
+    // The requirement revision of a criterion stays only in assessment, which assess reads.
     drop_same(process, &["verification"], &json!("unverified"));
+    if process["assessment"].is_object() {
+        process.as_object_mut().map(|p| p.remove("revision"));
+    }
     drop_same(process, &["revision"], &current);
     drop_same(process, &["status"], &status);
     for entry in process["summary"]["acs"]

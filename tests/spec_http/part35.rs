@@ -32,7 +32,7 @@ async fn a_completed_prerequisite_task_unblocks_its_dependent_over_mcp() -> Resu
     ensure!(available().await?, "B is available after A is done");
     let b = object("task:b").await?;
     ensure!(
-        b["review_required"] == false && b["document"]["links"][0]["revision"] == pin,
+        b["review_required"] != true && b["document"]["links"][0]["revision"] == pin,
         "{b}"
     );
     Ok(())

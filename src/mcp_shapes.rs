@@ -39,7 +39,7 @@ fn operation(result: &mut Value) {
 }
 
 /// joppa_tasks: the address is the ID, the parent is the criterion, and the signal gives
-/// only its tone, label and time. A finished Task has no waiting reason.
+/// only its tone, label and time.
 pub fn tasks(mut reply: Value) -> Value {
     remove(&mut reply, &["view"]);
     for item in reply
@@ -50,16 +50,12 @@ pub fn tasks(mut reply: Value) -> Value {
     {
         let (address, parent) = (item["address"].clone(), item["parent"].clone());
         let assessment = item["assessment"].clone();
-        let finished = matches!(item["status"].as_str(), Some("done" | "retired"));
         let Some(map) = item.as_object_mut() else {
             continue;
         };
         remove_same(map, &["id"], &address);
         remove_same(map, &["ac"], &parent);
         remove_same(map, &["readiness_blocker"], &assessment);
-        if finished {
-            map.remove("waiting_reason");
-        }
         if let Some(signal) = item.get_mut("signal") {
             remove(signal, &["assessment", "readiness_blocker"]);
         }
@@ -149,7 +145,7 @@ mod tests {
         let blocker = json!({"state":"unassessed"});
         let reply = tasks(
             json!({"view":"all","items":[{"id":"task:t","address":"task:t",
-            "ac":"ac:a","parent":"ac:a","status":"retired","waiting_reason":"task is retired",
+            "ac":"ac:a","parent":"ac:a","status":"retired",
             "assessment":blocker,"readiness_blocker":blocker,
             "signal":{"tone":"grey","label":"Retired","assessment":blocker,"readiness_blocker":blocker}}]}),
         );
@@ -157,12 +153,6 @@ mod tests {
             reply,
             json!({"items":[{"address":"task:t","parent":"ac:a","status":"retired",
                 "assessment":blocker,"signal":{"tone":"grey","label":"Retired"}}]})
-        );
-        let open = tasks(json!({"items":[{"address":"task:t","status":"open",
-            "waiting_reason":"Task is blocked for planning"}]}));
-        assert_eq!(
-            open["items"][0]["waiting_reason"],
-            "Task is blocked for planning"
         );
     }
 
