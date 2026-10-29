@@ -75,7 +75,7 @@ def task_address(args, space):
         if cursor:
             query["cursor"] = cursor
         page = mcp(args, "joppa_tasks", query)
-        matches.extend(task for task in page["tasks"] if task["id"] == args.id or task["id"].split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
+        matches.extend(task for task in page["items"] if task["id"] == args.id or task["id"].split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
         cursor = page.get("next_cursor")
         if not cursor:
             break
@@ -135,7 +135,7 @@ def main():
     listing = actions.add_parser("list", help="read one page of the Task queue")
     common(listing)
     listing.add_argument("--view", choices=["available", "mine", "waiting", "all"], default="available")
-    listing.add_argument("--limit", type=int, default=50)
+    listing.add_argument("--limit", type=int, default=25)
     listing.add_argument("--cursor")
     claim = actions.add_parser("claim", help="atomically claim a Task by ID")
     common(claim, write=True, address=True)
@@ -208,7 +208,7 @@ def main():
                 **({"purpose": args.purpose} if args.purpose else {}),
                 **({"priorities": args.priority} if args.priority else {}),
             })
-            output = {"task": page["tasks"][0] if page["tasks"] else None,
+            output = {"task": page["items"][0] if page["items"] else None,
                       "position": page["position"]}
         else:
             output = command(args, space, value)

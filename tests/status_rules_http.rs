@@ -630,7 +630,7 @@ async fn work_priority_ac2_work_sorts_by_the_priority_chain_from_the_top() -> Re
             json!({"view":"available","limit":100}),
         )
         .await?;
-    let order: Vec<&str> = available["tasks"]
+    let order: Vec<&str> = available["items"]
         .as_array()
         .context("tasks")?
         .iter()

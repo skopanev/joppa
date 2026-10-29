@@ -154,7 +154,7 @@ async fn the_owner_releases_an_absent_workers_task_claim() -> Result<()> {
         )
         .await?;
         ensure!(
-            available["tasks"]
+            available["items"]
                 .as_array()
                 .unwrap()
                 .iter()

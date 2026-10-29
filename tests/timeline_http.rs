@@ -468,14 +468,17 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
         "a gap or a duplicate: {positions:?}"
     );
     ensure!(positions == journal, "{positions:?} / {journal:?}");
-    // MCP follows the same cursor with pages of 100.
+    // MCP follows the same cursor with pages of 25: a limit of 100 is clamped. Each page
+    // gives the total of the entries after `after`.
     let mut walked = vec![];
     let mut arguments = json!({"workspace":w.ws,"after":p,"limit":100});
+    let pages = journal.len().div_ceil(25);
     for page in 1.. {
-        ensure!(page <= 4, "the MCP cursor does not end");
+        ensure!(page <= pages + 1, "the MCP cursor does not end");
         let reply = w
             .mcp(w.token("bot"), "joppa_timeline", arguments.clone())
             .await?;
+        ensure!(reply["total"] == journal.len(), "{reply}");
         walked.extend(
             reply["items"]
                 .as_array()
@@ -484,7 +487,7 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
                 .map(|i| i["position"].as_i64().unwrap()),
         );
         if reply["next_cursor"].is_null() {
-            ensure!(page == 3, "{page} MCP pages of 100");
+            ensure!(page == pages, "{page} MCP pages of 25");
             break;
         }
         arguments["cursor"] = reply["next_cursor"].clone();

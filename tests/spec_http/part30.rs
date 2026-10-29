@@ -18,18 +18,18 @@ async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<
     };
     let available = queue("available").await?;
     ensure!(
-        available["tasks"].as_array().unwrap().len() == 1
-            && available["tasks"][0]["address"] == same
-            && available["tasks"][0]["claimable"] == true,
+        available["items"].as_array().unwrap().len() == 1
+            && available["items"][0]["address"] == same
+            && available["items"][0]["claimable"] == true,
         "{available}"
     );
     let waiting = queue("waiting").await?;
     let reason = format!("agent already holds task {held}");
     ensure!(
-        waiting["tasks"].as_array().unwrap().len() == 1
-            && waiting["tasks"][0]["address"] == other
-            && waiting["tasks"][0]["claimable"] == false
-            && waiting["tasks"][0]["waiting_reason"] == reason,
+        waiting["items"].as_array().unwrap().len() == 1
+            && waiting["items"][0]["address"] == other
+            && waiting["items"][0]["claimable"] == false
+            && waiting["items"][0]["waiting_reason"] == reason,
         "{waiting}"
     );
     let reply = w

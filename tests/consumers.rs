@@ -122,7 +122,8 @@ async fn consumer_refs_and_requirement_revisions_roundtrip_through_postgres() ->
     );
     let next = json!({"op":"revise","req":"r","expected_revision":1,"capability":"c2","consumers":["buyer"],"title":"Access persists","body":"Paid access","owner":"owner","reason":"Clarified consumer and capability","acs":[{"id":"ios","text":"Access persists on iOS"}]});
     common::append_legacy(&pool, &ws, "owner", "rev-2", &next).await?;
-    store::execute_input(&pool, &ws, "owner", "source", &json!({"op":"link_source","req":"r","revision":2,"id":"policy","kind":"document","uri":"https://example.test/policy","version":"v3","relation":"origin"})).await?;
+    // link_source is a removed operation: an old journal holds it, and replay reads it.
+    common::append_legacy(&pool, &ws, "owner", "source", &json!({"op":"link_source","req":"r","revision":2,"id":"policy","kind":"document","uri":"https://example.test/policy","version":"v3","relation":"origin"})).await?;
     let full = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert!(
         full["system_ids"]["consumer"]["buyer"]

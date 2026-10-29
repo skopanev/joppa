@@ -148,7 +148,7 @@ async fn a_done_task_under_a_green_criterion_shows_checks_passed() -> Result<()>
     );
     // The Task queue reads the same state and signal.
     let queue = mcp("joppa_tasks", json!({"workspace":w.ws,"view":"all"})).await?;
-    let entry = queue["tasks"]
+    let entry = queue["items"]
         .as_array()
         .and_then(|items| items.iter().find(|item| item["address"] == task))
         .ok_or_else(|| anyhow::anyhow!("the queue needs the task: {queue}"))?;

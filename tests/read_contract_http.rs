@@ -214,9 +214,11 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
         json!({"address":"requirement:d","history":true}),
     )
     .await?;
-    let revisions = history["revisions"].as_array().cloned().unwrap_or_default();
+    let revisions = history["items"].as_array().cloned().unwrap_or_default();
     ensure!(
         history["current_revision"] == 2
+            && history["total"] == 2
+            && history.get("revisions").is_none()
             && revisions.len() == 2
             && revisions[1]["revision"] == 2
             && revisions[1]["reason"] == "Second revision"

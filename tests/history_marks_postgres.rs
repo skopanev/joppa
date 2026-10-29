@@ -97,15 +97,19 @@ fn items(page: &Value) -> Vec<Value> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_default_read_returns_the_oldest_open_entry() -> Result<()> {
-    // ac:37bb64b0: entry 1 is processed, entries 2 and 3 are open.
+    // ac:37bb64b0: entry 1 is processed, the later entries are open. A default read gives
+    // a page of up to 25 open entries, oldest first, and their total.
     let pool = pool().await?;
     let ws = workspace(&pool, 1).await?;
     mark(&pool, &ws, json!({"position":1,"reason":"Seen","nodes":[]})).await?;
     let page = history(&pool, &ws, json!({})).await?;
     let list = items(&page);
-    ensure!(list.len() == 1, "{page}");
     ensure!(
-        list[0]["position"] == 2 && list[0]["status"] == "open",
+        list.len() >= 2 && page["total"] == list.len() && page["limit"] == 25,
+        "{page}"
+    );
+    ensure!(
+        list[0]["position"] == 2 && list.iter().all(|i| i["status"] == "open"),
         "{page}"
     );
     ensure!(page["next_item"] == 2, "{page}");

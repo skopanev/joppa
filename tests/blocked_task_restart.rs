@@ -160,6 +160,15 @@ impl Fixture {
 /// fields are kept, so no read time can differ between reads.
 type Snapshot = BTreeMap<&'static str, Value>;
 
+/// The list of a reply: MCP gives `items`, HTTP gives `tasks` or `revisions`.
+fn listed<'a>(reply: &'a Value, http_key: &str) -> &'a Value {
+    if reply["items"].is_array() {
+        &reply["items"]
+    } else {
+        &reply[http_key]
+    }
+}
+
 /// One read of the token member: the HTTP `path`, or the MCP `tool` with `arguments`.
 async fn fetch(
     http: &reqwest::Client,
@@ -218,7 +227,7 @@ async fn snapshot(
     )
     .await?;
     let find = |page: &Value, address: &str| {
-        page["tasks"]
+        listed(page, "tasks")
             .as_array()
             .and_then(|tasks| tasks.iter().find(|t| t["address"] == address))
             .cloned()
@@ -523,7 +532,7 @@ async fn planning_snapshot(
             json!({"view":view,"limit":100}),
         )
         .await?;
-        pages.insert(view, page["tasks"].clone());
+        pages.insert(view, listed(&page, "tasks").clone());
     }
     let unstarted = get(
         "objects?work_filter=unstarted&limit=100".into(),
@@ -813,12 +822,15 @@ async fn journal_snapshot(
             json!({"address":address,"history":true}),
         )
         .await?;
-        let count = history["revisions"].as_array().map_or(0, Vec::len) as u64;
+        let count = listed(&history, "revisions").as_array().map_or(0, Vec::len) as u64;
         ensure!(
             count > 0 && history["current_revision"] == count,
             "{address}: no revisions: {history}"
         );
-        out.insert(format!("history {address}"), history["revisions"].clone());
+        out.insert(
+            format!("history {address}"),
+            listed(&history, "revisions").clone(),
+        );
         for n in 1..=count {
             let revision = get(
                 format!("objects?address={address}&revision={n}"),

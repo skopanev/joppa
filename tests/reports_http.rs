@@ -13,6 +13,15 @@ mod compact_of;
 #[path = "common/record_http.rs"]
 mod record_http;
 
+/// The Task list of a queue reply: MCP gives `items`, HTTP gives `tasks`.
+fn listed(page: &Value) -> &Value {
+    if page["items"].is_array() {
+        &page["items"]
+    } else {
+        &page["tasks"]
+    }
+}
+
 /// The data of one criterion under requirement:key.
 fn criterion(title: &str) -> Value {
     json!({"title":title,"owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]})
@@ -3633,7 +3642,7 @@ async fn a_blocked_task_refuses_claims_and_leaves_the_queue_over_http_and_mcp() 
                 .unwrap_or_default(),
         )?;
         for (transport, page) in [("HTTP", http), ("MCP", mcp)] {
-            let tasks = page["tasks"].as_array().cloned().unwrap_or_default();
+            let tasks = listed(&page).as_array().cloned().unwrap_or_default();
             let t = tasks.iter().find(|t| t["address"] == "work:t");
             if view == "available" {
                 ensure!(t.is_none(), "{transport} available lists T: {page}");
@@ -3889,7 +3898,7 @@ async fn finish_planning_clears_a_block_after_a_new_dependency_and_names_it() ->
             .unwrap_or_default(),
     )?;
     for (transport, page) in [("HTTP", http), ("MCP", mcp)] {
-        let tasks = page["tasks"].as_array().cloned().unwrap_or_default();
+        let tasks = listed(&page).as_array().cloned().unwrap_or_default();
         let t = tasks.iter().find(|t| t["address"] == "work:t");
         ensure!(
             t.is_some_and(|t| t["claimable"] == false
@@ -4072,7 +4081,7 @@ async fn the_planner_unblocks_a_task_and_finishes_planning_in_one_batch() -> Res
             .unwrap_or_default(),
     )?;
     for (transport, page) in [("HTTP", http), ("MCP", mcp)] {
-        let tasks = page["tasks"].as_array().cloned().unwrap_or_default();
+        let tasks = listed(&page).as_array().cloned().unwrap_or_default();
         ensure!(
             tasks
                 .iter()

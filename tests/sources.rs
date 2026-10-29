@@ -165,7 +165,15 @@ async fn external_source_round_trip_preserves_history_and_workspace_isolation() 
         .await?,
         before
     );
-    store::execute(&pool, &workspace, "agent", "external-source", &source).await?;
+    // link_source is a removed operation: an old journal holds it, and replay reads it.
+    common::append_legacy(
+        &pool,
+        &workspace,
+        "agent",
+        "external-source",
+        &external_source(),
+    )
+    .await?;
     let linked = store::read(
         &pool,
         &workspace,

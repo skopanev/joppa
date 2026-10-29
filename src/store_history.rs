@@ -213,7 +213,8 @@ mod tests {
 
     #[test]
     fn a_history_page_holds_1_to_25_entries() {
-        assert_eq!(page_limit(&json!({})).unwrap(), 1);
+        assert_eq!(page_limit(&json!({})).unwrap(), 25);
+        assert_eq!(page_limit(&json!({"limit": 1})).unwrap(), 1);
         assert_eq!(page_limit(&json!({"limit": 25})).unwrap(), 25);
         for bad in [json!(0), json!(26), json!("5")] {
             assert!(

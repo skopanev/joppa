@@ -1,19 +1,24 @@
-//! Live writes refuse the removed operations over MCP and HTTP and name save_object.
+//! Live writes refuse the removed operations over MCP and HTTP and name the replacement.
 //! Old journals still hold them; a replay reads them (tests on `common::World`).
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
-use joppa::removed_ops::NAMES;
+use joppa::removed_ops::{NAMES, refusal};
 use serde_json::{Value, json};
 
 // A regression check without a criterion: the product spec names no removed operation.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn each_removed_operation_is_refused_live_and_names_save_object() -> Result<()> {
+async fn each_removed_operation_is_refused_live_and_names_its_replacement() -> Result<()> {
     let w = record_world::world(&[]).await?;
     let before = w.position().await?;
+    let help = w
+        .mcp(&w.bot, "joppa_help", json!({}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
     for op in NAMES {
-        let expected = format!("{op} was removed; use save_object");
+        ensure!(help["operations"].get(op).is_none(), "{op} in joppa_help");
+        let expected = refusal(op);
         let refused = w.command(&w.bot, json!({"op":op,"id":"x"})).await?;
         ensure!(
             refused

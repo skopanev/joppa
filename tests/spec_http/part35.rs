@@ -13,7 +13,7 @@ async fn a_completed_prerequisite_task_unblocks_its_dependent_over_mcp() -> Resu
     let available = async || {
         let page = mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":"available"})).await?;
         anyhow::Ok(
-            page["tasks"]
+            page["items"]
                 .as_array()
                 .into_iter()
                 .flatten()

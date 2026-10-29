@@ -65,7 +65,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     let available: Value =
         serde_json::from_str(available["content"][0]["text"].as_str().unwrap_or("null"))?;
     ensure!(
-        available["tasks"]
+        available["items"]
             .as_array()
             .is_some_and(|tasks| tasks.iter().any(|task| task["address"] == "task:handover")),
         "{available}"

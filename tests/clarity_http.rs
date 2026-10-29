@@ -124,8 +124,9 @@ async fn mcp_tests_without_a_criterion_give_the_same_overview_as_http() -> Resul
         .await?
         .json()
         .await?;
+    // MCP gives the same items as one page of 25 with the total.
     ensure!(
-        mcp == http && mcp["items"][0]["address"] == A,
+        mcp["items"] == http["items"] && mcp["total"] == 1 && mcp["items"][0]["address"] == A,
         "{mcp} {http}"
     );
     Ok(())

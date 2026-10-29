@@ -334,27 +334,27 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
             'data':{'title':'Restore access','owner':'owner','projects':[],'purpose':'implementation',
                 'contract':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['tasks'][0]['id'] == task_id
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['id'] == task_id
         criterion_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
         criterion_process = criterion_read['process']
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
             'op':'assess','req':criterion_read['document']['parent'],'revision':criterion_process['revision'],'ac':'ac:'+task_ac,
             'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == task_id
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['id'] == task_id
         claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
             'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
         assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == task_id
-        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['tasks'][0]['status'] == 'in_progress'
+        assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['items'][0]['status'] == 'in_progress'
         client_env={**env,'XDG_CACHE_HOME':str(Path(temp)/'client-cache'),'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
         def client(*arguments):
             result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),'task',*arguments],
                                   env=client_env,capture_output=True,text=True,check=True)
             return json.loads(result.stdout)
-        assert client('list','--view','mine')['tasks'][0]['id'] == task_id
+        assert client('list','--view','mine')['items'][0]['id'] == task_id
         client('release','mcp-open-task','--reason','Handoff to another process')
         preview = client('next','--dry-run','--priority','domain:'+draft_id)
         assert preview['task']['id'] == task_id
-        assert client('list','--view','available')['tasks'][0]['id'] == task_id
+        assert client('list','--view','available')['items'][0]['id'] == task_id
         assert client('next','--priority','requirement:'+task_req,
                       '--request-id','cli-priority-next')['command']['id'] == task_id
         client('release','mcp-open-task','--reason','Return to explicit claim')
@@ -362,7 +362,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
         found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
         assert found['mode'] == 'full_text' and found['semantic_status'] == 'unavailable'
-        assert found['items'][0]['system_id'] == public_id
+        assert found['items'][0]['id'] == task_req and 'system_id' not in found['items'][0] and 'req' not in found['items'][0]
         denied_search = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
             'params':{'name':'joppa_search','arguments':{'workspace':mcp_ws,'query':'recovery'}}},other_token)[1]
         assert denied_search['result']['isError']
@@ -419,7 +419,7 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         latest=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key'})
         headers=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','history':True})
         assert latest['current_revision']==3 and 'revisions' not in latest
-        assert headers['current_revision']==3 and [r['revision'] for r in headers['revisions']]==[1,2,3]
+        assert headers['current_revision']==3 and headers['total']==3 and [r['revision'] for r in headers['items']]==[1,2,3]
         assert latest['document']['data']['body']=='Updated wording' and 'item_id' not in latest
         previous=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','revision':2})
         assert previous['document']['revision']==2

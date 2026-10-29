@@ -160,35 +160,3 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
     );
     Ok(())
 }
-
-// read-mcp-pages
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn removed_operations_are_refused_with_their_replacement() -> Result<()> {
-    let w = record_world::world(&[]).await?;
-    for (command, refusal) in [
-        (
-            json!({"op":"set_domain_archived","id":"d","archived":true,"reason":"Old"}),
-            "set_domain_archived was removed; use archive_object or restore_object",
-        ),
-        (
-            json!({"op":"confirm_tree"}),
-            "confirm_tree was removed; use save_object; a saved tree needs no confirmation",
-        ),
-        (
-            json!({"op":"link_source","req":"r","revision":1,"id":"s","kind":"document","uri":"https://example.test","version":"1","relation":"origin"}),
-            "link_source was removed; use save_object with a Note and its links",
-        ),
-    ] {
-        let refused = w.command(&w.owner, command).await?;
-        ensure!(
-            refused.as_ref().err().is_some_and(|e| e.contains(refusal)),
-            "{refused:?}"
-        );
-    }
-    let help = read(&w, "joppa_help", json!({})).await?;
-    for name in ["set_domain_archived", "confirm_tree", "link_source"] {
-        ensure!(help["operations"].get(name).is_none(), "{name} in help");
-    }
-    Ok(())
-}

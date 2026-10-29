@@ -106,13 +106,31 @@ async fn search(
         String::from_utf8_lossy(&out.stderr)
     );
     let cli: Value = serde_json::from_slice(&out.stdout).context("CLI output")?;
-    // MCP and the CLI give the HTTP items without empty keys and item IDs.
-    let compact = joppa::read_compact::strip_reply(http.clone());
+    // MCP and the CLI give the HTTP items without empty keys, item IDs and public IDs,
+    // without `req` on a requirement, and with `workspace` only for all workspaces.
+    let mut compact = joppa::read_compact::strip_reply(http.clone());
+    for item in compact["items"].as_array_mut().into_iter().flatten() {
+        let map = item.as_object_mut().context("item")?;
+        map.remove("system_id");
+        if map.get("kind") == Some(&json!("requirement")) {
+            map.remove("req");
+        }
+        if !workspaces {
+            map.remove("workspace");
+        }
+    }
     ensure!(
         compact["items"] == tool["items"] && tool["items"] == cli["items"],
         "HTTP, MCP and CLI disagree:\n{http}\n{tool}\n{cli}"
     );
-    Ok(tool["items"].as_array().cloned().unwrap_or_default())
+    // A search of one workspace names it once, in the reply.
+    let mut items = tool["items"].as_array().cloned().unwrap_or_default();
+    for item in &mut items {
+        if item.get("workspace").is_none() {
+            item["workspace"] = tool["workspace"].clone();
+        }
+    }
+    Ok(items)
 }
 
 fn find<'a>(items: &'a [Value], ws: &str, id: &str) -> Vec<&'a Value> {

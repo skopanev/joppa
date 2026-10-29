@@ -76,9 +76,14 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     )
     .await?;
 
-    // The MCP default is one entry. A limit above 25 is refused.
-    let one = page(&pool, &ws, json!({})).await?;
-    ensure!(one["items"].as_array().map(Vec::len) == Some(1), "{one}");
+    // The default is a page of 25 with the total of the view. The store refuses a limit
+    // above 25; the MCP tool clamps it.
+    let default = page(&pool, &ws, json!({})).await?;
+    ensure!(
+        default["items"].as_array().map(Vec::len) == Some(25)
+            && default["total"].as_u64() >= Some(31),
+        "{default}"
+    );
     let refused = page(&pool, &ws, json!({"limit": 26})).await.unwrap_err();
     ensure!(
         refused.to_string().contains("between 1 and 25"),
