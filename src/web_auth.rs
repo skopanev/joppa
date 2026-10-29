@@ -16,3 +16,6 @@ mod cookie;
 #[path = "web_auth_login.rs"]
 mod login;
 pub use cookie::*;
+#[cfg(test)]
+#[path = "web_auth_tests.rs"]
+mod tests;

@@ -14,3 +14,6 @@ pub(crate) use part::*;
 #[path = "mcp_oauth_approve.rs"]
 mod approve;
 pub(crate) use approve::*;
+#[cfg(test)]
+#[path = "mcp_oauth_tests.rs"]
+mod tests;
