@@ -21,10 +21,12 @@ fn cursor_position(cursor: &str) -> Result<i64> {
 fn page_limit(args: &Value) -> Result<i64> {
     match args.get("limit") {
         None | Some(Value::Null) => Ok(HISTORY_LIMIT),
+        // A larger limit is clamped to 25, never refused.
         Some(value) => value
             .as_i64()
-            .filter(|n| (1..=HISTORY_LIMIT).contains(n))
-            .ok_or_else(|| commands::ClientField("limit must be between 1 and 25").into()),
+            .filter(|n| *n >= 1)
+            .map(|n| n.min(HISTORY_LIMIT))
+            .ok_or_else(|| commands::ClientField("limit must be a whole number from 1").into()),
     }
 }
 
@@ -216,7 +218,8 @@ mod tests {
         assert_eq!(page_limit(&json!({})).unwrap(), 25);
         assert_eq!(page_limit(&json!({"limit": 1})).unwrap(), 1);
         assert_eq!(page_limit(&json!({"limit": 25})).unwrap(), 25);
-        for bad in [json!(0), json!(26), json!("5")] {
+        assert_eq!(page_limit(&json!({"limit": 26})).unwrap(), 25);
+        for bad in [json!(0), json!("5")] {
             assert!(
                 page_limit(&json!({"limit": bad}))
                     .unwrap_err()

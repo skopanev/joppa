@@ -4562,7 +4562,7 @@ impl Planning<'_> {
 
 /// The entry of `address` on one Task view page.
 fn queued(page: &Value, address: &str) -> Option<Value> {
-    page["tasks"]
+    task_list(page)
         .as_array()
         .and_then(|tasks| tasks.iter().find(|t| t["address"] == address))
         .cloned()

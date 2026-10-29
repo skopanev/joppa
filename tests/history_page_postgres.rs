@@ -76,19 +76,21 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     )
     .await?;
 
-    // The default is a page of 25 with the total of the view. The store refuses a limit
-    // above 25; the MCP tool clamps it.
+    // The default is a page of 25 with the total of the view. A limit of 26 is clamped to
+    // 25; a limit of 0 is refused.
     let default = page(&pool, &ws, json!({})).await?;
     ensure!(
         default["items"].as_array().map(Vec::len) == Some(25)
             && default["total"].as_u64() >= Some(31),
         "{default}"
     );
-    let refused = page(&pool, &ws, json!({"limit": 26})).await.unwrap_err();
+    let clamped = page(&pool, &ws, json!({"limit": 26})).await?;
     ensure!(
-        refused.to_string().contains("between 1 and 25"),
-        "{refused}"
+        clamped["items"].as_array().map(Vec::len) == Some(25) && clamped["limit"] == 25,
+        "{clamped}"
     );
+    let refused = page(&pool, &ws, json!({"limit": 0})).await.unwrap_err();
+    ensure!(refused.to_string().contains("limit"), "{refused}");
 
     // Every entry after the marked entry 1 is open: at least 31. The first page holds 25,
     // and the cursor gives the rest once, in journal order.

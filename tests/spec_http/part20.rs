@@ -72,7 +72,7 @@ async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
     ensure!(
         first["kind"] == "note"
             && first["id"] == "second"
-            && first["system_id"] == query
+            && first.get("system_id").is_none()
             && first["exact_id"] == true
             && found["items"].as_array().map(Vec::len) == Some(1),
         "{query}: {found}"

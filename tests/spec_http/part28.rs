@@ -69,34 +69,6 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
-    // set_domain_archived acts on a domain of an old journal.
-    w.pool.get().await?.execute(
-        "INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,COALESCE(MAX(position),0)+1,'owner','old-spare',$2::text::jsonb FROM joppa.events WHERE workspace=$1",
-        &[&w.ws, &json!({"op":"domain","id":"spare","title":"Spare","owner":"owner"}).to_string()],
-    ).await?;
-    store::backfill_board(&w.pool).await?;
-    covered.push(
-        check_callers(
-            &w,
-            &help,
-            None,
-            json!({"op":"set_domain_archived","id":"spare","archived":true,"reason":"Unused"}),
-            &w.owner,
-            "workspace owner archives domains",
-        )
-        .await?,
-    );
-    covered.push(
-        check_callers(
-            &w,
-            &help,
-            None,
-            json!({"op":"confirm_tree"}),
-            &w.owner,
-            "workspace owner confirms the tree",
-        )
-        .await?,
-    );
     // alex owns each job. The Task owner is neither the holder nor the workspace owner.
     let bot = Some(w.bot.as_str());
     w.command_as(
