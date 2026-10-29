@@ -16,14 +16,20 @@ pub(super) fn page_at(origin: &str) -> String {
         .replace('<', "&lt;");
     include_str!("board.html")
         .replace("/* PUBLIC_ORIGIN */", &escaped)
-        .replace("/* BOARD_STYLE */", include_str!("board.css"))
+        .replace(
+            "/* BOARD_STYLE */",
+            concat!(include_str!("board.css"), include_str!("board_more.css")),
+        )
         .replace("/* BRAND_STYLE */", include_str!("brand.css"))
         .replace("/* BOARD_IMPORTS */", &served_imports())
 }
 
 pub(super) fn tree_page() -> String {
     include_str!("tree.html")
-        .replace("/* BOARD_STYLE */", include_str!("board.css"))
+        .replace(
+            "/* BOARD_STYLE */",
+            concat!(include_str!("board.css"), include_str!("board_more.css")),
+        )
         .replace("/* BRAND_STYLE */", include_str!("brand.css"))
         .replace("/* TREE_STYLE */", include_str!("tree.css"))
         .replace("/* TREE_SCRIPT */", include_str!("tree.js"))

@@ -190,7 +190,10 @@ pub(crate) async fn authorize(
         ],
         Html(
             include_str!("oauth.html")
-                .replace("/* BOARD_STYLE */", include_str!("board.css"))
+                .replace(
+                    "/* BOARD_STYLE */",
+                    concat!(include_str!("board.css"), include_str!("board_more.css")),
+                )
                 .replace("/* BRAND_STYLE */", include_str!("brand.css")),
         ),
     )
