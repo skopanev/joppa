@@ -84,7 +84,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             revision,
             history,
             limit,
-            cursor: a["cursor"].as_str(),
+            // The cursor of a history read pages the revision headers here.
+            cursor: a["cursor"].as_str().filter(|_| !history),
             note_status: a["note_status"].as_str(),
             related_to: a["related_to"].as_str(),
             work_filter: a["work_filter"].as_str(),
