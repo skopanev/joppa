@@ -216,61 +216,6 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());
     assert_eq!(r.number, 1, "a link does not rewrite the test contract");
 }
-// [ac:dependency-evidence-ac1], narrowed by dependencies-before-priority: a criterion's
-// blocking link orders work. Its wait reads test status in the store; it pins nothing here.
-#[test]
-fn criterion_dependencies_keep_evidence_and_pin_no_revision() {
-    let mut w = World::new();
-    w.ready();
-    let key = w.state.objects["ac:key"].current().data.clone();
-    save(
-        &mut w,
-        "ac:key",
-        Some("requirement:r"),
-        key.clone(),
-        vec![link("ac:ios", Some(1), true)],
-    );
-    assert!(objects::work_ready(&w.state, "ac:key"));
-    assert_eq!(
-        objects::assessment(&w.state, "ac:key").unwrap()["state"],
-        "ready",
-        "a blocking link change resets nothing"
-    );
-    w.run("green", "pass");
-    let prior = w.state.requirements["r"].revisions[0].runs["green"]
-        .results
-        .clone();
-    let domain = w.state.objects["domain:d"].current().data.clone();
-    save(
-        &mut w,
-        "domain:d",
-        None,
-        domain,
-        vec![link("ac:ios", Some(1), false)],
-    );
-    // check-list-frozen-ac2: the domain link change resets readiness below it.
-    assert_eq!(
-        objects::assessment(&w.state, "ac:key").unwrap()["state"],
-        "unassessed"
-    );
-    for ac in ["ios", "key"] {
-        w.ok("agent", assess(ac, true));
-    }
-    w.legacy("agent", revision(1));
-    assert!(objects::work_ready(&w.state, "ac:key"));
-    assert_eq!(
-        w.state.requirements["r"].revisions[0].runs["green"]
-            .results
-            .len(),
-        prior.len(),
-        "unrelated metadata keeps evidence"
-    );
-    assert!(objects::review_links(&w.state, "ac:key").is_empty());
-    assert_eq!(
-        w.state.objects["ac:key"].current().links,
-        vec![link("ac:ios", Some(1), true)]
-    );
-}
 #[test]
 fn a_legacy_req_move_updates_the_common_parent_once() {
     let mut w = World::new();
@@ -441,27 +386,6 @@ fn legacy_multiple_ac_tasks_keep_their_original_document_and_binding() {
     w.no("agent", new);
 }
 
-#[test]
-fn legacy_plans_allow_owner_review_without_a_new_scope_contract() {
-    let mut w = World::new();
-    w.ready();
-    w.run("old", "pass");
-    w.legacy("agent", revision(1));
-    let mut plan = plan("new");
-    plan["revision"] = json!(2);
-    plan["enforce_coverage"] = json!(true);
-    plan["checks"][0]["id"] = json!("[ios] replacement check");
-    w.ok("runner", plan);
-    let r = &w.state.requirements["r"].revisions[1];
-    assert!(!r.coverage_policy);
-    assert!(r.verification_scope.is_none());
-    assert!(!r.coverage_change.is_empty());
-    let review = json!({"op":"review_coverage","req":"r","revision":2,"run":"new","reason":"Replacement check covers the same contract"});
-    w.no("agent", review.clone());
-    w.ok("owner", review);
-    assert_eq!(w.summary(2)["coverage_reviewed"], true);
-}
-
 // [ask-only-missing-ac3]
 #[test]
 fn note_processing_keeps_source_and_reopens_changed_input() {
@@ -473,13 +397,13 @@ fn note_processing_keeps_source_and_reopens_changed_input() {
         json!({"title":"Input","owner":"owner","body":"Original","custom":"Context"}),
         vec![link("domain:d", None, false)],
     );
-    w.ok("agent", json!({"op":"set_note_status","target":"note:input","revision":1,"status":"processed","reason":"Updated the linked domain"}));
+    w.ok("agent", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"changed_spec","reason":"Updated the linked domain","links":["domain:d"]}));
     let r = w.state.objects["note:input"].current();
     assert_eq!(r.data["body"], "Original");
     assert_eq!(r.data["custom"], "Context");
     assert_eq!(r.links.len(), 1);
     assert_eq!(r.data["status"], "processed");
-    w.no("agent", json!({"op":"set_note_status","target":"note:input","revision":1,"status":"unprocessed","reason":"Stale input"}));
+    w.no("agent", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"changed_spec","reason":"Stale input","links":["domain:d"]}));
     save(
         &mut w,
         "note:input",
@@ -495,8 +419,8 @@ fn note_processing_keeps_source_and_reopens_changed_input() {
         w.state.objects["note:input"].revisions[1].data["status"],
         "processed"
     );
-    w.no("agent", json!({"op":"set_note_status","target":"domain:d","revision":1,"status":"processed","reason":"Wrong type"}));
-    w.no("agent", json!({"op":"set_note_status","target":"note:input","revision":3,"status":"done","reason":"Wrong status"}));
+    w.no("agent", json!({"op":"decide_note","target":"domain:d","revision":1,"outcome":"changed_spec","reason":"Wrong type","links":["domain:d"]}));
+    w.no("agent", json!({"op":"decide_note","target":"note:input","revision":3,"outcome":"done","reason":"Wrong outcome"}));
 }
 
 #[test]
@@ -644,7 +568,7 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
         json!({"title":"Provider change","owner":"owner","source":"New permission rules"}),
         vec![],
     );
-    w.ok("agent",json!({"op":"set_note_status","target":"incoming:n","revision":1,"status":"processed","reason":"Reviewed source"}));
+    w.ok("owner",json!({"op":"decide_note","target":"incoming:n","revision":1,"outcome":"rejected","reason":"Reviewed source"}));
     assert_eq!(
         objects::process(&w.state, "incoming:n")["status"],
         "processed"
@@ -671,166 +595,21 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
         json!({"title":"Ordinary document","owner":"owner"}),
         vec![],
     );
-    w.no("agent",json!({"op":"set_note_status","target":"note:ordinary","revision":1,"status":"processed","reason":"This type is not an inbox"}));
+    w.no("owner",json!({"op":"decide_note","target":"note:ordinary","revision":1,"outcome":"rejected","reason":"This type is not an inbox"}));
 }
 
 #[test]
-fn launch_configuration_preserves_owner_acceptance_and_can_disable_the_preset() {
+fn launch_configuration_counts_blockers_and_can_disable_the_preset() {
     let mut w = World::new();
     let baseline = objects::launch_summary(&w.state);
     assert_eq!(baseline["blocker_count"], 1);
     w.ready();
-    w.run("pass", "pass");
+    // Only an accept_commit acceptance on a green record makes the launch ready.
     assert_eq!(objects::launch_summary(&w.state)["ready"], false);
-    w.ok(
-        "owner",
-        json!({"op":"accept","req":"r","revision":1,"run":"pass"}),
-    );
-    assert_eq!(objects::launch_summary(&w.state)["ready"], true);
     let mut types = objects::defaults();
     types.get_mut("ac").unwrap().launch_blocker = Some(false);
     w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Remove launch conditions from this type"}));
     assert_eq!(objects::launch_summary(&w.state)["configured"], false);
-}
-
-// [ac:dependency-evidence-ac2]
-#[test]
-fn requirement_dependencies_follow_tests_and_completed_work_loses_verification() {
-    let mut w = World::new();
-    w.ready();
-    joppa::tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    let pin = w.state.objects["requirement:r"].current().revision;
-    save(
-        &mut w,
-        "task:dependent",
-        Some("ac:ios"),
-        json!({"title":"Implement access","owner":"owner","contract":"Implement access and record the result","purpose":"implementation","projects":[]}),
-        vec![link("requirement:r", Some(pin), true)],
-    );
-    w.no(
-        "agent",
-        json!({"op":"claim_task","id":"task:dependent","revision":1}),
-    );
-    let run = |w: &mut World, id: &str, outcome: &str| {
-        let mut checks = plan(id);
-        checks["checks"][0]["tasks"] = json!([{"address":"task:dependent","origin_revision":1}]);
-        w.ok("runner", checks);
-        w.ok(
-            "runner",
-            result(id, "[ios] paid access", outcome, vec!["access retained"]),
-        );
-        w.ok(
-            "owner",
-            result(id, "key-permissions", "pass", vec!["read", "verify"]),
-        );
-        w.ok(
-            "runner",
-            json!({"op":"finish","req":"r","revision":1,"run":id}),
-        );
-    };
-    run(&mut w, "first", "pass");
-    assert_eq!(w.summary(1)["accepted"], false);
-    assert!(objects::work_ready(&w.state, "task:dependent"));
-    w.ok(
-        "agent",
-        json!({"op":"claim_task","id":"task:dependent","revision":1}),
-    );
-    w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","id":"task:dependent","revision":2,"evidence":"Access implementation delivered"}));
-    let completion = w.state.task_process["task:dependent"].done.clone();
-    assert_eq!(
-        objects::process(&w.state, "task:dependent")["verification"],
-        "pass"
-    );
-    run(&mut w, "second", "fail");
-    assert!(!objects::work_ready(&w.state, "task:dependent"));
-    let process = objects::process(&w.state, "task:dependent");
-    assert_eq!(process["status"], "done");
-    assert_eq!(process["verification"], "unverified");
-    assert_eq!(w.state.task_process["task:dependent"].done, completion);
-}
-
-#[test]
-fn common_document_fields_survive_process_commands_and_full_replacement_removes_them() {
-    let mut w = World::new();
-    objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    let baseline = w.state.objects["requirement:r"].revisions.clone();
-    let mut data = w.state.objects["requirement:r"].current().data.clone();
-    data["rationale"] = json!({"source":"customer interview","priority":3});
-    data["labels"] = json!(["mobile", "access"]);
-    save(
-        &mut w,
-        "requirement:r",
-        Some("capability:c"),
-        data.clone(),
-        vec![],
-    );
-    let rev = w.state.requirements["r"].revisions.last().unwrap().number;
-    w.ok("owner", json!({"op":"confirm","req":"r","revision":rev}));
-    for ac in ["ios", "key"] {
-        let mut cmd = assess(ac, true);
-        cmd["revision"] = json!(rev);
-        w.ok("agent", cmd);
-    }
-    w.ok("owner", json!({"op":"define_verification_scope","req":"r","revision":rev,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Define the tested components"}));
-    let mut cmd = plan("custom-fields");
-    cmd["revision"] = json!(rev);
-    w.ok("runner", cmd);
-    let mut cmd = result(
-        "custom-fields",
-        "[ios] paid access",
-        "pass",
-        vec!["access retained"],
-    );
-    cmd["revision"] = json!(rev);
-    w.ok("runner", cmd);
-    let mut cmd = result(
-        "custom-fields",
-        "key-permissions",
-        "pass",
-        vec!["read", "verify"],
-    );
-    cmd["revision"] = json!(rev);
-    w.ok("owner", cmd);
-    w.ok(
-        "runner",
-        json!({"op":"finish","req":"r","revision":rev,"run":"custom-fields"}),
-    );
-    let current = w.state.objects["requirement:r"].current();
-    assert_eq!(current.data["rationale"], data["rationale"]);
-    assert_eq!(current.data["labels"], data["labels"]);
-    assert!(joppa::checks::summary(w.state.requirements["r"].revisions.last().unwrap())["ready_for_acceptance"].as_bool().unwrap());
-    assert_eq!(
-        serde_json::to_value(&w.state.objects["requirement:r"].revisions[..baseline.len()])
-            .unwrap(),
-        serde_json::to_value(baseline).unwrap()
-    );
-    let mut forged = data.clone();
-    forged["confirmed"] = json!(true);
-    let current_revision = w.state.objects["requirement:r"].current().revision;
-    w.no("agent",json!({"op":"save_object","kind":"requirement","id":"r","revision":current_revision,"parent":"capability:c","data":forged,"reason":"Inject process evidence"}));
-    data.as_object_mut().unwrap().remove("rationale");
-    data.as_object_mut().unwrap().remove("labels");
-    save(&mut w, "requirement:r", Some("capability:c"), data, vec![]);
-    assert!(
-        w.state.objects["requirement:r"]
-            .current()
-            .data
-            .get("rationale")
-            .is_none()
-    );
-    assert!(
-        w.state.objects["requirement:r"]
-            .current()
-            .data
-            .get("labels")
-            .is_none()
-    );
-    assert_eq!(
-        w.state.requirements["r"].revisions[(rev - 1) as usize].runs["custom-fields"]
-            .results
-            .len(),
-        2
-    );
 }
 
 fn archive_world() -> World {

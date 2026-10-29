@@ -56,7 +56,7 @@ async fn inbox_order_uses_the_schema_and_rejects_a_stale_cursor() -> Result<()> 
         "{processed} / {next}"
     );
     let stale = first["next_cursor"].as_str().unwrap();
-    w.command(json!({"op":"set_note_status","target":"input:y-nested","revision":1,"status":"processed","reason":"Reviewed"})).await?;
+    w.command(json!({"op":"decide_note","target":"input:y-nested","revision":1,"outcome":"rejected","reason":"Reviewed"})).await?;
     let response = w
         .http
         .get(format!(

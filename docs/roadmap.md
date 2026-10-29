@@ -66,7 +66,7 @@ Acceptance criteria:
 - Verify an all-pass set, a single failure, missing or skipped evidence, a new
   revision, an empty branch and filtering that hides a failing child.
 
-Touchpoints: `src/board.js`, `src/board.css`, `tests/browser.cjs`, server summaries.
+Touchpoints: `src/board.js`, `src/board.css`, `tests/grey_ac_browser.cjs`, server summaries.
 
 ## 3. Enforce evidence-to-release matching in a pilot release pipeline
 

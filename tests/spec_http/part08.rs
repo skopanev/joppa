@@ -10,7 +10,11 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         ("first", "The first boundary is clear"),
         ("second", "The second boundary still needs work"),
     ];
-    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    // Two tests prove the criterion; the list is saved before the readiness assessment.
+    let tests = ["tests/key.rs > first_boundary", "tests/key.rs > second_boundary"];
+    w.command(json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Bind"})).await?;
+    let a = object_as(&w, &w.bot, "ac:key-rights", None).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":a["process"]["assessment"]["revision"],"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
     w.command_as(
         &w.bot,
@@ -24,18 +28,10 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         )
         .await?;
     }
-    // Check runs are internal now: the fixture records the partial run through the store.
-    let internal = async |actor: &str, command: Value| {
-        store::execute_input(&w.pool, &w.ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
-    };
-    internal("owner", json!({"op":"define_verification_scope","req":"requirement:key","revision":2,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
-    internal("bot", json!({"op":"plan","req":"requirement:key","revision":2,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[ac:key-rights] first-boundary","ac":"ac:key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[ac:key-rights] second-boundary","ac":"ac:key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
-    let partial = json!({"check":"[ac:key-rights] first-boundary","outcome":"pass","observed":["The first boundary holds"],"note":"Partial implementation at commit def456","link":"https://example.test/repository/commit/def456"});
-    internal(
-        "bot",
-        json!({"op":"result","req":"requirement:key","revision":2,"run":"partial","evidence":partial}),
-    )
-    .await?;
+    // P records a partial result: the first test passes at def4567, the second has no result.
+    let partial = json!({"workspace":w.ws,"commit":"def4567","results":[{"test":tests[0],"status":"pass"}]});
+    let recorded = mcp_call(&w, &w.bot, "joppa_record_results", partial).await?;
+    ensure!(recorded["isError"] != true, "{recorded}");
 
     let before = object_as(&w, bot2, "task:handover", None).await?;
     let n = before["current_revision"].as_u64().unwrap() as u32;
@@ -134,34 +130,13 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         n + 2
     );
 
-    let evidence = w
-        .http
-        .get(format!(
-            "{}/api/workspaces/{}/board?level=process&id=task:handover",
-            w.root, w.ws
-        ))
-        .bearer_auth(bot2)
-        .send()
-        .await?;
-    ensure!(evidence.status().is_success(), "{}", evidence.text().await?);
-    let evidence: Value = evidence.json().await?;
-    let run = &evidence["runs"]["partial"];
+    // Q reads the partial result that P recorded.
+    let status = mcp_call(&w, bot2, "joppa_tests", json!({"workspace":w.ws,"ac":"ac:key-rights"})).await?;
+    let status: Value = serde_json::from_str(status["content"][0]["text"].as_str().unwrap_or("null"))?;
+    let first = status["tests"].as_array().and_then(|t| t.iter().find(|t| t["address"] == tests[0]).cloned());
     ensure!(
-        run["subject"]["commit"] == "def456" && run["reporter"] == "bot",
-        "{run}"
-    );
-    ensure!(
-        run["finished"].is_null() && run["discovery_complete"] == false,
-        "{run}"
-    );
-    ensure!(
-        run["results"]["[ac:key-rights] first-boundary"] == partial
-            && run["results"]["[ac:key-rights] second-boundary"].is_null(),
-        "{run}"
-    );
-    ensure!(
-        run["plan"][0]["tasks"][0]["address"] == "task:handover",
-        "{run}"
+        first.is_some_and(|t| t["status"] == "pass" && t["commit"] == "def4567") && status["status"] != "green",
+        "{status}"
     );
     Ok(())
 }

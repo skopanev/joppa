@@ -109,7 +109,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let ac = a["results"][3]["command"]["id"].as_str().unwrap();
     let domain = a["results"][0]["command"]["id"].as_str().unwrap();
     let capability = a["results"][1]["command"]["id"].as_str().unwrap();
-    let first = store::board_read(&pool, &ws, "owner", None, None, None).await?;
+    let first = store::board_read(&pool, &ws, "owner").await?;
     assert!(first["state"].get("domains").is_none());
     assert!(first.get("history").is_none());
     assert!(first.get("system_ids").is_none());
@@ -139,17 +139,6 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     assert_eq!(branch["items"][0]["title"], "Paid access persists");
     assert!(branch["items"][0].get("document").is_none());
     assert!(branch["items"][0].get("acs").is_none());
-    let requirement_key = format!("requirement:{req}");
-    let detail = store::board_read(
-        &pool,
-        &ws,
-        "owner",
-        Some("process"),
-        Some(&requirement_key),
-        None,
-    )
-    .await?;
-    assert_eq!(detail["criteria"][0]["address"], format!("ac:{ac}"));
     let consumers = store::read_objects(
         &pool,
         &ws,
@@ -161,11 +150,6 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     )
     .await?;
     assert_eq!(consumers["items"][0]["title"], "Buyer");
-    assert!(
-        store::board_read(&pool, &ws, "owner", Some("domain"), Some(domain), None)
-            .await
-            .is_err()
-    );
     uuid::Uuid::parse_str(req)?;
     uuid::Uuid::parse_str(ac)?;
     assert!(

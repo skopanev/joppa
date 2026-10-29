@@ -6,7 +6,8 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
     let w = world().await?;
     let before = saved_rows(&w).await?;
     let valid = json!({"op":"member","id":"should-not-exist","role":"human"});
-    // The retired check-run and typed operations replay from the journal only.
+    // The removed check-run operations name their replacement; the retired ones are
+    // unknown. Both replay from the journal only.
     let retired = [
         "plan",
         "result",
@@ -30,8 +31,12 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
     .into_iter()
     .chain(retired)
     {
+        let expected = command["op"]
+            .as_str()
+            .filter(|op| joppa::removed_ops::NAMES.contains(op))
+            .map_or("unknown operation".to_owned(), joppa::removed_ops::refusal);
         let (ok, http) = send_as(&w, &w.owner, &command).await?;
-        ensure!(!ok && http["error"] == "unknown operation", "{http}");
+        ensure!(!ok && http["error"] == expected.as_str(), "{http}");
         let single = mcp_call(
             &w,
             &w.owner,
@@ -40,7 +45,7 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
         )
         .await?;
         ensure!(
-            single["isError"] == true && single["content"][0]["text"] == "unknown operation",
+            single["isError"] == true && single["content"][0]["text"] == expected.as_str(),
             "{single}"
         );
         let batch = mcp_call(
@@ -54,7 +59,7 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
             batch["isError"] == true
                 && batch["content"][0]["text"]
                     .as_str()
-                    .is_some_and(|t| t.contains("unknown operation")),
+                    .is_some_and(|t| t.contains(expected.as_str())),
             "{batch}"
         );
     }

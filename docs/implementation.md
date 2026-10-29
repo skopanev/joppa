@@ -18,9 +18,8 @@ retained for reading; the new model never writes through it.
 | Agent titles could not be corrected before confirmation | Draft-title edits without changing authority or confirming | Draft/confirmed/archived permission tests |
 | Finding wording required reading the entire tree | Authorized full-text/hybrid search with current IDs and explicit coverage | Search freshness, isolation, provider failure and stale-vector tests |
 
-`tests/browser.cjs` checks the portal: navigation, copying references, older
-revisions, mobile layout, safe escaping and the read-only notes panel. Browsing
-must not issue product writes or change stored data. `tests/http_smoke.py` covers
+`tests/grey_ac_browser.cjs` and the other `*_browser.cjs` files check the portal in
+Chromium. `tests/http_smoke.py` covers
 integration writes, acceptance, launch gates, the administrative binary and MCP,
 including agent-authored object notes and revision comments. `tests/sessions.rs`
 checks that even an owner's valid browser cookie cannot submit commands, upload

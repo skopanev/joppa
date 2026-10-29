@@ -3,7 +3,7 @@
 use crate::commands::Command;
 
 /// The operation names that live writes refuse.
-pub const NAMES: [&str; 13] = [
+pub const NAMES: [&str; 23] = [
     "domain",
     "edit_domain",
     "capability",
@@ -17,6 +17,16 @@ pub const NAMES: [&str; 13] = [
     "set_domain_archived",
     "confirm_tree",
     "link_source",
+    "plan",
+    "result",
+    "finish",
+    "accept",
+    "revoke",
+    "issue",
+    "resolve",
+    "review_coverage",
+    "define_verification_scope",
+    "set_note_status",
 ];
 
 /// The refusal of a removed operation: it names the replacement.
@@ -25,6 +35,11 @@ pub fn refusal(name: &str) -> String {
         "set_domain_archived" => "archive_object or restore_object",
         "confirm_tree" => "save_object; a saved tree needs no confirmation",
         "link_source" => "save_object with a Note and its links",
+        "plan" | "result" | "finish" => "joppa_record_results",
+        "accept" | "revoke" => "accept_commit",
+        "issue" | "resolve" => "note",
+        "review_coverage" | "define_verification_scope" => "set_ac_tests",
+        "set_note_status" => "decide_note",
         _ => "save_object",
     };
     format!("{name} was removed; use {replacement}")
@@ -46,6 +61,16 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::SetDomainArchived { .. } => "set_domain_archived",
         Command::ConfirmTree {} => "confirm_tree",
         Command::LinkSource { .. } => "link_source",
+        Command::Plan { .. } => "plan",
+        Command::Result { .. } => "result",
+        Command::Finish { .. } => "finish",
+        Command::Accept { .. } => "accept",
+        Command::Revoke { .. } => "revoke",
+        Command::Issue { .. } => "issue",
+        Command::Resolve { .. } => "resolve",
+        Command::ReviewCoverage { .. } => "review_coverage",
+        Command::DefineVerificationScope { .. } => "define_verification_scope",
+        Command::SetNoteStatus { .. } => "set_note_status",
         _ => return None,
     })
 }

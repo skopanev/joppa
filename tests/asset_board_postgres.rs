@@ -136,7 +136,7 @@ async fn each_asset_that_applies_gets_its_own_status() -> Result<()> {
             && b["values"]["asset"]["life"]["status"] == "n/a",
         "{b}"
     );
-    let board = store::board_read(&pool, &ws, "bot", None, None, None).await?;
+    let board = store::board_read(&pool, &ws, "bot").await?;
     ensure!(
         board["result_filters"]
             == json!([{"field":"asset","title":"Asset","values":["life","pcos","wield"]}]),

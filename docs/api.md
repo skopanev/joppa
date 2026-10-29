@@ -83,10 +83,11 @@ joppa_objects with address gives one object's description, comments and attachme
 ```
 
 The check-run operations `plan`, `result`, `finish`, `accept`, `revoke`, `issue`, `resolve`,
-`review_coverage` and `define_verification_scope` are retired. So are `edit_consumer`, `project`,
-`withdraw_decision` and `withdraw_source`: use `save_object` for consumers and projects.
-The journal replays the old events of all these operations.
-HTTP and MCP writes refuse them with `unknown operation`. Send test results with `joppa_record_results`.
+`review_coverage` and `define_verification_scope` and the operation `set_note_status` are
+removed. HTTP, MCP and the server CLI refuse them, and the refusal names the replacement:
+`joppa_record_results`, `accept_commit`, `note`, `set_ac_tests` or `decide_note`.
+`edit_consumer`, `project`, `withdraw_decision` and `withdraw_source` are retired too: writes
+refuse them with `unknown operation`. The journal replays the old events of all these operations.
 
 Tasks are independent objects. Their parent follows the workspace schema. A Task can also be a root when its type permits it.
 The default tree places Tasks under AC with `parent_gate: "ready"`. Other schemas can select different parents, nesting and gates.
@@ -130,9 +131,10 @@ the prior decision explicitly. Withdrawal blocks every AC assessment that cites 
 
 ## Note processing
 
-`set_note_status`: `target`, `revision`, `status` (`unprocessed` or `processed`), `reason`.
-Read the Note revision first. The command preserves its source data, parent and links.
-The server appends a document revision. Source changes return the Note to `unprocessed`.
+`decide_note`: `target`, `revision`, `outcome`, `reason`. A final decision makes the Note
+`processed`; `needs_information` keeps it `unprocessed`. Read the Note revision first. The
+command preserves its source data, parent and links, and the server appends a document
+revision. Source changes return the Note to `unprocessed`.
 `joppa_objects` supports `note_status` for any type with `inbox: true`, and `related_to` for links in either direction.
 A list read takes `fields`, a list of key names. Each item then keeps only these keys and its `address`. The envelope and `next_cursor` stay. Over HTTP, send `fields=title,signal`.
 `joppa_tests` without `ac` and `task` gives the overview of green and red criteria, the same as `GET /tests`. With `summary=true`, each criterion gives `counts` per test status in place of `tests`.

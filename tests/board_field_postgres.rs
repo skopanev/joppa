@@ -102,7 +102,7 @@ async fn tones(pool: &deadpool_postgres::Pool, ws: &str) -> Result<(Value, Value
 async fn each_value_of_a_board_field_gets_its_own_status_and_tone() -> Result<()> {
     let pool = pool().await?;
     let ws = fixture(&pool, Some(app_shape())).await?;
-    let board = store::board_read(&pool, &ws, "bot", None, None, None).await?;
+    let board = store::board_read(&pool, &ws, "bot").await?;
     ensure!(
         board["result_filters"]
             == json!([{"field":"app","title":"App","values":["ios","android"]}]),
@@ -193,7 +193,7 @@ async fn without_a_board_field_the_status_and_rows_do_not_change() -> Result<()>
     ensure!(s["status"] == "green" && s.get("values").is_none(), "{s}");
     let (a, r) = tones(&pool, &ws).await?;
     ensure!(a.is_null() && r.is_null(), "A: {a}, R: {r}");
-    let board = store::board_read(&pool, &ws, "bot", None, None, None).await?;
+    let board = store::board_read(&pool, &ws, "bot").await?;
     ensure!(board["result_filters"] == json!([]), "{board}");
     Ok(())
 }

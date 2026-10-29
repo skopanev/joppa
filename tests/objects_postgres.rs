@@ -288,7 +288,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     types["note"]["title"] = json!("Incoming note");
     types["domain"]["index"] = json!(200);
     store::execute_remote_input(&pool, &ws, "owner", "color", &json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Distinguish source Notes"})).await?;
-    let board = store::board_read(&pool, &ws, "agent", None, None, None).await?;
+    let board = store::board_read(&pool, &ws, "agent").await?;
     assert_eq!(board["custom_tree"], false);
     assert_eq!(board["object_types"]["note"]["color"], "#7655a2");
     assert_eq!(board["object_types"]["note"]["title_size"], 21);
@@ -320,7 +320,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
     )
     .await?;
     store::execute_remote_input(&pool,&ws,"agent","domain-link",&json!({"op":"save_object","kind":"domain","id":"d","revision":domain["current_revision"],"parent":null,"data":domain["document"]["data"],"links":[{"target":"note:b","relation":"related"}],"reason":"Link the input"})).await?;
-    store::execute_remote_input(&pool,&ws,"agent","process-a",&json!({"op":"set_note_status","target":"note:a","revision":1,"status":"processed","reason":"Input reviewed"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","process-a",&json!({"op":"decide_note","target":"note:a","revision":1,"outcome":"rejected","reason":"Input reviewed"})).await?;
     let incoming = store::read_objects(
         &pool,
         &ws,

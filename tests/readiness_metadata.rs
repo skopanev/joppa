@@ -363,25 +363,6 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
     assert_eq!(p["review_required"], true);
 }
 
-#[test]
-fn readiness_metadata_preserves_passing_and_failing_check_evidence() {
-    for outcome in ["pass", "fail"] {
-        let mut w = World::new();
-        w.ready();
-        w.run("actual-checks", outcome);
-        let before = serde_json::to_value(&w.state).unwrap();
-        assert_eq!(
-            objects::process(&w.state, "ac:ios")["assessment"]["state"],
-            "ready"
-        );
-        assert_eq!(
-            objects::process(&w.state, "ac:ios")["verification"],
-            outcome
-        );
-        assert_eq!(serde_json::to_value(&w.state).unwrap(), before);
-    }
-}
-
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn refresh_is_current_only_idempotent_and_preserves_status_time_and_history()

@@ -107,7 +107,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     .await?;
     assert_eq!(detail["document"]["data"]["body"], raw);
     // Updating the input must hydrate and preserve its earlier revision.
-    store::execute_input(&pool,&ws,"agent","process-input",&json!({"op":"set_note_status","target":"note:raw","revision":1,"status":"processed","reason":"Processed source"})).await?;
+    store::execute_input(&pool,&ws,"owner","process-input",&json!({"op":"decide_note","target":"note:raw","revision":1,"outcome":"rejected","reason":"Processed source"})).await?;
     let old = store::read_objects(
         &pool,
         &ws,

@@ -165,45 +165,6 @@ fn wildcard_references_allow_multiple_types_and_require_full_addresses() {
     assert!(objects::reference_targets(&w.state, "note", &json!({"context":["d"]})).is_err());
 }
 
-// [subject-agreed-first-ac3]
-#[test]
-fn inherited_subjects_constrain_claims_and_check_plans() {
-    let mut w = World::new();
-    migrate(&mut w);
-    let mut types = objects::schema(&w.state).types;
-    let mut subject = rule("project", true, false);
-    subject.verification_subject = true;
-    types
-        .get_mut("requirement")
-        .unwrap()
-        .references
-        .insert("systems".into(), subject);
-    set_schema(&mut w, types);
-    let mut data = w.state.objects["requirement:r"].current().data.clone();
-    data["systems"] = json!(["backend"]);
-    save(&mut w, "requirement:r", Some("capability:c"), data);
-    let number = w.state.requirements["r"].revisions.last().unwrap().number;
-    w.ok("owner", json!({"op":"confirm","req":"r","revision":number}));
-    w.ok("agent",json!({"op":"assess","req":"r","revision":number,"ac":"ios","assessment":{"ready":true,"reason":"Contract is clear"}}));
-    save(
-        &mut w,
-        "task:inherited",
-        Some("ac:ios"),
-        json!({"title":"Implement access","owner":"owner","contract":"Implement the approved contract","purpose":"implementation","projects":[]}),
-    );
-    assert_eq!(
-        joppa::tasks::subjects(&w.state, "task:inherited").unwrap(),
-        vec!["backend"]
-    );
-    w.ok("owner",json!({"op":"define_verification_scope","req":"r","revision":number,"subject_keys":["app"],"scope":"Access","reason":"Check the declared subject"}));
-    let task_revision = w.state.objects["task:inherited"].current().revision;
-    w.no(
-        "agent",
-        json!({"op":"claim_task","id":"task:inherited","revision":task_revision}),
-    );
-    w.no("runner",json!({"op":"plan","req":"r","revision":number,"run":"missing-inherited","subject":{"app":"build1"},"scope":"Access","discovery_complete":true,"checks":[{"id":"access","ac":"ios","method":"automated","expected":["Access retained"]},{"id":"key","ac":"key","method":"manual","expected":["Correct key"]}]}));
-}
-
 // [owner-consumers-sources-ac2]
 #[test]
 fn a_default_reference_field_can_select_one_target_of_another_type() {

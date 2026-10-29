@@ -251,7 +251,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
         None,
         json!({"title":"Incoming fact","owner":"owner"}),
     );
-    w.ok("agent",json!({"op":"set_note_status","target":"custom:input","revision":1,"status":"processed","reason":"Reviewed the fact"}));
+    w.ok("owner",json!({"op":"decide_note","target":"custom:input","revision":1,"outcome":"rejected","reason":"Reviewed the fact"}));
     assert_eq!(
         objects::process(&w.state, "custom:input")["status"],
         "processed"

@@ -82,7 +82,7 @@ fn authoring_command_schema() -> Value {
             "revision":{"description":"For save_object, archive_object, restore_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision. For set_ac_tests, revision is optional: send the tests_revision you read, the document revision of the criterion, also when its list is empty."},
             "data":{"type":"object","description":"Document fields. data.title: one concise statement (max 128 chars). Each other text value: concise text (max 1024 chars). Put links in links and comments in note, never in these texts."},
             "title":{"description":"One concise statement (max 128 chars). Prefer English. Follow ASD-STE100 Issue 9."}, "body":text(), "text":text(), "description":text(),
-            "reason":text(), "contract":text(), "scope":text(), "value":text(),
+            "reason":text(), "contract":text(), "value":text(),
             "assessment":{"properties":{"reason":text()}},
             "evidence":{"type":"string","description":"For complete_task, use technical text or the required decision comment identifier. For block_task, give the failure facts, such as the failed test and commit. For unblock_task, give the facts that show the failure was outside the Task, such as the run. Preserve exact facts, logs, code, identifiers, and quotations."}
         }

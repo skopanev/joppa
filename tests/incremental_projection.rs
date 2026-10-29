@@ -257,8 +257,8 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
         ),
         (
             "process the input",
-            json!({"op":"set_note_status","target":"note:top","revision":1,"status":"processed",
-                "reason":"Applied to the tree"}),
+            json!({"op":"decide_note","target":"note:top","revision":1,"outcome":"changed_spec",
+                "reason":"Applied to the tree","links":["requirement:r"]}),
         ),
         // A new revision resets readiness and marks carried work for review.
         ("revise", revision(1)),

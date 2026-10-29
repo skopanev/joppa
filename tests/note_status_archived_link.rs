@@ -23,7 +23,7 @@ fn a_note_that_links_to_an_archived_object_changes_its_status() {
         json!([{"target":"note:old","relation":"related","blocking":false}]),
     );
     w.ok("owner", json!({"op":"archive_object","target":"note:old","revision":1,"reason":"Archive the old input"}));
-    w.ok("agent", json!({"op":"set_note_status","target":"note:input","revision":1,"status":"processed","reason":"The input is processed"}));
+    w.ok("owner", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"rejected","reason":"The input is processed"}));
     let r = w.state.objects["note:input"].current();
     assert_eq!(r.data["status"], "processed");
     assert_eq!(r.links.len(), 1, "the Note keeps its link");

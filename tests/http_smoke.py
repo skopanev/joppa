@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""HTTP/CLI/MCP smoke against an isolated test DB. Optional real browser pass.
-JOPPA_TEST_DATABASE_URL=... python3 tests/http_smoke.py [--browser]
-Browser needs Playwright (PLAYWRIGHT_MODULE may specify an installed module).
+"""HTTP/CLI/MCP smoke against an isolated test DB.
+JOPPA_TEST_DATABASE_URL=... python3 tests/http_smoke.py
 """
 import json
 import re
@@ -76,11 +75,6 @@ def ok(value):
     status, data = command(value)
     assert status == 200, (status, data)
     return data
-
-def internal(value, workspace=ws, actor='owner'):
-    """Check runs are internal now: the server CLI writes them, and HTTP refuses them."""
-    subprocess.run([BIN, 'command', workspace, str(uuid.uuid4())], env={**env, 'JOPPA_ACTOR': actor},
-                   input=json.dumps(value), text=True, check=True, stdout=subprocess.DEVNULL)
 
 with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     token_file = Path(temp) / 'tokens.json'
@@ -256,8 +250,6 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert 'item_id' not in current_group
         assert 'system_ids' not in empty and request('/api/workspaces/'+ws+'/objects?address=domain:unused')[1]['item_id']
         assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['document']['present'] is False
-        # [ac:mcp-schema-objects-ac2] Process reads retain workspace authorization.
-        assert request('/api/workspaces/'+other_ws+'/board?level=process&id=requirement:key', token=agent_token)[0] == 404
         assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
         with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
             assert response.status == 200 and 'Schema revision' in response.read().decode()
@@ -378,35 +370,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         ok({'op': 'confirm', 'req':'requirement:auto', 'revision': auto_revision})
         ok({'op': 'assess', 'req':'requirement:auto', 'revision': auto_revision, 'ac':'ac:auto-ac',
             'assessment': {'ready': True, 'reason': 'Known contract'}})
-        internal({'op':'define_verification_scope','req':'requirement:auto','revision':auto_revision,
-            'subject_keys':['code'],'scope':'One declared command','reason':'Owner-approved test boundary'})
         status, refused = command({'op':'plan','req':'requirement:auto','revision':auto_revision,'run':'refused'})
-        assert status >= 400 and 'unknown operation' in str(refused), (status, refused)
+        assert status >= 400 and 'plan was removed; use joppa_record_results' in str(refused), (status, refused)
         # Changes are made by an integration; the portal only reads the result.
         ok({'op':'confirm','req':'requirement:key','revision':key_revision})
         ok({'op':'assess','req':'requirement:key','revision':key_revision,'ac':'ac:key-rights',
             'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
-        internal({'op':'define_verification_scope','req':'requirement:key','revision':key_revision,
-            'subject_keys':['code','environment'],'scope':'Key permissions before launch',
-            'reason':'Owner-approved provider configuration boundary'})
-        internal({'op':'plan','req':'requirement:key','revision':key_revision,'run':'manual1',
-            'subject':{'code':'code-sha-v1','environment':'config-v1'},'scope':'Key permissions before launch',
-            'discovery_complete':True,'checks':[{'id':'manual-key-rights','ac':'ac:key-rights',
-                'method':'manual','expected':['read','verify']}]})
-        internal({'op':'result','req':'requirement:key','revision':key_revision,'run':'manual1',
-            'evidence':{'check':'manual-key-rights','outcome':'pass','observed':['read','verify'],
-                'note':'Compared the provider permission list'}})
-        internal({'op':'finish','req':'requirement:key','revision':key_revision,'run':'manual1'})
-        internal({'op':'accept','req':'requirement:key','revision':key_revision,'run':'manual1'})
-        # [ac:mcp-schema-objects-ac3] Read only the selected current verification record.
-        process = request('/api/workspaces/'+ws+'/board?level=process&id=ac:key-rights')[1]
-        assert process['summary']['accepted'] is True
-        assert process['req'] in ('key','requirement:key') and process['revision'] == key_revision
-        assert set(process['runs']) == {'manual1'}
-        assert process['criteria'][0]['address'] == 'ac:key-rights'
-        assert process['result_dates']['manual1']['manual-key-rights']
-        assert 'state' not in process and 'history' not in process
-        # [launch-gate] A check-run acceptance names no commit, so the gate refuses it.
+        # [launch-gate] Without an acceptance on a commit the gate refuses.
         gate = subprocess.run([BIN, 'gate', ws, 'code-sha-v1'], env=env, text=True, capture_output=True)
         assert gate.returncode != 0 and 'no acceptance on a commit' in gate.stderr, gate.stderr
         save('task','agent-task','ac:auto-ac',{'title':'Implement command','owner':'owner','projects':[],
@@ -471,27 +441,10 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             if kind=='measure': custom_criterion_id=request('/api/workspaces/'+mcp_ws+'/objects?address=measure:'+ident)[1]['item_id']
         def custom(value):
             return mcp('joppa_command', {'workspace':mcp_ws,'request_id':str(uuid.uuid4()),'command':value}, owner_token)
-        def internal_custom(value):
-            internal(value, mcp_ws)
         custom({'op':'confirm','req':'epic:same','revision':3})
-        internal_custom({'op':'define_verification_scope','req':'epic:same','revision':3,'subject_keys':['build'],
-                'scope':'The exact custom build','reason':'Agree on the build'})
         for ac in ('measure:same','rule:same'):
             custom({'op':'assess','req':'epic:same','revision':3,'ac':ac,
                     'assessment':{'ready':True,'reason':'The contract is clear'}})
-        internal_custom({'op':'plan','req':'epic:same','revision':3,'run':'custom-green','subject':{'build':'sha-one'},
-                'scope':'The exact custom build','discovery_complete':True,
-                'checks':[{'id':'['+ac+'] check','ac':ac,'method':'automated','expected':['exact behavior']}
-                          for ac in ('measure:same','rule:same')]})
-        for ac in ('measure:same','rule:same'):
-            internal_custom({'op':'result','req':'epic:same','revision':3,'run':'custom-green',
-                    'evidence':{'check':'['+ac+'] check','outcome':'pass','observed':['exact behavior'],'note':'Executed the exact test'}})
-        internal_custom({'op':'finish','req':'epic:same','revision':3,'run':'custom-green'})
-        internal_custom({'op':'accept','req':'epic:same','revision':3,'run':'custom-green'})
-        inspected = request('/api/workspaces/'+mcp_ws+'/board?level=process&id=measure:same')[1]
-        assert inspected['req']=='epic:same' and inspected['summary']['accepted'] is True
-        assert {c['id'] for c in inspected['criteria']} == {'measure:same','rule:same'}
-        assert len(inspected['result_dates']['custom-green'])==2
         copied=mcp('joppa_search',{'workspace':mcp_ws,'query':custom_criterion_id})['items'][0]
         assert copied['exact_id'] is True and copied['kind']=='measure' and copied['id']=='same'
 
@@ -515,11 +468,6 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         assert suffixes(after['index'])==suffixes(before['index'])
         assert 'state' not in after and 'history' not in after
         assert request('/api/workspaces/'+ws+'/board')[1]['state']['title']=='Review workspace'
-        if '--browser' in sys.argv:
-            browser_env = {**env, 'JOPPA_TEST_URL': base, 'JOPPA_TEST_TOKEN': owner_token,
-                           'JOPPA_TEST_WORKSPACE': ws}
-            subprocess.run(['node', str(ROOT / 'tests/browser.cjs')], env=browser_env, check=True)
-            assert request('/api/workspaces/'+ws)[1] == after, 'browsing must never mutate product data'
         print('HTTP auth, workspace isolation, idempotency and MCP smoke passed')
     finally:
         server.terminate()

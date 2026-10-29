@@ -583,11 +583,6 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op("accept_commit", &["target", "revision", "commit"], MEMBER),
     op("redact_object", &["target", "fragment", "reason"], OWNER),
-    op(
-        "set_note_status",
-        &["target", "revision", "status", "reason"],
-        MEMBER,
-    ),
     op("rename_workspace", &["title", "reason"], OWNER),
     op("set_priority", &["target", "priority"], MEMBER),
     op("assess_signal", &["target", "ready", "reason"], MEMBER),

@@ -280,7 +280,8 @@ Never treat missing context as successful discovery.
 
 ### Removed commands
 
-Live writes refuse the removed operations, for example `domain`, `revise`, `task` and `describe`.
+Live writes refuse the removed operations, for example `domain`, `revise`, `task`, `describe`,
+the check-run operations and `set_note_status`.
 The refusal names the replacement, usually `save_object`. Only journal replay reads these operations.
 The projection rejects a different document with an existing revision number.
 The immutable event journal is the source for all projections.
@@ -313,8 +314,8 @@ Use `joppa_tasks` for the current queue.
 
 Set `inbox: true` on any schema type to hold incoming information.
 An omitted flag disables the queue. The type name does not supply a default. Missing `data.status` means `unprocessed`.
-Use `set_note_status` with `target`, the object `revision`, `status` and `reason`.
-The status is `unprocessed` or `processed`. The server creates the next object revision.
+Use `decide_note` with `target`, the object `revision`, `outcome` and `reason`. A final
+outcome sets the status `processed`. The server creates the next object revision.
 This command preserves the complete source data, parent and links.
 A change to source fields reopens a processed input, even when a client sends `processed`.
 Owner changes and link changes do not reopen it. Comments and files remain separate annotations.

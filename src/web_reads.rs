@@ -16,30 +16,13 @@ pub(super) async fn read(
     };
     result(store::read(&app.pool, &workspace, &actor, &scope).await)
 }
-#[derive(Deserialize)]
-pub(super) struct BoardQuery {
-    level: Option<String>,
-    id: Option<String>,
-    revision: Option<u32>,
-}
 pub(super) async fn board(
     State(app): State<App>,
     Path(workspace): Path<String>,
-    Query(query): Query<BoardQuery>,
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    result(
-        store::board_read(
-            &app.pool,
-            &workspace,
-            &actor,
-            query.level.as_deref(),
-            query.id.as_deref(),
-            query.revision,
-        )
-        .await,
-    )
+    result(store::board_read(&app.pool, &workspace, &actor).await)
 }
 #[derive(Deserialize)]
 pub(super) struct ObjectQuery {
