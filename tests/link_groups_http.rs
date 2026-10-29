@@ -137,11 +137,22 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
             args["cursor"] = json!(c);
         }
         let tool = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
-        // MCP gives the HTTP page without empty keys.
-        let http = joppa::read_compact::strip_reply(
+        // MCP gives the HTTP page without empty keys and without the echo of the filters:
+        // an item names no direction, relation or kind that the request sent.
+        let mut http = joppa::read_compact::strip_reply(
             http_page(&server.root, &ws, cursor.as_deref()).await?,
         );
+        for key in ["direction", "relation", "kind"] {
+            http.as_object_mut().map(|m| m.remove(key));
+            for item in http["items"].as_array_mut().into_iter().flatten() {
+                item.as_object_mut().map(|m| m.remove(key));
+            }
+        }
         ensure!(tool == http, "HTTP and MCP disagree:\n{tool}\n{http}");
+        ensure!(
+            tool["workspace"] == ws.as_str() && tool["position"].is_u64(),
+            "{tool}"
+        );
         let items = tool["items"].as_array().cloned().unwrap_or_default();
         sizes.push(items.len());
         for item in &items {
@@ -159,6 +170,48 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         sizes == [25, 25, 25, 25, 20] && seen.len() == 120,
         "pages {sizes:?}, links {}",
         seen.len()
+    );
+    // Each filter is optional: without them the read gives every link of both directions,
+    // and each item names its direction, relation and kind.
+    let (mut cursor, mut all) = (None::<String>, vec![]);
+    loop {
+        let mut args = json!({"workspace":ws,"links_of":"domain:r","limit":100});
+        if let Some(c) = &cursor {
+            args["cursor"] = json!(c);
+        }
+        let page = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
+        ensure!(page["total"] == 123, "{page}");
+        all.extend(page["items"].as_array().cloned().unwrap_or_default());
+        match page["next_cursor"].as_str() {
+            Some(next) => cursor = Some(next.to_owned()),
+            None => break,
+        }
+    }
+    let count = |direction: &str, relation: &str| {
+        all.iter()
+            .filter(|i| {
+                i["direction"] == direction && i["relation"] == relation && i["kind"].is_string()
+            })
+            .count()
+    };
+    ensure!(
+        all.len() == 123
+            && count("incoming", "related") == 120
+            && count("outgoing", "depends_on") == 3,
+        "{all:?}"
+    );
+    let notes = world::mcp(
+        &server.root,
+        "bot",
+        "joppa_objects",
+        json!({"workspace":ws,"links_of":"domain:r","kind":"note","limit":1}),
+    )
+    .await?;
+    ensure!(
+        notes["total"] == 120
+            && notes["items"][0].get("kind").is_none()
+            && notes["items"][0]["direction"] == "incoming",
+        "{notes}"
     );
     Ok(())
 }

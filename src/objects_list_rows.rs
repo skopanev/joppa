@@ -130,7 +130,11 @@ pub(super) async fn list_rows(
             item["process"] = serde_json::from_str::<Value>(row.get(16))?;
         }
         if let Some(data) = row.get::<_, Option<String>>(18) {
-            item["data"] = serde_json::from_str(&data)?;
+            // As in a detail read, a requirement omits the old consumers field.
+            let mut document = json!({"data": serde_json::from_str::<Value>(&data)?});
+            let t = item["kind"].as_str().and_then(|kind| selected.get(kind));
+            crate::consumer_migration::hide_requirement_consumers(t, &mut document);
+            item["data"] = document["data"].take();
         }
         if !item["note_status"].is_null() {
             item["status"] = item["note_status"].clone();

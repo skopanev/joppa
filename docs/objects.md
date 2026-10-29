@@ -166,15 +166,15 @@ In text, write a reference as [Title](kind:id). The board shows the title as a l
 
 One object read gives `links`, its outgoing links with titles, and `link_groups`: a count for each
 direction, relation and kind of the other object. The MCP read keeps only the incoming counts,
-because `links` already gives the outgoing links. It does not list the incoming links. Read one
-group in pages with `joppa_objects`:
+because `links` already gives the outgoing links. It does not list the incoming links. Read the
+links in pages with `joppa_objects`. `direction`, `relation` and `kind` are optional filters:
 
 ```json
 {"workspace": "product", "links_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note", "limit": 50}
 ```
 
-The reply gives `items` in address order and `next_cursor`. Send `cursor` with that value for the
-next page. `next_cursor` is null on the last page. In an item, `address`, `title`, `kind` and
+The reply gives `items` in the order direction, relation, address, and `next_cursor`. Send
+`cursor` with that value for the next page. `next_cursor` is null on the last page. In an item, `address`, `title`, `kind` and
 `present` describe the other object now. `revision` is the target revision that the link pins, or
 null for a link without a pin. It is not the current revision of the other object: read that object
 to get its current revision.

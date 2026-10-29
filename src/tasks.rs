@@ -143,7 +143,7 @@ fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<
         return Ok(());
     };
     w.objects.get(parent).context("unknown Task parent")?;
-    let process = objects::process(w, parent);
+    let process = objects::run_process(w, parent);
     let ready = match gate {
         "completed" => task(w, parent).is_some_and(|t| t.done.is_some() && t.retired.is_none()),
         "verified" => process["verification"] == "pass",

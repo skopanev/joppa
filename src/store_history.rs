@@ -58,6 +58,7 @@ pub async fn read_history(
         .read_only(true)
         .start()
         .await?;
+    let (public, position) = super::head(&*conn, &id).await?;
     let rows = conn.query(
         "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND ($3 OR m.position IS NULL) ORDER BY e.position LIMIT $4",
         &[&id, &after, &all, &(limit + 1)],
@@ -114,7 +115,7 @@ pub async fn read_history(
     let next_cursor = (more && !rows.is_empty())
         .then(|| format!("h{}", rows.last().map(|r| r.get::<_, i64>(0)).unwrap_or(0)));
     Ok(
-        json!({"items": items, "total": total, "next_item": next_item, "next_cursor": next_cursor, "all": all, "limit": limit}),
+        json!({"workspace": public, "position": position, "items": items, "total": total, "next_item": next_item, "next_cursor": next_cursor, "all": all, "limit": limit}),
     )
 }
 
@@ -209,57 +210,5 @@ pub async fn mark_history(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{page_limit, parse_mark};
-    use serde_json::json;
-
-    #[test]
-    fn a_history_page_holds_1_to_25_entries() {
-        assert_eq!(page_limit(&json!({})).unwrap(), 25);
-        assert_eq!(page_limit(&json!({"limit": 1})).unwrap(), 1);
-        assert_eq!(page_limit(&json!({"limit": 25})).unwrap(), 25);
-        assert_eq!(page_limit(&json!({"limit": 26})).unwrap(), 25);
-        for bad in [json!(0), json!("5")] {
-            assert!(
-                page_limit(&json!({"limit": bad}))
-                    .unwrap_err()
-                    .to_string()
-                    .contains("limit")
-            );
-        }
-    }
-
-    #[test]
-    fn a_mark_refuses_actor_at_16_nodes_and_repeats() {
-        let nodes: Vec<String> = (0..16).map(|i| format!("task:t{i}")).collect();
-        for (input, error) in [
-            (
-                json!({"position": 2, "reason": "Done", "actor": "x"}),
-                "actor comes from the server",
-            ),
-            (
-                json!({"position": 2, "reason": "Done", "at": "2020-01-01T00:00:00Z"}),
-                "at comes from the server",
-            ),
-            (
-                json!({"position": 2, "reason": "Done", "nodes": nodes}),
-                "at most 15 nodes",
-            ),
-            (
-                json!({"position": 2, "reason": "Done", "nodes": ["task:a", "task:a"]}),
-                "each node once",
-            ),
-            (json!({"position": 2, "reason": " "}), "needs a reason"),
-            (json!({"position": 0, "reason": "Done"}), "journal position"),
-        ] {
-            let message = parse_mark(&input).unwrap_err().to_string();
-            assert!(message.contains(error), "{input}: {message}");
-        }
-        assert!(
-            parse_mark(
-                &json!({"workspace": "w", "position": 2, "reason": "Cut", "nodes": ["task:a"]})
-            )
-            .is_ok()
-        );
-    }
-}
+#[path = "store_history_tests.rs"]
+mod tests;

@@ -158,6 +158,9 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
   `process` and `assessment` give no copy of the address, of `req` or of its revision.
   The `req` of a criterion is its `document.parent`, so `process` of a criterion has no `req`.
+  Test results decide a criterion, so its `process` has no run `status` or `revision`: the
+  requirement revision that `assess` sends is in `assessment`. `verification` shows only the
+  `pass` or `fail` of a finished run.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.
@@ -185,6 +188,8 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 
 ## `joppa_tests`
 
+- `{"workspace": "w"}`: the overview of green and red criteria in pages of 25, with
+  `workspace` and `position`.
 - `{"workspace": "w", "ac": "ac:a"}`: one criterion, as before.
 - `{"workspace": "w", "ac": "ac:a,ac:b"}`: `{"items": [...]}`. At most 100 criteria in one call;
   101 are refused with `at most 100 criteria in one call`.
@@ -196,11 +201,36 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 
 ## Other read tools
 
-`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their fields. Only
-the empty keys and `item_id` go. `joppa_tasks` gives its tasks as `items`. A `joppa_search`
-result has no `system_id`, no `req` on a requirement, and `workspace` only with
-`all_workspaces: true`. When the query is an item ID or an address, the reply gives only the
-exact matches, each with `exact_id: true`.
+`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` lose the empty keys,
+`item_id` and the echo of the request:
+
+- `joppa_tasks` gives its tasks as `items`, without `view`. A task has no `id` (the address
+  is the ID) and no `ac` when the criterion is its `parent`. `readiness_blocker` is omitted
+  when it repeats `assessment`. `signal` gives `tone`, `label` and `at` only. A done or
+  retired task has no `waiting_reason`.
+- `joppa_timeline` gives no `after` or `order`. A record of test results names itself only
+  by its address `record/N`.
+- `joppa_history` gives `workspace` and `position`, and no `all`, `limit` or `signal`. Read
+  the current status of an object with `joppa_objects`.
+- A `joppa_search` result has no `system_id`, no `req` on a requirement, and `workspace`
+  only with `all_workspaces: true`. The reply gives no `all_versions` or `all_workspaces`,
+  and `workspaces` only with `all_workspaces: true`. `total` counts every text match and
+  the 100 nearest vector matches, so it can be above 100. When the query is an item ID or
+  an address, the reply gives only the exact matches, each with `exact_id: true`.
+
+## Links of one object
+
+`{"workspace": "w", "links_of": "domain:d", "direction": "incoming"}` gives the links of
+`domain:d` in pages of 25 with `workspace`, `position`, `total` and `next_cursor`, in the
+order direction, relation, address. `direction`, `relation` and `kind` are optional
+filters. An item names its `direction`, `relation` and `kind` only when the request did not
+send that filter. `next_cursor` is `direction/relation/address` of the last item.
+
+## Writes
+
+`joppa_command` and `joppa_batch` give `position`, `command`, `object` and `replayed`, without
+`summary` or `system_ids`. A `set_tree_schema` result gives `schema_revision`, the new schema
+revision, and its `command` without the sent types.
 
 ## Titles and texts
 

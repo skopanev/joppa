@@ -133,10 +133,8 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
                 .is_none()
         );
     }
-    assert_eq!(
-        detail(&pool, &ws, "ac:ios").await?["process"]["verification"],
-        "unverified"
-    );
+    let ios = detail(&pool, &ws, "ac:ios").await?;
+    assert!(ios["process"].get("verification").is_none());
     action(&pool, &ws, "agent", "job:one", "claim_task", json!({})).await?;
     action(
         &pool,

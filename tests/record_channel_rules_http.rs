@@ -79,8 +79,9 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
         entry["op"] == "record_report"
             && entry["actor"] == "bot"
             && entry["title"] == format!("Test results {C}")
-            && entry["report"] == reply["record"]
-            && entry["record"] == reply["record"]
+            && entry["address"] == format!("record/{}", reply["record"])
+            && entry.get("report").is_none()
+            && entry.get("record").is_none()
             && entry["position"] == reply["position"],
         "{entry} {reply}"
     );
@@ -95,7 +96,7 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
         .get(0);
     ensure!(inside, "at {at} is not between {t0} and {t1}");
     // The record of the entry holds the four supplied outcomes and no outcome for O.
-    let id = entry["report"].as_i64().unwrap_or_default();
+    let id = reply["record"].as_i64().unwrap_or_default();
     let stored = conn.query("SELECT r.commit_sha,r.uploader,t.address,t.status,COALESCE(t.message,t.fields->>'message') FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.id=$1 ORDER BY t.address", &[&id]).await?;
     let stored: Vec<(String, String, String, String, Option<String>)> = stored
         .iter()

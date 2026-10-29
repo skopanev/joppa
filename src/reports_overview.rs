@@ -3,11 +3,19 @@ use super::*;
 
 /// Green and red criteria with their ancestors, so each row can show "green / total" below it.
 pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
-    let conn = pool.get().await?;
+    let mut conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
+    // One snapshot: the journal position belongs to the rows of the overview.
+    let conn = conn
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await?;
+    let (public, position) = crate::store::head(&*conn, &workspace).await?;
     // A missing or stale projection is an error here as in every other read.
-    criterion_test_statuses(&**conn, &workspace, &[], &Default::default()).await?;
+    criterion_test_statuses(&*conn, &workspace, &[], &Default::default()).await?;
     // One query: each present criterion with tests that is green or red, from the stored
     // status, with its ancestors from the parent up. Archived criteria count nowhere.
     let rows = conn
@@ -32,7 +40,8 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
         .iter()
         .map(|r| json!({"address": r.get::<_, String>(0), "status": r.get::<_, String>(1), "ancestors": r.get::<_, Vec<String>>(2)}))
         .collect();
-    Ok(json!({"items": items}))
+    conn.commit().await?;
+    Ok(json!({"workspace": public, "position": position, "items": items}))
 }
 
 /// A Task has no test status of its own. Only complete_task sets done and names the git

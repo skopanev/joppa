@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 
+#[path = "common/mcp_shape.rs"]
+mod mcp_shape;
 #[path = "common/record_http.rs"]
 mod record_http;
 
@@ -251,7 +253,7 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     let a = w.get("pat", "/objects?address=ac:a").await?;
     w.command(
         "pat",
-        json!({"op":"confirm","req":a["process"]["req"],"revision":a["process"]["revision"]}),
+        json!({"op":"confirm","req":a["process"]["req"],"revision":a["process"]["assessment"]["revision"]}),
     )
     .await?;
     let p = w.head().await?;
@@ -273,7 +275,7 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     .await?;
     w.command("pat", json!({"op":"archive_object","target":"signal:n","revision":1,"reason":"Signal N is handled"})).await?;
     let a = w.get("pat", "/objects?address=ac:a").await?;
-    w.command("pat", json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["process"]["criterion"],
+    w.command("pat", json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["assessment"]["revision"],"ac":a["process"]["criterion"],
         "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
     let report = w.record("runner", "0123456789abcdef0123").await?;
     Ok((p, report["record"].as_i64().unwrap_or_default()))
@@ -293,10 +295,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
             json!({"workspace":w.ws,"after":p}),
         )
         .await?;
-    ensure!(
-        joppa::read_compact::strip_reply(http.clone()) == mcp,
-        "HTTP {http}\nMCP {mcp}"
-    );
+    ensure!(mcp_shape::timeline(&http) == mcp, "HTTP {http}\nMCP {mcp}");
     ensure!(http["next_cursor"].is_null(), "{http}");
     let items = http["items"].as_array().unwrap();
     ensure!(items.len() == 5, "{http}");
@@ -392,10 +391,7 @@ async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_re
     let mcp = w
         .mcp(&maria, "joppa_timeline", json!({"workspace":w.ws}))
         .await?;
-    ensure!(
-        mcp == joppa::read_compact::strip_reply(timeline.clone()),
-        "{mcp} / {timeline}"
-    );
+    ensure!(mcp == mcp_shape::timeline(&timeline), "{mcp} / {timeline}");
     let eve = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),

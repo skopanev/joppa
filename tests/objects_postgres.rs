@@ -1,4 +1,6 @@
 mod common;
+#[path = "common/link_page.rs"]
+mod link_page;
 #[path = "common/resolve_id.rs"]
 mod resolve_id;
 use joppa::store::{self, ObjectScope};
@@ -139,10 +141,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         },
     )
     .await?;
-    let group = store::link_page(
-        &pool, &ws, "agent", "domain:d", "incoming", "related", "note", 100, None,
-    )
-    .await?;
+    let group = link_page::incoming_notes(&pool, &ws, "domain:d").await?;
     assert!(
         group["items"]
             .as_array()
@@ -487,10 +486,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
         },
     )
     .await?;
-    let group = store::link_page(
-        &pool, &ws, "agent", "domain:d", "incoming", "related", "note", 100, None,
-    )
-    .await?;
+    let group = link_page::incoming_notes(&pool, &ws, "domain:d").await?;
     assert!(
         domain["link_groups"].is_array()
             && !group["items"]

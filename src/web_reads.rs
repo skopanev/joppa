@@ -53,7 +53,7 @@ pub(super) struct ObjectQuery {
     note_status: Option<String>,
     related_to: Option<String>,
     work_filter: Option<String>,
-    /// The address whose links of one group to read, with direction and relation.
+    /// The address whose links to read, with optional direction, relation and kind.
     links_of: Option<String>,
     direction: Option<String>,
     relation: Option<String>,
@@ -74,9 +74,9 @@ pub(super) async fn objects(
                 &workspace,
                 &actor,
                 address,
-                q.direction.as_deref().unwrap_or(""),
-                q.relation.as_deref().unwrap_or(""),
-                q.kind.as_deref().unwrap_or(""),
+                q.direction.as_deref(),
+                q.relation.as_deref(),
+                q.kind.as_deref(),
                 q.limit.unwrap_or(50),
                 q.cursor.as_deref(),
             )

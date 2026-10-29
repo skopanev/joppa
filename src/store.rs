@@ -51,6 +51,9 @@ mod timeline_items;
 #[path = "store_waits.rs"]
 mod waits;
 pub use timeline::{TimelineScope, read_timeline};
+#[path = "store_head.rs"]
+mod head;
+pub(crate) use head::head;
 #[path = "store_history.rs"]
 mod history;
 #[path = "store_references.rs"]
@@ -64,68 +67,13 @@ mod setup;
 pub use setup::{
     backfill_board, check_journal, migrate, migrate_notes, pool, refresh_readiness_metadata,
 };
-async fn ensure_notes(
-    client: &impl GenericClient,
-    workspace: &str,
-    state: &mut Workspace,
-    events: &mut Vec<Event>,
-    base_position: u64,
-) -> Result<bool> {
-    let mut changed = false;
-    let prefix = workspace_prefix::wanted(client, workspace, state).await?;
-    for (needed, command) in [
-        (!state.notes_migrated, Command::MigrateNotes {}),
-        (!state.tasks_migrated, Command::MigrateTasks {}),
-        (!state.schema_migrated, Command::MigrateSchema {}),
-        (!state.documents_migrated, Command::MigrateDocuments {}),
-        (!state.claims_migrated, Command::MigrateTaskClaims {}),
-        (
-            !state.persistent_claims,
-            Command::MigratePersistentClaims {},
-        ),
-        (!state.consumers_migrated, Command::MigrateConsumers {}),
-        (
-            !state.consumer_drops_noted,
-            Command::MigrateConsumerDrops {},
-        ),
-        (!state.test_rules_migrated, Command::MigrateTestRules {}),
-        (!state.note_parents_migrated, Command::MigrateNoteParents {}),
-        (
-            prefix.is_some(),
-            Command::RenameWorkspace {
-                workspace_id: None,
-                title: state.title.clone(),
-                reason: workspace_prefix::REASON.into(),
-                reference_prefix: prefix.clone(),
-            },
-        ),
-    ] {
-        if !needed {
-            continue;
-        }
-        ensure!(!state.admin.is_empty(), "workspace has no owner");
-        let position = events
-            .last()
-            .map_or(base_position + 1, |event| event.position + 1);
-        let actor = state.admin.clone();
-        let payload = serde_json::to_string(&command)?;
-        let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
-        commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
-        let actor_type = crate::inbox::actor_type(state, &actor).to_owned();
-        events.push(Event {
-            position,
-            actor,
-            actor_type,
-            recorded_at,
-            command,
-        });
-        changed = true;
-    }
-    Ok(changed)
-}
+#[path = "store_ensure_notes.rs"]
+mod migrations;
+use migrations::ensure_notes;
+
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "14";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "15";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]
@@ -225,19 +173,10 @@ pub use write::{
     BatchOperation, check_fields, enroll_service, execute, execute_batch, execute_input,
     execute_remote_batch, execute_remote_input, save_dependency,
 };
-fn summaries(state: &Workspace) -> Value {
-    let summaries: serde_json::Map<String, Value> = state
-        .requirements
-        .iter()
-        .map(|(id, q)| {
-            (
-                id.clone(),
-                crate::objects::requirement_summary(state, id, q.revisions.last().unwrap()),
-            )
-        })
-        .collect();
-    Value::Object(summaries)
-}
+#[path = "store_summaries.rs"]
+mod requirement_summaries;
+use requirement_summaries::summaries;
+
 #[path = "store_read.rs"]
 mod read_scope;
 pub use read_scope::{Scope, read};

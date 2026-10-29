@@ -130,7 +130,7 @@ pub async fn find_with(
       WHERE d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)
         AND d.kind||':'||d.local_id=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND address=$2),$2))
       SELECT workspace,kind,local_id,rev,bool_or(exact),bool_or(item) FROM matches GROUP BY workspace,kind,local_id,rev
-      ORDER BY bool_or(exact) DESC,max(rank) DESC,workspace,kind,local_id,rev LIMIT 100"), &[&scope, &query, &kind, &flags.all_versions]).await?;
+      ORDER BY bool_or(exact) DESC,max(rank) DESC,workspace,kind,local_id,rev"), &[&scope, &query, &kind, &flags.all_versions]).await?;
     for (rank, row) in rows.iter().enumerate() {
         let key: Key = (row.get(0), row.get(1), row.get(2), row.get(3));
         let is_exact: bool = row.get(4);
@@ -145,7 +145,8 @@ pub async fn find_with(
         exact.insert(key, (is_exact, row.get(5)));
     }
     if let Some(vector) = &vector {
-        // Restrict the candidate set by workspace before exact cosine ranking.
+        // Restrict the candidate set by workspace before exact cosine ranking. Each indexed
+        // row has a distance, so only the 100 nearest rows count as vector matches.
         let rows = tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
             SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $4::text::vector AS distance FROM joppa.search_documents d
             WHERE d.workspace=ANY($1) AND ($2::text IS NULL OR d.kind=$2) AND d.embedding IS NOT NULL AND d.embedding_profile=$3
@@ -240,25 +241,6 @@ pub async fn find_with(
     }))
 }
 
-/// The own text of a result: its saved data without the title, which the result already
-/// gives, and without empty values, cut at 600 characters. The parents stay out.
-fn excerpt(data: Option<String>) -> String {
-    let mut data: Value = data
-        .and_then(|d| serde_json::from_str(&d).ok())
-        .unwrap_or(Value::Null);
-    if let Some(map) = data.as_object_mut() {
-        map.remove("title");
-        map.retain(|_, v| {
-            !matches!(v, Value::Null | Value::Bool(false))
-                && v != &json!("")
-                && v != &json!([])
-                && v != &json!({})
-        });
-    }
-    let text = if data.is_null() {
-        String::new()
-    } else {
-        data.to_string()
-    };
-    text.chars().take(600).collect()
-}
+#[path = "search_excerpt.rs"]
+mod excerpt_text;
+use excerpt_text::excerpt;

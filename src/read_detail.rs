@@ -68,7 +68,22 @@ fn drop_same(value: &mut Value, keys: &[&str], same: &Value) {
 fn process(reply: &mut Value) {
     let address = reply["address"].clone();
     let parent = reply["document"]["parent"].clone();
+    let (current, status) = (
+        reply["current_revision"].clone(),
+        reply["document"]["data"]["status"].clone(),
+    );
     let process = &mut reply["process"];
+    // No run gives no verification, and a copy of the revision or of the stored status goes.
+    drop_same(process, &["verification"], &json!("unverified"));
+    drop_same(process, &["revision"], &current);
+    drop_same(process, &["status"], &status);
+    for entry in process["summary"]["acs"]
+        .as_object_mut()
+        .into_iter()
+        .flatten()
+    {
+        drop_same(entry.1, &["verification"], &json!("n/a"));
+    }
     let (req, revision) = (process["req"].clone(), process["revision"].clone());
     drop_same(
         process,
@@ -164,6 +179,8 @@ pub fn detail(
         }
     }
     drop_empty_remote(&mut reply);
+    // A missing review_required reads as false.
+    drop_same(&mut reply, &["review_required"], &json!(false));
     strip_empty(&mut reply);
     Ok(reply)
 }

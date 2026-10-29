@@ -1,5 +1,8 @@
 //! Row decoration: the status tone of each node.
 use super::*;
+#[path = "objects_tone_rule.rs"]
+mod rule_tone;
+use rule_tone::tone;
 
 /// The tone of each node from the status rule of its type: tests takes the test status of
 /// the criterion, children takes the first status in the type's order that a live direct
@@ -159,48 +162,6 @@ pub(super) async fn add_status_tones(
             })
             .collect(),
     };
-    fn tone(
-        address: &str,
-        kind: &str,
-        types: &std::collections::BTreeMap<String, objects::TreeType>,
-        below: &BTreeMap<String, Vec<(String, String)>>,
-        statuses: &BTreeMap<String, Value>,
-        seen: &mut BTreeSet<String>,
-    ) -> Option<String> {
-        let t = types.get(kind)?;
-        match objects::status_rule(t) {
-            "tests" => Some(
-                match statuses.get(address).and_then(|s| s["status"].as_str()) {
-                    Some("green") => "green",
-                    Some("red") => "red",
-                    // A board value that does not apply to the criterion: no tone counts.
-                    Some("n/a") => "none",
-                    _ => "grey",
-                }
-                .to_owned(),
-            ),
-            // A type without a status rule shows that its rule is not set.
-            "unset" => Some("orange".into()),
-            "children" => {
-                if !seen.insert(address.to_owned()) {
-                    return Some("grey".into());
-                }
-                let found: BTreeSet<String> = below
-                    .get(address)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|(child, kind)| tone(child, kind, types, below, statuses, seen))
-                    .collect();
-                Some(
-                    objects::status_order(t)
-                        .into_iter()
-                        .find(|s| found.contains(s))
-                        .unwrap_or_else(|| "grey".into()),
-                )
-            }
-            _ => None,
-        }
-    }
     for item in items.iter_mut() {
         let (Some(address), Some(kind)) = (item["address"].as_str(), item["kind"].as_str()) else {
             continue;

@@ -74,7 +74,9 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
     // One link group: 30 links give 25 with the total of the group.
     let links = read(&w, "joppa_objects", json!({"links_of":"ac:a","direction":"outgoing","relation":"related","kind":"ac","limit":100})).await?;
     ensure!(
-        count(&links) == 25 && links["total"] == 30 && links["next_cursor"] == "ac:b24",
+        count(&links) == 25
+            && links["total"] == 30
+            && links["next_cursor"] == "outgoing/related/ac:b24",
         "{links}"
     );
     // Search: a larger limit gives 25, and the cursor gives the rest of the same ranking.

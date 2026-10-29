@@ -67,7 +67,7 @@ async fn task_detail(pool: &Pool, ws: &str, address: &str) -> anyhow::Result<Val
 }
 async fn assess_current(pool: &Pool, ws: &str, address: &str, ready: bool) -> anyhow::Result<()> {
     let obj = task_detail(pool, ws, address).await?;
-    apply(pool, ws, "agent", json!({"op":"assess","req":obj["process"]["req"],"revision":obj["process"]["revision"],"ac":obj["process"]["criterion"],"assessment":{"ready":ready,"reason":if ready {"Contract is clear"} else {"Which behavior is required?"},"recipient":if ready {Value::Null} else {json!("owner")}}})).await?;
+    apply(pool, ws, "agent", json!({"op":"assess","req":obj["process"]["req"],"revision":obj["process"]["assessment"]["revision"],"ac":obj["process"]["criterion"],"assessment":{"ready":ready,"reason":if ready {"Contract is clear"} else {"Which behavior is required?"},"recipient":if ready {Value::Null} else {json!("owner")}}})).await?;
     Ok(())
 }
 

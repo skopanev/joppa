@@ -62,8 +62,9 @@ Vector ranking uses exact cosine distance after the workspace and kind filter. T
 avoids the filter gaps of an approximate index. Benchmark a representative corpus
 before you add an ANN index. See [pgvector](https://github.com/pgvector/pgvector).
 
-The top 100 text matches and the top 100 vector matches combine by reciprocal rank
-with the constant 60. The reply gives up to `limit` results. A score is a rank value.
+Every text match and the 100 nearest vector matches combine by reciprocal rank
+with the constant 60. `total` counts each result of this union once, so it can be
+above 100. The reply gives up to `limit` results. A score is a rank value.
 It is not a probability, and it is not evidence that a requirement is satisfied.
 
 ## The indexer
@@ -96,7 +97,7 @@ row a vector:
 | `position` | The journal position of the workspace of the request |
 | `workspaces` | Each workspace that the search read |
 | `items` | Each result: `workspace`, `kind`, `id`, `system_id`, `title`, `excerpt`, `req`, `revision`, `score`, `exact_id`, `historical` and `archived` |
-| `total` / `next_cursor` | The count of ranked results, and the offset of the next page. Send it back as `cursor` |
+| `total` / `next_cursor` | The count of ranked results: every text match and the 100 nearest vector matches, each once. `next_cursor` is the offset of the next page. Send it back as `cursor` |
 
 `joppa_search` gives at most 25 results a page, 10 by default. Its results have no
 `system_id`, no `req` on a requirement, and `workspace` only with `all_workspaces`.

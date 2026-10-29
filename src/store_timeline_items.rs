@@ -88,9 +88,6 @@ pub(super) async fn items(
         if command["op"] == "record_report" {
             let commit = command["commit"].as_str().unwrap_or_default();
             item["title"] = json!(format!("Test results {}", &commit[..commit.len().min(12)]));
-            // report stays for older readers; record is the current name.
-            item["report"] = command["report"].clone();
-            item["record"] = command["report"].clone();
         }
         if let Some((address, kind, title, revision, saved, previous)) = found.get(&i) {
             item["address"] = json!(address);

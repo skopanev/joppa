@@ -86,7 +86,7 @@ fn a_detail_gives_each_fact_once() {
     assert_eq!(
         detail(reply, None, None).unwrap(),
         json!({"workspace":"w","position":9,"address":"ac:a","current_revision":4,"document":stored,
-            "status":{"label":"Ready","tone":"green"},"review_required":false,"work_ready":true,
+            "status":{"label":"Ready","tone":"green"},"work_ready":true,
             "links":{"items":[{"target":"ac:b","relation":"related","title":"B","current_revision":2}],"total":1},
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
