@@ -19,7 +19,7 @@ A stale write fails. Identical retries use the same `request_id` and return the 
 Read the document before you change them. Keep fields that you do not change.
 A link to an archived or absent object is refused, unless the current revision already has the same link.
 A save of a criterion also gives its specification a new revision. Its reason is `Criterion <address> changed: <reason>`.
-Ordinary document fields can contain additional text, numbers, lists or maps after the schema migration.
+Ordinary document fields can contain additional text, numbers, lists or maps.
 Process commands preserve those fields. A document replacement removes additional fields that you omit.
 Process evidence stays separate. Use process commands to claim work, record results or accept a requirement.
 
@@ -83,13 +83,12 @@ Agents and the workspace owner can configure the schema.
 The separate `/tree?workspace=...` page only reads it.
 
 Use custom types with any supported role. A `task` role supplies claim, release, completion and queue operations.
-A `requirement` role supplies specification revisions, test plans and acceptance.
+A `requirement` role supplies specification revisions and owner acceptance.
 An `ac` role supplies a criterion in its nearest ancestor specification.
 These roles work with any configured type name, including `spec`, `epic`, `measure` and `rule`.
 A type name does not select its workflow. Former default names can also use ordinary document or group roles.
 All ordinary fields follow the same document rules. Reference fields come only from the active schema.
 Custom workflow commands use full object addresses in `req` and `ac`.
-The server keeps earlier local journal keys compatible.
 Two types can use the same local identifier without sharing test evidence.
 A criterion can have intermediate grouping objects above it.
 A parent change cannot move existing criterion evidence to another specification.
@@ -102,8 +101,7 @@ The server rejects parent cycles.
 The default schema uses REQ → AC → Task. These parent rules are configuration.
 Schemas can omit these types. Task parents can name any configured type, including Task itself.
 Objects have one parent or no parent when their type allows roots.
-Old Tasks with multiple bindings remain under their REQ with `legacy_acs`.
-Their original bindings remain in history. Move active Tasks only to parents permitted by the current schema.
+Move active Tasks only to parents permitted by the current schema.
 Grouping above REQ can use custom types without Domain or Capability.
 Each document revision records its schema revision.
 Historical schema reads return one selected revision.
@@ -134,7 +132,7 @@ The existing string rule keeps its value presence checks.
 For a type with `question`, supply the exact `question_checked` first.
 The server checks that question before it checks required fields.
 The default map is empty. The type name does not select this rule.
-Rules apply to creation and each later document revision, including legacy commands.
+Rules apply to creation and each later document revision.
 The server rejects a schema if a present object lacks a required value.
 Archived and deleted objects do not block the rule.
 Supply missing values before you enable the rule.
@@ -201,8 +199,7 @@ It does not copy old evidence into a new verification revision.
 
 Create new incoming information as `kind: "note"`. A Note has no parent: send `parent: null`
 and link it with `related` to each object that it informs. The server refuses a Note with a
-parent. A migration moved each older Note with a parent to the root, with a `related` link to
-that parent. Omit `id`: the server makes one.
+parent. Omit `id`: the server makes one.
 
 ```json
 {
@@ -219,13 +216,7 @@ that parent. Omit `id`: the server makes one.
 Preserve source text in its original language.
 A corrected Note creates a new revision. Earlier text remains readable.
 Use the same comment and attachment commands as for other objects.
-The legacy `note` operation adds a comment. It does not create a Note document.
-Note replaces Intake and Point. The current schema has no separate source types.
-The server converts existing sources in one migration transaction before it serves requests.
-It preserves source text, authors, review context, comments, attachments and numbered history.
-Existing public IDs and source addresses resolve to the corresponding Note.
-A converted point links to its REQ with `related`.
-Old journal operations remain readable. New source operations and source types are rejected.
+The `note` operation adds a comment. It does not create a Note document.
 
 Link a REQ to a Note with `depends_on` and the Note revision that informed the wording.
 A later Note change then produces a review hint.
@@ -271,8 +262,6 @@ Earlier journal entries, claim metadata, documents and work remain readable.
 
 Use object addresses as canonical identifiers for a configured tree.
 The `id` field of a common object is its local identifier. Its `address` includes the type prefix.
-A verification response can retain a legacy identifier or use a complete object address in `requirement.id`.
-Do not compare that field directly with a short input identifier.
 Resolve a public identifier with `joppa_search`, the identifier as `query`.
 The reply gives only that object, with `exact_id: true`. Then use `joppa_objects` for the current document.
 
@@ -280,7 +269,6 @@ Read a selected object's ancestors through `document.parent`, one object at a ti
 Stop when the parent is null. Use the workspace schema to identify semantic roles.
 Do not require Domain or Capability names, a fixed depth, or grouping confirmation fields.
 Read configured references from the common document and its `references` metadata.
-Legacy verification fields such as `capability` and `consumers` do not replace the common document.
 
 Record each source address and its document revision in the implementation plan.
 Read linked documents at their pinned revision when the link supplies one.
@@ -290,12 +278,10 @@ The response `position` identifies the observed workspace state. It does not rep
 Reject unknown, inaccessible or cyclic parent context with a clear error.
 Never treat missing context as successful discovery.
 
-### Compatibility commands
+### Removed commands
 
-Old authoring commands remain compatible.
-Domain and Consumer edits through those commands do not supply a stale-write token.
-Use `save_object` for new document edits.
-Future changes to historical document formats need an explicit compatible migration.
+Live writes refuse the removed operations, for example `domain`, `revise`, `task` and `describe`.
+The refusal names the replacement, usually `save_object`. Only journal replay reads these operations.
 The projection rejects a different document with an existing revision number.
 The immutable event journal is the source for all projections.
 
@@ -321,10 +307,7 @@ Use `save_object` to change the parent when the schema permits it.
 Only the Task owner can move it. Completed Tasks retain their original contract and evidence.
 Task completion never verifies a specification or an AC.
 
-The server migrates old Tasks to independent process records once.
-Their addresses, public IDs, completion results and original revisions remain readable.
-The server resolves old `req` process addresses to the same Task record.
-Historical REQ task fields remain journal snapshots. Use `joppa_tasks` for the current queue.
+Use `joppa_tasks` for the current queue.
 
 ## Note processing and type presentation
 
@@ -398,7 +381,7 @@ The schema holds every test rule in the block `test_results`. The code reads the
 The names `test`, `status`, `commit`, `actor` and `at` are part of the record. A field cannot use them.
 The server refuses a result with an unknown status name, an unknown field, a missing required field or a value of the wrong type.
 A `set_tree_schema` command with `test_results` sends every rule. A command without `test_results` keeps the current block.
-The event `migrate_test_rules` wrote the block above into each workspace that existed before it, with its status names and its fields. A new workspace gets the same block.
+A new workspace gets the block above.
 Each type of the schema names its status rule in `status` (`tests`, `children`, `links` or `none`) and its process fields in `process_fields`. No rule comes from the role of a type.
 A rule tone that differs from the process tone also sets the status label, for example "Children checks passed" or "Checks failed". A grey rule tone keeps a process label that is not green or red, because that label names the next step.
 The schema flag `status_required` decides a type without `status`. With `true`, `set_tree_schema` refuses the type. With `false`, the schema saves it, and its nodes have the rule `unset` and the tone orange.
@@ -466,14 +449,6 @@ Each type can define `references`, a map from document fields to reference rules
 The diagram, validation, related-object index and queue priorities use these rules.
 Type names do not create reference rules automatically.
 The default recipe defines `ac.consumer` (one consumer, required) and `task.projects`. Each workspace can replace or remove them.
-The migrate_consumers event converts a workspace once: it moves the consumer references from requirements to a single
-`consumer` on each criterion type. Each live criterion gets one new revision with the first valid consumer of its old list,
-else of its requirement. The text, the tests and the readiness of the criterion do not change.
-The migrate_consumer_drops event runs once after it. A criterion whose old list, else the list of its requirement,
-named more valid consumers gets the comment `consumer-migration`. The comment names the kept consumer and lists the
-removed ones, so the owner can add one criterion for each of them. The comment changes no revision and no status.
-A read of the current document of a requirement omits its old `consumers` field, and the save example has no such field.
-The stored revisions keep it, so no requirement gets a new verification revision. A historical read shows the stored field.
 
 ```json
 {
@@ -511,14 +486,11 @@ The parent must supply verification decision evidence. A free-text result cannot
 Omit this option when parent decisions do not form part of the workflow.
 The default recipe enables it for Tasks under acceptance criteria.
 
-Existing workspaces receive these settings once through a server migration.
-That migration creates a schema revision. It does not rewrite object history.
 Type titles and colors remain workspace settings. For example, the `note` type can display the title `Input`.
 
 Set `launch_blocker: true` on a type to use its `before_launch` entries as launch conditions.
 Current check evidence and owner acceptance must cover each selected entry.
 Use `launch_blocker: false` to disable this behavior. An omitted flag also disables it.
-The internal document migration records previous flags once. It does not change any document revision.
 
 A task purpose can be any nonempty label. The `decision` label retains its configured decision behavior.
 
@@ -555,5 +527,4 @@ A done Task prevents `archive_object` on its parent. Retire the Task before you 
 Each tree type can define an optional `question`. Read it from `joppa_tree` or `joppa_help` with `workspace`.
 Before saving, check that the title and description answer the question. Rewrite them when they do not.
 For `save_object`, send `question_checked` with the exact configured question. The server refuses an absent or different value before recording the operation.
-Legacy commands cannot change the title or description of a type with a question. Use `save_object` with `question_checked`.
 The save acknowledgement returns `object.question` for a type with a question. The server stores the question without checking meaning.

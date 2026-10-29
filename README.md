@@ -21,11 +21,14 @@ An iOS condition means iOS; other clients are never added by assumption.
 - Incoming Notes with revisions, comments, attachments and links to affected objects.
   The default queue shows unprocessed Notes. Processed Notes stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
-  history. Every AC in a new revision starts at **n/a**.
+  history.
+- Each AC holds its test list in `data.tests`. Save the list with `save_object`
+  or `set_ac_tests`. `joppa_record_results` records the outcomes of one commit.
+- Each type has a status rule: `tests`, `children`, `links` or `none`. An AC is
+  green when every listed test passes, red when one fails, and grey otherwise.
 - Tasks under configured object parents, manual work and decision tasks. A completed
-  task is not a verified AC. Manual checks store exact expected/observed lists.
-- Sealed check plans, evidence, owner acceptance, withdrawn decisions, confirmed
-  defects and launch conditions. Records append; history is never rewritten.
+  task is not a verified AC. Owner acceptance stays separate. Records append;
+  history is never rewritten.
 
 MCP supports generated creation IDs, atomic batches and English methodology
 without a local checkout. Agents can clarify unconfirmed domain/capability
@@ -119,7 +122,7 @@ use the email name or the actor name. Sign in again to save a profile name.
 The initial page contains metadata. It loads documents and earlier revisions
 only when requested. Closing and opening a loaded card uses its cached content.
 
-Use the **copy + robot** button on any card to copy its permanent identifier.
+Use the **copy** button on any card to copy its permanent identifier.
 A success mark and a toast confirm copying. Agents resolve the copied identifier
 with `joppa_search`: the reply gives only that object, with `exact_id: true`. The same search handles every configured type.
 Use **Revisions** to read one saved document. Historical documents omit current
