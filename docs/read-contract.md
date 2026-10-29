@@ -91,6 +91,7 @@ List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `
 `title`, `owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
 `present`, `note_status`, `status`, `process`, `work_summary`.
 
+`status` is the tone, as in a plain list item; `note_status` gives the Inbox state.
 `description` is a preview of 300 characters. `data` is the full stored `document.data`, and
 `data.<key>` is one of its values, never cut. One requirement with all its criteria takes
 two reads:

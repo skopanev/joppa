@@ -76,7 +76,13 @@ pub fn list_item(item: &Value, fields: Option<&[String]>) -> Value {
     match fields {
         Some(fields) => {
             for field in fields {
-                out.insert(field.clone(), path(item, field));
+                // `status` is the tone, as in a plain list item; `note_status` names the Inbox state.
+                let value = if field == "status" {
+                    item["signal"]["tone"].clone()
+                } else {
+                    path(item, field)
+                };
+                out.insert(field.clone(), value);
             }
         }
         None => {

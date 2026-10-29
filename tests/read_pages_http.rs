@@ -152,9 +152,17 @@ async fn a_list_item_shows_the_same_tone_as_the_detail_read() -> Result<()> {
     .await?;
     let list = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
     let detail = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
+    let named = read(
+        &w,
+        "joppa_objects",
+        json!({"parent":"requirement:r","fields":["status"]}),
+    )
+    .await?;
     ensure!(
-        detail["status"]["tone"] == "green" && list["items"][0]["status"] == "green",
-        "list {list} detail {}",
+        detail["status"]["tone"] == "green"
+            && list["items"][0]["status"] == "green"
+            && named["items"][0]["status"] == "green",
+        "list {list} fields {named} detail {}",
         detail["status"]
     );
     Ok(())

@@ -51,6 +51,12 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
         list_item(&item, Some(&named)),
         json!({"address":"ac:a","revision":3,"process.planning_claim":null})
     );
+    // status is the tone in both shapes.
+    let status = vec!["status".to_owned()];
+    assert_eq!(
+        list_item(&item, Some(&status)),
+        json!({"address":"ac:a","status":"green"})
+    );
     assert!(check_fields(&named).is_ok());
     assert_eq!(
         check_fields(&["nope".to_owned()]).unwrap_err().to_string(),
