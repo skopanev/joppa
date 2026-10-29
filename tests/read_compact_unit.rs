@@ -1,5 +1,7 @@
 //! requirement:read-contract, the pure shape rules without a server.
-use joppa::read_compact::{check_fields, detail, list_item, page, strip_empty, strip_reply};
+use joppa::read_compact::{
+    check_fields, detail, list_item, page, revision, strip_empty, strip_reply,
+};
 use serde_json::json;
 
 // read-empty-verbose-tests
@@ -83,6 +85,16 @@ fn a_detail_gives_each_fact_once() {
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
             "process":{"req":"requirement:r","revision":7,"assessment":{"state":"ready","reason":"Clear"}},
+            "remote_links_revision":0})
+    );
+    // A revision read follows the same rules for copies and an empty remote link list.
+    assert_eq!(
+        revision(
+            json!({"workspace":"w","workspace_key":"w","address":"ac:a","kind":"ac","id":"a",
+            "historical":true,"current_revision":4,"remote_links":[],"remote_links_revision":0,
+            "remote_review_required":false})
+        ),
+        json!({"workspace":"w","address":"ac:a","historical":true,"current_revision":4,
             "remote_links_revision":0})
     );
 }

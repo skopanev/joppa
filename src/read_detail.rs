@@ -89,6 +89,16 @@ fn drop_copies(reply: &mut Value) {
     drop_same(reply, &["workspace_key"], &workspace);
 }
 
+/// An object without remote links has no remote link list; read it as []. The revision
+/// stays, because set_remote_links sends it.
+fn drop_empty_remote(reply: &mut Value) {
+    if reply["remote_links"] == json!([]) && reply["remote_review_required"] != true {
+        for key in ["remote_links", "remote_review_required"] {
+            reply.as_object_mut().map(|m| m.remove(key));
+        }
+    }
+}
+
 /// A detail reply: the stored document, one page of comments and of titled links, the
 /// incoming link counts, one copy of each process fact, and no empty keys outside document.
 pub fn detail(
@@ -145,13 +155,7 @@ pub fn detail(
             r.as_object_mut().map(|m| m.remove("present"));
         }
     }
-    // An object without remote links has no remote link list; read it as []. The revision
-    // stays, because set_remote_links sends it.
-    if reply["remote_links"] == json!([]) && reply["remote_review_required"] != true {
-        for key in ["remote_links", "remote_review_required"] {
-            reply.as_object_mut().map(|m| m.remove(key));
-        }
-    }
+    drop_empty_remote(&mut reply);
     strip_empty(&mut reply);
     Ok(reply)
 }
@@ -160,6 +164,7 @@ pub fn detail(
 /// copies of the address and without empty keys.
 pub fn revision(mut reply: Value) -> Value {
     drop_copies(&mut reply);
+    drop_empty_remote(&mut reply);
     if let Some(links) = reply["links"].as_array_mut() {
         *links = links.iter().map(link_item).collect();
     }

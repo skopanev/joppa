@@ -163,7 +163,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 ## One revision and the revision headers
 
 `{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 with
-`historical` and `current_revision`, without empty keys outside `document`.
+`historical` and `current_revision`, without empty keys outside `document`. It follows the
+detail rules for copies of the address and for an empty remote link list.
 
 `{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers:
 

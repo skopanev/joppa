@@ -211,6 +211,22 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
     )
     .await?;
     ensure!(addresses(&plain) == rest, "{plain}");
+    // The position belongs to the snapshot: a detail read without a write between gives the
+    // same position, and a write moves it.
+    let detail = read(&w, "joppa_objects", json!({"address":"ac:b00"})).await?;
+    ensure!(detail["position"] == plain["position"], "{detail} {plain}");
+    w.command(
+        &w.bot,
+        json!({"op":"save_object","kind":"ac","id":"b99","revision":0,"parent":"requirement:r",
+            "data":{"title":"B99","owner":"owner"},"reason":"Sweep test"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+    let moved = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
+    ensure!(
+        moved["position"].as_i64() > plain["position"].as_i64(),
+        "{moved} {plain}"
+    );
     // A cursor that is not an address is refused, not read from the start.
     for args in [
         json!({"parent":"requirement:r","cursor":"25"}),
