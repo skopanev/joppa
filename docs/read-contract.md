@@ -10,9 +10,12 @@ MCP reads have one shape. There is no `verbose` switch.
 - Keys whose value is `null`, `""`, `[]` or `{}` are omitted, except inside `document`,
   `data`, `command` and `remote_links`. Those stay byte for byte as stored. `false` and `0` stay.
 - A top-level `items: []` stays when a list is empty.
-- Read an omitted key as empty: no value, no list, no map.
+- Read an omitted key as empty: no value, no list, no map, `0`.
+- No key repeats another key, the address or the request.
+- Each list and detail reply gives `workspace` and `position`, the journal position of its
+  snapshot. Equal positions in several replies mean that no write came between them.
 - MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
-  `joppa_search`: the first result has `exact_id: true`.
+  `joppa_search`: the reply gives only that object, with `exact_id: true`.
 
 ## Limits for clients that send a larger `limit`
 
@@ -40,6 +43,8 @@ roots. `kind` filters by type. Reply:
 
 ```json
 {
+  "workspace": "w",
+  "position": 412,
   "total": 27,
   "next_cursor": "ac:a3",
   "items": [
@@ -55,7 +60,7 @@ roots. `kind` filters by type. Reply:
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
   inputs first, then processed inputs, each group in address order. Its `next_cursor` is the
   Inbox cursor, and `total` is absent.
-- No `revision`, `description`, `process` or `id`.
+- No `revision`, `description`, `process` or `id`. Name them with `fields`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
 With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
@@ -82,9 +87,19 @@ Reply item: the address and each named path, also when its value is empty.
 ```
 
 A path whose first part is not a list field is refused: `unknown field nope`.
-List fields: `address`, `kind`, `id`, `revision`, `contract_revision`, `parent`, `title`,
-`owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
+List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `parent`,
+`title`, `owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
 `present`, `note_status`, `status`, `process`, `work_summary`.
+
+`description` is a preview of 300 characters. `data` is the full stored `document.data`, and
+`data.<key>` is one of its values, never cut. One requirement with all its criteria takes
+two reads:
+
+```json
+{"workspace": "w", "address": "requirement:r"}
+{"workspace": "w", "parent": "requirement:r",
+ "fields": ["title", "status", "revision", "data.description", "data.tests"]}
+```
 
 ## Detail mode: `joppa_objects` with `address`
 
@@ -92,9 +107,9 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 
 ```json
 {
+  "workspace": "w",
+  "position": 412,
   "address": "task:t",
-  "kind": "task",
-  "revision": 3,
   "current_revision": 3,
   "contract_revision": 2,
   "document": {"revision": 3, "actor": "bot", "at": "...", "reason": "...",
@@ -106,38 +121,58 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "process": {"status": "in_progress", "holder": "bot"},
   "work_ready": true,
   "review_required": false,
-  "revisions": [
-    {"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
-    {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
-    {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}
-  ],
   "comments": {
     "total": 30,
     "next_cursor": "25",
     "items": [{"id": "c00", "text": "Finding 1", "actor": "bot", "actor_type": "agent",
                "at": "...", "withdrawn": false}]
   },
-  "links": {"total": 1, "items": [{"target": "ac:b", "relation": "related", "title": "...", "present": true}]}
+  "links": {"total": 1, "items": [{"target": "ac:b", "relation": "related", "title": "...",
+                                   "current_revision": 4}]},
+  "link_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}],
+  "remote_links_revision": 0
 }
 ```
 
-- `document` is the stored revision, unchanged. `document.links` is complete.
+- `document` is the stored revision, unchanged.
+  `document.links` is complete, with each pin and blocking flag.
+- `contract_revision` shows only when it differs from `current_revision`.
+- There are no `kind`, `id`, `revision_count`, `historical`,
+  `metadata_scope` or revision headers. `workspace_key` shows only when it differs from
+  `workspace`.
 - `comments` are in time order. A comment has no `author` or `created_at` when they repeat
   `actor` and `at`.
-- `links` is the titled list of outgoing links; `link_groups` stays for incoming counts.
+- `links` is the titled list of outgoing links: `target`, `relation`, `title` and the
+  `current_revision` of the target. `present: false` marks an archived target.
+- `link_groups` counts the incoming links by relation and kind.
+- `references` gives the title of each object that a data field names.
 - An object without comments has no `comments` key. An object without outgoing links has no
   `links` key.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
 - `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
+  `process` and `assessment` give no copy of the address, of `req` or of its revision.
+- An object without remote links has no `remote_links` or `remote_review_required`. Read
+  them as `[]` and `false`.
+- The keys that a write sends back always stay: `current_revision` for `save_object` and
+  `remote_links_revision` for `set_remote_links`.
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
 - Next link page: `{"workspace": "w", "address": "task:t", "links_cursor": "25"}`.
 - `comments_cursor` and `links_cursor` are offsets. A comment or link added between two
   reads moves the later items by one place. Read the first page again for a stable view.
 
-## One revision
+## One revision and the revision headers
 
-`{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 as before, without
-empty keys outside `document`. `"history": true` gives the revision counts.
+`{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 with
+`historical` and `current_revision`, without empty keys outside `document`.
+
+`{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers:
+
+```json
+{"workspace": "w", "position": 412, "address": "task:t", "current_revision": 3,
+ "revisions": [{"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
+               {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
+               {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}]}
+```
 
 ## `joppa_tests`
 
@@ -154,7 +189,8 @@ empty keys outside `document`. `"history": true` gives the revision counts.
 
 `joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their fields and
 paging. Only the empty keys and `item_id` go. `joppa_tasks` keeps `limit` up to 100 and
-`next_cursor`.
+`next_cursor`. When the `joppa_search` query is an item ID or an address, the reply gives
+only the exact matches, each with `exact_id: true`.
 
 ## Titles and texts
 

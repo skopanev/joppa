@@ -1,5 +1,5 @@
 //! requirement:read-contract, the pure shape rules without a server.
-use joppa::read_compact::{check_fields, list_item, page, strip_empty, strip_reply};
+use joppa::read_compact::{check_fields, detail, list_item, page, strip_empty, strip_reply};
 use serde_json::json;
 
 // read-empty-verbose-tests
@@ -53,5 +53,36 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
     assert_eq!(
         check_fields(&["nope".to_owned()]).unwrap_err().to_string(),
         "unknown field nope"
+    );
+}
+
+// read-detail-pages
+#[test]
+fn a_detail_gives_each_fact_once() {
+    let stored = json!({"revision":4,"parent":"requirement:r","links":[{"target":"ac:b","relation":"related","blocking":false,"revision":null}],"data":{"title":"A"}});
+    let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
+        "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,
+        "contract_revision":4,"historical":false,"metadata_scope":"current",
+        "document":stored,"signal":{"label":"Ready","tone":"green"},
+        "review_required":false,"work_ready":true,
+        "links":[{"link":{"target":"ac:b","relation":"related","blocking":false,"revision":null},
+            "title":"B","kind":"ac","current_revision":2,"present":true,"blocking":false,
+            "revision":null,"metadata_scope":"current"}],
+        "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
+        "link_groups":[{"direction":"outgoing","relation":"related","kind":"ac","count":1},
+            {"direction":"incoming","relation":"related","kind":"task","count":2}],
+        "annotations":{"comments":{},"attachments":{}},
+        "process":{"annotation_address":"ac:a","criterion":"ac:a","req":"requirement:r","revision":7,
+            "assessment":{"criterion":"ac:a","req":"requirement:r","revision":7,"state":"ready","reason":"Clear"}},
+        "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
+    assert_eq!(
+        detail(reply, None, None).unwrap(),
+        json!({"workspace":"w","position":9,"address":"ac:a","current_revision":4,"document":stored,
+            "status":{"label":"Ready","tone":"green"},"review_required":false,"work_ready":true,
+            "links":{"items":[{"target":"ac:b","relation":"related","title":"B","current_revision":2}],"total":1},
+            "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
+            "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
+            "process":{"req":"requirement:r","revision":7,"assessment":{"state":"ready","reason":"Clear"}},
+            "remote_links_revision":0})
     );
 }

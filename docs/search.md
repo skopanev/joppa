@@ -4,7 +4,7 @@
 HTTP route `GET /api/workspaces/{workspace}/search` and the CLI command
 `joppa search` use the same search. Read a result with
 `joppa_objects({"workspace":"...","address":"kind:id"})` before you propose changes.
-A copied public ID as `query` gives that object first, with `exact_id: true`.
+A copied public ID or an address as `query` gives only that object, with `exact_id: true`.
 
 ```json
 {"workspace":"product","query":"restore a subscription after signing in","kind":"requirement","limit":10}

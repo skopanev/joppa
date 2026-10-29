@@ -813,14 +813,12 @@ async fn journal_snapshot(
             json!({"address":address,"history":true}),
         )
         .await?;
-        let count = history["revision_count"]
-            .as_u64()
-            .ok_or_else(|| anyhow::anyhow!("{address}: no revision_count: {history}"))?;
-        ensure!(count > 0, "{address}: no revisions: {history}");
-        out.insert(
-            format!("history {address}"),
-            history["revision_count"].clone(),
+        let count = history["revisions"].as_array().map_or(0, Vec::len) as u64;
+        ensure!(
+            count > 0 && history["current_revision"] == count,
+            "{address}: no revisions: {history}"
         );
+        out.insert(format!("history {address}"), history["revisions"].clone());
         for n in 1..=count {
             let revision = get(
                 format!("objects?address={address}&revision={n}"),

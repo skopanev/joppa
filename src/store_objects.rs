@@ -63,6 +63,8 @@ pub struct ObjectScope<'a> {
     pub note_status: Option<&'a str>,
     pub related_to: Option<&'a str>,
     pub work_filter: Option<&'a str>,
+    /// Each list item also gives the full `document.data`.
+    pub data: bool,
 }
 
 /// The priority values of the current tree schema, the first value first in work order.

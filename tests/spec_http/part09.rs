@@ -138,9 +138,9 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        // A revision read gives the HTTP reply without empty keys and item IDs.
+        // A revision read gives the HTTP reply without empty keys and copies of the address.
         ensure!(
-            mcp == joppa::read_compact::strip_reply(object.clone()),
+            mcp == joppa::read_compact::revision(object.clone()),
             "{mcp} / {object}"
         );
     }
@@ -188,8 +188,11 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
         "the refused role change must not affect history"
     );
     ensure!(
-        w.get("address=note:identity&history=true").await?["revision_count"] == 3,
-        "history must return the revision count"
+        w.get("address=note:identity&history=true").await?["revisions"]
+            .as_array()
+            .map(Vec::len)
+            == Some(3),
+        "history must return the revision headers"
     );
     Ok(())
 }

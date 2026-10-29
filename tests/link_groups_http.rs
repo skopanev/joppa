@@ -117,11 +117,17 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         ),
         "{groups:?}"
     );
+    // `links` gives the outgoing links, so the counts keep only the incoming groups.
     ensure!(
-        groups.contains(
-            &json!({"direction":"outgoing","relation":"depends_on","kind":"capability","count":3})
-        ),
-        "{groups:?}"
+        groups.iter().all(|g| g["direction"] == "incoming")
+            && object["links"]["total"] == 3
+            && object["links"]["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .all(|l| l["relation"] == "depends_on"),
+        "{groups:?} {}",
+        object["links"]
     );
     let (mut cursor, mut seen, mut sizes) =
         (None::<String>, std::collections::BTreeSet::new(), vec![]);

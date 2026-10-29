@@ -99,6 +99,7 @@ pub(super) async fn objects(
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
                 work_filter: q.work_filter.as_deref(),
+                data: false,
             },
         )
         .await

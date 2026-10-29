@@ -1,8 +1,9 @@
 //! The lean list of requirement:read-contract: the current objects under one node, or the
 //! roots, or every node with parent "*", in address order. Each row gives only the address,
 //! the title, the status tone and the number of present children, with no item ID, process
-//! or priority lookup. `total` counts every matching object. The tone takes the stored rollup,
-//! as in every other read, so a status rule (tests, children, links) shows here too.
+//! or priority lookup. `total` counts every matching object. The reply gives the workspace
+//! and the journal position of its snapshot. The tone takes the stored rollup, as in every
+//! other read, so a status rule (tests, children, links) shows here too.
 use super::*;
 
 pub async fn compact_list(
@@ -20,7 +21,20 @@ pub async fn compact_list(
             .is_some_and(|(kind, id)| !kind.is_empty() && !id.is_empty() && !id.contains(':'))),
         "invalid object cursor; start again without cursor"
     );
-    let (conn, workspace) = authorized(pool, workspace, actor).await?;
+    let (mut conn, workspace) = authorized(pool, workspace, actor).await?;
+    // One snapshot: the journal position belongs to the rows of this page.
+    let conn = conn
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await?;
+    let head = conn
+        .query_one(
+            "SELECT position,COALESCE(state->>'workspace_id',workspace) FROM joppa.board_cache WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?;
     let rows = conn
         .query(
             "SELECT x.address,x.title,x.signal::text,x.total,
@@ -45,7 +59,7 @@ pub async fn compact_list(
             json!({"address": r.get::<_, String>(0), "signal": signal})
         })
         .collect();
-    apply_rollups(&**conn, &workspace, &mut rolled).await?;
+    apply_rollups(&*conn, &workspace, &mut rolled).await?;
     let mut items: Vec<Value> = rows
         .iter()
         .zip(&rolled)
@@ -62,7 +76,7 @@ pub async fn compact_list(
             item
         })
         .collect();
-    let mut reply = json!({"total": total});
+    let mut reply = json!({"workspace": head.get::<_, String>(1), "position": head.get::<_, i64>(0), "total": total});
     if rows.len() > limit {
         reply["next_cursor"] = items.last().map_or(Value::Null, |i| i["address"].clone());
     }

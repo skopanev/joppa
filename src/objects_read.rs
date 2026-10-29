@@ -119,10 +119,18 @@ async fn read_one(
     if scope.history {
         ensure!(
             scope.revision.is_none(),
-            "history reports counts; read one revision separately"
+            "history gives the revision headers; read one revision separately"
         );
+        // The revision headers: number, time, actor and reason, without the bodies.
+        let revisions: Vec<Value> = conn
+            .query("SELECT revision,document->>'at',document->>'actor',document->>'reason' FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 ORDER BY revision", &[&workspace, &key])
+            .await?
+            .iter()
+            .map(|r| json!({"revision": r.get::<_, i32>(0), "at": r.get::<_, Option<String>>(1),
+                "actor": r.get::<_, Option<String>>(2), "reason": r.get::<_, Option<String>>(3)}))
+            .collect();
         return Ok(
-            json!({"workspace":public,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"current_revision":current,"revision_count":current,"position":position}),
+            json!({"workspace":public,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"current_revision":current,"position":position,"revisions":revisions}),
         );
     }
     let n = scope.revision.unwrap_or(current as u32);

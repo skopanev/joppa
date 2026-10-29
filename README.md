@@ -121,7 +121,7 @@ only when requested. Closing and opening a loaded card uses its cached content.
 
 Use the **copy + robot** button on any card to copy its permanent identifier.
 A success mark and a toast confirm copying. Agents resolve the copied identifier
-with `joppa_search`: the first result has `exact_id: true`. The same search handles every configured type.
+with `joppa_search`: the reply gives only that object, with `exact_id: true`. The same search handles every configured type.
 Use **Revisions** to read one saved document. Historical documents omit current
 comments, files and process status. Current comments, attachments and Context
 remain separate annotations.

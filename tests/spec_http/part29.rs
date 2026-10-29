@@ -58,7 +58,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     ensure!(mcp["object"] == json!({"address":t,"revision":4}), "{mcp}");
     let task = revisions().await?;
     ensure!(
-        task["current_revision"] == 4 && task["revision_count"] == 4,
+        task["current_revision"] == 4 && task["revisions"].as_array().map(Vec::len) == Some(4),
         "{task}"
     );
     let u = read("task:u").await?;
@@ -70,7 +70,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     // joppa_objects over MCP reads the same revisions and the same pin.
     let mcp_task = mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":t,"history":true})).await?;
     ensure!(
-        mcp_task["current_revision"] == 4 && mcp_task["revision_count"] == 4,
+        mcp_task["current_revision"] == 4 && mcp_task["revisions"].as_array().map(Vec::len) == Some(4),
         "{mcp_task}"
     );
     let mcp_u = mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":"task:u"})).await?;
@@ -124,7 +124,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     }
     let task = revisions().await?;
     ensure!(
-        task["current_revision"] == 4 && task["revision_count"] == 4,
+        task["current_revision"] == 4 && task["revisions"].as_array().map(Vec::len) == Some(4),
         "{task}"
     );
     ensure!(journal_position(&w).await? == position);

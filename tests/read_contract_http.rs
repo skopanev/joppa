@@ -45,7 +45,13 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
     )
     .await?;
     let items = first["items"].as_array().cloned().unwrap_or_default();
-    ensure!(items.len() == 25 && first["total"] == 27, "{first}");
+    ensure!(
+        items.len() == 25
+            && first["total"] == 27
+            && first["position"].is_number()
+            && first["workspace"].is_string(),
+        "{first}"
+    );
     for item in &items {
         let keys: Vec<&String> = item
             .as_object()
@@ -97,6 +103,30 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
             && item["work_ready"].is_boolean()
             && item.get("title").is_none(),
         "{reply}"
+    );
+    // data and data.<key> give the stored document data, without a cut.
+    let long = "Given: a long text. ".repeat(30);
+    w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"long","revision":0,"parent":"requirement:r","data":{"title":"Long","owner":"owner","description":long},"reason":"Read contract test"})).await?.map_err(anyhow::Error::msg)?;
+    let full = read(
+        &w,
+        "joppa_objects",
+        json!({"parent":"requirement:r","fields":["data.description","data"]}),
+    )
+    .await?;
+    let saved = full["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| i["address"] == "ac:long")
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        saved["data.description"] == json!(long)
+            && saved["data"]["description"] == json!(long)
+            && saved["data"]["title"] == "Long"
+            && full["position"].is_number()
+            && full["workspace"].is_string(),
+        "{full}"
     );
     let refused = w
         .mcp(
@@ -158,13 +188,40 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
             && comment.get("created_at").is_none(),
         "{comment}"
     );
-    let revisions = detail["revisions"].as_array().cloned().unwrap_or_default();
+    // The detail repeats no key of the document or the request; position and workspace stay.
+    for key in [
+        "revisions",
+        "contract_revision",
+        "revision_count",
+        "kind",
+        "id",
+        "historical",
+        "metadata_scope",
+        "workspace_key",
+    ] {
+        ensure!(detail.get(key).is_none(), "{key}: {detail}");
+    }
     ensure!(
-        revisions.len() == 2
+        detail["document"]["revision"] == 2
+            && detail["current_revision"] == 2
+            && detail["position"].is_number()
+            && detail["workspace"].is_string(),
+        "{detail}"
+    );
+    let history = read(
+        &w,
+        "joppa_objects",
+        json!({"address":"requirement:d","history":true}),
+    )
+    .await?;
+    let revisions = history["revisions"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        history["current_revision"] == 2
+            && revisions.len() == 2
             && revisions[1]["revision"] == 2
             && revisions[1]["reason"] == "Second revision"
             && revisions[1]["actor"] == "bot",
-        "{revisions:?}"
+        "{history}"
     );
     let third = read(
         &w,
@@ -184,7 +241,12 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
         json!({"address":"requirement:d","revision":1}),
     )
     .await?;
-    ensure!(old["document"]["data"]["title"] == "D", "{old}");
+    ensure!(
+        old["document"]["data"]["title"] == "D"
+            && old["historical"] == true
+            && old["current_revision"] == 2,
+        "{old}"
+    );
     ensure!(
         no_empty_keys(&detail),
         "an empty key outside document: {detail}"
@@ -208,6 +270,20 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         compact["annotations"].get("attachments").is_none() && compact["status"].is_object(),
         "{compact}"
     );
+    // No copy of the address in process, and no remote link list without remote links.
+    // remote_links_revision stays: set_remote_links sends it.
+    let process = &compact["process"];
+    ensure!(
+        process.get("annotation_address").is_none()
+            && process.get("criterion").is_none()
+            && process["assessment"].get("criterion").is_none()
+            && process["assessment"].get("req").is_none(),
+        "{process}"
+    );
+    for key in ["remote_links", "remote_review_required"] {
+        ensure!(compact.get(key).is_none(), "{key}: {compact}");
+    }
+    ensure!(compact["remote_links_revision"] == 0, "{compact}");
     let verbose = w
         .mcp(
             &w.bot,

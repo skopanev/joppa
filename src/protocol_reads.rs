@@ -88,16 +88,16 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             note_status: a["note_status"].as_str(),
             related_to: a["related_to"].as_str(),
             work_filter: a["work_filter"].as_str(),
+            data: fields
+                .iter()
+                .flatten()
+                .any(|f| f == "data" || f.starts_with("data.")),
         },
     )
     .await?;
     match a["address"].as_str() {
         None => {
             let mut reply = reply;
-            if let Some(map) = reply.as_object_mut() {
-                map.remove("position");
-                map.remove("workspace");
-            }
             // A list in address order gives the bare address of its last item as the cursor,
             // as a plain list does, so one sweep may mix plain pages and pages with fields.
             if !inbox
@@ -111,17 +111,12 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             }
             Ok(rc::list(reply, fields.as_deref()))
         }
-        Some(_) if revision.is_some() || history => Ok(rc::strip_reply(reply)),
-        Some(_) => {
-            let address = reply["address"].as_str().unwrap_or_default().to_owned();
-            let revisions = store::revision_headers(pool, workspace, &address).await?;
-            rc::detail(
-                reply,
-                revisions,
-                a["comments_cursor"].as_str(),
-                a["links_cursor"].as_str(),
-            )
-        }
+        Some(_) if revision.is_some() || history => Ok(rc::revision(reply)),
+        Some(_) => rc::detail(
+            reply,
+            a["comments_cursor"].as_str(),
+            a["links_cursor"].as_str(),
+        ),
     }
 }
 
@@ -165,6 +160,7 @@ async fn criteria(
                 note_status: None,
                 related_to: None,
                 work_filter: None,
+                data: false,
             },
         )
         .await?;

@@ -257,10 +257,6 @@ mod search_revisions;
 #[path = "workspace_prefix.rs"]
 pub mod workspace_prefix;
 
-#[path = "store_revision_headers.rs"]
-mod revision_headers;
-pub use revision_headers::revision_headers;
-
 #[path = "store_blobs.rs"]
 mod blobs;
 pub use blobs::{ATTACHMENT_MAX, get_blob, put_blob};

@@ -167,7 +167,8 @@ A link does not change tree parentage.
 In text, write a reference as [Title](kind:id). The board shows the title as a link to the object.
 
 One object read gives `links`, its outgoing links with titles, and `link_groups`: a count for each
-direction, relation and kind of the other object. It does not list the incoming links. Read one
+direction, relation and kind of the other object. The MCP read keeps only the incoming counts,
+because `links` already gives the outgoing links. It does not list the incoming links. Read one
 group in pages with `joppa_objects`:
 
 ```json
@@ -273,7 +274,7 @@ The `id` field of a common object is its local identifier. Its `address` include
 A verification response can retain a legacy identifier or use a complete object address in `requirement.id`.
 Do not compare that field directly with a short input identifier.
 Resolve a public identifier with `joppa_search`, the identifier as `query`.
-The first result has `exact_id: true`. Then use `joppa_objects` for the current document.
+The reply gives only that object, with `exact_id: true`. Then use `joppa_objects` for the current document.
 
 Read a selected object's ancestors through `document.parent`, one object at a time.
 Stop when the parent is null. Use the workspace schema to identify semantic roles.
@@ -445,7 +446,7 @@ A plan or a Task claimed before such a change cannot finish on the old pin: fini
 A blocking link makes the object and the work below it wait until the target is ready: its pin is current, every criterion at and below it is green, no node there waits for a local dependency, and each blocking remote link that applies there is ready too.
 Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
 Claims, completions (`complete_task`) and acceptances (`accept_commit`) check this wait with the access of the writer. An acceptance also checks the blocking remote links of the nodes below its target. They lock every workspace that a chain of blocking remote links reaches, in sorted ID order, so a record of results anywhere in the chain waits or comes first. A write that reaches a workspace outside its locks fails and asks for a retry.
-An empty `links` list removes the links of the object. `workspace_key` in joppa_tree and in an object read is the immutable ID of the workspace.
+An empty `links` list removes the links of the object. `workspace_key` in joppa_tree and in an object read is the immutable ID of the workspace. The MCP object read gives it only when it differs from `workspace`.
 
 ## Type order
 

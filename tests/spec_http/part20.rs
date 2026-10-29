@@ -65,7 +65,7 @@ async fn the_agent_bot_finds_an_object_first_by_its_current_and_kept_item_ids() 
     bot_finds_first(&w, &current).await
 }
 
-/// The agent bot's search for an item ID returns note:second first, with that ID as an exact match.
+/// The agent bot's search for an item ID returns only note:second, with that ID as an exact match.
 async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
     let found = mcp_value(w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
     let first = &found["items"][0];
@@ -73,7 +73,8 @@ async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
         first["kind"] == "note"
             && first["id"] == "second"
             && first["system_id"] == query
-            && first["exact_id"] == true,
+            && first["exact_id"] == true
+            && found["items"].as_array().map(Vec::len) == Some(1),
         "{query}: {found}"
     );
     Ok(())
@@ -98,7 +99,10 @@ async fn the_agent_bot_finds_an_object_first_by_its_address() -> Result<()> {
     let found = mcp_value(&w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
     let first = &found["items"][0];
     ensure!(
-        first["kind"] == "note" && first["id"] == "second" && first["exact_id"] == true,
+        first["kind"] == "note"
+            && first["id"] == "second"
+            && first["exact_id"] == true
+            && found["items"].as_array().map(Vec::len) == Some(1),
         "{query}: {found}"
     );
     for (name, arguments) in [

@@ -5,6 +5,8 @@
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
+pub use crate::read_detail::{detail, revision};
+
 /// The page size of object lists, comments and links.
 pub const PAGE: usize = 25;
 
@@ -13,8 +15,9 @@ pub const PAGE: usize = 25;
 const AUTHORED: [&str; 4] = ["document", "data", "command", "remote_links"];
 
 /// The first path segments that a list item can give through `fields`.
-const LIST_FIELDS: [&str; 18] = [
+const LIST_FIELDS: [&str; 19] = [
     "address",
+    "data",
     "kind",
     "id",
     "revision",
@@ -54,7 +57,7 @@ fn path(value: &Value, path: &str) -> Value {
 }
 
 /// The status of an object: the label and the tone of its signal.
-fn status(item: &Value) -> Option<Value> {
+pub(crate) fn status(item: &Value) -> Option<Value> {
     let signal = &item["signal"];
     let mut out = Map::new();
     for key in ["label", "tone"] {
@@ -119,73 +122,6 @@ pub fn page(entries: Vec<Value>, cursor: Option<&str>) -> Result<Value> {
         out["next_cursor"] = json!((start + PAGE).to_string());
     }
     Ok(out)
-}
-
-/// The comments of an annotation map as a list in time order, without duplicate keys.
-fn comment_list(comments: &Value) -> Vec<Value> {
-    let mut list: Vec<Value> = comments
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(id, c)| {
-            let mut c = c.clone();
-            c["id"] = json!(id);
-            if c["author"] == c["actor"] {
-                c.as_object_mut().map(|m| m.remove("author"));
-            }
-            if c["created_at"] == c["at"] {
-                c.as_object_mut().map(|m| m.remove("created_at"));
-            }
-            c
-        })
-        .collect();
-    list.sort_by(|a, b| {
-        (a["at"].as_str(), a["id"].as_str()).cmp(&(b["at"].as_str(), b["id"].as_str()))
-    });
-    list
-}
-
-/// A detail reply: the stored document, the revision headers, one page of comments and of
-/// titled links, one copy of the readiness assessment, and no empty keys outside document.
-pub fn detail(
-    mut reply: Value,
-    revisions: Vec<Value>,
-    comments_cursor: Option<&str>,
-    links_cursor: Option<&str>,
-) -> Result<Value> {
-    let comments = comment_list(&reply["annotations"]["comments"]);
-    if let Some(annotations) = reply["annotations"].as_object_mut() {
-        annotations.remove("comments");
-        // `files` gives the same attachments.
-        annotations.remove("attachments");
-    }
-    let links = reply["links"].as_array().cloned().unwrap_or_default();
-    for (key, entries, cursor) in [
-        ("comments", comments, comments_cursor),
-        ("links", links, links_cursor),
-    ] {
-        // An object without comments or links has no such key.
-        reply[key] = if entries.is_empty() {
-            Value::Null
-        } else {
-            page(entries, cursor)?
-        };
-    }
-    if let Some(status) = status(&reply) {
-        reply["status"] = status;
-    }
-    if reply["process"]["readiness_blocker"] == reply["process"]["assessment"] {
-        reply["process"]
-            .as_object_mut()
-            .map(|p| p.remove("readiness_blocker"));
-    }
-    if let Some(map) = reply.as_object_mut() {
-        map.remove("signal");
-        map.remove("id");
-    }
-    reply["revisions"] = Value::Array(revisions);
-    strip_empty(&mut reply);
-    Ok(reply)
 }
 
 fn empty(value: &Value) -> bool {

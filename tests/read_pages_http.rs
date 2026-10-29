@@ -104,6 +104,21 @@ async fn a_detail_read_pages_its_links_by_25() -> Result<()> {
             && first.iter().all(|l| l["title"].is_string()),
         "{page}"
     );
+    // A titled link gives what the target is now; document.links holds the stored link.
+    ensure!(
+        first[0]
+            == json!({"target":"requirement:t00","relation":"related","title":"T00","current_revision":1}),
+        "{}",
+        first[0]
+    );
+    ensure!(
+        detail["link_groups"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .all(|g| g["direction"] == "incoming"),
+        "{detail}"
+    );
     ensure!(
         detail["document"]["links"].as_array().map(Vec::len) == Some(30),
         "document.links is not complete: {}",
@@ -162,7 +177,7 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
         first.len() == 25 && plain["next_cursor"] == first[24].as_str(),
         "{plain}"
     );
-    // A page with fields continues the plain sweep and gives no envelope extras.
+    // A page with fields continues the plain sweep, from the same snapshot position.
     let named = read(
         &w,
         "joppa_objects",
@@ -175,8 +190,9 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
             && rest[0] > first[24]
             && named["items"][0]["revision"] == 1
             && named.get("next_cursor").is_none()
-            && named.get("position").is_none()
-            && named.get("workspace").is_none(),
+            && plain["position"].is_number()
+            && named["position"] == plain["position"]
+            && named["workspace"] == plain["workspace"],
         "{named}"
     );
     // And the other way: a fields page gives a bare address that a plain page takes.

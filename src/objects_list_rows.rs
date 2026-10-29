@@ -53,7 +53,8 @@ pub(super) async fn list_rows(
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
             jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text,o.process::text,
-            CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END
+            CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END,
+            CASE WHEN $16::boolean THEN (o.document->'data')::text END
         FROM joppa.objects o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         LEFT JOIN work_counts w ON w.address=o.address
@@ -97,6 +98,7 @@ pub(super) async fn list_rows(
                 &after_processed,
                 &green,
                 &values,
+                &scope.data,
             ],
         )
         .await?;
@@ -122,6 +124,9 @@ pub(super) async fn list_rows(
             .any(|kind| item["kind"] == kind.as_str())
         {
             item["process"] = serde_json::from_str::<Value>(row.get(16))?;
+        }
+        if let Some(data) = row.get::<_, Option<String>>(18) {
+            item["data"] = serde_json::from_str(&data)?;
         }
         if !item["note_status"].is_null() {
             item["status"] = item["note_status"].clone();

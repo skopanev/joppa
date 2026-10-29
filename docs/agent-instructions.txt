@@ -1,7 +1,7 @@
 Read joppa_tree for the workspace types, parents, references, questions and status rules. Use those rules for the current workspace.
 Use joppa_objects to find and read current objects. Read one historical revision only when needed. Use joppa_search to find related work.
 Read joppa_help for the operation you need.
-Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the first result with exact_id is the object. Never guess local IDs.
+Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.
 
 Read an object before you change it. Send its current revision. Preserve document fields, parent and links that you do not change.
 Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.

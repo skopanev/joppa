@@ -1,6 +1,6 @@
 //! The search query. Full-text and vector candidates come from the current documents of the
 //! workspaces in scope, and with all_versions also from each object revision. Reciprocal
-//! rank with the constant 60 fuses them, and an exact item ID or address comes first.
+//! rank with the constant 60 fuses them. An exact item ID or address gives only its matches.
 //! A candidate key is (workspace, kind, id, revision), where revision -1 is the current
 //! document. A revision row that the current document already covers is not a candidate.
 use super::*;
@@ -158,6 +158,13 @@ pub async fn find_with(
         }
     }
     let mut ranked = scores.into_iter().collect::<Vec<_>>();
+    // A copied item ID or an address names its object: the reply gives only the exact matches.
+    if ranked
+        .iter()
+        .any(|(key, _)| exact.get(key).is_some_and(|e| e.0))
+    {
+        ranked.retain(|(key, _)| exact.get(key).is_some_and(|e| e.0));
+    }
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     let selected = ranked
         .into_iter()
@@ -168,7 +175,7 @@ pub async fn find_with(
             json!({"workspace":workspace,"kind":kind,"id":id,"rev":rev,"score":score,"exact":is_exact,"item":item})
         })
         .collect::<Vec<_>>();
-    let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),left(COALESCE(d.content,r.content),600),d.req,COALESCE(d.revision,r.revision),i.id,k.score,k.exact,k.item,
+    let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),(CASE WHEN k.rev>=0 THEN v.document->'data' ELSE o.document->'data' END)::text,d.req,COALESCE(d.revision,r.revision),i.id,k.score,k.exact,k.item,
         k.rev>=0 AND o.revision IS DISTINCT FROM k.rev,
         k.rev>=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_documents x WHERE x.workspace=k.workspace AND x.kind=k.kind AND x.local_id=k.id)
       FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)
@@ -176,6 +183,7 @@ pub async fn find_with(
       LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
       LEFT JOIN joppa.search_revisions r ON k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev
       LEFT JOIN joppa.objects o ON o.workspace=k.workspace AND o.address=k.kind||':'||k.id
+      LEFT JOIN joppa.object_revisions v ON k.rev>=0 AND v.workspace=k.workspace AND v.address=k.kind||':'||k.id AND v.revision=k.rev
       LEFT JOIN joppa.object_aliases a ON a.workspace=k.workspace AND a.target=k.kind||':'||k.id
       JOIN joppa.item_ids i ON i.workspace=k.workspace AND i.kind=COALESCE(split_part(a.address,':',1),k.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),k.id) AND i.namespace=s.reference_prefix
       ORDER BY k.score DESC,k.workspace,k.kind,k.id,k.rev", &[&serde_json::to_string(&selected)?]).await?;
@@ -188,7 +196,7 @@ pub async fn find_with(
                 "id": row.get::<_, String>(2),
                 "system_id": if row.get(10) { query.to_owned() } else { row.get::<_, String>(7) },
                 "title": row.get::<_, String>(3),
-                "excerpt": row.get::<_, String>(4),
+                "excerpt": excerpt(row.get::<_, Option<String>>(4)),
                 "req": row.get::<_, Option<String>>(5),
                 "revision": row.get::<_, Option<i32>>(6),
                 "score": row.get::<_, f64>(8),
@@ -222,4 +230,27 @@ pub async fn find_with(
         "workspaces": workspaces,
         "items": items,
     }))
+}
+
+/// The own text of a result: its saved data without the title, which the result already
+/// gives, and without empty values, cut at 600 characters. The parents stay out.
+fn excerpt(data: Option<String>) -> String {
+    let mut data: Value = data
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or(Value::Null);
+    if let Some(map) = data.as_object_mut() {
+        map.remove("title");
+        map.retain(|_, v| {
+            !matches!(v, Value::Null | Value::Bool(false))
+                && v != &json!("")
+                && v != &json!([])
+                && v != &json!({})
+        });
+    }
+    let text = if data.is_null() {
+        String::new()
+    } else {
+        data.to_string()
+    };
+    text.chars().take(600).collect()
 }

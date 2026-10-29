@@ -193,8 +193,8 @@ is retried; IDs are immutable and survive wording changes, revisions and orderin
 Existing cards receive IDs additively without rewriting journal events.
 
 Copy buttons at all four levels copy only this permanent ID
-or AC text. Resolve a copied ID through `joppa_search` with the ID as `query`: the first
-result has `exact_id: true` and gives `kind` and `id`. MCP replies give no `item_id`.
+or AC text. Resolve a copied ID through `joppa_search` with the ID as `query`: the reply
+gives only that object, with `exact_id: true`, `kind` and `id`. MCP replies give no `item_id`.
 Commands continue to use local IDs from the resolved workspace, never guessed slugs.
 
 An explicit `rename_workspace` with `reference_prefix` changes the prefix used by

@@ -416,13 +416,13 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
         refs=system_ids()
         # MCP lists the revision headers and reads exactly one chosen revision.
         latest=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key'})
-        assert latest['current_revision']==3 and [r['revision'] for r in latest['revisions']]==[1,2,3]
+        headers=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','history':True})
+        assert latest['current_revision']==3 and 'revisions' not in latest
+        assert headers['current_revision']==3 and [r['revision'] for r in headers['revisions']]==[1,2,3]
         assert latest['document']['data']['body']=='Updated wording' and 'item_id' not in latest
         previous=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','revision':2})
         assert previous['document']['revision']==2
         assert previous['document']['data']['body']=='</script><script>window.attacked=true</script>'
-        counts=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','history':True})
-        assert counts['revision_count']==3 and 'revisions' not in counts
         def rejected(arguments, token=agent_token):
             response=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
                 'params':{'name':'joppa_objects','arguments':arguments}}, token)[1]['result']
