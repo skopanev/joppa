@@ -58,6 +58,7 @@ const NOT_PUBLIC: &[&str] = &[
     "project",
     "withdraw_decision",
     "withdraw_source",
+    "set_note_status",
 ];
 /// Public operation names without their own Command variant.
 const ALIASES: &[&str] = &["claim_next_task"];
