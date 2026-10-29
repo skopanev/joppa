@@ -147,7 +147,7 @@ fn set_field(
     if data == current.data {
         return crate::objects::reset_criteria(w, address, at);
     }
-    let command = crate::commands::Command::SaveObject {
+    let command = crate::commands::Command::SaveObject(crate::commands::SaveObjectOp {
         id: o.id.clone(),
         kind: o.kind.clone(),
         revision: current.revision,
@@ -156,7 +156,7 @@ fn set_field(
         links: current.links.clone(),
         question_checked: None,
         reason: reason.into(),
-    };
+    });
     crate::objects::save(w, actor, &command, position, at)
 }
 

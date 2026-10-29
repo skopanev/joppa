@@ -26,7 +26,7 @@ pub(in crate::store) async fn project(
     let schema_changed = events.iter().any(|e| {
         matches!(
             e.command,
-            Command::SetTreeSchema { .. }
+            Command::SetTreeSchema(crate::commands::SetTreeSchemaOp { .. })
                 | Command::MigrateSchema {}
                 | Command::MigrateDocuments {}
                 | Command::MigrateConsumers {}

@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 
 pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::Intake {
+        Command::Intake(crate::commands::IntakeOp {
             id,
             said,
             author,
             owner,
-        } => {
+        }) => {
             identifier(id)?;
             nonempty(author)?;
             if let Some(owner) = owner {
@@ -37,7 +37,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
                 },
             );
         }
-        Command::Split { id, points } => {
+        Command::Split(crate::commands::SplitOp { id, points }) => {
             let intake = w
                 .intake
                 .get_mut(id)
@@ -58,7 +58,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
                 );
             }
         }
-        Command::Questions { kind, fields } => {
+        Command::Questions(crate::commands::QuestionsOp { kind, fields }) => {
             ensure!(actor == w.admin, "workspace owner changes intake policy");
             ensure!(
                 ["bug", "policy", "question", "idea"].contains(&kind.as_str()),
@@ -77,7 +77,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             }
             w.questions.insert(kind.clone(), fields.clone());
         }
-        Command::Sort { id, point, kind } => {
+        Command::Sort(crate::commands::SortOp { id, point, kind }) => {
             ensure!(w.questions.contains_key(kind), "unknown intake kind");
             let p = point_mut(w, id, point)?;
             ensure!(p.outcome.is_none(), "already routed");
@@ -86,12 +86,12 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             } // Old answers remain in the event history.
             p.kind = kind.clone();
         }
-        Command::Answer {
+        Command::Answer(crate::commands::AnswerOp {
             id,
             point,
             field,
             value,
-        } => {
+        }) => {
             nonempty(value)?;
             let p = point_mut(w, id, point)?;
             let kind = p.kind.clone();
@@ -103,13 +103,13 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             ensure!(p.outcome.is_none(), "already routed");
             p.answers.insert(field.clone(), value.clone());
         }
-        Command::Route {
+        Command::Route(crate::commands::RouteOp {
             id,
             point,
             outcome,
             reason,
             req,
-        } => {
+        }) => {
             nonempty(reason)?;
             ensure!(
                 ["work", "refused", "elsewhere"].contains(&outcome.as_str()),

@@ -202,7 +202,7 @@ async fn workspace_enrollment_isolation_revocation_and_identity_binding() -> any
             &alpha,
             &alice,
             "denied-write",
-            &Command::ConfirmTree {}
+            &Command::ConfirmTree(joppa::commands::ConfirmTreeOp {})
         )
         .await
         .is_err()

@@ -48,29 +48,33 @@ pub fn refusal(name: &str) -> String {
 /// The name of a removed operation, or None for a live one.
 pub fn name(command: &Command) -> Option<&'static str> {
     Some(match command {
-        Command::Domain { .. } => "domain",
-        Command::EditDomain { .. } => "edit_domain",
-        Command::Capability { .. } => "capability",
-        Command::EditCapability { .. } => "edit_capability",
-        Command::Consumer { .. } => "consumer",
-        Command::EditConsumer { .. } => "edit_consumer",
-        Command::Revise { .. } => "revise",
-        Command::Task { .. } => "task",
-        Command::AmendTask { .. } => "amend_task",
-        Command::Describe { .. } => "describe",
-        Command::SetDomainArchived { .. } => "set_domain_archived",
-        Command::ConfirmTree {} => "confirm_tree",
-        Command::LinkSource { .. } => "link_source",
-        Command::Plan { .. } => "plan",
-        Command::Result { .. } => "result",
-        Command::Finish { .. } => "finish",
-        Command::Accept { .. } => "accept",
-        Command::Revoke { .. } => "revoke",
-        Command::Issue { .. } => "issue",
-        Command::Resolve { .. } => "resolve",
-        Command::ReviewCoverage { .. } => "review_coverage",
-        Command::DefineVerificationScope { .. } => "define_verification_scope",
-        Command::SetNoteStatus { .. } => "set_note_status",
+        Command::Domain(crate::commands::DomainOp { .. }) => "domain",
+        Command::EditDomain(crate::commands::EditDomainOp { .. }) => "edit_domain",
+        Command::Capability(crate::commands::CapabilityOp { .. }) => "capability",
+        Command::EditCapability(crate::commands::EditCapabilityOp { .. }) => "edit_capability",
+        Command::Consumer(crate::commands::ConsumerOp { .. }) => "consumer",
+        Command::EditConsumer(crate::commands::EditConsumerOp { .. }) => "edit_consumer",
+        Command::Revise(crate::commands::ReviseOp { .. }) => "revise",
+        Command::Task(crate::commands::TaskOp { .. }) => "task",
+        Command::AmendTask(crate::commands::AmendTaskOp { .. }) => "amend_task",
+        Command::Describe(crate::commands::DescribeOp { .. }) => "describe",
+        Command::SetDomainArchived(crate::commands::SetDomainArchivedOp { .. }) => {
+            "set_domain_archived"
+        }
+        Command::ConfirmTree(crate::commands::ConfirmTreeOp {}) => "confirm_tree",
+        Command::LinkSource(crate::commands::LinkSourceOp { .. }) => "link_source",
+        Command::Plan(crate::commands::PlanOp { .. }) => "plan",
+        Command::Result(crate::commands::ResultOp { .. }) => "result",
+        Command::Finish(crate::commands::FinishOp { .. }) => "finish",
+        Command::Accept(crate::commands::AcceptOp { .. }) => "accept",
+        Command::Revoke(crate::commands::RevokeOp { .. }) => "revoke",
+        Command::Issue(crate::commands::IssueOp { .. }) => "issue",
+        Command::Resolve(crate::commands::ResolveOp { .. }) => "resolve",
+        Command::ReviewCoverage(crate::commands::ReviewCoverageOp { .. }) => "review_coverage",
+        Command::DefineVerificationScope(crate::commands::DefineVerificationScopeOp { .. }) => {
+            "define_verification_scope"
+        }
+        Command::SetNoteStatus(crate::commands::SetNoteStatusOp { .. }) => "set_note_status",
         _ => return None,
     })
 }

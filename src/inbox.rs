@@ -106,7 +106,7 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
     } else {
         "processed"
     });
-    let command = Command::SaveObject {
+    let command = Command::SaveObject(crate::commands::SaveObjectOp {
         question_checked: None,
         kind: note.kind.clone(),
         id: note.id.clone(),
@@ -115,6 +115,6 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
         data,
         links,
         reason: d.reason.into(),
-    };
+    });
     crate::objects::save(w, actor, &command, position, at)
 }

@@ -125,69 +125,6 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         v["revision"] = json!(2);
         execute(&pool, &ws, "agent", ac, v).await?;
     }
-    execute(
-        &pool,
-        &ws,
-        "owner",
-        "scope",
-        json!({"op":"define_verification_scope","req":"r","revision":2,"subject_keys":["app","backend","infra","environment"],"scope":"iOS access and provider settings","reason":"Full access and key scope"}),
-    )
-    .await?;
-    let mut p = plan("run");
-    p["revision"] = json!(2);
-    execute(&pool, &ws, "runner", "plan", p).await?;
-    let mut evidence = result("run", "[ios] paid access", "pass", vec!["access retained"]);
-    evidence["revision"] = json!(2);
-    let (a, b) = tokio::join!(
-        execute(&pool, &ws, "runner", "result-a", evidence.clone()),
-        execute(&pool, &ws, "runner", "result-b", evidence)
-    );
-    assert_ne!(a.is_ok(), b.is_ok(), "one immutable result wins");
-    let mut evidence = result("run", "key-permissions", "pass", vec!["read", "verify"]);
-    evidence["revision"] = json!(2);
-    execute(&pool, &ws, "owner", "manual", evidence).await?;
-    execute(
-        &pool,
-        &ws,
-        "runner",
-        "finish",
-        json!({"op":"finish","req":"r","revision":2,"run":"run"}),
-    )
-    .await?;
-    execute(
-        &pool,
-        &ws,
-        "owner",
-        "accept",
-        json!({"op":"accept","req":"r","revision":2,"run":"run"}),
-    )
-    .await?;
-    let card = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
-    assert_eq!(card["summary"]["r"]["accepted"], true);
-    assert_eq!(card["launch"]["ready"], true);
-    execute(&pool,&ws,"agent","bug-comment",json!({"op":"comment","req":"r","revision":2,"id":"bug","text":"Regression","kind":"comment","ac":"ios"})).await?;
-    let (accept, issue) = tokio::join!(
-        execute(
-            &pool,
-            &ws,
-            "owner",
-            "accept-race",
-            json!({"op":"accept","req":"r","revision":2,"run":"run"})
-        ),
-        execute(
-            &pool,
-            &ws,
-            "owner",
-            "issue-race",
-            json!({"op":"issue","req":"r","revision":2,"id":"bug","ac":"ios","comment":"bug"})
-        )
-    );
-    issue?;
-    let _ = accept;
-    assert_eq!(
-        store::read(&pool, &ws, "owner", &store::Scope::full()).await?["summary"]["r"]["accepted"],
-        false
-    );
     let mut conn = pool.get().await?;
     assert_eq!(
         conn.query_one("SELECT count(*) FROM public.legacy_probe", &[])

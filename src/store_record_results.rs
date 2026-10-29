@@ -123,12 +123,14 @@ pub async fn record_results(
     let (commit, results) = parse(args, &shape, &refs)?;
     let body = serde_json::to_string(&results)?;
     let hash = crate::digest_hex::sha256_hex(format!("record\n{commit}\n{body}").as_bytes());
-    let event = |report: i64, repeat: bool| Command::RecordReport {
-        report,
-        commit: commit.clone(),
-        branch: "record".into(),
-        tests: results.len() as u64,
-        repeat,
+    let event = |report: i64, repeat: bool| {
+        Command::RecordReport(crate::commands::RecordReportOp {
+            report,
+            commit: commit.clone(),
+            branch: "record".into(),
+            tests: results.len() as u64,
+            repeat,
+        })
     };
     // Each new record is newer than every stored report of the workspace.
     let inserted = tx.query_opt(
