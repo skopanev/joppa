@@ -2587,43 +2587,26 @@ pub const TITLE_LENGTH_DEFAULT: u32 = 128;
 /// A new title fits its row: it is at most the type's `title_preview_length`.
 /// Only new writes are checked, so old journals with long titles still replay.
 fn validate_title_length(w: &Workspace, cmd: &Command) -> Result<()> {
-    let value = serde_json::to_value(cmd)?;
-    let kind = match value["op"].as_str().unwrap_or_default() {
-        "save_object" => value["kind"].as_str().unwrap_or_default(),
-        "domain" | "edit_domain" => "domain",
-        "capability" | "edit_capability" => "capability",
-        "consumer" | "edit_consumer" => "consumer",
-        "revise" => "requirement",
-        _ => return Ok(()),
+    let Command::SaveObject { kind, data, .. } = cmd else {
+        return Ok(());
     };
-    let types = schema(w).types;
-    let limit = |kind: &str| {
-        types
-            .get(kind)
-            .and_then(|t| t.title_preview_length)
-            .unwrap_or(TITLE_LENGTH_DEFAULT) as usize
+    let Some(title) = data.get("title").and_then(Value::as_str) else {
+        return Ok(());
     };
-    let mut titles = vec![(
-        kind,
-        value.get("title").or_else(|| value.pointer("/data/title")),
-    )];
-    if let Some(acs) = value.get("acs").and_then(Value::as_array) {
-        titles.extend(acs.iter().map(|ac| ("ac", ac.get("text"))));
-    }
-    for (kind, title) in titles {
-        if let Some(title) = title.and_then(Value::as_str) {
-            let limit = limit(kind);
-            let article = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) {
-                "an"
-            } else {
-                "a"
-            };
-            ensure!(
-                title.chars().count() <= limit,
-                "{article} {kind} title is at most {limit} characters; put the details in the text"
-            );
-        }
-    }
+    let limit = schema(w)
+        .types
+        .get(kind)
+        .and_then(|t| t.title_preview_length)
+        .unwrap_or(TITLE_LENGTH_DEFAULT) as usize;
+    let article = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
+    ensure!(
+        title.chars().count() <= limit,
+        "{article} {kind} title is at most {limit} characters; put the details in the text"
+    );
     Ok(())
 }
 /// A live save may add a blocking Task link only to a Task under the same requirement.
@@ -2837,7 +2820,6 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 .all(|t| !t.contains_key("intake") && !t.contains_key("point")),
             "incoming source types are removed; use Note"
         ),
-        Command::Task { acs, .. } => ensure!(acs.len() == 1, "Task must belong to exactly one AC"),
         Command::CompleteTask {
             req, id, commit, ..
         } => {
@@ -2884,12 +2866,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 "REQ has unverified ACs or an unmet dependency"
             );
         }
-        Command::EditDomain { id, .. } | Command::SetDomainArchived { id, .. } => ensure!(
+        Command::SetDomainArchived { id, .. } => ensure!(
             !w.archived_objects.contains(&address("domain", id)),
-            "restore the archived object before editing it"
-        ),
-        Command::EditCapability { id, .. } => ensure!(
-            !w.archived_objects.contains(&address("capability", id)),
             "restore the archived object before editing it"
         ),
         _ => {}

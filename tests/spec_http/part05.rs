@@ -57,7 +57,7 @@ async fn blank_completion_evidence_is_refused_over_http_and_mcp() -> Result<()> 
     let w = world().await?;
     let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let bot = token["token"].as_str().unwrap();
-    w.command_as(bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"blank-evidence","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Check blank completion evidence"})).await?;
     w.command_as(
         bot,

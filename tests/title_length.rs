@@ -16,21 +16,14 @@ fn refused_for_length(w: &mut World, command: serde_json::Value) {
 #[test]
 fn new_titles_fit_the_type_preview_length() {
     let mut w = World::new();
-    refused_for_length(
-        &mut w,
-        json!({"op":"capability","id":"long","title":title(129),"domain":"d"}),
-    );
-    w.ok(
-        "owner",
-        json!({"op":"capability","id":"short","title":title(128),"domain":"d"}),
-    );
-    refused_for_length(
-        &mut w,
-        json!({"op":"domain","id":"long","title":title(129),"authority":"owner"}),
-    );
-    let mut revise = common::revision(1);
-    revise["acs"][0]["text"] = json!(title(129));
-    refused_for_length(&mut w, revise);
+    let save = |kind: &str, id: &str, parent: Option<&str>, length: usize| {
+        json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,
+            "data":{"title":title(length),"owner":"owner"},"reason":"Title limit test"})
+    };
+    refused_for_length(&mut w, save("capability", "long", Some("domain:d"), 129));
+    w.ok("owner", save("capability", "short", Some("domain:d"), 128));
+    refused_for_length(&mut w, save("domain", "long", None, 129));
+    refused_for_length(&mut w, save("ac", "long", Some("requirement:r"), 129));
 }
 
 #[test]

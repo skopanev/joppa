@@ -75,46 +75,6 @@ fn a_comment_carries_the_journal_author_and_time() {
 }
 
 /// Описание домена и капабилити живёт в них самих — они не версионируются.
-/// У условия приёмки своё описание принадлежит РЕВИЗИИ, и пояснение ложится
-/// рядом заметкой, не переписывая утверждённый текст.
-#[test]
-fn a_description_lands_where_the_object_keeps_it() {
-    let mut w = World::new();
-    w.ok(
-        "owner",
-        json!({"op":"describe","target":"domain:d","text":"Payments are elsewhere","reason":"boundary"}),
-    );
-    assert_eq!(w.state.domains["d"].description, "Payments are elsewhere");
-    assert!(!w.state.notes.contains_key("domain:d"));
-
-    let before = w.state.requirements["r"].revisions[0].acs[0]
-        .description
-        .clone();
-    w.ok(
-        "owner",
-        json!({"op":"describe","target":"ac:r/ios","text":"Reinstall is out of scope","reason":"clarify"}),
-    );
-    assert_eq!(
-        w.state.notes["ac:r/ios"].description,
-        "Reinstall is out of scope"
-    );
-    assert_eq!(
-        w.state.requirements["r"].revisions[0].acs[0].description, before,
-        "a confirmed revision is never rewritten in place"
-    );
-
-    // The limit is 1024 characters, not bytes: Cyrillic text gets the same room as Latin.
-    let at_limit = "я".repeat(1024);
-    w.ok(
-        "owner",
-        json!({"op":"describe","target":"requirement:r","text":at_limit,"reason":"long"}),
-    );
-    w.no(
-        "owner",
-        json!({"op":"describe","target":"requirement:r","text":"x".repeat(1025),"reason":"long"}),
-    );
-}
-
 /// Вложение — только про файл; самого файла в журнале нет. Снятие не удаляет
 /// байты: тот же файл мог быть приложен и в другом месте, а ссылка из истории
 /// должна открываться.
@@ -179,10 +139,11 @@ async fn the_index_carries_roots_and_one_object_carries_annotations() -> anyhow:
         }
     };
     run(json!({"op":"workspace","title":"Notes probe"})).await?;
-    run(json!({"op":"domain","id":"billing","title":"Billing","authority":"prober"})).await?;
-    run(json!({"op":"capability","id":"invoice","title":"Invoices","domain":"billing"})).await?;
-    run(json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"prober"})).await?;
-    run(json!({"op":"revise","req":"r1","expected_revision":0,"capability":"invoice","consumers":["buyer"],"title":"Invoice is delivered","body":"","owner":"prober","reason":"first","acs":[{"id":"pdf","text":"A PDF is produced"}]})).await?;
+    run(json!({"op":"save_object","kind":"domain","id":"billing","revision":0,"parent":null,"data":{"title":"Billing","owner":"prober"},"reason":"Setup"})).await?;
+    run(json!({"op":"save_object","kind":"capability","id":"invoice","revision":0,"parent":"domain:billing","data":{"title":"Invoices","owner":"prober"},"reason":"Setup"})).await?;
+    run(json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,"parent":null,"data":{"title":"Buyer","owner":"prober"},"reason":"Setup"})).await?;
+    run(json!({"op":"save_object","kind":"requirement","id":"r1","revision":0,"parent":"capability:invoice","data":{"title":"Invoice is delivered","body":"","owner":"prober"},"reason":"first"})).await?;
+    run(json!({"op":"save_object","kind":"ac","id":"pdf","revision":0,"parent":"requirement:r1","data":{"title":"A PDF is produced","owner":"prober","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"first"})).await?;
     run(json!({"op":"note","target":"domain:billing","id":"n1","text":"Who owns refunds?"}))
         .await?;
     run(json!({"op":"note","target":"domain:billing","id":"n2","text":"Not us."})).await?;

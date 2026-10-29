@@ -41,17 +41,9 @@ workspace: title (server administrative CLI only; rejected by HTTP API and MCP)
 rename_workspace: title, reason, reference_prefix:null, workspace_id:null; workspace owner only; preserves history
 delete_workspace: reason; workspace owner only; removes every row of the workspace. Before the purge, each workspace whose remote links or child workspace bindings name it gets one internal remove_workspace_references event that removes them. The result lists them in removed_references. The owner reads that list first with GET /api/workspaces/{workspace}/references.
 member: id, role (human); workspace owner only. An agent enrolls through its agent token, not through member. An older journal event keeps its agent or runner role in a replay.
-consumer: id, title, description, owner (human member)
 reorder_tree: kind (any configured type), parent (complete object address or null), expected:[id], ids:[id]; workspace owner only
-domain: id, title, owner (human member; legacy authority accepted)
-capability: id, title, domain, owner:null (defaults to domain owner)
 confirm_tree: (no fields); workspace owner validates agent draft
-edit_domain: id, title, owner (legacy authority accepted), reason; owner, or agent changing only an unconfirmed title
 set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
-edit_capability: id, title, owner:null (unchanged), reason; workspace owner, or agent changing an unconfirmed title without changing owner
-revise: req, expected_revision (0 for new), capability, consumers:[id,...], title, body, owner, reason,
-        acs:[{id,text,depends_on:[],owner:null,before_launch:false}]
-        A new criterion takes the first valid consumer of `consumers` as its single `consumer`.
 link_source: req, revision, id, kind, uri (optional), external_id:null, version, relation (origin|supports|contradicts|decision)
       Supply a nonempty uri or external_id. Omit uri when the source exists only
       in an external tool. The journal and reads store an omitted URI as an empty
@@ -61,13 +53,6 @@ comment: req, revision, id, text, kind (comment|decision|accept|change|reject|co
          reply_to:null, ac:null
 assess: req, revision, ac,
         assessment:{ready,reason,owner:null,decision:null}
-task (legacy creation): req, revision, id, title, acs:[id], projects:[id],
-      purpose (implementation|manual|decision), contract, assignee:null (optional)
-      Every new task needs a nonempty technical contract. Existing assigned
-      tasks without contract remain readable for journal compatibility.
-      Prefer save_object with a type whose role is task and a schema-permitted parent.
-      Process commands below use the full Task address and its own revision.
-      Old req arguments remain compatible and use the REQ revision.
 claim_task: revision, id; atomically assign an open Task to the authenticated actor
       Claims persist until an explicit recorded action changes the holder or work state.
 claim_next_task: project (optional), purpose (optional), priorities (optional
@@ -90,10 +75,6 @@ review_task: revision, id, reason; Task owner or workspace owner confirms the cu
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
       The planning holder of the parent criterion can also retire a blocked child Task.
       This authority applies only to blocked Tasks.
-describe: target, text (2000 chars max), reason; an explanation on ANY object.
-          A domain or capability keeps it in itself (they are not versioned).
-          Everything else keeps it as a note beside the object — an AC's own
-          description belongs to its revision and is never rewritten in place.
 note: target, id, text, reply_to:null; a plain comment on ANY object
 withdraw_note: target, id, reason; the author only
 attach: target, id, name, content_type, size, hash; the bytes are uploaded first to
@@ -103,8 +84,7 @@ detach: target, id, reason; the file itself stays — it may be attached elsewhe
 
 target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
 ac:<req>/<ac>, note:<id>, task:<req>/<task>, project:<id>.
-joppa_read returns only COUNTS of notes in the index; ask target=<address> for one
-object's description, comments and attachments in full.
+joppa_objects with address gives one object's description, comments and attachments.
 
 ```
 
@@ -213,11 +193,8 @@ is retried; IDs are immutable and survive wording changes, revisions and orderin
 Existing cards receive IDs additively without rewriting journal events.
 
 Copy buttons at all four levels copy only this permanent ID
-or AC text. Resolve a copied ID through `joppa_read({"item_id":"..."})`; it returns
-the authorized workspace and `selection` with kind and local command ID. AC selections
-also include the parent REQ and selected revision (current by default). An AC absent
-from that revision has `selection.present=false`; resolution never silently reads an older revision.
-`joppa_read({"workspace":"..."})` remains available; supply exactly one selector.
+or AC text. Resolve a copied ID through `joppa_search` with the ID as `query`: the first
+result has `exact_id: true` and gives `kind` and `id`. MCP replies give no `item_id`.
 Commands continue to use local IDs from the resolved workspace, never guessed slugs.
 
 An explicit `rename_workspace` with `reference_prefix` changes the prefix used by
@@ -295,7 +272,7 @@ commands; a batch does not confer approval authority.
 
 A later command can reference a resolved earlier command field using an explicit
 object `{"$ref":"label/field"}`. Nested paths use JSON Pointer syntax after the
-label, for example `requirement/acs/0/id`. Forward or missing references fail the
+label, for example `requirement/data/title`. A `save_object` result also gives `address`. Forward or missing references fail the
 whole batch. Plain text is never interpreted as a template.
 
 ```json
@@ -303,16 +280,15 @@ whole batch. Plain text is never interpreted as a template.
   "workspace": "product",
   "request_id": "create-access-tree-1",
   "operations": [
-    {"ref":"area","command":{"op":"domain","title":"Access","owner":"owner"}},
-    {"ref":"ability","command":{"op":"capability","title":"Restore paid access","domain":{"$ref":"area/id"}}},
-    {"ref":"buyer","command":{"op":"consumer","title":"Paying customer","description":"Uses paid features","owner":"owner"}},
-    {"ref":"requirement","command":{
-      "op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},
-      "consumers":[{"$ref":"buyer/id"}],
-      "title":"Paid access survives signing in again","body":"Only iOS is in scope",
-      "owner":"owner","reason":"Agreed product scope",
-      "acs":[{"text":"On iOS, an active subscription unlocks paid features after signing in again"}]
-    }}
+    {"ref":"area","command":{"op":"save_object","kind":"domain","revision":0,"parent":null,
+      "data":{"title":"Access","owner":"owner"},"reason":"Agreed product scope"}},
+    {"ref":"ability","command":{"op":"save_object","kind":"capability","revision":0,
+      "parent":{"$ref":"area/address"},"data":{"title":"Restore paid access","owner":"owner"},
+      "reason":"Agreed product scope"}},
+    {"ref":"requirement","command":{"op":"save_object","kind":"requirement","revision":0,
+      "parent":{"$ref":"ability/address"},
+      "data":{"title":"Paid access survives signing in again","body":"Only iOS is in scope","owner":"owner"},
+      "reason":"Agreed product scope"}}
   ]
 }
 ```
@@ -322,16 +298,6 @@ The response has `results` in operation order, each with `position`, resolved
 package. Referenced values and generated IDs remain identical on replay.
 The administrative typed command interface still expects explicit local IDs;
 interactive agents should use the HTTPS MCP tools.
-
-## Methodology through MCP
-
-Call `joppa_model_docs` before authoring a product tree. Optional `section` is
-`model`, `process`, `green`, `writing` or `all` (default). The response contains the English
-source documentation compiled into the running server; no local checkout is
-needed. `joppa_help` supplies command shapes and this API contract. Initialization
-instructions provide the short rules and direct agents to both tools.
-The `writing` section supplies the ASD-STE100 rules, language preference, and preservation requirements.
-`joppa_help` returns the same section under `writing`. Command field descriptions identify text covered by this requirement.
 
 ## Search
 
@@ -348,39 +314,10 @@ read indexing limits and failure behavior without a local checkout.
 
 ## MCP revision reads
 
-`joppa_read` returns a workspace index or one requirement's **current revision only**.
-Each indexed requirement and selected requirement includes `revision_count`.
-A selected requirement also reports `current_revision`; its `revisions` array
-contains exactly one revision, and `comments` contains only that revision's discussion.
-Its summary describes the selected revision, including when reading an older one.
-Object notes are shared across revisions and remain separate from revision discussion.
+`joppa_objects` with `address` gives the current object and `revisions` as
+`[{revision, at, actor, reason}]`. Add `revision: N` to read exactly that revision, or
+`history: true` for the revision counts. `docs/read-contract.md` gives every shape.
 
-- `{"workspace":"product","req":"r-xxx"}` reads the current revision.
-- `{"workspace":"product","req":"r-xxx","history":true}` returns requirement
-  metadata and revision count, with no revision bodies, notes, discussion or event log.
-- `{"workspace":"product","req":"r-xxx","revision":2}` reads only revision 2.
-- `{"item_id":"<copied REQ or AC ID>","history":true}` and the corresponding
-  `revision:2` request follow the same rules. Revision numbers belong to the parent REQ.
-
-No bulk revision or event-log read is exposed by MCP. `history:true` without a
-selected requirement returns the index with counts. Explicit `revision` takes
-precedence over count-only discovery. Invalid or missing revision numbers produce
-an error, never a fallback to current. `cursor` and `limit` from older history
-clients are rejected with instructions to select a revision. The portal and
-administrative snapshots retain full history.
-
-### Task object commands
-
-Create a Task with `save_object` under any parent permitted by the workspace schema.
-Its type must have role `task`. The default type name is `task`.
-Use `id: "task:<local-id>"` or the returned custom type address for process commands.
-Omit `req`. Supply the current Task object `revision`.
-`claim_task`, `amend_task`, `release_task`, `complete_task`, `review_task` and `retire_task` share this address.
-Generic `review_task` takes `reason` and does not take `ac`.
-Queue items report their object `address`, `parent`, `revision` and current status.
-Historical `req` addresses remain accepted and resolve to this same process record.
-The Task type configures parent evidence through optional `parent_gate`.
-See `docs/objects.md` for the gate values and migration contract.
 
 ## Configured verification types
 

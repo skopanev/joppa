@@ -148,7 +148,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(&self.alex)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":self.base.rsplit('/').next().unwrap(),"address":address}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":self.base.rsplit('/').next().unwrap(),"address":address}}}))
             .send()
             .await?
             .json()
@@ -166,9 +166,9 @@ impl World {
             let mcp = self.mcp_object(address).await?;
             let tone = http["signal"]["tone"].as_str().unwrap_or("").to_owned();
             ensure!(
-                mcp["signal"]["tone"] == tone.as_str(),
+                mcp["status"]["tone"] == tone.as_str(),
                 "{address}: HTTP {tone}, MCP {}",
-                mcp["signal"]["tone"]
+                mcp["status"]["tone"]
             );
             tones.push(tone);
         }
@@ -490,7 +490,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
             .send()
             .await?
             .json()
@@ -813,10 +813,9 @@ async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_
     );
     let read = w.mcp(&w.bot, "joppa_objects", json!({"address":n})).await?;
     ensure!(
-        read["signal"]["assessment"]["state"] == "ready"
-            && read["signal"]["assessment"]["reason"] == "Clear fix",
-        "{}",
-        read["signal"]
+        read["process"]["assessment"]["state"] == "ready"
+            && read["process"]["assessment"]["reason"] == "Clear fix",
+        "{read}"
     );
     let revision = w.object(&t).await?["current_revision"].clone();
     w.command(
@@ -981,26 +980,4 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
     .await?;
     ensure!(w.tones(&["user:u"]).await? == ["green"], "fixture 6");
     Ok(())
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }

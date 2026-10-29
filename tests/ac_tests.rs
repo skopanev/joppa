@@ -264,7 +264,7 @@ fn an_account_without_membership_cannot_save_a_test_list() {
 fn a_task_has_no_test_list_of_its_own() {
     // foreign-check-ignored-ac1
     let mut w = World::new();
-    w.ok("owner", json!({"op":"task","req":"r","revision":1,"id":"t1","title":"Build iOS access","acs":["ios"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"}));
+    w.legacy("owner", json!({"op":"task","req":"r","revision":1,"id":"t1","title":"Build iOS access","acs":["ios"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"}));
     let e = w
         .apply("agent", json!({"op":"set_ac_tests","target":"task:r/t1","tests":[OPENS],"reason":"Wrong target"}))
         .unwrap_err();

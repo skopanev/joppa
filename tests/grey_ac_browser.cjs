@@ -8,7 +8,6 @@ const http = require('node:http');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 // These checks read the earlier full shape of the read tools (requirement:read-contract).
-const READ_TOOLS=['joppa_objects','joppa_read','joppa_tests','joppa_search','joppa_timeline','joppa_tasks','joppa_history'];
 
 const root = path.join(__dirname, '..');
 const types = {
@@ -91,7 +90,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
   const mcp = async (name, arguments_, token = live.agent) => {
     const response = await fetch(live.root + '/mcp', {method: 'POST',
       headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
-      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(READ_TOOLS.includes(name) ? {verbose: true} : {}), ...(arguments_.item_id ? {} : {workspace: live.ws}), ...arguments_}}})});
+      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(arguments_.item_id ? {} : {workspace: live.ws}), ...arguments_}}})});
     assert.equal(response.status, 200);
     const reply = await response.json();
     assert.equal(reply.error, undefined, JSON.stringify(reply));
@@ -1362,7 +1361,7 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
     await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
     const content = await card.locator('.object-content').innerText();
     const current = await f.api('/objects?address=domain:d');
-    const mcp = await f.mcp('joppa_read', {item_id: current.item_id});
+    const mcp = await f.mcp('joppa_objects', {address: 'domain:d'});
     assert.equal(mcp.current_revision, 5);
     const fields = card.locator('.object-details');
     await card.locator(':scope > summary').getByRole('button', {name: 'Properties', exact: true}).click();
@@ -1411,11 +1410,11 @@ test('blocking-pins-revision-ac1: a blocking link keeps its stored target revisi
 // The bot marks A ready. Alex reads the rows of A and B under the requirement.
 test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for work', async t => {
   const f = await fixture({...criterionRecords, 'ac:B': {title: 'Second condition', parent: 'requirement:r'}});
-  // Alex reads the signal of each criterion over HTTP and MCP; both replies are the same.
+  // Alex reads the status of each criterion over HTTP and MCP; both give the same label and tone.
   const signal = async address => {
     const http = await f.api('/objects?address=' + encodeURIComponent(address), undefined, f.live.alex);
     const mcp = await f.mcp('joppa_objects', {address}, f.live.alex);
-    assert.deepEqual(mcp.signal, http.signal, address);
+    assert.deepEqual(mcp.status, {label: http.signal.label, tone: http.signal.tone}, address);
     return http;
   };
   try {
@@ -1468,7 +1467,7 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
   const unstarted = async () => {
     const http = await f.api('/objects?work_filter=unstarted&limit=100');
     const mcp = await f.mcp('joppa_objects', {work_filter: 'unstarted', limit: 100});
-    assert.deepEqual(mcp, http);
+    assert.deepEqual(mcp.items.map(item => item.address), http.items.map(item => item.address));
     return http.items.map(item => item.address);
   };
   const card = () => f.page.locator('.object-page > .common-object[data-object-address="requirement:B"]');

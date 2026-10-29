@@ -1,8 +1,7 @@
 # MCP read contract
 
 This file gives the exact shape of the MCP reads. It matches `requirement:read-contract`.
-The compact shape is the default. Send `"verbose": true` on any read tool to get the shape
-of the earlier release.
+MCP reads have one shape. There is no `verbose` switch.
 
 ## Common rules
 
@@ -12,6 +11,8 @@ of the earlier release.
   `data`, `command` and `remote_links`. Those stay byte for byte as stored. `false` and `0` stay.
 - A top-level `items: []` stays when a list is empty.
 - Read an omitted key as empty: no value, no list, no map.
+- MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
+  `joppa_search`: the first result has `exact_id: true`.
 
 ## Limits for clients that send a larger `limit`
 
@@ -54,7 +55,7 @@ roots. `kind` filters by type. Reply:
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
   inputs first, then processed inputs, each group in address order. Its `next_cursor` is the
   Inbox cursor, and `total` is absent.
-- No `revision`, `description`, `process`, `id` or `item_id`.
+- No `revision`, `description`, `process` or `id`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
 With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
@@ -82,7 +83,7 @@ Reply item: the address and each named path, also when its value is empty.
 
 A path whose first part is not a list field is refused: `unknown field nope`.
 List fields: `address`, `kind`, `id`, `revision`, `contract_revision`, `parent`, `title`,
-`owner`, `review_required`, `work_ready`, `item_id`, `at`, `description`, `signal`,
+`owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
 `present`, `note_status`, `status`, `process`, `work_summary`.
 
 ## Detail mode: `joppa_objects` with `address`
@@ -93,7 +94,6 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 {
   "address": "task:t",
   "kind": "task",
-  "item_id": "w-T-AB12CD34EF",
   "revision": 3,
   "current_revision": 3,
   "contract_revision": 2,
@@ -117,9 +117,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
     "items": [{"id": "c00", "text": "Finding 1", "actor": "bot", "actor_type": "agent",
                "at": "...", "withdrawn": false}]
   },
-  "links": {"total": 1, "items": [{"target": "ac:b", "relation": "related", "title": "...", "present": true}]},
-  "files": [],
-  "references": []
+  "links": {"total": 1, "items": [{"target": "ac:b", "relation": "related", "title": "...", "present": true}]}
 }
 ```
 
@@ -127,6 +125,9 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - `comments` are in time order. A comment has no `author` or `created_at` when they repeat
   `actor` and `at`.
 - `links` is the titled list of outgoing links; `link_groups` stays for incoming counts.
+- An object without comments has no `comments` key. An object without outgoing links has no
+  `links` key.
+- `files` lists the attachments. `annotations` has no `attachments` copy.
 - `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
 - Next link page: `{"workspace": "w", "address": "task:t", "links_cursor": "25"}`.
@@ -151,8 +152,8 @@ empty keys outside `document`. `"history": true` gives the revision counts.
 
 ## Other read tools
 
-`joppa_read`, `joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their
-fields and paging. Only the empty keys go. `joppa_tasks` keeps `limit` up to 100 and
+`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their fields and
+paging. Only the empty keys and `item_id` go. `joppa_tasks` keeps `limit` up to 100 and
 `next_cursor`.
 
 ## Titles and texts

@@ -1,3 +1,5 @@
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use anyhow::Result;
 use joppa::{objects::TreeType, store};
 use serde_json::{Value, json};
@@ -136,13 +138,12 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         .unwrap();
     store::execute_remote_input(&pool,&ws,actor,"complete",&json!({"op":"complete_task","commit":"c0ffee0","id":second_address,"revision":current["revision"],"evidence":"The specified behavior works"})).await?;
     let system_id = second["system_ids"]["task"][second_id].as_str().unwrap();
-    let read = store::read_item_scoped(
-        &pool,
-        system_id,
-        "owner",
-        store::Scope::from_args(&json!({}))?,
-    )
-    .await?;
+    let task = resolve_id::resolve(&pool, "owner", &ws, system_id).await?;
+    let scope = store::ObjectScope {
+        address: Some(&task),
+        ..Default::default()
+    };
+    let read = store::read_objects(&pool, &ws, "owner", &scope).await?;
     assert_eq!(read["process"]["status"], "done");
     let old = store::read_objects(
         &pool,
@@ -164,13 +165,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         .await?;
     drop(conn);
     store::migrate(&pool).await?;
-    let after = store::read_item_scoped(
-        &pool,
-        system_id,
-        "owner",
-        store::Scope::from_args(&json!({}))?,
-    )
-    .await?;
+    let after = store::read_objects(&pool, &ws, "owner", &scope).await?;
     assert_eq!(
         read, after,
         "journal replay preserves Task history and process"
@@ -186,9 +181,17 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     store::execute_remote_input(&pool,&ws,"owner","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
     let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","description":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
     let ac_id = ac["system_ids"]["ac"]["standalone"].as_str().unwrap();
-    let selected =
-        store::read_item_scoped(&pool, ac_id, "owner", store::Scope::from_args(&json!({}))?)
-            .await?;
+    let criterion = resolve_id::resolve(&pool, "owner", &ws, ac_id).await?;
+    let selected = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some(&criterion),
+            ..Default::default()
+        },
+    )
+    .await?;
     assert_eq!(selected["document"]["parent"], "spec:root");
     assert_eq!(
         selected["document"]["data"]["title"],
@@ -325,7 +328,10 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     assert!(available().await?.contains(&"work:b".to_owned()));
 
     let c = read("work:c").await?;
-    write("agent", json!({"op":"amend_task","id":"work:c","revision":c["current_revision"],"title":"Changed source","contract":"Implement the agreed mechanism","projects":[],"reason":"Change the source"})).await?;
+    let mut data = c["document"]["data"].clone();
+    data["title"] = json!("Changed source");
+    data["contract"] = json!("Implement the agreed mechanism");
+    write("agent", json!({"op":"save_object","kind":"work","id":"c","revision":c["current_revision"],"parent":c["document"]["parent"],"data":data,"links":c["document"]["links"],"reason":"Change the source"})).await?;
     let d = read("work:d").await?;
     assert_eq!(d["review_required"], true);
     assert_eq!(d["document"]["links"][0]["revision"], pins[1]);

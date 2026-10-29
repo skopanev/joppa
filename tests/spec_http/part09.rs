@@ -130,7 +130,7 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
             "{object}"
         );
         let response: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.owner)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":"note:identity","revision":revision}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:identity","revision":revision}}}))
             .send().await?.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
         let mcp: Value = serde_json::from_str(
@@ -138,7 +138,11 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        ensure!(mcp == object, "{mcp} / {object}");
+        // A revision read gives the HTTP reply without empty keys and item IDs.
+        ensure!(
+            mcp == joppa::read_compact::strip_reply(object.clone()),
+            "{mcp} / {object}"
+        );
     }
     let current = w.get("address=note:identity").await?;
     ensure!(

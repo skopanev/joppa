@@ -7,7 +7,7 @@ async fn a_previous_assignee_cannot_complete_returned_work() -> Result<()> {
     // P is alex and Q is maria, two different human members.
     let w = world().await?;
     let (p, q) = (w.alex.as_str(), w.maria.as_str());
-    w.command_as(p, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(p, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"returned","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for transfer"})).await?;
     w.command_as(
         p,
@@ -161,7 +161,7 @@ async fn released_holder_cannot_complete(p_owns_task: bool, owner_releases: bool
     let w = world().await?;
     let (p, q) = (w.alex.as_str(), w.maria.as_str());
     let document_owner = if p_owns_task { "alex" } else { "owner" };
-    w.command_as(p, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(p, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"released","revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":document_owner,"contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for release"})).await?;
     w.command_as(
         p,

@@ -1,4 +1,6 @@
 mod common;
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use common::*;
 use joppa::{
     commands::{self, Command},
@@ -228,7 +230,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
         save(&mut w, &key, None, data.clone());
         assert_eq!(w.state.objects[&key].current().data, data);
         assert!(!objects::input_type(&w.state, name));
-        w.ok(
+        w.legacy(
             "agent",
             json!({"op":"describe","target":key,"text":"Same annotation","reason":"Add context"}),
         );
@@ -433,13 +435,13 @@ fn explicit_legacy_grouping_changes_do_not_depend_on_prior_criterion_edits() {
             data["title"] = json!("The iOS client follows the access contract");
             save(&mut w, "ac:ios", Some("requirement:r"), data);
         }
-        w.ok("agent",json!({"op":"capability","id":"other","domain":"d","title":"Other grouping","owner":"owner"}));
+        w.legacy("agent",json!({"op":"capability","id":"other","domain":"d","title":"Other grouping","owner":"owner"}));
         let current = w.state.requirements["r"].revisions.last().unwrap().clone();
         let mut acs = current.acs.clone();
         for ac in &mut acs {
             ac.assessment = None;
         }
-        w.ok("agent",json!({"op":"revise","req":"r","expected_revision":current.number,"capability":"other","consumers":current.consumers,"title":current.title,"body":current.body,"owner":current.owner,"reason":"Move explicit legacy grouping","acs":acs,"coverage_policy":true,"carry_tasks":true}));
+        w.legacy("agent",json!({"op":"revise","req":"r","expected_revision":current.number,"capability":"other","consumers":current.consumers,"title":current.title,"body":current.body,"owner":current.owner,"reason":"Move explicit legacy grouping","acs":acs,"coverage_policy":true,"carry_tasks":true}));
         assert_eq!(
             w.state.objects["requirement:r"].current().parent.as_deref(),
             Some("capability:other")
@@ -726,12 +728,11 @@ async fn copied_ids_search_and_rebuild_use_common_documents_for_all_names() -> a
             },
         )
         .await?;
-        let copied = store::read_item(&pool, object["item_id"].as_str().unwrap(), "owner").await?;
-        assert_eq!(copied["address"], key);
-        assert_eq!(copied["document"]["data"], data);
-        assert!(copied.get("index").is_none());
+        let public = object["item_id"].as_str().unwrap();
+        assert_eq!(resolve_id::resolve(&pool, "owner", &ws, public).await?, key);
+        assert_eq!(object["document"]["data"], data);
         assert!(
-            store::read_item(&pool, object["item_id"].as_str().unwrap(), "outsider")
+            resolve_id::resolve(&pool, "outsider", &ws, public)
                 .await
                 .is_err()
         );

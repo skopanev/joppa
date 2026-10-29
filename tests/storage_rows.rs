@@ -18,9 +18,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     anyhow::ensure!(db.starts_with("joppa_test"), "requires a test database");
     store::migrate(&pool).await?;
     let ws = format!("storage-{}", uuid::Uuid::new_v4().simple());
-    for (i, command) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{i}"), &command).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let raw = "original source input ".repeat(46);
     store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"links":[],"reason":"Capture source"})).await?;
     let conn = pool.get().await?;
@@ -32,7 +30,16 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
         "the validation graph must exclude input bodies"
     );
     drop(conn);
-    store::execute_input(&pool, &ws, "agent", "revision-2", &revision(1)).await?;
+    save_title(
+        &pool,
+        &ws,
+        "agent",
+        "revision-2",
+        "requirement:r",
+        "Paid access persists after sign-in",
+        "Agreed wording",
+    )
+    .await?;
     let conn = pool.get().await?;
     let xmin: String=conn.query_one("SELECT xmin::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:raw'", &[&ws]).await?.get(0);
     assert_eq!(
@@ -141,10 +148,8 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
     anyhow::ensure!(db.starts_with("joppa_test"), "requires a test database");
     store::migrate(&pool).await?;
     let ws = format!("archive-{}", uuid::Uuid::new_v4().simple());
-    for (i, command) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{i}"), &command).await?;
-    }
-    let create = json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"});
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
+    let create = json!({"op":"save_object","kind":"domain","id":"unused","revision":0,"parent":null,"data":{"title":"Unused","owner":"owner"},"reason":"Create the group"});
     let created = store::execute_remote_input(&pool, &ws, "owner", "create", &create).await?;
     let system_id = created["system_ids"]["domain"]["unused"].clone();
     assert!(system_id.is_string());
@@ -167,7 +172,7 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
     let retry = store::execute_remote_input(&pool, &ws, "owner", "archive", &archive).await?;
     assert_eq!(retry["position"], archived["position"]);
     assert_eq!(retry["replayed"], true);
-    let edit = json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit the group"});
+    let edit = json!({"op":"save_object","kind":"domain","id":"unused","revision":2,"parent":null,"data":{"title":"Hidden edit","owner":"owner"},"reason":"Edit the group"});
     assert!(
         store::execute_input(&pool, &ws, "owner", "hidden-edit", &edit)
             .await
@@ -217,7 +222,16 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
     assert_eq!(current["current_revision"], 3);
     assert_eq!(current["annotations"], original["annotations"]);
     assert_eq!(current["incoming"], original["incoming"]);
-    store::execute_input(&pool, &ws, "owner", "edit", &json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit the restored group"})).await?;
+    save_title(
+        &pool,
+        &ws,
+        "owner",
+        "edit",
+        "domain:unused",
+        "Changed",
+        "Edit the restored group",
+    )
+    .await?;
     let current = store::read_objects(&pool, &ws, "owner", &scope).await?;
     assert_eq!(current["document"]["data"]["title"], "Changed");
     assert_eq!(current["current_revision"], 4);

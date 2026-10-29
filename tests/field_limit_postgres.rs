@@ -31,14 +31,13 @@ async fn a_save_refuses_a_new_value_over_1024_characters() -> Result<()> {
         let error = refused.err().unwrap_or_default();
         ensure!(error.contains(LIMIT_TEXT), "{id}: {error}");
     }
-    let describe = w
-        .command(&w.bot, json!({"op":"describe","target":"requirement:at-limit","text":"x".repeat(1025),"reason":"Too long"}))
+    // A long description is a field of data too.
+    let described = w
+        .command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"at-limit","revision":1,"parent":null,
+            "data":{"title":"Field limit","owner":"owner","body":at_limit,"description":"x".repeat(1025)},"reason":"Too long"}))
         .await?;
     ensure!(
-        describe
-            .err()
-            .unwrap_or_default()
-            .contains("at most 1024 characters"),
+        described.err().unwrap_or_default().contains(LIMIT_TEXT),
         "a description over 1024 characters passed"
     );
     Ok(())

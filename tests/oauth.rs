@@ -291,7 +291,7 @@ async fn remote_oauth_pkce_isolation_rotation_restart_and_revocation() -> Result
         202
     );
     for (target, denied) in [(&ws, false), (&other, true)] {
-        let r:Value=http.post(&resource).bearer_auth(access).json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"joppa_read","arguments":{"verbose":true,"workspace":target}}})).send().await?.json().await?;
+        let r:Value=http.post(&resource).bearer_auth(access).json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"joppa_tree","arguments":{"workspace":target}}})).send().await?.json().await?;
         assert_eq!(r["result"]["isError"] == true, denied);
     }
     let rotation = json!({"grant_type":"refresh_token","client_id":id,"refresh_token":refresh,"resource":resource});

@@ -1,68 +1,5 @@
 // Part 23 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn legacy_revision_cannot_bypass_a_configured_type_question() -> Result<()> {
-    let w = world().await?;
-    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
-    let mut types = schema["schema"]["types"].clone();
-    types["requirement"]["question"] = json!("Which behavior does the product need?");
-    types["domain"]["question"] = json!("Which product area does this object describe?");
-    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check the requirement question"})).await?;
-    let response = w.http.post(format!("{}/api/workspaces/{}/commands", w.root, w.ws)).bearer_auth(&w.owner)
-        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"domain","id":"new","title":"New product area","authority":"owner"}})).send().await?;
-    ensure!(response.status().as_u16() == 422, "{}", response.status());
-    ensure!(
-        response.json::<Value>().await?["error"]
-            == "This type has a question. Use save_object with question_checked",
-        "wrong creation question error"
-    );
-    let exists: bool = w.pool.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.objects WHERE workspace=$1 AND address='domain:new')", &[&w.ws]).await?.get(0);
-    ensure!(!exists, "a refused legacy creation left an object");
-    let original = w.get("address=requirement:key").await?;
-    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Updated rights","body":"Updated scope","owner":"owner","consumers":["customer"],"reason":"Revise the legacy contract","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]});
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let response = w
-        .http
-        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(&w.owner)
-        .json(&json!({"request_id":request_id,"command":command}))
-        .send()
-        .await?;
-    ensure!(response.status().as_u16() == 422, "{}", response.status());
-    ensure!(
-        response.json::<Value>().await?["error"]
-            == "This type has a question. Use save_object with question_checked",
-        "wrong legacy question error"
-    );
-    ensure!(
-        w.get("address=requirement:key").await?["document"] == original["document"],
-        "a refused legacy revision changed the object"
-    );
-    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
-    let mut types = schema["schema"]["types"].clone();
-    types["requirement"]
-        .as_object_mut()
-        .unwrap()
-        .remove("question");
-    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Keep the old path for types without a question"})).await?;
-    let response = w
-        .http
-        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(&w.owner)
-        .json(&json!({"request_id":request_id,"command":command}))
-        .send()
-        .await?;
-    ensure!(response.status().is_success(), "{}", response.text().await?);
-    let updated = w.get("address=requirement:key").await?;
-    ensure!(
-        updated["document"]["data"]["title"] == "Updated rights"
-            && updated["current_revision"] == original["current_revision"].as_u64().unwrap() + 1,
-        "{updated}"
-    );
-    Ok(())
-}
-
 // mod claim_time is declared in tests/spec_http.rs, so its #[path] resolves from tests/.
 
 #[tokio::test]
@@ -78,7 +15,7 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
     let response=w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(&w.bot).json(&json!({"request_id":format!("test-claim-time-86400000-{}",uuid::Uuid::new_v4().simple()),"command":{"op":"claim_task","id":"job:one","revision":1}})).send().await?;
     ensure!(response.status().is_success(), "{}", response.text().await?);
     let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {
-        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}})).send().await?.json().await?;
+        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?.json().await?;
         ensure!(reply["result"]["isError"] != true, "{reply}");
         Ok(serde_json::from_str(
             reply["result"]["content"][0]["text"].as_str().unwrap(),
@@ -99,7 +36,10 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
             .json()
             .await?;
         let mcp = read_mcp("joppa_tasks", json!({"workspace":w.ws,"view":view})).await?;
-        ensure!(http["tasks"] == mcp["tasks"], "HTTP {http} / MCP {mcp}");
+        ensure!(
+            joppa::read_compact::strip_reply(http.clone())["tasks"] == mcp["tasks"],
+            "HTTP {http} / MCP {mcp}"
+        );
         if view == "available" {
             ensure!(http["total"] == 0, "held work is unavailable");
         } else {
@@ -152,7 +92,7 @@ async fn mcp_call(w: &World, token: &str, name: &str, arguments: Value) -> Resul
         .http
         .post(format!("{}/mcp", w.root))
         .bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
         .send()
         .await?
         .error_for_status()?

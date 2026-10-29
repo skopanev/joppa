@@ -1,4 +1,6 @@
 mod common;
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use anyhow::Result;
 use joppa::store;
 use serde_json::{Value, json};
@@ -16,16 +18,7 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
     anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
     store::migrate(&pool).await?;
     let ws = format!("old-{}", uuid::Uuid::new_v4().simple());
-    for (i, value) in common::setup().into_iter().enumerate() {
-        store::execute(
-            &pool,
-            &ws,
-            "owner",
-            &format!("setup-{i}"),
-            &serde_json::from_value(value)?,
-        )
-        .await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     let prefix = format!("renamed-{}", uuid::Uuid::new_v4().simple());
     let command = serde_json::from_value(
@@ -62,11 +55,12 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
             let new = after["system_ids"][kind][local].as_str().unwrap();
             assert_eq!(new, format!("{prefix}{}", &old[old.len() - 13..]));
             for reference in [old, new] {
-                let found = store::read_item(&pool, reference, "owner").await?;
-                assert_eq!(found["selection"]["id"], *local);
-                assert_eq!(found["selection"]["kind"], *kind);
+                assert_eq!(
+                    resolve_id::resolve(&pool, "owner", &ws, reference).await?,
+                    format!("{kind}:{local}")
+                );
                 assert!(
-                    store::read_item(&pool, reference, "outsider")
+                    resolve_id::resolve(&pool, "outsider", &ws, reference)
                         .await
                         .is_err()
                 );
@@ -78,8 +72,7 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
         store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
         after
     );
-    let added: Value =
-        json!({"op":"capability","id":"new","title":"Added after rename","domain":"d"});
+    let added: Value = json!({"op":"save_object","kind":"capability","id":"new","revision":0,"parent":"domain:d","data":{"title":"Added after rename","owner":"owner"},"reason":"Setup"});
     store::execute(&pool, &ws, "owner", "add", &serde_json::from_value(added)?).await?;
     assert!(
         store::read(&pool, &ws, "owner", &store::Scope::full()).await?["system_ids"]["capability"]
@@ -109,7 +102,7 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     let owner = format!("owner-{suffix}");
     for value in [
         json!({"op":"workspace","title":"Product"}),
-        json!({"op":"domain","id":"domain","title":"Area","authority":owner}),
+        json!({"op":"save_object","kind":"domain","id":"domain","revision":0,"parent":null,"data":{"title":"Area","owner":owner},"reason":"Setup"}),
     ] {
         store::execute(
             &pool,
@@ -148,13 +141,18 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     // its object, and each new ID keeps the suffix of the old one.
     for (kind, items) in before["system_ids"].as_object().unwrap() {
         for (local, id) in items.as_object().unwrap() {
-            let old = id.as_str().unwrap();
-            let new = after["system_ids"][kind][local].as_str().unwrap();
-            assert!(new.starts_with("current-product-") && new.ends_with(&old[old.len() - 13..]));
-            assert_eq!(
-                store::read_item(&pool, old, &owner).await?["selection"]["id"],
-                *local
+            let old_id = id.as_str().unwrap();
+            let new_id = after["system_ids"][kind][local].as_str().unwrap();
+            assert!(
+                new_id.starts_with("current-product-")
+                    && new_id.ends_with(&old_id[old_id.len() - 13..])
             );
+            for id in [old_id, new_id] {
+                assert_eq!(
+                    resolve_id::resolve(&pool, &owner, &new, id).await?,
+                    format!("{kind}:{local}")
+                );
+            }
         }
     }
     assert_eq!(
@@ -163,8 +161,8 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     );
     let item = before["system_ids"]["domain"]["domain"].as_str().unwrap();
     assert_eq!(
-        store::read_item(&pool, item, &owner).await?["workspace"],
-        new
+        resolve_id::resolve(&pool, &owner, &new, item).await?,
+        "domain:domain"
     );
     for name in [&old, &new] {
         assert!(
@@ -199,7 +197,7 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
             .is_err()
     );
     let change = serde_json::from_value(
-        json!({"op":"capability","id":"ability","domain":"domain","title":"Ability"}),
+        json!({"op":"save_object","kind":"capability","id":"ability","revision":0,"parent":"domain:domain","data":{"title":"Ability","owner":owner},"reason":"Setup"}),
     )?;
     let (a, b) = tokio::join!(
         store::execute(&pool, &old, &owner, "concurrent-alias", &change),

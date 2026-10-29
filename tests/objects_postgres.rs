@@ -1,5 +1,6 @@
 mod common;
-use common::*;
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use joppa::store::{self, ObjectScope};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,9 +24,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
         "objects-{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     // Projection writes must work with the production role's restricted grants.
     let conn = pool.get().await?;
     conn.batch_execute("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='joppa_test_projection_guard') THEN CREATE ROLE joppa_test_projection_guard; END IF; END $$; GRANT USAGE ON SCHEMA joppa TO joppa_test_projection_guard; GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_test_projection_guard; GRANT UPDATE ON joppa.objects,joppa.board_cache,joppa.state_revisions,joppa.state_entries,joppa.search_documents,joppa.search_state,joppa.search_revisions TO joppa_test_projection_guard; GRANT DELETE ON joppa.state_entries,joppa.task_queue TO joppa_test_projection_guard; GRANT DELETE ON joppa.object_links,joppa.search_documents,joppa.search_state TO joppa_test_projection_guard; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_test_projection_guard;").await?;
@@ -117,7 +116,7 @@ async fn objects_replay_concurrency_ids_and_schema_are_atomic() -> anyhow::Resul
     );
     let public = first["system_ids"]["note"]["source"].as_str().unwrap();
     assert_eq!(
-        store::read_item(&pool, public, "agent").await?["address"],
+        resolve_id::resolve(&pool, "agent", &ws, public).await?,
         "note:source"
     );
     assert!(
@@ -282,9 +281,7 @@ async fn note_queue_filters_links_and_color_preserve_board_structure() -> anyhow
         "note-queue-{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["note"]["color"] = json!("#7655a2");

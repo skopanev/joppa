@@ -184,7 +184,7 @@ fn ordinary_cycles_are_allowed_and_blocking_cycles_are_rejected() {
 fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
     let mut w = World::new();
     w.ready();
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
     save(
         &mut w,
         "note:n",
@@ -256,7 +256,7 @@ fn criterion_dependencies_keep_evidence_and_pin_no_revision() {
     for ac in ["ios", "key"] {
         w.ok("agent", assess(ac, true));
     }
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     assert!(objects::work_ready(&w.state, "ac:key"));
     assert_eq!(
         w.state.requirements["r"].revisions[0].runs["green"]
@@ -278,7 +278,7 @@ fn a_legacy_req_move_updates_the_common_parent_once() {
     data["title"] = json!("Paid access survives login");
     save(&mut w, "requirement:r", Some("capability:c"), data, vec![]);
     assert_eq!(w.state.objects["requirement:r"].revisions.len(), 2);
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"other","title":"Other capability","domain":"d"}),
     );
@@ -300,7 +300,7 @@ fn ac_annotations_use_one_address_and_completed_tasks_keep_their_ac() {
         json!({"op":"note","target":"ac:ios","id":"comment","text":"Keep the AC context"}),
     );
     assert!(w.state.notes["ac:r/ios"].comments.contains_key("comment"));
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
     w.ok(
         "agent",
         json!({"op":"claim_task","req":"r","revision":1,"id":"t"}),
@@ -329,7 +329,7 @@ fn parent_dependencies_cannot_block_their_own_descendants() {
 fn completed_tasks_remain_under_removed_historical_acs() {
     let mut w = World::new();
     w.ready();
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
     w.ok(
         "agent",
         json!({"op":"claim_task","req":"r","revision":1,"id":"t"}),
@@ -446,7 +446,7 @@ fn legacy_plans_allow_owner_review_without_a_new_scope_contract() {
     let mut w = World::new();
     w.ready();
     w.run("old", "pass");
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     let mut plan = plan("new");
     plan["revision"] = json!(2);
     plan["enforce_coverage"] = json!(true);
@@ -954,19 +954,19 @@ fn archive_requires_an_empty_group_and_restore_requires_a_present_parent() {
 #[test]
 fn archive_legacy_group_does_not_resync() {
     let mut w = World::new();
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
     );
     w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive empty group"}));
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"other","title":"Other","owner":"owner"}),
     );
     assert!(!w.state.objects["domain:unused"].current().present);
     assert_eq!(w.state.objects["domain:unused"].current().revision, 2);
     w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"another","title":"Another","owner":"owner"}),
     );
@@ -977,14 +977,14 @@ fn archive_legacy_group_does_not_resync() {
 #[test]
 fn restore_legacy_group_reflects_edits() {
     let mut w = World::new();
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
     );
     w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive group"}));
     w.no("owner", json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit an archived group"}));
     w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
-    w.ok("owner", json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit restored group"}));
+    w.legacy("owner", json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit restored group"}));
     assert!(w.state.objects["domain:unused"].current().present);
     assert_eq!(
         w.state.objects["domain:unused"].current().data["title"],

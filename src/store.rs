@@ -244,7 +244,7 @@ pub use read_scope::{Scope, read};
 
 #[path = "store_items.rs"]
 mod items;
-pub use items::{gate, list, read_item, read_item_scoped};
+pub use items::{gate, list};
 
 #[path = "search.rs"]
 pub mod search;

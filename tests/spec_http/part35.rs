@@ -3,7 +3,7 @@
 async fn a_completed_prerequisite_task_unblocks_its_dependent_over_mcp() -> Result<()> {
     // pins-ignore-process-events-ac1: Task B has a blocking depends_on link to Task A.
     let w = world().await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let a = ready_task(&w, "a", "key-rights").await?;
     let object = async |address: &str| {
         mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":address})).await

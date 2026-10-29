@@ -1,54 +1,9 @@
 mod common;
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use anyhow::Result;
 use joppa::store;
 use serde_json::{Value, json};
-
-#[test]
-fn agents_edit_draft_titles_without_taking_decision_authority() {
-    let mut w = common::World::new();
-    w.ok(
-        "agent",
-        json!({"op":"domain","id":"draft","title":"Draft area","authority":"owner"}),
-    );
-    w.ok(
-        "agent",
-        json!({"op":"capability","id":"draft-cap","title":"Draft ability","domain":"draft"}),
-    );
-    let edit = json!({"op":"edit_domain","id":"draft","title":"Clear area","authority":"owner","reason":"Clarify wording"});
-    let cap = json!({"op":"edit_capability","id":"draft-cap","title":"Clear ability","reason":"Clarify wording"});
-    w.ok("agent", edit.clone());
-    w.ok("agent", cap.clone());
-    assert!(!w.state.domains["draft"].confirmed);
-    assert!(!w.state.capabilities["draft-cap"].confirmed);
-    let mut reassign = edit.clone();
-    reassign["authority"] = json!("legal");
-    w.no("agent", reassign);
-    w.no("runner", edit.clone());
-    w.no("runner", cap.clone());
-    w.no("agent", json!({"op":"confirm_tree"}));
-    w.ok("owner", json!({"op":"confirm_tree"}));
-    w.no("agent", edit.clone());
-    w.no("agent", cap.clone());
-    w.ok("owner", edit);
-    w.ok("owner", cap);
-    w.ok(
-        "agent",
-        json!({"op":"domain","id":"archived","title":"Draft","authority":"owner"}),
-    );
-    w.ok(
-        "agent",
-        json!({"op":"capability","id":"archived-cap","title":"Draft ability","domain":"archived"}),
-    );
-    w.ok(
-        "owner",
-        json!({"op":"set_domain_archived","id":"archived","archived":true,"reason":"Not in scope"}),
-    );
-    w.no("agent", json!({"op":"edit_domain","id":"archived","title":"Changed","authority":"owner","reason":"Change"}));
-    w.no(
-        "agent",
-        json!({"op":"edit_capability","id":"archived-cap","title":"Changed","reason":"Change"}),
-    );
-}
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -84,10 +39,10 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &ws,
         "owner",
         "consumer",
-        &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+        &json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,"parent":null,"data":{"title":"Buyer","owner":"owner"},"reason":"Setup"}),
     )
     .await?;
-    let input = json!({"op":"domain","title":"Area","authority":"owner"});
+    let input = json!({"op":"save_object","kind":"domain","revision":0,"parent":null,"data":{"title":"Area","owner":"owner"},"reason":"Create"});
     let (a, b) = tokio::join!(
         store::execute_input(&pool, &ws, "agent", "auto", &input),
         store::execute_input(&pool, &ws, "agent", "auto", &input)
@@ -104,8 +59,8 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let prefix: String = pool.get().await?.query_one("SELECT COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?.get(0);
     assert!(public_id.starts_with(&format!("{prefix}-D-")));
     assert_eq!(
-        store::read_item(&pool, public_id, "owner").await?["selection"]["id"],
-        id
+        resolve_id::resolve(&pool, "owner", &ws, public_id).await?,
+        format!("domain:{id}")
     );
     assert!(
         store::execute_input(&pool, &ws, "owner", "auto", &input)
@@ -118,7 +73,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             &ws,
             "agent",
             "auto",
-            &json!({"op":"domain","title":"Changed","authority":"owner"})
+            &json!({"op":"save_object","kind":"domain","revision":0,"parent":null,"data":{"title":"Changed","owner":"owner"},"reason":"Create"})
         )
         .await
         .is_err()
@@ -129,10 +84,11 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
             .is_err()
     );
     let operations: Vec<store::BatchOperation> = serde_json::from_value(json!([
-        {"ref":"area","command":{"op":"domain","title":"Second area","authority":"owner"}},
-        {"ref":"ability","command":{"op":"capability","title":"Keep paid access","domain":{"$ref":"area/id"}}},
-        {"ref":"requirement","command":{"op":"revise","expected_revision":0,"capability":{"$ref":"ability/id"},"consumers":["buyer"],"title":"Paid access persists","body":"Only iOS","owner":"owner","reason":"Agreed scope","acs":[{"text":"On iOS access survives sign-in"}]}},
-        {"command":{"op":"comment","req":{"$ref":"requirement/req"},"revision":1,"text":"Please review","kind":"comment","ac":{"$ref":"requirement/acs/0/id"}}}
+        {"ref":"area","command":{"op":"save_object","kind":"domain","revision":0,"parent":null,"data":{"title":"Second area","owner":"owner"},"reason":"Agreed scope"}},
+        {"ref":"ability","command":{"op":"save_object","kind":"capability","revision":0,"parent":{"$ref":"area/address"},"data":{"title":"Keep paid access","owner":"owner"},"reason":"Agreed scope"}},
+        {"ref":"requirement","command":{"op":"save_object","kind":"requirement","revision":0,"parent":{"$ref":"ability/address"},"data":{"title":"Paid access persists","body":"Only iOS","owner":"owner"},"reason":"Agreed scope"}},
+        {"ref":"criterion","command":{"op":"save_object","kind":"ac","revision":0,"parent":{"$ref":"requirement/address"},"data":{"title":"On iOS access survives sign-in","owner":"owner","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed scope"}},
+        {"command":{"op":"comment","req":{"$ref":"requirement/address"},"revision":2,"text":"Please review","kind":"comment","ac":{"$ref":"criterion/address"}}}
     ]))?;
     let (a, b) = tokio::join!(
         store::execute_batch(&pool, &ws, "agent", "batch", &operations),
@@ -143,11 +99,14 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     assert_eq!(a["results"], b["results"]);
     assert_ne!(a["replayed"], b["replayed"]);
     assert_eq!(
-        a["results"][1]["command"]["domain"],
-        a["results"][0]["command"]["id"]
+        a["results"][1]["command"]["parent"],
+        format!(
+            "domain:{}",
+            a["results"][0]["command"]["id"].as_str().unwrap()
+        )
     );
-    let req = a["results"][2]["command"]["req"].as_str().unwrap();
-    let ac = a["results"][2]["command"]["acs"][0]["id"].as_str().unwrap();
+    let req = a["results"][2]["command"]["id"].as_str().unwrap();
+    let ac = a["results"][3]["command"]["id"].as_str().unwrap();
     let domain = a["results"][0]["command"]["id"].as_str().unwrap();
     let capability = a["results"][1]["command"]["id"].as_str().unwrap();
     let first = store::board_read(&pool, &ws, "owner", None, None, None).await?;
@@ -190,7 +149,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         None,
     )
     .await?;
-    assert_eq!(detail["criteria"][0]["id"], ac);
+    assert_eq!(detail["criteria"][0]["address"], format!("ac:{ac}"));
     let consumers = store::read_objects(
         &pool,
         &ws,
@@ -210,7 +169,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     uuid::Uuid::parse_str(req)?;
     uuid::Uuid::parse_str(ac)?;
     assert!(
-        a["results"][2]["system_ids"]["ac"][ac]
+        a["results"][3]["system_ids"]["ac"][ac]
             .as_str()
             .unwrap()
             .starts_with(&format!("{prefix}-A-"))
@@ -218,11 +177,13 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     // Each failed package leaves neither a partial tree nor a consumed request ID.
     for bad in [
-        json!({"op":"capability","title":"Broken","domain":"absent"}),
+        json!({"op":"save_object","kind":"capability","revision":0,"parent":"domain:absent","data":{"title":"Broken","owner":"owner"},"reason":"Broken"}),
         json!({"op":"confirm_tree"}),
         json!({"op":"enroll_member","id":"intruder"}),
-        json!({"op":"capability","title":"Broken","domain":{"$ref":"future/id"}}),
-        json!({"op":"domain","title":"Broken","authority":"owner","actor":"owner"}),
+        json!({"op":"save_object","kind":"capability","revision":0,"parent":{"$ref":"future/address"},"data":{"title":"Broken","owner":"owner"},"reason":"Broken"}),
+        json!({"op":"save_object","kind":"domain","revision":0,"parent":null,"data":{"title":"Broken","owner":"owner"},"reason":"Broken","actor":"owner"}),
+        // A removed operation makes the whole package fail.
+        json!({"op":"domain","title":"Broken","authority":"owner"}),
     ] {
         let ops = vec![
             operations[0].clone(),
@@ -242,12 +203,12 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     }
     store::execute_batch(&pool, &ws, "agent", "retry-after-error", &operations).await?;
     let mut revision = a["results"][2]["command"].clone();
-    revision["expected_revision"] = json!(1);
-    revision["title"] = json!("Access persists after signing in again");
+    revision["revision"] = json!(2);
+    revision["data"]["title"] = json!("Access persists after signing in again");
     let updated = store::execute_input(&pool, &ws, "agent", "revise", &revision).await?;
-    assert_eq!(updated["command"]["req"], req);
+    assert_eq!(updated["command"]["id"], req);
     assert_eq!(updated["system_ids"], a["results"][2]["system_ids"]);
-    revision.as_object_mut().unwrap().remove("req");
+    revision.as_object_mut().unwrap().remove("kind");
     assert!(
         store::execute_input(&pool, &ws, "agent", "missing-req", &revision)
             .await
@@ -324,7 +285,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &ws,
         "owner",
         "consumer",
-        &json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+        &json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,"parent":null,"data":{"title":"Buyer","owner":"owner"},"reason":"Setup"}),
     )
     .await?;
     for (suffix, domain) in [("old", "ordinary"), ("new", "urgent")] {
@@ -333,7 +294,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             &ws,
             "owner",
             &format!("domain-{suffix}"),
-            &json!({"op":"domain","id":domain,"title":domain,"authority":"owner"}),
+            &json!({"op":"save_object","kind":"domain","id":domain,"revision":0,"parent":null,"data":{"title":domain,"owner":"owner"},"reason":"Setup"}),
         )
         .await?;
         store::execute_input(
@@ -341,7 +302,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             &ws,
             "owner",
             &format!("cap-{suffix}"),
-            &json!({"op":"capability","id":format!("cap-{suffix}"),"title":suffix,"domain":domain}),
+            &json!({"op":"save_object","kind":"capability","id":format!("cap-{suffix}"),"revision":0,"parent":format!("domain:{domain}"),"data":{"title":suffix,"owner":"owner"},"reason":"Setup"}),
         )
         .await?;
         store::execute_input(
@@ -349,19 +310,21 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             &ws,
             "owner",
             &format!("req-{suffix}"),
-            &json!({"op":"revise","req":format!("req-{suffix}"),"expected_revision":0,
-                "capability":format!("cap-{suffix}"),"consumers":["buyer"],"title":suffix,
-                "body":"Scope","owner":"owner","reason":"Start",
-                "acs":[{"id":format!("ac-{suffix}"),"text":"Works"}]}),
+            &json!({"op":"save_object","kind":"requirement","id":format!("req-{suffix}"),"revision":0,
+                "parent":format!("capability:cap-{suffix}"),"data":{"title":suffix,"body":"Scope","owner":"owner"},"reason":"Start"}),
         )
         .await?;
+        store::execute_input(&pool, &ws, "owner", &format!("ac-{suffix}"),
+            &json!({"op":"save_object","kind":"ac","id":format!("ac-{suffix}"),"revision":0,
+                "parent":format!("requirement:req-{suffix}"),"data":{"title":"Works","owner":"owner","consumer":"buyer",
+                "before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Start"})).await?;
         store::execute_input(&pool, &ws, "owner", &format!("assess-{suffix}"),
-            &json!({"op":"assess","req":format!("req-{suffix}"),"revision":1,
-                "ac":format!("ac-{suffix}"),"assessment":{"ready":true,"reason":"Ready","owner":null,"decision":null}})).await?;
+            &json!({"op":"assess","req":format!("requirement:req-{suffix}"),"revision":2,
+                "ac":format!("ac:ac-{suffix}"),"assessment":{"ready":true,"reason":"Ready","owner":null,"decision":null}})).await?;
         store::execute_input(&pool, &ws, "owner", &format!("task-{suffix}"),
-            &json!({"op":"task","req":format!("req-{suffix}"),"revision":1,"id":format!("task-{suffix}"),
-                "title":suffix,"acs":[format!("ac-{suffix}")],"projects":[],
-                "purpose":"implementation","contract":"Implement and provide evidence"})).await?;
+            &json!({"op":"save_object","kind":"task","id":format!("task-{suffix}"),"revision":0,
+                "parent":format!("ac:ac-{suffix}"),"data":{"title":suffix,"owner":"owner","projects":[],
+                "purpose":"implementation","contract":"Implement and provide evidence"},"reason":"Plan the work"})).await?;
     }
     let original = store::task_queue(&pool, &ws, "owner", "all", 50, None).await?;
     assert_eq!(original["workspace"], public_ws);
@@ -369,13 +332,13 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         .as_array()
         .unwrap()
         .iter()
-        .find(|task| task["id"] == "task:req-old/task-old")
+        .find(|task| task["id"] == "task:task-old")
         .unwrap()["created_at"]
         .as_u64()
         .unwrap();
     assert!(created_at > 0);
     pool.get().await?.execute(
-        "UPDATE joppa.task_queue SET created_at=0,data=jsonb_set(data,'{created_at}','0'::jsonb) WHERE workspace=$1 AND address='task:req-old/task-old'",
+        "UPDATE joppa.task_queue SET created_at=0,data=jsonb_set(data,'{created_at}','0'::jsonb) WHERE workspace=$1 AND address='task:task-old'",
         &[&ws],
     ).await?;
     assert_eq!(
@@ -390,11 +353,11 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
             .as_array()
             .unwrap()
             .iter()
-            .find(|task| task["id"] == "task:req-old/task-old")
+            .find(|task| task["id"] == "task:task-old")
             .unwrap()["created_at"],
         created_at
     );
-    let canonical_priorities = vec!["task:req-new/task-new".to_owned()];
+    let canonical_priorities = vec!["task:task-new".to_owned()];
     let canonical_preview = store::task_queue_filtered(
         &pool,
         &ws,
@@ -407,7 +370,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &canonical_priorities,
     )
     .await?;
-    assert_eq!(canonical_preview["tasks"][0]["id"], "task:req-new/task-new");
+    assert_eq!(canonical_preview["tasks"][0]["id"], "task:task-new");
     let canonical_claim = store::execute_input(
         &pool,
         &ws,
@@ -417,8 +380,8 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
     )
     .await?;
     assert_eq!(canonical_claim["command"]["req"], Value::Null);
-    assert_eq!(canonical_claim["command"]["id"], "task:req-new/task-new");
-    store::execute_input(&pool,&ws,"owner","release-canonical",&json!({"op":"release_task","req":"req-new","revision":1,"id":"task-new","reason":"Return the canonical priority task"})).await?;
+    assert_eq!(canonical_claim["command"]["id"], "task:task-new");
+    store::execute_input(&pool,&ws,"owner","release-canonical",&json!({"op":"release_task","revision":2,"id":"task:task-new","reason":"Return the canonical priority task"})).await?;
     let mut priorities = vec!["domain:urgent"; 101];
     priorities.push("requirement:req-old");
     let preview = store::task_queue_filtered(
@@ -433,18 +396,24 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &priorities.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
     )
     .await?;
-    assert_eq!(preview["tasks"][0]["id"], "task:req-new/task-new");
+    assert_eq!(preview["tasks"][0]["id"], "task:task-new");
     assert_eq!(
         store::task_queue(&pool, &ws, "owner", "available", 50, None).await?["total"],
         2
     );
     let request = json!({"op":"claim_next_task","priorities":priorities});
     let first = store::execute_input(&pool, &ws, "owner", "next-1", &request).await?;
-    assert_eq!(first["command"]["id"], "task:req-new/task-new");
+    assert_eq!(first["command"]["id"], "task:task-new");
     let second = store::execute_input(&pool, &ws, "owner", "next-2", &request).await?;
-    assert_eq!(second["command"]["id"], "task:req-old/task-old");
-    store::execute_input(&pool, &ws, "owner", "release-old",
-        &json!({"op":"release_task","req":"req-old","revision":1,"id":"task-old","reason":"Return"})).await?;
+    assert_eq!(second["command"]["id"], "task:task-old");
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "release-old",
+        &json!({"op":"release_task","revision":2,"id":"task:task-old","reason":"Return"}),
+    )
+    .await?;
     let fallback = store::execute_input(
         &pool,
         &ws,
@@ -453,7 +422,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         &json!({"op":"claim_next_task","priorities":["domain:urgent"]}),
     )
     .await?;
-    assert_eq!(fallback["command"]["id"], "task:req-old/task-old");
+    assert_eq!(fallback["command"]["id"], "task:task-old");
     assert!(
         store::execute_input(
             &pool,
@@ -470,7 +439,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -> Result<()> {
+async fn a_saved_task_moves_through_the_queue_a_claim_race_and_completion() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let db: String = pool
         .get()
@@ -481,6 +450,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
     anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
     store::migrate(&pool).await?;
     let ws = format!("carry-{}", uuid::Uuid::new_v4().simple());
+    let save = |kind: &str, id: &str, parent: Option<&str>, data: Value| json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Setup"});
     for (id, actor, command) in [
         (
             "create",
@@ -495,82 +465,111 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         (
             "consumer",
             "owner",
-            json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
+            save(
+                "consumer",
+                "buyer",
+                None,
+                json!({"title":"Buyer","owner":"owner"}),
+            ),
         ),
         (
             "domain",
             "agent",
-            json!({"op":"domain","id":"area","title":"Area","authority":"owner"}),
+            save(
+                "domain",
+                "area",
+                None,
+                json!({"title":"Area","owner":"owner"}),
+            ),
         ),
         (
             "capability",
             "agent",
-            json!({"op":"capability","id":"cap","title":"Ability","domain":"area"}),
+            save(
+                "capability",
+                "cap",
+                Some("domain:area"),
+                json!({"title":"Ability","owner":"owner"}),
+            ),
         ),
         (
-            "revise-1",
+            "requirement",
             "agent",
-            json!({"op":"revise","req":"req","expected_revision":0,"capability":"cap","consumers":["buyer"],"title":"Requirement","body":"Scope","owner":"owner","reason":"Start","acs":[{"id":"ac","text":"Works"}]}),
+            save(
+                "requirement",
+                "req",
+                Some("capability:cap"),
+                json!({"title":"Requirement","body":"Scope","owner":"owner"}),
+            ),
+        ),
+        (
+            "criterion",
+            "agent",
+            save(
+                "ac",
+                "ac",
+                Some("requirement:req"),
+                json!({"title":"Works","owner":"owner","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]}),
+            ),
+        ),
+        (
+            "wrong-project",
+            "owner",
+            json!({"op":"project","id":"wrong","repository":"https://example.test/wrong"}),
+        ),
+        (
+            "right-project",
+            "owner",
+            json!({"op":"project","id":"mobileapps","repository":"https://example.test/mobileapps"}),
         ),
     ] {
         store::execute_input(&pool, &ws, actor, id, &command).await?;
     }
-    let multi = json!({"op":"task","req":"req","revision":1,"id":"bad","title":"Bad","acs":["ac","ac"],"projects":[],"purpose":"decision","assignee":"agent","contract":"Record the specialist decision"});
-    assert!(
-        store::execute_input(&pool, &ws, "agent", "multi", &multi)
-            .await
-            .is_err()
-    );
-    assert!(store::execute_input(&pool,&ws,"agent","no-contract",&json!({"op":"task","req":"req","revision":1,"id":"no-contract","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","assignee":"agent"})).await.is_err());
-    let task = json!({"op":"task","req":"req","revision":1,"id":"task","title":"Decide","acs":["ac"],"projects":[],"purpose":"decision","contract":"Record the specialist decision"});
-    store::execute_input(&pool, &ws, "agent", "task", &task).await?;
-    let revise = json!({"op":"revise","req":"req","expected_revision":1,"capability":"cap","consumers":["buyer"],"title":"Requirement revised","body":"Scope","owner":"owner","reason":"Clarified","acs":[{"id":"ac","text":"Works better"}]});
-    let written = store::execute_input(&pool, &ws, "agent", "revise-2", &revise).await?;
-    assert_eq!(written["command"]["carry_tasks"], true);
-    assert_eq!(written["command"]["coverage_policy"], true);
-    assert_eq!(
-        store::read_objects(
-            &pool,
-            &ws,
-            "owner",
-            &store::ObjectScope {
-                address: Some("task:req/task"),
-                ..Default::default()
-            }
+    let task = "task:open-task";
+    let revision = || async {
+        anyhow::Ok(
+            store::read_objects(
+                &pool,
+                &ws,
+                "owner",
+                &store::ObjectScope {
+                    address: Some(task),
+                    ..Default::default()
+                },
+            )
+            .await?["current_revision"]
+                .clone(),
         )
-        .await?["process"]["review_required"],
-        true
-    );
-    store::execute_input(&pool, &ws, "owner", "retire", &json!({"op":"retire_task","req":"req","revision":2,"id":"task","reason":"Decision changed"})).await?;
-    let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
-    assert_eq!(
-        after["state"]["task_process"]["task:req/task"]["retired"],
-        "Decision changed"
-    );
-    store::migrate(&pool).await?;
-    assert_eq!(
-        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
-        after
-    );
+    };
+    let data = |contract: &str, project: &str| json!({"title":"Build access flow","owner":"owner","projects":[project],"purpose":"implementation","contract":contract});
     store::execute_input(
         &pool,
         &ws,
-        "owner",
-        "wrong-project",
-        &json!({"op":"project","id":"wrong","repository":"https://example.test/wrong"}),
+        "agent",
+        "open-task",
+        &save(
+            "task",
+            "open-task",
+            Some("ac:ac"),
+            data(
+                "Implement the revised access flow and attach merged build evidence",
+                "wrong",
+            ),
+        ),
     )
     .await?;
-    store::execute_input(
-        &pool,
-        &ws,
-        "owner",
-        "right-project",
-        &json!({"op":"project","id":"mobileapps","repository":"https://example.test/mobileapps"}),
-    )
-    .await?;
-    let open = json!({"op":"task","req":"req","revision":2,"id":"open-task","title":"Build access flow","acs":["ac"],"projects":["wrong"],"purpose":"implementation","contract":"Implement the revised access flow and attach merged build evidence"});
-    store::execute_input(&pool, &ws, "agent", "open-task", &open).await?;
-    store::execute_input(&pool,&ws,"agent","amend-project",&json!({"op":"amend_task","req":"req","revision":2,"id":"open-task","title":"Build access flow","contract":"Implement the revised mobile access flow and attach merged build evidence","projects":["mobileapps"],"reason":"Correct project identifier before claim"})).await?;
+    // The creator corrects the project before a claim.
+    let mut fix = save(
+        "task",
+        "open-task",
+        Some("ac:ac"),
+        data(
+            "Implement the revised mobile access flow and attach merged build evidence",
+            "mobileapps",
+        ),
+    );
+    fix["revision"] = revision().await?;
+    store::execute_input(&pool, &ws, "agent", "amend-project", &fix).await?;
     assert_eq!(
         store::task_queue(&pool, &ws, "agent", "waiting", 50, None).await?["total"],
         1
@@ -579,16 +578,11 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         store::task_queue(&pool, &ws, "agent", "available", 50, None).await?["total"],
         0
     );
-    store::execute_input(&pool,&ws,"agent","ready",&json!({"op":"assess","req":"req","revision":2,"ac":"ac","assessment":{"ready":true,"reason":"Contract is clear","owner":null,"decision":null}})).await?;
+    store::execute_input(&pool,&ws,"agent","ready",&json!({"op":"assess","req":"requirement:req","revision":2,"ac":"ac:ac","assessment":{"ready":true,"reason":"Contract is clear","owner":null,"decision":null}})).await?;
     let queue = store::task_queue(&pool, &ws, "agent", "available", 1, None).await?;
-    assert_eq!(queue["tasks"][0]["id"], "task:req/open-task");
-    assert_eq!(queue["tasks"][0]["ac"], "ac");
+    assert_eq!(queue["tasks"][0]["id"], task);
     assert_eq!(queue["tasks"][0]["projects"], json!(["mobileapps"]));
     let page = store::task_queue(&pool, &ws, "agent", "all", 1, None).await?;
-    let cursor = page["next_cursor"]
-        .as_str()
-        .expect("second Task page")
-        .to_owned();
     assert!(
         store::task_queue(&pool, &ws, "outsider", "all", 1, None)
             .await
@@ -606,12 +600,8 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         ("agent", "claim-agent", "owner", agent_result?)
     };
     assert_eq!(success["command"]["op"], "claim_task");
-    assert_eq!(success["command"]["id"], "task:req/open-task");
-    assert!(
-        store::task_queue(&pool, &ws, "agent", "all", 1, Some(&cursor))
-            .await
-            .is_err()
-    );
+    assert_eq!(success["command"]["id"], task);
+    assert!(page["next_cursor"].is_null(), "{page}");
     assert_eq!(
         store::execute_input(&pool, &ws, winner, winner_request, &next).await?["replayed"],
         true
@@ -629,7 +619,7 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         &ws,
         winner,
         "release",
-        &json!({"op":"release_task","req":"req","revision":2,"id":"open-task","reason":"Handoff"}),
+        &json!({"op":"release_task","revision":revision().await?,"id":task,"reason":"Handoff"}),
     )
     .await?;
     store::execute_input(
@@ -637,10 +627,10 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
         &ws,
         loser,
         "claim-explicit",
-        &json!({"op":"claim_task","req":"req","revision":2,"id":"open-task"}),
+        &json!({"op":"claim_task","revision":revision().await?,"id":task}),
     )
     .await?;
-    store::execute_input(&pool,&ws,loser,"complete",&json!({"op":"complete_task","commit":"c0ffee0","req":"req","revision":2,"id":"open-task","evidence":"merged build abc"})).await?;
+    store::execute_input(&pool,&ws,loser,"complete",&json!({"op":"complete_task","commit":"c0ffee0","revision":revision().await?,"id":task,"evidence":"merged build abc"})).await?;
     assert_eq!(
         store::task_queue(&pool, &ws, loser, "mine", 50, None).await?["total"],
         0
@@ -650,9 +640,16 @@ async fn task_carry_marker_survives_journal_replay_and_new_tasks_have_one_ac() -
             .as_array()
             .unwrap()
             .iter()
-            .find(|task| task["id"] == "task:req/open-task")
+            .find(|t| t["id"] == task)
             .unwrap()["status"],
         "done"
+    );
+    // The journal rebuilds the same state.
+    let after = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
+    store::migrate(&pool).await?;
+    assert_eq!(
+        store::read(&pool, &ws, "owner", &store::Scope::full()).await?,
+        after
     );
     Ok(())
 }

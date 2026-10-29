@@ -8,8 +8,15 @@ use std::{
     time::Duration,
 };
 
+#[path = "common/compact_of.rs"]
+mod compact_of;
 #[path = "common/record_http.rs"]
 mod record_http;
+
+/// The data of one criterion under requirement:key.
+fn criterion(title: &str) -> Value {
+    json!({"title":title,"owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]})
+}
 
 struct Server(Child);
 impl Drop for Server {
@@ -51,11 +58,12 @@ async fn world() -> Result<World> {
     for (i, op) in [
         json!({"op":"workspace","title":"Reports over HTTP"}),
         json!({"op":"enroll_service","id":"agent","role":"agent"}),
-        json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
-        json!({"op":"revise","req":"key","expected_revision":0,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]}),
-        json!({"op":"task","req":"key","revision":1,"id":"t1","title":"Build key rights","acs":["key-rights"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"}),
+        json!({"op":"save_object","kind":"consumer","id":"customer","revision":0,"parent":null,"data":{"title":"Customer","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"domain","id":"security","revision":0,"parent":null,"data":{"title":"Security","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"owner"},"reason":"Agreed"}),
+        json!({"op":"save_object","kind":"ac","id":"key-rights","revision":0,"parent":"requirement:key","data":criterion("Only read and verify before launch"),"reason":"Agreed"}),
+        json!({"op":"save_object","kind":"task","id":"t1","revision":0,"parent":"ac:key-rights","data":{"title":"Build key rights","owner":"owner","projects":[],"purpose":"implementation","contract":"Implement and provide evidence"},"reason":"Plan the work"}),
     ]
     .into_iter()
     .enumerate()
@@ -143,8 +151,18 @@ impl World {
         record_http::recorded(&self.http, root, ws, &self.token, commit, results).await
     }
     /// skopanev's role in these tests: change the criterion text, which makes a new revision.
-    async fn revise_text(&self, expected: u32, text: &str) -> Result<()> {
-        let command = json!({"op":"revise","req":"key","expected_revision":expected,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Sharper wording","acs":[{"id":"key-rights","text":text}]});
+    async fn revise_text(&self, _expected: u32, text: &str) -> Result<()> {
+        let current: Value = self
+            .http
+            .get(format!("{}/objects?address=ac:key-rights", self.base))
+            .bearer_auth(&self.owner)
+            .send()
+            .await?
+            .json()
+            .await?;
+        let mut data = current["document"]["data"].clone();
+        data["title"] = json!(text);
+        let command = json!({"op":"save_object","kind":"ac","id":"key-rights","revision":current["current_revision"],"parent":"requirement:key","data":data,"links":current["document"]["links"],"reason":"Sharper wording"});
         let reply = self
             .http
             .post(format!("{}/commands", self.base))
@@ -179,8 +197,8 @@ fn outcomes(cases: &[(&str, &str)]) -> Value {
 
 async fn ready_for_planning(w: &World) -> Result<Value> {
     for command in [
-        json!({"op":"confirm","req":"key","revision":1}),
-        json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"Known work scope"}}),
+        json!({"op":"confirm","req":"requirement:key","revision":2}),
+        json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"Known work scope"}}),
     ] {
         let (code, reply) = post(
             w,
@@ -221,7 +239,7 @@ async fn a_green_criterion_leaves_the_unstarted_list() -> Result<()> {
     let w = world().await?;
     ready_for_planning(&w).await?;
     // The fixture Task t1 is open work, so retire it: unstarted lists criteria without active work.
-    let retire = json!({"op":"retire_task","req":"key","revision":1,"id":"t1","reason":"Fixture work no longer applies"});
+    let retire = json!({"op":"retire_task","id":"task:t1","revision":1,"reason":"Fixture work no longer applies"});
     let (code, reply) = post(
         &w,
         &w.owner,
@@ -401,6 +419,21 @@ impl Planning<'_> {
         )
         .await
     }
+    /// Save a new title and contract of a Task and keep its other fields.
+    async fn amend(
+        &self,
+        actor: &str,
+        address: &str,
+        title: &str,
+        contract: &str,
+    ) -> Result<Value> {
+        let current = self.read(address).await?;
+        let (kind, id) = address.split_once(':').unwrap();
+        let mut data = current["document"]["data"].clone();
+        data["title"] = json!(title);
+        data["contract"] = json!(contract);
+        self.write(actor, json!({"op":"save_object","kind":kind,"id":id,"revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Amend the contract"})).await
+    }
     async fn revision(&self, address: &str) -> Result<u64> {
         Ok(self.read(address).await?["current_revision"]
             .as_u64()
@@ -579,7 +612,7 @@ impl Planning<'_> {
         let root = self.w.base.split("/api/").next().unwrap();
         arguments["workspace"] = json!(self.ws);
         Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
             .send().await?.json().await?)
     }
     /// P sends `command` through HTTP or MCP and gets the result or the error text.
@@ -878,7 +911,7 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
         "the stored list must be green"
     );
     // check-list-frozen-ac3: each list save resets the criterion, so the batch assesses it again.
-    let assess = json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"Known work scope"}});
+    let assess = json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"Known work scope"}});
     let before = planning_criterion(&w).await?;
     // The list save in the batch gives the criterion its next revision.
     let claim = json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"].as_u64().unwrap_or(0) + 1});
@@ -1010,7 +1043,7 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
             .await?;
         let root = w.base.split("/api/").next().unwrap();
         let workspace = w.base.rsplit('/').next().unwrap();
-        let mcp: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.owner).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":workspace,"address":address}}})).send().await?.json().await?;
+        let mcp: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.owner).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":address}}})).send().await?.json().await?;
         let mcp: Value = serde_json::from_str(
             mcp["result"]["content"][0]["text"]
                 .as_str()
@@ -1876,7 +1909,7 @@ async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
         &w,
         &w.owner,
         "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"confirm","req":"key","revision":1}}),
+        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"confirm","req":"requirement:key","revision":2}}),
     )
     .await?;
     ensure!(code == 200, "{code} {reply}");
@@ -1909,7 +1942,7 @@ async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
     // checks-listed-first-ac1: skopanev (the owner token) saves one address.
     let w = world().await?;
     // A fresh criterion, so it starts with no saved test list.
-    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"One more criterion","acs":[{"id":"key-rights","text":"Only read and verify before launch"},{"id":"key-audit","text":"Every key change is in the audit log"}]});
+    let command = json!({"op":"save_object","kind":"ac","id":"key-audit","revision":0,"parent":"requirement:key","data":criterion("Every key change is in the audit log"),"reason":"One more criterion"});
     let reply = w
         .http
         .post(format!("{}/commands", w.base))
@@ -2051,19 +2084,17 @@ async fn mcp_returns_each_test_with_status_and_commit() -> Result<()> {
 /// Workspace W with criteria A1 to A101, and the token that the owner created for agent bot.
 async fn many_criteria() -> Result<(World, String, Vec<String>)> {
     let w = world().await?;
-    let mut acs = vec![json!({"id":"key-rights","text":"Only read and verify before launch"})];
-    acs.extend(
-        (1..=101).map(|i| json!({"id":format!("a{i}"),"text":format!("Criterion A{i} holds")})),
-    );
-    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Many criteria","acs":acs});
-    let (code, reply) = post(
-        &w,
-        &w.owner,
-        "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
-    )
-    .await?;
-    ensure!(code == 200, "revise: {code} {reply}");
+    for i in 1..=101 {
+        let command = json!({"op":"save_object","kind":"ac","id":format!("a{i}"),"revision":0,"parent":"requirement:key","data":criterion(&format!("Criterion A{i} holds")),"reason":"Many criteria"});
+        let (code, reply) = post(
+            &w,
+            &w.owner,
+            "/commands",
+            json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
+        )
+        .await?;
+        ensure!(code == 200, "criterion a{i}: {code} {reply}");
+    }
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap().to_owned();
@@ -2124,11 +2155,25 @@ async fn http_status_read_returns_all_101_criteria_in_request_order() -> Result<
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn mcp_status_read_returns_all_101_criteria_in_request_order() -> Result<()> {
-    // old-results-history-ac4: agent bot calls joppa_tests for A1 to A101 in one request.
+async fn mcp_status_read_returns_100_criteria_in_request_order() -> Result<()> {
+    // old-results-history-ac4: agent bot calls joppa_tests for A1 to A100 in one request.
     let (w, bot, addresses) = many_criteria().await?;
     let workspace = w.base.rsplit('/').next().unwrap();
+    let first = addresses[..100].to_vec();
     let reply = mcp_read(
+        &w,
+        &bot,
+        "joppa_tests",
+        json!({"workspace":workspace,"ac":first.join(",")}),
+    )
+    .await?;
+    ensure!(
+        reply["items"].as_array().map(Vec::len) == Some(100),
+        "item count: {reply}"
+    );
+    ensure!(item_addresses(&reply) == first, "{reply}");
+    // 101 criteria in one call are refused.
+    let reply = mcp(
         &w,
         &bot,
         "joppa_tests",
@@ -2136,13 +2181,14 @@ async fn mcp_status_read_returns_all_101_criteria_in_request_order() -> Result<(
     )
     .await?;
     ensure!(
-        reply["items"].as_array().map(Vec::len) == Some(101),
-        "item count: {reply}"
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .is_some_and(|e| e.contains("at most 100 criteria in one call")),
+        "{reply}"
     );
-    ensure!(item_addresses(&reply) == addresses, "{reply}");
 
-    // Control: an unknown address at position 101 returns its error and no items.
-    let mut listed = addresses[..100].to_vec();
+    // Control: an unknown address at position 100 returns its error and no items.
+    let mut listed = addresses[..99].to_vec();
     listed.push("ac:missing".into());
     let reply = mcp(
         &w,
@@ -2216,7 +2262,7 @@ async fn a_test_tag_in_code_links_nothing() -> Result<()> {
 
 async fn task(w: &World) -> Result<Value> {
     Ok(w.http
-        .get(format!("{}/tests?task=task:key/t1", w.base))
+        .get(format!("{}/tests?task=task:t1", w.base))
         .bearer_auth(&w.token)
         .send()
         .await?
@@ -2247,7 +2293,7 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
         &w,
         bot,
         "joppa_tests",
-        json!({"workspace":workspace,"task":"task:key/t1"}),
+        json!({"workspace":workspace,"task":"task:t1"}),
     )
     .await?;
     // A green criterion does not complete the Task and gives it no commit.
@@ -2259,7 +2305,7 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
         &w,
         bot,
         "joppa_objects",
-        json!({"workspace":workspace,"address":"task:key/t1"}),
+        json!({"workspace":workspace,"address":"task:t1"}),
     )
     .await?;
     ensure!(object["process"]["status"] == "open", "{object}");
@@ -2281,7 +2327,7 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
         ),
         (
             &w.token,
-            json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
+            json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
         ),
         (
             &w.token,
@@ -2332,7 +2378,7 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
             finished["done"] == true && finished["commit"] == "c0ffee0",
             "{finished}"
         );
-        let open = read("task:key/t1").await?;
+        let open = read("task:t1").await?;
         ensure!(open["done"] == false && open["commit"].is_null(), "{open}");
     }
     Ok(())
@@ -2402,7 +2448,7 @@ async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()
         ),
         (
             &w.token,
-            json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
+            json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}),
         ),
         (
             &w.token,
@@ -2569,7 +2615,7 @@ async fn a_revoked_write_token_fails_on_the_first_read_over_http_and_mcp() -> Re
     };
     let read_mcp = |token: String| {
         let request = w.http.post(format!("{root}/mcp")).bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":workspace,"address":"note:from-bot"}}}));
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":workspace,"address":"note:from-bot"}}}));
         async move {
             let reply = request.send().await?;
             anyhow::Ok((
@@ -3085,7 +3131,7 @@ async fn mcp(w: &World, token: &str, tool: &str, arguments: Value) -> Result<Val
         .http
         .post(format!("{root}/mcp"))
         .bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
         .send()
         .await?
         .json()
@@ -3179,7 +3225,7 @@ async fn an_agent_token_with_read_access_reads_the_workspace_as_the_owner() -> R
     let (owned, _) = all_objects(&w, &w.owner).await?;
     ensure!(pages > 1, "joppa_objects needs more than one page: {pages}");
     ensure!(
-        ["requirement:key", "ac:key-rights", "task:key/t1"]
+        ["requirement:key", "ac:key-rights", "task:t1"]
             .iter()
             .all(|a| read.iter().any(|r| r == a)),
         "the fixture objects are listed: {read:?}"
@@ -3382,7 +3428,7 @@ async fn an_agent_cannot_accept_a_requirement() -> Result<()> {
 async fn a_criterion_without_tests_refuses_acceptance() -> Result<()> {
     // accept-needs-all-passed-ac1: an untested criterion does not pass by being empty.
     let w = world().await?;
-    let command = json!({"op":"revise","req":"key","expected_revision":1,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"One more criterion","acs":[{"id":"key-rights","text":"Only read and verify before launch"},{"id":"key-audit","text":"Every key change is in the audit log"}]});
+    let command = json!({"op":"save_object","kind":"ac","id":"key-audit","revision":0,"parent":"requirement:key","data":criterion("Every key change is in the audit log"),"reason":"One more criterion"});
     let reply = w
         .http
         .post(format!("{}/commands", w.base))
@@ -3439,14 +3485,17 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
         ensure!(code == 200, "{address}: {code} {http}");
         let root = w.base.split("/api/").next().unwrap();
         let workspace = w.base.rsplit('/').next().unwrap();
-        let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"verbose":true,"workspace":workspace,"task":address}}})).send().await?.json().await?;
+        let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"workspace":workspace,"task":address}}})).send().await?.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
         let mcp: Value = serde_json::from_str(
             response["result"]["content"][0]["text"]
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        ensure!(http == mcp, "HTTP {http}; MCP {mcp}");
+        ensure!(
+            compact_of::compact_of(&http, &mcp) == mcp,
+            "HTTP {http}; MCP {mcp}"
+        );
         Ok(http)
     }
     let w = world().await?;
@@ -3482,7 +3531,7 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
     let tasks = [
-        ("task:key/t1", "ac:key-rights"),
+        ("task:t1", "ac:key-rights"),
         ("job:native", "ac:key-rights"),
         ("task:configured", "check:configured"),
         ("job:configured", "check:configured"),
@@ -3780,8 +3829,13 @@ async fn finish_planning_needs_a_new_contract_for_a_blocked_task_over_http_and_m
         );
 
         // Fixture 1: P amends the T contract text and finishes.
-        let revision = p.revision("work:t").await?;
-        p.write("agent", json!({"op":"amend_task","id":"work:t","revision":revision,"title":"T","contract":"Implement the criterion with a new fix","projects":[],"reason":"Amend the contract"})).await?;
+        p.amend(
+            "agent",
+            "work:t",
+            "T",
+            "Implement the criterion with a new fix",
+        )
+        .await?;
         p.finish(mcp).await?;
         let a = p.read("criterion:a").await?;
         let t = p.read("work:t").await?;
@@ -4579,7 +4633,7 @@ async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result
                 && t["claimable"] == false
                 && t["waiting_reason"]
                     == "Task has an unmet dependency or a changed dependency revision: work:d"
-                && t["signal"]["label"] == "Dependency revision changed"
+                && status_label(t) == Some("Dependency revision changed")
         })
         .await?;
         // Finish keeps the dependency pin and the dependency review.
@@ -4588,7 +4642,7 @@ async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result
             ensure!(
                 new["document"]["links"] == old["document"]["links"]
                     && new["review_required"] == true
-                    && new["signal"]["label"] == "Dependency revision changed",
+                    && status_label(new) == Some("Dependency revision changed"),
                 "{transport}: {old} {new}"
             );
         }
@@ -5212,11 +5266,11 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
 }
 
 // ready-is-the-only-gate-ac2
-// R is requirement:key at revision 1, and A is its green ready criterion ac:key-rights.
-// Agent bot saves a new text of R. Revision 1 of R keeps the old text.
+// R is requirement:key at revision 2 (its text, then its criterion), and A is its green ready
+// criterion ac:key-rights. Agent bot saves a new text of R. Revision 1 of R keeps the old text.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() -> Result<()> {
+async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readiness() -> Result<()> {
     let w = world().await?;
     let workspace = w.base.rsplit('/').next().unwrap().to_owned();
     // Bot reads joppa_objects over HTTP and MCP; both give the same reply.
@@ -5234,7 +5288,10 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
                 .json()
                 .await?;
             let mcp = mcp_read(w, &w.token, "joppa_objects", arguments).await?;
-            ensure!(http == mcp, "joppa_objects {query}: HTTP {http}\nMCP {mcp}");
+            ensure!(
+                compact_of::compact_of(&http, &mcp) == mcp,
+                "joppa_objects {query}: HTTP {http}\nMCP {mcp}"
+            );
             anyhow::Ok(http)
         }
     };
@@ -5247,7 +5304,10 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
         )
         .await?;
         let http = w.status().await?;
-        ensure!(http == mcp, "joppa_tests: HTTP {http}\nMCP {mcp}");
+        ensure!(
+            compact_of::compact_of(&http, &mcp) == mcp,
+            "joppa_tests: HTTP {http}\nMCP {mcp}"
+        );
         anyhow::Ok(http)
     };
     ready_for_planning(&w).await?;
@@ -5256,13 +5316,13 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    // Controls: R is at revision 1, and A is green and ready for work.
+    // Controls: R is at revision 2, and A is green and ready for work.
     let r = read(
         "address=requirement:key",
         json!({"address":"requirement:key"}),
     )
     .await?;
-    ensure!(r["current_revision"] == 1, "R before the save: {r}");
+    ensure!(r["current_revision"] == 2, "R before the save: {r}");
     ensure!(tests().await?["status"] == "green", "A must start green");
     let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
     ensure!(
@@ -5272,7 +5332,7 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
     let mut data = r["document"]["data"].clone();
     data["body"] = json!("Changed scope");
     let (code, reply) = post(&w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":
-        {"op":"save_object","kind":"requirement","id":"key","revision":1,"parent":r["document"]["parent"],
+        {"op":"save_object","kind":"requirement","id":"key","revision":2,"parent":r["document"]["parent"],
          "data":data,"links":[],"reason":"Change R"}})).await?;
     ensure!(code == 200, "bot saves R: {code} {reply}");
     let r = read(
@@ -5281,7 +5341,7 @@ async fn an_agent_save_of_r_makes_revision_2_greys_a_and_resets_its_readiness() 
     )
     .await?;
     ensure!(
-        r["current_revision"] == 2
+        r["current_revision"] == 3
             && r["document"]["actor"] == "agent"
             && r["document"]["data"]["body"] == "Changed scope",
         "R after the save: {r}"
@@ -5756,6 +5816,13 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     Ok(p)
 }
 
+/// The status label of an object: HTTP gives `signal`, MCP gives `status`.
+fn status_label(t: &Value) -> Option<&str> {
+    t["signal"]["label"]
+        .as_str()
+        .or_else(|| t["status"]["label"].as_str())
+}
+
 /// A blocking ordering link without a revision.
 fn ordering_link(target: &str) -> Value {
     json!([{"target":target,"relation":"depends_on","blocking":true}])
@@ -5766,7 +5833,10 @@ impl Planning<'_> {
     async fn objects_both(&self, query: &str, arguments: Value) -> Result<Value> {
         let http = self.get(format!("/objects?{query}")).await?;
         let mcp = self.mcp_read("joppa_objects", arguments).await?;
-        ensure!(http == mcp, "joppa_objects {query}: HTTP {http}\nMCP {mcp}");
+        ensure!(
+            compact_of::compact_of(&http, &mcp) == mcp,
+            "joppa_objects {query}: HTTP {http}\nMCP {mcp}"
+        );
         Ok(http)
     }
     async fn object_both(&self, address: &str) -> Result<Value> {
@@ -5794,7 +5864,10 @@ impl Planning<'_> {
         let mcp = self
             .mcp_read("joppa_tasks", json!({"view":view,"limit":100}))
             .await?;
-        ensure!(http == mcp, "joppa_tasks {view}: HTTP {http}\nMCP {mcp}");
+        ensure!(
+            compact_of::compact_of(&http, &mcp) == mcp,
+            "joppa_tasks {view}: HTTP {http}\nMCP {mcp}"
+        );
         Ok(http["tasks"].as_array().cloned().unwrap_or_default())
     }
     async fn status(&self, ac: &str) -> Result<Value> {
@@ -5934,7 +6007,13 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
         json!([{"target":"work:source","relation":"depends_on","revision":pin,"blocking":true}]),
     )
     .await?;
-    p.write("owner", json!({"op":"amend_task","id":"work:source","revision":p.revision("work:source").await?,"title":"Changed source","contract":"Implement the agreed mechanism","projects":[],"reason":"Change the source"})).await?;
+    p.amend(
+        "owner",
+        "work:source",
+        "Changed source",
+        "Implement the agreed mechanism",
+    )
+    .await?;
     let unclaimable = |tasks: Vec<Value>| !tasks.iter().any(|t| t["address"] == "work:dependent");
     ensure!(unclaimable(p.tasks_both("available").await?));
     ensure!(p.read("work:dependent").await?["review_required"] == true);
@@ -6509,26 +6588,4 @@ async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_revi
         store::check_journal(&p.pool).await?;
     }
     Ok(())
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }

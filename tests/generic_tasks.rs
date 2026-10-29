@@ -415,7 +415,7 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
 
     pinned(&mut w, "task:c", "task:d");
     let revision = w.state.objects["task:c"].current().revision;
-    w.ok("agent",json!({"op":"amend_task","id":"task:c","revision":revision,"title":"Changed source task","contract":"Implement the specified document behavior","projects":[],"reason":"Change the source"}));
+    w.legacy("agent",json!({"op":"amend_task","id":"task:c","revision":revision,"title":"Changed source task","contract":"Implement the specified document behavior","projects":[],"reason":"Change the source"}));
     assert!(!objects::review_links(&w.state, "task:d").is_empty());
     assert!(!claimable(&w, "task:d"));
 }
@@ -424,7 +424,7 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
 fn migration_preserves_old_task_history_and_uses_one_process() {
     let mut w = World::new();
     w.ready();
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"old","title":"Existing task","contract":"Implement the iOS flow","acs":["ios"],"projects":["app"],"purpose":"implementation"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"old","title":"Existing task","contract":"Implement the iOS flow","acs":["ios"],"projects":["app"],"purpose":"implementation"}));
     let old = serde_json::to_value(&w.state.objects["task:r/old"].revisions).unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
     let migrated = serde_json::to_value(&w.state).unwrap();

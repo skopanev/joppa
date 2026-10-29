@@ -62,9 +62,7 @@ async fn fixture() -> anyhow::Result<(Pool, String)> {
         .await?;
     store::migrate(&pool).await?;
     let ws = format!("probe-{}", uuid::Uuid::new_v4().simple());
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     Ok((pool, ws))
 }
 
@@ -161,30 +159,28 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
     assert_eq!(reads["calls"], 0, "current reads selected journal events");
 
     reset(&pool).await?;
-    store::execute_input(&pool, &ws, "owner", "normal-write", &json!({"op":"edit_domain","id":"d","title":"Measured current title","owner":"owner","reason":"Check current write access"})).await?;
+    save_title(
+        &pool,
+        &ws,
+        "owner",
+        "normal-write",
+        "domain:d",
+        "Measured current title",
+        "Check current write access",
+    )
+    .await?;
     store::execute_input(
         &pool,
         &ws,
         "owner",
         "normal-create-domain",
-        &json!({"op":"domain","id":"new","title":"Measured new domain","owner":"owner"}),
+        &json!({"op":"save_object","kind":"domain","id":"new","revision":0,"parent":null,"data":{"title":"Measured new domain","owner":"owner"},"reason":"Setup"}),
     )
     .await?;
     store::execute_input(&pool, &ws, "agent", "normal-create-input", &json!({"op":"save_object","kind":"note","id":"new-input","revision":0,"parent":null,"data":{"title":"Measured new Input","owner":"owner","body":"New input"},"links":[],"reason":"Check new object registration"})).await?;
-    store::execute_input(&pool, &ws, "owner", "normal-create-capability", &json!({"op":"capability","id":"new-capability","title":"Measured new capability","domain":"d"})).await?;
-    store::execute_input(&pool, &ws, "owner", "normal-create-consumer", &json!({"op":"consumer","id":"new-consumer","title":"Measured new consumer","owner":"owner"})).await?;
-    let mut new_requirement = revision(0);
-    new_requirement["req"] = json!("new");
-    new_requirement["acs"][0]["id"] = json!("new-ios");
-    new_requirement["acs"][1]["id"] = json!("new-key");
-    store::execute_input(
-        &pool,
-        &ws,
-        "owner",
-        "normal-create-requirement",
-        &new_requirement,
-    )
-    .await?;
+    store::execute_input(&pool, &ws, "owner", "normal-create-capability", &json!({"op":"save_object","kind":"capability","id":"new-capability","revision":0,"parent":"domain:d","data":{"title":"Measured new capability","owner":"owner"},"reason":"Setup"})).await?;
+    store::execute_input(&pool, &ws, "owner", "normal-create-consumer", &json!({"op":"save_object","kind":"consumer","id":"new-consumer","revision":0,"parent":null,"data":{"title":"Measured new consumer","owner":"owner"},"reason":"Setup"})).await?;
+    store::execute_input(&pool, &ws, "owner", "normal-create-requirement", &json!({"op":"save_object","kind":"requirement","id":"new","revision":0,"parent":"capability:c","data":{"title":"Measured new requirement","owner":"owner","body":"New rule"},"reason":"Setup"})).await?;
     let writes = journal_selects(&pool).await?;
     println!("Current write journal probe: {writes}");
     assert_eq!(writes["calls"], 0, "normal write selected journal events");
@@ -202,11 +198,12 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
 
     let mut rev = revision(1);
     rev["acs"][1]["decider"] = json!("legal");
-    store::execute_input(&pool, &ws, "agent", "revision-2", &rev).await?;
+    // Old journals hold revise; the replay reads it.
+    common::append_legacy(&pool, &ws, "agent", "revision-2", &rev).await?;
     store::execute_input(&pool, &ws, "legal", "decision", &json!({"op":"comment","req":"r","revision":2,"id":"law","text":"Confirmed rights","kind":"decision","ac":"key"})).await?;
     rev["expected_revision"] = json!(2);
     rev["acs"][0]["text"] = json!("On iOS access survives reauthentication");
-    store::execute_input(&pool, &ws, "agent", "revision-3", &rev).await?;
+    common::append_legacy(&pool, &ws, "agent", "revision-3", &rev).await?;
     let mut assessment = assess("key", true);
     assessment["revision"] = json!(3);
     assessment["assessment"]["decision"] = json!("law");
@@ -264,7 +261,7 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
     pool.get().await?.execute("UPDATE joppa.board_cache SET first_view=first_view-'legacy_receipts_version' WHERE workspace=$1", &[&ws]).await?;
     let before = snapshot(&pool, &ws).await?;
     reset(&pool).await?;
-    let fallback = store::execute_input(&pool, &ws, "owner", "legacy-domain", &legacy).await?;
+    let fallback = store::execute_input(&pool, &ws, "agent", "legacy-uri", &source).await?;
     assert_eq!(fallback["replayed"], true);
     assert_eq!(journal_selects(&pool).await?["calls"], 1);
     assert_eq!(
@@ -279,12 +276,10 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
         .await?;
     store::backfill_board(&pool).await?;
     let before = snapshot(&pool, &ws).await?;
-    let mut alias = legacy.clone();
-    alias.as_object_mut().unwrap().remove("authority");
-    alias["owner"] = json!("owner");
     reset(&pool).await?;
+    // An identical retry returns the stored receipt, also for a removed operation.
     for (request, actor, command) in [
-        ("legacy-domain", "owner", &alias),
+        ("legacy-domain", "owner", &legacy),
         ("legacy-uri", "agent", &source),
     ] {
         let retry = store::execute_input(&pool, &ws, actor, request, command).await?;
@@ -293,15 +288,25 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
     assert_eq!(journal_selects(&pool).await?["calls"], 0);
     assert_eq!(snapshot(&pool, &ws).await?, before);
     assert!(
-        store::execute_input(&pool, &ws, "agent", "legacy-domain", &alias)
+        store::execute_input(&pool, &ws, "agent", "legacy-domain", &legacy)
             .await
             .is_err()
     );
-    alias["title"] = json!("Different content");
+    let mut changed = legacy.clone();
+    changed["title"] = json!("Different content");
     assert!(
-        store::execute_input(&pool, &ws, "owner", "legacy-domain", &alias)
+        store::execute_input(&pool, &ws, "owner", "legacy-domain", &changed)
             .await
             .is_err()
+    );
+    // A new request with a removed operation is refused.
+    let refused = store::execute_input(&pool, &ws, "owner", "new-legacy", &legacy)
+        .await
+        .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("domain was removed; use save_object")
     );
     let single = [store::BatchOperation {
         reference: None,
@@ -315,7 +320,7 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
 
     let operations = [store::BatchOperation {
         reference: Some("first".into()),
-        command: json!({"op":"domain","id":"batch-group","title":"Batch group","owner":"owner"}),
+        command: json!({"op":"save_object","kind":"domain","id":"batch-group","revision":0,"parent":null,"data":{"title":"Batch group","owner":"owner"},"reason":"Setup"}),
     }];
     let batch = store::execute_batch(&pool, &ws, "owner", "outer-batch", &operations).await?;
     let batch_position = batch["results"][0]["position"].as_i64().unwrap();
@@ -360,8 +365,26 @@ async fn legacy_retry_projection_preserves_commands_and_batch_receipts() -> anyh
     );
     assert_eq!(pool.get().await?.query_one("SELECT input::text FROM joppa.command_receipts WHERE workspace=$1 AND request_id='outer-batch'", &[&ws]).await?.get::<_,String>(0), receipt);
     reset(&pool).await?;
-    store::execute_input(&pool, &ws, "owner", "after-migration", &json!({"op":"edit_domain","id":"d","title":"After migration","owner":"owner","reason":"Check marker persistence"})).await?;
-    store::execute_input(&pool, &ws, "owner", "after-projection", &json!({"op":"edit_domain","id":"d","title":"After projection","owner":"owner","reason":"Check marker persistence"})).await?;
+    save_title(
+        &pool,
+        &ws,
+        "owner",
+        "after-migration",
+        "domain:d",
+        "After migration",
+        "Check marker persistence",
+    )
+    .await?;
+    save_title(
+        &pool,
+        &ws,
+        "owner",
+        "after-projection",
+        "domain:d",
+        "After projection",
+        "Check marker persistence",
+    )
+    .await?;
     assert_eq!(journal_selects(&pool).await?["calls"], 0);
     let incremental = snapshot(&pool, &ws).await?;
     pool.get()
@@ -421,7 +444,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
         };
         let create = store::BatchOperation {
             reference: None,
-            command: json!({"op":"domain","id":"ordered","title":"Ordered domain","owner":"owner"}),
+            command: json!({"op":"save_object","kind":"domain","id":"ordered","revision":0,"parent":null,"data":{"title":"Ordered domain","owner":"owner"},"reason":"Setup"}),
         };
         let mut operations = if rename_first {
             vec![rename, create]
@@ -431,7 +454,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
         let second_prefix = format!("second-{}", uuid::Uuid::new_v4().simple());
         operations.extend([
             store::BatchOperation { reference: None, command: json!({"op":"rename_workspace","title":"Renamed twice","reference_prefix":second_prefix,"reason":"Check the second batch rename"}) },
-            store::BatchOperation { reference: None, command: json!({"op":"domain","id":"second","title":"Second domain","owner":"owner"}) },
+            store::BatchOperation { reference: None, command: json!({"op":"save_object","kind":"domain","id":"second","revision":0,"parent":null,"data":{"title":"Second domain","owner":"owner"},"reason":"Setup"}) },
         ]);
         let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());
         // Administrative provisioning precedes the normal command probe.
@@ -467,7 +490,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
             &foreign,
             "owner",
             "create",
-            &json!({"op":"domain","id":"other","title":"Other domain","owner":"owner"}),
+            &json!({"op":"save_object","kind":"domain","id":"other","revision":0,"parent":null,"data":{"title":"Other domain","owner":"owner"},"reason":"Setup"}),
         )
         .await?;
         // Item IDs of the foreign workspace use its own prefix, a slug of its title.
@@ -486,7 +509,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
                 &ws,
                 "owner",
                 "invalid-create",
-                &json!({"op":"domain","id":"invalid","title":"Invalid domain","owner":"unknown"})
+                &json!({"op":"note","target":"domain:missing","id":"invalid","text":"A comment on a missing object"})
             )
             .await
             .is_err()

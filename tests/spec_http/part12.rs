@@ -104,8 +104,8 @@ async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<(
     // removal-is-archiving-ac6
     for mcp in [false, true] {
         let w = world().await?;
-        w.command(json!({"op":"revise","req":"arch","expected_revision":0,"capability":"restrict","title":"Archive rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"arch-a","text":"Criterion A"},{"id":"arch-b","text":"Criterion B"},{"id":"arch-c","text":"Criterion C"}]})).await?;
-        w.command_as(&w.bot, json!({"op":"assess","req":"arch","revision":1,"ac":"arch-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+        w.requirement("arch", "restrict", "Archive rule", "Scope", &[("arch-a", "Criterion A"), ("arch-b", "Criterion B"), ("arch-c", "Criterion C")]).await?;
+        w.command_as(&w.bot, json!({"op":"assess","req":"requirement:arch","revision":4,"ac":"ac:arch-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
         let done = ready_task(&w, "a-done", "arch-a").await?;
         w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
             .await?;
@@ -185,15 +185,13 @@ async fn the_children_api_returns_one_level_only() -> Result<()> {
         .collect();
     ensure!(kinds == vec!["requirement"], "{kinds:?}");
     let seed =
-        json!({"op":"capability","id":"wide","title":"Twenty requirements","domain":"security"});
+        json!({"op":"save_object","kind":"capability","id":"wide","revision":0,"parent":"domain:security","data":{"title":"Twenty requirements","owner":"owner"},"reason":"Setup"});
     let seed: Operation = serde_json::from_value(seed)?;
     store::execute(&w.pool, &w.ws, "owner", "wide", &seed).await?;
     let mut expected = std::collections::BTreeSet::new();
     for i in 0..20 {
         let req = format!("wide-{i:02}");
-        let op = json!({"op":"revise","req":req,"expected_revision":0,"capability":"wide","title":format!("Rule {i}"),"body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":format!("{req}-a"),"text":"First check"},{"id":format!("{req}-b"),"text":"Second check"}]});
-        let op: Operation = serde_json::from_value(op)?;
-        store::execute(&w.pool, &w.ws, "owner", &req, &op).await?;
+        w.requirement(&req, "wide", &format!("Rule {i}"), "Scope", &[(&format!("{req}-a"), "First check"), (&format!("{req}-b"), "Second check")]).await?;
         expected.insert(format!("requirement:{req}"));
     }
     let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;

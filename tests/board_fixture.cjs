@@ -7,7 +7,6 @@ const {once} = require('node:events');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 // These checks read the earlier full shape of the read tools (requirement:read-contract).
-const READ_TOOLS=['joppa_objects','joppa_read','joppa_tests','joppa_search','joppa_timeline','joppa_tasks','joppa_history'];
 
 const root = path.join(__dirname, '..');
 let browser, helper;
@@ -50,7 +49,7 @@ async function fixture(types, statuses) {
   const mcp = async (name, args) => {
     const response = await fetch(live.root + '/mcp', {method: 'POST',
       headers: {'Authorization': 'Bearer ' + live.agent, 'Content-Type': 'application/json'},
-      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(READ_TOOLS.includes(name) ? {verbose: true} : {}), workspace: live.ws, ...args}}})});
+      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {workspace: live.ws, ...args}}})});
     const reply = await response.json();
     assert.notEqual(reply.result?.isError, true, JSON.stringify(reply));
     return JSON.parse(reply.result.content[0].text);

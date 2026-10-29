@@ -544,7 +544,6 @@ pub struct Operation {
 
 const MEMBER: &[&str] = &["member"];
 const OWNER: &[&str] = &["workspace owner"];
-const AGENT_OR_OWNER: &[&str] = &["agent", "workspace owner"];
 const HOLDER: &[&str] = &["holder"];
 const HOLDER_OR_OWNER: &[&str] = &["holder", "workspace owner"];
 
@@ -596,33 +595,8 @@ pub const OPERATIONS: &[Operation] = &[
     op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
     op("member", &["id", "role"], OWNER),
     op("remove_member", &["id", "reason"], OWNER),
-    op("consumer", &["title", "owner"], MEMBER),
-    op("domain", &["title", "owner"], MEMBER),
-    op("capability", &["title"], MEMBER),
     op("set_domain_archived", &["id", "archived", "reason"], OWNER),
     op("confirm_tree", &[], OWNER),
-    op(
-        "edit_domain",
-        &["id", "title", "owner", "reason"],
-        AGENT_OR_OWNER,
-    ),
-    op(
-        "edit_capability",
-        &["id", "title", "reason"],
-        AGENT_OR_OWNER,
-    ),
-    op(
-        "revise",
-        &[
-            "expected_revision",
-            "title",
-            "body",
-            "owner",
-            "reason",
-            "acs",
-        ],
-        MEMBER,
-    ),
     op(
         "link_source",
         &["req", "revision", "kind", "version", "relation"],
@@ -630,7 +604,6 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op("confirm", &["req", "revision"], MEMBER),
     op("comment", &["req", "revision", "text", "kind"], MEMBER),
-    op("describe", &["target", "text", "reason"], MEMBER),
     op("note", &["target", "id", "text"], MEMBER),
     op("withdraw_note", &["target", "id", "reason"], MEMBER),
     op(
@@ -640,24 +613,12 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     op("detach", &["target", "id", "reason"], MEMBER),
     op("assess", &["req", "revision", "ac", "assessment"], MEMBER),
-    op(
-        "task",
-        &[
-            "req", "revision", "title", "acs", "projects", "purpose", "contract",
-        ],
-        MEMBER,
-    ),
     op("claim_planning", &["ac", "revision"], MEMBER),
     op("finish_planning", &["ac", "reason"], HOLDER),
     op("release_planning", &["ac", "reason"], HOLDER_OR_OWNER),
     op("claim_task", &["revision", "id"], MEMBER),
     // Public alias: the server resolves it to claim_task under the write lock.
     op("claim_next_task", &[], MEMBER),
-    op(
-        "amend_task",
-        &["revision", "id", "title", "contract", "projects", "reason"],
-        MEMBER,
-    ),
     op(
         "release_task",
         &["revision", "id", "reason"],
@@ -851,24 +812,15 @@ pub fn apply(
         !matches!(command, Command::HeartbeatTask { .. }),
         "heartbeat_task is no longer supported"
     );
+    if let Some(op) = crate::removed_ops::name(command) {
+        anyhow::bail!(crate::removed_ops::refusal(op));
+    }
     crate::objects::validate_current(w, command)?;
-    match command {
-        Command::ClaimTask { req, id, .. } => {
-            let key = crate::tasks::address(req, id);
-            if crate::tasks::task(w, &key).is_some_and(|t| crate::tasks::holder(w, t).is_none()) {
-                crate::tasks::ensure_agent_available(w, actor, &key)?;
-            }
+    if let Command::ClaimTask { req, id, .. } = command {
+        let key = crate::tasks::address(req, id);
+        if crate::tasks::task(w, &key).is_some_and(|t| crate::tasks::holder(w, t).is_none()) {
+            crate::tasks::ensure_agent_available(w, actor, &key)?;
         }
-        Command::Task {
-            req,
-            assignee: Some(assignee),
-            ..
-        } => {
-            // The assigned Task may not exist yet; its REQ is named by the command.
-            let req = crate::objects::requirement_address(req);
-            crate::tasks::ensure_agent_available(w, assignee, &req)?;
-        }
-        _ => {}
     }
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);

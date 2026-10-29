@@ -5,11 +5,11 @@
 async fn an_archived_capability_leaves_the_list_when_done_and_retired_tasks_remain() -> Result<()> {
     // removal-is-archiving-ac1
     let w = world().await?;
-    let seed = json!({"op":"capability","id":"spent","title":"Finished work","domain":"security"});
+    let seed = json!({"op":"save_object","kind":"capability","id":"spent","revision":0,"parent":"domain:security","data":{"title":"Finished work","owner":"owner"},"reason":"Setup"});
     let seed: Operation = serde_json::from_value(seed)?;
     store::execute(&w.pool, &w.ws, "owner", "spent", &seed).await?;
-    w.command(json!({"op":"revise","req":"spent","expected_revision":0,"capability":"spent","title":"Finished rule","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"spent-a","text":"Criterion A"}]})).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"spent","revision":1,"ac":"spent-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.requirement("spent", "spent", "Finished rule", "Scope", &[("spent-a", "Criterion A")]).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:spent","revision":2,"ac":"ac:spent-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let done = ready_task(&w, "spent-done", "spent-a").await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
         .await?;
@@ -108,8 +108,8 @@ async fn a_member_who_is_not_the_owner_archives_a_capability_over_http() -> Resu
     for (i, op) in [
         json!({"op":"workspace","title":"Owned by skopanev"}),
         json!({"op":"member","id":"alex","role":"human"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+        json!({"op":"save_object","kind":"domain","id":"security","revision":0,"parent":null,"data":{"title":"Security","owner":"skopanev"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"skopanev"},"reason":"Setup"}),
     ]
     .into_iter()
     .enumerate()
@@ -217,9 +217,9 @@ async fn the_owner_cannot_archive_a_capability_with_a_live_requirement_over_http
     w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
         json!({"op":"workspace","title":"Owned by skopanev"}),
-        json!({"op":"consumer","id":"customer","title":"Customer","owner":"skopanev"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+        json!({"op":"save_object","kind":"consumer","id":"customer","revision":0,"parent":null,"data":{"title":"Customer","owner":"skopanev"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"domain","id":"security","revision":0,"parent":null,"data":{"title":"Security","owner":"skopanev"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"skopanev"},"reason":"Setup"}),
         json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"skopanev","consumers":["customer"]},"reason":"Define"}),
     ]
     .into_iter()

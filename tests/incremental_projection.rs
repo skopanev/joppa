@@ -101,9 +101,14 @@ async fn step(
     command: Value,
 ) -> anyhow::Result<()> {
     *counter += 1;
-    store::execute_input(pool, workspace, "owner", &format!("op-{counter}"), &command)
-        .await
-        .map_err(|e| anyhow::anyhow!("{label}: {command}: {e:#}"))?;
+    let request = format!("op-{counter}");
+    if common::is_removed(&command) {
+        common::append_legacy(pool, workspace, "owner", &request, &command).await?;
+    } else {
+        store::execute_input(pool, workspace, "owner", &request, &command)
+            .await
+            .map_err(|e| anyhow::anyhow!("{label}: {command}: {e:#}"))?;
+    }
     let incremental = snapshot(pool, workspace).await?;
     for wipe in [false, true] {
         let rebuilt = rebuild(pool, workspace, wipe).await?;

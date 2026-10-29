@@ -9,7 +9,7 @@ async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> R
     let w = world().await?;
     let task = "task:checked";
     w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights"],"reason":"Bind the checked test"})).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check recovery under a green criterion"})).await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":task,"revision":1}))
         .await?;
@@ -64,7 +64,7 @@ async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> R
         "{body}"
     );
     let mcp: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.owner)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":task}}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":task}}}))
         .send().await?.error_for_status()?.json().await?;
     ensure!(
         mcp["result"]["isError"] == true

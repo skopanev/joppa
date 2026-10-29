@@ -5,7 +5,7 @@
 async fn an_agent_holding_a_task_claims_a_task_in_another_workspace() -> Result<()> {
     // one-task-per-agent-ac2
     let w = world().await?;
-    let assess = json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}});
+    let assess = json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}});
     w.command_as(&w.bot, assess.clone()).await?;
     let t1 = ready_task(&w, "t1", "key-rights").await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":t1,"revision":1}))
@@ -121,7 +121,7 @@ async fn block_and_blocked_task_actions_refuse_exact_cases_over_http_and_mcp() -
         tokens.push(created["token"].as_str().unwrap().to_owned());
     }
     let (l, m, z, s) = (&tokens[0], &tokens[1], &tokens[2], &w.owner);
-    w.command_as(l, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(l, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     for id in ["t", "u", "d"] {
         w.command(json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
     }

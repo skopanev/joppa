@@ -75,9 +75,9 @@ async fn a_parent_rule_that_orphans_risk_objects_is_refused_over_http() -> Resul
     w.ws = format!("http-spec-{}", uuid::Uuid::new_v4().simple());
     for (i, op) in [
         json!({"op":"workspace","title":"Owned by skopanev"}),
-        json!({"op":"consumer","id":"customer","title":"Customer","owner":"skopanev"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"skopanev"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
+        json!({"op":"save_object","kind":"consumer","id":"customer","revision":0,"parent":null,"data":{"title":"Customer","owner":"skopanev"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"domain","id":"security","revision":0,"parent":null,"data":{"title":"Security","owner":"skopanev"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"skopanev"},"reason":"Setup"}),
     ]
     .into_iter()
     .enumerate()

@@ -37,7 +37,7 @@ fn an_agent_edit_of_a_confirmed_requirement_makes_a_new_draft() {
     // draft-binds-after-confirm-ac3
     let mut w = World::new();
     w.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     let last = w.state.requirements["r"].revisions.last().unwrap();
     assert_eq!((last.number, last.confirmed), (2, false));
 }
@@ -101,7 +101,7 @@ fn a_new_revision_resets_readiness() {
     // readiness-resets-ac1
     let mut w = World::new();
     w.ok("agent", assess_on(1, "ios", true, None));
-    w.ok("owner", revision(1));
+    w.legacy("owner", revision(1));
     let last = w.state.requirements["r"].revisions.last().unwrap();
     assert!(last.acs.iter().all(|a| a.assessment.is_none()));
 }
@@ -123,7 +123,7 @@ fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
 fn an_agent_saves_a_draft_requirement_with_two_criteria() {
     // agent-drafts-ac1
     let mut w = World::new();
-    w.ok("agent", json!({"op":"revise","req":"refunds","expected_revision":0,"capability":"c","consumers":["customer"],"title":"Refunds are fast","body":"From the support note about slow refunds","owner":"owner","reason":"Draft from a note","acs":[{"id":"refund-time","text":"A refund reaches the card in one day"},{"id":"refund-notice","text":"The customer gets a notice when the refund starts"}]}));
+    w.legacy("agent", json!({"op":"revise","req":"refunds","expected_revision":0,"capability":"c","consumers":["customer"],"title":"Refunds are fast","body":"From the support note about slow refunds","owner":"owner","reason":"Draft from a note","acs":[{"id":"refund-time","text":"A refund reaches the card in one day"},{"id":"refund-notice","text":"The customer gets a notice when the refund starts"}]}));
     let r = &w.state.requirements["refunds"].revisions[0];
     assert!(!r.confirmed, "an agent draft is not confirmed");
     assert_eq!(

@@ -33,7 +33,7 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
                 .http
                 .post(format!("{}/mcp", w.root))
                 .bearer_auth(bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":{"verbose":true,"workspace":workspace}}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tree","arguments":{"workspace":workspace}}}))
                 .send()
                 .await?;
             ensure!(reply.status().is_success(), "{}", reply.status());
@@ -49,7 +49,7 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("The allowed read has no document"))?,
     )?;
-    ensure!(allowed["workspace"] == w.ws, "{allowed}");
+    ensure!(allowed["schema"]["types"].is_object(), "{allowed}");
     let existing = read(other).await?;
     let absent = read(format!("absent-{}", uuid::Uuid::new_v4().simple())).await?;
     ensure!(existing == absent, "{existing} vs {absent}");

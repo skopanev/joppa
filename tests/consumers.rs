@@ -6,7 +6,7 @@ use serde_json::json;
 #[test]
 fn requirement_consumers_are_versioned_and_shared_by_all_acs() {
     let mut world = World::new();
-    world.ok("owner", json!({"op":"consumer","id":"support","title":"Support","description":"Uses paid access","owner":"owner"}));
+    world.legacy("owner", json!({"op":"consumer","id":"support","title":"Support","description":"Uses paid access","owner":"owner"}));
     let mut next = revision(1);
     next["consumers"] = json!(["customer", "support"]);
     world.ok("owner", next);
@@ -42,7 +42,7 @@ fn requirement_consumers_are_versioned_and_shared_by_all_acs() {
 #[test]
 fn moving_requirement_and_linking_versioned_source_preserve_history() {
     let mut world = World::new();
-    world.ok(
+    world.legacy(
         "owner",
         json!({"op":"capability","id":"c2","title":"Restore access","domain":"d"}),
     );
@@ -110,11 +110,9 @@ async fn consumer_refs_and_requirement_revisions_roundtrip_through_postgres() ->
         json!({"op":"consumer","id":"buyer","title":"Buyer","owner":"owner"}),
         json!({"op":"consumer","id":"support","title":"Support","owner":"owner"}),
     ];
-    for (index, command) in commands.iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{index}"), command).await?;
-    }
+    common::seed(&pool, &ws, "owner", commands).await?;
     let first = json!({"op":"revise","req":"r","expected_revision":0,"capability":"c","consumers":["buyer","support"],"title":"Access persists","body":"Paid access","owner":"owner","reason":"Initial scope","acs":[{"id":"ios","text":"Access persists on iOS"}]});
-    store::execute_input(&pool, &ws, "owner", "rev-1", &first).await?;
+    common::append_legacy(&pool, &ws, "owner", "rev-1", &first).await?;
     // A new criterion takes the first consumer of the revise, so a revise without one is refused.
     let missing = json!({"op":"revise","req":"r","expected_revision":1,"capability":"c","title":"Access persists","body":"Paid access","owner":"owner","reason":"Missing consumer","acs":[{"id":"ios","text":"Access persists on iOS"},{"id":"web","text":"Access persists on the web"}]});
     assert!(
@@ -123,7 +121,7 @@ async fn consumer_refs_and_requirement_revisions_roundtrip_through_postgres() ->
             .is_err()
     );
     let next = json!({"op":"revise","req":"r","expected_revision":1,"capability":"c2","consumers":["buyer"],"title":"Access persists","body":"Paid access","owner":"owner","reason":"Clarified consumer and capability","acs":[{"id":"ios","text":"Access persists on iOS"}]});
-    store::execute_input(&pool, &ws, "owner", "rev-2", &next).await?;
+    common::append_legacy(&pool, &ws, "owner", "rev-2", &next).await?;
     store::execute_input(&pool, &ws, "owner", "source", &json!({"op":"link_source","req":"r","revision":2,"id":"policy","kind":"document","uri":"https://example.test/policy","version":"v3","relation":"origin"})).await?;
     let full = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert!(

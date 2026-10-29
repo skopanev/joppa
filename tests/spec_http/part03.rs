@@ -20,7 +20,7 @@ async fn completing_a_task_stores_exact_evidence_and_bot_event_actor() -> Result
     };
     let address = "task:recorded";
     let evidence = "commit abc123 on master";
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"recorded","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Check the completion record"})).await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":address,"revision":1}))
         .await?;
@@ -45,7 +45,10 @@ async fn completing_a_task_stores_exact_evidence_and_bot_event_actor() -> Result
         .error_for_status()?
         .json()
         .await?;
-    ensure!(http == tool, "HTTP and MCP disagree: {http} / {tool}");
+    ensure!(
+        crate::compact_of::compact_of(&http, &tool) == tool,
+        "HTTP and MCP disagree: {http} / {tool}"
+    );
     let events = w
         .pool
         .get()

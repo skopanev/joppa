@@ -69,8 +69,12 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
-    w.command(json!({"op":"domain","id":"spare","title":"Spare","owner":"owner"}))
-        .await?;
+    // set_domain_archived acts on a domain of an old journal.
+    w.pool.get().await?.execute(
+        "INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,COALESCE(MAX(position),0)+1,'owner','old-spare',$2::text::jsonb FROM joppa.events WHERE workspace=$1",
+        &[&w.ws, &json!({"op":"domain","id":"spare","title":"Spare","owner":"owner"}).to_string()],
+    ).await?;
+    store::backfill_board(&w.pool).await?;
     covered.push(
         check_callers(
             &w,
@@ -93,8 +97,6 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
-    covered.push(check_callers(&w, &help, None, json!({"op":"edit_domain","id":"security","title":"Security rules","owner":"owner","reason":"Clarify"}), &w.owner, "only the workspace owner edits confirmed domains").await?);
-    covered.push(check_callers(&w, &help, None, json!({"op":"edit_capability","id":"restrict","title":"Restrict all access","reason":"Clarify"}), &w.owner, "only the workspace owner edits confirmed capabilities").await?);
     // alex owns each job. The Task owner is neither the holder nor the workspace owner.
     let bot = Some(w.bot.as_str());
     w.command_as(
@@ -122,7 +124,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     )
     .await?;
     covered.push(check_callers(&w, &help, bot, json!({"op":"complete_task","commit":"c0ffee0","id":"job:c","revision":revision("job:c").await?,"evidence":"Implemented and checked"}), &w.bot, "Task is not claimed unfinished work").await?);
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
     covered.push(
         check_callers(
@@ -207,33 +209,6 @@ async fn help_required_fields_pass_the_live_field_checks() -> Result<()> {
             .filter_map(|f| f.as_str().map(String::from))
             .collect()
     };
-    // A ready criterion is the prerequisite state of a legacy Task.
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
-    let task = json!({"op":"task","req":"key","revision":1,"title":"Build key rights","acs":["key-rights"],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"});
-    let mut fields: Vec<String> = task
-        .as_object()
-        .unwrap()
-        .keys()
-        .filter(|k| *k != "op")
-        .cloned()
-        .collect();
-    fields.sort();
-    let mut expected = required("task");
-    expected.sort();
-    ensure!(fields == expected, "task help fields {expected:?}");
-    for field in &fields {
-        let mut missing = task.clone();
-        missing.as_object_mut().unwrap().remove(field);
-        let (ok, reply) = send_as(&w, &w.owner, &missing).await?;
-        ensure!(
-            !ok && reply["error"]
-                .as_str()
-                .is_some_and(|e| e.contains("missing field")),
-            "task without {field}: {reply}"
-        );
-    }
-    let (ok, reply) = send_as(&w, &w.owner, &task).await?;
-    ensure!(ok, "task from help fields: {reply}");
     // Every help entry: the complete call passes field validation; each removal fails it.
     for name in help["operations"].as_object().unwrap().keys() {
         let fields = required(name);

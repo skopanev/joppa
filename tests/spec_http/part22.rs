@@ -59,7 +59,7 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
             )
         };
         ensure!(created(&files[0])? > created(&files[1])?, "{files:?}");
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":address}}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}})).send().await?;
         ensure!(
             response.status() == reqwest::StatusCode::OK,
             "{}",
@@ -73,7 +73,8 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
                 .unwrap_or("null"),
         )?;
         ensure!(
-            mcp == object,
+            mcp == crate::compact_of::compact_of(&object, &mcp)
+                && mcp["files"] == object["files"],
             "HTTP and MCP returned different file versions"
         );
         for (file, bytes) in files.iter().zip(contents.into_iter().rev()) {
@@ -120,7 +121,7 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
         ensure!(response.bytes().await?.as_ref() == contents[0]);
         let mut data = object["document"]["data"].clone();
         data["title"] = json!(format!("{} revised", data["title"].as_str().unwrap()));
-        w.command_as(&w.alex, json!({"op":"save_object","kind":object["kind"],"id":object["id"],"revision":1,"parent":object["document"]["parent"],"data":data,"reason":"Create a later document revision"})).await?;
+        w.command_as(&w.alex, json!({"op":"save_object","kind":object["kind"],"id":object["id"],"revision":object["current_revision"],"parent":object["document"]["parent"],"data":data,"reason":"Create a later document revision"})).await?;
         let historical = w.get(&format!("address={address}&revision=1")).await?;
         ensure!(
             historical["historical"] == true && historical.get("files").is_none(),
@@ -145,7 +146,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
         let w = &w;
         async move {
             let reply = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(&name, &arguments))}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
                 .send().await?;
             ensure!(reply.status().is_success(), "{}", reply.status());
             let reply: Value = reply.json().await?;

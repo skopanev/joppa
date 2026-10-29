@@ -180,7 +180,7 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
         "{:?}",
         events[0]
     );
-    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":"note:agent-author"}}})).send().await?;
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author"}}})).send().await?;
     ensure!(
         response.status() == reqwest::StatusCode::OK,
         "{}",

@@ -126,7 +126,7 @@ fn an_object_with_live_children_cannot_be_archived() {
 fn a_human_who_is_not_the_owner_archives() {
     // Capability c holds requirement r, so the test archives an empty capability.
     let mut w = World::new();
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"spare","title":"Spare","domain":"d"}),
     );
@@ -149,7 +149,7 @@ fn a_requirement_without_an_owner_is_refused() {
     refused(
         &mut w,
         "agent",
-        json!({"op":"revise","req":"r2","expected_revision":0,"capability":"c","title":"T","body":"b","owner":"","consumers":["customer"],"reason":"Draft","acs":[]}),
+        json!({"op":"save_object","kind":"requirement","id":"r2","revision":0,"parent":"capability:c","data":{"title":"T","body":"b","owner":"","consumers":["customer"]},"reason":"Draft"}),
         "a human member is required",
     );
 }
@@ -263,7 +263,7 @@ fn a_link_keeps_its_relation_type() {
 fn a_move_keeps_the_address_and_a_forbidden_parent_is_refused() {
     // id-survives-move-ac2 (and the move half of ac1)
     let mut w = World::new();
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"c2","title":"Second","domain":"d"}),
     );

@@ -88,7 +88,7 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
         if let Some(revision) = revision {
             arguments["revision"] = json!(revision);
         }
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.maria).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":(crate::legacy_read_args("joppa_objects", &arguments))}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.maria).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":arguments}})).send().await?;
         ensure!(response.status().is_success(), "{}", response.status());
         let response: Value = response.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
@@ -131,8 +131,10 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
             .send()
             .await?;
         ensure!(response.status().is_success(), "{}", response.status());
+        let http = response.json::<Value>().await?;
         ensure!(
-            response.json::<Value>().await? == asked,
+            crate::compact_of::compact_of(&http, &asked) == asked
+                && http["question"] == asked["question"],
             "HTTP and MCP returned different questions"
         );
         let response = w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(bot).json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"decide_note","target":address,"revision":2,"outcome":"needs_information","reason":"Test an invalid question recipient","question":"Which plan?","recipient":"bot"}})).send().await?;

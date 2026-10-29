@@ -186,18 +186,16 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             &w,
             bot,
             &uuid::Uuid::new_v4().to_string(),
-            json!({"op":"domain","id":"legacy","title":"No markers","owner":"owner"}),
+            json!({"op":"save_object","kind":"domain","id":"legacy","revision":0,"parent":null,"data":{"title":"No markers","owner":"owner"},"reason":"Setup"}),
             "A domain title needs both markers",
         )
         .await?;
         w.command_as(
             bot,
-            json!({"op":"domain","id":"legacy","title":"Security","owner":"owner"}),
+            json!({"op":"save_object","kind":"domain","id":"legacy","revision":0,"parent":null,"data":{"title":"Security","owner":"owner"},"reason":"Setup"}),
         )
         .await?;
         ensure!(w.get("address=domain:legacy").await?["document"]["data"]["title"] == "Security");
-        let legacy_text = "Given: input. When: change. Then: saved. Evidence: API.";
-        text_rule_refusal(&w, bot, &uuid::Uuid::new_v4().to_string(), json!({"op":"revise","req":"key","expected_revision":w.get("address=requirement:key").await?["process"]["revision"],"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Try a legacy criterion edit","acs":[{"id":"key-rights","text":legacy_text},{"id":"legacy-question","text":legacy_text}]}), "This type has a question. Use save_object with question_checked").await?;
     }
     Ok(())
 }
@@ -222,7 +220,7 @@ async fn legacy_document_commands_obey_configured_required_fields() -> Result<()
         )
         .await?
         .get(0);
-    let error = w.refused(json!({"op":"domain","id":"no-origin","title":"A domain without an origin","owner":"owner"})).await?;
+    let error = w.refused(json!({"op":"save_object","kind":"domain","id":"no-origin","revision":0,"parent":null,"data":{"title":"A domain without an origin","owner":"owner"},"reason":"Setup"})).await?;
     let error: Value = serde_json::from_str(&error)?;
     ensure!(error["error"] == "origin is required", "{error}");
     let after: i64 = conn

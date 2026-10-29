@@ -121,7 +121,7 @@ only when requested. Closing and opening a loaded card uses its cached content.
 
 Use the **copy + robot** button on any card to copy its permanent identifier.
 A success mark and a toast confirm copying. Agents resolve the copied identifier
-with `joppa_read({"item_id":"..."})`. The same reader handles every configured type.
+with `joppa_search`: the first result has `exact_id: true`. The same search handles every configured type.
 Use **Revisions** to read one saved document. Historical documents omit current
 comments, files and process status. Current comments, attachments and Context
 remain separate annotations.
@@ -211,16 +211,18 @@ with it gets HTTP 401 `token revoked`.
 | Tool | Purpose |
 |---|---|
 | `joppa_list` | List accessible products |
-| `joppa_read` | Read a workspace or resolve a copied system ID |
 | `joppa_tasks` | List available, assigned or waiting Tasks without opening every REQ |
 | `joppa_timeline` | Read every recorded change of a workspace in journal order, page by page |
 | `joppa_search` | Search current wording inside one authorized workspace |
-| `joppa_model_docs` | Read English model, process and evidence rules |
 | `joppa_help` | Read command shapes and API rules |
 | `joppa_tree` | Read the workspace schema and its saved revisions |
 | `joppa_objects` | Read object lists, documents, links and revisions |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
+| `joppa_tests` | Read the test status of criteria or of a Task |
+| `joppa_history` | Read history pages |
+| `joppa_history_mark` | Mark history entries processed |
+| `joppa_record_results` | Record the test outcomes of one commit |
 
 Object revisions, comments and schema revisions show `actor_type` beside `actor`.
 The server resolves `person` or `agent` from the author's workspace identity.
@@ -235,8 +237,7 @@ Lists for a configured `inbox=true` type show unprocessed inputs first.
 Each status group uses address order. List items expose `status` and `note_status`.
 Use the returned cursor for the next page. A workspace change expires it.
 
-When the selected specification revision has no criteria, `joppa_read` reports
-`status="no criteria"` and `verification="unverified"`.
+When a specification has no criteria, its list item has no `children` and the tone `grey`.
 
 For `decide_note` with `outcome="needs_information"`, set `recipient` to name a human workspace member.
 Without it, the question goes to the source author or object owner.

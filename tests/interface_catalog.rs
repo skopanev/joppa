@@ -1,6 +1,6 @@
 //! requirement:http-routes and requirement:mcp-tools over a real server: each listed route
 //! answers its method, an unlisted path gets the router 404, and tools/list names exactly
-//! the 15 MCP tools.
+//! the 13 MCP tools.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -70,16 +70,14 @@ const ROUTES: [(&str, &str); 54] = [
     ("POST", "/api/workspaces/{workspace}/delete"),
 ];
 
-const TOOLS: [&str; 15] = [
+const TOOLS: [&str; 13] = [
     "joppa_batch",
     "joppa_command",
     "joppa_help",
     "joppa_history",
     "joppa_history_mark",
     "joppa_list",
-    "joppa_model_docs",
     "joppa_objects",
-    "joppa_read",
     "joppa_record_results",
     "joppa_search",
     "joppa_tasks",
@@ -164,7 +162,7 @@ async fn every_listed_route_answers_and_an_unlisted_path_is_404() -> Result<()> 
 // mcp-tools-list
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn mcp_tools_list_names_exactly_15_tools() -> Result<()> {
+async fn mcp_tools_list_names_exactly_13_tools() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     let reply: Value = w
         .http
@@ -186,7 +184,7 @@ async fn mcp_tools_list_names_exactly_15_tools() -> Result<()> {
     let expected: BTreeSet<&str> = TOOLS.into_iter().collect();
     ensure!(names == expected, "{names:?}");
     ensure!(
-        reply["result"]["tools"].as_array().map(Vec::len) == Some(15),
+        reply["result"]["tools"].as_array().map(Vec::len) == Some(13),
         "a tool name repeats"
     );
     Ok(())

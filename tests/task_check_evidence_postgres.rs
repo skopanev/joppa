@@ -5,7 +5,12 @@ use joppa::store::{self, ObjectScope};
 use serde_json::{Value, json};
 
 async fn apply(pool: &Pool, ws: &str, actor: &str, command: Value) -> anyhow::Result<Value> {
-    store::execute_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
+    let request = uuid::Uuid::new_v4().to_string();
+    if is_removed(&command) {
+        append_legacy(pool, ws, actor, &request, &command).await?;
+        return Ok(Value::Null);
+    }
+    store::execute_input(pool, ws, actor, &request, &command).await
 }
 async fn detail(pool: &Pool, ws: &str, key: &str) -> anyhow::Result<Value> {
     store::read_objects(
@@ -93,9 +98,7 @@ async fn stored_bindings_update_current_signals_counters_and_coverage_without_re
     );
     store::migrate(&pool).await?;
     let ws = format!("task-evidence-{}", uuid::Uuid::new_v4().simple());
-    for command in setup() {
-        apply(&pool, &ws, "owner", command).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["job"] = types["task"].clone();

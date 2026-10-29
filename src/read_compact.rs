@@ -1,6 +1,7 @@
 //! The compact shape of MCP read replies. A list page gives at most PAGE short items, a
 //! detail read keeps the stored document byte for byte and pages its comments and links,
-//! and empty keys go away everywhere outside the authored document.
+//! and empty keys go away everywhere outside the authored document. MCP replies carry no
+//! `item_id`: an agent names objects by address, and joppa_search resolves a copied ID.
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
@@ -12,7 +13,7 @@ pub const PAGE: usize = 25;
 const AUTHORED: [&str; 4] = ["document", "data", "command", "remote_links"];
 
 /// The first path segments that a list item can give through `fields`.
-const LIST_FIELDS: [&str; 19] = [
+const LIST_FIELDS: [&str; 18] = [
     "address",
     "kind",
     "id",
@@ -23,7 +24,6 @@ const LIST_FIELDS: [&str; 19] = [
     "owner",
     "review_required",
     "work_ready",
-    "item_id",
     "at",
     "description",
     "signal",
@@ -156,10 +156,21 @@ pub fn detail(
     let comments = comment_list(&reply["annotations"]["comments"]);
     if let Some(annotations) = reply["annotations"].as_object_mut() {
         annotations.remove("comments");
+        // `files` gives the same attachments.
+        annotations.remove("attachments");
     }
-    reply["comments"] = page(comments, comments_cursor)?;
     let links = reply["links"].as_array().cloned().unwrap_or_default();
-    reply["links"] = page(links, links_cursor)?;
+    for (key, entries, cursor) in [
+        ("comments", comments, comments_cursor),
+        ("links", links, links_cursor),
+    ] {
+        // An object without comments or links has no such key.
+        reply[key] = if entries.is_empty() {
+            Value::Null
+        } else {
+            page(entries, cursor)?
+        };
+    }
     if let Some(status) = status(&reply) {
         reply["status"] = status;
     }
@@ -187,8 +198,8 @@ fn empty(value: &Value) -> bool {
     }
 }
 
-/// Remove each key whose value is null, "", [] or {}, at any depth, but never inside the
-/// authored keys. false and 0 stay.
+/// Remove each key whose value is null, "", [] or {}, and each `item_id`, at any depth,
+/// but never inside the authored keys. false and 0 stay.
 pub fn strip_empty(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -197,7 +208,9 @@ pub fn strip_empty(value: &mut Value) {
                     strip_empty(v);
                 }
             }
-            map.retain(|key, v| AUTHORED.contains(&key.as_str()) || !empty(v));
+            map.retain(|key, v| {
+                AUTHORED.contains(&key.as_str()) || (key != "item_id" && !empty(v))
+            });
         }
         Value::Array(items) => items.iter_mut().for_each(strip_empty),
         _ => {}

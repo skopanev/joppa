@@ -34,7 +34,7 @@ async fn http_page(root: &str, ws: &str, cursor: Option<&str>) -> Result<Value> 
         ("direction", "incoming"),
         ("relation", "related"),
         ("kind", "note"),
-        ("limit", "50"),
+        ("limit", "25"),
     ];
     if let Some(cursor) = cursor {
         query.push(("cursor", cursor));
@@ -126,12 +126,15 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
     let (mut cursor, mut seen, mut sizes) =
         (None::<String>, std::collections::BTreeSet::new(), vec![]);
     loop {
-        let mut args = json!({"workspace":ws,"links_of":"domain:r","direction":"incoming","relation":"related","kind":"note","limit":50});
+        let mut args = json!({"workspace":ws,"links_of":"domain:r","direction":"incoming","relation":"related","kind":"note","limit":25});
         if let Some(c) = &cursor {
             args["cursor"] = json!(c);
         }
         let tool = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
-        let http = http_page(&server.root, &ws, cursor.as_deref()).await?;
+        // MCP gives the HTTP page without empty keys.
+        let http = joppa::read_compact::strip_reply(
+            http_page(&server.root, &ws, cursor.as_deref()).await?,
+        );
         ensure!(tool == http, "HTTP and MCP disagree:\n{tool}\n{http}");
         let items = tool["items"].as_array().cloned().unwrap_or_default();
         sizes.push(items.len());
@@ -147,7 +150,7 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         }
     }
     ensure!(
-        sizes == [50, 50, 20] && seen.len() == 120,
+        sizes == [25, 25, 25, 25, 20] && seen.len() == 120,
         "pages {sizes:?}, links {}",
         seen.len()
     );

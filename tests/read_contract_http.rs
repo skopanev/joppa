@@ -1,22 +1,12 @@
 //! requirement:read-contract over a real server: lists, fields, details, empty keys,
-//! the verbose shape and joppa_tests by kind.
+//! no item IDs and joppa_tests by kind.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 
-/// record_world asks for the verbose shape unless a call names it: read the compact one.
-fn compact_args(mut args: Value) -> Value {
-    if args.get("verbose").is_none() {
-        args["verbose"] = json!(false);
-    }
-    args
-}
-
 async fn read(w: &record_world::World, tool: &str, args: Value) -> Result<Value> {
-    w.mcp(&w.bot, tool, compact_args(args))
-        .await?
-        .map_err(anyhow::Error::msg)
+    w.mcp(&w.bot, tool, args).await?.map_err(anyhow::Error::msg)
 }
 
 async fn save_ac(w: &record_world::World, id: &str) -> Result<()> {
@@ -112,7 +102,7 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
         .mcp(
             &w.bot,
             "joppa_objects",
-            compact_args(json!({"parent":"requirement:r","fields":["nope"]})),
+            json!({"parent":"requirement:r","fields":["nope"]}),
         )
         .await?;
     ensure!(
@@ -142,18 +132,12 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
     )
     .await?
     .map_err(anyhow::Error::msg)?;
-    let verbose = read(
-        &w,
-        "joppa_objects",
-        json!({"address":"requirement:d","verbose":true}),
-    )
-    .await?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
     ensure!(
-        detail["document"] == verbose["document"],
-        "the document changed:\n{}\n{}",
-        detail["document"],
-        verbose["document"]
+        detail["document"]["data"]
+            == json!({"title":"D2","owner":"owner","body":"Rule","note":null,"projects":[]}),
+        "the document changed: {}",
+        detail["document"]
     );
     ensure!(
         detail["document"]["data"]["note"].is_null()
@@ -211,20 +195,30 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
 // read-empty-verbose-tests
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn empty_keys_go_verbose_keeps_them_and_tests_read_by_kind() -> Result<()> {
+async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     save_ac(&w, "b").await?;
     let compact = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
-    let verbose = read(
-        &w,
-        "joppa_objects",
-        json!({"address":"ac:a","verbose":true}),
-    )
-    .await?;
     ensure!(no_empty_keys(&compact), "{compact}");
+    // No item ID, no signal copy of status, and no empty comment or link page.
+    for key in ["item_id", "signal", "comments", "links"] {
+        ensure!(compact.get(key).is_none(), "{key}: {compact}");
+    }
     ensure!(
-        verbose.get("signal").is_some() && compact.get("signal").is_none(),
-        "verbose lost its shape"
+        compact["annotations"].get("attachments").is_none() && compact["status"].is_object(),
+        "{compact}"
+    );
+    let verbose = w
+        .mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"address":"ac:a","verbose":true}),
+        )
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    ensure!(
+        verbose.get("signal").is_none(),
+        "verbose still works: {verbose}"
     );
     let empty = read(&w, "joppa_objects", json!({"parent":"ac:a"})).await?;
     ensure!(empty["items"] == json!([]), "{empty}");
@@ -243,9 +237,7 @@ async fn empty_keys_go_verbose_keeps_them_and_tests_read_by_kind() -> Result<()>
         .map(|i| format!("ac:x{i}"))
         .collect::<Vec<_>>()
         .join(",");
-    let refused = w
-        .mcp(&w.bot, "joppa_tests", compact_args(json!({"ac":many})))
-        .await?;
+    let refused = w.mcp(&w.bot, "joppa_tests", json!({"ac":many})).await?;
     ensure!(
         refused
             .err()

@@ -30,11 +30,12 @@ async fn seed(pool: &deadpool_postgres::Pool, ws: &str, extra: Vec<(&str, Value)
         json!({"op":"member","id":"alex","role":"human"}),
         json!({"op":"member","id":"maria","role":"human"}),
         json!({"op":"enroll_service","id":"bot","role":"agent"}),
-        json!({"op":"consumer","id":"customer","title":"Customer","owner":"owner"}),
-        json!({"op":"domain","id":"security","title":"Security","authority":"owner"}),
-        json!({"op":"capability","id":"restrict","title":"Restrict access","domain":"security"}),
-        json!({"op":"capability","id":"empty","title":"Nothing below","domain":"security"}),
-        json!({"op":"revise","req":"key","expected_revision":0,"capability":"restrict","title":"Key rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"key-rights","text":"Only read and verify before launch"}]}),
+        json!({"op":"save_object","kind":"consumer","id":"customer","revision":0,"parent":null,"data":{"title":"Customer","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"domain","id":"security","revision":0,"parent":null,"data":{"title":"Security","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"capability","id":"empty","revision":0,"parent":"domain:security","data":{"title":"Nothing below","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"owner"},"reason":"Agreed"}),
+        json!({"op":"save_object","kind":"ac","id":"key-rights","revision":0,"parent":"requirement:key","data":{"title":"Only read and verify before launch","owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed"}),
     ]
     .into_iter()
     .map(|op| ("owner", op))
@@ -115,6 +116,33 @@ async fn world() -> Result<World> {
 }
 
 impl World {
+    /// Save a requirement under a capability and its criteria as current objects.
+    async fn requirement(
+        &self,
+        id: &str,
+        capability: &str,
+        title: &str,
+        body: &str,
+        criteria: &[(&str, &str)],
+    ) -> Result<()> {
+        self.command(json!({"op":"save_object","kind":"requirement","id":id,"revision":0,
+            "parent":format!("capability:{capability}"),"data":{"title":title,"body":body,"owner":"owner"},"reason":"Agreed"}))
+            .await?;
+        for (ac, text) in criteria {
+            self.command(json!({"op":"save_object","kind":"ac","id":ac,"revision":0,
+                "parent":format!("requirement:{id}"),"data":{"title":text,"owner":"owner","consumer":"customer",
+                "before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed"}))
+                .await?;
+        }
+        Ok(())
+    }
+    /// Bot marks criterion `ac` ready at the current revision of its requirement.
+    async fn assess_ready(&self, ac: &str) -> Result<Value> {
+        let process = self.get(&format!("address=ac:{ac}")).await?["process"].clone();
+        self.command_as(&self.bot, json!({"op":"assess","req":process["req"],"revision":process["revision"],
+            "ac":process["criterion"],"assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}))
+            .await
+    }
     async fn command(&self, command: Value) -> Result<Value> {
         self.command_as(&self.owner, command).await
     }
@@ -169,7 +197,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(&self.owner)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"verbose":true,"workspace":self.ws,"query":query}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"workspace":self.ws,"query":query}}}))
             .send()
             .await?
             .json()
@@ -195,7 +223,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(&self.owner)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"verbose":true,"workspace":self.ws,"query":query}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_search","arguments":{"workspace":self.ws,"query":query}}}))
             .send()
             .await?
             .json()

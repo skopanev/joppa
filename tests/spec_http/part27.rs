@@ -17,7 +17,6 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
         "resolve",
         "review_coverage",
         "define_verification_scope",
-        "edit_consumer",
         "project",
         "withdraw_decision",
         "withdraw_source",

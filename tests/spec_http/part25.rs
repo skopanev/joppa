@@ -21,7 +21,7 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
     }
 
     // A claimable task, an object to comment on and the current tree schema revision.
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"claimable","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create claimable work"})).await?;
     w.note("comment-target", 0, "Comment target", "Input", json!([]))
         .await?;

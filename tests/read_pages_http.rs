@@ -5,9 +5,7 @@ mod record_world;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 
-/// record_world asks for the verbose shape unless a call names it: read the compact one.
-async fn read(w: &record_world::World, tool: &str, mut args: Value) -> Result<Value> {
-    args["verbose"] = json!(false);
+async fn read(w: &record_world::World, tool: &str, args: Value) -> Result<Value> {
     w.mcp(&w.bot, tool, args).await?.map_err(anyhow::Error::msg)
 }
 

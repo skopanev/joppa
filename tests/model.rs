@@ -89,7 +89,7 @@ fn unassigned_task_can_be_claimed_only_when_its_ac_is_ready() {
 #[test]
 fn creator_can_correct_unclaimed_task_without_revising_req() {
     let mut w = World::new();
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"wrong","title":"Build flow","acs":["ios"],"projects":["infra"],"purpose":"implementation","contract":"Build the iOS flow"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"wrong","title":"Build flow","acs":["ios"],"projects":["infra"],"purpose":"implementation","contract":"Build the iOS flow"}));
     let amend = json!({"op":"amend_task","req":"r","revision":1,"id":"wrong","title":"Build mobile flow","contract":"Build the iOS flow in app and attach build evidence","projects":["app"],"reason":"Correct project before claim"});
     w.no("runner", amend.clone());
     w.ok("agent", amend);
@@ -108,7 +108,7 @@ fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
     let mut w = World::new();
     w.ok("agent", assess("ios", true));
     for id in ["finished", "ongoing"] {
-        w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
+        w.legacy("agent", json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
         if id == "finished" {
             w.ok("agent",json!({"op":"complete_task","commit":"c0ffee0","req":"r","revision":1,"id":"finished","evidence":"merged build abc"}));
         }
@@ -149,8 +149,8 @@ fn revision_keeps_tasks_and_requires_owner_review_before_more_work() {
 fn later_revision_recovers_historical_tasks_and_owner_can_retire_one() {
     let mut w = World::new();
     w.ok("agent", assess("ios", true));
-    w.ok("agent", json!({"op":"task","req":"r","revision":1,"id":"old","title":"Old implementation","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
-    w.ok("agent", revision(1)); // Historical revise event: no task-carry marker.
+    w.legacy("agent", json!({"op":"task","req":"r","revision":1,"id":"old","title":"Old implementation","acs":["ios"],"projects":["app"],"purpose":"implementation","assignee":"agent"}));
+    w.legacy("agent", revision(1)); // Historical revise event: no task-carry marker.
     assert!(w.state.requirements["r"].revisions[1].tasks.is_empty());
     let mut third = revision(2);
     third["carry_tasks"] = json!(true);
@@ -236,7 +236,7 @@ fn coverage_compares_to_last_prior_plan_even_when_intermediate_revision_has_none
     let mut w = World::new();
     w.ready();
     w.run("first", "pass");
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     let mut third = revision(2);
     third["coverage_policy"] = json!(true);
     w.ok("agent", third);
@@ -254,7 +254,7 @@ fn coverage_compares_to_last_prior_plan_even_when_intermediate_revision_has_none
 fn owner_scope_contract_prevents_self_nominated_subject_coverage() {
     let mut w = World::new();
     w.ok("agent", assess("ios", true));
-    w.ok("agent",json!({"op":"task","req":"r","revision":1,"id":"api","title":"Implement access","acs":["ios"],"projects":["app","backend"],"purpose":"implementation","assignee":"agent"}));
+    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"api","title":"Implement access","acs":["ios"],"projects":["app","backend"],"purpose":"implementation","assignee":"agent"}));
     let mut next = revision(1);
     next["coverage_policy"] = json!(true);
     next["carry_tasks"] = json!(true);
@@ -293,7 +293,7 @@ fn revision_resets_every_ac_and_old_evidence_and_acceptance_survive() {
     );
     assert_eq!(w.summary(1)["accepted"], true);
     w.ok("runner", plan("late"));
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     assert_eq!(w.summary(2)["acs"]["ios"]["verification"], "n/a");
     assert_eq!(w.summary(2)["accepted"], false);
     assert_eq!(w.summary(1)["accepted"], true);
@@ -735,15 +735,15 @@ fn tree_order_is_member_scoped_and_does_not_change_requirement_evidence() {
     let mut w = World::new();
     w.ready();
     w.run("verified", "pass");
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"other","title":"Other","authority":"owner"}),
     );
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"second","title":"Second","domain":"d"}),
     );
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"foreign","title":"Foreign","domain":"other"}),
     );
@@ -800,7 +800,7 @@ fn tree_order_is_member_scoped_and_does_not_change_requirement_evidence() {
         after, before,
         "ordering preserves all content, revisions and checks"
     );
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"added","title":"Added","domain":"d"}),
     );
@@ -814,11 +814,11 @@ fn tree_order_is_member_scoped_and_does_not_change_requirement_evidence() {
 #[test]
 fn archive_clears_unused_tree_without_losing_ids_or_allowing_hidden_work() {
     let mut w = World::new();
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"domain","id":"seed","title":"Example","authority":"owner"}),
     );
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"capability","id":"seed-cap","title":"Example ability","domain":"seed"}),
     );

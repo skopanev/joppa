@@ -26,37 +26,34 @@ async fn a_requirement_read_marks_an_archived_requirement_and_an_archived_criter
     ] {
         ok(w.command(&w.owner, command).await?, "setup")?;
     }
-    let live = ok(
-        w.mcp(&w.bot, "joppa_read", json!({"req":"requirement:r"}))
-            .await?,
-        "read r",
-    )?;
-    ensure!(
-        live["requirement"]["present"] == true && live["requirement"].get("archived").is_none(),
-        "{live}"
-    );
-    let acs = live["requirement"]["revisions"][0]["acs"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    let present = |id: &str| {
-        acs.iter()
-            .find(|ac| ac["id"] == id)
-            .map(|ac| ac["present"].clone())
+    let read = |address: &'static str| {
+        let w = &w;
+        async move {
+            ok(
+                w.mcp(&w.bot, "joppa_objects", json!({"address":address}))
+                    .await?,
+                address,
+            )
+        }
     };
-    ensure!(
-        present("ac:a") == Some(json!(true)) && present("ac:b") == Some(json!(false)),
-        "{acs:?}"
-    );
-    let old = ok(
-        w.mcp(&w.bot, "joppa_read", json!({"req":"requirement:old"}))
+    let live = read("requirement:r").await?;
+    ensure!(live["document"]["present"] == true, "{live}");
+    let children = ok(
+        w.mcp(&w.bot, "joppa_objects", json!({"parent":"requirement:r"}))
             .await?,
-        "read old",
+        "children of r",
     )?;
-    ensure!(
-        old["requirement"]["present"] == false && old["requirement"]["archived"] == true,
-        "{old}"
-    );
+    let listed: Vec<&str> = children["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| i["address"].as_str())
+        .collect();
+    ensure!(listed == ["ac:a"], "{children}");
+    let archived = read("ac:b").await?;
+    ensure!(archived["document"]["present"] == false, "{archived}");
+    let old = read("requirement:old").await?;
+    ensure!(old["document"]["present"] == false, "{old}");
     Ok(())
 }
 
@@ -167,24 +164,6 @@ async fn fields_and_summary_make_large_list_replies_small() -> Result<()> {
     ensure!(
         summary.get("tests").is_none() && summary["counts"] == json!({"not_run":1}),
         "{summary}"
-    );
-    Ok(())
-}
-
-// clarity point 9
-#[tokio::test]
-async fn an_address_in_item_id_gets_an_error_that_names_the_address_reads() -> Result<()> {
-    let w = world(&[TEST]).await?;
-    let (code, reply) = w
-        .mcp_raw(Some(&w.bot), "joppa_read", json!({"item_id":A}))
-        .await?;
-    let text = reply["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap_or_default();
-    ensure!(code == 200 && reply["result"]["isError"] == true, "{reply}");
-    ensure!(
-        text.contains("item_id takes a copied system ID") && text.contains("joppa_objects"),
-        "{text}"
     );
     Ok(())
 }

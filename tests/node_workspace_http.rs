@@ -127,7 +127,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &args))}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":args}}))
             .send()
             .await?
             .json()
@@ -676,7 +676,7 @@ async fn a_claim_waits_for_a_result_write_in_the_target_workspace() -> Result<()
         async move {
             let http = reqwest::Client::new();
             let read: Value = http.post(format!("{root}/mcp")).bearer_auth(&bot)
-                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":p,"address":"ac:a"}}}))
+                .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":p,"address":"ac:a"}}}))
                 .send().await?.json().await?;
             let a: Value = serde_json::from_str(
                 read["result"]["content"][0]["text"]
@@ -1084,26 +1084,4 @@ async fn a_repin_after_a_claim_stops_the_old_plan_and_the_old_task() -> Result<(
         .await?
         .map_err(|e| anyhow::anyhow!("completion after a new claim: {e}"))?;
     Ok(())
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }

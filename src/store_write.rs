@@ -468,6 +468,9 @@ fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
     for (index, operation) in operations.iter().enumerate() {
         let admitted = match op(operation) {
             Some("heartbeat_task") => Err(anyhow::anyhow!("heartbeat_task is no longer supported")),
+            Some(name) if crate::removed_ops::NAMES.contains(&name) => {
+                Err(anyhow::anyhow!(crate::removed_ops::refusal(name)))
+            }
             Some(name) if commands::operation(name).is_some() => Ok(()),
             _ => Err(anyhow::anyhow!("unknown operation")),
         };
@@ -689,10 +692,6 @@ async fn write(
                     anyhow::bail!("{}", crate::dependencies::reason(dependency));
                 }
             }
-            if let Command::Task { acs, contract, .. } = &command {
-                ensure!(acs.len() == 1, "task must belong to exactly one AC");
-                commands::nonempty(contract)?;
-            }
             // Only server code enrolls an agent or a runner; HTTP and MCP writes refuse it.
             ensure!(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
@@ -735,6 +734,8 @@ async fn write(
                 Command::SetNoteStatus { target, .. } | Command::DecideNote { target, .. } => Some(crate::objects::resolve_address(&state, target).to_owned()),
                 _ => None,
             };
+            // A later command of the batch names a saved object as {"$ref":"label/address"}.
+            if let (Command::SaveObject { .. }, Some(address)) = (&command, &saved_address) { resolved["address"] = json!(address); }
             let saved=if let Some(address)=saved_address {
                 let revision=state.objects[&address].current().revision;
                 resolved["address"]=json!(address);resolved["saved_revision"]=json!(revision);

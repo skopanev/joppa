@@ -25,7 +25,7 @@ fn external_tool_source_survives_revision_and_authorized_withdrawal() {
 
     let mut withdrawal = json!({"op":"withdraw_source","req":"r","revision":1,"id":"external","reason":"Superseded by a corrected source"});
     w.no("legal", withdrawal.clone());
-    w.ok("agent", revision(1));
+    w.legacy("agent", revision(1));
     w.no("agent", withdrawal.clone());
     withdrawal["revision"] = json!(2);
     w.ok("owner", withdrawal);
@@ -119,16 +119,7 @@ async fn external_source_round_trip_preserves_history_and_workspace_isolation() 
     anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
     store::migrate(&pool).await?;
     let workspace = format!("sources-{}", uuid::Uuid::new_v4().simple());
-    for (i, value) in common::setup().into_iter().enumerate() {
-        store::execute(
-            &pool,
-            &workspace,
-            "owner",
-            &format!("setup-{i}"),
-            &serde_json::from_value(value)?,
-        )
-        .await?;
-    }
+    common::seed(&pool, &workspace, "owner", common::setup()).await?;
     let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());
     store::execute(
         &pool,
@@ -187,14 +178,7 @@ async fn external_source_round_trip_preserves_history_and_workspace_isolation() 
     assert_eq!(original["external_id"], "issue-42");
     assert_eq!(original["actor"], "agent");
     assert!(!original["at"].as_str().unwrap().is_empty());
-    store::execute(
-        &pool,
-        &workspace,
-        "agent",
-        "next-revision",
-        &serde_json::from_value(revision(1))?,
-    )
-    .await?;
+    common::append_legacy(&pool, &workspace, "agent", "next-revision", &revision(1)).await?;
     let withdrawal: Command = serde_json::from_value(
         json!({"op":"withdraw_source","req":"r","revision":2,"id":"external","reason":"Superseded source"}),
     )?;

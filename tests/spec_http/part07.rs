@@ -5,7 +5,7 @@
 async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Result<()> {
     // req-has-criteria-ac2
     async fn read(w: &World, bot: &str, arguments: Value) -> Result<Value> {
-        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_read","arguments":(crate::legacy_read_args("joppa_read", &arguments))}})).send().await?;
+        let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":arguments}})).send().await?;
         ensure!(response.status().is_success(), "{}", response.status());
         let response: Value = response.json().await?;
         ensure!(response["result"]["isError"] != true, "{response}");
@@ -14,6 +14,18 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
                 .as_str()
                 .unwrap_or("null"),
         )?)
+    }
+    /// The list item of `address` among the roots or the children of `parent`.
+    async fn item(w: &World, bot: &str, parent: Option<&str>, address: &str) -> Result<Value> {
+        let mut arguments = json!({"workspace":w.ws});
+        if let Some(parent) = parent {
+            arguments["parent"] = json!(parent);
+        }
+        let list = read(w, bot, arguments).await?;
+        list["items"]
+            .as_array()
+            .and_then(|items| items.iter().find(|i| i["address"] == address).cloned())
+            .ok_or_else(|| anyhow::anyhow!("{address} is not listed: {list}"))
     }
     let w = world().await?;
     let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
@@ -30,62 +42,28 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
         ("requirement", Some("capability:empty"), "ac"),
         ("spec", None, "condition"),
     ] {
-        w.command(json!({"op":"save_object","kind":kind,"id":"empty","revision":0,"parent":parent,"data":{"title":"The empty specification","body":"Define the exact behavior before work","owner":"owner","consumers":["customer"]},"reason":"Create a specification without criteria"})).await?;
+        w.command(json!({"op":"save_object","kind":kind,"id":"empty","revision":0,"parent":parent,"data":{"title":"The empty specification","body":"Define the exact behavior before work","owner":"owner","consumers":["customer"]},"reason":"Create a specification"})).await?;
         let address = format!("{kind}:empty");
-        let object = w.get(&format!("address={address}")).await?;
-        let item_id = object["item_id"].clone();
-        for arguments in [
-            json!({"workspace":w.ws,"req":address}),
-            json!({"item_id":item_id}),
-        ] {
-            let empty = read(&w, bot, arguments).await?;
-            ensure!(empty["status"] == "no criteria", "{empty}");
-            ensure!(empty["verification"] == "unverified", "{empty}");
-            ensure!(
-                empty["requirement"]["revisions"][0]["acs"]
-                    .as_array()
-                    .is_some_and(|acs| acs.is_empty()),
-                "{empty}"
-            );
-            ensure!(
-                empty["summary"]["accepted"] == false
-                    && empty["summary"]["ready_for_acceptance"] == false,
-                "{empty}"
-            );
-        }
-        let history = read(
+        // No criteria: the list item has no children and a grey tone.
+        let empty = item(&w, bot, parent, &address).await?;
+        ensure!(
+            empty.get("children").is_none() && empty["status"] == "grey",
+            "{empty}"
+        );
+        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","description":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
+        let current = item(&w, bot, parent, &address).await?;
+        ensure!(current["children"] == 1, "{current}");
+        // The saved empty revision still reads whole.
+        let old = read(
             &w,
             bot,
-            json!({"workspace":w.ws,"req":address,"history":true}),
+            json!({"workspace":w.ws,"address":address,"revision":1}),
         )
         .await?;
         ensure!(
-            history.get("status").is_none() && history["requirement"].get("revisions").is_none(),
-            "Counts-only history included document status: {history}"
+            old["document"]["revision"] == 1 && old["document"]["data"]["title"] == "The empty specification",
+            "{old}"
         );
-        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","description":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
-        let current = read(&w, bot, json!({"workspace":w.ws,"req":address})).await?;
-        ensure!(
-            current["status"] != "no criteria",
-            "The current nonempty revision still has no criteria: {current}"
-        );
-        ensure!(
-            current["requirement"]["revisions"][0]["acs"]
-                .as_array()
-                .is_some_and(|acs| acs.len() == 1),
-            "{current}"
-        );
-        for arguments in [
-            json!({"workspace":w.ws,"req":address,"revision":1}),
-            json!({"item_id":item_id,"revision":1}),
-        ] {
-            let old = read(&w, bot, arguments).await?;
-            ensure!(
-                old["status"] == "no criteria" && old["verification"] == "unverified",
-                "The saved empty revision lost its status: {old}"
-            );
-            ensure!(old["requirement"]["revisions"][0]["number"] == 1, "{old}");
-        }
     }
     Ok(())
 }

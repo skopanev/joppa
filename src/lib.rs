@@ -22,6 +22,7 @@ pub mod read_compact;
 pub mod read_shapes;
 pub mod redact;
 pub mod remote_links;
+pub mod removed_ops;
 pub mod result_check;
 pub mod result_shape;
 pub mod result_values;

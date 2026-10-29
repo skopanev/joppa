@@ -31,7 +31,7 @@ async fn bot_http_search(w: &World, query: &str) -> Result<(Vec<String>, Value)>
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn bot_finds_a_requirement_by_a_word_from_its_body_over_http() -> Result<()> {
     let w = world().await?;
-    w.command(json!({"op":"revise","req":"sign-in","expected_revision":0,"capability":"restrict","title":"Sign in","body":"Users sign in with a passkey","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"sign-in-works","text":"Only members sign in"}]}))
+    w.requirement("sign-in", "restrict", "Sign in", "Users sign in with a passkey", &[("sign-in-works", "Only members sign in")])
         .await?;
     let (found, reply) = bot_http_search(&w, "passkey").await?;
     ensure!(found.contains(&"requirement:sign-in".into()), "{reply}");
@@ -43,7 +43,7 @@ async fn bot_finds_a_requirement_by_a_word_from_its_body_over_http() -> Result<(
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn bot_finds_a_requirement_by_a_word_from_its_title_over_http() -> Result<()> {
     let w = world().await?;
-    w.command(json!({"op":"revise","req":"recovery","expected_revision":0,"capability":"restrict","title":"Recover a passkey","body":"Users regain access","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"recovery-works","text":"Only members recover access"}]}))
+    w.requirement("recovery", "restrict", "Recover a passkey", "Users regain access", &[("recovery-works", "Only members recover access")])
         .await?;
     let (found, reply) = bot_http_search(&w, "passkey").await?;
     ensure!(found.contains(&"requirement:recovery".into()), "{reply}");

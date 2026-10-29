@@ -72,7 +72,6 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
             "joppa_search",
             json!({"workspace":w.ws,"query":"Key rights"}),
         ),
-        ("joppa_read", json!({"workspace":w.ws})),
         (
             "joppa_tests",
             json!({"workspace":w.ws,"ac":"ac:key-rights"}),
@@ -82,7 +81,6 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         ("joppa_tasks", json!({"workspace":w.ws})),
         ("joppa_help", json!({})),
         ("joppa_help", json!({"workspace":w.ws})),
-        ("joppa_model_docs", json!({})),
     ] {
         let result = mcp_call(&w, &reader, name, arguments).await?;
         ensure!(result["isError"] != true, "{name}: {result}");

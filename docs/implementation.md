@@ -17,7 +17,6 @@ retained for reading; the new model never writes through it.
 | Related tree creation needed separate round trips | Atomic batches with explicit references to earlier generated IDs | Full rollback and batch replay tests |
 | Agent titles could not be corrected before confirmation | Draft-title edits without changing authority or confirming | Draft/confirmed/archived permission tests |
 | Finding wording required reading the entire tree | Authorized full-text/hybrid search with current IDs and explicit coverage | Search freshness, isolation, provider failure and stale-vector tests |
-| Remote agents needed a checkout for methodology | English source documentation compiled into `joppa_model_docs` | HTTP MCP documentation smoke checks |
 
 `tests/browser.cjs` checks the portal: navigation, copying references, older
 revisions, mobile layout, safe escaping and the read-only notes panel. Browsing

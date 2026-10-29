@@ -176,7 +176,7 @@ fn revision_reset_removes_the_old_question_without_removing_history() {
     let mut w = native();
     w.ok("agent", assess("ios", false));
     let before = objects::process(&w.state, "ac:ios")["assessment"].clone();
-    w.ok("owner", revision(1));
+    w.legacy("owner", revision(1));
     let current = objects::process(&w.state, "ac:ios");
     assert_eq!(current["assessment"]["state"], "unassessed");
     assert_eq!(current["assessment"]["revision"], 2);
@@ -400,9 +400,7 @@ async fn refresh_is_current_only_idempotent_and_preserves_status_time_and_histor
     );
     store::migrate(&pool).await?;
     let ws = format!("readiness-{}", uuid::Uuid::new_v4().simple());
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     store::execute_input(&pool, &ws, "agent", "waiting", &assess("ios", false)).await?;
     store::execute_input(&pool, &ws, "agent", "work", &json!({"op":"save_object","kind":"task","id":"one","revision":0,
         "parent":"ac:ios","data":work("Implement access", "implementation"),"reason":"Create work"})).await?;
@@ -534,7 +532,7 @@ async fn refresh_is_current_only_idempotent_and_preserves_status_time_and_histor
     store::execute_input(&pool, &ws, "agent", "ready", &assess("ios", true)).await?;
     let available = store::task_queue(&runtime, &ws, "agent", "available", 100, None).await?;
     assert_eq!(available["tasks"][0]["assessment"]["state"], "ready");
-    store::execute_input(&pool, &ws, "owner", "revision-reset", &revision(1)).await?;
+    append_legacy(&pool, &ws, "owner", "revision-reset", &revision(1)).await?;
     let reset = store::task_queue(&runtime, &ws, "agent", "waiting", 100, None).await?;
     assert_eq!(reset["tasks"][0]["assessment"]["state"], "unassessed");
     assert!(reset["tasks"][0]["assessment"]["reason"].is_null());
@@ -559,9 +557,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     );
     store::migrate(&pool).await?;
     let ws = format!("readiness-{}", uuid::Uuid::new_v4().simple());
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     store::execute_input(&pool, &ws, "owner", "other", &json!({"op":"save_object","kind":"requirement","id":"other","revision":0,
         "parent":"capability:c","data":{"title":"Other scope","body":"Scope","owner":"owner","consumers":["customer"]},"reason":"Define"})).await?;
     let conn = pool.get().await?;
@@ -635,9 +631,7 @@ async fn a_journal_without_a_replay_epoch_refuses_to_replay() -> anyhow::Result<
     );
     store::migrate(&pool).await?;
     let ws = format!("epochs-{}", uuid::Uuid::new_v4().simple());
-    for (n, cmd) in setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{n}"), &cmd).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let epochs: Vec<(String, i64)> = conn
         .query(
             "SELECT rule,first_position FROM joppa.replay_epochs WHERE workspace=$1 ORDER BY rule",

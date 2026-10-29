@@ -4,9 +4,9 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<()> {
     let w = world().await?;
-    w.command(json!({"op":"revise","req":"other","expected_revision":0,"capability":"restrict","title":"Other rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"other-rights","text":"Only write after review"}]})).await?;
-    for (req, ac) in [("key", "key-rights"), ("other", "other-rights")] {
-        w.command_as(&w.bot, json!({"op":"assess","req":req,"revision":1,"ac":ac,"assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review")]).await?;
+    for ac in ["key-rights", "other-rights"] {
+        w.assess_ready(ac).await?;
     }
     let held = ready_task(&w, "a1", "key-rights").await?;
     let same = ready_task(&w, "a2", "key-rights").await?;
@@ -57,13 +57,9 @@ async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<
 
 /// REQ key holds task:t1; REQ other holds task:t2 under other-rights and a second AC other-audit.
 async fn tasks_under_two_requirements(w: &World) -> Result<()> {
-    w.command(json!({"op":"revise","req":"other","expected_revision":0,"capability":"restrict","title":"Other rights","body":"Scope","owner":"owner","consumers":["customer"],"reason":"Agreed","acs":[{"id":"other-rights","text":"Only write after review"},{"id":"other-audit","text":"Record each write"}]})).await?;
-    for (req, ac) in [
-        ("key", "key-rights"),
-        ("other", "other-rights"),
-        ("other", "other-audit"),
-    ] {
-        w.command_as(&w.bot, json!({"op":"assess","req":req,"revision":1,"ac":ac,"assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review"), ("other-audit", "Record each write")]).await?;
+    for ac in ["key-rights", "other-rights", "other-audit"] {
+        w.assess_ready(ac).await?;
     }
     ready_task(w, "t1", "key-rights").await?;
     ready_task(w, "t2", "other-rights").await?;

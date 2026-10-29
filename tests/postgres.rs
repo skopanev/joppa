@@ -10,6 +10,10 @@ async fn execute(
     id: &str,
     v: Value,
 ) -> anyhow::Result<Value> {
+    if is_removed(&v) {
+        append_legacy(pool, ws, actor, id, &v).await?;
+        return Ok(Value::Null);
+    }
     store::execute(pool, ws, actor, id, &serde_json::from_value::<Command>(v)?).await
 }
 #[tokio::test]
@@ -34,9 +38,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         "test-{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    for (i, v) in setup().into_iter().enumerate() {
-        execute(&pool, &ws, "owner", &format!("setup-{i}"), v).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     assert_eq!(before["launch"]["ready"], false);
     assert!(
@@ -74,9 +76,27 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
             .await
             .is_err()
     );
+    // A live edit of requirement:r: the document of the old journal with a new title.
+    let current = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("requirement:r"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    let edit = |revision: Value| {
+        let mut data = current["document"]["data"].clone();
+        data["title"] = json!("Paid access persists after sign-in");
+        json!({"op":"save_object","kind":"requirement","id":"r","revision":revision,
+            "parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Agreed wording"})
+    };
+    let first = current["current_revision"].clone();
     let (a, b) = tokio::join!(
-        execute(&pool, &ws, "agent", "edit-a", revision(1)),
-        execute(&pool, &ws, "agent", "edit-b", revision(1))
+        execute(&pool, &ws, "agent", "edit-a", edit(first.clone())),
+        execute(&pool, &ws, "agent", "edit-b", edit(first.clone()))
     );
     assert_ne!(a.is_ok(), b.is_ok(), "only one concurrent edit wins");
     let (winner, edit_result) = if a.is_ok() {
@@ -84,11 +104,11 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     } else {
         ("edit-b", b?)
     };
-    let replay = execute(&pool, &ws, "agent", winner, revision(1)).await?;
+    let replay = execute(&pool, &ws, "agent", winner, edit(first.clone())).await?;
     assert_eq!(replay["replayed"], true);
     assert_eq!(replay["position"], edit_result["position"]);
     assert!(
-        execute(&pool, &ws, "agent", winner, revision(2))
+        execute(&pool, &ws, "agent", winner, edit(json!(9)))
             .await
             .is_err()
     );

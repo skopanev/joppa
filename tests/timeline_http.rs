@@ -189,7 +189,7 @@ impl World {
             .http
             .post(format!("{}/mcp", self.root))
             .bearer_auth(token)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(crate::legacy_read_args(name, &arguments))}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}))
             .send()
             .await?
             .error_for_status()?
@@ -293,7 +293,10 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
             json!({"workspace":w.ws,"after":p}),
         )
         .await?;
-    ensure!(http == mcp, "HTTP {http}\nMCP {mcp}");
+    ensure!(
+        joppa::read_compact::strip_reply(http.clone()) == mcp,
+        "HTTP {http}\nMCP {mcp}"
+    );
     ensure!(http["next_cursor"].is_null(), "{http}");
     let items = http["items"].as_array().unwrap();
     ensure!(items.len() == 5, "{http}");
@@ -389,7 +392,10 @@ async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_re
     let mcp = w
         .mcp(&maria, "joppa_timeline", json!({"workspace":w.ws}))
         .await?;
-    ensure!(mcp == timeline, "{mcp} / {timeline}");
+    ensure!(
+        mcp == joppa::read_compact::strip_reply(timeline.clone()),
+        "{mcp} / {timeline}"
+    );
     let eve = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
@@ -485,26 +491,4 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
     }
     ensure!(walked == journal, "{walked:?} / {journal:?}");
     Ok(())
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }

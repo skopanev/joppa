@@ -32,7 +32,7 @@ fn before() -> World {
     ] {
         internal(&mut w, "owner", op).unwrap();
     }
-    w.ok(
+    w.legacy(
         "owner",
         json!({"op":"consumer","id":"agentc","title":"Agent of a user","owner":"owner"}),
     );
@@ -138,7 +138,7 @@ fn a_legacy_revise_gives_a_new_criterion_the_first_consumer_of_its_requirement()
     ] {
         internal(&mut w, "owner", op).unwrap();
     }
-    w.ok("owner", json!({"op":"revise","req":"n","expected_revision":0,"capability":"c","consumers":["customer"],"title":"New rule","body":"Scope","owner":"owner","reason":"Agreed","acs":[{"id":"fresh","text":"The fresh criterion holds"}]}));
+    w.legacy("owner", json!({"op":"revise","req":"n","expected_revision":0,"capability":"c","consumers":["customer"],"title":"New rule","body":"Scope","owner":"owner","reason":"Agreed","acs":[{"id":"fresh","text":"The fresh criterion holds"}]}));
     let fresh = w
         .state
         .objects

@@ -9,6 +9,17 @@ mod operation_samples;
 /// Command variants that public writes refuse: internal events, retired inputs, retired check runs,
 /// typed commands that save_object replaces and CLI-only creation.
 const NOT_PUBLIC: &[&str] = &[
+    // Removed operations: old journals hold them, live writes refuse them.
+    "domain",
+    "edit_domain",
+    "capability",
+    "edit_capability",
+    "consumer",
+    "edit_consumer",
+    "revise",
+    "task",
+    "amend_task",
+    "describe",
     "migrate_persistent_claims",
     "migrate_notes",
     "migrate_tasks",

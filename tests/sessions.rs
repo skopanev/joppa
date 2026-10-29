@@ -142,8 +142,8 @@ async fn cookie_survives_server_restart_but_not_logout_or_expiry() -> Result<()>
     let workspace = format!("readonly-{}", uuid::Uuid::new_v4());
     for (i, value) in [
         json!({"op":"workspace","title":"Read-only test"}),
-        json!({"op":"domain","id":"a","title":"A","authority":"owner"}),
-        json!({"op":"domain","id":"b","title":"B","authority":"owner"}),
+        json!({"op":"save_object","kind":"domain","id":"a","revision":0,"parent":null,"data":{"title":"A","owner":"owner"},"reason":"Setup"}),
+        json!({"op":"save_object","kind":"domain","id":"b","revision":0,"parent":null,"data":{"title":"B","owner":"owner"},"reason":"Setup"}),
         json!({"op":"note","target":"domain:a","id":"existing","text":"Visible comment"}),
     ]
     .into_iter()

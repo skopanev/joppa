@@ -4,7 +4,6 @@ const {spawn, spawnSync} = require('node:child_process');
 const {once} = require('node:events');
 const path = require('node:path');
 // These checks read the earlier full shape of the read tools (requirement:read-contract).
-const READ_TOOLS=['joppa_objects','joppa_read','joppa_tests','joppa_search','joppa_timeline','joppa_tasks','joppa_history'];
 
 const root = path.join(__dirname, '..');
 const types = {
@@ -46,7 +45,7 @@ async function server() {
 async function mcp(live, token, name, args) {
   const response = await fetch(live.root + '/mcp', {method: 'POST',
     headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
-    body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...(READ_TOOLS.includes(name) ? {verbose: true} : {}), ...args}}})});
+    body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name, arguments: {...args}}})});
   assert.equal(response.status, 200);
   const reply = await response.json();
   assert.equal(reply.error, undefined, JSON.stringify(reply));

@@ -182,7 +182,7 @@ async fn fetch(
     }
     arguments["workspace"] = json!(ws);
     let response: Value = http.post(format!("{root}/mcp")).bearer_auth(token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":(crate::legacy_read_args(tool, &arguments))}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
         .send().await?.json().await?;
     ensure!(
         response["result"]["isError"] != true,
@@ -369,7 +369,13 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
         json!({"op":"claim_planning","ac":"criterion:f2","revision":ac["current_revision"]}),
     )
     .await?;
-    f.task(PLANNER, "work:t2", json!({"op":"amend_task","title":"t2","contract":"Implement the agreed mechanism with a new fix","projects":[],"reason":"Amend the contract"})).await?;
+    {
+        let current = f.read("work:t2").await?;
+        let mut data = current["document"]["data"].clone();
+        data["title"] = json!("t2");
+        data["contract"] = json!("Implement the agreed mechanism with a new fix");
+        f.write(PLANNER, json!({"op":"save_object","kind":"work","id":"t2","revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Amend the contract"})).await?;
+    }
     f.write(
         PLANNER,
         json!({"op":"finish_planning","ac":"criterion:f2","reason":"Plan complete"}),
@@ -766,13 +772,37 @@ async fn journal_snapshot(
             json!({"address":task}),
         )
         .await?;
+        // HTTP keeps comments as a map by ID; MCP gives a page of items. Both give the
+        // same ID, text, actor and reply.
+        let entries: Vec<(String, Value)> = match t["comments"]["items"].as_array() {
+            Some(items) => items
+                .iter()
+                .map(|c| (c["id"].as_str().unwrap_or_default().to_owned(), c.clone()))
+                .collect(),
+            None => t["annotations"]["comments"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(id, c)| (id.clone(), c.clone()))
+                .collect(),
+        };
+        let comments: serde_json::Map<String, Value> = entries
+            .into_iter()
+            .map(|(id, c)| {
+                let reply_to = c.get("reply_to").cloned().unwrap_or(Value::Null);
+                (
+                    id,
+                    json!({"text": c["text"], "actor": c["actor"], "reply_to": reply_to}),
+                )
+            })
+            .collect();
         out.insert(
             format!("task {task}"),
             json!({
                 "status": t["process"]["status"],
                 "assignee": t["process"]["assignee"],
                 "current_revision": t["current_revision"],
-                "comments": t["annotations"]["comments"],
+                "comments": comments,
             }),
         );
     }
@@ -1062,26 +1092,4 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     store::check_journal(&f.pool).await?;
     let _ = std::fs::remove_dir_all(&dir);
     Ok(())
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }

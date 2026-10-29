@@ -10,7 +10,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         ("first", "The first boundary is clear"),
         ("second", "The second boundary still needs work"),
     ];
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
     w.command_as(
         &w.bot,
@@ -28,12 +28,12 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     let internal = async |actor: &str, command: Value| {
         store::execute_input(&w.pool, &w.ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
     };
-    internal("owner", json!({"op":"define_verification_scope","req":"key","revision":1,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
-    internal("bot", json!({"op":"plan","req":"key","revision":1,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[key-rights] first-boundary","ac":"key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[key-rights] second-boundary","ac":"key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
-    let partial = json!({"check":"[key-rights] first-boundary","outcome":"pass","observed":["The first boundary holds"],"note":"Partial implementation at commit def456","link":"https://example.test/repository/commit/def456"});
+    internal("owner", json!({"op":"define_verification_scope","req":"requirement:key","revision":2,"subject_keys":["commit"],"scope":"The key rights","reason":"Record the exact partial commit"})).await?;
+    internal("bot", json!({"op":"plan","req":"requirement:key","revision":2,"run":"partial","subject":{"commit":"def456"},"scope":"The key rights","discovery_complete":false,"checks":[{"id":"[ac:key-rights] first-boundary","ac":"ac:key-rights","method":"automated","expected":["The first boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]},{"id":"[ac:key-rights] second-boundary","ac":"ac:key-rights","method":"automated","expected":["The second boundary holds"],"tasks":[{"address":"task:handover","origin_revision":1}]}]})).await?;
+    let partial = json!({"check":"[ac:key-rights] first-boundary","outcome":"pass","observed":["The first boundary holds"],"note":"Partial implementation at commit def456","link":"https://example.test/repository/commit/def456"});
     internal(
         "bot",
-        json!({"op":"result","req":"key","revision":1,"run":"partial","evidence":partial}),
+        json!({"op":"result","req":"requirement:key","revision":2,"run":"partial","evidence":partial}),
     )
     .await?;
 
@@ -83,21 +83,24 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         task["document"]["data"] == before["document"]["data"],
         "the handover changed the document: {task}"
     );
-    let comments = &task["annotations"]["comments"];
+    // MCP gives the comments as one page; the author is the actor when they agree.
+    let note = |object: &Value, id: &str| {
+        object["comments"]["items"]
+            .as_array()
+            .and_then(|items| items.iter().find(|c| c["id"] == id))
+            .cloned()
+            .unwrap_or_default()
+    };
     for (id, text) in notes {
-        let note = &before["annotations"]["comments"][id];
+        let (old, new) = (note(&before, id), note(&task, id));
+        ensure!(new == old, "note {id} changed: {old} became {new}");
         ensure!(
-            comments[id] == *note,
-            "note {id} changed: {note} became {}",
-            comments[id]
-        );
-        ensure!(
-            note["author"] == "bot" && note["text"] == text,
-            "note {id} lost its author or text: {note}"
+            old["actor"] == "bot" && old["text"] == text,
+            "note {id} lost its author or text: {old}"
         );
     }
     ensure!(
-        task["annotations"] == before["annotations"],
+        task["comments"] == before["comments"],
         "the handover changed the original notes: {task}"
     );
 
@@ -152,8 +155,8 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         "{run}"
     );
     ensure!(
-        run["results"]["[key-rights] first-boundary"] == partial
-            && run["results"]["[key-rights] second-boundary"].is_null(),
+        run["results"]["[ac:key-rights] first-boundary"] == partial
+            && run["results"]["[ac:key-rights] second-boundary"].is_null(),
         "{run}"
     );
     ensure!(
@@ -220,7 +223,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             .http
             .post(format!("{}/mcp", w.root))
             .bearer_auth(&w.alex)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"verbose":true,"workspace":w.ws,"address":address}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}}))
             .send()
             .await?;
         ensure!(response.status().is_success(), "{}", response.text().await?);
@@ -230,8 +233,18 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
                 .as_str()
                 .unwrap_or("null"),
         )?;
+        // MCP gives the same comment in its page, without the repeated author and created_at.
+        let item = object["comments"]["items"]
+            .as_array()
+            .and_then(|items| items.iter().find(|c| c["id"] == "n1"))
+            .cloned()
+            .unwrap_or_default();
         ensure!(
-            object["annotations"]["comments"]["n1"] == *comment,
+            item["actor"] == comment["author"]
+                && item["actor_type"] == "person"
+                && item["at"] == comment["created_at"]
+                && item["text"] == comment["text"]
+                && item.get("author").is_none(),
             "{reply}"
         );
     }

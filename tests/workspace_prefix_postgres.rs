@@ -1,6 +1,8 @@
 //! requirement:workspace-prefix-from-title: create and rename set a slug prefix with a
 //! number on a collision, the migration gives a UUID workspace a slug prefix, and each old
 //! item ID still reads its object.
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use anyhow::{Context, Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
@@ -43,12 +45,9 @@ async fn item(
         .with_context(|| format!("no item ID of domain:{id} in {namespace}"))?.get(0))
 }
 
-async fn reads(pool: &deadpool_postgres::Pool, item: &str, id: &str) -> Result<()> {
-    let found = store::read_item(pool, item, "owner").await?;
-    ensure!(
-        found["selection"]["kind"] == "domain" && found["selection"]["id"] == id,
-        "{item}: {found}"
-    );
+async fn reads(pool: &deadpool_postgres::Pool, ws: &str, item: &str, id: &str) -> Result<()> {
+    let found = resolve_id::resolve(pool, "owner", ws, item).await?;
+    ensure!(found == format!("domain:{id}"), "{item}: {found}");
     Ok(())
 }
 
@@ -99,7 +98,7 @@ async fn create_and_rename_set_a_slug_prefix_and_old_ids_still_resolve() -> Resu
     ensure!(new.starts_with(&format!("{renamed}-")), "{new}");
     let alias = item(&pool, &second, "d", &renamed).await?;
     for (id, local) in [(&old, "d"), (&alias, "d"), (&new, "e")] {
-        reads(&pool, id, local).await?;
+        reads(&pool, &second, id, local).await?;
     }
     Ok(())
 }
@@ -162,8 +161,8 @@ async fn the_migration_gives_each_uuid_workspace_a_slug_prefix() -> Result<()> {
         prefix(&pool, &ws).await?
     );
     let new = item(&pool, &ws, "d", &slug).await?;
-    reads(&pool, &old, "d").await?;
-    reads(&pool, &new, "d").await?;
+    reads(&pool, &ws, &old, "d").await?;
+    reads(&pool, &ws, &new, "d").await?;
     ensure!(
         first == second,
         "the second start wrote {} events",

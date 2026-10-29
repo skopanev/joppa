@@ -66,21 +66,38 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     anyhow::ensure!(db.starts_with("joppa_test"), "test DB only");
     store::migrate(&pool).await?;
     let ws = format!("search-{}", uuid::Uuid::new_v4().simple());
-    for (i, value) in common::setup().into_iter().enumerate() {
-        store::execute_input(&pool, &ws, "owner", &format!("setup-{i}"), &value).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     store::execute_input(
         &pool,
         &ws,
         "owner",
         "extra",
-        &json!({"op":"domain","id":"unused","title":"Invoice handling","authority":"owner"}),
+        &json!({"op":"save_object","kind":"domain","id":"unused","revision":0,"parent":null,"data":{"title":"Invoice handling","owner":"owner"},"reason":"Setup"}),
     )
     .await?;
-    let mut revision = common::revision(1);
-    revision["title"] = json!("Subscription renewal preserves access");
-    revision["body"] = json!("Платежи за подписку принимаются на iOS.");
-    store::execute_input(&pool, &ws, "owner", "wording", &revision).await?;
+    let current = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            address: Some("requirement:r"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    let mut data = current["document"]["data"].clone();
+    data["title"] = json!("Subscription renewal preserves access");
+    data["body"] = json!("Платежи за подписку принимаются на iOS.");
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "wording",
+        &json!({"op":"save_object","kind":"requirement","id":"r",
+        "revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,
+        "links":current["document"]["links"],"reason":"Agreed wording"}),
+    )
+    .await?;
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     let text = store::search::find(
         &pool,
@@ -131,7 +148,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         &foreign,
         "other",
         "domain",
-        &json!({"op":"domain","id":"secret","title":"Foreign-only needle","authority":"other"}),
+        &json!({"op":"save_object","kind":"domain","id":"secret","revision":0,"parent":null,"data":{"title":"Foreign-only needle","owner":"other"},"reason":"Setup"}),
     )
     .await?;
     assert!(
@@ -216,13 +233,31 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
     assert_eq!(fallback["items"][0]["id"], "r");
     provider.fail.store(false, Ordering::SeqCst);
     // Invalidate one document, then edit it again while its old vector is in flight.
-    store::execute_input(&pool,&ws,"owner","edit-1",&json!({"op":"edit_domain","id":"unused","title":"Invoice approval","authority":"owner","reason":"Clarify"})).await?;
+    common::save_title(
+        &pool,
+        &ws,
+        "owner",
+        "edit-1",
+        "domain:unused",
+        "Invoice approval",
+        "Clarify",
+    )
+    .await?;
     provider.pause.store(true, Ordering::SeqCst);
     let p = pool.clone();
     let e = embedder.clone();
     let indexing = tokio::spawn(async move { store::search_indexer::pass(&p, &e).await });
     provider.started.notified().await;
-    store::execute_input(&pool,&ws,"owner","edit-2",&json!({"op":"edit_domain","id":"unused","title":"Archive this scope","authority":"owner","reason":"Changed again"})).await?;
+    common::save_title(
+        &pool,
+        &ws,
+        "owner",
+        "edit-2",
+        "domain:unused",
+        "Archive this scope",
+        "Changed again",
+    )
+    .await?;
     provider.resume.notify_one();
     indexing.await??;
     let row=pool.get().await?.query_one("SELECT embedding IS NULL FROM joppa.search_documents WHERE workspace=$1 AND kind='domain' AND local_id='unused'",&[&ws]).await?;
@@ -235,23 +270,30 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         &ws,
         "owner",
         "archive",
-        &json!({"op":"set_domain_archived","id":"unused","archived":true,"reason":"Out of scope"}),
+        &json!({"op":"archive_object","target":"domain:unused","revision":3,"reason":"Out of scope"}),
     )
     .await?;
     assert!(store::search::find(&pool,"agent",&ws,"archive",Some("domain"),10,None).await?["items"].as_array().unwrap().is_empty());
-    // An omitted old AC disappears from search, but survives its historical revision.
-    revision["expected_revision"] = json!(2);
-    revision["acs"] = json!([]);
-    store::execute_input(&pool, &ws, "owner", "remove-ac", &revision).await?;
+    // An archived old AC disappears from search.
+    let criteria = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &store::ObjectScope {
+            parent: Some("requirement:r"),
+            ..Default::default()
+        },
+    )
+    .await?;
+    for item in criteria["items"].as_array().cloned().unwrap_or_default() {
+        store::execute_input(&pool, &ws, "owner", &format!("remove-{}", item["address"].as_str().unwrap().replace(':', "-")),
+            &json!({"op":"archive_object","target":item["address"],"revision":item["revision"],"reason":"Out of scope"})).await?;
+    }
     assert!(
         store::search::find(&pool, "agent", &ws, public, Some("ac"), 10, None).await?["items"]
             .as_array()
             .unwrap()
             .is_empty()
-    );
-    assert_eq!(
-        store::read_item(&pool, public, "agent").await?["selection"]["id"],
-        "ios"
     );
     let new = format!("renamed-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(&pool,&ws,"owner","rename",&json!({"op":"rename_workspace","workspace_id":new,"reference_prefix":new,"title":"Renamed","reason":"Owner requested"})).await?;
@@ -299,7 +341,16 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         .append_pair("options", &format!("-c role={role}"));
     let runtime_url = url.as_str().replace("options=-c+role", "options=-c%20role");
     let runtime = store::pool(&runtime_url)?;
-    store::execute_input(&runtime,&new,"owner","runtime-edit",&json!({"op":"edit_domain","id":"d","title":"Subscription access","authority":"owner","reason":"Clarify"})).await?;
+    common::save_title(
+        &runtime,
+        &new,
+        "owner",
+        "runtime-edit",
+        "domain:d",
+        "Subscription access",
+        "Clarify",
+    )
+    .await?;
     assert_eq!(
         store::search::find(
             &runtime,

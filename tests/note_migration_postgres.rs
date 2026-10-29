@@ -1,3 +1,5 @@
+#[path = "common/resolve_id.rs"]
+mod resolve_id;
 use anyhow::Result;
 use joppa::store::{self, ObjectScope, Scope};
 use serde_json::{Value, json};
@@ -77,10 +79,21 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
             .iter()
             .all(|item| item["present"] == true)
     );
-    let migrated =
-        store::read_item_scoped(&pool, &public, "owner", Scope::from_args(&json!({}))?).await?;
+    // The old ID still finds the object, now a note.
+    let address = resolve_id::resolve(&pool, "owner", &ws, &public).await?;
+    assert!(address.starts_with("note:"), "{address}");
+    let at = Some(address.as_str());
+    let migrated = store::read_objects(
+        &pool,
+        &ws,
+        "owner",
+        &ObjectScope {
+            address: at,
+            ..Default::default()
+        },
+    )
+    .await?;
     assert_eq!(migrated["kind"], "note");
-    assert_eq!(migrated["selection"]["kind"], "note");
     // The old ID reads the note; the read gives the ID with the prefix of the title.
     let item_id = migrated["item_id"].as_str().unwrap();
     assert!(item_id.ends_with(&public[public.len() - 13..]) && item_id != public);
@@ -113,19 +126,27 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
             .unwrap()
             .ends_with(&public[public.len() - 13..])
     );
-    let history = store::read_item_scoped(
+    let history = store::read_objects(
         &pool,
-        &public,
+        &ws,
         "owner",
-        Scope::from_args(&json!({"history":true}))?,
+        &ObjectScope {
+            address: at,
+            history: true,
+            ..Default::default()
+        },
     )
     .await?;
-    assert_eq!(history["selection"]["kind"], "note");
-    let old_revision = store::read_item_scoped(
+    assert_eq!(history["kind"], "note");
+    let old_revision = store::read_objects(
         &pool,
-        &public,
+        &ws,
         "owner",
-        Scope::from_args(&json!({"revision":1}))?,
+        &ObjectScope {
+            address: at,
+            revision: Some(1),
+            ..Default::default()
+        },
     )
     .await?;
     assert_eq!(old_revision["document"]["data"]["title"], said);

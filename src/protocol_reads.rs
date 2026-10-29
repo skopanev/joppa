@@ -1,5 +1,4 @@
 //! The compact MCP reads of joppa_objects and joppa_tests (requirement:read-contract).
-//! `verbose: true` skips this module and gives the shape of the earlier release.
 use anyhow::{Context, ensure};
 use deadpool_postgres::Pool;
 use joppa::{read_compact as rc, read_shapes, store};

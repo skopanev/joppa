@@ -233,7 +233,7 @@ There is no separate comment-to-Note promotion process.
 
 ## Compact MCP reads
 
-MCP reads give small replies by default. Send `verbose: true` for the earlier full shape. `docs/read-contract.md` gives every shape with JSON.
+MCP reads give small replies. `docs/read-contract.md` gives every shape with JSON. MCP replies give no `item_id`.
 
 - A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
@@ -259,8 +259,6 @@ Browser cards use the same lazy read paths.
 The custom tree supports filters by type, owner and status. Filters read summaries, not document bodies.
 The database indexes workspace, parent, type and incoming links.
 
-`joppa_read` retains its REQ verification interface.
-Its `revision` selects the REQ verification revision for AC evidence commands.
 Task process commands use the Task object address and its own revision.
 `joppa_objects.revision` always selects the addressed document's revision.
 Read the current Task before you claim, release, review, retire or complete it.
@@ -274,8 +272,8 @@ Use object addresses as canonical identifiers for a configured tree.
 The `id` field of a common object is its local identifier. Its `address` includes the type prefix.
 A verification response can retain a legacy identifier or use a complete object address in `requirement.id`.
 Do not compare that field directly with a short input identifier.
-Resolve a public identifier with `joppa_read` using `item_id` alone.
-Read its `object.address`, then use `joppa_objects` for the current document.
+Resolve a public identifier with `joppa_search`, the identifier as `query`.
+The first result has `exact_id: true`. Then use `joppa_objects` for the current document.
 
 Read a selected object's ancestors through `document.parent`, one object at a time.
 Stop when the parent is null. Use the workspace schema to identify semantic roles.

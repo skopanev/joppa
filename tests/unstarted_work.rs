@@ -5,7 +5,12 @@ use joppa::store::{self, ObjectScope};
 use serde_json::{Value, json};
 
 async fn apply(pool: &Pool, ws: &str, actor: &str, command: Value) -> anyhow::Result<Value> {
-    store::execute_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
+    let request = uuid::Uuid::new_v4().to_string();
+    if is_removed(&command) {
+        append_legacy(pool, ws, actor, &request, &command).await?;
+        return Ok(Value::Null);
+    }
+    store::execute_input(pool, ws, actor, &request, &command).await
 }
 async fn fixture() -> anyhow::Result<(Pool, String)> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
@@ -72,9 +77,7 @@ async fn assess_current(pool: &Pool, ws: &str, address: &str, ready: bool) -> an
 async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
 -> anyhow::Result<()> {
     let (pool, ws) = fixture().await?;
-    for command in setup() {
-        apply(&pool, &ws, "owner", command).await?;
-    }
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
     let roots = store::read_objects(
         &pool,
         &ws,
@@ -109,7 +112,9 @@ async fn native_planning_preserves_tasks_and_excludes_current_passing_criteria()
         .await
         .is_err()
     );
-    let task = |id: &str| json!({"op":"task","req":"r","revision":1,"id":id,"title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Implement the agreed login behavior"});
+    // A Task under the ios criterion of the old journal, saved as a current object.
+    let ios = page["items"][0]["address"].as_str().unwrap().to_owned();
+    let task = |id: &str| json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":ios,"data":{"title":"Implement access","owner":"owner","projects":["app"],"purpose":"implementation","contract":"Implement the agreed login behavior"},"reason":"Plan the work"});
     apply(&pool, &ws, "agent", task("one")).await?;
     assert!(criteria(&candidates(&pool, &ws).await?).is_empty());
     let queue = store::task_queue(&pool, &ws, "agent", "available", 100, None).await?;

@@ -9,6 +9,8 @@ use std::{
 
 #[path = "common/claim_time.rs"]
 mod claim_time;
+#[path = "common/compact_of.rs"]
+mod compact_of;
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
 #[path = "common/record_http.rs"]
@@ -51,25 +53,3 @@ include!("spec_http/part34.rs");
 include!("spec_http/part35.rs");
 include!("spec_http/part36.rs");
 include!("spec_http/part37.rs");
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
-}

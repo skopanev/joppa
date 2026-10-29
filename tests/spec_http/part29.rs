@@ -26,7 +26,7 @@ async fn journal_position(w: &World) -> Result<i64> {
 async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     // edit-makes-revision-ac3
     let w = world().await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let t = ready_task(&w, "t", "key-rights").await?;
     let save = |revision: u32, title: &str| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":title,"owner":"owner","contract":"Implement the changed criterion and record the result","purpose":"implementation","projects":[]},"reason":"Save the work contract"});
     let title = "Implement the specified work";
@@ -136,7 +136,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
 async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Result<()> {
     // one-task-per-agent-ac3
     let w = world().await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let mut tasks = vec![];
     for id in ["t1", "t2", "t3"] {
         tasks.push(ready_task(&w, id, "key-rights").await?);
@@ -192,7 +192,7 @@ async fn an_agent_claims_and_completes_all_tasks_of_a_req_in_one_batch() -> Resu
 async fn a_batch_claim_with_a_held_task_changes_nothing() -> Result<()> {
     // one-task-per-agent-ac4
     let w = world().await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let mut tasks = vec![];
     for id in ["t1", "t2", "t3"] {
         tasks.push(ready_task(&w, id, "key-rights").await?);

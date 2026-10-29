@@ -10,7 +10,7 @@ async fn the_owner_releases_an_absent_planners_claim() -> Result<()> {
         let p = p["token"].as_str().unwrap();
         let worker = store::create_agent_token(&w.pool, &w.ws, "owner", "W", None).await?;
         let worker = worker["token"].as_str().unwrap();
-        w.command_as(&w.bot, json!({"op":"assess","req":"key","revision":1,"ac":"key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+        w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
         let t0 = ready_task(&w, "t0", "key-rights").await?;
         w.command_as(worker, json!({"op":"claim_task","id":t0,"revision":1}))
             .await?;

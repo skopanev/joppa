@@ -1,4 +1,4 @@
-//! The workspace list, the launch gate and reads by a global item ID.
+//! The workspace list and the launch gate.
 use super::*;
 
 pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
@@ -28,86 +28,4 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
 pub fn gate(card: &Value, commit: &str) -> Result<usize> {
     let state: Workspace = serde_json::from_value(card["state"].clone())?;
     crate::launch_gate::check(&state, commit)
-}
-
-/// Resolve a globally unique reference without exposing another workspace's content.
-pub async fn read_item(pool: &Pool, id: &str, actor: &str) -> Result<Value> {
-    read_item_scoped(pool, id, actor, Scope::from_args(&json!({}))?).await
-}
-
-pub async fn read_item_scoped(
-    pool: &Pool,
-    id: &str,
-    actor: &str,
-    mut scope: Scope,
-) -> Result<Value> {
-    ensure!(
-        scope.req.is_none() && scope.target.is_none(),
-        "item_id cannot be combined with req or target"
-    );
-    // An address has a colon; a system ID never has one. The shape alone decides,
-    // so this error tells nothing about other workspaces.
-    ensure!(
-        !id.contains(':'),
-        "item_id takes a copied system ID such as joppa-A-WY86JU3XHX. For an address such as {id}, use joppa_objects {{workspace, address}} or joppa_read {{workspace, target}}"
-    );
-    let conn = pool.get().await?;
-    let row = conn
-        .query_opt(
-            "SELECT workspace,kind,local_id FROM joppa.item_ids WHERE id=$1",
-            &[&id],
-        )
-        .await?
-        .ok_or(AccessDenied)?;
-    let workspace: String = row.get(0);
-    let kind: String = row.get(1);
-    let local_id: String = row.get(2);
-    access::check(&**conn, &workspace, actor, false).await?;
-    drop(conn);
-    let address = format!("{kind}:{local_id}");
-    let mut result = read_objects(
-        pool,
-        &workspace,
-        actor,
-        &ObjectScope {
-            address: Some(&address),
-            ..Default::default()
-        },
-    )
-    .await?;
-    if let Some(req) = result["process"]["req"].as_str() {
-        scope.req = Some(req.into());
-        let mut evidence = read(pool, &workspace, actor, &scope).await?;
-        evidence["object"] = if scope.revision.is_some()
-            || scope.history
-            || result["document"]["present"] == false
-        {
-            json!({"address":result["address"],"kind":result["kind"],"id":result["id"],"item_id":result["item_id"],"current_revision":result["current_revision"],"revision_count":result["revision_count"],"metadata_scope":"current"})
-        } else {
-            result.clone()
-        };
-        if scope.revision.is_none() && !scope.history {
-            evidence["process"] = result["process"].clone();
-        }
-        let r = &evidence["requirement"]["revisions"][0];
-        let criterion = result["process"]["criterion"].as_str();
-        evidence["selection"] = json!({"kind":kind,"id":local_id,"system_id":id,"req":req,"revision":r["number"],"present":criterion.is_none_or(|ac|r["acs"].as_array().is_some_and(|acs|acs.iter().any(|a|a["id"]==ac)))});
-        return Ok(evidence);
-    }
-    if scope.revision.is_some() || scope.history {
-        result = read_objects(
-            pool,
-            &workspace,
-            actor,
-            &ObjectScope {
-                address: Some(&address),
-                revision: scope.revision,
-                history: scope.history,
-                ..Default::default()
-            },
-        )
-        .await?;
-    }
-    result["selection"] = json!({"kind":result["kind"],"id":result["id"],"system_id":id});
-    Ok(result)
 }

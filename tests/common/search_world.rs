@@ -185,7 +185,7 @@ pub async fn mcp(root: &str, actor: &str, name: &str, args: Value) -> Result<Val
     let body: Value = reqwest::Client::new()
         .post(format!("{root}/mcp"))
         .bearer_auth(token(actor))
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":(legacy_read_args(name, &args))}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":args}}))
         .send()
         .await?
         .error_for_status()?
@@ -214,26 +214,4 @@ pub async fn http_search(
         .error_for_status()?
         .json()
         .await?)
-}
-
-/// Legacy assertions read the earlier full shape of the read tools (requirement:read-contract).
-#[allow(dead_code)]
-fn legacy_read_args(tool: &str, args: &serde_json::Value) -> serde_json::Value {
-    let mut args = args.clone();
-    let read = [
-        "joppa_objects",
-        "joppa_read",
-        "joppa_tests",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_tasks",
-        "joppa_history",
-    ];
-    if read.contains(&tool)
-        && args.get("verbose").is_none()
-        && let Some(map) = args.as_object_mut()
-    {
-        map.insert("verbose".into(), serde_json::json!(true));
-    }
-    args
 }
