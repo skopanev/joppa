@@ -205,6 +205,24 @@ test('guide-teaches-reports-ac1: the guide teaches test lists and records, not l
   } finally { await f.close(); }
 });
 
+// guide-mcp-url
+test('guide-mcp-url: the guide shows the MCP endpoint of this host and copies it', async () => {
+  const f = await fixture({});
+  try {
+    const origin = new URL(f.live.root).origin;
+    assert.equal((await f.page.goto(f.live.root + '/guide')).status(), 200);
+    const section = f.page.locator('#agent-work');
+    assert.equal(await section.locator('#mcp-url').innerText(), origin + '/mcp');
+    const text = await section.innerText();
+    assert.match(text, /Streamable HTTP/);
+    assert.match(text, /Authorization: Bearer <token>/);
+    await section.locator('#mcp-copy').click();
+    // The fixture clipboard keeps each copied text in window.copiedIds.
+    assert.deepEqual(await f.page.evaluate(() => window.copiedIds), [origin + '/mcp']);
+    assert.equal(await section.locator('#mcp-copy').innerText(), 'Copied');
+  } finally { await f.close(); }
+});
+
 test('type-badge: a click on a type badge toggles its row and opens no popover', async () => {
   const question = 'Which observation does this record preserve?';
   const configured = {record: {title: 'Records', role: 'document', status:'none', root: true, parents: ['record'], badge: 'REC', question}};
