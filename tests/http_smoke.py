@@ -335,9 +335,10 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
             'data':{'title':'Restore access','owner':'owner','projects':[],'purpose':'implementation',
                 'contract':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
         assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['tasks'][0]['id'] == task_id
-        criterion_process = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})['process']
+        criterion = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
+        criterion_process = criterion['process']
         mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
-            'op':'assess','req':criterion_process['req'],'revision':criterion_process['revision'],'ac':'ac:'+task_ac,
+            'op':'assess','req':criterion['document']['parent'],'revision':criterion_process['revision'],'ac':'ac:'+task_ac,
             'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
         assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['tasks'][0]['id'] == task_id
         claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',

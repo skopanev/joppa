@@ -90,7 +90,8 @@ fn a_detail_gives_each_fact_once() {
             "links":{"items":[{"target":"ac:b","relation":"related","title":"B","current_revision":2}],"total":1},
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
-            "process":{"req":"requirement:r","revision":7,"assessment":{"state":"ready","reason":"Clear"}},
+            // `req` repeats document.parent, so the process has no `req`.
+            "process":{"revision":7,"assessment":{"state":"ready","reason":"Clear"}},
             "remote_links_revision":0})
     );
     // A revision read follows the same rules for copies and an empty remote link list.

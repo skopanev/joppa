@@ -1000,7 +1000,7 @@ test('board-opens-top-level-ac1: a reload of the board shows only the top level'
 });
 
 // type-status-rules-ac4
-test('type-status-rules-ac4: the board dot of each node has the colour of its status and R keeps its label', async () => {
+test('type-status-rules-ac4: the board dot of each node has the colour of its status and R has a label that agrees', async () => {
   const f = await fixture({});
   try {
     const tree = await f.api('/tree');
@@ -1036,7 +1036,12 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
             return [getComputedStyle(e).backgroundColor, want];
           });
           assert.equal(colours[0], colours[1], fixture + ' ' + theme + ' ' + address);
-          if (address === 'rule:r') labels.push((await dot.getAttribute('aria-label')).split('\n')[0]);
+          if (address === 'rule:r') {
+            const label = (await dot.getAttribute('aria-label')).split('\n')[0];
+            // The dot shows the label of the API, and the label agrees with the tone.
+            assert.equal(label, 'Status: ' + read.signal.label, fixture + ' ' + theme);
+            labels.push(expected[i] + ': ' + label);
+          }
         }
       }
     };
@@ -1059,8 +1064,13 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     ordered.area.status_order = ['grey', 'red', 'green'];
     await f.command({op: 'set_tree_schema', revision: next.current_revision, types: ordered, reason: 'Put grey first'}, true);
     await check('fixture 5', ['grey', 'grey', 'red']);
-    // The process label of R is the same in every fixture and theme, also when R is green.
-    assert.equal(new Set(labels).size, 1, JSON.stringify(labels));
+    // A grey R keeps its process label. A green R says that its children passed, and a red R
+    // says that a child failed, in every theme.
+    assert.deepEqual([...new Set(labels)], [
+      'grey: Status: REQ awaits checks',
+      'green: Status: Children checks passed',
+      'red: Status: Child checks failed',
+    ], JSON.stringify(labels));
   } finally { await f.close(); }
 });
 

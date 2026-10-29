@@ -227,7 +227,7 @@ impl World {
         )
         .await?;
         let a = self.object(owner, p, "ac:a").await?;
-        self.ok(owner, p, json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["address"],
+        self.ok(owner, p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["revision"],"ac":a["address"],
             "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
         self.ok(
             owner,
@@ -299,7 +299,7 @@ impl World {
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
         let a = self.object(&self.owner, &self.p, "ac:a").await?;
-        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["address"],
+        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["revision"],"ac":a["address"],
             "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
         Ok(())
     }
@@ -1071,7 +1071,7 @@ async fn a_repin_after_a_claim_stops_the_old_plan_and_the_old_task() -> Result<(
     )
     .await?;
     let a = w.object(&w.owner, &w.p, "ac:a").await?;
-    w.ok(&w.owner, &w.p, json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["revision"],"ac":a["address"],
+    w.ok(&w.owner, &w.p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["revision"],"ac":a["address"],
         "assessment":{"ready":true,"reason":"The new contract is reviewed"}})).await?;
     let t = w.revision(&w.p, "task:t").await?;
     w.ok(
