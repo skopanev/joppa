@@ -206,20 +206,27 @@ test('guide-teaches-reports-ac1: the guide teaches test lists and records, not l
 });
 
 // guide-mcp-url
-test('guide-mcp-url: the guide shows the MCP endpoint of this host and copies it', async () => {
+test('guide-mcp-url: the guide shows the MCP endpoint of this host and copies it with the board copy icon', async () => {
   const f = await fixture({});
   try {
     const origin = new URL(f.live.root).origin;
     assert.equal((await f.page.goto(f.live.root + '/guide')).status(), 200);
     const section = f.page.locator('#agent-work');
     assert.equal(await section.locator('#mcp-url').innerText(), origin + '/mcp');
-    const text = await section.innerText();
-    assert.match(text, /Streamable HTTP/);
-    assert.match(text, /Authorization: Bearer <token>/);
-    await section.locator('#mcp-copy').click();
+    // One line: the URL and the copy icon of the board, with no text and no frame.
+    assert.doesNotMatch(await section.innerText(), /Streamable HTTP|Bearer/);
+    const button = section.locator('#mcp-copy');
+    assert.equal(await button.innerText(), '');
+    assert.equal(await button.locator('svg.copy-symbol').isVisible(), true);
+    assert.equal(await button.locator('svg.copy-check').isVisible(), false);
+    assert.deepEqual(await button.evaluate(e => { const s = getComputedStyle(e); return [s.borderTopWidth, s.backgroundColor]; }), ['0px', 'rgba(0, 0, 0, 0)']);
+    await button.click();
     // The fixture clipboard keeps each copied text in window.copiedIds.
     assert.deepEqual(await f.page.evaluate(() => window.copiedIds), [origin + '/mcp']);
-    assert.equal(await section.locator('#mcp-copy').innerText(), 'Copied');
+    assert.equal(await button.locator('svg.copy-check').isVisible(), true);
+    assert.equal(await button.locator('svg.copy-symbol').isVisible(), false);
+    await f.page.waitForTimeout(3200);
+    assert.equal(await button.locator('svg.copy-symbol').isVisible(), true);
   } finally { await f.close(); }
 });
 
