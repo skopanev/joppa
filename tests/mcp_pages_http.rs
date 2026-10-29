@@ -139,13 +139,37 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
         "{tasks}"
     );
     // Workspaces and the test overview.
-    let listed = read(&w, "joppa_list", json!({})).await?;
-    ensure!(
-        count(&listed) == 1
-            && listed["total"] == 1
-            && listed["items"][0]["title"] == "Record channel",
-        "{listed}"
-    );
+    // The test database can hold the workspaces of earlier runs, so the check does not
+    // count them. It follows the pages until it finds this workspace; each page has at most
+    // 25 items and the same total.
+    let mut cursor = Value::Null;
+    let mut seen = 0;
+    let found = loop {
+        let args = if cursor.is_null() {
+            json!({})
+        } else {
+            json!({ "cursor": cursor })
+        };
+        let listed = read(&w, "joppa_list", args).await?;
+        seen += count(&listed);
+        ensure!(
+            (1..=25).contains(&count(&listed)) && listed["total"].as_u64() >= Some(seen as u64),
+            "{listed}"
+        );
+        if listed["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|i| i["id"] == w.ws.as_str() && i["title"] == "Record channel")
+        {
+            break true;
+        }
+        match &listed["next_cursor"] {
+            Value::String(next) => cursor = json!(next),
+            _ => break false,
+        }
+    };
+    ensure!(found, "joppa_list has no {}", w.ws);
     w.recorded(
         &"a".repeat(40),
         json!([{"test":"tests/x.rs > t","status":"pass"}]),
