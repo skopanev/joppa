@@ -21,7 +21,7 @@ MCP reads have one shape. There is no `verbose` switch.
 
 | Tool | `limit` above the page size | Paging |
 | --- | --- | --- |
-| `joppa_objects` lists, also with `fields`, `work_filter`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor`; `total` on plain lists |
+| `joppa_objects` lists, also with `fields`, `work_filter`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
 | `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` |
 | `joppa_objects` detail comments and links | fixed pages of 25 | `comments_cursor`, `links_cursor` |
 | `joppa_tasks` | unchanged: up to 100 | `next_cursor` as before |
@@ -59,12 +59,12 @@ roots. `kind` filters by type. Reply:
   starts after it, so a new object does not move the items of a later page.
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
   inputs first, then processed inputs, each group in address order. Its `next_cursor` is the
-  Inbox cursor, and `total` is absent.
+  Inbox cursor.
 - No `revision`, `description`, `process` or `id`. Name them with `fields`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
 With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
-filters and order. `total` is then absent. A list in address order gives the bare address of
+filters and order. `total` counts every matching object, also on later pages. A list in address order gives the bare address of
 its last item as `next_cursor`, so one sweep may mix plain pages and pages with `fields`.
 A cursor that is not an address `kind:id` is refused: `invalid object cursor`.
 
@@ -152,6 +152,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - `files` lists the attachments. `annotations` has no `attachments` copy.
 - `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
   `process` and `assessment` give no copy of the address, of `req` or of its revision.
+  The `req` of a criterion is its `document.parent`, so `process` of a criterion has no `req`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`.
 - The keys that a write sends back always stay: `current_revision` for `save_object` and

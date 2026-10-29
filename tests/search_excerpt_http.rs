@@ -51,6 +51,26 @@ async fn an_excerpt_gives_the_own_data_of_the_object_without_its_parents() -> Re
         child["excerpt"] == r#"{"description":"Own child text bravo","owner":"owner"}"#,
         "{found}"
     );
+    // A criterion hit gives its own revision, not the revision of its requirement.
+    write(&pool, &ws, json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":"capability:c","data":{"title":"Rule","owner":"owner","body":"Rule text"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"requirement","id":"r","revision":1,"parent":"capability:c","data":{"title":"Rule","owner":"owner","body":"Rule text again"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,"parent":null,"data":{"title":"Buyer","owner":"owner"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"Charlie check","owner":"owner","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Excerpt test"})).await?;
+    let hits = world::mcp(
+        &server.root,
+        "bot",
+        "joppa_search",
+        json!({"workspace":ws,"query":"charlie"}),
+    )
+    .await?;
+    ensure!(
+        hits["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|i| i["id"] == "a" && i["revision"] == 1 && i["req"] == "requirement:r"),
+        "{hits}"
+    );
     let old = world::mcp(
         &server.root,
         "bot",

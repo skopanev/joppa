@@ -97,7 +97,8 @@ row a vector:
 | `workspaces` | Each workspace that the search read |
 | `items` | Each result: `workspace`, `kind`, `id`, `system_id`, `title`, `excerpt`, `req`, `revision`, `score`, `exact_id`, `historical` and `archived` |
 
-`historical` is true when the result is not the current revision. `archived` is true
+`revision` is the revision of the result object, also for a criterion. `req` names the
+requirement of a criterion. `historical` is true when the result is not the current revision. `archived` is true
 when the object has no current document. When the provider does not answer a query,
 the reply keeps the full-text results and sets `semantic_status` to `unavailable`.
 A successful empty search does not prove that no relevant requirement exists.

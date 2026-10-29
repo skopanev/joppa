@@ -63,9 +63,11 @@ fn drop_same(value: &mut Value, keys: &[&str], same: &Value) {
     }
 }
 
-/// The process facts without copies of the address, the requirement and its revision.
+/// The process facts without copies of the address, the parent, the requirement and its
+/// revision. The requirement of a criterion is its document parent.
 fn process(reply: &mut Value) {
     let address = reply["address"].clone();
+    let parent = reply["document"]["parent"].clone();
     let process = &mut reply["process"];
     let (req, revision) = (process["req"].clone(), process["revision"].clone());
     drop_same(
@@ -73,6 +75,7 @@ fn process(reply: &mut Value) {
         &["annotation_address", "criterion", "req"],
         &address,
     );
+    drop_same(process, &["req"], &parent);
     drop_same(&mut process["assessment"], &["criterion"], &address);
     drop_same(&mut process["assessment"], &["req"], &req);
     drop_same(&mut process["assessment"], &["revision"], &revision);

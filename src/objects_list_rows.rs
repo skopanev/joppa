@@ -54,12 +54,11 @@ pub(super) async fn list_rows(
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
             jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text,o.process::text,
             CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END,
-            CASE WHEN $16::boolean THEN (o.document->'data')::text END
-        FROM joppa.objects o
-        LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
+            CASE WHEN $16::boolean THEN (o.document->'data')::text END,o.total
+        FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         LEFT JOIN work_counts w ON w.address=o.address
         WHERE o.workspace=$1 AND o.present
-            AND {after_filter} AND ($3::text IS NULL OR o.kind=$3)
+            AND ($3::text IS NULL OR o.kind=$3)
             AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
@@ -71,7 +70,10 @@ pub(super) async fn list_rows(
                 AND NOT o.address=ANY($14::text[])
                 AND COALESCE(w.active,0)=0
                 AND COALESCE(jsonb_typeof(o.process->'planning_claim'),'null')<>'object'
-                AND NOT COALESCE(o.rollup ? 'waits_for',false)))
+                AND NOT COALESCE(o.rollup ? 'waits_for',false)))) o
+        LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
+        LEFT JOIN work_counts w ON w.address=o.address
+        WHERE {after_filter}
         ORDER BY {order} LIMIT $5
     "#
     );
@@ -115,6 +117,8 @@ pub(super) async fn list_rows(
     } else {
         rows
     };
+    // `total` counts every matching object, also the objects before the cursor.
+    let total: i64 = rows.first().map_or(0, |r| r.get(19));
     let more = rows.len() > limit;
     let mut items:Vec<Value>=rows.iter().take(limit).map(|r|json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),"id":r.get::<_,String>(2),"revision":r.get::<_,i32>(3),"contract_revision":r.get::<_,i32>(17),"parent":r.get::<_,Option<String>>(4),"title":r.get::<_,String>(5),"owner":r.get::<_,Option<String>>(6),"review_required":r.get::<_,bool>(7),"work_ready":r.get::<_,bool>(8),"item_id":r.get::<_,Option<String>>(9),"at":r.get::<_,Option<String>>(10),"description":r.get::<_,Option<String>>(11),"signal":serde_json::from_str::<Value>(r.get(12)).unwrap_or_else(|_|json!({})),"present":r.get::<_,bool>(13),"note_status":if selected.get(&r.get::<_,String>(1)).is_some_and(|t| t.inbox.unwrap_or(false)) {json!(r.get::<_,String>(14))}else{Value::Null}})).collect();
     for (item, row) in items.iter_mut().zip(rows.iter()) {
@@ -152,5 +156,7 @@ pub(super) async fn list_rows(
             format!("{position}:{address}")
         }
     });
-    Ok(json!({"workspace":public,"position":position,"items":items,"next_cursor":next}))
+    Ok(
+        json!({"workspace":public,"position":position,"total":total,"items":items,"next_cursor":next}),
+    )
 }

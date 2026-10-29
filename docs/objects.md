@@ -238,7 +238,7 @@ MCP reads give small replies. `docs/read-contract.md` gives every shape with JSO
 
 - A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
-- `joppa_objects` with `address` gives the current object: `document` exactly as stored, `revisions` as `[{revision, at, actor, reason}]`, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision.
+- `joppa_objects` with `address` gives the current object: `document` exactly as stored, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision. `history: true` gives the revision headers `[{revision, at, actor, reason}]`.
 - Keys with `null`, `""`, `[]` or `{}` are omitted everywhere outside `document`, `data`, `command` and `remote_links`. `false` and `0` stay. A missing `tests` key means no tests.
 - `joppa_tests` reads at most 100 criteria in one call. Send `parent` (direct children, or `*`) and `kind` (default `ac`) in place of `ac` to read every criterion in pages of 100.
 
@@ -400,6 +400,7 @@ The server refuses a result with an unknown status name, an unknown field, a mis
 A `set_tree_schema` command with `test_results` sends every rule. A command without `test_results` keeps the current block.
 The event `migrate_test_rules` wrote the block above into each workspace that existed before it, with its status names and its fields. A new workspace gets the same block.
 Each type of the schema names its status rule in `status` (`tests`, `children`, `links` or `none`) and its process fields in `process_fields`. No rule comes from the role of a type.
+A rule tone that differs from the process tone also sets the status label, for example "Children checks passed" or "Checks failed". A grey rule tone keeps a process label that is not green or red, because that label names the next step.
 The schema flag `status_required` decides a type without `status`. With `true`, `set_tree_schema` refuses the type. With `false`, the schema saves it, and its nodes have the rule `unset` and the tone orange.
 The test list of a node is the field `tests` of its document, a list of test names. Any type with `status: "tests"` takes it, also a domain. The node can have children, and only its tests give its tone.
 `save_object` with `data.tests` saves the list. The short command `set_ac_tests {target, tests, revision, reason}` saves only that field as an ordinary revision of the document. Its `revision` is the document revision, which `joppa_tests` gives as `tests_revision`.

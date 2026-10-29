@@ -165,6 +165,13 @@ async fn a_list_item_shows_the_same_tone_as_the_detail_read() -> Result<()> {
         "list {list} fields {named} detail {}",
         detail["status"]
     );
+    // The requirement is green by its children, and its label says so.
+    let req = read(&w, "joppa_objects", json!({"address":"requirement:r"})).await?;
+    ensure!(
+        req["status"] == json!({"label":"Children checks passed","tone":"green"}),
+        "{}",
+        req["status"]
+    );
     Ok(())
 }
 
@@ -200,7 +207,9 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
             && named.get("next_cursor").is_none()
             && plain["position"].is_number()
             && named["position"] == plain["position"]
-            && named["workspace"] == plain["workspace"],
+            && named["workspace"] == plain["workspace"]
+            && plain["total"].as_u64() >= Some(30)
+            && named["total"] == plain["total"],
         "{named}"
     );
     // And the other way: a fields page gives a bare address that a plain page takes.
@@ -211,7 +220,10 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
     )
     .await?;
     let cursor = named["next_cursor"].as_str().unwrap_or_default().to_owned();
-    ensure!(cursor == first[24], "{named}");
+    ensure!(
+        cursor == first[24] && named["total"] == plain["total"],
+        "{named}"
+    );
     let plain = read(
         &w,
         "joppa_objects",

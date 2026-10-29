@@ -6,7 +6,7 @@ use super::*;
 /// child has, links takes the first status in that order that a live object linking to the
 /// node has, and none keeps the process tone. A node with no counted child or link is grey.
 /// A retired Task is not counted, and a process tone outside red, grey and green counts as
-/// grey. The rule sets only the tone; the process label stays.
+/// grey. A rule tone that differs from the process tone also sets the label (rule_label).
 pub(super) async fn add_status_tones(
     client: &impl GenericClient,
     workspace: &str,
@@ -266,6 +266,11 @@ pub(super) async fn add_status_tones(
             )
         };
         if let Some(t) = ruled_tone {
+            if let Some(label) =
+                super::rule_label::label(rule(kind), &t, item["signal"]["tone"].as_str())
+            {
+                item["signal"]["label"] = json!(label);
+            }
             item["signal"]["tone"] = json!(t);
         }
     }

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 2;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 3;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]

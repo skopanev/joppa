@@ -175,7 +175,7 @@ pub async fn find_with(
             json!({"workspace":workspace,"kind":kind,"id":id,"rev":rev,"score":score,"exact":is_exact,"item":item})
         })
         .collect::<Vec<_>>();
-    let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),(CASE WHEN k.rev>=0 THEN v.document->'data' ELSE o.document->'data' END)::text,d.req,COALESCE(d.revision,r.revision),i.id,k.score,k.exact,k.item,
+    let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),(CASE WHEN k.rev>=0 THEN v.document->'data' ELSE o.document->'data' END)::text,d.req,CASE WHEN k.rev>=0 THEN k.rev ELSE o.revision END,i.id,k.score,k.exact,k.item,
         k.rev>=0 AND o.revision IS DISTINCT FROM k.rev,
         k.rev>=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_documents x WHERE x.workspace=k.workspace AND x.kind=k.kind AND x.local_id=k.id)
       FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)

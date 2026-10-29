@@ -270,12 +270,14 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         compact["annotations"].get("attachments").is_none() && compact["status"].is_object(),
         "{compact}"
     );
-    // No copy of the address in process, and no remote link list without remote links.
-    // remote_links_revision stays: set_remote_links sends it.
+    // No copy of the address or the parent in process, and no remote link list without
+    // remote links. remote_links_revision stays: set_remote_links sends it.
     let process = &compact["process"];
     ensure!(
         process.get("annotation_address").is_none()
             && process.get("criterion").is_none()
+            && compact["document"]["parent"] == "requirement:r"
+            && process.get("req").is_none()
             && process["assessment"].get("criterion").is_none()
             && process["assessment"].get("req").is_none(),
         "{process}"
