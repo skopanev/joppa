@@ -42,12 +42,6 @@ rename_workspace: title, reason, reference_prefix:null, workspace_id:null; works
 delete_workspace: reason; workspace owner only; removes every row of the workspace. Before the purge, each workspace whose remote links or child workspace bindings name it gets one internal remove_workspace_references event that removes them. The result lists them in removed_references. The owner reads that list first with GET /api/workspaces/{workspace}/references.
 member: id, role (human); workspace owner only. An agent enrolls through its agent token, not through member. An older journal event keeps its agent or runner role in a replay.
 reorder_tree: kind (any configured type), parent (complete object address or null), expected:[id], ids:[id]; workspace owner only
-confirm_tree: (no fields); workspace owner validates agent draft
-set_domain_archived: id, archived (true|false), reason; workspace owner only; subtree must have no requirements
-link_source: req, revision, id, kind, uri (optional), external_id:null, version, relation (origin|supports|contradicts|decision)
-      Supply a nonempty uri or external_id. Omit uri when the source exists only
-      in an external tool. The journal and reads store an omitted URI as an empty
-      string. When both references exist, the source retains both.
 confirm: req, revision; REQ owner confirms wording
 comment: req, revision, id, text, kind (comment|decision|accept|change|reject|correction),
          reply_to:null, ac:null
@@ -230,8 +224,8 @@ in the WORM database, but are no longer accepted for authentication.
 
 Archived domains and their capabilities remain in read responses for history and
 ID resolution, but are absent from the active tree. New capabilities and REQs cannot
-be created beneath them. `set_domain_archived` with `archived:false` restores them.
-IDs are never recycled. Domains with requirements cannot be archived.
+be created beneath them. `archive_object` archives a domain and `restore_object` restores it.
+IDs are never recycled. An object with active children cannot be archived.
 
 Workspace renames may set `workspace_id` to a new unique public ID. Lists and read
 responses then return that ID. Previous workspace names remain permanent aliases;
@@ -314,9 +308,9 @@ read indexing limits and failure behavior without a local checkout.
 
 ## MCP revision reads
 
-`joppa_objects` with `address` gives the current object and `revisions` as
-`[{revision, at, actor, reason}]`. Add `revision: N` to read exactly that revision, or
-`history: true` for the revision counts. `docs/read-contract.md` gives every shape.
+`joppa_objects` with `address` gives the current object. Add `revision: N` to read exactly
+that revision, or `history: true` for the revision headers `{revision, at, actor, reason}` in
+pages of 25. `docs/read-contract.md` gives every shape.
 
 
 ## Configured verification types
@@ -345,7 +339,7 @@ Each entry has `position`, `at`, `actor`, `actor_type`, `address`, `title`, `rev
 `change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other.
 A move is a save that changes only the parent.
 A record of test results appends a `record_report` event, so it has a journal position too. Its change is `results` and its address is `record/ID`.
-Use `after=POSITION` to read only later entries. Use `limit` (1 to 100, default 50).
+Use `after=POSITION` to read only later entries. Over HTTP, use `limit` (1 to 100, default 50). `joppa_timeline` gives at most 25 entries a page. Both give `total`, the count of entries after `after`.
 Send `next_cursor` as `cursor` to read the next page. The last page has `next_cursor: null`.
 `order=newest` reads the newest entries first; its cursor reads older entries.
 Members and agents of the workspace read the timeline. Another account gets 404 `Workspace not found`.

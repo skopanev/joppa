@@ -1695,7 +1695,7 @@ fn typed_command(
                         .get(&address(kind, id))
                         .map(|o| &o.current().data["archived"])
                     || !exists && v == false),
-                "use set_domain_archived to change archive state"
+                "use archive_object or restore_object to change archive state"
             );
             if exists {
                 Command::EditDomain {

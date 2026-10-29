@@ -284,7 +284,10 @@ impl World {
         target: &str,
         links: Value,
     ) -> Result<Result<Value, String>> {
-        let current = self.object(&self.owner, ws, target).await?["remote_links_revision"].clone();
+        // A read without remote links gives no revision: send 0.
+        let current = self.object(&self.owner, ws, target).await?["remote_links_revision"]
+            .as_u64()
+            .unwrap_or(0);
         self.command(token, ws, json!({"op":"set_remote_links","target":target,"revision":current,"links":links,"reason":"Link to another workspace"})).await
     }
     /// A depends on the current revision of API with a blocking link, and A is ready again.

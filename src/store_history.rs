@@ -20,7 +20,7 @@ fn cursor_position(cursor: &str) -> Result<i64> {
 
 fn page_limit(args: &Value) -> Result<i64> {
     match args.get("limit") {
-        None | Some(Value::Null) => Ok(1),
+        None | Some(Value::Null) => Ok(HISTORY_LIMIT),
         Some(value) => value
             .as_i64()
             .filter(|n| (1..=HISTORY_LIMIT).contains(n))
@@ -63,6 +63,11 @@ pub async fn read_history(
     let next_item: Option<i64> = conn.query_one(
         "SELECT min(e.position) FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS (SELECT 1 FROM joppa.history_marks m WHERE m.workspace=e.workspace AND m.position=e.position)",
         &[&id],
+    ).await?.get(0);
+    // `total` counts every entry of the view, also the entries before the cursor.
+    let total: i64 = conn.query_one(
+        "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND ($2 OR m.position IS NULL)",
+        &[&id, &all],
     ).await?.get(0);
     let more = rows.len() as i64 > limit;
     let rows = &rows[..rows.len().min(limit as usize)];
@@ -107,7 +112,7 @@ pub async fn read_history(
     let next_cursor = (more && !rows.is_empty())
         .then(|| format!("h{}", rows.last().map(|r| r.get::<_, i64>(0)).unwrap_or(0)));
     Ok(
-        json!({"items": items, "next_item": next_item, "next_cursor": next_cursor, "all": all, "limit": limit}),
+        json!({"items": items, "total": total, "next_item": next_item, "next_cursor": next_cursor, "all": all, "limit": limit}),
     )
 }
 

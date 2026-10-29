@@ -271,7 +271,7 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         "{compact}"
     );
     // No copy of the address or the parent in process, and no remote link list without
-    // remote links. remote_links_revision stays: set_remote_links sends it.
+    // remote links. Its revision 0 goes too: set_remote_links takes a missing one as 0.
     let process = &compact["process"];
     ensure!(
         process.get("annotation_address").is_none()
@@ -285,7 +285,7 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
     for key in ["remote_links", "remote_review_required"] {
         ensure!(compact.get(key).is_none(), "{key}: {compact}");
     }
-    ensure!(compact["remote_links_revision"] == 0, "{compact}");
+    ensure!(compact.get("remote_links_revision").is_none(), "{compact}");
     let verbose = w
         .mcp(
             &w.bot,

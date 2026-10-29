@@ -22,13 +22,19 @@ MCP reads have one shape. There is no `verbose` switch.
 | Tool | `limit` above the page size | Paging |
 | --- | --- | --- |
 | `joppa_objects` lists, also with `fields`, `work_filter`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
-| `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` |
+| `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` and `total` |
+| `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_objects` detail comments and links | fixed pages of 25 | `comments_cursor`, `links_cursor` |
-| `joppa_tasks` | unchanged: up to 100 | `next_cursor` as before |
+| `joppa_tasks`, `joppa_timeline`, `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
+| `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |
+| `joppa_list` | fixed pages of 25 | `next_cursor` and `total` |
+| `joppa_tests` overview (no `ac`, `parent`, `kind` or `task`) | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_tests` with `ac` | more than 100 criteria are refused | none |
 | `joppa_tests` with `parent` or `kind` | 100 criteria a page | `next_cursor` and `total` |
 
-A client that sends `limit: 100` to `joppa_objects` gets 25 items and must follow `next_cursor`.
+Every MCP list reply is `{items, total, next_cursor}`. `total` counts every matching entry,
+also on later pages. Send `next_cursor` back as `cursor`; a missing `next_cursor` means the
+last page. A client that sends `limit: 100` gets at most 25 items and must follow `next_cursor`.
 
 ## List mode: `joppa_objects` without `address`
 
@@ -130,8 +136,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   },
   "links": {"total": 1, "items": [{"target": "ac:b", "relation": "related", "title": "...",
                                    "current_revision": 4}]},
-  "link_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}],
-  "remote_links_revision": 0
+  "link_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}]
 }
 ```
 
@@ -154,9 +159,9 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `process` and `assessment` give no copy of the address, of `req` or of its revision.
   The `req` of a criterion is its `document.parent`, so `process` of a criterion has no `req`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
-  them as `[]` and `false`.
-- The keys that a write sends back always stay: `current_revision` for `save_object` and
-  `remote_links_revision` for `set_remote_links`.
+  them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
+  a missing one as 0 with `set_remote_links`.
+- `current_revision` always stays: `save_object` sends it.
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
 - Next link page: `{"workspace": "w", "address": "task:t", "links_cursor": "25"}`.
 - `comments_cursor` and `links_cursor` are offsets. A comment or link added between two
@@ -168,13 +173,14 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 `historical` and `current_revision`, without empty keys outside `document`. It follows the
 detail rules for copies of the address and for an empty remote link list.
 
-`{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers:
+`{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers,
+oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next page:
 
 ```json
-{"workspace": "w", "position": 412, "address": "task:t", "current_revision": 3,
- "revisions": [{"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
-               {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
-               {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}]}
+{"workspace": "w", "position": 412, "address": "task:t", "current_revision": 3, "total": 3,
+ "items": [{"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
+           {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
+           {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}]}
 ```
 
 ## `joppa_tests`
@@ -190,10 +196,11 @@ detail rules for copies of the address and for an empty remote link list.
 
 ## Other read tools
 
-`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their fields and
-paging. Only the empty keys and `item_id` go. `joppa_tasks` keeps `limit` up to 100 and
-`next_cursor`. When the `joppa_search` query is an item ID or an address, the reply gives
-only the exact matches, each with `exact_id: true`.
+`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` keep their fields. Only
+the empty keys and `item_id` go. `joppa_tasks` gives its tasks as `items`. A `joppa_search`
+result has no `system_id`, no `req` on a requirement, and `workspace` only with
+`all_workspaces: true`. When the query is an item ID or an address, the reply gives only the
+exact matches, each with `exact_id: true`.
 
 ## Titles and texts
 

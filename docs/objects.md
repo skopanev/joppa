@@ -238,7 +238,7 @@ MCP reads give small replies. `docs/read-contract.md` gives every shape with JSO
 
 - A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
-- `joppa_objects` with `address` gives the current object: `document` exactly as stored, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision. `history: true` gives the revision headers `[{revision, at, actor, reason}]`.
+- `joppa_objects` with `address` gives the current object: `document` exactly as stored, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision. `history: true` gives the revision headers `{revision, at, actor, reason}` as `items`, in pages of 25 with `total`.
 - Keys with `null`, `""`, `[]` or `{}` are omitted everywhere outside `document`, `data`, `command` and `remote_links`. `false` and `0` stay. A missing `tests` key means no tests.
 - `joppa_tests` reads at most 100 criteria in one call. Send `parent` (direct children, or `*`) and `kind` (default `ac`) in place of `ac` to read every criterion in pages of 100.
 
@@ -251,7 +251,7 @@ Use `kind` to filter that list.
 Lists contain titles, owners, revisions and readiness hints. They do not contain document bodies or history.
 
 Supply `address` to read one current document, its comments, attachments and relation titles.
-Use `history: true` to read revision counts.
+Use `history: true` to read the revision headers.
 Use `revision: N` to read exactly one historical document.
 Historical reads omit current status, incoming links, comments and attachments.
 Outgoing links identify their metadata as current. Removed targets remain readable and have a historical label.
@@ -352,7 +352,7 @@ Each type can set `title_size`, an integer from 12 to 48 pixels. Omit it to use 
 The board and tree diagram use this size at every nesting level and screen width.
 For example, set 17 for a root type, 15 for its child type, and 14 for deeper types.
 Each type can set `badge`, a label of 1 to 8 characters without spaces. Omit it to use initials from its title.
-Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to use 64 characters.
+Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to use 128 characters.
 This value is also the maximum length of a new title. The server refuses a longer title, so put the context in `body` or `description`.
 Older titles can be longer. The board shows a preview that ends with an ellipsis, and the complete title stays in the Details section.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.

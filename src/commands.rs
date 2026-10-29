@@ -595,13 +595,6 @@ pub const OPERATIONS: &[Operation] = &[
     op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
     op("member", &["id", "role"], OWNER),
     op("remove_member", &["id", "reason"], OWNER),
-    op("set_domain_archived", &["id", "archived", "reason"], OWNER),
-    op("confirm_tree", &[], OWNER),
-    op(
-        "link_source",
-        &["req", "revision", "kind", "version", "relation"],
-        MEMBER,
-    ),
     op("confirm", &["req", "revision"], MEMBER),
     op("comment", &["req", "revision", "text", "kind"], MEMBER),
     op("note", &["target", "id", "text"], MEMBER),

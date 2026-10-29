@@ -13,17 +13,18 @@ const GROUPS: &str = "SELECT 'outgoing',l.relation,COALESCE(o.kind,split_part(l.
     WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present GROUP BY 1,2,3
   ORDER BY 1,2,3";
 
-const OUTGOING: &str = "SELECT l.target,COALESCE(o.title,l.target),COALESCE(o.kind,split_part(l.target,':',1)),l.revision,l.blocking,COALESCE(o.present,false) FROM joppa.object_links l
+// `total` counts the whole group, also the links before the cursor.
+const OUTGOING: &str = "SELECT * FROM (SELECT l.target AS other,COALESCE(o.title,l.target),COALESCE(o.kind,split_part(l.target,':',1)),l.revision,l.blocking,COALESCE(o.present,false),count(*) OVER() FROM joppa.object_links l
     LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target
     LEFT JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=COALESCE(a.target,l.target)
-    WHERE l.workspace=$1 AND l.source=$2 AND l.relation=$3 AND COALESCE(o.kind,split_part(l.target,':',1))=$4 AND ($5::text IS NULL OR l.target>$5)
-    ORDER BY l.target LIMIT $6";
+    WHERE l.workspace=$1 AND l.source=$2 AND l.relation=$3 AND COALESCE(o.kind,split_part(l.target,':',1))=$4) x
+    WHERE $5::text IS NULL OR x.other>$5 ORDER BY x.other LIMIT $6";
 
-const INCOMING: &str = "SELECT l.source,o.title,o.kind,l.revision,l.blocking,o.present FROM joppa.object_links l
+const INCOMING: &str = "SELECT * FROM (SELECT l.source AS other,o.title,o.kind,l.revision,l.blocking,o.present,count(*) OVER() FROM joppa.object_links l
     JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source
     WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2)
-      AND o.present AND l.relation=$3 AND o.kind=$4 AND ($5::text IS NULL OR l.source>$5)
-    ORDER BY l.source LIMIT $6";
+      AND o.present AND l.relation=$3 AND o.kind=$4) x
+    WHERE $5::text IS NULL OR x.other>$5 ORDER BY x.other LIMIT $6";
 
 /// The link groups of the current revision of `key`.
 pub(super) async fn groups(
@@ -40,7 +41,8 @@ pub(super) async fn groups(
 }
 
 /// One group of links of `address`: `direction` is outgoing or incoming, `kind` is the type
-/// of the other object. At most `limit` links (1–100) after `cursor`, with next_cursor.
+/// of the other object. At most `limit` links (1–100) after `cursor`, with next_cursor and
+/// the total of the group.
 #[allow(clippy::too_many_arguments)]
 pub async fn link_page(
     pool: &Pool,
@@ -78,6 +80,7 @@ pub async fn link_page(
             ],
         )
         .await?;
+    let total: i64 = rows.first().map_or(0, |r| r.get(6));
     let more = rows.len() > limit;
     let items = rows
         .iter()
@@ -88,6 +91,6 @@ pub async fn link_page(
         .then(|| items.last().map(|i| i["address"].clone()))
         .flatten();
     Ok(
-        json!({"address":key,"direction":direction,"relation":relation,"kind":kind,"items":items,"next_cursor":next}),
+        json!({"address":key,"direction":direction,"relation":relation,"kind":kind,"total":total,"items":items,"next_cursor":next}),
     )
 }

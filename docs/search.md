@@ -96,6 +96,10 @@ row a vector:
 | `position` | The journal position of the workspace of the request |
 | `workspaces` | Each workspace that the search read |
 | `items` | Each result: `workspace`, `kind`, `id`, `system_id`, `title`, `excerpt`, `req`, `revision`, `score`, `exact_id`, `historical` and `archived` |
+| `total` / `next_cursor` | The count of ranked results, and the offset of the next page. Send it back as `cursor` |
+
+`joppa_search` gives at most 25 results a page, 10 by default. Its results have no
+`system_id`, no `req` on a requirement, and `workspace` only with `all_workspaces`.
 
 `revision` is the revision of the result object, also for a criterion. `req` names the
 requirement of a criterion. `historical` is true when the result is not the current revision. `archived` is true

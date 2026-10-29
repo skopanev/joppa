@@ -92,12 +92,17 @@ fn drop_copies(reply: &mut Value) {
     drop_same(reply, &["workspace_key"], &workspace);
 }
 
-/// An object without remote links has no remote link list; read it as []. The revision
-/// stays, because set_remote_links sends it.
+/// An object without remote links has no remote link list; read it as []. Its revision
+/// shows when it is above 0; set_remote_links takes a missing one as 0.
 fn drop_empty_remote(reply: &mut Value) {
     if reply["remote_links"] == json!([]) && reply["remote_review_required"] != true {
         for key in ["remote_links", "remote_review_required"] {
             reply.as_object_mut().map(|m| m.remove(key));
+        }
+        if reply["remote_links_revision"] == 0 {
+            reply
+                .as_object_mut()
+                .map(|m| m.remove("remote_links_revision"));
         }
     }
 }

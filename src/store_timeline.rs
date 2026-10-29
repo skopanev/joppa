@@ -73,6 +73,14 @@ pub async fn read_timeline(
             &[&workspace, &low, &high, &(scope.limit as i64 + 1)],
         )
         .await?;
+    // `total` counts every entry after `after`, also the entries before the cursor.
+    let total: i64 = conn
+        .query_one(
+            "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND position>$2 AND position<=$3",
+            &[&workspace, &after, &head],
+        )
+        .await?
+        .get(0);
     let more = rows.len() > scope.limit;
     let rows = &rows[..rows.len().min(scope.limit)];
     let items = super::timeline_items::items(&*conn, &workspace, rows).await?;
@@ -83,6 +91,7 @@ pub async fn read_timeline(
         "position": head,
         "after": scope.after,
         "order": if newest { "newest" } else { "oldest" },
+        "total": total,
         "items": items,
         "next_cursor": next_cursor,
     }))

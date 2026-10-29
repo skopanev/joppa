@@ -7,11 +7,13 @@ use super::*;
 use crate::embeddings::{self, Embedder, PROFILE};
 use std::collections::BTreeMap;
 
-/// The scope of a search. Both flags are false by default.
+/// The scope of a search. Both flags are false by default. `offset` skips that many ranked
+/// results, so a cursor continues the same ranking.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Flags {
     pub all_versions: bool,
     pub all_workspaces: bool,
+    pub offset: usize,
 }
 
 const COVERED: &str = "EXISTS(SELECT 1 FROM joppa.search_documents c JOIN joppa.objects o ON o.workspace=c.workspace AND o.address=c.kind||':'||c.local_id WHERE c.workspace=r.workspace AND c.kind||':'||c.local_id=r.address AND o.revision=r.revision)";
@@ -166,8 +168,12 @@ pub async fn find_with(
         ranked.retain(|(key, _)| exact.get(key).is_some_and(|e| e.0));
     }
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    let ranked_total = ranked.len();
+    let next_cursor = (flags.offset + (limit as usize) < ranked_total)
+        .then(|| (flags.offset + limit as usize).to_string());
     let selected = ranked
         .into_iter()
+        .skip(flags.offset)
         .take(limit as usize)
         .map(|(key, score)| {
             let (is_exact, item) = exact.get(&key).copied().unwrap_or_default();
@@ -228,7 +234,9 @@ pub async fn find_with(
         "all_versions": flags.all_versions,
         "all_workspaces": flags.all_workspaces,
         "workspaces": workspaces,
+        "total": ranked_total,
         "items": items,
+        "next_cursor": next_cursor,
     }))
 }
 

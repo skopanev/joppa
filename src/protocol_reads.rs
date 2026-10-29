@@ -111,13 +111,31 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             }
             Ok(rc::list(reply, fields.as_deref()))
         }
-        Some(_) if revision.is_some() || history => Ok(rc::revision(reply)),
+        Some(_) if history => history_page(reply, a["cursor"].as_str()),
+        Some(_) if revision.is_some() => Ok(rc::revision(reply)),
         Some(_) => rc::detail(
             reply,
             a["comments_cursor"].as_str(),
             a["links_cursor"].as_str(),
         ),
     }
+}
+
+/// The revision headers in pages of 25, oldest first: items, total and next_cursor.
+fn history_page(mut reply: Value, cursor: Option<&str>) -> anyhow::Result<Value> {
+    let revisions = match reply["revisions"].take() {
+        Value::Array(revisions) => revisions,
+        _ => vec![],
+    };
+    reply.as_object_mut().map(|m| m.remove("revisions"));
+    let page = rc::page(revisions, cursor)?;
+    let mut out = rc::revision(reply);
+    for key in ["items", "total", "next_cursor"] {
+        if !page[key].is_null() {
+            out[key] = page[key].clone();
+        }
+    }
+    Ok(out)
 }
 
 /// An Inbox type lists unprocessed inputs first, so its list keeps the order of read_objects.
@@ -208,9 +226,10 @@ async fn tests(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         let (targets, meta) = criteria(pool, actor, workspace, a).await?;
         (targets, meta, false)
     } else {
-        return Ok(rc::strip_reply(
-            store::tests_overview(pool, workspace, actor).await?,
-        ));
+        // The overview comes in pages of 25, in address order.
+        let overview = store::tests_overview(pool, workspace, actor).await?;
+        let items = overview["items"].as_array().cloned().unwrap_or_default();
+        return Ok(rc::strip_reply(rc::page(items, a["cursor"].as_str())?));
     };
     let summary = a["summary"].as_bool().unwrap_or(false);
     let mut items = vec![];

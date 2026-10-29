@@ -6,40 +6,32 @@ pub async fn tests_overview(pool: &Pool, workspace: &str, actor: &str) -> Result
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    let listed: Vec<String> = conn
+    // A missing or stale projection is an error here as in every other read.
+    criterion_test_statuses(&**conn, &workspace, &[], &Default::default()).await?;
+    // One query: each present criterion with tests that is green or red, from the stored
+    // status, with its ancestors from the parent up. Archived criteria count nowhere.
+    let rows = conn
         .query(
-            "SELECT address FROM joppa.objects WHERE workspace=$1 AND present AND jsonb_array_length(COALESCE(test_status->'tests','[]'::jsonb))>0",
+            "WITH RECURSIVE listed AS (
+                SELECT address,test_status->>'status' AS status,parent FROM joppa.objects
+                WHERE workspace=$1 AND present AND jsonb_array_length(COALESCE(test_status->'tests','[]'::jsonb))>0
+                    AND test_status->>'status' IN ('green','red')
+            ), up(address,node,depth,path) AS (
+                SELECT address,parent,1,ARRAY[]::text[] FROM listed WHERE parent IS NOT NULL
+                UNION ALL
+                SELECT u.address,o.parent,u.depth+1,u.path||u.node FROM up u
+                JOIN joppa.objects o ON o.workspace=$1 AND o.address=u.node AND o.present
+                WHERE o.parent IS NOT NULL AND NOT o.parent=ANY(u.path||u.node)
+            )
+            SELECT l.address,l.status,COALESCE((SELECT array_agg(u.node ORDER BY u.depth) FROM up u WHERE u.address=l.address),ARRAY[]::text[])
+            FROM listed l ORDER BY l.address",
             &[&workspace],
         )
-        .await?
+        .await?;
+    let items: Vec<Value> = rows
         .iter()
-        .map(|r| r.get(0))
+        .map(|r| json!({"address": r.get::<_, String>(0), "status": r.get::<_, String>(1), "ancestors": r.get::<_, Vec<String>>(2)}))
         .collect();
-    let parents: std::collections::HashMap<String, Option<String>> = conn
-        .query(
-            "SELECT address,parent FROM joppa.objects WHERE workspace=$1 AND present",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|r| (r.get(0), r.get(1)))
-        .collect();
-    drop(conn);
-    let mut items = vec![];
-    // Archived criteria are out of the spec; they count nowhere.
-    for address in listed.into_iter().filter(|a| parents.contains_key(a)) {
-        let status = criterion_tests(pool, &workspace, actor, &address).await?;
-        if !["green", "red"].contains(&status["status"].as_str().unwrap_or_default()) {
-            continue;
-        }
-        let mut ancestors = vec![];
-        let mut next = parents.get(&address).cloned().flatten();
-        while let Some(parent) = next.filter(|p| !ancestors.contains(p)) {
-            next = parents.get(&parent).cloned().flatten();
-            ancestors.push(parent);
-        }
-        items.push(json!({"address": address, "status": status["status"], "ancestors": ancestors}));
-    }
     Ok(json!({"items": items}))
 }
 
