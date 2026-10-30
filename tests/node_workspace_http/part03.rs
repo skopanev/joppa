@@ -41,7 +41,12 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
             && mobile["child_workspace"]["workspace"] == json!(w.c),
         "{mobile}"
     );
-    ensure!(w.object(&w.owner, &w.c, "requirement:api").await?["workspace_key"] == json!(w.c));
+    // A detail read by the key gives no workspace key; joppa_tree gives it.
+    let api = w.object(&w.owner, &w.c, "requirement:api").await?;
+    ensure!(
+        api.get("workspace_key").is_none() && api["data"].is_object(),
+        "{api}"
+    );
     let tree = w
         .mcp(&w.owner, "joppa_tree", json!({"workspace":alias}))
         .await?
