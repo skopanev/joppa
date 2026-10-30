@@ -203,16 +203,3 @@ pub(super) async fn list_owned_access(State(app): State<App>, headers: HeaderMap
     let actor = authenticate(&app, &headers).await?;
     result(store::list_owned_access(&app.pool, &actor).await)
 }
-pub(super) async fn settings_page() -> Html<String> {
-    Html(
-        concat!(
-            include_str!("settings.html"),
-            include_str!("settings_more.html")
-        )
-        .replace(
-            "/* BOARD_STYLE */",
-            concat!(include_str!("board.css"), include_str!("board_more.css")),
-        )
-        .replace("/* BRAND_STYLE */", include_str!("brand.css")),
-    )
-}

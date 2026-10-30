@@ -75,16 +75,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             }),
         )
         .route("/board/{name}", get(board_module))
-        .route("/tree", get(|| async { Html(tree_page()) }))
-        .route(
-            "/guide",
-            get(|| async {
-                Html(
-                    include_str!("guide.html")
-                        .replace("/* BRAND_STYLE */", include_str!("brand.css")),
-                )
-            }),
-        )
+        .route("/tree", get(tree_page))
+        .route("/guide", get(guide_page))
         .route("/health", get(health))
         .route("/auth/login", post(login_user))
         .route("/auth/poll", post(poll_login))

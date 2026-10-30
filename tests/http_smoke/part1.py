@@ -30,6 +30,15 @@ assert 'Проверка карточки' not in public_html and ws not in publ
 assert preview.meta['twitter:card'] == 'summary_large_image'
 assert urllib.parse.urlparse(preview.meta['og:image']).scheme in ('https', 'http')
 image_path = urllib.parse.urlparse(preview.meta['og:image']).path
+# [ac:public-link-preview-ac1] A shared tree, guide or settings link shows the same card with its own URL.
+card = {k: v for k, v in preview.meta.items() if k and k.startswith(('og:', 'twitter:')) and k != 'og:url'}
+for path in ('/tree?workspace='+ws, '/guide', '/settings'):
+    with urllib.request.urlopen(urllib.request.Request(base+path, headers={'User-Agent':'TelegramBot'})) as response:
+        page = Preview()
+        page.feed(response.read().decode())
+    page_url = urllib.parse.urlparse(page.meta.pop('og:url'))
+    assert page_url.scheme in ('http','https') and page_url.path == path.split('?')[0], (path, page_url)
+    assert len(card) == 13 and all(page.meta.get(k) == v for k, v in card.items()), path
 with urllib.request.urlopen(urllib.request.Request(base+image_path, headers={'User-Agent':'TelegramBot'})) as response:
     image = response.read()
     assert response.status == 200 and response.headers['Content-Type'] == 'image/png'
