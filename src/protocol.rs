@@ -220,7 +220,11 @@ async fn call(
     if matches!(name, "joppa_tree" | "joppa_help") {
         return reply.map(|mut reply| {
             joppa::read_compact::rename_title_length(&mut reply);
+            // The tree inside joppa_help equals the joppa_tree reply.
             reply["field_hint"] = json!(joppa::field_limit::HINT);
+            if let Some(tree) = reply.get_mut("tree") {
+                tree["field_hint"] = json!(joppa::field_limit::HINT);
+            }
             reply
         });
     }
