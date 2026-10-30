@@ -1,4 +1,6 @@
 //! Specification behaviour over HTTP and MCP: a real server, an owner token and a test DB.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};

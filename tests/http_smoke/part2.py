@@ -11,12 +11,31 @@ upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Atta
     headers={'Authorization':'Bearer '+agent_token,'Content-Type':'application/octet-stream'})
 with urllib.request.urlopen(upload) as response:
     blob = json.load(response)
+assert spaces_files[blob['hash']] == b'Attachment evidence'
 targets=['domain:security','capability:restrict','requirement:key','ac:key-rights',
          'note:source']
 for index, target in enumerate(targets):
     mcp('joppa_command', {'workspace':ws,'request_id':'attachment-'+str(index),
         'command':{'op':'attach','target':target,'id':'attachment-'+str(index),
             'name':'evidence.txt','content_type':'text/plain','size':blob['size'],'hash':blob['hash']}})
+# The download redirects to a presigned GET of Spaces with the name and the content type.
+class Stay(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+download = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs/'+blob['hash'],
+    headers={'Authorization':'Bearer '+agent_token})
+try:
+    urllib.request.build_opener(Stay).open(download)
+    raise AssertionError('the download did not redirect')
+except urllib.error.HTTPError as redirect:
+    assert redirect.code == 307 and '/joppa-smoke/files/' in redirect.headers['Location']
+    with urllib.request.urlopen(redirect.headers['Location']) as response:
+        assert response.read() == b'Attachment evidence' and response.headers['Content-Type'] == 'text/plain'
+# joppa_attach puts the bytes in Spaces, and the reply gives a download url.
+attached = mcp('joppa_attach', {'workspace':ws,'target':'requirement:key','filename':'mcp.txt',
+    'content_type':'text/plain','content':'MCP attachment'})
+with urllib.request.urlopen(attached['file']['url']) as response:
+    assert response.read() == b'MCP attachment'
 
 
 for name, arguments in [

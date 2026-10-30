@@ -3,7 +3,9 @@
 use super::*;
 use axum::response::{IntoResponse, Response};
 pub(super) fn routes() -> Router<App> {
-    Router::new().route("/mcp", post(endpoint).get(get_endpoint))
+    // joppa_attach carries a file of up to 50 MiB in base64.
+    let limit = axum::extract::DefaultBodyLimit::max(joppa::spaces::REQUEST_MAX);
+    Router::new().route("/mcp", post(endpoint).layer(limit).get(get_endpoint))
 }
 /// The actor and its access grant. Service credentials and OAuth identities write.
 async fn identity(

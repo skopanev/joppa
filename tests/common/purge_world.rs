@@ -1,5 +1,7 @@
 //! A workspace with rows in every kind of table, and the row counts of one workspace.
 #![allow(dead_code)]
+#[path = "fake_spaces.rs"]
+pub mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
@@ -15,6 +17,7 @@ pub async fn pool() -> Result<deadpool_postgres::Pool> {
     );
     let pool = store::pool(&url)?;
     store::migrate(&pool).await?;
+    fake_spaces::start().configure();
     Ok(pool)
 }
 
@@ -77,8 +80,9 @@ pub async fn workspace(
     )
     .await?;
     let own = format!("only in {ws}");
-    let (hash, size) = store::put_blob(pool, own.as_bytes()).await?;
-    let (shared_hash, shared_size) = store::put_blob(pool, shared.as_bytes()).await?;
+    let storage = joppa::spaces::storage()?;
+    let (hash, size) = storage.put(own.as_bytes()).await?;
+    let (shared_hash, shared_size) = storage.put(shared.as_bytes()).await?;
     for (id, hash, size) in [("own", &hash, size), ("shared", &shared_hash, shared_size)] {
         write(
             pool,
@@ -136,13 +140,9 @@ pub async fn rows(pool: &deadpool_postgres::Pool, ws: &str) -> Result<BTreeMap<S
     Ok(out)
 }
 
-pub async fn blob(pool: &deadpool_postgres::Pool, hash: &str) -> Result<bool> {
-    Ok(pool
-        .get()
-        .await?
-        .query_opt("SELECT 1 FROM joppa.blobs WHERE hash=$1", &[&hash])
-        .await?
-        .is_some())
+/// Spaces has the file `hash`.
+pub fn blob(hash: &str) -> bool {
+    fake_spaces::start().has(hash)
 }
 
 pub fn empty(rows: &BTreeMap<String, i64>) -> bool {

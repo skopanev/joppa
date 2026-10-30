@@ -87,6 +87,7 @@ async fn world() -> Result<World> {
             .env_remove("JOPPA_ACCESS_RULES_FILE")
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

@@ -1,5 +1,7 @@
 //! Test results over HTTP: a real server, a member token and records of test outcomes.
 //! Each test proves one Evidence criterion through the endpoints, not the status function.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, sessions, store};
 use serde_json::{Value, json};

@@ -1,6 +1,8 @@
 //! Blocked Tasks keep their block state and queue availability, and claimed and done
 //! Tasks keep their holder, history, comments and test results, when a real server
 //! restarts and rebuilds the workspace projections from the journal.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};

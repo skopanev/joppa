@@ -1,4 +1,6 @@
 //! A signed-in browser user creates a workspace through the real server.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::{commands::Command, sessions, store};
 use serde_json::{Value, json};

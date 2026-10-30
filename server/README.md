@@ -133,12 +133,16 @@ need their own private, encrypted backup, separate from the database dumps.
 
 ## Application files
 
-Attachments use `POST /api/workspaces/{workspace}/blobs` and hold at most 10 MB.
-Their bytes stay in the PostgreSQL table `joppa.blobs`, one row for each SHA-256
-hash, so the database backup includes them. The application does not read
-`/etc/joppa/storage.env` now. The service unit still loads the optional file, and
-the deploy script still transfers it. Backup credentials belong only to the backup
-service. Both environment files are owned by root with mode 0600.
+Attachments hold at most 50 MiB. Their bytes live in the DigitalOcean Spaces bucket
+of `/etc/joppa/storage.env`, under `files/<sha256>`. PostgreSQL keeps only the
+attachment record with the hash, so the database backup does not include file bytes.
+The server does not start without the five variables of
+[the template](storage.env.example). The server signs each Spaces request as a
+presigned AWS4-HMAC-SHA256 URL: PUT and GET are valid 900 seconds, HEAD and DELETE
+60 seconds. A download of `GET /api/workspaces/{workspace}/blobs/{hash}` redirects a
+member to a presigned GET. The deletion of a workspace removes the files that only it
+names. Backup credentials belong only to the backup service. Both environment files
+are owned by root with mode 0600.
 
 ## Semantic search configuration
 

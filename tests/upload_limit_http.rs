@@ -1,5 +1,5 @@
-//! requirement:file-upload over a real server: an upload of exactly 10 MB is stored, and an
-//! upload of 10 MB and 1 byte is refused and stores no blob.
+//! requirement:file-upload over a real server: an upload of exactly 50 MiB is stored in
+//! Spaces, and an upload of 50 MiB and 1 byte is refused with 413 and stores nothing.
 #[path = "common/search_world.rs"]
 mod world;
 use anyhow::{Result, ensure};
@@ -9,7 +9,7 @@ use serde_json::json;
 // file-upload-limit
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_upload_over_10_mb_is_refused_and_stores_nothing() -> Result<()> {
+async fn an_upload_over_50_mib_is_refused_and_stores_nothing() -> Result<()> {
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
     let pool = store::pool(&url)?;
     let name: String = pool
@@ -35,7 +35,7 @@ async fn an_upload_over_10_mb_is_refused_and_stores_nothing() -> Result<()> {
     store::enroll_service(&pool, &ws, "owner", "bot", "agent").await?;
     let (_fake, endpoint) = world::provider().await?;
     let server = world::serve(&url, &["owner", "bot"], &endpoint).await?;
-    // Unique bytes, so that an earlier test cannot have stored the same blob.
+    // Unique bytes, so that an earlier test cannot have stored the same file.
     let seed = uuid::Uuid::new_v4();
     let file =
         |len: usize| -> Vec<u8> { seed.as_bytes().iter().cycle().take(len).copied().collect() };
@@ -51,29 +51,19 @@ async fn an_upload_over_10_mb_is_refused_and_stores_nothing() -> Result<()> {
                 .map(|r| r.status().as_u16())
         }
     };
-    let stored = |bytes: &[u8]| {
-        let (pool, hash) = (pool.clone(), joppa::digest_hex::sha256_hex(bytes));
-        async move {
-            Ok::<i64, anyhow::Error>(
-                pool.get()
-                    .await?
-                    .query_one("SELECT count(*) FROM joppa.blobs WHERE hash=$1", &[&hash])
-                    .await?
-                    .get(0),
-            )
-        }
-    };
-    let limit = store::ATTACHMENT_MAX;
-    ensure!(limit == 10 * 1024 * 1024, "the limit is {limit} bytes");
+    let stored =
+        |bytes: &[u8]| world::fake_spaces::start().bytes(&joppa::digest_hex::sha256_hex(bytes));
+    let limit = joppa::spaces::ATTACHMENT_MAX;
+    ensure!(limit == 50 * 1024 * 1024, "the limit is {limit} bytes");
     let exact = file(limit);
     let status = upload(exact.clone()).await?;
     ensure!(
-        status == 200 && stored(&exact).await? == 1,
-        "10 MB upload: HTTP {status}"
+        status == 200 && stored(&exact).as_ref() == Some(&exact),
+        "50 MiB upload: HTTP {status}"
     );
     let over = file(limit + 1);
-    let status = upload(over.clone()).await.unwrap_or(413);
+    let status = upload(over.clone()).await?;
     ensure!(status == 413, "the larger upload got HTTP {status}");
-    ensure!(stored(&over).await? == 0, "the larger upload stored a blob");
+    ensure!(stored(&over).is_none(), "the larger upload stored a file");
     Ok(())
 }

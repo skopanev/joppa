@@ -1,4 +1,6 @@
 //! The workspace timeline over HTTP and MCP against a real server.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::{sessions, store};
 use serde_json::{Value, json};

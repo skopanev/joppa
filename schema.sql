@@ -10,7 +10,6 @@ SELECT pg_advisory_xact_lock(91827101);
 \ir migrations/006_workspace_aliases.sql
 \ir migrations/007_command_receipts.sql
 \ir migrations/008_search.sql
-\ir migrations/009_annotations.sql
 \ir migrations/010_consumers.sql
 \ir migrations/011_board_cache.sql
 \ir migrations/012_objects.sql

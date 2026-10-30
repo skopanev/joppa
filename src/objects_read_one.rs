@@ -144,6 +144,7 @@ pub(super) async fn read_one(
         item["question"] = json!({"recipient":recipient,"text":text});
     }
     if n == current as u32 {
+        let storage = crate::spaces::storage()?;
         let mut files: Vec<_> = item["annotations"]["attachments"]
             .as_object()
             .into_iter()
@@ -153,6 +154,11 @@ pub(super) async fn read_one(
                 let mut file = file.clone();
                 file["id"] = json!(id);
                 file["created_at"] = file["at"].clone();
+                file["url"] = json!(storage.download_url(
+                    file["hash"].as_str().unwrap_or(""),
+                    file["name"].as_str().unwrap_or(""),
+                    file["content_type"].as_str().unwrap_or(""),
+                ));
                 let at = chrono::DateTime::parse_from_str(
                     file["at"].as_str().unwrap_or(""),
                     "%Y-%m-%d %H:%M:%S%.f%#z",

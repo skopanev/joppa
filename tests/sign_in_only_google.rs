@@ -1,4 +1,6 @@
 //! The real server offers no password or other-provider sign-in endpoint.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::json;
@@ -53,6 +55,7 @@ async fn password_and_github_sign_in_endpoints_do_not_exist() -> Result<()> {
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

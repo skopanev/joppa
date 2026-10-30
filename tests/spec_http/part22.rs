@@ -95,6 +95,8 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
                 response.status()
             );
             ensure!(response.headers()[reqwest::header::CONTENT_TYPE] == "application/pdf");
+            // The server redirects to a presigned GET: the bytes come from Spaces.
+            ensure!(response.url().path() == format!("/joppa-test/files/{}", file["hash"].as_str().unwrap()));
             ensure!(
                 response.bytes().await?.as_ref() == bytes,
                 "A file version changed"

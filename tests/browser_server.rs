@@ -1,4 +1,6 @@
 //! Private fixture process for Chromium tests against the real server.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::{sessions, store};
 use serde_json::json;
@@ -134,6 +136,7 @@ async fn browser_server() -> Result<()> {
             .env("JOPPA_ACCESS_RULES_FILE", &rules)
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()?,

@@ -85,6 +85,7 @@ async fn browser_user_creates_and_owns_a_workspace() -> Result<()> {
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

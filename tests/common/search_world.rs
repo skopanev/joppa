@@ -5,6 +5,8 @@
 //! every text while it is down. It keeps the texts of each request, and it can answer 500
 //! to each request with more than one text.
 #![allow(dead_code)]
+#[path = "fake_spaces.rs"]
+pub mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use serde_json::{Value, json};
@@ -138,6 +140,7 @@ fn command(db: &str, actors: &[&str], key: Option<&str>, endpoint: &str) -> Resu
         .env("JOPPA_DATABASE_URL", db)
         .env("JOPPA_TOKENS_FILE", tokens)
         .env("JOPPA_EMBEDDING_URL", endpoint)
+        .envs(fake_spaces::start().env())
         .env_remove("JOPPA_LOGIN_USERS_FILE")
         .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
         .env_remove("JOPPA_ACCESS_RULES_FILE")

@@ -72,8 +72,10 @@ retire_task: revision, id, reason; Task owner or workspace owner retires work an
 note: target, id, text, reply_to:null; a plain comment on ANY object
 withdraw_note: target, id, reason; the author only
 attach: target, id, name, content_type, size, hash; the bytes are uploaded first to
-        POST /api/workspaces/{workspace}/blobs (raw body, 10 MB max), which answers
-        {hash,size}; any number of attachments per object
+        POST /api/workspaces/{workspace}/blobs (raw body, 50 MiB max), which puts them
+        in Spaces and answers {hash,size}; any number of attachments per object.
+        The MCP tool joppa_attach {workspace, target, filename, content_type?,
+        content | content_base64} does the upload and the attach in one call
 detach: target, id, reason; the file itself stays — it may be attached elsewhere
 
 target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
@@ -163,7 +165,7 @@ stores or displays them. Missing Google configuration does not enable a fallback
 ## Tree ordering and item history
 
 The portal is read-only. Browser session cookies cannot submit commands, upload
-blobs or reorder the tree. Use MCP for all product changes, including `note`
+files or reorder the tree. Use MCP for all product changes, including `note`
 (comments on any object) and `comment` (revision discussion).
 
 `POST /api/workspaces/{workspace}/order` is a legacy integration endpoint. It accepts

@@ -1,7 +1,7 @@
 -- The owner deletes a workspace, and every row of it leaves the database: its journal,
--- its projections, its receipts, its grants, its tokens, its test reports and the blobs
--- that only it mentions. Every other UPDATE, DELETE and TRUNCATE of a journal table stays
--- refused.
+-- its projections, its receipts, its grants, its tokens and its test reports. The server
+-- removes the files that only it names from Spaces after the commit. Every other UPDATE,
+-- DELETE and TRUNCATE of a journal table stays refused.
 --
 -- Only joppa.purge_workspace sets joppa.purge_workspace. The function runs with the
 -- rights of its owner, because the application role has no DELETE on the journal tables.
@@ -20,15 +20,6 @@ DECLARE
 BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(target, 91827102));
     PERFORM set_config('joppa.purge_workspace', target, true);
-    -- A blob is global. It leaves only when no journal of another workspace mentions it.
-    DELETE FROM joppa.blobs b
-    WHERE b.hash IN (
-        SELECT DISTINCT m[1] FROM joppa.events e,
-            regexp_matches(e.command::text, '"hash": ?"([0-9a-f]{64})"', 'g') m
-        WHERE e.workspace = target)
-      AND NOT EXISTS (
-        SELECT 1 FROM joppa.events o
-        WHERE o.workspace <> target AND strpos(o.command::text, b.hash) > 0);
     DELETE FROM joppa.test_results WHERE report_id IN (SELECT id FROM joppa.test_reports WHERE workspace = target);
     DELETE FROM joppa.test_report_receipts WHERE report_id IN (SELECT id FROM joppa.test_reports WHERE workspace = target);
     DELETE FROM joppa.agent_token_revocations WHERE token_id IN (SELECT id FROM joppa.agent_tokens WHERE workspace = target);

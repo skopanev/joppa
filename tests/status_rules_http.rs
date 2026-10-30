@@ -1,5 +1,7 @@
 //! Status rules of the tree schema over a real server: each type gets its tone from tests,
 //! from its children or not at all, and HTTP and MCP give the same tone.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command, store};
 use serde_json::{Value, json};

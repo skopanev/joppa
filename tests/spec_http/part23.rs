@@ -110,17 +110,18 @@ async fn stored_counts(w: &World) -> Result<Vec<i64>> {
             "SELECT (SELECT count(*) FROM joppa.events WHERE workspace=$1),
                     (SELECT count(*) FROM joppa.agent_tokens),
                     (SELECT count(*) FROM joppa.agent_token_revocations),
-                    (SELECT count(*) FROM joppa.blobs),
                     (SELECT count(*) FROM joppa.test_reports),
                     (SELECT count(*) FROM joppa.command_receipts)",
             &[&w.ws],
         )
         .await?;
-    Ok((0..6).map(|i| row.get(i)).collect())
+    let mut counts: Vec<i64> = (0..5).map(|i| row.get(i)).collect();
+    counts.push(fake_spaces::start().hashes().len() as i64);
+    Ok(counts)
 }
 
 /// Committed rows that a write can change, each in a stable order: the workspace journal and
-/// its position, current state with members, receipts, tokens, reports and all file blobs.
+/// its position, current state with members, receipts, tokens, reports and all stored files.
 async fn saved_rows(w: &World) -> Result<Value> {
     let conn = w.pool.get().await?;
     let mut saved = json!({});
@@ -153,17 +154,17 @@ async fn saved_rows(w: &World) -> Result<Value> {
                        FROM joppa.agent_token_revocations r JOIN joppa.agent_tokens t ON t.id=r.token_id WHERE t.workspace=$1),
                     (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)),'[]')::text
                        FROM joppa.test_results r JOIN joppa.test_reports t ON t.id=r.report_id WHERE t.workspace=$1),
-                    (SELECT COALESCE(jsonb_agg(jsonb_build_array(hash,size,created_at) ORDER BY hash),'[]')::text FROM joppa.blobs),
                     (SELECT COALESCE(max(position),0) FROM joppa.events WHERE workspace=$1)",
             &[&w.ws],
         )
         .await?;
-    for (i, name) in ["agent_token_revocations", "test_results", "blobs"]
+    for (i, name) in ["agent_token_revocations", "test_results"]
         .into_iter()
         .enumerate()
     {
         saved[name] = serde_json::from_str(row.get(i))?;
     }
-    saved["position"] = json!(row.get::<_, i64>(3));
+    saved["position"] = json!(row.get::<_, i64>(2));
+    saved["files"] = json!(fake_spaces::start().hashes());
     Ok(saved)
 }

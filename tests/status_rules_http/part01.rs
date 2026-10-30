@@ -68,6 +68,7 @@ async fn world() -> Result<World> {
             .args(["serve", &port.to_string()])
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .env("JOPPA_DATABASE_URL", &url)
             .env("JOPPA_TOKENS_FILE", &tokens)
             .env_remove("JOPPA_LOGIN_USERS_FILE")

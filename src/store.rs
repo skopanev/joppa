@@ -198,4 +198,5 @@ pub mod workspace_prefix;
 
 #[path = "store_blobs.rs"]
 mod blobs;
-pub use blobs::{ATTACHMENT_MAX, get_blob, put_blob};
+pub use blobs::attachment;
+use blobs::{orphan_files, remove_files};

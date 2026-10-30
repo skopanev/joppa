@@ -1,6 +1,8 @@
 //! A node can stand for another workspace, and an object can link to an object of another
 //! workspace, against a real server. Workspace P is the product, workspace C a component.
 //! Owner and agent bot belong to both. Member alex belongs only to P.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};

@@ -1,3 +1,5 @@
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::{sessions, store};
 use serde_json::json;

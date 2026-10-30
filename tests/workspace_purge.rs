@@ -47,11 +47,11 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
         empty(&after),
         "rows of the deleted workspace stay: {after:?}"
     );
-    // A blob that only W mentions leaves. A blob that K also mentions stays.
-    ensure!(!blob(&pool, &own).await?, "the blob of W stays");
-    ensure!(blob(&pool, &kept).await?, "the blob of K left");
+    // A file that only W names leaves Spaces. A file that K also names stays.
+    ensure!(!blob(&own), "the file of W stays");
+    ensure!(blob(&kept), "the file of K left");
     let shared_hash = joppa::digest_hex::sha256_hex(shared.as_bytes());
-    ensure!(blob(&pool, &shared_hash).await?, "the shared blob left");
+    ensure!(blob(&shared_hash), "the shared file left");
     ensure!(
         rows(&pool, &k).await? == other,
         "the deletion changed rows of K"
@@ -108,7 +108,7 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_workspace_deleted_before_the_purge_leaves_at_the_migration() -> Result<()> {
     let pool = pool().await?;
-    let (w, own) = workspace(
+    let (w, _) = workspace(
         &pool,
         "old-deleted",
         &format!("shared {}", uuid::Uuid::new_v4()),
@@ -129,10 +129,6 @@ async fn a_workspace_deleted_before_the_purge_leaves_at_the_migration() -> Resul
     ensure!(
         empty(&rows(&pool, &w).await?),
         "the migration kept rows of the deleted workspace"
-    );
-    ensure!(
-        !blob(&pool, &own).await?,
-        "the migration kept the blob of the deleted workspace"
     );
     let now = rows(&pool, &k).await?;
     ensure!(

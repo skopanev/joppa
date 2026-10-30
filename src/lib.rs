@@ -31,6 +31,8 @@ pub mod result_values;
 pub mod save_examples;
 pub mod schema_nodes;
 pub mod sessions;
+pub mod spaces;
+pub mod spaces_sign;
 pub mod status_colors;
 pub mod store;
 pub mod tasks;

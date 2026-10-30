@@ -137,7 +137,7 @@ pub struct Note {
 
 /// Вложение: здесь только про файл, самого файла здесь нет.
 ///
-/// Байты лежат в joppa.blobs по этому отпечатку — см. миграцию 009.
+/// Байты лежат в Spaces под files/<отпечаток> — см. src/spaces.rs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Attachment {
     pub name: String,

@@ -230,6 +230,7 @@ pub(crate) async fn write(
         tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
     }
     // A deleted workspace leaves the database with every row of it, this request included.
+    let mut orphans = Vec::new();
     if events
         .iter()
         .any(|e| matches!(e.command, Command::DeleteWorkspace { .. }))
@@ -237,10 +238,12 @@ pub(crate) async fn write(
         // The workspaces that named it lose those references first, each with its own event.
         result["removed_references"] =
             json!(super::references::remove(&*tx, &workspace, &state.title).await?);
+        orphans = super::orphan_files(&*tx, &workspace).await?;
         tx.execute("SELECT joppa.purge_workspace($1)", &[&workspace])
             .await?;
     }
     tx.commit().await?;
+    super::remove_files(orphans).await;
     super::search_indexer::wake();
     Ok(result)
 }

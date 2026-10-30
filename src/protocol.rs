@@ -2,6 +2,8 @@ use deadpool_postgres::Pool;
 use joppa::{mcp_shapes as shapes, store};
 use serde_json::{Value, json};
 
+#[path = "protocol_files.rs"]
+mod files;
 #[path = "protocol_pages.rs"]
 mod pages;
 #[path = "protocol_reads.rs"]
@@ -47,7 +49,7 @@ pub async fn handle(
             tool("joppa_command", "Append an operation. Each new or changed value in object data holds at most 1024 characters; split a longer text into child objects or attach a file. Link objects only with the links array of save_object or schema reference fields, never with lists in object text. Add findings, progress and supplements only as comments: {\"op\":\"note\",\"target\":\"kind:id\",\"id\":\"<unique>\",\"text\":\"...\"}; never rewrite or extend object text for them. Read joppa_help for operation schemas and ASD-STE100 writing rules. Prefer English for new technical text. Actor comes from the authenticated credential. Reuse request_id only for identical retries. The reply gives position, command and the saved object; set_tree_schema gives schema_revision instead of the sent types. The holder or the workspace owner stops failed work with block_task {id, revision, reason, evidence}: it clears the holder, keeps status open and records process.blocked; claims then refuse the Task. When the failure was outside the Task, the planning holder of the parent criterion or the workspace owner clears the block with unblock_task {id, revision, reason, evidence}: it sets process.blocked to null and keeps the contract and process.origin_revision. finish_planning {ac, reason} compares each blocked, unretired child Task with its document at the block: title, contract, projects and blocking links. If one is unchanged, finish fails with \"blocked Task needs a new contract or retirement\". A successful finish clears process.blocked of the changed Tasks. retire_task {id, revision, reason} needs the Task owner or the workspace owner. The planning holder of the parent criterion can also retire a blocked Task.",json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"command":authoring_command_schema()}), json!(["workspace","request_id","command"])),
             tool("joppa_batch", "Append up to 100 operations atomically. Each new or changed value in object data holds at most 1024 characters; split a longer text into child objects or attach a file. Link objects only with the links array of save_object or schema reference fields, never with lists in object text. Add findings, progress and supplements only as comments: {\"op\":\"note\",\"target\":\"kind:id\",\"id\":\"<unique>\",\"text\":\"...\"}; never rewrite or extend object text for them. Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}, and to a saved object with {\"$ref\":\"label/address\"}, for example as the parent. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_help", "Get operation shapes and writing rules. Read before authoring commands. Supply workspace to read schema questions. Check the title and description, then resend save_object with question_checked equal to the question.", json!({"workspace":{"type":"string"}}), json!([]))
-        ]).as_array().into_iter().flatten()
+        ]).as_array().into_iter().flatten().chain(files::tools().iter())
             // A read-only grant sees only the tools that it can call.
             .filter(|t| access != store::Access::Read || t["name"].as_str().is_some_and(|n| READ_TOOLS.contains(&n)))
             .cloned().collect::<Vec<_>>()})),
@@ -67,7 +69,7 @@ pub async fn handle(
         }
     })
 }
-fn tool(name: &str, description: &str, properties: Value, required: Value) -> Value {
+pub(crate) fn tool(name: &str, description: &str, properties: Value, required: Value) -> Value {
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 fn authoring_command_schema() -> Value {
@@ -99,6 +101,7 @@ const READ_TOOLS: &[&str] = &[
     "joppa_timeline",
     "joppa_history",
     "joppa_help",
+    "joppa_attachments",
 ];
 async fn call(
     pool: &Pool,
@@ -137,6 +140,8 @@ async fn call(
             .await
         }
         "joppa_tasks" => pages::task_queue(pool, actor, a).await,
+        "joppa_attach" => files::attach(pool, actor, a).await,
+        "joppa_attachments" => files::attachments(pool, actor, a).await,
         "joppa_timeline" => pages::timeline(pool, actor, a).await,
         "joppa_record_results" => store::record_results(pool, field("workspace")?, actor, a).await,
         "joppa_history" => {

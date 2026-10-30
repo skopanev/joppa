@@ -97,6 +97,7 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
             .env_remove("JOPPA_ACCESS_RULES_FILE")
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()?,

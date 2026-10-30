@@ -104,14 +104,10 @@ async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
             after == before,
             "A refused upload changed the object: {after}"
         );
-        let blobs: i64 = w
-            .pool
-            .get()
-            .await?
-            .query_one("SELECT count(*) FROM joppa.blobs WHERE hash=$1", &[&hash])
-            .await?
-            .get(0);
-        ensure!(blobs == 0, "A refused upload stored file content");
+        ensure!(
+            !fake_spaces::start().has(&hash),
+            "A refused upload stored file content"
+        );
     }
     ensure!(
         replies[0] == replies[1],

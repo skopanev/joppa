@@ -1,17 +1,16 @@
-//! One workspace on its own real server for the record tests. Agent bot, member alex and
-//! member another-member belong to it. Outsider is signed in, but is not a member.
-//! Criterion ac:a lists the tests of the fixture. The setup writes through the store.
-//! The tests write through MCP.
+//! One workspace on its own real server for the record tests. Agent bot, member alex and member
+//! another-member belong to it. Outsider is signed in, but is not a member. Criterion ac:a lists
+//! the tests of the fixture. The setup writes through the store. The tests write through MCP.
 #![allow(dead_code)]
-
+#[path = "fake_spaces.rs"]
+pub mod fake_spaces;
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-/// The criterion of each fixture.
-pub const A: &str = "ac:a";
+pub const A: &str = "ac:a"; // The criterion of each fixture.
 
 struct Server(Child);
 impl Drop for Server {
@@ -98,6 +97,7 @@ pub async fn world(tests: &[&str]) -> Result<World> {
             .env_remove("JOPPA_ACCESS_RULES_FILE")
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
+            .envs(fake_spaces::start().env())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

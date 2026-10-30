@@ -249,6 +249,9 @@ HTTP and MCP object reads expose `question.recipient` and `question.text` from t
 Current HTTP and MCP object reads return `files`, with the newest attachment first.
 Each file includes its attachment `id`, `created_at`, and existing metadata.
 Files with the same name remain separate entries. Removed attachments do not appear in this list.
+Each file also has `url`, a presigned Spaces GET that is valid 15 minutes.
+The MCP tool `joppa_attach` uploads a file of at most 50 MiB and attaches it in one call.
+`joppa_attachments` lists the files of one object with the same `url`.
 
 For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
 It needs Python 3 and a private service bearer for an enrolled agent member;

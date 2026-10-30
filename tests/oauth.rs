@@ -1,3 +1,5 @@
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use joppa::{commands::Command as Operation, sessions, store};

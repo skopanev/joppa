@@ -1,4 +1,6 @@
 //! Parallel claims on the real store: one task has one winner.
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use anyhow::{Result, ensure};
 use joppa::{objects::TreeType, store};
 use serde_json::json;

@@ -88,6 +88,9 @@ with tempfile.TemporaryDirectory(prefix='joppa-http-') as temp:
     # Search is always hybrid: a test key and a closed local port stand in for the provider.
     env['DEEPINFRA_API_KEY'] = 'test-only-key'
     env['JOPPA_EMBEDDING_URL'] = 'http://127.0.0.1:9/embeddings'
+    # Attachments live in Spaces: a local stand-in takes the presigned requests.
+    source = ROOT / 'tests' / 'http_smoke' / 'fake_spaces.py'
+    exec(compile(source.read_text(), str(source), 'exec'), globals())
 
     server = subprocess.Popen([BIN, 'serve', str(port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:

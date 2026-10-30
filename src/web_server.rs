@@ -29,6 +29,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         embedder.clone(),
     ));
     let embedder = Some(embedder);
+    // Attachments live in Spaces: without its variables the server does not start.
+    joppa::spaces::configure(joppa::spaces::Spaces::from_env()?)?;
     let state = App {
         pool,
         identities: Arc::new(identities),
@@ -122,11 +124,12 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         .route("/api/workspaces/{workspace}/dependencies", post(dependency))
-        // Умолчание axum — два мегабайта, и файл крупнее отлетал бы с
-        // невнятным 413 раньше, чем дойдёт до нашей проверки предела.
+        // The axum default is 2 MB. The upload checks the 50 MiB limit itself.
         .route(
             "/api/workspaces/{workspace}/blobs",
-            post(upload).layer(axum::extract::DefaultBodyLimit::max(store::ATTACHMENT_MAX)),
+            post(upload).layer(axum::extract::DefaultBodyLimit::max(
+                joppa::spaces::REQUEST_MAX,
+            )),
         )
         .route("/api/workspaces/{workspace}/blobs/{hash}", get(download))
         .with_state(state.clone())
