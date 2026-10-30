@@ -240,4 +240,4 @@ revision, and its `command` without the sent types.
 - `data.title`: one concise statement (max 128 characters by default). A type sets its own
   maximum as `title_max_length` in `joppa_tree`; `set_tree_schema` takes `title_max_length`
   and the older `title_preview_length`.
-- Each other text value: concise text (max 1024 characters). Comments have no limit.
+- Each other text value: concise text (max `field_max_length` of the type, default 1024 characters). Over 1 kb: prefer attach as a file. Comments have no limit.

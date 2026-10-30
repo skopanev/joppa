@@ -1,5 +1,6 @@
--- Each new or changed scalar in the data of an object holds at most 1024 characters.
--- A stored value of any length may stay in a later revision unchanged. Journal replays and
+-- Each new or changed scalar in the data of an object holds at most 262144 characters, the
+-- ceiling of the field_max_length of a type. The server checks the limit of each type. A
+-- stored value of any length may stay in a later revision unchanged. Journal replays and
 -- projection rebuilds set joppa.replaying to '1' and skip the check. A redaction only
 -- removes text and also sets it.
 CREATE OR REPLACE FUNCTION joppa.new_long_field(new_data jsonb, old_data jsonb, max_len integer)
@@ -46,8 +47,8 @@ BEGIN
         SELECT o.document->'data' INTO previous FROM joppa.objects o
         WHERE o.workspace = NEW.workspace AND o.address = NEW.address;
     END IF;
-    IF joppa.new_long_field(NEW.document->'data', previous, 1024) THEN
-        RAISE EXCEPTION 'an object field is at most 1024 characters' USING ERRCODE = 'check_violation';
+    IF joppa.new_long_field(NEW.document->'data', previous, 262144) THEN
+        RAISE EXCEPTION 'an object field is at most 262144 characters' USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
 END $$;

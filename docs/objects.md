@@ -152,7 +152,7 @@ Keep each object text to its own contract. Do not add other data to it.
 2. Add findings, progress and supplements as comments, never as object text.
    - Send `{"op": "note", "target": "<kind>:<id>", "id": "<unique id>", "text": "..."}`.
    - A comment keeps its author and time. It adds no object revision and does not reset tests.
-   - The 1024-character field limit does not apply to a comment.
+   - The field limit of a type (`field_max_length`, default 1024 characters) does not apply to a comment. Over 1 kb: prefer attach as a file.
    - Do not rewrite or extend `description`, `body` or `contract` with these texts.
 
 One `joppa_batch` can save an object and add its comments atomically.

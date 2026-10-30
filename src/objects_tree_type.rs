@@ -32,6 +32,10 @@ pub struct TreeType {
         alias = "title_max_length"
     )]
     pub title_preview_length: Option<u32>,
+    /// The longest new or changed value in the data of an object of this type, in
+    /// characters: 1 to 262144. Without a value it is crate::field_limit::FIELD_MAX.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_max_length: Option<u32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub references: BTreeMap<String, ReferenceRule>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

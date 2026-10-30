@@ -81,6 +81,12 @@ pub fn set_schema(
             "type title_max_length must be an integer from 1 to 256 characters"
         );
         ensure!(
+            t.field_max_length.is_none_or(|length| {
+                (1..=crate::field_limit::FIELD_CEILING as u32).contains(&length)
+            }),
+            "type field_max_length must be an integer from 1 to 262144 characters"
+        );
+        ensure!(
             t.status
                 .as_deref()
                 .is_none_or(|rule| STATUS_RULES.contains(&rule)),

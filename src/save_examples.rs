@@ -24,13 +24,13 @@ fn data_fields(kind: &str, t: &TreeType) -> &'static [&'static str] {
     }
 }
 
-fn placeholder(field: &str) -> Value {
+fn placeholder(field: &str, limit: usize) -> Value {
     match field {
         "title" => json!("<one concise statement (max 128 chars)>"),
         "owner" => json!("<member id>"),
         "consumers" | "depends_on" | "projects" => json!([]),
         "decision_required" | "before_launch" | "archived" => json!(false),
-        _ => json!("<concise text (max 1024 chars)>"),
+        _ => json!(format!("<concise text (max {limit} chars)>")),
     }
 }
 
@@ -47,7 +47,8 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
             {
                 continue;
             }
-            data.insert((*field).into(), placeholder(field));
+            let limit = crate::field_limit::limit(t.field_max_length);
+            data.insert((*field).into(), placeholder(field, limit));
         }
         for (field, rule) in &t.required_fields {
             let value = match rule {
