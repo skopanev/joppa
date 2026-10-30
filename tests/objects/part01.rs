@@ -78,6 +78,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
             title_size: None,
             badge: None,
             title_preview_length: None,
+            field_max_length: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),

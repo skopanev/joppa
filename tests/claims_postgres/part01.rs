@@ -69,6 +69,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
                 title_size: None,
                 badge: None,
                 title_preview_length: None,
+                field_max_length: None,
                 title: kind.into(),
                 role: role.into(),
                 root,

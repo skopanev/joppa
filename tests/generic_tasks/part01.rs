@@ -54,6 +54,7 @@ fn configured() -> World {
                 title_size: None,
                 badge: None,
                 title_preview_length: None,
+                field_max_length: None,
                 title: kind.into(),
                 role: role.into(),
                 root,

@@ -161,6 +161,7 @@ async fn replay_concurrency_ids_and_schema_after_setup(
             title_size: None,
             badge: None,
             title_preview_length: None,
+            field_max_length: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),

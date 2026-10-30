@@ -100,6 +100,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
             title_size: None,
             badge: None,
             title_preview_length: None,
+            field_max_length: None,
             parent_gate: None,
             title: "Initiative".into(),
             role: "group".into(),
