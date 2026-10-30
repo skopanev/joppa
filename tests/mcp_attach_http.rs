@@ -38,7 +38,7 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
         "{first}"
     );
     ensure!(
-        fake.bytes(&hash) == Some(text.clone().into_bytes()),
+        fake.bytes(&w.ws, &hash) == Some(text.clone().into_bytes()),
         "Spaces has other bytes"
     );
     // An identical retry replays the same attach and adds no file.
@@ -74,9 +74,10 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     ] {
         let url = file["url"].as_str().context("url")?;
         let prefix = format!(
-            "{}/{}/files/{}?",
+            "{}/{}/workspaces/{}/{}?",
             fake.endpoint,
             fake_spaces::BUCKET,
+            w.ws,
             file["hash"].as_str().unwrap()
         );
         ensure!(
@@ -127,7 +128,7 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     large["content_base64"] = json!(STANDARD.encode(&over));
     refused(attach(&w, &w.bot, large).await?, "at most 50 MiB")?;
     ensure!(
-        !fake.has(&joppa::digest_hex::sha256_hex(&over)),
+        !fake.any(&joppa::digest_hex::sha256_hex(&over)),
         "the large file is in Spaces"
     );
     let secret = format!("Outsider file {}", uuid::Uuid::new_v4());
@@ -143,7 +144,7 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     let reader = token["token"].as_str().context("token")?;
     refused(attach(&w, reader, outsider).await?, "read")?;
     ensure!(
-        !fake.has(&joppa::digest_hex::sha256_hex(&secret)),
+        !fake.any(&joppa::digest_hex::sha256_hex(&secret)),
         "a refused attach stored the file"
     );
     let read = ok(w

@@ -105,7 +105,7 @@ async fn an_account_without_membership_cannot_upload_a_file() -> Result<()> {
             "A refused upload changed the object: {after}"
         );
         ensure!(
-            !fake_spaces::start().has(&hash),
+            !fake_spaces::start().any(&hash),
             "A refused upload stored file content"
         );
     }

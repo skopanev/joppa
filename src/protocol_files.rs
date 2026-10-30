@@ -11,7 +11,7 @@ pub fn tools() -> [Value; 2] {
     [
         super::tool(
             "joppa_attach",
-            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64 (standard base64). The server puts the bytes in Spaces under their SHA-256 hash, checks the stored size and appends the attach operation. content_type defaults to application/octet-stream. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
+            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64 (standard base64). The server puts the bytes in the Spaces folder of the workspace under their SHA-256 hash, checks the stored size and appends the attach operation. content_type defaults to application/octet-stream. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
             json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"request_id":text()}),
             json!(["workspace", "target", "filename"]),
         ),
@@ -67,7 +67,8 @@ pub async fn attach(pool: &Pool, actor: &str, a: &Value) -> Result<Value> {
     };
     // The read comes BEFORE the upload: a caller without access stores nothing.
     files(pool, actor, workspace, target).await?;
-    let (hash, size) = spaces::storage()?.put(&bytes).await?;
+    let folder = store::file_workspace(pool, workspace, actor).await?;
+    let (hash, size) = spaces::storage()?.put(&folder, &bytes).await?;
     // An identical retry with the same request_id sends the same command, so it replays.
     let request = a["request_id"]
         .as_str()

@@ -18,15 +18,9 @@ pub(super) async fn upload(
     let actor = authenticate_write(&app, &headers).await?;
     // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
     // хранилище, ничего не имея в воркспейсе.
-    let _ = result(
-        store::read(
-            &app.pool,
-            &workspace,
-            &actor,
-            &store::Scope::from_args(&json!({})).unwrap(),
-        )
-        .await,
-    )?;
+    let folder = store::file_workspace(&app.pool, &workspace, &actor)
+        .await
+        .map_err(failure)?;
     if body.len() > spaces::ATTACHMENT_MAX {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -34,7 +28,7 @@ pub(super) async fn upload(
         ));
     }
     result(
-        async { spaces::storage()?.put(&body).await }
+        async { spaces::storage()?.put(&folder, &body).await }
             .await
             .map(|(hash, size)| json!({"hash": hash, "size": size})),
     )
@@ -51,11 +45,9 @@ pub(super) async fn download(
     let found = store::attachment(&app.pool, &workspace, &actor, &hash).await;
     let storage = spaces::storage().map_err(failure)?;
     match found {
-        Ok((name, content_type)) => Ok(axum::response::Redirect::temporary(&storage.download_url(
-            &hash,
-            &name,
-            &content_type,
-        ))),
+        Ok((key, name, content_type)) => Ok(axum::response::Redirect::temporary(
+            &storage.download_url(&key, &name, &content_type),
+        )),
         Err(_) => Err((
             StatusCode::NOT_FOUND,
             Json(json!({"error":"no such attachment here"})),

@@ -166,11 +166,9 @@ pub(super) async fn read_one(
         let mut files: Vec<Value> = files.into_iter().map(|(_, _, file)| file).collect();
         for file in &mut files {
             let text = |key: &str| file[key].as_str().unwrap_or("").to_owned();
-            let url = crate::spaces::storage()?.download_url(
-                &text("hash"),
-                &text("name"),
-                &text("content_type"),
-            );
+            let key = crate::spaces::Spaces::key(&workspace, &text("hash"))?;
+            let url =
+                crate::spaces::storage()?.download_url(&key, &text("name"), &text("content_type"));
             file["url"] = json!(url);
         }
         item["files"] = json!(files);

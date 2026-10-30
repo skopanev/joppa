@@ -11,7 +11,7 @@ upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Atta
     headers={'Authorization':'Bearer '+agent_token,'Content-Type':'application/octet-stream'})
 with urllib.request.urlopen(upload) as response:
     blob = json.load(response)
-assert spaces_files[blob['hash']] == b'Attachment evidence'
+assert spaces_files['workspaces/'+ws+'/'+blob['hash']] == b'Attachment evidence'
 targets=['domain:security','capability:restrict','requirement:key','ac:key-rights',
          'note:source']
 for index, target in enumerate(targets):
@@ -28,7 +28,7 @@ try:
     urllib.request.build_opener(Stay).open(download)
     raise AssertionError('the download did not redirect')
 except urllib.error.HTTPError as redirect:
-    assert redirect.code == 307 and '/joppa-smoke/files/' in redirect.headers['Location']
+    assert redirect.code == 307 and '/joppa-smoke/workspaces/'+ws+'/' in redirect.headers['Location']
     with urllib.request.urlopen(redirect.headers['Location']) as response:
         assert response.read() == b'Attachment evidence' and response.headers['Content-Type'] == 'text/plain'
 # joppa_attach puts the bytes in Spaces, and the reply gives a download url.

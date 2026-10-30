@@ -116,7 +116,7 @@ async fn stored_counts(w: &World) -> Result<Vec<i64>> {
         )
         .await?;
     let mut counts: Vec<i64> = (0..5).map(|i| row.get(i)).collect();
-    counts.push(fake_spaces::start().hashes().len() as i64);
+    counts.push(fake_spaces::start().keys().len() as i64);
     Ok(counts)
 }
 
@@ -165,6 +165,6 @@ async fn saved_rows(w: &World) -> Result<Value> {
         saved[name] = serde_json::from_str(row.get(i))?;
     }
     saved["position"] = json!(row.get::<_, i64>(2));
-    saved["files"] = json!(fake_spaces::start().hashes());
+    saved["files"] = json!(fake_spaces::start().keys());
     Ok(saved)
 }

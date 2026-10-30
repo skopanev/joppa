@@ -81,8 +81,12 @@ pub async fn workspace(
     .await?;
     let own = format!("only in {ws}");
     let storage = joppa::spaces::storage()?;
-    let (hash, size) = storage.put(own.as_bytes()).await?;
-    let (shared_hash, shared_size) = storage.put(shared.as_bytes()).await?;
+    let (hash, size) = storage.put(&ws, own.as_bytes()).await?;
+    let (shared_hash, shared_size) = storage.put(&ws, shared.as_bytes()).await?;
+    // An upload that no attach names is in the folder too.
+    storage
+        .put(&ws, format!("unattached {ws}").as_bytes())
+        .await?;
     for (id, hash, size) in [("own", &hash, size), ("shared", &shared_hash, shared_size)] {
         write(
             pool,
@@ -140,9 +144,19 @@ pub async fn rows(pool: &deadpool_postgres::Pool, ws: &str) -> Result<BTreeMap<S
     Ok(out)
 }
 
-/// Spaces has the file `hash`.
-pub fn blob(hash: &str) -> bool {
-    fake_spaces::start().has(hash)
+/// The Spaces folder of `ws` has the file `hash`.
+pub fn blob(ws: &str, hash: &str) -> bool {
+    fake_spaces::start().has(ws, hash)
+}
+
+/// The keys in the Spaces folder of `ws`.
+pub fn folder(ws: &str) -> Vec<String> {
+    let prefix = format!("workspaces/{ws}/");
+    fake_spaces::start()
+        .keys()
+        .into_iter()
+        .filter(|k| k.starts_with(&prefix))
+        .collect()
 }
 
 pub fn empty(rows: &BTreeMap<String, i64>) -> bool {

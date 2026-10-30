@@ -1,9 +1,12 @@
-//! Attachment bytes live in DigitalOcean Spaces (S3), under `files/<sha256>`. The journal
-//! keeps only the attachment record: name, type, size and hash.
+//! Attachment bytes live in DigitalOcean Spaces (S3), under `workspaces/<workspace>/<sha256>`.
+//! The journal keeps only the attachment record: name, type, size and hash.
 use crate::spaces_sign::{Signer, encode};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use reqwest::{StatusCode, header};
 use std::{sync::OnceLock, time::Duration};
+
+#[path = "spaces_folder.rs"]
+mod folder;
 
 /// The largest attachment: 50 MiB.
 pub const ATTACHMENT_MAX: usize = 50 * 1024 * 1024;
@@ -86,9 +89,29 @@ impl Spaces {
             secret: secret.into(),
         })
     }
-    /// A presigned URL of the file `hash`, path style: `<endpoint>/<bucket>/files/<hash>`.
-    pub fn url(&self, method: &str, hash: &str, ttl: u32, extra: &[(&str, &str)]) -> String {
-        let path = format!("/{}/files/{hash}", self.bucket);
+    /// The folder of a workspace: `workspaces/<workspace>/`. It holds every file of the
+    /// workspace, and the deletion of the workspace removes it.
+    pub fn folder(workspace: &str) -> Result<String> {
+        ensure!(
+            !workspace.is_empty()
+                && workspace
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)),
+            "the workspace ID {workspace} cannot name a file folder"
+        );
+        Ok(format!("workspaces/{workspace}/"))
+    }
+    /// The key of a file: `workspaces/<workspace>/<sha256>`.
+    pub fn key(workspace: &str, hash: &str) -> Result<String> {
+        ensure!(
+            hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+            "the file hash is a SHA-256 in lowercase hex"
+        );
+        Ok(format!("{}{hash}", Self::folder(workspace)?))
+    }
+    /// A presigned URL of `path` in the bucket, path style: `<endpoint>/<bucket><path>`.
+    fn presign(&self, method: &str, path: &str, ttl: u32, extra: &[(&str, &str)]) -> String {
+        let path = format!("/{}{path}", self.bucket);
         let time = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
         let signer = Signer {
             key_id: &self.key_id,
@@ -103,12 +126,16 @@ impl Spaces {
             encode(&path, true)
         )
     }
+    /// A presigned URL of the file `key`.
+    pub fn url(&self, method: &str, key: &str, ttl: u32, extra: &[(&str, &str)]) -> String {
+        self.presign(method, &format!("/{key}"), ttl, extra)
+    }
     /// A GET URL that gives the file with its own name and content type.
-    pub fn download_url(&self, hash: &str, name: &str, content_type: &str) -> String {
+    pub fn download_url(&self, key: &str, name: &str, content_type: &str) -> String {
         let disposition = format!("inline; filename*=UTF-8''{}", encode(name, false));
         self.url(
             "GET",
-            hash,
+            key,
             TRANSFER_TTL,
             &[
                 ("response-content-disposition", &disposition),
@@ -116,15 +143,9 @@ impl Spaces {
             ],
         )
     }
-    /// The stored size of `hash`, or None when Spaces has no such file.
-    pub async fn size(&self, hash: &str) -> Result<Option<u64>> {
-        let response = self
-            .http
-            .head(self.url("HEAD", hash, CHECK_TTL, &[]))
-            .send()
-            .await
-            .map_err(|e| e.without_url())
-            .context("file storage unavailable")?;
+    /// The stored size of the file `key`, or None when Spaces has no such file.
+    pub async fn size(&self, key: &str) -> Result<Option<u64>> {
+        let response = send(self.http.head(self.url("HEAD", key, CHECK_TTL, &[]))).await?;
         match response.status() {
             StatusCode::NOT_FOUND => Ok(None),
             status if status.is_success() => Ok(response
@@ -134,49 +155,41 @@ impl Spaces {
             status => bail!("file storage refused HEAD: HTTP {status}"),
         }
     }
-    /// Store `bytes` under their SHA-256 hash and return the hash and the size. The same
-    /// bytes give the same key, so a second upload changes nothing.
-    pub async fn put(&self, bytes: &[u8]) -> Result<(String, usize)> {
+    /// Store `bytes` in the folder of `workspace` under their SHA-256 hash, and return the
+    /// hash and the size. The same bytes give the same key, so a second upload changes nothing.
+    pub async fn put(&self, workspace: &str, bytes: &[u8]) -> Result<(String, usize)> {
         ensure!(!bytes.is_empty(), "an empty file carries nothing");
         ensure!(
             bytes.len() <= ATTACHMENT_MAX,
             "an attachment is at most 50 MiB"
         );
         let hash = crate::digest_hex::sha256_hex(bytes);
+        let key = Self::key(workspace, &hash)?;
         let size = Some(bytes.len() as u64);
         // A key without list rights can get 403 for a missing file: then the PUT decides.
-        if self.size(&hash).await.ok().flatten() == size {
+        if self.size(&key).await.ok().flatten() == size {
             return Ok((hash, bytes.len()));
         }
-        let response = self
-            .http
-            .put(self.url("PUT", &hash, TRANSFER_TTL, &[]))
-            .header(header::CONTENT_TYPE, "application/octet-stream")
-            .body(bytes.to_vec())
-            .send()
-            .await
-            .map_err(|e| e.without_url())
-            .context("file storage unavailable")?;
+        let put = self.http.put(self.url("PUT", &key, TRANSFER_TTL, &[]));
+        let response = send(
+            put.header(header::CONTENT_TYPE, "application/octet-stream")
+                .body(bytes.to_vec()),
+        )
+        .await?;
         ensure!(
             response.status().is_success(),
             "file storage refused PUT: HTTP {}",
             response.status()
         );
         ensure!(
-            self.size(&hash).await? == size,
+            self.size(&key).await? == size,
             "file storage did not keep the file"
         );
         Ok((hash, bytes.len()))
     }
-    /// Remove the file `hash`. A file that is not there is already removed.
-    pub async fn delete(&self, hash: &str) -> Result<()> {
-        let response = self
-            .http
-            .delete(self.url("DELETE", hash, CHECK_TTL, &[]))
-            .send()
-            .await
-            .map_err(|e| e.without_url())
-            .context("file storage unavailable")?;
+    /// Remove the file `key`. A file that is not there is already removed.
+    pub async fn delete(&self, key: &str) -> Result<()> {
+        let response = send(self.http.delete(self.url("DELETE", key, CHECK_TTL, &[]))).await?;
         ensure!(
             response.status().is_success() || response.status() == StatusCode::NOT_FOUND,
             "file storage refused DELETE: HTTP {}",
@@ -184,6 +197,15 @@ impl Spaces {
         );
         Ok(())
     }
+}
+
+/// Send one request. The error text has no URL, so no presigned query reaches a log or a reply.
+async fn send(request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
+    request
+        .send()
+        .await
+        .map_err(|e| e.without_url())
+        .context("file storage unavailable")
 }
 
 static STORAGE: OnceLock<Spaces> = OnceLock::new();

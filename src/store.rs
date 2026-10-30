@@ -198,5 +198,5 @@ pub mod workspace_prefix;
 
 #[path = "store_blobs.rs"]
 mod blobs;
-pub use blobs::attachment;
-use blobs::{orphan_files, remove_files};
+use blobs::remove_folder;
+pub use blobs::{attachment, file_workspace};

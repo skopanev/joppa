@@ -1,5 +1,5 @@
-//! requirement:file-upload over a real server: an upload of exactly 50 MiB is stored in
-//! Spaces, and an upload of 50 MiB and 1 byte is refused with 413 and stores nothing.
+//! requirement:file-upload over a real server: an upload of exactly 50 MiB is stored in the
+//! Spaces folder of the workspace, and an upload of 50 MiB and 1 byte is refused with 413 and stores nothing.
 #[path = "common/search_world.rs"]
 mod world;
 use anyhow::{Result, ensure};
@@ -51,8 +51,9 @@ async fn an_upload_over_50_mib_is_refused_and_stores_nothing() -> Result<()> {
                 .map(|r| r.status().as_u16())
         }
     };
-    let stored =
-        |bytes: &[u8]| world::fake_spaces::start().bytes(&joppa::digest_hex::sha256_hex(bytes));
+    let stored = |bytes: &[u8]| {
+        world::fake_spaces::start().bytes(&ws, &joppa::digest_hex::sha256_hex(bytes))
+    };
     let limit = joppa::spaces::ATTACHMENT_MAX;
     ensure!(limit == 50 * 1024 * 1024, "the limit is {limit} bytes");
     let exact = file(limit);

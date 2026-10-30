@@ -1,9 +1,13 @@
-//! requirement:file-upload, the store of attachment bytes: Spaces keeps each file once under
-//! `files/<sha256>`, at most 50 MiB, never empty. PostgreSQL keeps no file bytes.
+//! requirement:file-upload, the store of attachment bytes: Spaces keeps each file once in the
+//! folder of its workspace, `workspaces/<workspace>/<sha256>`, at most 50 MiB, never empty.
+//! PostgreSQL keeps no file bytes.
 #[path = "common/fake_spaces.rs"]
 mod fake_spaces;
 use anyhow::{Result, ensure};
-use joppa::{spaces, store};
+use joppa::{
+    spaces::{self, Spaces},
+    store,
+};
 
 fn query(url: &str) -> std::collections::BTreeMap<String, String> {
     let url = reqwest::Url::parse(url).unwrap();
@@ -19,49 +23,67 @@ async fn an_upload_stores_its_bytes_once_in_spaces_under_their_sha_256() -> Resu
     let fake = fake_spaces::start();
     fake.configure();
     let storage = spaces::storage()?;
-    // Unique bytes, so that an earlier run cannot have stored the same file.
-    let bytes = format!("attachment {}", uuid::Uuid::new_v4()).into_bytes();
-    let (first, size) = storage.put(&bytes).await?;
-    let (second, _) = storage.put(&bytes).await?;
+    let ws = format!("files-{}", uuid::Uuid::new_v4().simple());
+    let other = format!("other-{}", uuid::Uuid::new_v4().simple());
+    let bytes = format!("attachment {ws}").into_bytes();
+    let (first, size) = storage.put(&ws, &bytes).await?;
+    let (second, _) = storage.put(&ws, &bytes).await?;
     ensure!(first == second, "{first} / {second}");
     ensure!(
         first == joppa::digest_hex::sha256_hex(&bytes),
         "the key is not the SHA-256 hash"
     );
     ensure!(size == bytes.len(), "size {size}");
+    let key = Spaces::key(&ws, &first)?;
+    ensure!(key == format!("workspaces/{ws}/{first}"), "{key}");
     ensure!(
-        fake.bytes(&first) == Some(bytes.clone()),
+        fake.bytes(&ws, &first) == Some(bytes.clone()),
         "Spaces has other bytes"
     );
     ensure!(
-        storage.size(&first).await? == Some(bytes.len() as u64),
+        storage.size(&key).await? == Some(bytes.len() as u64),
         "HEAD size"
     );
     // Presigned URLs: AWS4-HMAC-SHA256 in the query, 900 s for GET and PUT, 60 s for HEAD.
-    let get = query(&storage.download_url(&first, "a b.txt", "text/plain"));
+    let get = query(&storage.download_url(&key, "a b.txt", "text/plain"));
     ensure!(get["X-Amz-Algorithm"] == "AWS4-HMAC-SHA256" && get["X-Amz-Expires"] == "900");
     ensure!(get["response-content-disposition"] == "inline; filename*=UTF-8''a%20b.txt");
-    ensure!(
-        query(&storage.url("PUT", &first, spaces::TRANSFER_TTL, &[]))["X-Amz-Expires"] == "900"
-    );
-    ensure!(query(&storage.url("HEAD", &first, spaces::CHECK_TTL, &[]))["X-Amz-Expires"] == "60");
+    ensure!(query(&storage.url("PUT", &key, spaces::TRANSFER_TTL, &[]))["X-Amz-Expires"] == "900");
+    ensure!(query(&storage.url("HEAD", &key, spaces::CHECK_TTL, &[]))["X-Amz-Expires"] == "60");
     ensure!(
         spaces::ATTACHMENT_MAX == 50 * 1024 * 1024,
         "the limit changed"
     );
     let over = vec![7u8; spaces::ATTACHMENT_MAX + 1];
     ensure!(
-        storage.put(&over).await.is_err(),
+        storage.put(&ws, &over).await.is_err(),
         "50 MiB and 1 byte passed"
     );
-    let over_hash = joppa::digest_hex::sha256_hex(&over);
-    ensure!(!fake.has(&over_hash), "the larger file is in Spaces");
-    ensure!(storage.put(&[]).await.is_err(), "an empty file passed");
-    storage.delete(&first).await?;
     ensure!(
-        storage.size(&first).await?.is_none(),
-        "DELETE kept the file"
+        !fake.any(&joppa::digest_hex::sha256_hex(&over)),
+        "the larger file is in Spaces"
     );
+    ensure!(storage.put(&ws, &[]).await.is_err(), "an empty file passed");
+    ensure!(
+        Spaces::folder("a/b").is_err(),
+        "a workspace ID with a slash named a folder"
+    );
+    storage.delete(&key).await?;
+    ensure!(storage.size(&key).await?.is_none(), "DELETE kept the file");
+    // The folder of a workspace: three files over two list pages leave, another folder stays.
+    for text in ["one", "two", "three"] {
+        storage.put(&ws, text.as_bytes()).await?;
+    }
+    let (kept, _) = storage.put(&other, b"one").await?;
+    ensure!(
+        storage.delete_folder(&ws).await? == 3,
+        "the folder had other files"
+    );
+    ensure!(
+        storage.list(&Spaces::folder(&ws)?).await?.is_empty(),
+        "the folder stays"
+    );
+    ensure!(fake.has(&other, &kept), "the other folder lost its file");
     let table: Option<String> = pool
         .get()
         .await?

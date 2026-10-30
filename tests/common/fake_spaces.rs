@@ -1,5 +1,6 @@
 //! A local stand-in for DigitalOcean Spaces: path-style PUT, GET, HEAD and DELETE of
-//! `/<bucket>/files/<hash>`. It refuses a request with a wrong or expired signature.
+//! `/<bucket>/<key>`, and ListObjectsV2 of `/<bucket>` in pages of 2 keys. It refuses a
+//! request with a wrong or expired signature.
 #![allow(dead_code)]
 use axum::{
     Router,
@@ -26,15 +27,21 @@ pub struct Fake {
 }
 
 impl Fake {
-    pub fn has(&self, hash: &str) -> bool {
-        self.files.lock().unwrap().contains_key(hash)
+    /// The folder of the workspace `ws` has the file `hash`.
+    pub fn has(&self, ws: &str, hash: &str) -> bool {
+        self.bytes(ws, hash).is_some()
     }
-    /// The stored hashes, in order.
-    pub fn hashes(&self) -> Vec<String> {
+    /// The stored keys, in order.
+    pub fn keys(&self) -> Vec<String> {
         self.files.lock().unwrap().keys().cloned().collect()
     }
-    pub fn bytes(&self, hash: &str) -> Option<Vec<u8>> {
-        self.files.lock().unwrap().get(hash).cloned()
+    pub fn bytes(&self, ws: &str, hash: &str) -> Option<Vec<u8>> {
+        let key = format!("workspaces/{ws}/{hash}");
+        self.files.lock().unwrap().get(&key).cloned()
+    }
+    /// Any stored file has the hash `hash`, in any folder.
+    pub fn any(&self, hash: &str) -> bool {
+        self.keys().iter().any(|k| k.ends_with(&format!("/{hash}")))
     }
     /// The variables of storage.env for a server process.
     pub fn env(&self) -> [(&'static str, String); 5] {
@@ -72,7 +79,8 @@ pub fn start() -> &'static Fake {
                 .unwrap();
             runtime.block_on(async move {
                 let app = Router::new()
-                    .route("/{bucket}/files/{hash}", get(file).put(file).delete(file))
+                    .route("/{bucket}", get(list))
+                    .route("/{bucket}/{*key}", get(file).put(file).delete(file))
                     .layer(axum::extract::DefaultBodyLimit::disable())
                     .with_state(state);
                 let listener = tokio::net::TcpListener::from_std(listener).unwrap();
@@ -101,7 +109,7 @@ fn signed(method: &Method, host: &str, path: &str, query: &BTreeMap<String, Stri
     let age = chrono::Utc::now().naive_utc() - at;
     let extra: Vec<(&str, &str)> = query
         .iter()
-        .filter(|(k, _)| k.starts_with("response-"))
+        .filter(|(k, _)| !k.starts_with("X-Amz-"))
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
     let signer = joppa::spaces_sign::Signer {
@@ -114,35 +122,83 @@ fn signed(method: &Method, host: &str, path: &str, query: &BTreeMap<String, Stri
         && expected.ends_with(&format!("X-Amz-Signature={signature}"))
 }
 
+/// The request is signed for `path`, with no second auth mechanism, in the test bucket.
+fn allowed(
+    bucket: &str,
+    path: &str,
+    method: &Method,
+    headers: &HeaderMap,
+    query: &BTreeMap<String, String>,
+) -> bool {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    // Spaces refuses a second auth mechanism next to the presigned query.
+    let auth = headers.contains_key(header::AUTHORIZATION);
+    !auth && bucket == BUCKET && signed(method, host, path, query)
+}
+
+async fn list(
+    State(fake): State<Fake>,
+    Path(bucket): Path<String>,
+    Query(query): Query<BTreeMap<String, String>>,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    if !allowed(&bucket, &format!("/{bucket}"), &method, &headers, &query) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let prefix = query.get("prefix").cloned().unwrap_or_default();
+    let after = query.get("continuation-token").cloned().unwrap_or_default();
+    let keys: Vec<String> = fake
+        .keys()
+        .into_iter()
+        .filter(|k| k.starts_with(&prefix) && *k > after)
+        .collect();
+    let page = &keys[..keys.len().min(2)];
+    let mut xml = format!(
+        "<ListBucketResult><IsTruncated>{}</IsTruncated>",
+        keys.len() > 2
+    );
+    for key in page {
+        xml += &format!("<Contents><Key>{key}</Key></Contents>");
+    }
+    if keys.len() > 2 {
+        xml += &format!("<NextContinuationToken>{}</NextContinuationToken>", page[1]);
+    }
+    xml += "</ListBucketResult>";
+    ([(header::CONTENT_TYPE, "application/xml")], xml).into_response()
+}
+
 async fn file(
     State(fake): State<Fake>,
-    Path((bucket, hash)): Path<(String, String)>,
+    Path((bucket, key)): Path<(String, String)>,
     Query(query): Query<BTreeMap<String, String>>,
     method: Method,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("");
-    let path = format!("/{bucket}/files/{hash}");
-    // Spaces refuses a second auth mechanism next to the presigned query.
-    let auth = headers.contains_key(header::AUTHORIZATION);
-    if auth || bucket != BUCKET || !signed(&method, host, &path, &query) {
+    if !allowed(
+        &bucket,
+        &format!("/{bucket}/{key}"),
+        &method,
+        &headers,
+        &query,
+    ) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let mut files = fake.files.lock().unwrap();
     match method {
         Method::PUT => {
-            files.insert(hash, body.to_vec());
+            files.insert(key, body.to_vec());
             StatusCode::OK.into_response()
         }
         Method::DELETE => {
-            files.remove(&hash);
+            files.remove(&key);
             StatusCode::NO_CONTENT.into_response()
         }
-        _ => match files.get(&hash) {
+        _ => match files.get(&key) {
             None => StatusCode::NOT_FOUND.into_response(),
             Some(bytes) => {
                 let header = |key: &str| query.get(key).cloned().unwrap_or_default();

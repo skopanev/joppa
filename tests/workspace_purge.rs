@@ -4,7 +4,7 @@
 mod purge_world;
 use anyhow::{Result, ensure};
 use joppa::store;
-use purge_world::{blob, empty, pool, rows, workspace, write};
+use purge_world::{blob, empty, folder, pool, rows, workspace, write};
 use serde_json::json;
 
 // owner-manages-workspace-ac2
@@ -17,6 +17,7 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
     let (w, own) = workspace(&pool, "doomed", &shared).await?;
     let (k, kept) = workspace(&pool, "kept", &shared).await?;
     let before = rows(&pool, &w).await?;
+    ensure!(folder(&w).len() == 3, "the folder of W: {:?}", folder(&w));
     // The fixture writes every table, except the tables of Tasks, aliases and report receipts.
     let unwritten = [
         "ac_owners",
@@ -47,11 +48,19 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
         empty(&after),
         "rows of the deleted workspace stay: {after:?}"
     );
-    // A file that only W names leaves Spaces. A file that K also names stays.
-    ensure!(!blob(&own), "the file of W stays");
-    ensure!(blob(&kept), "the file of K left");
+    // The Spaces folder of W leaves with every file, also an upload that no attach names.
+    // The folder of K keeps its files, also the same bytes as a file of W.
+    ensure!(
+        !blob(&w, &own) && folder(&w).is_empty(),
+        "the folder of W stays: {:?}",
+        folder(&w)
+    );
     let shared_hash = joppa::digest_hex::sha256_hex(shared.as_bytes());
-    ensure!(blob(&shared_hash), "the shared file left");
+    ensure!(
+        blob(&k, &kept) && blob(&k, &shared_hash),
+        "the folder of K lost a file"
+    );
+    ensure!(folder(&k).len() == 3, "the folder of K: {:?}", folder(&k));
     ensure!(
         rows(&pool, &k).await? == other,
         "the deletion changed rows of K"
