@@ -42,7 +42,7 @@ pub fn compact_of(http: &Value, mcp: &Value) -> Value {
         }
         out
     } else if http.get("document").is_some() && mcp.get("historical").is_none() {
-        rc::detail(http.clone(), None, None).unwrap_or(Value::Null)
+        rc::detail(http.clone(), None).unwrap_or(Value::Null)
     } else if http.get("document").is_some() {
         // A revision read.
         rc::revision(http.clone())

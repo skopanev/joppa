@@ -94,7 +94,7 @@ assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['add
 criterion_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
 criterion_process = criterion_read['process']
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
-    'op':'assess','req':criterion_read['document']['parent'],'revision':criterion_process['assessment']['revision'],'ac':'ac:'+task_ac,
+    'op':'assess','req':criterion_read['parent'],'revision':criterion_process['assessment']['revision'],'ac':'ac:'+task_ac,
     'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
 assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['address'] == task_id
 claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
@@ -152,9 +152,9 @@ refs=system_ids()
 # MCP lists the revision headers and reads exactly one chosen revision.
 latest=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key'})
 headers=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','history':True})
-assert latest['current_revision']==3 and 'revisions' not in latest
+assert latest['revision']==3 and 'revisions' not in latest
 assert headers['current_revision']==3 and headers['total']==3 and [r['revision'] for r in headers['items']]==[1,2,3]
-assert latest['document']['data']['body']=='Updated wording' and 'item_id' not in latest
+assert latest['data']['body']=='Updated wording' and 'item_id' not in latest
 previous=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','revision':2})
 assert previous['document']['revision']==2
 assert previous['document']['data']['body']=='</script><script>window.attacked=true</script>'

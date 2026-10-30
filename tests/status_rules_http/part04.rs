@@ -31,11 +31,12 @@ async fn work_priority_ac1_setting_the_priority_resets_nothing() -> Result<()> {
     let mcp = w
         .mcp(&w.bot, "joppa_objects", json!({"address":"check:a"}))
         .await?;
-    for read in [&http, &mcp] {
+    // HTTP gives current_revision, and MCP gives the same number as revision.
+    for (read, revision) in [(&http, "current_revision"), (&mcp, "revision")] {
         ensure!(
             read["process"]["priority"] == "p0"
                 && read["process"]["assessment"]["state"] == "ready"
-                && read["current_revision"] == before["current_revision"],
+                && read[revision] == before["current_revision"],
             "{read}"
         );
     }

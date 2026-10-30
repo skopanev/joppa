@@ -38,7 +38,7 @@ async fn completing_a_task_without_a_report_keeps_it_unverified() -> Result<()> 
                 && claimed["process"]["assignee"] == "bot",
             "{claimed}"
         );
-        w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":claimed["current_revision"],"evidence":"Implemented the contract; test evidence is still absent"})).await?;
+        w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":address,"revision":claimed["revision"],"evidence":"Implemented the contract; test evidence is still absent"})).await?;
         let http: Value = w
             .http
             .get(format!("{}/api/workspaces/{}/objects", w.root, w.ws))

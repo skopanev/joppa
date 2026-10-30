@@ -199,9 +199,11 @@ async fn a_caller_cannot_supply_the_actor_or_time_of_a_record() -> Result<()> {
 /// Bot saves A through joppa_command with one more data field. Other fields stay.
 async fn save(w: &World, field: &str, value: Value) -> Result<Result<Value, String>> {
     let a = w.object(A).await?;
-    let mut data = a["document"]["data"].clone();
+    let mut data = a["data"].clone();
     data[field] = value;
-    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["current_revision"],"parent":a["document"]["parent"],"data":data,"links":a["document"]["links"],"reason":"Save the criterion"});
+    // A detail read without links has no links key.
+    let links = a.get("links").cloned().unwrap_or(json!([]));
+    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],"parent":a["parent"],"data":data,"links":links,"reason":"Save the criterion"});
     w.command(&w.bot, command).await
 }
 
@@ -210,14 +212,14 @@ async fn save(w: &World, field: &str, value: Value) -> Result<Result<Value, Stri
 async fn a_save_cannot_record_a_test_outcome() -> Result<()> {
     // no-manual-pass-ac4, fixture 1: a save with data.verification=passed is refused.
     let w = world(&[X]).await?;
-    let revision = w.object(A).await?["current_revision"].clone();
+    let revision = w.object(A).await?["revision"].clone();
     let refusal = save(&w, "verification", json!("passed")).await?;
     ensure!(
         refusal == Err("verification comes from test reports".into()),
         "{refusal:?}"
     );
     ensure!(
-        w.object(A).await?["current_revision"] == revision,
+        w.object(A).await?["revision"] == revision,
         "the save stored a revision"
     );
     let s = w.tests_mcp(&w.bot).await?;
@@ -228,7 +230,7 @@ async fn a_save_cannot_record_a_test_outcome() -> Result<()> {
         .await?
         .map_err(|e| anyhow::anyhow!("fixture 2: {e}"))?;
     let a = w.object(A).await?;
-    ensure!(a["document"]["data"]["comment"] == "Test X passed", "{a}");
+    ensure!(a["data"]["comment"] == "Test X passed", "{a}");
     ensure!(reports(&w).await? == 0, "the save stored a record");
     let s = w.tests_mcp(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "not_run", "fixture 2: {s}");

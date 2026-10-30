@@ -161,7 +161,7 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
         absent(
             &requirement["process"],
             &["summary", "verification", "revision"]
-        ) && requirement["current_revision"].is_u64()
+        ) && requirement["revision"].is_u64()
             && absent(&requirement, &["review_required"])
             && absent(&ac, &["review_required"]),
         "{requirement}"
@@ -194,9 +194,6 @@ async fn a_requirement_list_with_data_omits_the_old_consumers_field() -> Result<
         "{list}"
     );
     let detail = w.object("requirement:old").await?;
-    ensure!(
-        detail["document"]["data"].get("consumers").is_none(),
-        "{detail}"
-    );
+    ensure!(detail["data"].get("consumers").is_none(), "{detail}");
     Ok(())
 }

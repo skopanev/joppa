@@ -116,9 +116,8 @@ async fn check_journal_migrate_backfill_list_and_read_run_as_the_given_actor() -
 /// The current revision of an object, read through joppa_objects.
 async fn revision(w: &record_world::World, address: &str) -> Result<u64> {
     let read = w.object(address).await?;
-    read["document"]["revision"]
+    read["revision"]
         .as_u64()
-        .or(read["current_revision"].as_u64())
         .with_context(|| format!("no revision: {read}"))
 }
 

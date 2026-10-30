@@ -46,10 +46,12 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const history=button('',()=>showObjectRevisions(item.address),'history-button');history.type='button';
   history.title='Revisions';history.setAttribute('aria-label','Revisions');history.append(historyIcon());
   history.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
-  // The properties open and close from the row. The object stays open or closed.
+  // The properties open and close from the row. A closed object opens with its properties shown.
   const fieldsToggle=button('',()=>{
-    const shown=fieldsToggle.getAttribute('aria-expanded')!=='true';fieldsToggle.setAttribute('aria-expanded',String(shown));
-    const fields=body.querySelector(':scope > .object-secondary > .object-details');if(fields)resizeBranch(card,()=>{fields.hidden=!shown;});
+    const shown=!card.open||fieldsToggle.getAttribute('aria-expanded')!=='true';fieldsToggle.setAttribute('aria-expanded',String(shown));
+    const fields=body.querySelector(':scope > .object-details');
+    if(!card.open){if(fields)fields.hidden=false;card.open=true;return;}
+    if(fields)resizeBranch(card,()=>{fields.hidden=!shown;});
   },'fields-button');
   fieldsToggle.type='button';fieldsToggle.title='Properties';fieldsToggle.setAttribute('aria-label','Properties');fieldsToggle.append(propertiesIcon());
   fieldsToggle.setAttribute('aria-expanded','false');fieldsToggle.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});

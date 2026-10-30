@@ -88,7 +88,7 @@ async fn ac3_an_update_only_plan_finishes_and_a_plan_without_changes_is_refused(
             ensure!(
                 t0["process"]["status"] == "in_progress"
                     && t0["process"]["assignee"] == "worker"
-                    && t0["document"]["data"]["contract"] == "Implement the updated plan",
+                    && document(&t0)["data"]["contract"] == "Implement the updated plan",
                 "{transport}: {t0}"
             );
         }
@@ -135,8 +135,8 @@ async fn ac4_a_holder_release_retires_only_the_new_tasks_over_http_and_mcp() -> 
         json!([
             t["process"]["status"],
             t["process"]["assignee"],
-            t["current_revision"],
-            t["document"]
+            current_revision(t),
+            document(t)
         ])
     };
     for mcp in [false, true] {
@@ -153,8 +153,9 @@ async fn ac4_a_holder_release_retires_only_the_new_tasks_over_http_and_mcp() -> 
             ensure!(
                 t["process"]["status"] == "in_progress"
                     && t["process"]["assignee"] == "worker"
-                    && t["document"]["actor"] == "agent"
-                    && history.len() as u64 == t["current_revision"].as_u64().unwrap(),
+                    // An MCP detail gives no actor; the revision headers give it.
+                    && (*transport == "MCP" || t["document"]["actor"] == "agent")
+                    && history.len() as u64 == current_revision(t).as_u64().unwrap(),
                 "{transport}: {t}"
             );
         }
@@ -171,7 +172,7 @@ async fn ac4_a_holder_release_retires_only_the_new_tasks_over_http_and_mcp() -> 
                     t["process"]["status"] == "retired"
                         && t["process"]["retired"] == "Plan withdrawn"
                         && t["process"]["assignee"].is_null()
-                        && t["document"]["present"] == true,
+                        && document(&t)["present"] == true,
                     "{transport} {task}: {t}"
                 );
             }

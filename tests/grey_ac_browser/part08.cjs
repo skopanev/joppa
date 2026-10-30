@@ -25,7 +25,7 @@ test('compact-open-object-ac1: the object row holds the control for its fields',
     const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
     const row = X.locator(':scope > summary');
     const control = row.getByRole('button', {name: 'Properties', exact: true});
-    const fields = X.locator(':scope > .object-body > .object-secondary > .object-details');
+    const fields = X.locator(':scope > .object-body > .object-details');
     const children = X.locator(':scope > .object-body > .object-children > .common-object');
     for (const viewport of [null, {width: 390, height: 844}]) {
       if (viewport) await f.page.setViewportSize(viewport);

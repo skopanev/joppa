@@ -19,14 +19,13 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
     .map_err(anyhow::Error::msg)?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
     ensure!(
-        detail["document"]["data"]
+        detail["data"]
             == json!({"title":"D2","owner":"owner","body":"Rule","note":null,"projects":[]}),
         "the document changed: {}",
-        detail["document"]
+        detail["data"]
     );
     ensure!(
-        detail["document"]["data"]["note"].is_null()
-            && detail["document"]["data"]["projects"] == json!([]),
+        detail["data"]["note"].is_null() && detail["data"]["projects"] == json!([]),
         "{detail}"
     );
     ensure!(
@@ -43,8 +42,19 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
             && comment.get("created_at").is_none(),
         "{comment}"
     );
-    // The detail repeats no key of the document or the request; position and workspace stay.
+    // The detail repeats no key of the document or the request, and gives no revision header.
     for key in [
+        "workspace",
+        "position",
+        "address",
+        "document",
+        "current_revision",
+        "parent",
+        "present",
+        "actor",
+        "at",
+        "reason",
+        "work_ready",
         "revisions",
         "contract_revision",
         "revision_count",
@@ -56,13 +66,7 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
     ] {
         ensure!(detail.get(key).is_none(), "{key}: {detail}");
     }
-    ensure!(
-        detail["document"]["revision"] == 2
-            && detail["current_revision"] == 2
-            && detail["position"].is_number()
-            && detail["workspace"].is_string(),
-        "{detail}"
-    );
+    ensure!(detail["revision"] == 2, "{detail}");
     let history = read(
         &w,
         "joppa_objects",
@@ -133,7 +137,7 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
     ensure!(
         process.get("annotation_address").is_none()
             && process.get("criterion").is_none()
-            && compact["document"]["parent"] == "requirement:r"
+            && compact["parent"] == "requirement:r"
             && process.get("req").is_none()
             && process["assessment"].get("criterion").is_none()
             && process["assessment"].get("req").is_none(),

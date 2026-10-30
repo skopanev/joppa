@@ -155,8 +155,14 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
                 .unwrap_or("null"),
         )?;
         let expected = json!({"total":total,"passed":passed,"failed":failed});
+        // MCP gives only the counts above 0.
+        let mut counts = expected.clone();
+        if let Some(m) = counts.as_object_mut() {
+            m.retain(|_, n| *n != 0);
+        }
+        let counts = if counts == json!({}) { Value::Null } else { counts };
         ensure!(
-            http["verification_summary"] == expected && mcp["verification_summary"] == expected,
+            http["verification_summary"] == expected && mcp["verification_summary"] == counts,
             "{address}: HTTP {http}, MCP {mcp}"
         );
     }

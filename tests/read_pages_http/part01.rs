@@ -70,7 +70,7 @@ async fn a_tests_sweep_of_101_criteria_gives_100_then_1() -> Result<()> {
 // read-detail-links
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_detail_read_pages_its_links_by_25() -> Result<()> {
+async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
     let w = record_world::world(&[]).await?;
     save_all(&w, "read-pages-targets", 30, |i| {
         json!({"op":"save_object","kind":"requirement","id":format!("t{i:02}"),"revision":0,
@@ -78,9 +78,11 @@ async fn a_detail_read_pages_its_links_by_25() -> Result<()> {
             "reason":"Link target"})
     })
     .await?;
-    let links: Vec<Value> = (0..30)
+    // 29 related links and one blocking dependency with a pin.
+    let mut links: Vec<Value> = (0..29)
         .map(|i| json!({"target":format!("requirement:t{i:02}"),"relation":"related"}))
         .collect();
+    links.push(json!({"target":"requirement:t29","relation":"depends_on","revision":1,"blocking":true}));
     w.command(
         &w.bot,
         json!({"op":"save_object","kind":"requirement","id":"d","revision":0,
@@ -90,48 +92,53 @@ async fn a_detail_read_pages_its_links_by_25() -> Result<()> {
     .await?
     .map_err(anyhow::Error::msg)?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
-    let page = &detail["links"];
-    let first = page["items"].as_array().cloned().unwrap_or_default();
+    let items = detail["links"].as_array().cloned().unwrap_or_default();
     ensure!(
-        page["total"] == 30
-            && page["next_cursor"] == "25"
-            && first.len() == 25
-            && first.iter().all(|l| l["title"].is_string()),
-        "{page}"
+        items.len() == 30 && items.iter().all(|l| l["title"].is_string()),
+        "{detail}"
     );
-    // A titled link gives what the target is now; document.links holds the stored link.
+    // One list: the stored link with the title of its target. A related link has no pin.
     ensure!(
-        first[0]
-            == json!({"target":"requirement:t00","relation":"related","title":"T00","current_revision":1}),
-        "{}",
-        first[0]
+        items[0] == json!({"target":"requirement:t00","relation":"related","title":"T00"})
+            && items[29]
+                == json!({"target":"requirement:t29","relation":"depends_on","title":"T29",
+                    "revision":1,"current_revision":1,"blocking":true}),
+        "{} {}",
+        items[0],
+        items[29]
     );
     ensure!(
         detail["link_groups"]
             .as_array()
             .into_iter()
             .flatten()
-            .all(|g| g["direction"] == "incoming"),
+            .all(|g| g["direction"] == "incoming")
+            && detail.get("document").is_none(),
         "{detail}"
     );
-    ensure!(
-        detail["document"]["links"].as_array().map(Vec::len) == Some(30),
-        "document.links is not complete: {}",
-        detail["document"]
-    );
-    let next = read(
+    // save_object takes the read links back as they are and stores the same links.
+    w.command(
+        &w.bot,
+        json!({"op":"save_object","kind":"requirement","id":"d","revision":detail["revision"],
+        "parent":null,"data":{"title":"D","owner":"owner","body":"Rule v2"},"links":items,
+        "reason":"Save the read links"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+    let saved = read(
         &w,
         "joppa_objects",
-        json!({"address":"requirement:d","links_cursor":"25"}),
+        json!({"address":"requirement:d","revision":2}),
     )
     .await?;
-    let rest = &next["links"];
-    ensure!(
-        rest["items"].as_array().map(Vec::len) == Some(5)
-            && rest["total"] == 30
-            && rest.get("next_cursor").is_none(),
-        "{rest}"
-    );
+    let stored: Vec<Value> = links
+        .iter()
+        .map(|l| {
+            json!({"target":l["target"],"relation":l["relation"],"revision":l["revision"],
+                "blocking":l["blocking"] == true})
+        })
+        .collect();
+    ensure!(saved["document"]["links"] == json!(stored), "{saved}");
     Ok(())
 }
 

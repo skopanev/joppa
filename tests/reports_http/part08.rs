@@ -55,7 +55,8 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     let g = p
         .mcp_read("joppa_objects", json!({"address":"area:g"}))
         .await?;
-    ensure!(g["verification_summary"]["passed"] == 0, "{g}");
+    // MCP gives only the counts above 0.
+    ensure!(g["verification_summary"].get("passed").is_none(), "{g}");
     ensure!(
         object("area:h").await?["verification_summary"] == h_summary,
         "the summary of H changed"

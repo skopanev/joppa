@@ -34,7 +34,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     ensure!(recorded["isError"] != true, "{recorded}");
 
     let before = object_as(&w, bot2, "task:handover", None).await?;
-    let n = before["current_revision"].as_u64().unwrap() as u32;
+    let n = before["revision"].as_u64().unwrap() as u32;
     let mut history = Vec::new();
     for revision in 1..=n {
         history
@@ -76,7 +76,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     ensure!(task["process"]["assignee"] == "bot2", "{task}");
     ensure!(task["process"]["status"] == "in_progress", "{task}");
     ensure!(
-        task["document"]["data"] == before["document"]["data"],
+        task["data"] == before["data"],
         "the handover changed the document: {task}"
     );
     // MCP gives the comments as one page; the author is the actor when they agree.
@@ -101,7 +101,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     );
 
     ensure!(
-        task["current_revision"] == n + 2,
+        task["revision"] == n + 2,
         "expected revision {} after the release and claim: {task}",
         n + 2
     );
@@ -117,7 +117,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     ensure!(
         released["actor"] == actor
             && released["reason"] == reason
-            && released["data"] == before["document"]["data"],
+            && released["data"] == before["data"],
         "revision {} is not the release: {released}",
         n + 1
     );
@@ -125,7 +125,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     ensure!(
         claimed["actor"] == "bot2"
             && claimed["reason"] == "Task claimed"
-            && claimed["data"] == before["document"]["data"],
+            && claimed["data"] == before["data"],
         "revision {} is not the claim by bot2: {claimed}",
         n + 2
     );

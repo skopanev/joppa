@@ -134,4 +134,47 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     }
   } finally { await f.close(); }
 });
+
+test('compact-open-object-ac6: the Properties icon opens a closed object with its properties first', async () => {
+  const f = await fixture({'domain:X': {title: 'Release plan outline'}, 'capability:a': {title: 'First child', parent: 'domain:X'},
+    'capability:b': {title: 'Second child', parent: 'domain:X'}});
+  try {
+    await f.command({op: 'save_object', kind: 'domain', id: 'X', revision: 1, parent: null,
+      data: {title: 'Release plan outline', owner: 'owner', body: 'Current source', scope: 'Field scope value'}, reason: 'Add a document field'});
+    const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+    const row = X.locator(':scope > summary');
+    const control = row.getByRole('button', {name: 'Properties', exact: true});
+    const fields = X.locator(':scope > .object-body > .object-details');
+    const children = X.locator(':scope > .object-body > .object-children > .common-object');
+    // A row click closes X; the close can animate, so wait until X is closed.
+    const closed = () => f.page.waitForFunction(() => !document.querySelector('#tree .common-object[data-object-address="domain:X"]').open);
+    // The properties are the first block of the body, above the children.
+    const shownFirst = async () => {
+      await children.nth(1).waitFor();
+      assert.equal(await X.getAttribute('open'), '');
+      assert.equal(await fields.isVisible(), true);
+      assert.equal(await control.getAttribute('aria-expanded'), 'true');
+      assert.equal(await X.locator(':scope > .object-body').evaluate(body => body.firstElementChild.className), 'object-details');
+      assert.ok((await fields.boundingBox()).y < (await children.nth(0).boundingBox()).y);
+      assert.match(await fields.innerText(), /Field scope value/);
+    };
+    for (const viewport of [null, {width: 390, height: 844}]) {
+      if (viewport) await f.page.setViewportSize(viewport);
+      await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+      await row.waitFor();
+      // A closed object that is not loaded yet opens with its properties shown.
+      if (await X.getAttribute('open') !== null) await row.click({position: {x: 4, y: 4}});
+      await closed();
+      await control.click();
+      await shownFirst();
+      // A loaded object with hidden properties: close it, then the icon opens it with them shown.
+      await control.click();
+      assert.equal(await fields.isVisible(), false);
+      await row.click({position: {x: 4, y: 4}});
+      await closed();
+      await control.click();
+      await shownFirst();
+    }
+  } finally { await f.close(); }
+});
 };

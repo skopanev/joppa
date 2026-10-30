@@ -114,11 +114,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         }
         Some(_) if history => history_page(reply, a["cursor"].as_str()),
         Some(_) if revision.is_some() => Ok(rc::revision(reply)),
-        Some(_) => rc::detail(
-            reply,
-            a["comments_cursor"].as_str(),
-            a["links_cursor"].as_str(),
-        ),
+        Some(_) => rc::detail(reply, a["comments_cursor"].as_str()),
     }
 }
 

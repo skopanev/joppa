@@ -13,6 +13,9 @@ use std::{
 mod claim_time;
 #[path = "common/compact_of.rs"]
 mod compact_of;
+#[path = "common/detail_read.rs"]
+mod detail_read;
+use detail_read::{current_revision, document};
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
 #[path = "common/record_http.rs"]

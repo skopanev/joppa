@@ -75,12 +75,12 @@ test('same-revision-everywhere-ac1: web and MCP read the same saved revision', a
     const content = await card.locator('.object-content').innerText();
     const current = await f.api('/objects?address=domain:d');
     const mcp = await f.mcp('joppa_objects', {address: 'domain:d'});
-    assert.equal(mcp.current_revision, 5);
+    assert.equal(mcp.revision, 5);
     const fields = card.locator('.object-details');
     await card.locator(':scope > summary').getByRole('button', {name: 'Properties', exact: true}).click();
     assert.match(await fields.innerText(), /Revision 5/);
     const hash = value => createHash('sha256').update(value).digest('hex');
-    assert.equal(hash(content), hash(mcp.document.data.body));
+    assert.equal(hash(content), hash(mcp.data.body));
     assert.equal(content, body);
   } finally { await f.close(); }
 });

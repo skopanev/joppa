@@ -39,7 +39,8 @@ async fn frozen_f6_an_archived_red_sibling_makes_a_and_r_grey() -> Result<()> {
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
     ensure!(
-        r["verification_summary"] == json!({"total":1,"passed":0,"failed":0}),
+        // MCP gives only the counts above 0.
+        r["verification_summary"] == json!({"total":1}),
         "MCP joppa_objects R: {r}"
     );
     Ok(())
@@ -195,7 +196,7 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Resul
         let n = p
             .mcp_read("joppa_objects", json!({"address":signal}))
             .await?;
-        ensure!(n["document"]["present"] == false, "mcp={mcp}: {n}");
+        ensure!(n["present"] == false, "mcp={mcp}: {n}");
     }
     // Control: the fixture detects a reset.
     let tests = p.ac_tests("criterion:a").await?;

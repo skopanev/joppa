@@ -158,12 +158,12 @@ empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
         'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
 archive = {'op':'archive_object','target':'domain:unused','revision':1,'reason':'Archive an empty group'}
 mcp('joppa_command', {'workspace':ws,'request_id':'archive-group','command':archive}, owner_token)
-assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})['document']['present'] is False
+assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})['present'] is False
 assert all(item['address']!='domain:unused' for item in mcp('joppa_objects', {'workspace':ws,'kind':'domain','parent':'*'})['items'])
 mcp('joppa_command', {'workspace':ws,'request_id':'restore-group',
     'command':{'op':'restore_object','target':'domain:unused','revision':2,'reason':'Restore the group'}}, owner_token)
 current_group = mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})
-assert current_group['document']['present'] is True and current_group['current_revision']==3
+assert 'present' not in current_group and current_group['revision']==3
 assert 'item_id' not in current_group
 assert 'system_ids' not in empty and request('/api/workspaces/'+ws+'/objects?address=domain:unused')[1]['item_id']
 assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['document']['present'] is False

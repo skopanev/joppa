@@ -11,6 +11,9 @@ use std::{
 };
 #[path = "common/compact_of.rs"]
 mod compact_of;
+#[path = "common/detail_read.rs"]
+mod detail_read;
+use detail_read::{current_revision, document};
 #[path = "common/record_http.rs"]
 mod record_http;
 include!("reports_http_parts/planning_people.rs");

@@ -50,7 +50,8 @@ async fn journal_snapshot(
             json!({
                 "status": t["process"]["status"],
                 "assignee": t["process"]["assignee"],
-                "current_revision": t["current_revision"],
+                // An MCP detail names the current revision `revision`.
+                "current_revision": if mcp { &t["revision"] } else { &t["current_revision"] },
                 "comments": comments,
             }),
         );

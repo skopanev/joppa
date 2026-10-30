@@ -22,9 +22,10 @@ export function fillCommonObject(body,detail){
   if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current tree.','dependency-review'));
   const secondary=E('div',undefined,'object-secondary');
-  // A view without the row Fields button, such as the revision dialog, always shows the fields.
+  // The properties come first in the body, right under the row and above the children.
+  // A view without the row Properties button, such as the revision dialog, always shows them.
   const fields=E('div',undefined,'object-details'),fieldsToggle=body.parentElement?.querySelector(':scope > summary .fields-button');
-  fields.hidden=!!fieldsToggle&&fieldsToggle.getAttribute('aria-expanded')!=='true';
+  fields.hidden=!!fieldsToggle&&fieldsToggle.getAttribute('aria-expanded')!=='true';body.prepend(fields);
   const meta=E('div',undefined,'object-meta');
   meta.append(E('span','Revision '+r.revision),E('span','Owner: '+personLabel(d.owner||'Unassigned')));fields.append(meta);
   if(full)fields.append(full);
@@ -58,7 +59,6 @@ export function fillCommonObject(body,detail){
     }
     fields.append(field);
   }
-  secondary.append(fields);
   // Blocking dependencies are shown read-only on the board.
   const deps=!historical&&r.present!==false&&body.parentElement?.classList.contains('common-object')?dependencyList(detail):null;
   if(deps)secondary.append(deps);

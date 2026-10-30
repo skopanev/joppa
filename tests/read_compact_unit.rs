@@ -67,32 +67,59 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
 // read-detail-pages
 #[test]
 fn a_detail_gives_each_fact_once() {
-    let stored = json!({"revision":4,"parent":"requirement:r","links":[{"target":"ac:b","relation":"related","blocking":false,"revision":null}],"data":{"title":"A"}});
+    let related = json!({"target":"ac:b","relation":"related","blocking":false,"revision":null});
+    let pinned = json!({"target":"task:t","relation":"depends_on","blocking":true,"revision":3});
+    let stored = json!({"revision":4,"parent":"requirement:r","links":[related,pinned],
+        "data":{"title":"A","note":null},"actor":"bot","actor_type":"agent","at":"2026-10-30",
+        "reason":"Save","schema_revision":20,"position":8,"present":true,"contract":[4,3]});
     let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
         "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,
         "contract_revision":4,"historical":false,"metadata_scope":"current",
         "document":stored,"signal":{"label":"Ready","tone":"green"},
         "review_required":false,"work_ready":true,
-        "links":[{"link":{"target":"ac:b","relation":"related","blocking":false,"revision":null},
-            "title":"B","kind":"ac","current_revision":2,"present":true,"blocking":false,
-            "revision":null,"metadata_scope":"current"}],
+        "verification_summary":{"total":2,"passed":2,"failed":0},
+        "links":[{"link":related,"title":"B","kind":"ac","current_revision":2,"present":true,
+            "blocking":false,"revision":null,"metadata_scope":"current"},
+            {"link":pinned,"title":"T","kind":"task","current_revision":5,"present":false,
+            "blocking":true,"revision":3,"metadata_scope":"current"}],
         "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
         "link_groups":[{"direction":"outgoing","relation":"related","kind":"ac","count":1},
             {"direction":"incoming","relation":"related","kind":"task","count":2}],
         "annotations":{"comments":{},"attachments":{}},
         "process":{"annotation_address":"ac:a","criterion":"ac:a","req":"requirement:r","revision":7,
+            "confirmed":false,
             "assessment":{"criterion":"ac:a","req":"requirement:r","revision":7,"state":"ready","reason":"Clear"}},
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
+    // One links list: a related link has no pin, and a pin shows the current revision.
     assert_eq!(
-        detail(reply, None, None).unwrap(),
-        json!({"workspace":"w","position":9,"address":"ac:a","current_revision":4,"document":stored,
-            "status":{"label":"Ready","tone":"green"},"work_ready":true,
-            "links":{"items":[{"target":"ac:b","relation":"related","title":"B","current_revision":2}],"total":1},
+        detail(reply.clone(), None).unwrap(),
+        json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
+            "status":{"label":"Ready","tone":"green"},
+            "verification_summary":{"total":2,"passed":2},
+            "links":[{"target":"ac:b","relation":"related","title":"B"},
+                {"target":"task:t","relation":"depends_on","title":"T","revision":3,
+                    "current_revision":5,"blocking":true,"present":false}],
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
-            // `req` repeats document.parent; the requirement revision stays in assessment.
+            // `req` repeats the parent; the requirement revision stays in assessment.
             "process":{"assessment":{"state":"ready","reason":"Clear","revision":7}}})
     );
+    // An archived object, a work that is not ready and a confirmed run show.
+    let mut archived = reply;
+    archived["document"]["present"] = json!(false);
+    archived["work_ready"] = json!(false);
+    archived["process"]["confirmed"] = json!(true);
+    archived["verification_summary"] = json!({"total":0,"passed":0,"failed":0});
+    let archived = detail(archived, None).unwrap();
+    assert_eq!(
+        (
+            &archived["present"],
+            &archived["work_ready"],
+            &archived["process"]["confirmed"]
+        ),
+        (&json!(false), &json!(false), &json!(true))
+    );
+    assert!(archived.get("verification_summary").is_none());
     // A revision read follows the same rules for copies and an empty remote link list.
     assert_eq!(
         revision(

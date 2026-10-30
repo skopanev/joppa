@@ -1,7 +1,8 @@
 //! The detail shape of MCP object reads (requirement:read-contract). A detail read gives the
-//! stored document and the facts that the document does not hold: status, process, comments,
-//! titled links, incoming link counts and remote links. It gives no key that repeats another
-//! key or the request, and no revision headers: `history: true` gives those.
+//! revision, parent and data of the document and the facts that the document does not hold:
+//! status, process, comments, one list of titled links, incoming link counts and remote links.
+//! It gives no key that repeats another key or the request, and no revision headers: `history:
+//! true` and `revision: N` give the actor, time and reason of a revision.
 use crate::read_compact::{page, status, strip_empty, strip_reply};
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -54,6 +55,52 @@ fn link_item(item: &Value) -> Value {
         out["present"] = json!(false);
     }
     out
+}
+
+/// One link of a detail read: the stored link with the title of its target. A pin shows with
+/// the current revision of the target, a blocking link with `blocking: true`, and an archived
+/// or missing target with `present: false`. save_object takes the item back as it is.
+fn detail_link(item: &Value) -> Value {
+    let link = &item["link"];
+    let mut out = json!({"target": link["target"], "relation": link["relation"]});
+    if !item["title"].is_null() {
+        out["title"] = item["title"].clone();
+    }
+    if !link["revision"].is_null() {
+        out["revision"] = link["revision"].clone();
+        out["current_revision"] = item["current_revision"].clone();
+    }
+    if link["blocking"] == true {
+        out["blocking"] = json!(true);
+    }
+    if item["present"] != true {
+        out["present"] = json!(false);
+    }
+    out
+}
+
+/// The current document as top-level keys: revision, parent and data. An archived object
+/// shows `present: false`. The actor, time and reason come with `history: true`.
+fn flatten(reply: &mut Value) {
+    let document = reply["document"].take();
+    for key in ["revision", "parent", "data"] {
+        reply[key] = document[key].clone();
+    }
+    if document["present"] == false {
+        reply["present"] = json!(false);
+    }
+    if let Some(map) = reply.as_object_mut() {
+        for key in [
+            "document",
+            "current_revision",
+            "address",
+            "workspace",
+            "workspace_key",
+            "position",
+        ] {
+            map.remove(key);
+        }
+    }
 }
 
 /// Remove the keys of `map` that repeat the value of `same`.
@@ -126,36 +173,29 @@ fn drop_empty_remote(reply: &mut Value) {
     }
 }
 
-/// A detail reply: the stored document, one page of comments and of titled links, the
-/// incoming link counts, one copy of each process fact, and no empty keys outside document.
-pub fn detail(
-    mut reply: Value,
-    comments_cursor: Option<&str>,
-    links_cursor: Option<&str>,
-) -> Result<Value> {
+/// A detail reply: revision, parent and data, one page of comments, all titled links, the
+/// incoming link counts, one copy of each process fact, and no empty keys outside data.
+pub fn detail(mut reply: Value, comments_cursor: Option<&str>) -> Result<Value> {
     let comments = comment_list(&reply["annotations"]["comments"]);
     if let Some(annotations) = reply["annotations"].as_object_mut() {
         annotations.remove("comments");
         // `files` gives the same attachments.
         annotations.remove("attachments");
     }
+    // All outgoing links in one list, as a write sends them back.
     let links: Vec<Value> = reply["links"]
         .as_array()
         .into_iter()
         .flatten()
-        .map(link_item)
+        .map(detail_link)
         .collect();
-    for (key, entries, cursor) in [
-        ("comments", comments, comments_cursor),
-        ("links", links, links_cursor),
-    ] {
-        // An object without comments or links has no such key.
-        reply[key] = if entries.is_empty() {
-            Value::Null
-        } else {
-            page(entries, cursor)?
-        };
-    }
+    reply["links"] = json!(links);
+    // An object without comments has no comments key.
+    reply["comments"] = if comments.is_empty() {
+        Value::Null
+    } else {
+        page(comments, comments_cursor)?
+    };
     if let Some(status) = status(&reply) {
         reply["status"] = status;
     }
@@ -173,6 +213,14 @@ pub fn detail(
         map.remove("historical");
     }
     drop_copies(&mut reply);
+    flatten(&mut reply);
+    drop_same(&mut reply, &["work_ready"], &json!(true));
+    drop_same(&mut reply["process"], &["confirmed"], &json!(false));
+    drop_same(
+        &mut reply["verification_summary"],
+        &["total", "passed", "failed"],
+        &json!(0),
+    );
     // `links` gives the outgoing links, so the counts keep the incoming groups.
     if let Some(groups) = reply["link_groups"].as_array_mut() {
         groups.retain(|g| g["direction"] == "incoming");

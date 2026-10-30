@@ -216,7 +216,7 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
         )
         .await?;
         ensure!(
-            read(&signal).await?["document"]["present"] == true,
+            read(&signal).await?.get("present").is_none(),
             "mcp={mcp} {signal}"
         );
         let archive =
@@ -228,10 +228,23 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
             "mcp={mcp}: still in the Inbox"
         );
         let object = read(&signal).await?;
+        ensure!(object["present"] == false, "mcp={mcp}: {object}");
+        // The revision headers give the reason of the archive.
+        let history = mcp_call(
+            &w,
+            &w.alex,
+            "joppa_objects",
+            json!({"workspace":w.ws,"address":signal,"history":true}),
+        )
+        .await?;
+        let history: Value =
+            serde_json::from_str(history["content"][0]["text"].as_str().unwrap_or("null"))?;
         ensure!(
-            object["document"]["present"] == false
-                && object["document"]["reason"] == "Out of scope",
-            "mcp={mcp}: {object}"
+            history["items"]
+                .as_array()
+                .and_then(|items| items.last())
+                .is_some_and(|h| h["reason"] == "Out of scope"),
+            "mcp={mcp}: {history}"
         );
     }
     Ok(())

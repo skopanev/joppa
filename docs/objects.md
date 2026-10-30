@@ -229,7 +229,7 @@ MCP reads give small replies. `docs/read-contract.md` gives every shape with JSO
 
 - A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
-- `joppa_objects` with `address` gives the current object: `document` exactly as stored, and `comments` and titled `links` as `{items, next_cursor, total}` pages of 25. Send `comments_cursor` or `links_cursor` for the next page. `revision: N` reads one revision. `history: true` gives the revision headers `{revision, at, actor, reason}` as `items`, in pages of 25 with `total`.
+- `joppa_objects` with `address` gives the current object: `revision`, `parent` and `data` exactly as stored, `comments` as `{items, next_cursor, total}` pages of 25, and all titled outgoing `links` as one list. `save_object` takes the links back as they are. Send `comments_cursor` for the next comment page. `revision: N` reads one revision. `history: true` gives the revision headers `{revision, at, actor, reason}` as `items`, in pages of 25 with `total`.
 - Keys with `null`, `""`, `[]` or `{}` are omitted everywhere outside `document`, `data`, `command` and `remote_links`. `false` and `0` stay. A missing `tests` key means no tests.
 - `joppa_tests` reads at most 100 criteria in one call. Send `parent` (direct children, or `*`) and `kind` (default `ac`) in place of `ac` to read every criterion in pages of 100.
 

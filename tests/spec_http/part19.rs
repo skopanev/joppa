@@ -23,7 +23,7 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
     ensure!(!listed, "{list}");
     let requirement = object_as(&w, bot, "requirement:dark", None).await?;
     ensure!(
-        requirement["links"]["items"].as_array().is_some_and(|l| l
+        requirement["links"].as_array().is_some_and(|l| l
             .iter()
             .any(|l| l["relation"] == "related" && l["target"] == "note:signal")),
         "{requirement}"
@@ -37,7 +37,7 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
         )
         .await?;
     ensure!(
-        signal["document"]["present"] == false
+        signal["present"] == false
             && signal["link_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "related" && g["kind"] == "requirement" && g["count"] == 1))
             && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "requirement:dark")),
         "{signal} {group}"
@@ -66,8 +66,8 @@ async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()
         };
         let b = read("b").await?;
         ensure!(
-            b["document"]["links"][0]["relation"] == "depends_on"
-                && b["document"]["links"][0]["target"] == "note:a",
+            document(&b)["links"][0]["relation"] == "depends_on"
+                && document(&b)["links"][0]["target"] == "note:a",
             "mcp={mcp}: {b}"
         );
         let a = read("a").await?;

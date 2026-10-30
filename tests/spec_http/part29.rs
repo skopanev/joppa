@@ -75,7 +75,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     );
     let mcp_u = mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":"task:u"})).await?;
     ensure!(
-        mcp_u["review_required"] != true && mcp_u["document"]["links"][0]["revision"] == 4,
+        mcp_u["review_required"] != true && mcp_u["links"][0]["revision"] == 4,
         "{mcp_u}"
     );
     let available = mcp_value(

@@ -37,7 +37,8 @@ async fn a_requirement_read_marks_an_archived_requirement_and_an_archived_criter
         }
     };
     let live = read("requirement:r").await?;
-    ensure!(live["document"]["present"] == true, "{live}");
+    // A present object has no present key; an archived one gives present: false.
+    ensure!(live.get("present").is_none(), "{live}");
     let children = ok(
         w.mcp(&w.bot, "joppa_objects", json!({"parent":"requirement:r"}))
             .await?,
@@ -51,9 +52,9 @@ async fn a_requirement_read_marks_an_archived_requirement_and_an_archived_criter
         .collect();
     ensure!(listed == ["ac:a"], "{children}");
     let archived = read("ac:b").await?;
-    ensure!(archived["document"]["present"] == false, "{archived}");
+    ensure!(archived["present"] == false, "{archived}");
     let old = read("requirement:old").await?;
-    ensure!(old["document"]["present"] == false, "{old}");
+    ensure!(old["present"] == false, "{old}");
     Ok(())
 }
 

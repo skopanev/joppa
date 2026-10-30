@@ -131,7 +131,8 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
     ensure!(
-        r["verification_summary"]["passed"] == 0,
+        // MCP gives only the counts above 0.
+        r["verification_summary"].get("passed").is_none(),
         "MCP joppa_objects R: {r}"
     );
     Ok(())

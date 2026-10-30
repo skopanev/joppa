@@ -141,7 +141,7 @@ async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<(
             json!({"workspace":w.ws,"address":"ac:arch-a"}),
         )
         .await?;
-        ensure!(a["document"]["present"] == false, "mcp={mcp}: {a}");
+        ensure!(a["present"] == false, "mcp={mcp}: {a}");
 
         for criterion in ["ac:arch-b", "ac:arch-c"] {
             refused_without_change(

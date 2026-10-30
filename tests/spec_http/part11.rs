@@ -170,13 +170,13 @@ async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Re
         w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":"kept","revision":revision,"parent":null,"data":{"title":"Kept","owner":"skopanev","body":body},"links":[],"reason":"Save"})).await?;
     }
     let hash = |read: &Value| -> Result<String> {
-        let document = serde_json::to_string(&read["document"])?;
+        let document = serde_json::to_string(&document(read))?;
         Ok(joppa::digest_hex::sha256_hex(document.as_bytes()))
     };
     let http = w.get_as(&w.skopanev, "address=note:kept").await?;
     let mcp = object_as(&w, &w.skopanev, "note:kept", None).await?;
     let r = http["current_revision"].clone();
-    ensure!(r == 2 && mcp["current_revision"] == r, "{http} {mcp}");
+    ensure!(r == 2 && current_revision(&mcp) == r, "{http} {mcp}");
     let (http_hash, mcp_hash) = (hash(&http)?, hash(&mcp)?);
     let history = object_history(&w, "note:kept").await?;
     let tree = async || -> Result<Value> {
@@ -221,7 +221,7 @@ async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Re
     );
     let mcp = object_as(&w, &w.skopanev, "note:kept", None).await?;
     ensure!(
-        mcp["current_revision"] == r && hash(&mcp)? == mcp_hash,
+        current_revision(&mcp) == r && hash(&mcp)? == mcp_hash,
         "{mcp}"
     );
     ensure!(object_history(&w, "note:kept").await? == history);

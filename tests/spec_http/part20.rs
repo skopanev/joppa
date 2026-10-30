@@ -184,7 +184,8 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
         "{:?}",
         events[0]
     );
-    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author"}}})).send().await?;
+    // A revision read gives the actor of the revision; the detail read gives none.
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author","revision":1}}})).send().await?;
     ensure!(
         response.status() == reqwest::StatusCode::OK,
         "{}",

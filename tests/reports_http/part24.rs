@@ -43,7 +43,7 @@ async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result
         let after = p.object(&w.token, "work:t").await?;
         for ((transport, old), (_, new)) in before.iter().zip(&after) {
             ensure!(
-                new["document"]["links"] == old["document"]["links"]
+                document(new)["links"] == document(old)["links"]
                     && new["review_required"] == true
                     && status_label(new) == Some("Dependency revision changed"),
                 "{transport}: {old} {new}"
@@ -160,7 +160,7 @@ async fn ac2_planning_hides_only_the_new_tasks_of_its_holder_over_http_and_mcp()
                         && t["process"]["assignee"].is_null()
                         && t["process"]["created_by"] == "agent"
                         && t["process"]["created_at"] == *position
-                        && t["document"]["parent"] == "criterion:a",
+                        && document(&t)["parent"] == "criterion:a",
                     "{transport} {task}: {t}"
                 );
             }

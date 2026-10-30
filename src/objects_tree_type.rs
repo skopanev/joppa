@@ -122,14 +122,42 @@ pub struct SchemaRevision {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "LinkInput")]
 pub struct ObjectLink {
     pub target: String,
     pub relation: String,
-    #[serde(default)]
     pub revision: Option<u32>,
-    #[serde(default)]
     pub blocking: bool,
+}
+
+/// A link as a write sends it. A detail read gives each link with the title, the current
+/// revision and the presence of its target; a write takes that item back and ignores them.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkInput {
+    target: String,
+    relation: String,
+    #[serde(default)]
+    revision: Option<u32>,
+    #[serde(default)]
+    blocking: bool,
+    #[serde(default, rename = "title")]
+    _title: serde::de::IgnoredAny,
+    #[serde(default, rename = "current_revision")]
+    _current_revision: serde::de::IgnoredAny,
+    #[serde(default, rename = "present")]
+    _present: serde::de::IgnoredAny,
+}
+
+impl From<LinkInput> for ObjectLink {
+    fn from(l: LinkInput) -> Self {
+        ObjectLink {
+            target: l.target,
+            relation: l.relation,
+            revision: l.revision,
+            blocking: l.blocking,
+        }
+    }
 }
 
 /// An ordering dependency stores no revision field. Other links keep their stored null,

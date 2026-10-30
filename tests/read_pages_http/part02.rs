@@ -56,10 +56,14 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
     )
     .await?;
     ensure!(addresses(&plain) == rest, "{plain}");
-    // The position belongs to the snapshot: a detail read without a write between gives the
-    // same position, and a write moves it.
+    // The position belongs to the snapshot: a list without a write between gives the same
+    // position, and a write moves it. A detail read gives no position.
+    let again = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
     let detail = read(&w, "joppa_objects", json!({"address":"ac:b00"})).await?;
-    ensure!(detail["position"] == plain["position"], "{detail} {plain}");
+    ensure!(
+        again["position"] == plain["position"] && detail.get("position").is_none(),
+        "{again} {detail} {plain}"
+    );
     w.command(
         &w.bot,
         json!({"op":"save_object","kind":"ac","id":"b99","revision":0,"parent":"requirement:r",

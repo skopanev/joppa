@@ -119,8 +119,8 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
             "{asked}"
         );
         ensure!(
-            asked["document"]["data"]["status"] == "unprocessed"
-                && asked["document"]["data"]["source"]["author"] == "alex",
+            asked["data"]["status"] == "unprocessed"
+                && asked["data"]["source"]["author"] == "alex",
             "{asked}"
         );
         let response = w
@@ -148,13 +148,13 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
             "An agent was accepted as the named person"
         );
         ensure!(
-            read(&w, &address, None).await?["document"] == asked["document"],
+            read(&w, &address, None).await?["data"] == asked["data"],
             "The refused recipient changed the input"
         );
         w.command_as(bot,json!({"op":"decide_note","target":address,"revision":2,"outcome":"changed_spec","reason":"The specification now states the plan","links":["ac:key-rights"]})).await?;
         let processed = read(&w, &address, None).await?;
         ensure!(
-            processed["document"]["data"]["status"] == "processed"
+            processed["data"]["status"] == "processed"
                 && processed.get("question").is_none(),
             "{processed}"
         );
@@ -168,7 +168,7 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
         let default = read(&w, &address, None).await?;
         ensure!(
             default["question"]["recipient"] == "alex"
-                && default["document"]["data"]["status"] == "unprocessed",
+                && default["data"]["status"] == "unprocessed",
             "{default}"
         );
     }

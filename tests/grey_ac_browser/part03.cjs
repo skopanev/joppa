@@ -34,7 +34,7 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
     assert.doesNotMatch((await meta()).text, /changed/);
     // An authored contract change of A asks for review of B.
     const a = await f.mcp('joppa_objects', {address: 'task:A'});
-    await task('A', 'Implement the first part and record the result', a.current_revision);
+    await task('A', 'Implement the first part and record the result', a.revision);
     read = await f.mcp('joppa_objects', {address: 'task:B'});
     assert.equal(read.review_required, true, JSON.stringify(read));
     assert.match((await meta()).text, /Links to · depends_on · revision 1 · changed/);
