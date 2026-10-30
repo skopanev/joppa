@@ -37,7 +37,7 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
     .await?;
     let mobile = w.object(&w.owner, &w.p, "component:mobile").await?;
     ensure!(
-        mobile["document"]["data"]["workspace"] == json!(w.c)
+        mobile["data"]["workspace"] == json!(w.c)
             && mobile["child_workspace"]["workspace"] == json!(w.c),
         "{mobile}"
     );

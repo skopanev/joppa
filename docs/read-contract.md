@@ -128,7 +128,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
                "at": "...", "withdrawn": false}]
   },
   "links": [
-    {"target": "ac:b", "relation": "related", "title": "..."},
+    {"target": "ac:b", "title": "..."},
     {"target": "task:u", "relation": "depends_on", "title": "...", "revision": 2,
      "current_revision": 4, "blocking": true}],
   "link_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}]
@@ -142,11 +142,12 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `id`, `current_revision`, `revision_count`, `historical` or `metadata_scope` keys. The
   actor, time and reason of a revision come with `history: true` or `revision: N`.
 - `present: false` marks an archived object. A present object has no `present` key.
-- `links` is the one list of all outgoing links, without pages: `target`, `relation` and
-  the `title` of the target. A pinned link adds its `revision` pin and the `current_revision` of the target.
-  A blocking link adds `blocking: true`. `present: false` marks an archived target.
+- `links` is the one list of all outgoing links, without pages: `target` and the `title`
+  of the target. `relation` shows only when it is not `related`. A pinned link adds its
+  `revision` pin and the `current_revision` of the target. A blocking link adds
+  `blocking: true`. `present: false` marks an archived target.
 - `save_object` takes the link items back as they are. It ignores `title`,
-  `current_revision` and `present`.
+  `current_revision` and `present`, and a link without `relation` is `related`.
 - `comments` are in time order. A comment has no `author` or `created_at` when they repeat
   `actor` and `at`.
 - `link_groups` counts the incoming links by relation and kind.

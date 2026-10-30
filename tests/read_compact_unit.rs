@@ -96,7 +96,7 @@ fn a_detail_gives_each_fact_once() {
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
             "status":{"label":"Ready","tone":"green"},
             "verification_summary":{"total":2,"passed":2},
-            "links":[{"target":"ac:b","relation":"related","title":"B"},
+            "links":[{"target":"ac:b","title":"B"},
                 {"target":"task:t","relation":"depends_on","title":"T","revision":3,
                     "current_revision":5,"blocking":true,"present":false}],
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],

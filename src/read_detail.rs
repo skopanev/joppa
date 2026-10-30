@@ -1,8 +1,6 @@
-//! The detail shape of MCP object reads (requirement:read-contract). A detail read gives the
-//! revision, parent and data of the document and the facts that the document does not hold:
+//! The detail shape of MCP object reads (requirement:read-contract): revision, parent, data,
 //! status, process, comments, one list of titled links, incoming link counts and remote links.
-//! It gives no key that repeats another key or the request, and no revision headers: `history:
-//! true` and `revision: N` give the actor, time and reason of a revision.
+//! No key repeats another key or the request; `history: true` gives the revision headers.
 use crate::read_compact::{page, status, strip_empty, strip_reply};
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -57,12 +55,15 @@ fn link_item(item: &Value) -> Value {
     out
 }
 
-/// One link of a detail read: the stored link with the title of its target. A pin shows with
-/// the current revision of the target, a blocking link with `blocking: true`, and an archived
-/// or missing target with `present: false`. save_object takes the item back as it is.
+/// One detail link: the stored link and the title of its target, without the default relation
+/// `related`. A pin adds the current target revision, a blocking link `blocking: true` and an
+/// archived target `present: false`. save_object takes the item back as it is.
 fn detail_link(item: &Value) -> Value {
     let link = &item["link"];
-    let mut out = json!({"target": link["target"], "relation": link["relation"]});
+    let mut out = json!({"target": link["target"]});
+    if link["relation"] != "related" {
+        out["relation"] = link["relation"].clone();
+    }
     if !item["title"].is_null() {
         out["title"] = item["title"].clone();
     }

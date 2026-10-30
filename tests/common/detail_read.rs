@@ -13,10 +13,12 @@ pub fn document(read: &Value) -> Value {
         .into_iter()
         .flatten()
         .map(|l| {
-            let mut link = json!({"target":l["target"],"relation":l["relation"],
+            // A link without a relation is related.
+            let relation = l.get("relation").cloned().unwrap_or(json!("related"));
+            let mut link = json!({"target":l["target"],"relation":relation,
                 "revision":l["revision"],"blocking":l["blocking"] == true});
             // An ordering dependency without a pin stores no revision field.
-            if l["relation"] == "depends_on" && l["revision"].is_null() {
+            if relation == "depends_on" && l["revision"].is_null() {
                 link.as_object_mut().map(|m| m.remove("revision"));
             }
             link

@@ -25,7 +25,7 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
     ensure!(
         requirement["links"].as_array().is_some_and(|l| l
             .iter()
-            .any(|l| l["relation"] == "related" && l["target"] == "note:signal")),
+            .any(|l| l.get("relation").is_none() && l["target"] == "note:signal")),
         "{requirement}"
     );
     let signal = object_as(&w, bot, "note:signal", None).await?;

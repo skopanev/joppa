@@ -141,7 +141,7 @@ async fn a_claim_waits_for_a_result_write_in_the_target_workspace() -> Result<()
                     .unwrap_or("null"),
             )?;
             let reply: Value = http.post(format!("{root}/mcp")).bearer_auth(&bot)
-                .json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":p,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"claim_planning","ac":"ac:a","revision":a["current_revision"]}}}}))
+                .json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":p,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"claim_planning","ac":"ac:a","revision":a["revision"]}}}}))
                 .send().await?.json().await?;
             anyhow::Ok(reply)
         }

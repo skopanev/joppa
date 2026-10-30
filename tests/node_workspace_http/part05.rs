@@ -145,7 +145,7 @@ async fn completion_and_acceptance_recheck_a_remote_target_under_the_locks() -> 
         .await?;
     let accept = async || {
         let r = w.revision(&w.p, "requirement:r").await?;
-        let req = w.object(&w.owner, &w.p, "requirement:r").await?["current_revision"].clone();
+        let req = w.object(&w.owner, &w.p, "requirement:r").await?["revision"].clone();
         w.command(
             &w.owner,
             &w.p,

@@ -107,7 +107,7 @@ impl World {
         )
         .await?;
         let a = self.object(owner, p, "ac:a").await?;
-        self.ok(owner, p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["assessment"]["revision"],"ac":a["address"],
+        self.ok(owner, p, json!({"op":"assess","req":a["parent"],"revision":a["process"]["assessment"]["revision"],"ac":"ac:a",
             "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
         self.ok(
             owner,
@@ -151,7 +151,7 @@ impl World {
     /// The current revision of an object.
     async fn revision(&self, ws: &str, address: &str) -> Result<u64> {
         Ok(
-            self.object(&self.owner, ws, address).await?["current_revision"]
+            self.object(&self.owner, ws, address).await?["revision"]
                 .as_u64()
                 .unwrap_or_default(),
         )
@@ -182,7 +182,7 @@ impl World {
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
         let a = self.object(&self.owner, &self.p, "ac:a").await?;
-        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["assessment"]["revision"],"ac":a["address"],
+        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["parent"],"revision":a["process"]["assessment"]["revision"],"ac":"ac:a",
             "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
         Ok(())
     }
@@ -194,7 +194,7 @@ impl World {
         self.command(
             &self.bot,
             &self.p,
-            json!({"op":"claim_planning","ac":"ac:a","revision":a["current_revision"]}),
+            json!({"op":"claim_planning","ac":"ac:a","revision":a["revision"]}),
         )
         .await
     }

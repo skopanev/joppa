@@ -114,7 +114,7 @@ async fn a_repin_after_a_claim_stops_the_old_plan_and_the_old_task() -> Result<(
     )
     .await?;
     let a = w.object(&w.owner, &w.p, "ac:a").await?;
-    w.ok(&w.owner, &w.p, json!({"op":"assess","req":a["document"]["parent"],"revision":a["process"]["assessment"]["revision"],"ac":a["address"],
+    w.ok(&w.owner, &w.p, json!({"op":"assess","req":a["parent"],"revision":a["process"]["assessment"]["revision"],"ac":"ac:a",
         "assessment":{"ready":true,"reason":"The new contract is reviewed"}})).await?;
     let t = w.revision(&w.p, "task:t").await?;
     w.ok(

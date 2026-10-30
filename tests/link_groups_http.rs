@@ -120,8 +120,8 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
     // `links` gives the outgoing links, so the counts keep only the incoming groups.
     ensure!(
         groups.iter().all(|g| g["direction"] == "incoming")
-            && object["links"]["total"] == 3
-            && object["links"]["items"]
+            && object["links"].as_array().map(Vec::len) == Some(3)
+            && object["links"]
                 .as_array()
                 .into_iter()
                 .flatten()

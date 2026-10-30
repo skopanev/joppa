@@ -132,10 +132,12 @@ pub struct ObjectLink {
 
 /// A link as a write sends it. A detail read gives each link with the title, the current
 /// revision and the presence of its target; a write takes that item back and ignores them.
+/// A link without a relation is `related`, as a detail read shows it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LinkInput {
     target: String,
+    #[serde(default = "related")]
     relation: String,
     #[serde(default)]
     revision: Option<u32>,
@@ -147,6 +149,10 @@ struct LinkInput {
     _current_revision: serde::de::IgnoredAny,
     #[serde(default, rename = "present")]
     _present: serde::de::IgnoredAny,
+}
+
+fn related() -> String {
+    "related".into()
 }
 
 impl From<LinkInput> for ObjectLink {

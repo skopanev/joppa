@@ -97,9 +97,10 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
         items.len() == 30 && items.iter().all(|l| l["title"].is_string()),
         "{detail}"
     );
-    // One list: the stored link with the title of its target. A related link has no pin.
+    // One list: the stored link with the title of its target. A related link has no
+    // relation and no pin.
     ensure!(
-        items[0] == json!({"target":"requirement:t00","relation":"related","title":"T00"})
+        items[0] == json!({"target":"requirement:t00","title":"T00"})
             && items[29]
                 == json!({"target":"requirement:t29","relation":"depends_on","title":"T29",
                     "revision":1,"current_revision":1,"blocking":true}),
