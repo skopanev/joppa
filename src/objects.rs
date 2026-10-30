@@ -52,9 +52,9 @@ pub use typed_save::*;
 #[path = "objects_contract_revision.rs"]
 mod contract_revision;
 pub use contract_revision::*;
-#[path = "objects_task_links_same_requirement.rs"]
-mod task_links_same_requirement;
-pub(crate) use task_links_same_requirement::*;
+#[path = "objects_wait_cycle.rs"]
+mod wait_cycle;
+pub(crate) use wait_cycle::*;
 #[path = "objects_validate_current.rs"]
 mod validate_current;
 pub use validate_current::*;

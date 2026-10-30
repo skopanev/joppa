@@ -11,7 +11,6 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         let limit = schema(w).types.get(kind).and_then(|t| t.field_max_length);
         crate::field_limit::check(data, stored, crate::field_limit::limit(limit))?;
     }
-    task_links_same_requirement(w, cmd)?;
     if let Command::SaveObject(crate::commands::SaveObjectOp {
         kind,
         id,

@@ -79,56 +79,45 @@ fn linked_task_command(id: &str, revision: u32, ac: &str, target: &str) -> Value
 // task-links-stay-in-req-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_task_link_to_a_task_of_another_requirement_is_refused() -> Result<()> {
+async fn a_task_link_to_a_task_of_another_requirement_is_saved_and_waits() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
-    let error = "a Task can depend only on a Task under the same requirement";
-    let t2 = w.get("address=task:t2").await?;
-    ensure!(t2["document"]["links"] == json!([]), "{t2}");
-    let saved = saved_rows(&w).await?;
-    for command in [
-        linked_task_command("t3", 0, "other-rights", "task:t1"),
-        linked_task_command("t2", 1, "other-rights", "task:t1"),
-    ] {
-        let (ok, http) = send_as(&w, &w.bot, &command).await?;
-        ensure!(!ok && http["error"] == error, "HTTP {command}: {http}");
-        let mcp = mcp_call(
-            &w,
-            &w.bot,
-            "joppa_command",
-            json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
-        )
-        .await?;
+    // Bot creates T3 under R2 with a link to T1 over HTTP; the owner links T2 over MCP.
+    let (ok, created) = send_as(
+        &w,
+        &w.bot,
+        &linked_task_command("t3", 0, "other-rights", "task:t1"),
+    )
+    .await?;
+    ensure!(ok, "{created}");
+    let command = linked_task_command("t2", 1, "other-rights", "task:t1");
+    let request = uuid::Uuid::new_v4().to_string();
+    let args = json!({"workspace":w.ws,"request_id":request,"command":command});
+    let mcp = mcp_call(&w, &w.owner, "joppa_command", args).await?;
+    ensure!(mcp["isError"] != true, "{mcp}");
+    let link = json!([{"target":"task:t1","relation":"depends_on","revision":1,"blocking":true}]);
+    let current = async |address: &str| -> Result<Value> {
+        Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
+    };
+    // Each dependent Task keeps the link and waits until T1 is done.
+    for task in ["task:t2", "task:t3"] {
+        let read = w.get(&format!("address={task}")).await?;
+        ensure!(read["document"]["links"] == link, "{read}");
+        let claim = json!({"op":"claim_task","id":task,"revision":read["current_revision"]});
+        let (ok, early) = send_as(&w, &w.bot, &claim).await?;
         ensure!(
-            mcp["isError"] == true && mcp["content"][0]["text"] == error,
-            "MCP {command}: {mcp}"
+            !ok && early["error"]
+                .as_str()
+                .is_some_and(|e| e.starts_with("Task has an unmet dependency")),
+            "{task}: {early}"
         );
     }
-    ensure!(
-        saved_rows(&w).await? == saved,
-        "a refused Task link stored an object, revision or journal row"
-    );
-    let after = w.get("address=task:t2").await?;
-    ensure!(
-        after["document"]["links"] == json!([])
-            && after["current_revision"] == t2["current_revision"],
-        "{after}"
-    );
-    let t3 = w
-        .http
-        .get(format!(
-            "{}/api/workspaces/{}/objects?address=task:t3",
-            w.root, w.ws
-        ))
-        .bearer_auth(&w.bot)
-        .send()
-        .await?;
-    let status = t3.status();
-    let t3: Value = t3.json().await?;
-    ensure!(
-        !status.is_success() && t3 == json!({"error":"unknown object"}),
-        "{status}: {t3}"
-    );
+    let claim = json!({"op":"claim_task","id":"task:t1","revision":current("task:t1").await?});
+    w.command_as(&w.bot, claim).await?;
+    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":"task:t1","revision":current("task:t1").await?,"evidence":"Implemented the contract"})).await?;
+    let claim = json!({"op":"claim_task","id":"task:t2","revision":current("task:t2").await?});
+    let (ok, claimed) = send_as(&w, &w.bot, &claim).await?;
+    ensure!(ok, "{claimed}");
     Ok(())
 }
 
@@ -215,7 +204,7 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
 async fn a_journal_with_a_cross_requirement_task_link_still_replays() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
-    // Seed the historical link straight into the journal; live saves now refuse it.
+    // A link stored in the journal before the live save replays to the same document.
     let command = linked_task_command("t2", 1, "other-rights", "task:t1");
     let position = journal_position(&w).await? + 1;
     let conn = w.pool.get().await?;
