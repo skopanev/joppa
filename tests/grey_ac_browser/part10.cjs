@@ -135,7 +135,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
   } finally { await f.close(); }
 });
 
-test('compact-open-object-ac6: the Properties icon opens a closed object with its properties first', async () => {
+test('compact-open-object-ac7: the Properties icon opens a closed object with its properties first', async () => {
   const f = await fixture({'domain:X': {title: 'Release plan outline'}, 'capability:a': {title: 'First child', parent: 'domain:X'},
     'capability:b': {title: 'Second child', parent: 'domain:X'}});
   try {
