@@ -1,3 +1,5 @@
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 #[path = "common/resolve_id.rs"]
 mod resolve_id;
 use anyhow::Result;
@@ -10,6 +12,8 @@ use uuid::Uuid;
 async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     store::migrate(&pool).await?;
+    // The object read gives each file a presigned download url.
+    fake_spaces::start().configure();
     let ws = format!("note-migration-{}", Uuid::new_v4());
     let said = "  Дословная заметка\n\nkeep all spaces  ";
     let commands = [

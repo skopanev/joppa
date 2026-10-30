@@ -1,6 +1,8 @@
 //! Пояснения, обсуждение и вложения — на любом объекте.
 // Этому набору нужна только подготовка мира; проверки зелёного живут в model.rs.
 mod common;
+#[path = "common/fake_spaces.rs"]
+mod fake_spaces;
 use common::*;
 use serde_json::json;
 
@@ -115,6 +117,8 @@ async fn the_index_carries_roots_and_one_object_carries_annotations() -> anyhow:
     use joppa::{commands::Command, store};
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     store::migrate(&pool).await?;
+    // The object read gives each file a presigned download url.
+    fake_spaces::start().configure();
     let ws = format!(
         "notes{}",
         std::time::SystemTime::now()

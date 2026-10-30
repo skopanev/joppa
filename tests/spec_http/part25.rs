@@ -69,6 +69,10 @@ async fn a_read_only_agent_token_cannot_write() -> Result<()> {
             "joppa_command",
             json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":types,"reason":"Add a job type"}}),
         ),
+        (
+            "joppa_attach",
+            json!({"workspace":w.ws,"target":"note:comment-target","filename":"read.txt","content":format!("Read-only attach {}", uuid::Uuid::new_v4())}),
+        ),
     ];
     let http_calls = [
         ("/blobs", format!("Read-only upload {}", uuid::Uuid::new_v4())),

@@ -144,7 +144,6 @@ pub(super) async fn read_one(
         item["question"] = json!({"recipient":recipient,"text":text});
     }
     if n == current as u32 {
-        let storage = crate::spaces::storage()?;
         let mut files: Vec<_> = item["annotations"]["attachments"]
             .as_object()
             .into_iter()
@@ -154,11 +153,6 @@ pub(super) async fn read_one(
                 let mut file = file.clone();
                 file["id"] = json!(id);
                 file["created_at"] = file["at"].clone();
-                file["url"] = json!(storage.download_url(
-                    file["hash"].as_str().unwrap_or(""),
-                    file["name"].as_str().unwrap_or(""),
-                    file["content_type"].as_str().unwrap_or(""),
-                ));
                 let at = chrono::DateTime::parse_from_str(
                     file["at"].as_str().unwrap_or(""),
                     "%Y-%m-%d %H:%M:%S%.f%#z",
@@ -168,12 +162,18 @@ pub(super) async fn read_one(
             })
             .collect();
         files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        item["files"] = json!(
-            files
-                .into_iter()
-                .map(|(_, _, file)| file)
-                .collect::<Vec<_>>()
-        );
+        // Each file has a presigned GET. An object without files needs no file storage.
+        let mut files: Vec<Value> = files.into_iter().map(|(_, _, file)| file).collect();
+        for file in &mut files {
+            let text = |key: &str| file[key].as_str().unwrap_or("").to_owned();
+            let url = crate::spaces::storage()?.download_url(
+                &text("hash"),
+                &text("name"),
+                &text("content_type"),
+            );
+            file["url"] = json!(url);
+        }
+        item["files"] = json!(files);
         // The decoration comes from the status projection of the last write.
         apply_rollups(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
         add_priorities(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;

@@ -227,6 +227,7 @@ async fn tools_list_for_a_read_only_token_lists_only_the_read_tools() -> Result<
         "joppa_batch",
         "joppa_record_results",
         "joppa_history_mark",
+        "joppa_attach",
     ];
     ensure!(
         writes.iter().all(|n| write.iter().any(|t| t == n)),
