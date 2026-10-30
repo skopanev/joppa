@@ -11,11 +11,7 @@ async fn inbox_order_uses_the_schema_and_rejects_a_stale_cursor() -> Result<()> 
     w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Configure the input type"})).await?;
     for kind in ["input", "note"] {
         for id in ["a-decided", "b-decided", "z-undecided"] {
-            let status = if id == "z-undecided" {
-                "unprocessed"
-            } else {
-                "processed"
-            };
+            let status = if id == "z-undecided" { "unprocessed" } else { "processed" };
             w.command(json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":"Input","status":status},"links":[],"reason":"Capture"})).await?;
         }
     }
