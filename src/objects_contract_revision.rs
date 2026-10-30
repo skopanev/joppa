@@ -85,10 +85,10 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
                 return false;
             };
-            // A criterion with a test list is decided at read time by its test status from
-            // reports (dependencies::Graph). Any other target keeps its recorded evidence.
+            // A Task target is ready when it is done. Any other target is decided at read
+            // time by the test status of its criteria (dependencies::Graph).
             let target_key = address(&target.kind, &target.id);
-            let evidence = report_decided(w, &target_key) || verified(w, &target_key);
+            let evidence = !task_kind(w, &target.kind) || verified(w, &target_key);
             evidence && visit(w, &l.target, types, stack)
         });
         let parent_ready = o
@@ -113,7 +113,7 @@ pub fn unready_dependency(w: &Workspace, key: &str) -> Option<String> {
             !pin_current(w, &l.target, l.revision)
                 || w.objects
                     .get(resolve_address(w, &l.target))
-                    .is_none_or(|t| !verified(w, &address(&t.kind, &t.id)))
+                    .is_none_or(|t| task_kind(w, &t.kind) && !verified(w, &address(&t.kind, &t.id)))
                 || !work_ready(w, &l.target)
         })
         .map(|l| resolve_address(w, &l.target).to_owned())

@@ -72,9 +72,9 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
                 .as_str()
                 .unwrap_or("null"),
         )?;
+        let (mcp, http) = (unsigned(&mcp), unsigned(&object));
         ensure!(
-            mcp == crate::compact_of::compact_of(&object, &mcp)
-                && mcp["files"] == object["files"],
+            mcp == crate::compact_of::compact_of(&http, &mcp) && mcp["files"] == http["files"],
             "HTTP and MCP returned different file versions"
         );
         for (file, bytes) in files.iter().zip(contents.into_iter().rev()) {

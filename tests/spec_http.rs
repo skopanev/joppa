@@ -15,7 +15,7 @@ mod claim_time;
 mod compact_of;
 #[path = "common/detail_read.rs"]
 mod detail_read;
-use detail_read::{current_revision, document};
+use detail_read::{current_revision, document, unsigned};
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
 #[path = "common/record_http.rs"]
@@ -58,3 +58,4 @@ include!("spec_http/part34.rs");
 include!("spec_http/part35.rs");
 include!("spec_http/part36.rs");
 include!("spec_http/part37.rs");
+include!("spec_http/part38.rs");

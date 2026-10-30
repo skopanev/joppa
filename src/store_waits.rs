@@ -30,15 +30,20 @@ pub(super) async fn read_with_counts(
     types: &Types,
 ) -> Result<(BTreeMap<String, String>, BTreeMap<String, usize>)> {
     crate::probe::count(&crate::probe::WAITS);
-    // A Task link waits here only for a criterion with a saved test list.
-    let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target LEFT JOIN joppa.objects t ON t.workspace=l.workspace AND t.address=COALESCE(a.target,l.target) WHERE l.workspace=$1 AND l.blocking AND l.relation='depends_on' AND s.present AND (s.kind<>ALL($2) OR (t.kind=ANY($3) AND jsonb_array_length(COALESCE(t.test_status->'tests','[]'::jsonb))>0))", &[&workspace, &kinds(types, "task"), &kinds(types, "ac")]).await?;
+    // Every blocking link of a live node takes part, whatever the type of its source.
+    let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.blocking AND l.relation='depends_on' AND s.present", &[&workspace]).await?;
     if links.is_empty() {
         return Ok((BTreeMap::new(), BTreeMap::new()));
     }
     let mut graph = Graph::default();
-    for row in client.query("SELECT o.address,o.kind,COALESCE(a.target,o.parent) FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.address=o.parent WHERE o.workspace=$1 AND o.present", &[&workspace]).await? {
-        let kind: &str = row.get(1);
-        graph.node(row.get(0), row.get(2), types.get(kind).is_some_and(|t| t.role == "ac"));
+    let tasks = kinds(types, "task");
+    for row in client.query("SELECT o.address,o.kind,COALESCE(a.target,o.parent),COALESCE(o.process->>'status','') FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.address=o.parent WHERE o.workspace=$1 AND o.present", &[&workspace]).await? {
+        let kind: String = row.get(1);
+        graph.node(row.get(0), row.get(2), types.get(&kind).is_some_and(|t| t.role == "ac"));
+        // A link to a Task is satisfied when the Task is done.
+        if tasks.contains(&kind) {
+            graph.task(row.get(0), row.get::<_, String>(3) == "done");
+        }
     }
     for row in links {
         graph.link(row.get(0), row.get(1));

@@ -15,30 +15,41 @@ pub(crate) fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
             human(w, d)?;
         }
     }
-    fn visit<'a>(
-        id: &'a str,
-        acs: &'a [Ac],
-        stack: &mut BTreeSet<&'a str>,
-        done: &mut BTreeSet<&'a str>,
+    // A dependency names a criterion of this revision or of any other requirement; a cycle
+    // through other requirements is refused as well. Keys compare as criterion addresses.
+    fn visit(
+        w: &Workspace,
+        id: &str,
+        acs: &[Ac],
+        stack: &mut BTreeSet<String>,
+        done: &mut BTreeSet<String>,
     ) -> Result<()> {
-        if done.contains(id) {
+        let key = crate::objects::criterion_address(id);
+        if done.contains(&key) {
             return Ok(());
         }
-        ensure!(stack.insert(id), "AC dependency cycle");
-        let a = acs
+        ensure!(stack.insert(key.clone()), "AC dependency cycle");
+        let local = acs
             .iter()
-            .find(|a| a.id == id)
-            .ok_or_else(|| anyhow::anyhow!("unknown AC dependency"))?;
+            .find(|a| crate::objects::criterion_address(&a.id) == key);
+        let a = match local {
+            Some(a) => a,
+            None => {
+                crate::objects::criterion_context(w, &key)
+                    .ok_or_else(|| anyhow::anyhow!("unknown AC dependency"))?
+                    .2
+            }
+        };
         for dep in &a.depends_on {
-            visit(dep, acs, stack, done)?;
+            visit(w, dep, acs, stack, done)?;
         }
-        stack.remove(id);
-        done.insert(id);
+        stack.remove(&key);
+        done.insert(key);
         Ok(())
     }
     let mut done = BTreeSet::new();
     for a in acs {
-        visit(&a.id, acs, &mut BTreeSet::new(), &mut done)?;
+        visit(w, &a.id, acs, &mut BTreeSet::new(), &mut done)?;
     }
     Ok(())
 }

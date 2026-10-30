@@ -1,6 +1,23 @@
 //! The document facts of one object read in either shape: the `document` of an HTTP read, or
 //! the flat `revision`, `parent`, `data`, presence and links of an MCP detail read.
+#![allow(dead_code)]
 use serde_json::{Value, json};
+
+/// A read with each file url cut before its query: a presigned url holds the second of its
+/// signature, so two reads in different seconds give different urls for one file.
+pub fn unsigned(read: &Value) -> Value {
+    let mut read = read.clone();
+    for file in read["files"].as_array_mut().into_iter().flatten() {
+        if let Some(url) = file["url"]
+            .as_str()
+            .and_then(|u| u.split('?').next())
+            .map(str::to_owned)
+        {
+            file["url"] = json!(url);
+        }
+    }
+    read
+}
 
 /// The stored document: `document` of an HTTP read, or the MCP detail facts in the stored
 /// form. An MCP detail has no actor, time or reason; `history: true` gives those.

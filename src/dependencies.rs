@@ -1,16 +1,17 @@
 //! Ordering dependencies. Work waits while a blocking link of its node, or of an ancestor,
-//! has a live target that is not green. A criterion target is green by its test status;
-//! another target is green when it has live criteria below it and each of them is green.
+//! has a live target that is not satisfied. The same rule holds for each source type: a
+//! criterion target is satisfied by a green test status, a Task target when it is done, and
+//! another target when it has live criteria below it and each of them is green.
 //! Reads and live writes compute the wait; projections and replay never store it.
 use crate::model::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The live tree with its blocking links. A Task link takes part only when its target is a
-/// criterion with a test list; other Task links keep their revision pins and evidence.
+/// The live tree with the blocking links of every node, and whether each Task is done.
 #[derive(Default)]
 pub struct Graph {
     parents: BTreeMap<String, Option<String>>,
     criteria: BTreeSet<String>,
+    tasks: BTreeMap<String, bool>,
     links: BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -26,14 +27,14 @@ impl Graph {
                 o.current().parent.as_deref().map(resolve),
                 role == Some("ac"),
             );
+            if role == Some("task") {
+                let done = crate::tasks::task(w, key)
+                    .is_some_and(|t| t.done.is_some() && t.retired.is_none());
+                graph.task(key.clone(), done);
+            }
             for link in &o.current().links {
                 if link.blocking && link.relation == "depends_on" {
-                    let target = resolve(&link.target);
-                    // A Task link waits here only for a criterion with a test list; other
-                    // Task links keep their revision pin and their recorded evidence.
-                    if role != Some("task") || crate::objects::report_decided(w, &target) {
-                        graph.link(key.clone(), target);
-                    }
+                    graph.link(key.clone(), resolve(&link.target));
                 }
             }
         }
@@ -46,7 +47,11 @@ impl Graph {
         }
         self.parents.insert(key, parent);
     }
-    /// A blocking ordering link of a live node other than a Task.
+    /// A live Task: a link to it is satisfied when the Task is done.
+    pub fn task(&mut self, key: String, done: bool) {
+        self.tasks.insert(key, done);
+    }
+    /// A blocking ordering link of a live node.
     pub fn link(&mut self, source: String, target: String) {
         self.links.entry(source).or_default().insert(target);
     }
@@ -68,7 +73,7 @@ impl Graph {
                 continue;
             }
             let mut found = vec![];
-            if self.criteria.contains(target) {
+            if self.criteria.contains(target) || self.tasks.contains_key(target) {
                 found.push(target.as_str());
             } else {
                 let mut stack = vec![target.as_str()];
@@ -88,18 +93,22 @@ impl Graph {
         }
         deciding
     }
-    /// The criteria whose test status the wait needs.
+    /// The criteria whose test status the wait needs. A Task decides by its own done state.
     pub fn criteria_needed(&self) -> Vec<String> {
-        let needed: BTreeSet<&str> = self.deciding().into_values().flatten().collect();
+        let needed: BTreeSet<&str> = self
+            .deciding()
+            .into_values()
+            .flatten()
+            .filter(|key| !self.tasks.contains_key(*key))
+            .collect();
         needed.into_iter().map(str::to_owned).collect()
     }
-    /// The live link targets that are not green.
+    /// The live link targets that are not satisfied: a green criterion or a done Task.
     fn unsatisfied(&self, green: &BTreeSet<String>) -> BTreeSet<&str> {
+        let satisfied = |c: &str| green.contains(c) || self.tasks.get(c) == Some(&true);
         self.deciding()
             .into_iter()
-            .filter(|(_, deciding)| {
-                deciding.is_empty() || deciding.iter().any(|c| !green.contains(*c))
-            })
+            .filter(|(_, deciding)| deciding.is_empty() || deciding.iter().any(|c| !satisfied(c)))
             .map(|(target, _)| target)
             .collect()
     }
