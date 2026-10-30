@@ -112,21 +112,21 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             }
             Ok(rc::list(reply, fields.as_deref()))
         }
-        Some(_) if history => history_page(reply, a["cursor"].as_str()),
-        Some(_) if revision.is_some() => Ok(rc::revision(reply)),
-        Some(_) => rc::detail(reply, a["comments_cursor"].as_str()),
+        Some(asked) if history => history_page(reply, asked, a["cursor"].as_str()),
+        Some(asked) if revision.is_some() => Ok(rc::revision(reply, asked)),
+        Some(asked) => rc::detail(reply, asked, a["comments_cursor"].as_str()),
     }
 }
 
 /// The revision headers in pages of 25, oldest first: items, total and next_cursor.
-fn history_page(mut reply: Value, cursor: Option<&str>) -> anyhow::Result<Value> {
+fn history_page(mut reply: Value, asked: &str, cursor: Option<&str>) -> anyhow::Result<Value> {
     let revisions = match reply["revisions"].take() {
         Value::Array(revisions) => revisions,
         _ => vec![],
     };
     reply.as_object_mut().map(|m| m.remove("revisions"));
     let page = rc::page(revisions, cursor)?;
-    let mut out = rc::revision(reply);
+    let mut out = rc::headers(reply, asked);
     for key in ["items", "total", "next_cursor"] {
         if !page[key].is_null() {
             out[key] = page[key].clone();

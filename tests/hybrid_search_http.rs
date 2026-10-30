@@ -69,10 +69,14 @@ async fn settled(
     anyhow::bail!("rows still wait for a vector after {within:?}")
 }
 
+/// The HTTP hit names its kind and ID; the MCP hit names its address.
 fn has(reply: &Value, id: &str) -> bool {
-    reply["items"]
-        .as_array()
-        .is_some_and(|items| items.iter().any(|i| i["kind"] == "domain" && i["id"] == id))
+    let address = format!("domain:{id}");
+    reply["items"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .any(|i| (i["kind"] == "domain" && i["id"] == id) || i["address"] == address.as_str())
+    })
 }
 
 // hybrid-search-meaning
@@ -94,9 +98,9 @@ async fn a_query_finds_an_object_by_meaning_with_no_shared_word() -> Result<()> 
         json!({"workspace":ws,"query":"extend membership"}),
     )
     .await?;
-    for reply in [&http, &tool] {
-        ensure!(reply["mode"] == "hybrid" && has(reply, "plans"), "{reply}");
-    }
+    // HTTP names the search mode; MCP gives the hits only.
+    ensure!(http["mode"] == "hybrid" && has(&http, "plans"), "{http}");
+    ensure!(has(&tool, "plans") && tool.get("mode").is_none(), "{tool}");
     Ok(())
 }
 
@@ -152,12 +156,14 @@ async fn a_provider_failure_at_query_time_keeps_the_word_results() -> Result<()>
         json!({"workspace":ws,"query":"passkey"}),
     )
     .await?;
-    for reply in [&http, &tool] {
-        ensure!(
-            reply["semantic_status"] == "unavailable" && has(reply, "keys"),
-            "{reply}"
-        );
-    }
+    ensure!(
+        http["semantic_status"] == "unavailable" && has(&http, "keys"),
+        "{http}"
+    );
+    ensure!(
+        has(&tool, "keys") && tool.get("semantic_status").is_none(),
+        "{tool}"
+    );
     Ok(())
 }
 

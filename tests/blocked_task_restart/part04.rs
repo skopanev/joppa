@@ -54,7 +54,8 @@ async fn planning_snapshot(
                 .ok_or_else(|| anyhow::anyhow!("{name} {task} is missing in view=all"))?;
             fields["status"] = t["process"]["status"].clone();
             fields["assignee"] = t["process"]["assignee"].clone();
-            fields["claimable"] = queued["claimable"].clone();
+            // MCP omits claimable when it is false.
+            fields["claimable"] = json!(queued["claimable"] == true);
             fields["waiting_reason"] = queued["waiting_reason"].clone();
             fields["available"] = json!(find("available", task).is_some());
         }

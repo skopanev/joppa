@@ -92,7 +92,7 @@ fn a_detail_gives_each_fact_once() {
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
     // One links list: a related link has no pin, and a pin shows the current revision.
     assert_eq!(
-        detail(reply.clone(), None).unwrap(),
+        detail(reply.clone(), "ac:a", None).unwrap(),
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
             "status":{"label":"Ready","tone":"green"},
             "verification_summary":{"total":2,"passed":2},
@@ -104,13 +104,18 @@ fn a_detail_gives_each_fact_once() {
             // `req` repeats the parent; the requirement revision stays in assessment.
             "process":{"assessment":{"state":"ready","reason":"Clear","revision":7}}})
     );
+    // A read by an alias names the address that the alias resolves to.
+    assert_eq!(
+        detail(reply.clone(), "ac:old", None).unwrap()["address"],
+        "ac:a"
+    );
     // An archived object, a work that is not ready and a confirmed run show.
     let mut archived = reply;
     archived["document"]["present"] = json!(false);
     archived["work_ready"] = json!(false);
     archived["process"]["confirmed"] = json!(true);
     archived["verification_summary"] = json!({"total":0,"passed":0,"failed":0});
-    let archived = detail(archived, None).unwrap();
+    let archived = detail(archived, "ac:a", None).unwrap();
     assert_eq!(
         (
             &archived["present"],
@@ -120,13 +125,20 @@ fn a_detail_gives_each_fact_once() {
         (&json!(false), &json!(false), &json!(true))
     );
     assert!(archived.get("verification_summary").is_none());
-    // A revision read follows the same rules for copies and an empty remote link list.
+    // A revision read gives the flat document of that revision and the current revision.
+    let old = json!({"revision":2,"parent":"requirement:r","links":[related],"data":{"title":"A"},
+        "actor":"bot","at":"2026-10-29","reason":"Save","schema_revision":20,"position":5,
+        "present":true});
     assert_eq!(
         revision(
             json!({"workspace":"w","workspace_key":"w","address":"ac:a","kind":"ac","id":"a",
-            "historical":true,"current_revision":4,"remote_links":[],"remote_links_revision":0,
-            "remote_review_required":false})
+            "historical":true,"current_revision":4,"contract_revision":2,"document":old,
+            "position":9,"links":[{"link":related,"title":"B","current_revision":2,
+            "present":true}],"remote_links":[],"remote_links_revision":0,
+            "remote_review_required":false}),
+            "ac:a"
         ),
-        json!({"workspace":"w","address":"ac:a","historical":true,"current_revision":4})
+        json!({"revision":2,"parent":"requirement:r","data":{"title":"A"},"current_revision":4,
+            "links":[{"target":"ac:b","title":"B"}]})
     );
 }

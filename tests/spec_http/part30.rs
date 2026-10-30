@@ -28,7 +28,8 @@ async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<
     ensure!(
         waiting["items"].as_array().unwrap().len() == 1
             && waiting["items"][0]["address"] == other
-            && waiting["items"][0]["claimable"] == false
+            // A false claimable is omitted.
+            && waiting["items"][0].get("claimable").is_none()
             && waiting["items"][0]["waiting_reason"] == reason,
         "{waiting}"
     );

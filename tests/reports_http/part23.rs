@@ -29,15 +29,25 @@ impl Planning<'_> {
         )?;
         Ok([("HTTP", http), ("MCP", mcp)])
     }
-    /// One Task view of the `token` member over HTTP and MCP.
+    /// One Task view of the `token` member over HTTP and MCP. MCP omits a false
+    /// `claimable` or `review_required`; the checks read a missing flag as false.
     async fn view(&self, token: &str, view: &str) -> Result<[(&'static str, Value); 2]> {
-        self.reads(
-            token,
-            &format!("tasks?view={view}&limit=100"),
-            "joppa_tasks",
-            json!({"view":view,"limit":100}),
-        )
-        .await
+        let [http, (mcp, mut page)] = self
+            .reads(
+                token,
+                &format!("tasks?view={view}&limit=100"),
+                "joppa_tasks",
+                json!({"view":view,"limit":100}),
+            )
+            .await?;
+        for item in page["items"].as_array_mut().into_iter().flatten() {
+            for flag in ["claimable", "review_required"] {
+                if item.get(flag).is_none() {
+                    item[flag] = json!(false);
+                }
+            }
+        }
+        Ok([http, (mcp, page)])
     }
     /// The view=all entry of `address` for the `token` member over HTTP and MCP.
     async fn entry(&self, token: &str, address: &str) -> Result<[(&'static str, Value); 2]> {

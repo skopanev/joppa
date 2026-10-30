@@ -44,13 +44,10 @@ async fn an_excerpt_gives_the_own_data_of_the_object_without_its_parents() -> Re
         .as_array()
         .into_iter()
         .flatten()
-        .find(|i| i["id"] == "c")
+        .find(|i| i["address"] == "capability:c")
         .cloned()
         .unwrap_or_default();
-    ensure!(
-        child["excerpt"] == r#"{"description":"Own child text bravo","owner":"owner"}"#,
-        "{found}"
-    );
+    ensure!(child["excerpt"] == "Own child text bravo", "{found}");
     // A criterion hit gives its own revision, not the revision of its requirement.
     write(&pool, &ws, json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":"capability:c","data":{"title":"Rule","owner":"owner","body":"Rule text"},"reason":"Excerpt test"})).await?;
     write(&pool, &ws, json!({"op":"save_object","kind":"requirement","id":"r","revision":1,"parent":"capability:c","data":{"title":"Rule","owner":"owner","body":"Rule text again"},"reason":"Excerpt test"})).await?;
@@ -68,7 +65,7 @@ async fn an_excerpt_gives_the_own_data_of_the_object_without_its_parents() -> Re
             .as_array()
             .into_iter()
             .flatten()
-            .any(|i| i["id"] == "a" && i["revision"] == 1 && i["req"] == "requirement:r"),
+            .any(|i| i["address"] == "ac:a" && i["revision"] == 1 && i["req"] == "requirement:r"),
         "{hits}"
     );
     let old = world::mcp(
@@ -83,9 +80,9 @@ async fn an_excerpt_gives_the_own_data_of_the_object_without_its_parents() -> Re
             .as_array()
             .into_iter()
             .flatten()
-            .any(|i| i["id"] == "c"
+            .any(|i| i["address"] == "capability:c"
                 && i["revision"] == 1
-                && i["excerpt"] == r#"{"description":"Old child text","owner":"owner"}"#),
+                && i["excerpt"] == "Old child text"),
         "{old}"
     );
     Ok(())

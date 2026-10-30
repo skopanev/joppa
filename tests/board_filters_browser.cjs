@@ -59,6 +59,6 @@ test('board-filters-and-theme-ac1 filters: tabs, filters and search update the s
     await f.page.getByLabel('Object status').selectOption('');
     await shows(['domain:gamma'], 'search Gamma');
     const found = await f.mcp('joppa_search', {query: 'Gamma'});
-    assert.ok(found.items.some(item => item.kind === 'domain' && item.id === 'gamma'), JSON.stringify(found));
+    assert.ok(found.items.some(item => item.address === 'domain:gamma'), JSON.stringify(found));
   } finally { await f.close(); }
 });

@@ -11,10 +11,12 @@ MCP reads have one shape. There is no `verbose` switch.
   `data`, `command` and `remote_links`. Those stay byte for byte as stored. `false` and `0` stay.
 - A top-level `items: []` stays when a list is empty.
 - Read an omitted key as empty: no value, no list, no map, `0`.
-- No key repeats another key, the address or the request.
-- Each list reply gives `workspace` and `position`, the journal position of its snapshot.
-  Equal positions in several replies mean that no write came between them. A detail read
-  gives neither: the request names the workspace.
+- No key repeats another key, the address or the request. No read gives `workspace` or
+  a snapshot `position`, and no read repeats the `address`, `links_of`, `ac`, `task` or
+  `target` that the request sent. A detail or revision read gives `address` only when the
+  request named an alias of the object.
+- No key gives a default value: a flag shows only when it is `true`, and a link relation
+  only when it is not `related`. Read a missing flag as `false`.
 - MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
   `joppa_search`: the reply gives only that object, with `exact_id: true`.
 
@@ -50,8 +52,6 @@ roots. `kind` filters by type. Reply:
 
 ```json
 {
-  "workspace": "w",
-  "position": 412,
   "total": 27,
   "next_cursor": "ac:a3",
   "items": [
@@ -176,15 +176,16 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 
 ## One revision and the revision headers
 
-`{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 with
-`historical` and `current_revision`, without empty keys outside `document`. It follows the
-detail rules for copies of the address and for an empty remote link list.
+`{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 as `revision`,
+`parent`, `data` and `links`, with `current_revision`. `contract_revision` shows only when
+it differs from `revision`, and `present: false` marks an archived revision. It gives no
+`document`, `historical`, actor, time, reason, status, process, comments or link counts.
 
 `{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers,
 oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next page:
 
 ```json
-{"workspace": "w", "position": 412, "address": "task:t", "current_revision": 3, "total": 3,
+{"current_revision": 3, "total": 3,
  "items": [{"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
            {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
            {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}]}
@@ -192,9 +193,10 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 
 ## `joppa_tests`
 
-- `{"workspace": "w"}`: the overview of green and red criteria in pages of 25, with
-  `workspace` and `position`.
-- `{"workspace": "w", "ac": "ac:a"}`: one criterion, as before.
+- `{"workspace": "w"}`: the overview of green and red criteria in pages of 25.
+- `{"workspace": "w", "ac": "ac:a"}`: one criterion, without its `address`. It gives no
+  `tests_draft: false` and no `tests_saved_by`. A test gives `status_name` only when it
+  differs from `status`.
 - `{"workspace": "w", "ac": "ac:a,ac:b"}`: `{"items": [...]}`. At most 100 criteria in one call;
   101 are refused with `at most 100 criteria in one call`.
 - `{"workspace": "w", "kind": "ac", "parent": "*"}`: every criterion in address order, 100 a
@@ -209,32 +211,48 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 `item_id` and the echo of the request:
 
 - `joppa_tasks` gives its tasks as `items`, without `view`. A task has no `id` (the address
-  is the ID) and no `ac` when the criterion is its `parent`. `readiness_blocker` is omitted
+  is the ID), no `ac` when the criterion is its `parent`, and no `created_at`. `claimable`
+  and `review_required` show only when they are `true`. `readiness_blocker` is omitted
   when it repeats `assessment`. `signal` gives `tone`, `label` and `at` only. A done or
   retired task has no `waiting_reason`.
 - `joppa_timeline` gives no `after` or `order`. A record of test results names itself only
   by its address `record/N`.
-- `joppa_history` gives `workspace` and `position`, and no `all`, `limit` or `signal`. Read
-  the current status of an object with `joppa_objects`.
-- A `joppa_search` result has no `system_id`, no `req` on a requirement, and `workspace`
-  only with `all_workspaces: true`. The reply gives no `all_versions` or `all_workspaces`,
-  and `workspaces` only with `all_workspaces: true`. `total` counts every text match and
+- `joppa_history` gives no `all`, `limit` or `signal`. Read the current status of an object
+  with `joppa_objects`.
+- A `joppa_search` result gives `address`, `title`, `revision`, `score` and `excerpt`, the
+  first text of the object (`body`, `description`, `contract` or `text`, at most 600
+  characters). It has no `kind`, `id` or `system_id`, no `req` on a requirement, and
+  `workspace` only with `all_workspaces: true`. `historical`, `archived` and `exact_id`
+  show only when they are `true`. The reply gives no `all_versions`, `all_workspaces`,
+  `embedded`, `indexed`, `mode` or `semantic_status`, and `workspaces` only with
+  `all_workspaces: true`. `total` counts every text match and
   the 100 nearest vector matches, so it can be above 100. When the query is an item ID or
   an address, the reply gives only the exact matches, each with `exact_id: true`.
 
 ## Links of one object
 
 `{"workspace": "w", "links_of": "domain:d", "direction": "incoming"}` gives the links of
-`domain:d` in pages of 25 with `workspace`, `position`, `total` and `next_cursor`, in the
-order direction, relation, address. `direction`, `relation` and `kind` are optional
-filters. An item names its `direction`, `relation` and `kind` only when the request did not
-send that filter. `next_cursor` is `direction/relation/address` of the last item.
+`domain:d` in pages of 25 with `total` and `next_cursor`, in the order direction, relation,
+address. `direction`, `relation` and `kind` are optional filters. An item names its
+`direction`, `relation` and `kind` only when the request did not send that filter, and
+its `relation` only when it is not `related`. `present: false` and `blocking: true` show
+only when they apply. `next_cursor` is `direction/relation/address` of the last item.
 
 ## Writes
 
-`joppa_command` and `joppa_batch` give `position`, `command`, `object` and `replayed`, without
-`summary` or `system_ids`. A `set_tree_schema` result gives `schema_revision`, the new schema
-revision, and its `command` without the sent types.
+`joppa_command` and `joppa_batch` give `position`, `command` and `object`, without
+`summary` or `system_ids`. When `object` gives `{address, revision}`, `command` gives only
+its `op`. `replayed: true` marks a retry; a first write gives no `replayed`. A
+`set_tree_schema` result gives `schema_revision`, the new schema revision, and its `command`
+without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`.
+
+## `joppa_tree`
+
+The tree gives `schema` with its `revision`; send it with `set_tree_schema`. There is no
+`current_revision`, no write header (`actor`, `actor_type`, `at`, `position`, `reason`) and no
+`status_rules` copy: each type names its `status`. A type gives `inbox`, `root` and
+`launch_blocker` only when they are `true`. `workspace_key` shows only when the request named
+an alias of the workspace. `joppa_help` with a workspace gives the same tree.
 
 ## Titles and texts
 

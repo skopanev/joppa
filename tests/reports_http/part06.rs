@@ -122,7 +122,8 @@ async fn report_rows(w: &World) -> Result<(i64, i64)> {
 /// A clean full C1 report passes every test of A, then the text of A changes: A is grey.
 async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
     let first = w.record("c1c1c1c", passing()).await?;
-    ensure!(first["replayed"] == false, "{first}");
+    // A first record gives no replayed flag.
+    ensure!(first.get("replayed").is_none(), "{first}");
     ensure!(
         w.status().await?["status"] == "green",
         "green before the text change"

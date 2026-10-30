@@ -44,7 +44,8 @@ async fn snapshot(
                 "status": object["process"]["status"],
                 "blocked": object["process"]["blocked"],
                 "assignee": object["process"]["assignee"],
-                "claimable": queued["claimable"],
+                // MCP omits claimable when it is false.
+                "claimable": queued["claimable"] == true,
                 "waiting_reason": queued["waiting_reason"],
                 "available": find(&available, address).is_some(),
             }),

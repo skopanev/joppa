@@ -13,6 +13,7 @@ pub mod field_limit;
 pub mod inbox;
 mod intake;
 pub mod launch_gate;
+pub mod mcp_lean;
 pub mod mcp_shapes;
 pub mod model;
 pub mod note_parents;

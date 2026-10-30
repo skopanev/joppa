@@ -137,22 +137,30 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
             args["cursor"] = json!(c);
         }
         let tool = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
-        // MCP gives the HTTP page without empty keys and without the echo of the filters:
-        // an item names no direction, relation or kind that the request sent.
+        // MCP gives the HTTP page without empty keys, without the echo of the request and
+        // the filters, and without default values: an item names no direction, relation or
+        // kind that the request sent, and no present true or blocking false.
         let mut http = joppa::read_compact::strip_reply(
             http_page(&server.root, &ws, cursor.as_deref()).await?,
         );
-        for key in ["direction", "relation", "kind"] {
+        for key in [
+            "direction",
+            "relation",
+            "kind",
+            "address",
+            "workspace",
+            "position",
+        ] {
             http.as_object_mut().map(|m| m.remove(key));
-            for item in http["items"].as_array_mut().into_iter().flatten() {
-                item.as_object_mut().map(|m| m.remove(key));
+        }
+        for item in http["items"].as_array_mut().into_iter().flatten() {
+            if let Some(map) = item.as_object_mut() {
+                map.retain(|key, _| !["direction", "relation", "kind"].contains(&key.as_str()));
+                map.retain(|key, v| !(key == "present" && v == true));
+                map.retain(|key, v| !(key == "blocking" && v == false));
             }
         }
         ensure!(tool == http, "HTTP and MCP disagree:\n{tool}\n{http}");
-        ensure!(
-            tool["workspace"] == ws.as_str() && tool["position"].is_u64(),
-            "{tool}"
-        );
         let items = tool["items"].as_array().cloned().unwrap_or_default();
         sizes.push(items.len());
         for item in &items {
@@ -187,10 +195,12 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
             None => break,
         }
     }
+    // An unfiltered item names its direction and kind, and its relation unless it is related.
     let count = |direction: &str, relation: &str| {
         all.iter()
             .filter(|i| {
-                i["direction"] == direction && i["relation"] == relation && i["kind"].is_string()
+                let named = i["relation"].as_str().unwrap_or("related");
+                i["direction"] == direction && named == relation && i["kind"].is_string()
             })
             .count()
     };

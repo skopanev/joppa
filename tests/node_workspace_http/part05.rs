@@ -40,10 +40,10 @@ async fn search_timeline_and_tasks_stay_in_their_own_workspace() -> Result<()> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|i| i["id"].as_str())
+        .filter_map(|i| i["address"].as_str())
         .collect();
     ensure!(
-        kinds.contains(&"api"),
+        kinds.contains(&"requirement:api"),
         "C search finds its own object: {found}"
     );
     let timeline = w

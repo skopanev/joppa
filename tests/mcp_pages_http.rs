@@ -114,7 +114,8 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
     )
     .await?;
     ensure!(
-        requirement["items"][0]["id"] == "r" && requirement["items"][0].get("req").is_none(),
+        requirement["items"][0]["address"] == "requirement:r"
+            && requirement["items"][0].get("req").is_none(),
         "{requirement}"
     );
     // Timeline and History: 25 by default and for a larger limit, with the total.

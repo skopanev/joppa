@@ -38,7 +38,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     let mut history = Vec::new();
     for revision in 1..=n {
         history
-            .push(object_as(&w, bot2, "task:handover", Some(revision)).await?["document"].clone());
+            .push(object_as(&w, bot2, "task:handover", Some(revision)).await?);
     }
     let (releaser, actor, reason) = if owner_release {
         (&w.owner, "owner", "The worker is unavailable")
@@ -105,28 +105,36 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
         "expected revision {} after the release and claim: {task}",
         n + 2
     );
+    // Each earlier revision reads as before; the current revision number moved on.
     for (revision, captured) in (1..=n).zip(&history) {
-        let read = object_as(&w, bot2, "task:handover", Some(revision)).await?;
+        let mut read = object_as(&w, bot2, "task:handover", Some(revision)).await?;
+        let mut captured = captured.clone();
+        for value in [&mut read, &mut captured] {
+            value.as_object_mut().map(|m| m.remove("current_revision"));
+        }
         ensure!(
-            read["document"] == *captured,
-            "revision {revision} changed: {captured} became {}",
-            read["document"]
+            read == captured,
+            "revision {revision} changed: {captured} became {read}"
         );
     }
-    let released = object_as(&w, bot2, "task:handover", Some(n + 1)).await?["document"].clone();
+    // The revision headers name the actor and the reason of the release and of the claim.
+    let headers = mcp_call(&w, bot2, "joppa_objects", json!({"workspace":w.ws,"address":"task:handover","history":true})).await?;
+    let headers: Value = serde_json::from_str(headers["content"][0]["text"].as_str().unwrap_or("null"))?;
+    let header = |revision: u32| headers["items"][(revision - 1) as usize].clone();
+    let released = object_as(&w, bot2, "task:handover", Some(n + 1)).await?;
     ensure!(
-        released["actor"] == actor
-            && released["reason"] == reason
+        header(n + 1)["actor"] == actor
+            && header(n + 1)["reason"] == reason
             && released["data"] == before["data"],
-        "revision {} is not the release: {released}",
+        "revision {} is not the release: {released} {headers}",
         n + 1
     );
-    let claimed = object_as(&w, bot2, "task:handover", Some(n + 2)).await?["document"].clone();
+    let claimed = object_as(&w, bot2, "task:handover", Some(n + 2)).await?;
     ensure!(
-        claimed["actor"] == "bot2"
-            && claimed["reason"] == "Task claimed"
+        header(n + 2)["actor"] == "bot2"
+            && header(n + 2)["reason"] == "Task claimed"
             && claimed["data"] == before["data"],
-        "revision {} is not the claim by bot2: {claimed}",
+        "revision {} is not the claim by bot2: {claimed} {headers}",
         n + 2
     );
 

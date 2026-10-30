@@ -136,9 +136,9 @@ fn search_addresses(result: &Value) -> Result<(Vec<String>, Value)> {
         .ok_or_else(|| anyhow::anyhow!("no result array: {result}"))?;
     let addresses = rows
         .iter()
-        .map(|r| match (r["kind"].as_str(), r["id"].as_str()) {
-            (Some(kind), Some(id)) => Ok(format!("{kind}:{id}")),
-            _ => anyhow::bail!("result without an address: {result}"),
+        .map(|r| match r["address"].as_str() {
+            Some(address) => Ok(address.to_owned()),
+            None => anyhow::bail!("result without an address: {result}"),
         })
         .collect::<Result<_>>()?;
     Ok((addresses, found))

@@ -138,7 +138,7 @@ async fn the_gate_passes_only_on_the_accepted_commit() -> Result<()> {
         .mcp(&w.owner, "joppa_tree", json!({}))
         .await?
         .map_err(|e| anyhow::anyhow!("joppa_tree: {e}"))?;
-    command(&w, json!({"op":"set_tree_schema","revision":tree["current_revision"],"reason":"Make criteria launch conditions",
+    command(&w, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Make criteria launch conditions",
         "put_types":{"ac":{"title":"Criteria","role":"ac","status":"tests","root":false,"parents":["requirement"],"launch_blocker":true}}})).await?;
     let ac = revision(&w, record_world::A).await?;
     command(&w, json!({"op":"save_object","kind":"ac","id":"a","revision":ac,"parent":"requirement:r",

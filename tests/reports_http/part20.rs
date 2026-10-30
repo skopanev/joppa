@@ -90,7 +90,8 @@ async fn finish_planning_clears_a_block_after_a_new_dependency_and_names_it() ->
         let tasks = task_list(&page).as_array().cloned().unwrap_or_default();
         let t = tasks.iter().find(|t| t["address"] == "work:t");
         ensure!(
-            t.is_some_and(|t| t["claimable"] == false
+            // MCP omits a false claimable.
+            t.is_some_and(|t| t["claimable"] != true
                 && t["waiting_reason"]
                     .as_str()
                     .is_some_and(|r| r.contains("work:c") && r != BLOCKED)),

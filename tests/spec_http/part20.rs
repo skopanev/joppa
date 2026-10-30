@@ -70,8 +70,7 @@ async fn bot_finds_first(w: &World, query: &str) -> Result<()> {
     let found = mcp_value(w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
     let first = &found["items"][0];
     ensure!(
-        first["kind"] == "note"
-            && first["id"] == "second"
+        first["address"] == "note:second"
             && first.get("system_id").is_none()
             && first["exact_id"] == true
             && found["items"].as_array().map(Vec::len) == Some(1),
@@ -99,8 +98,7 @@ async fn the_agent_bot_finds_an_object_first_by_its_address() -> Result<()> {
     let found = mcp_value(&w, "joppa_search", json!({"workspace":w.ws,"query":query})).await?;
     let first = &found["items"][0];
     ensure!(
-        first["kind"] == "note"
-            && first["id"] == "second"
+        first["address"] == "note:second"
             && first["exact_id"] == true
             && found["items"].as_array().map(Vec::len) == Some(1),
         "{query}: {found}"
@@ -184,8 +182,8 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
         "{:?}",
         events[0]
     );
-    // A revision read gives the actor of the revision; the detail read gives none.
-    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author","revision":1}}})).send().await?;
+    // The revision headers over MCP name the actor; the HTTP read names its identity type.
+    let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":"note:agent-author","history":true}}})).send().await?;
     ensure!(
         response.status() == reqwest::StatusCode::OK,
         "{}",
@@ -193,11 +191,13 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
     );
     let response: Value = response.json().await?;
     ensure!(response["result"]["isError"] != true, "{response}");
-    let object: Value = serde_json::from_str(
+    let headers: Value = serde_json::from_str(
         response["result"]["content"][0]["text"]
             .as_str()
             .unwrap_or("null"),
     )?;
+    ensure!(headers["items"][0]["actor"] == "bot", "{headers}");
+    let object = w.get("address=note:agent-author").await?;
     ensure!(
         object["document"]["actor"] == "bot" && object["document"]["actor_type"] == "agent",
         "{object}"

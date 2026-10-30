@@ -1,19 +1,14 @@
 //! The detail shape of MCP object reads (requirement:read-contract): revision, parent, data,
 //! status, process, comments, one list of titled links, incoming link counts and remote links.
 //! No key repeats another key or the request; `history: true` gives the revision headers.
-use crate::read_compact::{page, status, strip_empty, strip_reply};
+use crate::read_compact::{page, status, strip_empty};
 use anyhow::Result;
 use serde_json::{Value, json};
 
-/// Keys that repeat the address, the document or the request.
-const COPIES: [&str; 6] = [
-    "id",
-    "kind",
-    "item_id",
-    "revision_count",
-    "metadata_scope",
-    "signal",
-];
+#[path = "read_links.rs"]
+mod links;
+use links::{detail_link, drop_copies, drop_empty_remote, drop_same, flatten};
+pub use links::{headers, revision};
 
 /// The comments of an annotation map as a list in time order, without duplicate keys.
 fn comment_list(comments: &Value) -> Vec<Value> {
@@ -37,78 +32,6 @@ fn comment_list(comments: &Value) -> Vec<Value> {
         (a["at"].as_str(), a["id"].as_str()).cmp(&(b["at"].as_str(), b["id"].as_str()))
     });
     list
-}
-
-/// One titled outgoing link. `document.links` holds the stored link with its pin and
-/// blocking flag; this item adds what the target is now. `present` shows only an archived
-/// or missing target.
-fn link_item(item: &Value) -> Value {
-    let mut out = json!({"target": item["link"]["target"], "relation": item["link"]["relation"]});
-    for key in ["title", "current_revision"] {
-        if !item[key].is_null() {
-            out[key] = item[key].clone();
-        }
-    }
-    if item["present"] != true {
-        out["present"] = json!(false);
-    }
-    out
-}
-
-/// One detail link: the stored link and the title of its target, without the default relation
-/// `related`. A pin adds the current target revision, a blocking link `blocking: true` and an
-/// archived target `present: false`. save_object takes the item back as it is.
-fn detail_link(item: &Value) -> Value {
-    let link = &item["link"];
-    let mut out = json!({"target": link["target"]});
-    if link["relation"] != "related" {
-        out["relation"] = link["relation"].clone();
-    }
-    if !item["title"].is_null() {
-        out["title"] = item["title"].clone();
-    }
-    if !link["revision"].is_null() {
-        out["revision"] = link["revision"].clone();
-        out["current_revision"] = item["current_revision"].clone();
-    }
-    if link["blocking"] == true {
-        out["blocking"] = json!(true);
-    }
-    if item["present"] != true {
-        out["present"] = json!(false);
-    }
-    out
-}
-
-/// The current document as top-level keys: revision, parent and data. An archived object
-/// shows `present: false`. The actor, time and reason come with `history: true`.
-fn flatten(reply: &mut Value) {
-    let document = reply["document"].take();
-    for key in ["revision", "parent", "data"] {
-        reply[key] = document[key].clone();
-    }
-    if document["present"] == false {
-        reply["present"] = json!(false);
-    }
-    if let Some(map) = reply.as_object_mut() {
-        for key in [
-            "document",
-            "current_revision",
-            "address",
-            "workspace",
-            "workspace_key",
-            "position",
-        ] {
-            map.remove(key);
-        }
-    }
-}
-
-/// Remove the keys of `map` that repeat the value of `same`.
-fn drop_same(value: &mut Value, keys: &[&str], same: &Value) {
-    if let Some(map) = value.as_object_mut() {
-        map.retain(|key, v| !(keys.contains(&key.as_str()) && v == same));
-    }
 }
 
 /// The process facts without copies of the address, the parent, the requirement and its
@@ -149,34 +72,9 @@ fn process(reply: &mut Value) {
     drop_same(&mut process["summary"], &["revision"], &revision);
 }
 
-/// The keys that a current and a revision read share: no copies of the address, and the
-/// immutable workspace key only when it differs from the workspace name.
-fn drop_copies(reply: &mut Value) {
-    if let Some(map) = reply.as_object_mut() {
-        map.retain(|key, _| !COPIES.contains(&key.as_str()));
-    }
-    let workspace = reply["workspace"].clone();
-    drop_same(reply, &["workspace_key"], &workspace);
-}
-
-/// An object without remote links has no remote link list; read it as []. Its revision
-/// shows when it is above 0; set_remote_links takes a missing one as 0.
-fn drop_empty_remote(reply: &mut Value) {
-    if reply["remote_links"] == json!([]) && reply["remote_review_required"] != true {
-        for key in ["remote_links", "remote_review_required"] {
-            reply.as_object_mut().map(|m| m.remove(key));
-        }
-        if reply["remote_links_revision"] == 0 {
-            reply
-                .as_object_mut()
-                .map(|m| m.remove("remote_links_revision"));
-        }
-    }
-}
-
 /// A detail reply: revision, parent and data, one page of comments, all titled links, the
 /// incoming link counts, one copy of each process fact, and no empty keys outside data.
-pub fn detail(mut reply: Value, comments_cursor: Option<&str>) -> Result<Value> {
+pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> Result<Value> {
     let comments = comment_list(&reply["annotations"]["comments"]);
     if let Some(annotations) = reply["annotations"].as_object_mut() {
         annotations.remove("comments");
@@ -213,8 +111,9 @@ pub fn detail(mut reply: Value, comments_cursor: Option<&str>) -> Result<Value> 
     if let Some(map) = reply.as_object_mut() {
         map.remove("historical");
     }
-    drop_copies(&mut reply);
+    drop_copies(&mut reply, asked);
     flatten(&mut reply);
+    reply.as_object_mut().map(|m| m.remove("current_revision"));
     drop_same(&mut reply, &["work_ready"], &json!(true));
     drop_same(&mut reply["process"], &["confirmed"], &json!(false));
     drop_same(
@@ -236,15 +135,4 @@ pub fn detail(mut reply: Value, comments_cursor: Option<&str>) -> Result<Value> 
     drop_same(&mut reply, &["review_required"], &json!(false));
     strip_empty(&mut reply);
     Ok(reply)
-}
-
-/// A revision read (`revision: N`) or the revision headers (`history: true`), without
-/// copies of the address and without empty keys.
-pub fn revision(mut reply: Value) -> Value {
-    drop_copies(&mut reply);
-    drop_empty_remote(&mut reply);
-    if let Some(links) = reply["links"].as_array_mut() {
-        *links = links.iter().map(link_item).collect();
-    }
-    strip_reply(reply)
 }

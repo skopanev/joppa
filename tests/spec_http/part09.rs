@@ -138,9 +138,9 @@ async fn history_tells_a_person_from_an_agent_by_identity_type() -> Result<()> {
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        // A revision read gives the HTTP reply without empty keys and copies of the address.
+        // A revision read gives the flat HTTP document without its revision header.
         ensure!(
-            mcp == joppa::read_compact::revision(object.clone()),
+            mcp == crate::compact_of::compact_of(&object, &mcp),
             "{mcp} / {object}"
         );
     }

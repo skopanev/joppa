@@ -5,7 +5,7 @@
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
-pub use crate::read_detail::{detail, revision};
+pub use crate::read_detail::{detail, headers, revision};
 
 /// The page size of object lists, comments and links.
 pub const PAGE: usize = 25;

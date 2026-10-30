@@ -149,8 +149,8 @@ created = mcp('joppa_command', {'workspace':ws,'request_id':'common-note','comma
 common.update(revision=1, data={**common['data'],'body':'Updated text'})
 mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})
 old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1})
-assert old['document']['data']['body'] == 'Original text'
-assert old['historical'] and old.get('process') is None and not old.get('link_groups') and not old.get('annotations')
+assert old['data']['body'] == 'Original text' and old['revision'] == 1 and old['current_revision'] == 2
+assert 'historical' not in old and old.get('process') is None and not old.get('link_groups') and not old.get('annotations')
 assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
 assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 7
 empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
@@ -166,7 +166,7 @@ current_group = mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})
 assert 'present' not in current_group and current_group['revision']==3
 assert 'item_id' not in current_group
 assert 'system_ids' not in empty and request('/api/workspaces/'+ws+'/objects?address=domain:unused')[1]['item_id']
-assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['document']['present'] is False
+assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused','revision':2})['present'] is False
 assert request('/api/workspaces/'+other_ws+'/objects',token=agent_token)[0] == 404
 with urllib.request.urlopen(base+'/tree?workspace='+ws) as response:
     assert response.status == 200 and 'Schema revision' in response.read().decode()

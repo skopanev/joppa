@@ -1,5 +1,5 @@
 //! requirement:read-contract over a real server: MCP replies repeat no fact and echo no
-//! request argument, each read names its workspace and position, and a write reply is small.
+//! request argument, no read gives its workspace or a snapshot position, and a write is small.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -114,14 +114,11 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(entry, &["record", "report"]),
         "{timeline}"
     );
-    let position = timeline["position"].clone();
-    // History, the tests overview and links name the workspace and the position.
+    // History, the tests overview and links give no workspace and no snapshot position.
     for args in [json!({}), json!({"all":true,"limit":5})] {
         let history = read(&w, "joppa_history", args).await?;
         ensure!(
-            history["workspace"] == w.ws.as_str()
-                && history["position"] == position
-                && absent(&history, &["all", "limit"])
+            absent(&history, &["workspace", "position", "all", "limit"])
                 && history["items"].as_array().is_some_and(|items| {
                     !items.is_empty() && items.iter().all(|i| absent(i, &["signal"]))
                 }),
@@ -129,13 +126,10 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
         );
     }
     let overview = read(&w, "joppa_tests", json!({})).await?;
-    ensure!(
-        overview["workspace"] == w.ws.as_str() && overview["position"] == position,
-        "{overview}"
-    );
+    ensure!(absent(&overview, &["workspace", "position"]), "{overview}");
     let links = read(&w, "joppa_objects", json!({"links_of":"ac:a"})).await?;
     ensure!(
-        links["workspace"] == w.ws.as_str() && links["position"] == position,
+        absent(&links, &["workspace", "position", "address"]),
         "{links}"
     );
     // Search counts every text match, and echoes no flag.

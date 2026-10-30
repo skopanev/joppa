@@ -208,8 +208,7 @@ def main():
                 **({"purpose": args.purpose} if args.purpose else {}),
                 **({"priorities": args.priority} if args.priority else {}),
             })
-            output = {"task": page["items"][0] if page["items"] else None,
-                      "position": page["position"]}
+            output = {"task": page["items"][0] if page["items"] else None}
         else:
             output = command(args, space, value)
     else:

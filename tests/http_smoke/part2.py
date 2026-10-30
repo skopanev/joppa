@@ -58,7 +58,9 @@ mcp('joppa_command', {'workspace':mcp_ws,'request_id':'consumer',
 draft = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-generated',
     'command':{'op':'save_object','kind':'domain','revision':0,'parent':None,
         'data':{'title':'Draft area','owner':'owner'},'reason':'Draft'}})
-draft_id = draft['command']['id']
+# The saved object names the generated ID; the reply gives only the op of the command.
+assert draft['command'] == {'op':'save_object'} and 'replayed' not in draft
+draft_id = draft['object']['address'].split(':',1)[1]
 uuid.UUID(draft_id)
 # Item IDs start with a slug of the workspace title, MCP authoring checks.
 assert re.match(r'^mcp-authoring-checks(-[0-9]+)?-D-', request('/api/workspaces/'+mcp_ws+'/objects?address=domain:'+draft_id)[1]['item_id'])
@@ -78,13 +80,14 @@ batch = {'workspace':mcp_ws,'request_id':'mcp-batch','operations':[
 created = mcp('joppa_batch',batch)
 replay = mcp('joppa_batch',batch)
 assert replay['replayed'] and created['results'] == replay['results']
-assert created['results'][1]['command']['parent'] == 'capability:'+created['results'][0]['command']['id']
-task_req = created['results'][1]['command']['id']
-task_ac = created['results'][2]['command']['id']
-assert created['results'][2]['command']['parent'] == 'requirement:'+task_req
+saved = [result['object']['address'] for result in created['results']]
+task_req = saved[1].split(':',1)[1]
+task_ac = saved[2].split(':',1)[1]
+parent_of = lambda address: request('/api/workspaces/'+mcp_ws+'/objects?address='+address)[1]['document']['parent']
+assert parent_of(saved[1]) == saved[0] and parent_of(saved[2]) == saved[1]
 public_id = request('/api/workspaces/'+mcp_ws+'/objects?address=requirement:'+task_req)[1]['item_id']
 resolved = mcp('joppa_search',{'workspace':mcp_ws,'query':public_id})['items'][0]
-assert resolved['exact_id'] is True and resolved['kind'] == 'requirement' and resolved['id'] == task_req
+assert resolved['exact_id'] is True and resolved['address'] == 'requirement:'+task_req
 task_id = 'task:mcp-open-task'
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-open-task','command':{
     'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
@@ -99,6 +102,7 @@ mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command'
 assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['address'] == task_id
 claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
     'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
+# A claim saves no object, so its reply gives the whole command.
 assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == task_id
 assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['items'][0]['status'] == 'in_progress'
 client_env={**env,'XDG_CACHE_HOME':str(Path(temp)/'client-cache'),'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
@@ -117,8 +121,8 @@ client('release','mcp-open-task','--reason','Return to explicit claim')
 assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == task_id
 assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
 found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
-assert found['mode'] == 'full_text' and found['semantic_status'] == 'unavailable'
-assert found['items'][0]['id'] == task_req and 'system_id' not in found['items'][0] and 'req' not in found['items'][0]
+assert not {'mode','semantic_status','embedded','indexed'} & found.keys()
+assert found['items'][0]['address'] == 'requirement:'+task_req and not {'system_id','req','kind','id'} & found['items'][0].keys()
 denied_search = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
     'params':{'name':'joppa_search','arguments':{'workspace':mcp_ws,'query':'recovery'}}},other_token)[1]
 assert denied_search['result']['isError']
@@ -153,11 +157,11 @@ refs=system_ids()
 latest=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key'})
 headers=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','history':True})
 assert latest['revision']==3 and 'revisions' not in latest
-assert headers['current_revision']==3 and headers['total']==3 and [r['revision'] for r in headers['items']]==[1,2,3]
+assert headers['current_revision']==3 and headers['total']==3 and 'address' not in headers and [r['revision'] for r in headers['items']]==[1,2,3]
 assert latest['data']['body']=='Updated wording' and 'item_id' not in latest
 previous=mcp('joppa_objects',{'workspace':ws,'address':'requirement:key','revision':2})
-assert previous['document']['revision']==2
-assert previous['document']['data']['body']=='</script><script>window.attacked=true</script>'
+assert previous['revision']==2 and 'document' not in previous
+assert previous['data']['body']=='</script><script>window.attacked=true</script>'
 def rejected(arguments, token=agent_token):
     response=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
         'params':{'name':'joppa_objects','arguments':arguments}}, token)[1]['result']
@@ -167,7 +171,7 @@ for bad in (0,-1,1.5,'1',4294967296):
     assert 'revision' in rejected({'workspace':ws,'address':'requirement:key','revision':bad})
 assert 'Workspace not found'==rejected({'workspace':ws,'address':'requirement:key','revision':1},other_token)
 assert all('document' not in item and 'data' not in item for item in request('/api/workspaces/'+ws)[1]['index']['objects'])
-assert mcp('joppa_objects',{'workspace':ws,'address':'domain:security','revision':1})['document']['revision'] == 1
+assert mcp('joppa_objects',{'workspace':ws,'address':'domain:security','revision':1})['revision'] == 1
 all_refs=[ref for items in refs.values() for ref in items.values()]
 assert len(all_refs)==len(set(all_refs))
 for kind,items in refs.items():
@@ -176,7 +180,7 @@ for kind,items in refs.items():
         assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
         # A copied ID resolves through search: the first result is the exact match.
         found=mcp('joppa_search',{'workspace':ws,'query':ref})['items'][0]
-        assert found['exact_id'] is True and found['kind']==kind and found['id']==local_id, (ref, found)
+        assert found['exact_id'] is True and found['address']==kind+':'+local_id, (ref, found)
 denied=request('/mcp',{'jsonrpc':'2.0','id':9,'method':'tools/call','params':{'name':'joppa_search',
     'arguments':{'workspace':ws,'query':refs['requirement']['key']}}},other_token)[1]
 assert denied['result']['isError'] and denied['result']['content'][0]['text']=='Workspace not found'
@@ -191,7 +195,7 @@ types.update({
     'rule': {'title':'Rule','role':'ac','root':False,'parents':['*'],'status':'tests'},
 })
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-schema','command':
-    {'op':'set_tree_schema','revision':configured['current_revision'],'types':types,'reason':'Configure workflow types'}}, owner_token)
+    {'op':'set_tree_schema','revision':configured['schema']['revision'],'types':types,'reason':'Configure workflow types'}}, owner_token)
 for kind, ident, parent, text in [
     ('spec','same',None,'Outer specification'),
     ('epic','same','spec:same','Inner specification'),
@@ -210,7 +214,7 @@ for ac in ('measure:same','rule:same'):
     custom({'op':'assess','req':'epic:same','revision':3,'ac':ac,
             'assessment':{'ready':True,'reason':'The contract is clear'}})
 copied=mcp('joppa_search',{'workspace':mcp_ws,'query':custom_criterion_id})['items'][0]
-assert copied['exact_id'] is True and copied['kind']=='measure' and copied['id']=='same'
+assert copied['exact_id'] is True and copied['address']=='measure:same'
 
 subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
 assert system_ids()==refs

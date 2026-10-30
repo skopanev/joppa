@@ -112,7 +112,8 @@ async fn search(
     );
     let cli: Value = serde_json::from_slice(&out.stdout).context("CLI output")?;
     // MCP and the CLI give the HTTP items without empty keys, item IDs and public IDs,
-    // without `req` on a requirement, and with `workspace` only for all workspaces.
+    // without `req` on a requirement, with `workspace` only for all workspaces, with the
+    // address of each hit and without false flags.
     let mut compact = joppa::read_compact::strip_reply(http.clone());
     for item in compact["items"].as_array_mut().into_iter().flatten() {
         let map = item.as_object_mut().context("item")?;
@@ -124,6 +125,7 @@ async fn search(
             map.remove("workspace");
         }
     }
+    let compact = joppa::mcp_lean::lean("joppa_search", &json!({}), compact);
     ensure!(
         compact["items"] == tool["items"] && tool["items"] == cli["items"],
         "HTTP, MCP and CLI disagree:\n{http}\n{tool}\n{cli}"
@@ -132,7 +134,7 @@ async fn search(
     let mut items = tool["items"].as_array().cloned().unwrap_or_default();
     for item in &mut items {
         if item.get("workspace").is_none() {
-            item["workspace"] = tool["workspace"].clone();
+            item["workspace"] = json!(ws);
         }
     }
     Ok(items)
@@ -141,7 +143,7 @@ async fn search(
 fn find<'a>(items: &'a [Value], ws: &str, id: &str) -> Vec<&'a Value> {
     items
         .iter()
-        .filter(|i| i["workspace"] == ws && i["id"] == id)
+        .filter(|i| i["workspace"] == ws && i["address"] == format!("domain:{id}").as_str())
         .collect()
 }
 
@@ -162,7 +164,7 @@ async fn with_all_versions_a_word_of_an_old_revision_finds_that_revision() -> Re
     let old = find(&on, &ws, "billing");
     ensure!(
         old.iter()
-            .any(|i| i["revision"] == 1 && i["historical"] == true && i["archived"] == false),
+            .any(|i| i["revision"] == 1 && i["historical"] == true && i["archived"] != true),
         "{on:?}"
     );
     ensure!(
@@ -174,7 +176,7 @@ async fn with_all_versions_a_word_of_an_old_revision_finds_that_revision() -> Re
     let off = search(&server.root, &ws, "legacy", false, false).await?;
     ensure!(
         off.iter()
-            .all(|i| i["historical"] == false && i["archived"] == false),
+            .all(|i| i["historical"] != true && i["archived"] != true),
         "{off:?}"
     );
     ensure!(find(&off, &ws, "export").is_empty(), "{off:?}");

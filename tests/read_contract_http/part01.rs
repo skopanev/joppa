@@ -43,8 +43,8 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
     ensure!(
         items.len() == 25
             && first["total"] == 27
-            && first["position"].is_number()
-            && first["workspace"].is_string(),
+            && first.get("position").is_none()
+            && first.get("workspace").is_none(),
         "{first}"
     );
     for item in &items {
@@ -119,8 +119,8 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
         saved["data.description"] == json!(long)
             && saved["data"]["description"] == json!(long)
             && saved["data"]["title"] == "Long"
-            && full["position"].is_number()
-            && full["workspace"].is_string(),
+            && full.get("position").is_none()
+            && full.get("workspace").is_none(),
         "{full}"
     );
     let refused = w

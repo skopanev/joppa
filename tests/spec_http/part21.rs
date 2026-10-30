@@ -161,7 +161,7 @@ async fn an_agent_question_reaches_its_named_person_and_keeps_the_input_open() -
         let old = read(&w, &address, Some(2)).await?;
         ensure!(
             old["question"] == asked["question"]
-                && old["document"]["data"]["status"] == "unprocessed",
+                && old["data"]["status"] == "unprocessed",
             "The saved question changed: {old}"
         );
         w.command_as(bot,json!({"op":"decide_note","target":address,"revision":3,"outcome":"needs_information","reason":"Keep the existing author routing","question":"Which plan?"})).await?;

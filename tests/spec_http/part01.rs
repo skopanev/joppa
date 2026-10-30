@@ -215,7 +215,7 @@ impl World {
             .unwrap_or_default();
         Ok(rows
             .iter()
-            .filter_map(|r| Some(format!("{}:{}", r["kind"].as_str()?, r["id"].as_str()?)))
+            .filter_map(|r| r["address"].as_str().map(str::to_owned))
             .collect())
     }
     /// The first search result, only when it is an exact ID or address match.
@@ -235,12 +235,6 @@ impl World {
                 .unwrap_or("null"),
         )?;
         let first = &found["items"][0];
-        Ok((first["exact_id"] == true).then(|| {
-            format!(
-                "{}:{}",
-                first["kind"].as_str().unwrap_or(""),
-                first["id"].as_str().unwrap_or("")
-            )
-        }))
+        Ok((first["exact_id"] == true).then(|| first["address"].as_str().unwrap_or("").to_owned()))
     }
 }

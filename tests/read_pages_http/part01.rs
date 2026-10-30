@@ -132,14 +132,8 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
         json!({"address":"requirement:d","revision":2}),
     )
     .await?;
-    let stored: Vec<Value> = links
-        .iter()
-        .map(|l| {
-            json!({"target":l["target"],"relation":l["relation"],"revision":l["revision"],
-                "blocking":l["blocking"] == true})
-        })
-        .collect();
-    ensure!(saved["document"]["links"] == json!(stored), "{saved}");
+    // Revision 2 holds the same links, so its read gives the same items.
+    ensure!(saved["links"] == json!(items), "{saved}");
     Ok(())
 }
 

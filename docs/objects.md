@@ -274,7 +274,7 @@ Record each source address and its document revision in the implementation plan.
 Read linked documents at their pinned revision when the link supplies one.
 Before publishing work, compare the relevant current revisions with the recorded source revisions.
 Unrelated workspace events do not invalidate an unchanged source contract.
-The response `position` identifies the observed workspace state. It does not replace source revision checks.
+A write reply gives the journal `position` of the write; MCP reads give no snapshot position. A position does not replace source revision checks.
 Reject unknown, inaccessible or cyclic parent context with a clear error.
 Never treat missing context as successful discovery.
 
@@ -431,7 +431,7 @@ A plan or a Task claimed before such a change cannot finish on the old pin: fini
 A blocking link makes the object and the work below it wait until the target is ready: its pin is current, every criterion at and below it is green, no node there waits for a local dependency, and each blocking remote link that applies there is ready too.
 Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
 Claims, completions (`complete_task`) and acceptances (`accept_commit`) check this wait with the access of the writer. An acceptance also checks the blocking remote links of the nodes below its target. They lock every workspace that a chain of blocking remote links reaches, in sorted ID order, so a record of results anywhere in the chain waits or comes first. A write that reaches a workspace outside its locks fails and asks for a retry.
-An empty `links` list removes the links of the object. `workspace_key` in joppa_tree and in an object read is the immutable ID of the workspace. The MCP object read gives it only when it differs from `workspace`.
+An empty `links` list removes the links of the object. `workspace_key` in joppa_tree is the immutable ID of the workspace. joppa_tree gives it only when the request named an alias of the workspace; the MCP object read never gives it.
 
 ## Type order
 

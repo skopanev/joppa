@@ -215,18 +215,14 @@ impl World {
             .await?
             .map_err(|e| anyhow::anyhow!("joppa_tests: {e}"))
     }
-    /// The journal position that member alex reads through joppa_timeline.
+    /// The journal position of the newest entry that member alex reads in joppa_timeline.
     pub async fn position(&self) -> Result<Value> {
-        let page = self
-            .mcp(
-                &self.alex,
-                "joppa_timeline",
-                json!({"order":"newest","limit":1}),
-            )
-            .await?
-            .map_err(|e| anyhow::anyhow!("joppa_timeline: {e}"))?;
-        ensure!(page["position"].is_u64(), "{page}");
-        Ok(page["position"].clone())
+        let newest = json!({"order":"newest","limit":1});
+        let page = self.mcp(&self.alex, "joppa_timeline", newest).await?;
+        let page = page.map_err(|e| anyhow::anyhow!("joppa_timeline: {e}"))?;
+        let position = page["items"][0]["position"].clone();
+        ensure!(position.is_u64(), "{page}");
+        Ok(position)
     }
     /// The current document of an object through joppa_objects.
     pub async fn object(&self, address: &str) -> Result<Value> {

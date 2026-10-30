@@ -17,7 +17,7 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
         first.len() == 25 && plain["next_cursor"] == first[24].as_str(),
         "{plain}"
     );
-    // A page with fields continues the plain sweep, from the same snapshot position.
+    // A page with fields continues the plain sweep.
     let named = read(
         &w,
         "joppa_objects",
@@ -30,9 +30,6 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
             && rest[0] > first[24]
             && named["items"][0]["revision"] == 1
             && named.get("next_cursor").is_none()
-            && plain["position"].is_number()
-            && named["position"] == plain["position"]
-            && named["workspace"] == plain["workspace"]
             && plain["total"].as_u64() >= Some(30)
             && named["total"] == plain["total"],
         "{named}"
@@ -56,14 +53,15 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
     )
     .await?;
     ensure!(addresses(&plain) == rest, "{plain}");
-    // The position belongs to the snapshot: a list without a write between gives the same
-    // position, and a write moves it. A detail read gives no position.
-    let again = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
+    // No list or detail read gives the workspace or a snapshot position. A new object
+    // after the sweep comes in the next list.
     let detail = read(&w, "joppa_objects", json!({"address":"ac:b00"})).await?;
-    ensure!(
-        again["position"] == plain["position"] && detail.get("position").is_none(),
-        "{again} {detail} {plain}"
-    );
+    for reply in [&plain, &named, &detail] {
+        ensure!(
+            reply.get("position").is_none() && reply.get("workspace").is_none(),
+            "{reply}"
+        );
+    }
     w.command(
         &w.bot,
         json!({"op":"save_object","kind":"ac","id":"b99","revision":0,"parent":"requirement:r",
@@ -73,7 +71,7 @@ async fn plain_and_fields_pages_share_address_cursors() -> Result<()> {
     .map_err(anyhow::Error::msg)?;
     let moved = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
     ensure!(
-        moved["position"].as_i64() > plain["position"].as_i64(),
+        moved["total"].as_u64() == plain["total"].as_u64().map(|n| n + 1),
         "{moved} {plain}"
     );
     // A cursor that is not an address is refused, not read from the start.

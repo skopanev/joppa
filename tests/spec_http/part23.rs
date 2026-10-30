@@ -36,8 +36,9 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
             .json()
             .await?;
         let mcp = read_mcp("joppa_tasks", json!({"workspace":w.ws,"view":view})).await?;
+        let shaped = joppa::read_compact::strip_reply(joppa::mcp_shapes::tasks(json!({"items": http["tasks"]})));
         ensure!(
-            joppa::read_compact::strip_reply(joppa::mcp_shapes::tasks(json!({"items": http["tasks"]})))["items"] == mcp["items"],
+            joppa::mcp_lean::lean("joppa_tasks", &json!({}), shaped)["items"] == mcp["items"],
             "HTTP {http} / MCP {mcp}"
         );
         if view == "available" {

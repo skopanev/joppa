@@ -103,8 +103,10 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
     )
     .await?;
     ensure!(
-        old["document"]["data"]["title"] == "D"
-            && old["historical"] == true
+        old["data"]["title"] == "D"
+            && old["revision"] == 1
+            && old.get("historical").is_none()
+            && old.get("document").is_none()
             && old["current_revision"] == 2,
         "{old}"
     );

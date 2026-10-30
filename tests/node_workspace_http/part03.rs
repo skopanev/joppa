@@ -51,8 +51,9 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
         .mcp(&w.owner, "joppa_tree", json!({"workspace":alias}))
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+    // A read by an alias names the workspace key, and not the alias that the request sent.
     ensure!(
-        tree["workspace_key"] == json!(w.c) && tree["workspace"] == json!(alias),
+        tree["workspace_key"] == json!(w.c) && tree.get("workspace").is_none(),
         "{tree}"
     );
     let alex = w.object(&w.alex, &w.p, "component:backend").await?;

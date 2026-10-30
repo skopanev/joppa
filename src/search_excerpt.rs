@@ -1,25 +1,19 @@
 //! The own text of a search result.
 use super::*;
 
-/// The own text of a result: its saved data without the title, which the result already
-/// gives, and without empty values, cut at 600 characters. The parents stay out.
+/// The data fields that hold the text of an object, in the order that the excerpt prefers.
+const TEXT_FIELDS: [&str; 4] = ["body", "description", "contract", "text"];
+
+/// The own text of a result: the first text field of its saved data, cut at 600
+/// characters. The title, the other fields and the parents stay out.
 pub(super) fn excerpt(data: Option<String>) -> String {
-    let mut data: Value = data
+    let data: Value = data
         .and_then(|d| serde_json::from_str(&d).ok())
         .unwrap_or(Value::Null);
-    if let Some(map) = data.as_object_mut() {
-        map.remove("title");
-        map.retain(|_, v| {
-            !matches!(v, Value::Null | Value::Bool(false))
-                && v != &json!("")
-                && v != &json!([])
-                && v != &json!({})
-        });
-    }
-    let text = if data.is_null() {
-        String::new()
-    } else {
-        data.to_string()
-    };
+    let text = TEXT_FIELDS
+        .iter()
+        .filter_map(|field| data[*field].as_str())
+        .find(|text| !text.trim().is_empty())
+        .unwrap_or_default();
     text.chars().take(600).collect()
 }

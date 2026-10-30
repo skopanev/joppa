@@ -61,7 +61,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
         )
         .await?;
         ensure!(
-            old["document"]["revision"] == 1 && old["document"]["data"]["title"] == "The empty specification",
+            old["revision"] == 1 && old["data"]["title"] == "The empty specification",
             "{old}"
         );
     }

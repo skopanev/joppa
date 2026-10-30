@@ -56,7 +56,8 @@ async fn a_blocked_task_refuses_claims_and_leaves_the_queue_over_http_and_mcp() 
                 ensure!(t.is_none(), "{transport} available lists T: {page}");
             } else {
                 ensure!(
-                    t.is_some_and(|t| t["claimable"] == false && t["waiting_reason"] == BLOCKED),
+                    // MCP omits a false claimable.
+                    t.is_some_and(|t| t["claimable"] != true && t["waiting_reason"] == BLOCKED),
                     "{transport} all: {page}"
                 );
             }

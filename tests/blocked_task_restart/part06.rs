@@ -80,7 +80,8 @@ async fn journal_snapshot(
             )
             .await?;
             ensure!(
-                revision["document"]["revision"] == n,
+                // HTTP gives the document; MCP gives its revision at the top.
+                revision["document"]["revision"] == n || revision["revision"] == n,
                 "{address} revision {n}: {revision}"
             );
             // The time of the last status event is display state that a rebuild takes from

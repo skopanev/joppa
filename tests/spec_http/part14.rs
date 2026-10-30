@@ -45,7 +45,7 @@ async fn bot_finds_a_requirement_by_a_word_from_its_body() -> Result<()> {
         .or(found["items"].as_array())
         .into_iter()
         .flatten()
-        .filter_map(|r| Some(format!("{}:{}", r["kind"].as_str()?, r["id"].as_str()?)))
+        .filter_map(|r| r["address"].as_str().map(str::to_owned))
         .collect();
     ensure!(
         addresses.contains(&"requirement:sign-in".into()),
@@ -76,7 +76,7 @@ async fn bot_finds_a_requirement_by_a_word_from_its_title() -> Result<()> {
         .or(found["items"].as_array())
         .into_iter()
         .flatten()
-        .filter_map(|r| Some(format!("{}:{}", r["kind"].as_str()?, r["id"].as_str()?)))
+        .filter_map(|r| r["address"].as_str().map(str::to_owned))
         .collect();
     ensure!(
         addresses.contains(&"requirement:recovery".into()),
