@@ -20,6 +20,8 @@ pub enum Command {
     MigrateNoteParents {},
     /// Internal migration event: the text of every object type is body, see body_migration.
     MigrateBody {},
+    /// Internal migration event: a Task has no purpose, see purpose_migration.
+    MigratePurpose {},
     SetTreeSchema(SetTreeSchemaOp),
     /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
     AssessSignal {

@@ -46,6 +46,9 @@ pub use ancestor::*;
 #[path = "objects_saved.rs"]
 mod saved;
 pub(crate) use saved::*;
+#[path = "objects_criterion_move.rs"]
+mod criterion_move;
+pub(crate) use criterion_move::*;
 #[path = "objects_typed_save.rs"]
 mod typed_save;
 pub use typed_save::*;

@@ -52,13 +52,15 @@ pub(super) fn apply_revise(
         }
     }
     validate_acs(w, acs)?;
+    // A criterion belongs to the current revision of one REQ. A moved criterion left the
+    // current revision of its old REQ, and the older revisions keep it as history.
     for (other_id, other) in &w.requirements {
         if other_id != req {
             ensure!(
                 !other
                     .revisions
-                    .iter()
-                    .any(|r| r.acs.iter().any(|old| acs.iter().any(|a| a.id == old.id))),
+                    .last()
+                    .is_some_and(|r| r.acs.iter().any(|old| acs.iter().any(|a| a.id == old.id))),
                 "AC id belongs to another REQ"
             );
         }

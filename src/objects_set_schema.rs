@@ -28,6 +28,7 @@ pub fn set_schema(
     );
     crate::note_parents::check_schema(w, types)?;
     crate::body_migration::check_schema(w, types)?;
+    crate::purpose_migration::check_schema(w, types)?;
     if let Some(values) = priorities {
         let mut seen = BTreeSet::new();
         ensure!(
@@ -139,7 +140,6 @@ pub fn set_schema(
                     "body",
                     "description",
                     "contract",
-                    "purpose",
                     "status",
                     "archived",
                     "decision_required",

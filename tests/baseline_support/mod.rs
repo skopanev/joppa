@@ -142,7 +142,7 @@ pub async fn build(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
     write(pool, ws, &mut step, acs).await?;
     let tasks = (0..TASKS)
         .map(|t| save("task", &format!("t{t}"), Some(format!("ac:a{}", t % ACS)),
-            json!({"title":format!("Task {t}"),"owner":"owner","body":"Synthetic work","purpose":"implementation","projects":[]})))
+            json!({"title":format!("Task {t}"),"owner":"owner","body":"Synthetic work","projects":[]})))
         .collect();
     write(pool, ws, &mut step, tasks).await?;
     let lists = (0..ACS)

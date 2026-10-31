@@ -58,12 +58,6 @@ pub fn apply(
         anyhow::bail!(crate::removed_ops::refusal(op));
     }
     crate::objects::validate_current(w, command)?;
-    if let Command::ClaimTask { req, id, .. } = command {
-        let key = crate::tasks::address(req, id);
-        if crate::tasks::task(w, &key).is_some_and(|t| crate::tasks::holder(w, t).is_none()) {
-            crate::tasks::ensure_agent_available(w, actor, &key)?;
-        }
-    }
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);
     crate::objects::reset_changed(w, position, recorded_at)

@@ -87,7 +87,6 @@ pub(crate) fn subject_of(state: &Workspace, key: &str, target: &str) -> bool {
 pub(crate) fn validate_selection<'a>(
     state: &Workspace,
     project: Option<&str>,
-    purpose: Option<&str>,
     priorities: &'a [String],
 ) -> Result<Vec<(&'a str, &'a str)>> {
     if let Some(project) = project {
@@ -99,9 +98,6 @@ pub(crate) fn validate_selection<'a>(
             },
             "unknown project"
         );
-    }
-    if let Some(purpose) = purpose {
-        ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
     }
     priorities
         .iter()

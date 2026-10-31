@@ -8,7 +8,6 @@ It also includes the current specification revision, reason, recipient, and deci
 Task process and queue metadata include the direct parent assessment when that parent has the configured criterion role.
 `readiness_blocker` identifies the assessment that prevents a configured readiness gate, including criterion dependencies.
 A waiting Task reports the same question and recipient in `waiting_reason` and its claim refusal.
-Decision Tasks retain the configured exception for collecting their parent's decision.
 These fields describe readiness. They do not change check evidence or work completion.
 The following operations retain their original verification and compatibility rules.
 
@@ -49,22 +48,21 @@ assess: req, revision, ac,
         assessment:{ready,reason,owner:null,decision:null}
 claim_task: revision, id; atomically assign an open Task to the authenticated actor
       Claims persist until an explicit recorded action changes the holder or work state.
-claim_next_task: project (optional), purpose (optional), priorities (optional
+claim_next_task: project (optional), priorities (optional
       ordered list of kind:id selectors: domain, capability, requirement, ac,
       task, project, consumer or any configured type). Use the returned object address.
       Old task:<REQ>/<Task> addresses remain valid. A short selector can match
       several Tasks. Use the full address to select one Task.
       Under the same workspace lock, select the
       oldest claimable task matching the first priority that has one. If none
-      match, select the oldest claimable task overall. project and purpose are
-      hard filters. Unknown priority targets are errors. Journal a concrete
+      match, select the oldest claimable task overall. project is
+      a hard filter. Unknown priority targets are errors. Journal a concrete
       claim_task; the response command contains the Task address and its object revision.
       For a read-only preview use joppa_tasks with view=available, limit=1 and
-      the same project, purpose and priorities. It applies the same ordering and
+      the same project and priorities. It applies the same ordering and
       returns no Task when none is available; a later claim_task may lose a race.
 release_task: revision, id, reason; the holder or workspace owner returns unfinished work to the queue
 complete_task: revision, id, evidence, commit; only the current holder completes claimed work, and commit is the git sha where the Task is ready
-      A decision Task under the default AC gate needs the actual specialist decision comment ID.
 review_task: revision, id, reason; Task owner or workspace owner confirms the current parent contract
 retire_task: revision, id, reason; Task owner or workspace owner retires work and retains its history and completion result
       The planning holder of the parent criterion can also retire a blocked child Task.
@@ -117,8 +115,8 @@ Elapsed time, missing heartbeats and server restarts never return a Task to the 
 Only the current holder can complete claimed work.
 The holder or workspace owner can release unfinished work with a reason.
 Earlier journal entries and claim metadata remain readable.
-Queue cursors retain their read time until the workspace position changes. A decision Task requires its designated human owner to claim it.
-Under the default AC gate, that owner can claim decision work before the AC becomes ready.
+Queue cursors retain their read time until the workspace position changes.
+An agent may hold several Tasks at the same time, also of different REQs.
 Task status is `open`, `in_progress` or `done`. Unmet dependencies prevent claim and appear in readiness hints.
 Task completion does not verify an AC or specification. Only verification evidence can make an AC pass.
 The queue response uses the public workspace ID shown by `joppa_list`; historical storage aliases remain valid inputs. `created_at` is the Task creation journal position, not a wall-clock timestamp.
@@ -332,7 +330,7 @@ Public copied IDs are opaque. Read their type from the object response.
 ## Task queue over HTTP
 
 `GET /api/workspaces/:workspace/tasks` reads the same queue as `joppa_tasks`.
-Use view, limit, cursor, project, purpose and comma-separated priorities as query parameters.
+Use view, limit, cursor, project and comma-separated priorities as query parameters.
 
 ## Workspace timeline
 

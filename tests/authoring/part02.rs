@@ -68,7 +68,7 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         store::execute_input(&pool, &ws, "owner", &format!("task-{suffix}"),
             &json!({"op":"save_object","kind":"task","id":format!("task-{suffix}"),"revision":0,
                 "parent":format!("ac:ac-{suffix}"),"data":{"title":suffix,"owner":"owner","projects":[],
-                "purpose":"implementation","body":"Implement and provide evidence"},"reason":"Plan the work"})).await?;
+                "body":"Implement and provide evidence"},"reason":"Plan the work"})).await?;
     }
     let original = store::task_queue(&pool, &ws, "owner", "all", 50, None).await?;
     assert_eq!(original["workspace"], public_ws);
@@ -110,7 +110,6 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         1,
         None,
         None,
-        None,
         &canonical_priorities,
     )
     .await?;
@@ -134,7 +133,6 @@ async fn claim_next_uses_ordered_priorities_then_falls_back() -> Result<()> {
         "owner",
         "available",
         1,
-        None,
         None,
         None,
         &priorities.iter().map(|s| s.to_string()).collect::<Vec<_>>(),

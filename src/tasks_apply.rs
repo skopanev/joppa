@@ -183,9 +183,7 @@ pub fn apply(
                 );
             }
             let parent = o.current().parent.clone();
-            let data = save(w, actor, &key, &data, parent.as_deref(), position, |_| {
-                false
-            })?;
+            let data = save(w, actor, &key, &data, parent.as_deref(), position)?;
             let mut r = w.objects[&key].current().clone();
             r.data = data;
             append(w, &key, r, actor, position, at, reason);

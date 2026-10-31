@@ -11,7 +11,7 @@ fn document(title: &str) -> Value {
 }
 
 fn contract(title: &str) -> Value {
-    json!({"title":title,"owner":"owner","body":"Implement the specified document behavior","purpose":"implementation","projects":[]})
+    json!({"title":title,"owner":"owner","body":"Implement the specified document behavior","projects":[]})
 }
 
 fn configured() -> World {
@@ -84,9 +84,8 @@ fn action(w: &mut World, actor: &str, key: &str, op: &str, extra: Value) {
     w.ok(actor, cmd);
 }
 
-// one-task-per-agent-ac1
 #[test]
-fn an_agent_holds_only_one_active_task_across_configured_types() {
+fn an_agent_holds_several_tasks_across_configured_types() {
     let mut w = configured();
     for key in ["task:one", "work:two"] {
         save(
@@ -97,13 +96,13 @@ fn an_agent_holds_only_one_active_task_across_configured_types() {
         );
     }
     action(&mut w, "agent", "task:one", "claim_task", json!({}));
-    let second = json!({"op":"claim_task","id":"work:two","revision":w.state.objects["work:two"].current().revision});
-    let position = w.position;
-    let error = w.apply("agent", second.clone()).unwrap_err();
-    assert_eq!(error.to_string(), "agent already holds task task:one");
-    assert_eq!(w.position, position);
-    assert!(w.state.task_process["work:two"].assignee.is_none());
-    w.ok("other", second);
+    action(&mut w, "agent", "work:two", "claim_task", json!({}));
+    for key in ["task:one", "work:two"] {
+        assert_eq!(
+            w.state.task_process[key].assignee.as_deref(),
+            Some("agent")
+        );
+    }
     action(
         &mut w,
         "agent",
@@ -111,14 +110,6 @@ fn an_agent_holds_only_one_active_task_across_configured_types() {
         "complete_task",
         json!({"evidence":"The contract works"}),
     );
-    action(
-        &mut w,
-        "other",
-        "work:two",
-        "release_task",
-        json!({"reason":"Return the work"}),
-    );
-    action(&mut w, "agent", "work:two", "claim_task", json!({}));
 }
 
 #[test]
@@ -183,7 +174,7 @@ fn task_uses_its_schema_parent_and_own_revision_without_req_or_ac() {
 }
 
 #[test]
-fn old_journal_claims_survive_and_new_claims_obey_the_agent_limit() {
+fn old_journal_claims_survive_and_new_claims_have_no_agent_limit() {
     let mut w = configured();
     for key in ["task:one", "work:two", "task:three"] {
         save(
@@ -214,11 +205,12 @@ fn old_journal_claims_survive_and_new_claims_obey_the_agent_limit() {
         w.state.task_process["work:two"].assignee.as_deref(),
         Some("agent")
     );
-    let error = w
-        .apply(
-            "agent",
-            json!({"op":"claim_task","id":"task:three","revision":1}),
-        )
-        .unwrap_err();
-    assert_eq!(error.to_string(), "agent already holds task task:one");
+    w.ok(
+        "agent",
+        json!({"op":"claim_task","id":"task:three","revision":1}),
+    );
+    assert_eq!(
+        w.state.task_process["task:three"].assignee.as_deref(),
+        Some("agent")
+    );
 }

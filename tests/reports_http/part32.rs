@@ -197,7 +197,7 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
     let w = world().await?;
     let p = planning(&w).await?;
     p.ready().await?;
-    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion"}), json!([])).await?;
     p.write(
         "agent",
         json!({"op":"claim_task","id":"work:t","revision":p.revision("work:t").await?}),

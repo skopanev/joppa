@@ -68,7 +68,6 @@ async fn snapshot(pool: &Pool, workspace: &str) -> anyhow::Result<BTreeMap<Strin
         "objects",
         "object_revisions",
         "object_links",
-        "ac_owners",
         "state_entries",
         "state_revisions",
         "task_queue",

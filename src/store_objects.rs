@@ -95,15 +95,22 @@ pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<
         )
         .await?;
     let found: Vec<Option<String>> = rows.iter().map(|r| r.get(0)).collect();
+    // An unknown ID reads as unknown, also beside known IDs.
+    let found: Vec<String> = found
+        .into_iter()
+        .collect::<Option<_>>()
+        .context("unknown object")?;
+    // An ID of a workspace that the caller cannot read reads as unknown.
+    for workspace in &found {
+        access::check(&**conn, workspace, actor, false)
+            .await
+            .map_err(|_| anyhow::anyhow!("unknown object"))?;
+    }
     ensure!(
         found.len() == 1,
         "the public item IDs of one call belong to one workspace"
     );
-    let workspace = found[0].clone().context("unknown object")?;
-    access::check(&**conn, &workspace, actor, false)
-        .await
-        .map_err(|_| anyhow::anyhow!("unknown object"))?;
-    Ok(workspace)
+    Ok(found[0].clone())
 }
 
 #[derive(Default)]

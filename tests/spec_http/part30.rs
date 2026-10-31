@@ -2,57 +2,32 @@
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_holding_a_task_cannot_claim_a_task_of_another_req() -> Result<()> {
+async fn an_agent_holding_a_task_claims_a_task_of_another_req() -> Result<()> {
     let w = world().await?;
     w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review")]).await?;
     for ac in ["key-rights", "other-rights"] {
         w.assess_ready(ac).await?;
     }
     let held = ready_task(&w, "a1", "key-rights").await?;
-    let same = ready_task(&w, "a2", "key-rights").await?;
     let other = ready_task(&w, "b1", "other-rights").await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":held,"revision":1}))
         .await?;
-    let queue = async |view: &str| {
-        mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":view})).await
-    };
-    let available = queue("available").await?;
+    let available =
+        mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":"available"})).await?;
     ensure!(
         available["items"].as_array().unwrap().len() == 1
-            && available["items"][0]["address"] == same
+            && available["items"][0]["address"] == other
             && available["items"][0]["claimable"] == true,
         "{available}"
     );
-    let waiting = queue("waiting").await?;
-    let reason = format!("agent already holds task {held}");
-    ensure!(
-        waiting["items"].as_array().unwrap().len() == 1
-            && waiting["items"][0]["address"] == other
-            // A false claimable is omitted.
-            && waiting["items"][0].get("claimable").is_none()
-            && waiting["items"][0]["waiting_reason"] == reason,
-        "{waiting}"
-    );
-    let reply = w
-        .http
-        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(&w.bot)
-        .json(&json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"claim_task","id":other,"revision":1}}))
-        .send()
-        .await?;
-    ensure!(
-        reply.status() == reqwest::StatusCode::CONFLICT,
-        "{}",
-        reply.status()
-    );
-    let reply: Value = reply.json().await?;
-    ensure!(reply["error"] == reason, "{reply}");
-    let refused = w.get(&format!("address={other}")).await?;
-    ensure!(refused["process"]["assignee"].is_null(), "{refused}");
     let next = w
         .command_as(&w.bot, json!({"op":"claim_next_task"}))
         .await?;
-    ensure!(next["command"]["id"] == same, "{next}");
+    ensure!(next["command"]["id"] == other, "{next}");
+    for task in [&held, &other] {
+        let read = w.get(&format!("address={task}")).await?;
+        ensure!(read["process"]["assignee"] == "bot", "{read}");
+    }
     Ok(())
 }
 

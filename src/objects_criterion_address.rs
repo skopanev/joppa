@@ -51,7 +51,9 @@ pub(crate) fn document_adapter_fields(
         _ => kind,
     });
     if w.body_migrated {
-        return fields.map(crate::body_migration::body_fields);
+        return fields.map(|f| {
+            crate::purpose_migration::task_fields(w, crate::body_migration::body_fields(f))
+        });
     }
     fields
 }
@@ -122,7 +124,10 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
                 );
             }
             for (tid, t) in &r.tasks {
-                let mut data = json!({"title":t.title,"owner":r.owner,(contract):t.contract,"projects":t.projects,"purpose":t.purpose});
+                let mut data = json!({"title":t.title,"owner":r.owner,(contract):t.contract,"projects":t.projects});
+                if !w.purpose_migrated {
+                    data["purpose"] = json!(t.purpose);
+                }
                 let parent = if t.acs.len() == 1 {
                     criterion_address(&t.acs[0])
                 } else {

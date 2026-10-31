@@ -33,6 +33,7 @@ pub(in crate::store) async fn project(
                 | Command::MigrateTestRules {}
                 | Command::MigrateNoteParents {}
                 | Command::MigrateBody {}
+                | Command::MigratePurpose {}
         )
     });
     // A redaction rewrites the stored revisions of its object; nothing else may.

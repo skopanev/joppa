@@ -119,11 +119,10 @@ pub fn readiness_blocker(w: &Workspace, key: &str) -> Option<Value> {
     if t.parent_gate.as_deref() != Some("ready") {
         return None;
     }
-    let decision = task(w, key)?.purpose == "decision" && (!w.schema_migrated || t.parent_decision);
-    objects::readiness_blocker(w, o.current().parent.as_deref()?, !decision)
+    objects::readiness_blocker(w, o.current().parent.as_deref()?, true)
 }
 
-pub(crate) fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str) -> Result<()> {
+pub(crate) fn parent_ready(w: &Workspace, key: &str) -> Result<()> {
     let o = w.objects.get(key).context("unknown Task")?;
     let schema = objects::schema(w);
     let Some(gate) = schema
@@ -145,11 +144,6 @@ pub(crate) fn parent_ready(w: &Workspace, actor: &str, key: &str, purpose: &str)
         "verified" => process["verification"] == "pass",
         "ready" => {
             if objects::criterion_context(w, parent).is_some() {
-                if purpose == "decision"
-                    && (!w.schema_migrated || schema.types[&o.kind].parent_decision)
-                {
-                    commands::human(w, actor)?;
-                }
                 readiness_blocker(w, key).is_none()
             } else if objects::input_type(w, &w.objects[parent].kind) {
                 // A Task under a signal needs the signal marked ready for work.
@@ -195,7 +189,8 @@ pub(crate) fn requirement(w: &Workspace, key: &str) -> Option<String> {
     None
 }
 
-/// An agent may hold several Tasks only when they all belong to the REQ of the candidate.
+/// The older rule of the legacy claim path: an agent may hold several Tasks only when they all
+/// belong to the REQ of the candidate. Current claims do not apply it.
 pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str, candidate: &str) -> Result<()> {
     if w.members.get(actor).is_none_or(|role| role != "agent") {
         return Ok(());
@@ -221,7 +216,7 @@ pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str, candidate: &str
     Ok(())
 }
 
+/// An agent may hold any number of Tasks; the older journal rule lives on for its claims.
 pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
-    validate_claim(w, actor, key, t)?;
-    ensure_agent_available(w, actor, key)
+    validate_claim(w, actor, key, t)
 }

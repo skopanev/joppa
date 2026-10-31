@@ -8,7 +8,6 @@ pub fn save(
     data: &Value,
     parent: Option<&str>,
     position: u64,
-    unchanged: impl Fn(&Value) -> bool,
 ) -> Result<Value> {
     let mut data = data.clone();
     let old = w.objects.get(key);
@@ -24,6 +23,7 @@ pub fn save(
         .context("Task needs an owner")?
         .to_owned();
     commands::human(w, &owner)?;
+    crate::purpose_migration::check_save(w, &data)?;
     let string = |field: &str| {
         data[field]
             .as_str()
@@ -33,8 +33,6 @@ pub fn save(
     let text = crate::body_migration::text_field(w, "contract");
     commands::nonempty(string("title")?)?;
     commands::nonempty(string(text)?)?;
-    // The purpose is an optional label that a save may change.
-    let purpose = data["purpose"].as_str().unwrap_or_default().to_owned();
     let kind = key.split_once(':').context("Task address needs a type")?.0;
     let rules = objects::schema(w)
         .types
@@ -66,7 +64,8 @@ pub fn save(
     check_projects(w, parent, &projects)?;
     for field in data.as_object().context("data must be an object")?.keys() {
         ensure!(
-            ["title", "owner", text, "purpose"].contains(&field.as_str())
+            ["title", "owner", text].contains(&field.as_str())
+                || field == "purpose" && !w.purpose_migrated
                 || w.schema_migrated
                     && !objects::process_field(field)
                     && (w.documents_migrated || field != "projects")
@@ -89,7 +88,7 @@ pub fn save(
         title: String::new(),
         acs: vec![],
         projects: vec![],
-        purpose: purpose.clone(),
+        purpose: String::new(),
         assignee: None,
         done: None,
         commit: None,
@@ -101,29 +100,7 @@ pub fn save(
         retired: None,
         blocked: None,
     });
-    if let Some(old) = old {
-        ensure!(
-            unchanged(&data) || (t.done.is_none() && t.retired.is_none()),
-            "completed or retired Task cannot be amended"
-        );
-        ensure!(
-            old.current().data["owner"] == actor
-                || holder(w, &t) == Some(actor)
-                || holder(w, &t).is_none() && t.created_by == actor
-                || actor == w.admin
-                || old.current().parent.as_deref().is_some_and(|p| {
-                    parent.map(|q| objects::resolve_address(w, q))
-                        == Some(objects::resolve_address(w, p))
-                        && old.current().data["owner"] == owner
-                        && w.planning_claims
-                            .get(objects::resolve_address(w, p))
-                            .is_some_and(|c| c.actor == actor)
-                }),
-            "Task owner, assignee or unclaimed creator required"
-        );
-    }
     t.title = title;
-    t.purpose = purpose;
     t.contract = contract;
     t.projects = projects;
     t.acs.clear();
@@ -149,6 +126,8 @@ pub fn process(w: &Workspace, key: &str) -> Option<Value> {
     let t = w.task_process.get(key)?;
     let o = w.objects.get(key)?;
     let mut p = serde_json::to_value(t).ok()?;
+    // A Task has no purpose. Only the replay of old journals reads Task.purpose.
+    p.as_object_mut()?.remove("purpose");
     p["revision"] = json!(o.current().revision);
     p["review_required"] = json!(review_required(w, key, t));
     p["status"] = json!(status(t));

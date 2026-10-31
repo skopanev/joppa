@@ -7,11 +7,10 @@ pub(crate) fn select_next(
     state: &Workspace,
     actor: &str,
     project: Option<&str>,
-    purpose: Option<&str>,
     priorities: &[String],
     waits: &std::collections::BTreeMap<String, String>,
 ) -> Result<Option<(String, u32, String)>> {
-    let priorities = validate_selection(state, project, purpose, priorities)?;
+    let priorities = validate_selection(state, project, priorities)?;
     let mut waiting = None;
     let mut choices: Vec<(usize, Vec<usize>, u64, String, String, u32)> = state
         .requirements
@@ -20,10 +19,7 @@ pub(crate) fn select_next(
         .flat_map(|(req, q, r)| r.tasks.iter().map(move |(id, t)| (req, q, r, id, t)))
         .filter(|(req, _, _, id, _)| !state.task_process.contains_key(&format!("task:{req}/{id}")))
         .filter(|(req, _, _, id, _)| !waits.contains_key(&format!("task:{req}/{id}")))
-        .filter(|(_, _, _, _, t)| {
-            project.is_none_or(|p| t.projects.iter().any(|id| id == p))
-                && purpose.is_none_or(|p| t.purpose == p)
-        })
+        .filter(|(_, _, _, _, t)| project.is_none_or(|p| t.projects.iter().any(|id| id == p)))
         .filter(|(req, _, r, id, t)| checks::claimable(state, actor, req, id, r, t).is_ok())
         .map(|(req, q, r, id, t)| {
             (
@@ -38,9 +34,7 @@ pub(crate) fn select_next(
         .collect();
     let mut blocked = false;
     for (key, t) in &state.task_process {
-        if project.is_some_and(|p| !task_in_project(state, key, t, p))
-            || purpose.is_some_and(|p| t.purpose != p)
-        {
+        if project.is_some_and(|p| !task_in_project(state, key, t, p)) {
             continue;
         }
         if let Err(error) = crate::tasks::claimable(state, actor, key, t) {
@@ -82,7 +76,7 @@ pub async fn task_queue(
     limit: usize,
     cursor: Option<&str>,
 ) -> Result<Value> {
-    task_queue_filtered(pool, workspace, actor, view, limit, cursor, None, None, &[]).await
+    task_queue_filtered(pool, workspace, actor, view, limit, cursor, None, &[]).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -94,7 +88,6 @@ pub async fn task_queue_filtered(
     limit: usize,
     cursor: Option<&str>,
     project: Option<&str>,
-    purpose: Option<&str>,
     priorities: &[String],
 ) -> Result<Value> {
     ensure!(
@@ -115,7 +108,7 @@ pub async fn task_queue_filtered(
     let workspace = resolve_workspace(&*conn, workspace).await?;
     access::check(&*conn, &workspace, actor, false).await?;
     super::queue_rows::read(
-        &*conn, &workspace, actor, view, limit, cursor, project, purpose, priorities,
+        &*conn, &workspace, actor, view, limit, cursor, project, priorities,
     )
     .await
 }
@@ -128,7 +121,6 @@ pub(crate) fn queue_entries(
     selected: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<Vec<QueueEntry>> {
     let project: Option<&str> = None;
-    let purpose: Option<&str> = None;
     let priorities = vec![];
     let view = "all";
     let mut entries = vec![];
@@ -141,9 +133,7 @@ pub(crate) fn queue_entries(
             if state.task_process.contains_key(&format!("task:{req}/{id}")) {
                 continue;
             }
-            if !project.is_none_or(|p| task.projects.iter().any(|id| id == p))
-                || purpose.is_some_and(|p| task.purpose != p)
-            {
+            if !project.is_none_or(|p| task.projects.iter().any(|id| id == p)) {
                 continue;
             }
             let claim_error = checks::validate_claim(state, actor, req, id, revision, task)
@@ -183,10 +173,9 @@ pub(crate) fn queue_entries(
                 json!({
                     "id":id,"req":req,"revision":revision.number,"ac":task.acs.first(),
                     "ac_text":ac.map(|a| &a.text),"title":task.title,"contract":task.contract,
-                    "purpose":task.purpose,"projects":task.projects,"assignee":task.assignee,
+                    "projects":task.projects,"assignee":task.assignee,
                     "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
-                    "confirmed":revision.confirmed,"created_at":task.created_at,
-                    "claim_req":crate::tasks::requirement(state,&format!("task:{req}/{id}"))
+                    "confirmed":revision.confirmed,"created_at":task.created_at
                 }),
             ));
         }
@@ -195,10 +184,7 @@ pub(crate) fn queue_entries(
         if selected.is_some_and(|s| !s.contains(key)) {
             continue;
         }
-
-        if project.is_some_and(|p| !task_in_project(state, key, t, p))
-            || purpose.is_some_and(|p| t.purpose != p)
-        {
+        if project.is_some_and(|p| !task_in_project(state, key, t, p)) {
             continue;
         }
         let claim_error = crate::tasks::validate_claim(state, actor, key, t)
@@ -223,13 +209,12 @@ pub(crate) fn queue_entries(
         entries.push((object_rank(state,key,t,&priorities),t.created_at,String::new(),key.clone(),json!({
             "id":key,"address":key,"req":null,"revision":o.current().revision,"parent":o.current().parent,
             "ac":o.current().parent.as_deref().and_then(|p|crate::objects::criterion_context(state,p).map(|(_,_,ac)|ac.id.as_str())),
-            "title":t.title,"contract":t.contract,"purpose":t.purpose,"projects":t.projects,"assignee":t.assignee,
+            "title":t.title,"contract":t.contract,"projects":t.projects,"assignee":t.assignee,
             "status":status,"claimable":claim_error.is_none(),"waiting_reason":claim_error,
             "assessment":crate::tasks::parent_assessment(state,key),"readiness_blocker":crate::tasks::readiness_blocker(state,key),
             "review_required":crate::tasks::review_required(state,key,t),"created_at":t.created_at,
             "claim":t.claim,"unclaimed_eligible":unclaimed_error.is_none(),"unclaimed_error":unclaimed_error,
-            "origin_revision":t.origin_revision,"verification":(!state.test_rules_migrated).then(|| crate::objects::verification(state,key)),"signal":crate::objects::signal(state,key),
-            "claim_req":crate::tasks::requirement(state,key)
+            "origin_revision":t.origin_revision,"verification":(!state.test_rules_migrated).then(|| crate::objects::verification(state,key)),"signal":crate::objects::signal(state,key)
         })));
     }
     Ok(entries)

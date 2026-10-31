@@ -1,5 +1,5 @@
 //! The checks before a held Task is done: its evidence, its commit, its claim, its review,
-//! its dependencies and the decision that a decision Task needs.
+//! its dependencies.
 use super::*;
 
 /// Check that `actor` may complete the Task `key` with `evidence` on `commit`.
@@ -48,34 +48,6 @@ pub(super) fn check(
     );
     ensure!(objects::work_ready(w, key), "Task has an unmet dependency");
     check_projects(w, o.current().parent.as_deref(), &subjects(w, key)?)?;
-    parent_ready(w, actor, key, &t.purpose)?;
-    if t.purpose == "decision"
-        && (!w.schema_migrated
-            && objects::schema(w).types[&o.kind].parent_gate.as_deref() == Some("ready")
-            || objects::schema(w).types[&o.kind].parent_decision)
-    {
-        let parent = o
-            .current()
-            .parent
-            .as_deref()
-            .context("decision task requires a parent")?;
-        let (req, r, ac) = objects::criterion_context(w, parent)
-            .context("configured parent decision requires a verification evidence provider")?;
-        let d = w.requirements[req]
-            .comments
-            .get(evidence)
-            .context("decision task evidence must be a comment id")?;
-        ensure!(
-            d.kind == "decision"
-                && !d.withdrawn
-                && d.revision == r.number
-                && d.ac.as_deref() == Some(&ac.id),
-            "link the decision for this parent and revision"
-        );
-        ensure!(
-            ac.decider().is_none_or(|owner| owner == &d.actor),
-            "designated specialist must decide"
-        );
-    }
+    parent_ready(w, key)?;
     Ok(())
 }

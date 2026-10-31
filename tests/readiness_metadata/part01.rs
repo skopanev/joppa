@@ -10,9 +10,8 @@ fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value) {
     );
 }
 
-fn work(title: &str, purpose: &str) -> Value {
-    json!({"title":title,"owner":"legal","body":"Implement the specified behavior",
-        "purpose":purpose,"projects":[]})
+fn work(title: &str) -> Value {
+    json!({"title":title,"owner":"legal","body":"Implement the specified behavior","projects":[]})
 }
 
 fn native() -> World {
@@ -23,7 +22,7 @@ fn native() -> World {
         &mut w,
         "task:work",
         Some("ac:ios"),
-        work("Implement access", "implementation"),
+        work("Implement access"),
     );
     w
 }
@@ -69,7 +68,7 @@ fn tasks_under_not_ready_criteria_cannot_be_claimed() {
             &mut w,
             task,
             Some(ac),
-            work("Implement access", "implementation"),
+            work("Implement access"),
         );
     }
     w.ok(
@@ -103,7 +102,7 @@ fn tasks_under_not_ready_criteria_cannot_be_claimed() {
         &mut w,
         "task:t4",
         Some("ac:a3"),
-        work("Implement access", "implementation"),
+        work("Implement access"),
     );
     claim(&mut w, "bot", "task:t4").unwrap();
     assert_eq!(

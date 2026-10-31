@@ -27,7 +27,6 @@ pub(super) async fn read(
     limit: usize,
     cursor: Option<&str>,
     project: Option<&str>,
-    purpose: Option<&str>,
     priorities: &[String],
 ) -> Result<Value> {
     let row=client.query_one("SELECT position,COALESCE(state->>'workspace_id',workspace),(first_view->'object_types')::text,floor(extract(epoch FROM clock_timestamp())*1000)::bigint FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
@@ -63,10 +62,6 @@ pub(super) async fn read(
     } else {
         None
     };
-    ensure!(
-        purpose.is_none_or(|p| !p.trim().is_empty()),
-        "task purpose must be nonempty"
-    );
     let server_now: i64 = row.get(3);
     let (now, offset) = if let Some(cursor) = cursor {
         let parts: Vec<_> = cursor.split(':').collect();
@@ -82,53 +77,29 @@ pub(super) async fn read(
         (server_now, 0)
     };
     ensure!(offset >= 0, "invalid task cursor offset");
-    let held_rows = client.query("SELECT address,data->>'claim_req' FROM joppa.task_queue WHERE workspace=$1 AND actor=$2 AND assignee=$2 AND status='in_progress' AND EXISTS(SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2 AND value='\"agent\"'::jsonb) ORDER BY created_at,sort_req,sort_id", &[&workspace,&actor]).await?;
-    let held = held_rows.first().map(|r| r.get::<_, String>(0));
-    // Further Tasks stay claimable only within the one REQ of every held Task.
-    let held_req = held_rows
-        .first()
-        .and_then(|r| r.get::<_, Option<String>>(1))
-        .filter(|req| {
-            held_rows
-                .iter()
-                .all(|r| r.get::<_, Option<&str>>(1) == Some(req.as_str()))
-        });
-    let restricted = "($6::text IS NOT NULL AND NOT COALESCE(data->>'claim_req'=$7::text,false))";
     // A Task under waiting work is not available; the wait comes from the status projection.
     let waits = super::objects::projected_waits(client, workspace).await?;
     let waiting: Vec<String> = waits.keys().cloned().collect();
-    let filter = format!(
-        "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4::text IS NULL OR purpose=$4) AND ($5='all' OR ($5='available' AND claimable AND NOT {restricted} AND NOT address=ANY($8)) OR ($5='mine' AND assignee=$2 AND status='in_progress') OR ($5='waiting' AND status='open' AND (NOT claimable OR {restricted} OR address=ANY($8))))"
-    );
+    let filter = "workspace=$1 AND actor=$2 AND ($3::text IS NULL OR $3=ANY(subjects)) AND ($4='all' OR ($4='available' AND claimable AND NOT address=ANY($5)) OR ($4='mine' AND assignee=$2 AND status='in_progress') OR ($4='waiting' AND status='open' AND (NOT claimable OR address=ANY($5))))";
     let total: i64 = client
         .query_one(
             &format!("SELECT count(*) FROM joppa.task_queue WHERE {filter}"),
-            &[
-                &workspace, &actor, &project, &purpose, &view, &held, &held_req, &waiting,
-            ],
+            &[&workspace, &actor, &project, &view, &waiting],
         )
         .await?
         .get(0);
     ensure!(offset <= total, "invalid task cursor offset");
     // Explicit priorities first, then the priority chain of each Task from the top.
     let values = super::objects::priority_values(client, workspace).await?;
-    let chain = super::objects::priority_chain_sql("q.workspace", "q.address", "$12::text[]");
-    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($9::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($9)+1),{chain},created_at,sort_req,sort_id LIMIT $10 OFFSET $11"), &[&workspace,&actor,&project,&purpose,&view,&held,&held_req,&waiting,&targets,&(limit as i64),&offset,&values]).await?;
+    let chain = super::objects::priority_chain_sql("q.workspace", "q.address", "$9::text[]");
+    let rows=client.query(&format!("SELECT data::text FROM joppa.task_queue q WHERE {filter} ORDER BY COALESCE((SELECT min(p.ordinality) FROM unnest($6::text[]) WITH ORDINALITY p(target,ordinality) WHERE p.target=ANY(q.targets)),cardinality($6)+1),{chain},created_at,sort_req,sort_id LIMIT $7 OFFSET $8"), &[&workspace,&actor,&project,&view,&waiting,&targets,&(limit as i64),&offset,&values]).await?;
     let mut items: Vec<Value> = rows
         .iter()
         .map(|r| serde_json::from_str(r.get(0)))
         .collect::<std::result::Result<_, _>>()?;
     for item in &mut items {
-        let req = item.as_object_mut().unwrap().remove("claim_req");
         item.as_object_mut().unwrap().remove("unclaimed_eligible");
         item.as_object_mut().unwrap().remove("unclaimed_error");
-        if let Some(held) = &held
-            && item["claimable"] == true
-            && (held_req.is_none() || req.as_ref().and_then(Value::as_str) != held_req.as_deref())
-        {
-            item["claimable"] = json!(false);
-            item["waiting_reason"] = json!(format!("agent already holds task {held}"));
-        }
         let address = item["address"].as_str().map(str::to_owned).or_else(|| {
             Some(format!(
                 "task:{}/{}",

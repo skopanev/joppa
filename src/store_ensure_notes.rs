@@ -28,6 +28,7 @@ pub(super) async fn ensure_notes(
         (!state.test_rules_migrated, Command::MigrateTestRules {}),
         (!state.note_parents_migrated, Command::MigrateNoteParents {}),
         (!state.body_migrated, Command::MigrateBody {}),
+        (!state.purpose_migrated, Command::MigratePurpose {}),
         (
             prefix.is_some(),
             Command::RenameWorkspace(crate::commands::RenameWorkspaceOp {

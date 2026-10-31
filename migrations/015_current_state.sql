@@ -21,13 +21,7 @@ CREATE TABLE IF NOT EXISTS joppa.state_revisions (
     value jsonb NOT NULL,
     PRIMARY KEY (workspace,section,key,revision)
 );
-CREATE TABLE IF NOT EXISTS joppa.ac_owners (
-    workspace text NOT NULL REFERENCES joppa.workspaces(id),
-    criterion text NOT NULL,
-    requirement text NOT NULL,
-    PRIMARY KEY (workspace,criterion)
-);
-REVOKE ALL ON joppa.state_entries, joppa.state_revisions, joppa.ac_owners FROM PUBLIC;
+REVOKE ALL ON joppa.state_entries, joppa.state_revisions FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION joppa.verification_contract(value jsonb)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$

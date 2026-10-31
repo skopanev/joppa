@@ -29,6 +29,11 @@ pub(crate) fn typed_save(
         .map(|key| resolve_address(w, key).to_owned());
     if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
         candidate.document_overrides.remove(key);
+        // A criterion that moves to another requirement leaves the old one first.
+        if let Some((from, out)) = criterion_move_out(w, kind, id, &cmd, reason)? {
+            commands::apply_inner(candidate, actor, &out, position, at)?;
+            keep_assessments(candidate, &from);
+        }
         commands::apply_inner(candidate, actor, &cmd, position, at)?;
         if let Command::Revise(crate::commands::ReviseOp { req, .. }) = &cmd
             && commands::rule_applies(candidate, commands::KEEP_ASSESSMENTS, position)

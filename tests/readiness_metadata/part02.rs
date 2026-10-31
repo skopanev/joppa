@@ -1,7 +1,7 @@
 // Part 2 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
 
 #[test]
-fn dependency_question_blocks_work_but_own_decision_task_remains_available() {
+fn dependency_question_blocks_work_and_a_dependent_task() {
     let mut w = World::new();
     let mut next = revision(1);
     next["acs"][0]["depends_on"] = json!(["key"]);
@@ -17,7 +17,7 @@ fn dependency_question_blocks_work_but_own_decision_task_remains_available() {
         &mut w,
         "task:work",
         Some("ac:ios"),
-        work("Implement access", "implementation"),
+        work("Implement access"),
     );
     let p = objects::process(&w.state, "task:work");
     assert_eq!(p["assessment"]["state"], "ready");
@@ -25,51 +25,22 @@ fn dependency_question_blocks_work_but_own_decision_task_remains_available() {
     assert_eq!(p["readiness_blocker"]["recipient"], "legal");
     save(
         &mut w,
-        "task:dependent-decision",
+        "task:dependent",
         Some("ac:ios"),
-        work("Collect a dependent decision", "decision"),
+        work("Implement the dependent part"),
     );
-    let dependent = objects::process(&w.state, "task:dependent-decision");
+    let dependent = objects::process(&w.state, "task:dependent");
     assert_eq!(dependent["readiness_blocker"]["criterion"], "key");
     let refusal = tasks::claimable(
         &w.state,
         "legal",
-        "task:dependent-decision",
-        &w.state.task_process["task:dependent-decision"],
+        "task:dependent",
+        &w.state.task_process["task:dependent"],
     )
     .unwrap_err()
     .to_string();
     assert!(refusal.contains("Which exact permissions?"));
     assert!(refusal.contains("Recipient: legal"));
-    save(
-        &mut w,
-        "task:decision",
-        Some("ac:key"),
-        work("Collect the decision", "decision"),
-    );
-    assert_eq!(
-        objects::process(&w.state, "task:decision")["assessment"]["state"],
-        "waiting"
-    );
-    assert!(objects::process(&w.state, "task:decision")["readiness_blocker"].is_null());
-    assert!(
-        tasks::claimable(
-            &w.state,
-            "legal",
-            "task:decision",
-            &w.state.task_process["task:decision"]
-        )
-        .is_ok()
-    );
-    assert!(
-        tasks::claimable(
-            &w.state,
-            "agent",
-            "task:decision",
-            &w.state.task_process["task:decision"]
-        )
-        .is_err()
-    );
 }
 
 #[test]
@@ -123,7 +94,7 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
         &mut w,
         "work:one",
         Some("criterion:a"),
-        work("Implement behavior", "implementation"),
+        work("Implement behavior"),
     );
     let p = objects::process(&w.state, "work:one");
     assert_eq!(p["assessment"]["state"], "waiting");
@@ -143,7 +114,7 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
         &mut w,
         "work:one",
         Some("criterion:b"),
-        work("Implement behavior", "implementation"),
+        work("Implement behavior"),
     );
     let p = objects::process(&w.state, "work:one");
     assert_eq!(p["assessment"]["state"], "unassessed");

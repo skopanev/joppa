@@ -45,31 +45,35 @@ fn readiness_guard_preserves_the_criterion_and_legacy_results_do_not_replace_jun
 
 // planning-claim-ac3
 #[test]
-fn planning_holder_cannot_move_a_task_or_transfer_its_document_owner() {
+fn planning_holder_moves_a_task_and_transfers_its_document_owner() {
     let mut w = configured();
     work(&mut w, "other", "work:existing");
     claim(&mut w, "planner", "criterion:a");
     let revision = w.state.objects["work:existing"].current().revision;
     let data = w.state.objects["work:existing"].current().data.clone();
-    refuse(
-        &mut w,
+    w.ok(
         "planner",
         json!({"op":"save_object","kind":"work","id":"existing","revision":revision,"parent":"criterion:b","data":data,"reason":"Move work"}),
-        "Task owner, assignee or unclaimed creator required",
     );
-    let mut data = w.state.objects["work:existing"].current().data.clone();
+    assert_eq!(
+        w.state.objects["work:existing"].current().parent.as_deref(),
+        Some("criterion:b")
+    );
     w.ok(
         "owner",
         json!({"op":"member","id":"new-owner","role":"human"}),
     );
+    let mut data = w.state.objects["work:existing"].current().data.clone();
     data["owner"] = json!("new-owner");
-    refuse(
-        &mut w,
+    let revision = w.state.objects["work:existing"].current().revision;
+    w.ok(
         "planner",
         json!({"op":"save_object","kind":"work","id":"existing","revision":revision,"parent":"criterion:a","data":data,"reason":"Transfer work"}),
-        "Task owner, assignee or unclaimed creator required",
     );
-    work(&mut w, "planner", "work:existing");
+    assert_eq!(
+        w.state.objects["work:existing"].current().data["owner"],
+        "new-owner"
+    );
 }
 
 #[test]

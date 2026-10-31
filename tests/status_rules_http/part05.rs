@@ -27,7 +27,7 @@ async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_
     w.command(&w.owner, json!({"op":"save_object","kind":signal,"id":"n","revision":0,"parent":null,"data":{"title":"Login fails","owner":"owner","source":"support chat","body":"The login page fails"},"reason":"Record the signal"})).await?;
     let n = format!("{signal}:n");
     let t = format!("{task}:t");
-    w.command(&w.owner, json!({"op":"save_object","kind":task,"id":"t","revision":0,"parent":n,"data":{"title":"Fix the login","owner":"owner","body":"Fix the login page and check it","purpose":"implementation"},"reason":"Create work"})).await?;
+    w.command(&w.owner, json!({"op":"save_object","kind":task,"id":"t","revision":0,"parent":n,"data":{"title":"Fix the login","owner":"owner","body":"Fix the login page and check it"},"reason":"Create work"})).await?;
     let revision = w.object(&t).await?["current_revision"].clone();
     // The first claim is refused: N has no readiness mark.
     let (code, reply) = w
@@ -173,7 +173,7 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
             task,
             "t",
             "check:a",
-            json!({"body":"Implement and check the contract","purpose":"implementation"}),
+            json!({"body":"Implement and check the contract"}),
         ),
     )
     .await?;
@@ -213,7 +213,7 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
             task,
             "open",
             "check:a",
-            json!({"body":"Implement the next part","purpose":"implementation"}),
+            json!({"body":"Implement the next part"}),
         ),
     )
     .await?;

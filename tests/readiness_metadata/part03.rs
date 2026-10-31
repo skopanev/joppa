@@ -21,7 +21,7 @@ async fn refresh_is_current_only_idempotent_and_preserves_status_time_and_histor
     common::seed(&pool, &ws, "owner", common::setup()).await?;
     store::execute_input(&pool, &ws, "agent", "waiting", &assess("ios", false)).await?;
     store::execute_input(&pool, &ws, "agent", "work", &json!({"op":"save_object","kind":"task","id":"one","revision":0,
-        "parent":"ac:ios","data":work("Implement access", "implementation"),"reason":"Create work"})).await?;
+        "parent":"ac:ios","data":work("Implement access"),"reason":"Create work"})).await?;
     let conn = pool.get().await?;
     let history: String = conn.query_one("SELECT jsonb_agg(to_jsonb(r) ORDER BY address,revision)::text FROM joppa.object_revisions r WHERE workspace=$1", &[&ws]).await?.get(0);
     let position: i64 = conn
@@ -221,7 +221,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     );
     let snapshot = "SELECT jsonb_build_array(b.xmin::text,b.first_view->>'projection_version',(SELECT jsonb_agg(jsonb_build_array(o.address,o.xmin::text) ORDER BY o.address) FROM joppa.objects o WHERE o.workspace=b.workspace))::text FROM joppa.board_cache b WHERE b.workspace=$1";
     let before: String = conn.query_one(snapshot, &[&ws]).await?.get(0);
-    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "15");
+    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "16");
     store::backfill_board(&pool).await?;
     assert_eq!(
         conn.query_one(snapshot, &[&ws]).await?.get::<_, String>(0),

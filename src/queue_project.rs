@@ -70,13 +70,13 @@ pub(in crate::store) async fn project(
                 }
                 targets.insert(format!("task:{}", id.rsplit('/').next().unwrap_or(&id)));
             }
-            rows.push(json!({"address":address,"actor":actor,"created_at":created_at,"sort_req":req,"sort_id":id,"status":data["status"],"assignee":data["assignee"],"purpose":data["purpose"],"claimable":data["claimable"],"eligible":data.get("unclaimed_eligible").unwrap_or(&data["claimable"]),"claim_deadline_ms":data["claim"]["deadline_ms"],"targets":targets,"subjects":subjects,"data":data}));
+            rows.push(json!({"address":address,"actor":actor,"created_at":created_at,"sort_req":req,"sort_id":id,"status":data["status"],"assignee":data["assignee"],"claimable":data["claimable"],"eligible":data.get("unclaimed_eligible").unwrap_or(&data["claimable"]),"claim_deadline_ms":data["claim"]["deadline_ms"],"targets":targets,"subjects":subjects,"data":data}));
         }
     }
     let selected = selected.map(|s| s.iter().cloned().collect::<Vec<_>>());
     client.execute("DELETE FROM joppa.task_queue WHERE workspace=$1 AND ($2::text[] IS NULL OR address=ANY($2))", &[&workspace,&selected]).await?;
     if !rows.is_empty() {
-        client.execute("INSERT INTO joppa.task_queue(workspace,address,actor,created_at,sort_req,sort_id,status,assignee,purpose,claimable,eligible,claim_deadline_ms,targets,subjects,data) SELECT $1,x.address,x.actor,x.created_at,x.sort_req,x.sort_id,x.status,x.assignee,x.purpose,x.claimable,x.eligible,x.claim_deadline_ms,x.targets,x.subjects,x.data FROM jsonb_to_recordset($2::text::jsonb) x(address text,actor text,created_at bigint,sort_req text,sort_id text,status text,assignee text,purpose text,claimable boolean,eligible boolean,claim_deadline_ms bigint,targets text[],subjects text[],data jsonb)", &[&workspace,&json!(rows).to_string()]).await?;
+        client.execute("INSERT INTO joppa.task_queue(workspace,address,actor,created_at,sort_req,sort_id,status,assignee,claimable,eligible,claim_deadline_ms,targets,subjects,data) SELECT $1,x.address,x.actor,x.created_at,x.sort_req,x.sort_id,x.status,x.assignee,x.claimable,x.eligible,x.claim_deadline_ms,x.targets,x.subjects,x.data FROM jsonb_to_recordset($2::text::jsonb) x(address text,actor text,created_at bigint,sort_req text,sort_id text,status text,assignee text,claimable boolean,eligible boolean,claim_deadline_ms bigint,targets text[],subjects text[],data jsonb)", &[&workspace,&json!(rows).to_string()]).await?;
     }
     Ok(())
 }

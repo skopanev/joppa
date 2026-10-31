@@ -58,21 +58,6 @@ pub(crate) async fn project(
         }
     }
     if !revisions.is_empty() {
-        let owners: Vec<Value> = revisions
-            .iter()
-            .filter(|r| r["section"] == "requirements")
-            .flat_map(|r| {
-                r["value"]["acs"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(move |ac| json!({"criterion":ac["id"],"requirement":r["key"]}))
-            })
-            .collect();
-        let owners = json!(owners).to_string();
-        let conflicts = client.query_one("SELECT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) x(criterion text,requirement text) JOIN joppa.ac_owners a ON a.workspace=$1 AND a.criterion=x.criterion WHERE a.requirement<>x.requirement)", &[&workspace,&owners]).await?;
-        ensure!(!conflicts.get::<_, bool>(0), "AC id belongs to another REQ");
-        client.execute("INSERT INTO joppa.ac_owners(workspace,criterion,requirement) SELECT DISTINCT $1,x.criterion,x.requirement FROM jsonb_to_recordset($2::text::jsonb) x(criterion text,requirement text) ON CONFLICT DO NOTHING", &[&workspace,&owners]).await?;
         client.execute("INSERT INTO joppa.state_revisions(workspace,section,key,revision,value) SELECT $1,x.section,x.key,x.revision,x.value FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,revision integer,value jsonb) ON CONFLICT(workspace,section,key,revision) DO UPDATE SET value=EXCLUDED.value WHERE state_revisions.value IS DISTINCT FROM EXCLUDED.value", &[&workspace,&json!(revisions).to_string()]).await?;
     }
     Ok(())

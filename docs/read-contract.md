@@ -24,6 +24,13 @@ MCP reads have one shape. There is no `verbose` switch.
   address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `ac`,
   `parent` and `task` of `joppa_tests`. A read of one object by its item ID gives its
   `address`. An unknown item ID is refused: `unknown object`.
+- A public item ID ends with an 8-character code of uppercase letters and digits. An older
+  copy with a longer code reads the object of its first 8 characters.
+- `workspace` is optional in `joppa_objects` and `joppa_tests` when the call names a public
+  item ID. The call reads the workspace of its IDs. The IDs of one call belong to one
+  workspace: `the public item IDs of one call belong to one workspace`. An ID that the caller
+  cannot read is `unknown object`. A call without an ID and without `workspace` is refused:
+  `missing workspace`.
 - MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
   `joppa_search`: the reply gives only that object, with `exact_id: true`.
 

@@ -28,6 +28,9 @@ pub(crate) fn apply_inner(
         Command::MigrateBody {} => {
             crate::body_migration::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigratePurpose {} => {
+            crate::purpose_migration::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigrateNoteParents {} => {
             crate::note_parents::migrate(w, actor, position, recorded_at)?;
         }

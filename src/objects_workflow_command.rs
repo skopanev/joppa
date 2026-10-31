@@ -120,13 +120,6 @@ pub(crate) fn workflow_command(
             let req = req.to_owned();
             let q = w.requirements.get(&req).context("unknown parent REQ")?;
             let r = q.revisions.last().unwrap();
-            if exists {
-                ensure!(
-                    criterion_context(w, &address(kind, id))
-                        .is_none_or(|(old_req, _, _)| old_req == req),
-                    "criterion cannot move to another verification contract"
-                );
-            }
             let assigned = optional_string(data, "owner")?.unwrap_or_else(|| r.owner.clone());
             commands::human(w, &assigned)?;
             let decision = data

@@ -107,7 +107,6 @@ pub(crate) fn saved(
             data,
             parent.as_deref(),
             position,
-            same,
         )?)
     } else {
         None

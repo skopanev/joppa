@@ -92,7 +92,7 @@ fn work(w: &mut World, actor: &str, id: &str) {
         actor,
         id,
         Some("criterion:a"),
-        json!({"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
+        json!({"title":id,"owner":"owner","body":"Implement this criterion"}),
     );
 }
 
@@ -175,7 +175,7 @@ fn one_planner_claims_and_finishes_every_criterion_of_one_req() {
             "planner",
             id,
             Some(ac),
-            json!({"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
+            json!({"title":id,"owner":"owner","body":"Implement this criterion"}),
         );
     }
     for ac in ["criterion:a", "criterion:b"] {

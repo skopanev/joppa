@@ -71,7 +71,7 @@ fn claims_refuse_a_blocked_task_and_documents_cannot_change_the_block() {
     );
 
     // A document write can neither set nor clear the block.
-    let document = json!({"title":"work:t","owner":"owner","body":"Implement this criterion","purpose":"implementation"});
+    let document = json!({"title":"work:t","owner":"owner","body":"Implement this criterion"});
     for value in [Value::Null, json!({"actor":"owner"})] {
         let mut data = document.clone();
         data["blocked"] = value;
@@ -125,7 +125,7 @@ fn save_t(w: &mut World, actor: &str, data: Value, links: Value) {
 }
 
 fn t_document() -> Value {
-    json!({"title":"work:t","owner":"owner","body":"Implement this criterion","purpose":"implementation"})
+    json!({"title":"work:t","owner":"owner","body":"Implement this criterion"})
 }
 
 fn dependency(target: &str) -> Value {

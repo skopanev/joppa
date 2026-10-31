@@ -262,7 +262,7 @@ export JOPPA_MCP_URL=https://YOUR_JOPPA_DOMAIN/mcp
 export JOPPA_TOKEN_FILE=/private/path/to/agent-token
 export JOPPA_WORKSPACE=product
 python3 client/joppa task list --view available
-python3 client/joppa task next --purpose implementation --request-id "$NEXT_REQUEST_ID"
+python3 client/joppa task next --request-id "$NEXT_REQUEST_ID"
 python3 client/joppa task next --priority domain:billing --priority requirement:r-123
 python3 client/joppa task next --dry-run --priority domain:billing
 python3 client/joppa task claim TASK_ID --request-id "$CLAIM_REQUEST_ID"
@@ -272,8 +272,8 @@ python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
 Commands print JSON. `next` selects and claims under one server lock. Repeat
 `--priority kind:id` in preference order. Each priority addresses an object from
 the configured tree. Reference scopes follow the workspace schema. It tries the first scope with a
-claimable Task, then the next, then the ordinary oldest Task. `--project` and
-`--purpose` remain hard filters. `next --dry-run` returns `{ "task": ... }`
+claimable Task, then the next, then the ordinary oldest Task. `--project`
+remains a hard filter. `next --dry-run` returns `{ "task": ... }`
 without claiming; `task` is `null` when nothing is available. Another worker
 must atomically `claim` the returned `id`, `req` and `revision`; it may lose a
 race and should retry the preview. `claim`

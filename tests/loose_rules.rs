@@ -1,5 +1,5 @@
-//! The removed artificial rules: a dependency names a node and needs no revision, a Task
-//! purpose is an optional label, the holder may move or hand over a Task, a criterion may have
+//! The removed artificial rules: a dependency names a node and needs no revision, a Task has
+//! no purpose, the holder may move or hand over a Task, a criterion may have
 //! its own owner without a decision, and a new required field binds only later saves.
 mod common;
 use common::*;
@@ -27,6 +27,7 @@ fn current() -> World {
         "migrate_test_rules",
         "migrate_note_parents",
         "migrate_body",
+        "migrate_purpose",
     ] {
         internal(&mut w, op);
     }
@@ -50,12 +51,8 @@ fn save(
     )
 }
 
-fn task(title: &str, owner: &str, purpose: Option<&str>) -> Value {
-    let mut data = json!({"title":title,"owner":owner,"body":"Implement the agreed part"});
-    if let Some(purpose) = purpose {
-        data["purpose"] = json!(purpose);
-    }
-    data
+fn task(title: &str, owner: &str) -> Value {
+    json!({"title":title,"owner":owner,"body":"Implement the agreed part"})
 }
 
 // loose-rules-ac1
@@ -67,7 +64,7 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         "owner",
         "task:a",
         "ac:ios",
-        task("A", "owner", Some("implementation")),
+        task("A", "owner"),
         json!([]),
     )
     .unwrap();
@@ -77,7 +74,7 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         "owner",
         "task:b",
         "ac:ios",
-        task("B", "owner", Some("implementation")),
+        task("B", "owner"),
         link,
     )
     .unwrap();
@@ -88,7 +85,7 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         "owner",
         "task:a",
         "ac:ios",
-        task("A2", "owner", Some("implementation")),
+        task("A2", "owner"),
         json!([]),
     )
     .unwrap();
@@ -116,28 +113,27 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
 
 // loose-rules-ac2
 #[test]
-fn a_task_purpose_is_optional_and_the_holder_moves_or_hands_over_a_task() {
+fn a_task_has_no_purpose_and_the_holder_moves_or_hands_over_a_task() {
     let mut w = current();
     save(
         &mut w,
         "owner",
         "task:p",
         "ac:ios",
-        task("P", "owner", None),
+        task("P", "owner"),
         json!([]),
     )
     .unwrap();
-    assert_eq!(w.state.task_process["task:p"].purpose, "");
-    save(
-        &mut w,
-        "owner",
-        "task:p",
-        "ac:ios",
-        task("P", "owner", Some("documentation")),
-        json!([]),
-    )
-    .unwrap();
-    assert_eq!(w.state.task_process["task:p"].purpose, "documentation");
+    assert!(
+        joppa::tasks::process(&w.state, "task:p")
+            .unwrap()
+            .get("purpose")
+            .is_none()
+    );
+    let mut labelled = task("P", "owner");
+    labelled["purpose"] = json!("documentation");
+    let error = save(&mut w, "owner", "task:p", "ac:ios", labelled, json!([])).unwrap_err();
+    assert_eq!(error.to_string(), joppa::purpose_migration::REFUSAL);
     // The holder, who is not the owner, moves the Task and hands it over.
     let revision = w.state.objects["task:p"].current().revision;
     w.ok(
@@ -149,7 +145,7 @@ fn a_task_purpose_is_optional_and_the_holder_moves_or_hands_over_a_task() {
         "agent",
         "task:p",
         "ac:key",
-        task("P", "legal", Some("documentation")),
+        task("P", "legal"),
         json!([]),
     )
     .unwrap();

@@ -92,7 +92,6 @@ pub async fn task_queue(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<V
         limit(a, rc::PAGE)?,
         a["cursor"].as_str(),
         a["project"].as_str(),
-        a["purpose"].as_str(),
         &priorities,
     )
     .await

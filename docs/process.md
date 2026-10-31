@@ -143,11 +143,9 @@ The tree describes the product. A project identifies a repository where work
 happens. One REQ may involve app, backend and infrastructure. Link repositories
 to tasks, not to separate copies of the business tree.
 
-A Task records its permitted parent, assignee, purpose and technical contract.
-Its reference fields come from the workspace schema. A purpose can use any nonempty label.
-The decision purpose retains the configured decision rules.
+A Task records its permitted parent, assignee and technical contract.
+Its reference fields come from the workspace schema.
 Completing a Task records the delivered result. It does not turn an AC green.
-Decision Tasks reference the actual decision comment when the schema requires it.
 Manual work still needs explicit expected and observed evidence.
 
 ## Editing guidance

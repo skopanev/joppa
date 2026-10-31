@@ -21,6 +21,7 @@ pub mod note_parents;
 pub mod objects;
 pub mod planning;
 pub mod probe;
+pub mod purpose_migration;
 pub mod read_compact;
 mod read_detail;
 pub mod read_shapes;

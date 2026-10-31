@@ -72,7 +72,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     for (id, parent) in [("root", None), ("urgent", Some("spec:root"))] {
         store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"spec","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner"},"reason":"Create a specification"})).await?;
     }
-    let make = |parent: &str| json!({"op":"save_object","kind":"task","revision":0,"parent":parent,"data":{"title":"Implement the specification","owner":"owner","body":"Implement the documented specification","purpose":"implementation","projects":[]},"reason":"Create work"});
+    let make = |parent: &str| json!({"op":"save_object","kind":"task","revision":0,"parent":parent,"data":{"title":"Implement the specification","owner":"owner","body":"Implement the documented specification","projects":[]},"reason":"Create work"});
     let first =
         store::execute_remote_input(&pool, &ws, "agent", "first", &make("spec:root")).await?;
     let second =
@@ -90,7 +90,6 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
         "agent",
         "available",
         1,
-        None,
         None,
         None,
         &priority,

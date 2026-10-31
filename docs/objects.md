@@ -19,6 +19,8 @@ A stale write fails. Identical retries use the same `request_id` and return the 
 Read the document before you change them. Keep fields that you do not change.
 A link to an archived or absent object is refused, unless the current revision already has the same link.
 A save of a criterion also gives its specification a new revision. Its reason is `Criterion <address> changed: <reason>`.
+A save of a criterion with the parent of another requirement moves the criterion. The old
+requirement first gets a revision without it. Its older revisions keep the criterion as history.
 Ordinary document fields can contain additional text, numbers, lists or maps.
 Process commands preserve those fields. A document replacement removes additional fields that you omit.
 Process evidence stays separate. Use process commands to claim work, record results or accept a requirement.
@@ -299,7 +301,10 @@ The immutable event journal is the source for all projections.
 ## Independent Tasks
 
 Create Tasks with `save_object` and a type whose role is `task`.
-The document needs `title`, `owner`, `body` and `purpose`. The `body` is the Task contract.
+The document needs `title`, `owner` and `body`. The `body` is the Task contract.
+A Task has no purpose: `save_object` refuses `data.purpose` with
+`a Task has no purpose; read joppa_help`.
+A member who can write may change a Task, also a completed or retired one. The change adds a revision.
 Its reference fields follow the workspace schema.
 Use the returned object address as the process command `id`. Omit `req`.
 Use the current Task object `revision` for every process command.
@@ -492,9 +497,6 @@ The scope remains the contract of an ancestor with verification evidence.
 Without such an ancestor, the reference records context and queue selection.
 A subject filter accepts a full object address. A unique short ID remains compatible.
 
-`parent_decision: true` requires a decision comment for the configured Task parent when completing a decision Task.
-The parent must supply verification decision evidence. A free-text result cannot substitute for that evidence.
-Omit this option when parent decisions do not form part of the workflow.
 The default recipe enables it for Tasks under acceptance criteria.
 
 Type titles and colors remain workspace settings. For example, the `note` type can display the title `Input`.
@@ -503,7 +505,11 @@ Set `launch_blocker: true` on a type to use its `before_launch` entries as launc
 Current check evidence and owner acceptance must cover each selected entry.
 Use `launch_blocker: false` to disable this behavior. An omitted flag also disables it.
 
-A task purpose is an optional label that a save may change. The `decision` label retains its configured decision behavior.
+The event `migrate_purpose` ran once in each workspace. It removed `data.purpose` from each
+Task in a revision that keeps the contract revision. A purpose of more than one word joined
+the Task `body` after a blank line, unless the body already contained it. It also removed
+`parent_decision` from each type; `set_tree_schema` refuses that option and a required
+field `purpose` on a Task type.
 
 ## Work and verification status
 

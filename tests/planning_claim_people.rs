@@ -74,7 +74,7 @@ fn fixture(depends_on: &[&str], a: Option<Value>, b: Option<Value>) -> World {
         &mut w,
         "work:t0",
         Some("criterion:a"),
-        json!({"title":"T0","owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
+        json!({"title":"T0","owner":"owner","body":"Implement this criterion"}),
     );
     for actor in ["planner", "other"] {
         assert_eq!(w.state.members[actor], "human");

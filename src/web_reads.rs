@@ -152,7 +152,6 @@ pub(super) struct TaskQuery {
     limit: Option<usize>,
     cursor: Option<String>,
     project: Option<String>,
-    purpose: Option<String>,
     priorities: Option<String>,
 }
 pub(super) async fn tasks(
@@ -176,7 +175,6 @@ pub(super) async fn tasks(
             query.limit.unwrap_or(50),
             query.cursor.as_deref(),
             query.project.as_deref(),
-            query.purpose.as_deref(),
             &priorities,
         )
         .await,

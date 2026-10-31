@@ -10,7 +10,7 @@ retained for reading; the new model never writes through it.
 | Green could be assigned manually | Sealed complete plan, every expected result, one AC per automated test | Full-plan, skipped-result and multiple-tag tests |
 | Owners and decisions were unauthenticated labels | Transport identity, membership, REQ owner and named specialist | Impersonation, access and HTTP actor-injection tests |
 | Corrections destroyed history | Withdrawal and confirmed-defect events, then fresh checks | Decision withdrawal and issue-resolution tests |
-| Work could not span repositories or manual actions | AC-linked tasks with projects and implementation/manual/decision purposes | Cross-repository and independent-AC tests |
+| Work could not span repositories or manual actions | AC-linked tasks with projects | Cross-repository and independent-AC tests |
 | Retries and races changed results | Workspace transaction lock, expected revision and request identity | Concurrent revise/result/accept/issue tests |
 | Historical data could be overwritten | WORM triggers and restricted runtime role | PostgreSQL update/delete/truncate and grant tests |
 | Agents had to invent creation IDs | Server-generated local IDs, returned permanent IDs, immutable request receipts | Authoring retry, concurrency and revision tests |

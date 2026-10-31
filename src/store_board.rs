@@ -51,14 +51,12 @@ pub(super) async fn project_current(
                     t.root,
                     &t.parent_gate,
                     &t.references,
-                    t.parent_decision,
                 ) != (
                     default.role.as_str(),
                     &default.parents,
                     default.root,
                     &default.parent_gate,
                     &default.references,
-                    default.parent_decision,
                 )
             })
         });

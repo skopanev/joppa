@@ -2,8 +2,7 @@
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
-    // one-task-per-agent-ac1
+async fn one_agent_claims_two_tasks_in_parallel_and_a_third_over_http() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let db: String = pool
         .get()
@@ -20,7 +19,7 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
     for (id, command) in [
         (
             "workspace",
-            json!({"op":"workspace","title":"One active task per agent"}),
+            json!({"op":"workspace","title":"Several active tasks per agent"}),
         ),
         (
             "bot",
@@ -40,8 +39,8 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
         "work":{"title":"Work","role":"task","status":"none","root":true,"parents":["*"]}
     });
     store::execute_remote_input(&pool, &ws, "owner", "schema", &json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Use two configured work types"})).await?;
-    for kind in ["job", "work"] {
-        store::execute_remote_input(&pool, &ws, "owner", kind, &json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","body":"Implement and test the specified behavior","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
+    for (kind, id) in [("job", "one"), ("work", "one"), ("job", "two")] {
+        store::execute_remote_input(&pool, &ws, "owner", &format!("{kind}-{id}"), &json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","body":"Implement and test the specified behavior","projects":[]},"reason":"Create work"})).await?;
     }
     let claim_a = json!({"op":"claim_task","id":"job:one","revision":1});
     let claim_b = json!({"op":"claim_task","id":"work:one","revision":1});
@@ -49,28 +48,15 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
         store::execute_remote_input(&pool, &ws, "bot", "claim-a", &claim_a),
         store::execute_remote_input(&pool, &ws, "bot", "claim-b", &claim_b)
     );
-    let (held, other, error) = match (a, b) {
-        (Ok(_), Err(e)) => ("job:one", "work:one", e),
-        (Err(e), Ok(_)) => ("work:one", "job:one", e),
-        (a, b) => anyhow::bail!("one claim must succeed: {a:?} / {b:?}"),
-    };
-    ensure!(
-        error.to_string() == format!("agent already holds task {held}"),
-        "{error:#}"
-    );
+    ensure!(a.is_ok() && b.is_ok(), "both claims succeed: {a:?} / {b:?}");
     let mine = store::task_queue(&pool, &ws, "bot", "mine", 100, None).await?;
-    ensure!(mine["tasks"].as_array().unwrap().len() == 1, "{mine}");
+    ensure!(mine["tasks"].as_array().unwrap().len() == 2, "{mine}");
     let available = store::task_queue(&pool, &ws, "bot", "available", 100, None).await?;
     ensure!(
-        available["tasks"].as_array().unwrap().is_empty(),
+        available["tasks"].as_array().unwrap().len() == 1
+            && available["tasks"][0]["address"] == "job:two"
+            && available["tasks"][0]["claimable"] == true,
         "{available}"
-    );
-    let waiting = store::task_queue(&pool, &ws, "bot", "waiting", 100, None).await?;
-    ensure!(waiting["tasks"][0]["address"] == other, "{waiting}");
-    ensure!(waiting["tasks"][0]["claimable"] == false, "{waiting}");
-    ensure!(
-        waiting["tasks"][0]["waiting_reason"] == format!("agent already holds task {held}"),
-        "{waiting}"
     );
     let dir = std::env::temp_dir().join(format!(
         "joppa-claim-http-{}",
@@ -114,24 +100,17 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
     }
     let response = reqwest::Client::new().post(format!("{root}/api/workspaces/{ws}/commands"))
         .bearer_auth(&token)
-        .json(&json!({"request_id":"http-refused-claim","command":{"op":"claim_task","id":other,"revision":1}}))
+        .json(&json!({"request_id":"http-third-claim","command":{"op":"claim_task","id":"job:two","revision":1}}))
         .send().await?;
-    ensure!(
-        response.status() == reqwest::StatusCode::CONFLICT,
-        "{}",
-        response.status()
-    );
-    let response: serde_json::Value = response.json().await?;
-    ensure!(
-        response["error"] == format!("agent already holds task {held}"),
-        "{response}"
-    );
+    ensure!(response.status().is_success(), "{}", response.status());
+    let mine = store::task_queue(&pool, &ws, "bot", "mine", 100, None).await?;
+    ensure!(mine["tasks"].as_array().unwrap().len() == 3, "{mine}");
     let before = store::read_objects(
         &pool,
         &ws,
         "bot",
         &store::ObjectScope {
-            address: Some(held),
+            address: Some("job:two"),
             ..Default::default()
         },
     )
@@ -154,7 +133,7 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
         &ws,
         "bot",
         &store::ObjectScope {
-            address: Some(held),
+            address: Some("job:two"),
             ..Default::default()
         },
     )
@@ -163,29 +142,5 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
         before["position"] == after["position"],
         "a refused next must not write an event"
     );
-    store::execute_remote_input(
-        &pool,
-        &ws,
-        "bot2",
-        "other-agent",
-        &json!({"op":"claim_task","id":other,"revision":1}),
-    )
-    .await?;
-    store::execute_remote_input(&pool, &ws, "bot", "release", &json!({"op":"release_task","id":held,"revision":before["document"]["revision"],"reason":"Return the work"})).await?;
-    let available = store::task_queue(&pool, &ws, "bot", "available", 100, None).await?;
-    ensure!(
-        available["tasks"].as_array().unwrap().len() == 1
-            && available["tasks"][0]["address"] == held,
-        "{available}"
-    );
-    let next = store::execute_remote_input(
-        &pool,
-        &ws,
-        "bot",
-        "next-after-release",
-        &json!({"op":"claim_next_task"}),
-    )
-    .await?;
-    ensure!(next["command"]["id"] == held, "{next}");
     Ok(())
 }

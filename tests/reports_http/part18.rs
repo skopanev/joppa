@@ -65,7 +65,7 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
         ("task", "configured", "check:configured"),
         ("job", "configured", "check:configured"),
     ] {
-        command(&w,json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":{"title":"Implement the configured result","owner":"owner","body":"Implement the agreed behavior and provide evidence","purpose":"implementation","projects":[]},"reason":"Check task result reads"})).await?;
+        command(&w,json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":{"title":"Implement the configured result","owner":"owner","body":"Implement the agreed behavior and provide evidence","projects":[]},"reason":"Check task result reads"})).await?;
     }
     command(&w,json!({"op":"save_object","kind":"record","id":"not-work","revision":0,"parent":"check:configured","data":{"title":"A document has no task role","owner":"owner"},"reason":"Check the role boundary"})).await?;
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;

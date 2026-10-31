@@ -99,7 +99,7 @@ pub(crate) fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
             .data["owner"]
             .clone();
         *value = json!({"op":"save_object","kind":"task","id":format!("{req}/{id}"),"revision":0,
-            "parent":format!("ac:{}",acs[0]),"data":{"title":value["title"],"owner":owner,(crate::body_migration::text_field(state,"contract")):value["contract"],"projects":value["projects"],"purpose":value["purpose"]},"reason":"Create a Task"});
+            "parent":format!("ac:{}",acs[0]),"data":{"title":value["title"],"owner":owner,(crate::body_migration::text_field(state,"contract")):value["contract"],"projects":value["projects"]},"reason":"Create a Task"});
     } else if state.task_process.contains_key(&key) {
         if op == "review_task" {
             let ac = value["ac"]
@@ -147,16 +147,12 @@ pub(crate) fn resolve_claim_next(
     ensure!(
         object
             .keys()
-            .all(|key| ["op", "project", "purpose", "priorities"].contains(&key.as_str())),
+            .all(|key| ["op", "project", "priorities"].contains(&key.as_str())),
         "unknown claim_next_task field"
     );
     let project = object
         .get("project")
         .map(|v| v.as_str().context("project must be a string"))
-        .transpose()?;
-    let purpose = object
-        .get("purpose")
-        .map(|v| v.as_str().context("purpose must be a string"))
         .transpose()?;
     let priorities: Option<Vec<String>> = object
         .get("priorities")
@@ -169,7 +165,6 @@ pub(crate) fn resolve_claim_next(
         state,
         actor,
         project,
-        purpose,
         &priorities.unwrap_or_default(),
         waits,
     )?
