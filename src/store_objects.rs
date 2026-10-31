@@ -74,13 +74,36 @@ pub async fn resolve_item_ids(
         }
         let row = conn
             .query_opt(
-                "SELECT kind||':'||local_id FROM joppa.item_ids WHERE workspace=$1 AND id=$2",
+                "SELECT kind||':'||local_id FROM joppa.item_ids WHERE workspace=$1 AND id=joppa.short_item_id($2)",
                 &[&workspace, key],
             )
             .await?;
         out.push(row.map(|r| r.get(0)).context("unknown object")?);
     }
     Ok(out)
+}
+
+/// The workspace of public item IDs, for a read that names no workspace. Every ID must
+/// belong to one workspace that the actor can read; any other case reads as an unknown object.
+pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<String> {
+    let conn = pool.get().await?;
+    let rows = conn
+        .query(
+            "SELECT DISTINCT i.workspace FROM unnest($1::text[]) k(id)
+             LEFT JOIN joppa.item_ids i ON i.id=joppa.short_item_id(k.id)",
+            &[&ids],
+        )
+        .await?;
+    let found: Vec<Option<String>> = rows.iter().map(|r| r.get(0)).collect();
+    ensure!(
+        found.len() == 1,
+        "the public item IDs of one call belong to one workspace"
+    );
+    let workspace = found[0].clone().context("unknown object")?;
+    access::check(&**conn, &workspace, actor, false)
+        .await
+        .map_err(|_| anyhow::anyhow!("unknown object"))?;
+    Ok(workspace)
 }
 
 #[derive(Default)]

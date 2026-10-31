@@ -22,15 +22,31 @@ pub async fn compact(pool: &Pool, actor: &str, name: &str, a: &Value) -> anyhow:
 }
 
 /// The request with each public item ID in `keys`, also in a list separated by commas,
-/// replaced by the address of its object.
+/// replaced by the address of its object. A request without a workspace reads the workspace
+/// of its public item IDs.
 async fn with_addresses(
     pool: &Pool,
     actor: &str,
     a: &Value,
     keys: &[&str],
 ) -> anyhow::Result<Value> {
-    let workspace = a["workspace"].as_str().context("missing workspace")?;
     let mut a = a.clone();
+    if a["workspace"].as_str().is_none_or(str::is_empty) {
+        let ids: Vec<String> = keys
+            .iter()
+            .filter_map(|key| a[*key].as_str())
+            .flat_map(|text| text.split(',').map(str::trim))
+            .filter(|key| !key.is_empty() && !key.contains(':') && *key != "*")
+            .map(str::to_owned)
+            .collect();
+        anyhow::ensure!(!ids.is_empty(), "missing workspace");
+        a["workspace"] = json!(store::item_workspace(pool, actor, &ids).await?);
+    }
+    let workspace = a["workspace"]
+        .as_str()
+        .context("missing workspace")?
+        .to_owned();
+    let workspace = workspace.as_str();
     for key in keys {
         let Some(text) = a[*key].as_str() else {
             continue;

@@ -124,7 +124,7 @@ pub async fn find_with(
       UNION ALL
       SELECT d.workspace,d.kind,d.local_id,-1,true,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
       ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
-      WHERE i.id=$2 AND d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)
+      WHERE i.id=joppa.short_item_id($2) AND d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)
       UNION ALL
       SELECT d.workspace,d.kind,d.local_id,-1,true,false,0::real FROM joppa.search_documents d
       WHERE d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)

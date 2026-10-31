@@ -9,7 +9,7 @@ fn text(description: &str) -> Value {
 /// The parameters of joppa_objects, each with a short description.
 pub(super) fn objects() -> Value {
     json!({
-        "workspace": text("workspace key or alias"),
+        "workspace": text("workspace key or alias; optional when a public item ID such as joppa-R-12345678 is given"),
         "address": text("1 to 25 comma-separated kind:id addresses"),
         "parent": text("direct parent address, * for all objects, or omit for roots; combine with fields to read children in one call"),
         "kind": text("type name; the list gives only objects of this type"),
@@ -40,7 +40,7 @@ pub(super) fn objects() -> Value {
 /// The parameters of joppa_tests.
 pub(super) fn tests() -> Value {
     json!({
-        "workspace": text("workspace key or alias"),
+        "workspace": text("workspace key or alias; optional when a public item ID such as joppa-R-12345678 is given"),
         "ac": text("1 to 100 comma-separated criterion addresses"),
         "parent": text("direct parent address (1 level deep, e.g. requirement:id), or * for all; reads direct child criteria in pages of 100"),
         "kind": text("criterion type with parent; default ac"),

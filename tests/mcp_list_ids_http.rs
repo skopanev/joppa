@@ -93,6 +93,31 @@ async fn a_new_object_gets_8_characters_and_a_public_id_reads_like_its_address()
             && tests["tests"][0]["address"] == "tests/x.rs > t",
         "{by_item} {children} {tests}"
     );
+    // Without a workspace, the public ID names its workspace; an unknown ID reads as unknown.
+    let world = &w;
+    let bare = |args: Value| async move {
+        let (code, reply) = world
+            .mcp_raw(Some(&world.bot), "joppa_objects", args)
+            .await?;
+        ensure!(code == 200, "{reply}");
+        let text = reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
+        anyhow::Ok((reply["result"]["isError"] == true, text.to_owned()))
+    };
+    let (error, text) = bare(json!({"address":ac})).await?;
+    ensure!(
+        !error && serde_json::from_str::<Value>(&text)? == named,
+        "{text}"
+    );
+    let (error, text) = bare(json!({"address":"nope-R-NOPE0000"})).await?;
+    ensure!(error && text == "unknown object", "{text}");
+    let (error, text) = bare(json!({"parent":"requirement:r"})).await?;
+    ensure!(error && text == "missing workspace", "{text}");
+    // An older copy with a 10-character code reads the object of its first 8 characters.
+    let old = format!("{ac}XY");
+    let by_old = ok(&w, "joppa_objects", json!({"address":old})).await?;
+    ensure!(by_old == named, "{by_old}");
     let unknown = w
         .mcp(
             &w.bot,
