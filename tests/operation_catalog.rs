@@ -33,6 +33,7 @@ const NOT_PUBLIC: &[&str] = &[
     "migrate_consumer_drops",
     "migrate_test_rules",
     "migrate_note_parents",
+    "migrate_body",
     "enroll_member",
     "enroll_service",
     "remove_workspace_references",

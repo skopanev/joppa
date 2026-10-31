@@ -39,7 +39,7 @@ fn custom_task_references_use_the_schema_without_consumers_or_projects() {
     task.parent_decision = false;
     task.references = [("affected".into(), rule("domain", true, true))].into();
     set_schema(&mut w, types);
-    let data = json!({"title":"Implement access","owner":"owner","body":"Implement the agreed access behavior","purpose":"implementation","affected":["d"]});
+    let data = json!({"title":"Implement access","owner":"owner","contract":"Implement the agreed access behavior","purpose":"implementation","affected":["d"]});
     save(&mut w, "task:custom", Some("domain:d"), data.clone());
     assert!(objects::referenced(&w.state, "task:custom", "domain:d"));
     assert_eq!(w.state.objects["task:custom"].current().data, data);

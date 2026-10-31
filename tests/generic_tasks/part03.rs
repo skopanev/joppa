@@ -4,7 +4,7 @@
 fn old_save_object_task_events_keep_their_original_replay_adapter() {
     let mut w = World::new();
     w.ready();
-    let save = json!({"op":"save_object","kind":"task","id":"r/old-save","revision":0,"parent":"ac:ios","data":{"title":"Historical Task","body":"Implement the iOS contract","projects":["app"],"purpose":"implementation"},"reason":"Create work"});
+    let save = json!({"op":"save_object","kind":"task","id":"r/old-save","revision":0,"parent":"ac:ios","data":{"title":"Historical Task","contract":"Implement the iOS contract","projects":["app"],"purpose":"implementation"},"reason":"Create work"});
     w.ok("agent", save);
     assert!(
         w.state.requirements["r"]
@@ -20,7 +20,6 @@ fn old_save_object_task_events_keep_their_original_replay_adapter() {
     );
     let original = serde_json::to_value(&w.state.objects["task:r/old-save"].revisions).unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
-    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
     assert_eq!(
         original,
         serde_json::to_value(&w.state.objects["task:r/old-save"].revisions[..1]).unwrap()

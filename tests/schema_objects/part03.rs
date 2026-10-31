@@ -132,7 +132,7 @@ fn verification_uses_roles_when_former_group_names_are_verification_types() {
         &mut w,
         "capability:work",
         Some("domain:same"),
-        json!({"title":"Implement","owner":"owner","body":"Implement the exact observable result","purpose":"implementation","projects":"ordinary field"}),
+        json!({"title":"Implement","owner":"owner","contract":"Implement the exact observable result","purpose":"implementation","projects":"ordinary field"}),
     );
     assert!(w.state.task_process.contains_key("capability:work"));
     assert_eq!(

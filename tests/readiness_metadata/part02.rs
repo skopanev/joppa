@@ -85,6 +85,7 @@ fn custom_role_names_and_parent_changes_select_the_current_assessment() {
         "migrate_tasks",
         "migrate_schema",
         "migrate_documents",
+        "migrate_body",
     ] {
         let cmd = serde_json::from_value(json!({"op":op})).unwrap();
         joppa::commands::apply_replay(&mut w.state, "owner", &cmd, w.position + 1, "now").unwrap();

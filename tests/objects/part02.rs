@@ -128,7 +128,7 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
         &mut w,
         "capability:custom",
         Some("initiative:i"),
-        json!({"title":"Custom capability","owner":"owner","body":"Release scope"}),
+        json!({"title":"Custom capability","owner":"owner","description":"Release scope"}),
         vec![],
     );
     assert_eq!(w.state.capabilities["custom"].domain, None);
