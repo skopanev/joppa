@@ -47,7 +47,6 @@ fn planner_unblocks_a_task_and_its_dependent_pin_stays_current() {
     unblock_and_replay(&mut w, "planner");
     let t = &w.state.task_process["work:t"];
     assert!(tasks::claimable(&w.state, "other", "work:t", t).is_ok());
-    assert!(objects::review_links(&w.state, "work:u").is_empty());
     assert_eq!(
         objects::process(&w.state, "work:u")["review_required"],
         false
@@ -55,7 +54,10 @@ fn planner_unblocks_a_task_and_its_dependent_pin_stays_current() {
     let cmd = unblock(&w, "work:t");
     refuse(&mut w, "planner", cmd, "Task is not blocked");
     finish_and_replay(&mut w);
-    assert!(objects::review_links(&w.state, "work:u").is_empty());
+    assert_eq!(
+        objects::process(&w.state, "work:u")["review_required"],
+        false
+    );
 }
 
 // failed-task-blocks-ac5

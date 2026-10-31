@@ -14,13 +14,18 @@ export function objectTitlePreview(title,kind){
   return characters.length>limit?characters.slice(0,limit-1).join('').trimEnd()+'…':title;
 }
 // A type badge is a plain label: a click goes to its row, and no popover opens.
-export function objectTypeLabel(kind){
+// The short name of a type: its configured badge, else the initials of its title.
+export function typeBadge(kind){
   const type=state.data.objectTypes?.[kind]||{},title=type.title||kind.toUpperCase();
   const words=title.trim().split(/\s+/);
-  const short=words.length===1&&title===title.toLocaleUpperCase()?title:words.map(word=>Array.from(word)[0]).join('').toLocaleUpperCase();
+  return type.badge||(words.length===1&&title===title.toLocaleUpperCase()?title:words.map(word=>Array.from(word)[0]).join('').toLocaleUpperCase());
+}
+export function objectTypeLabel(kind){
+  const type=state.data.objectTypes?.[kind]||{},title=type.title||kind.toUpperCase();
   const question=type.question||'',hint=question?title+'\n'+question:title;
-  const label=E('abbr',type.badge||short,'type-label type-badge');
-  label.dataset.hint=hint;label.title=hint;label.setAttribute('aria-label',title);
+  const label=E('abbr',typeBadge(kind),'type-label type-badge');
+  // The status hint shows the title and the question; no native tooltip repeats it.
+  label.dataset.hint=hint;label.setAttribute('aria-label',title);
   label.addEventListener('pointerenter',()=>showStatusHint(label));
   label.addEventListener('pointerleave',hideStatusHint);
   return label;
@@ -40,5 +45,5 @@ export function verificationChildTitle(kind){
   const types=state.data.objectTypes,branches=new Set(Object.keys(types).filter(k=>types[k].role==='ac'));
   let changed=true;
   while(changed){const size=branches.size;for(const child of [...branches])for(const parent of types[child]?.parents||[])if(parent==='*')Object.keys(types).forEach(k=>branches.add(k));else branches.add(parent);changed=branches.size!==size;}
-  return [...new Set(Object.entries(types).filter(([k,t])=>branches.has(k)&&(t.parents||[]).some(p=>p===kind||p==='*')).map(([,t])=>t.title))].join(' / ');
+  return [...new Set(Object.entries(types).filter(([k,t])=>branches.has(k)&&(t.parents||[]).some(p=>p===kind||p==='*')).map(([k])=>typeBadge(k)))].join(' / ');
 }

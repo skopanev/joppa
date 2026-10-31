@@ -9,10 +9,7 @@ pub(crate) fn validate_links(
     kept: &[ObjectLink],
 ) -> Result<()> {
     let mut unique = BTreeSet::new();
-    // A Task dependency pins its target contract; another node orders work without a pin.
-    let task = key
-        .split_once(':')
-        .is_some_and(|(kind, _)| task_kind(w, kind));
+    // A dependency names a node: it needs no target revision.
     for link in links {
         ensure!(
             LINK_RELATIONS.contains(&link.relation.as_str()),
@@ -34,12 +31,6 @@ pub(crate) fn validate_links(
             ensure!(
                 r > 0 && r <= target.current().revision,
                 "unknown linked revision"
-            );
-        }
-        if task && link.relation == "depends_on" {
-            ensure!(
-                link.revision.is_some(),
-                "dependency needs a target revision"
             );
         }
         if link.blocking {

@@ -115,7 +115,8 @@ test('type-badge: a click on a type badge toggles its row and opens no popover',
     const badge = child.locator(':scope > summary > .type-badge');
     assert.equal(await badge.evaluate(node => node.tagName), 'ABBR');
     assert.equal(await child.locator(':scope > summary button.type-badge').count(), 0);
-    assert.equal(await badge.getAttribute('title'), 'Records\n' + question);
+    assert.equal(await badge.getAttribute('title'), null);
+    assert.equal(await badge.getAttribute('data-hint'), 'Records\n' + question);
     await badge.hover();
     assert.equal(await f.page.locator('.status-hint').innerText(), 'Records\n' + question);
     assert.equal(await child.getAttribute('open'), null);

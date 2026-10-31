@@ -126,7 +126,8 @@ fn an_identical_save_keeps_the_workspace_and_a_change_adds_one_revision() {
     changed["body"] = json!("Implement the changed document behavior");
     save(&mut w, "work:source", None, changed);
     assert_eq!(w.state.objects["work:source"].revisions.len(), 2);
-    assert!(!objects::review_links(&w.state, "task:dependent").is_empty());
+    // A dependency names a node: a new source revision asks for no review.
+    assert_eq!(objects::process(&w.state, "task:dependent")["review_required"], false);
 
     let linked = |revision: u32, links: Value| json!({"op":"save_object","kind":"spec","id":"child","revision":revision,"parent":"spec:root","data":document("Nested specification"),"links":links,"reason":"Relate the specification"});
     w.ok("agent", linked(1, json!([])));
@@ -171,7 +172,7 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
     assert!(claimable(&w, "task:a"));
     assert!(!claimable(&w, "task:b"));
     action(&mut w, "agent", "task:a", "claim_task", json!({}));
-    assert!(objects::review_links(&w.state, "task:b").is_empty());
+    assert_eq!(objects::process(&w.state, "task:b")["review_required"], false);
     action(
         &mut w,
         "agent",
@@ -181,7 +182,7 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
     );
     assert_eq!(objects::process(&w.state, "task:a")["status"], "done");
     assert!(w.state.objects["task:a"].current().revision > pin);
-    assert!(objects::review_links(&w.state, "task:b").is_empty());
+    assert_eq!(objects::process(&w.state, "task:b")["review_required"], false);
     assert!(objects::work_ready(&w.state, "task:b"));
     assert!(claimable(&w, "task:b"));
     assert_eq!(
@@ -192,7 +193,8 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
     pinned(&mut w, "task:c", "task:d");
     let revision = w.state.objects["task:c"].current().revision;
     w.legacy("agent",json!({"op":"amend_task","id":"task:c","revision":revision,"title":"Changed source task","contract":"Implement the specified document behavior","projects":[],"reason":"Change the source"}));
-    assert!(!objects::review_links(&w.state, "task:d").is_empty());
+    // The changed source asks for no review; d waits until c is done.
+    assert_eq!(objects::process(&w.state, "task:d")["review_required"], false);
     assert!(!claimable(&w, "task:d"));
 }
 

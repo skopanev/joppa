@@ -54,7 +54,8 @@ pub(super) async fn list_rows(
             o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
             jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text,o.process::text,
             CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END,
-            CASE WHEN $16::boolean THEN (o.document->'data')::text END,o.total
+            CASE WHEN $16::boolean THEN (o.document->'data')::text END,o.total,
+            (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present)
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         LEFT JOIN work_counts w ON w.address=o.address
         WHERE o.workspace=$1 AND o.present
@@ -141,6 +142,7 @@ pub(super) async fn list_rows(
         if !item["note_status"].is_null() {
             item["status"] = item["note_status"].clone();
         }
+        item["children"] = json!(row.get::<_, i64>(20));
     }
     if unstarted {
         for (item, row) in items.iter_mut().zip(rows.iter()) {

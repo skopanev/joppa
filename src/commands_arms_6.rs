@@ -103,7 +103,7 @@ pub(super) fn apply_assess(w: &mut Workspace, command: &Command) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("waiting needs a recipient"))?;
         ensure!(w.members.contains_key(recipient), "unknown recipient");
     }
-    if assessment.ready && a.owner.is_some() {
+    if assessment.ready && a.decider().is_some() {
         let decision = assessment
             .decision
             .as_ref()
@@ -127,7 +127,7 @@ pub(super) fn apply_assess(w: &mut Workspace, command: &Command) -> Result<()> {
         ensure!(
             decision.kind == "decision"
                 && !decision.withdrawn
-                && Some(&decision.actor) == a.owner.as_ref()
+                && Some(&decision.actor) == a.decider()
                 && decision.ac.as_ref() == Some(ac)
                 && (decision.revision == *n || same_formulation),
             "decision must be by designated human for this AC and unchanged formulation"

@@ -20,6 +20,10 @@ MCP reads have one shape. There is no `verbose` switch.
 - An MCP reply with `items` holds at most 256 KB (262144 bytes). A larger list is refused:
   `reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit`.
   A read of one object comes in full, because one field can hold 256 KiB.
+- Each MCP read takes a public item ID such as `joppa-R-DP6KXM62` where it takes an
+  address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `ac`,
+  `parent` and `task` of `joppa_tests`. A read of one object by its item ID gives its
+  `address`. An unknown item ID is refused: `unknown object`.
 - MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
   `joppa_search`: the reply gives only that object, with `exact_id: true`.
 
@@ -58,13 +62,14 @@ roots. `kind` filters by type. Reply:
   "total": 27,
   "next_cursor": "ac:a3",
   "items": [
-    {"address": "ac:a", "title": "Each saved task has an owner", "status": "green", "children": 2},
+    {"address": "ac:a", "title": "Each saved task has an owner", "status": "green"},
     {"address": "ac:a1", "title": "A refused save stores nothing", "status": "grey"}
   ]
 }
 ```
 
-- `status` is the status tone. `children` is the number of present children, only when above 0.
+- `status` is the status tone that the last write stored in the row. One query reads it.
+- `fields` `["children"]` gives the number of present children of each item, also `0`.
 - Items come in address order. `next_cursor` is the address of the last item; the next page
   starts after it, so a new object does not move the items of a later page.
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
@@ -98,7 +103,7 @@ Reply item: the address and each named path, also when its value is empty.
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `parent`,
 `title`, `owner`, `review_required`, `work_ready`, `at`, `body`, `signal`,
-`present`, `note_status`, `status`, `process`, `work_summary`.
+`present`, `note_status`, `status`, `process`, `work_summary`, `children`.
 
 Any other first part names a document field: `source_section.title` gives
 `data.source_section.title`. A document field is a field of the object roles (such as

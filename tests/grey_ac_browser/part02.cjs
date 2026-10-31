@@ -100,9 +100,9 @@ test('direct-child-counts: each row uses the shared next-level count', async () 
     await f.bind('proof:a', ['pass']); await f.bind('proof:b', ['pass']); await f.bind('proof:bad', ['fail']);
     await f.record('cccccccc', [['pass'], ['fail', 'failed check']]);
     const card = await f.open('bundle:root');
-    assert.equal(await card.locator(':scope > summary .verification-chip').innerText(), '1 / 3 Branches');
-    assert.equal(await card.locator('.common-object[data-object-address="branch:good"] > summary .verification-chip').innerText(), '2 / 2 Sheets');
-    assert.equal(await card.locator('.common-object[data-object-address="branch:empty"] > summary .verification-chip').innerText(), '0 Sheets');
+    assert.equal(await card.locator(':scope > summary .verification-chip').innerText(), '1 / 3 Bs');
+    assert.equal(await card.locator('.common-object[data-object-address="branch:good"] > summary .verification-chip').innerText(), '2 / 2 Ss');
+    assert.equal(await card.locator('.common-object[data-object-address="branch:empty"] > summary .verification-chip').innerText(), '0 Ss');
     assert.equal(f.requests.filter(r => new URL(r.url).pathname.endsWith('/tests')).length, 0);
   } finally { await f.close(); }
 });

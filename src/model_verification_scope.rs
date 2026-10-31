@@ -42,6 +42,21 @@ pub struct Ac {
     pub before_launch: bool,
     #[serde(default)]
     pub assessment: Option<Assessment>,
+    /// Set only when it differs from the older rule that an own owner decides the criterion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_required: Option<bool>,
+}
+
+impl Ac {
+    /// Whether the owner of the criterion supplies its decision.
+    pub fn decision(&self) -> bool {
+        self.decision_required.unwrap_or(self.owner.is_some())
+    }
+
+    /// The person who supplies the decision of the criterion, if any.
+    pub fn decider(&self) -> Option<&String> {
+        self.owner.as_ref().filter(|_| self.decision())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

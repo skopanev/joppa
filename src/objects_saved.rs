@@ -232,16 +232,5 @@ pub(crate) fn saved(
     });
     candidate.objects.insert(key.clone(), object);
     validate_links(&candidate, &key, links, &kept)?;
-    for (address, obj) in &w.objects {
-        if !obj.current().present || !within(w, address, &key) {
-            continue;
-        }
-        if let Some((req, _, _)) = criterion_context(w, address) {
-            ensure!(
-                criterion_context(&candidate, address).is_some_and(|(next, _, _)| next == req),
-                "a parent change cannot move existing criterion evidence to another specification"
-            );
-        }
-    }
     Ok(Some(candidate))
 }

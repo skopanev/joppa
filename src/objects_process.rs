@@ -10,7 +10,6 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
         if !w.objects.is_empty() && !work_ready(w, &key) {
             summary["acs"][&ac.id]["ready"] = json!(false);
             summary["acs"][&ac.id]["verification"] = json!("n/a");
-            summary["acs"][&ac.id]["review_required"] = json!(review_links(w, &key));
             blocked = true;
         }
     }
@@ -126,8 +125,6 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         )
     } else if p["review_required"] == true {
         ("purple", "Task contract needs owner review")
-    } else if !review_links(w, key).is_empty() {
-        ("purple", "Dependency revision changed")
     } else if !work_ready(w, key) {
         ("purple", "Dependency is not ready")
     } else if input_type(w, &o.kind) {

@@ -131,7 +131,6 @@ pub fn apply(
         ensure!(
             objects::assessment(w, &key).is_some_and(|a| a["state"] == "ready")
                 && objects::readiness_blocker(w, &key, true).is_none()
-                && objects::review_links(w, &key).is_empty()
                 && objects::work_ready(w, &key),
             "criterion is not ready for planning"
         );

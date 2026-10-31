@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
 /// The first path segments that a list item gives itself. `status` is the status tone.
-pub const LIST_FIELDS: [&str; 19] = [
+pub const LIST_FIELDS: [&str; 20] = [
     "address",
     "data",
     "kind",
@@ -25,6 +25,7 @@ pub const LIST_FIELDS: [&str; 19] = [
     "status",
     "process",
     "work_summary",
+    "children",
 ];
 
 /// The keys of a detail read that a list item does not give.
@@ -124,6 +125,7 @@ pub fn object_fields(
     detail: Option<&Value>,
     fields: &[String],
     inbox: bool,
+    children: Option<i64>,
 ) -> Value {
     let document = &reply["document"];
     let data = &document["data"];
@@ -139,7 +141,7 @@ pub fn object_fields(
         "work_ready": reply["work_ready"], "at": document["at"], "body": body,
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],
-        "status": crate::read_compact::status(reply)});
+        "status": crate::read_compact::status(reply), "children": children});
     let mut out = Map::new();
     out.insert("address".into(), item["address"].clone());
     for field in fields {

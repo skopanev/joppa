@@ -53,6 +53,36 @@ async fn authorized(
     Ok((conn, workspace))
 }
 
+/// The address of each key: a key with `:` and `*` stay, any other key is a public item ID
+/// such as `joppa-R-DP6KXM62`.
+pub async fn resolve_item_ids(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    keys: &[String],
+) -> Result<Vec<String>> {
+    let address = |key: &String| key.is_empty() || key.contains(':') || key == "*";
+    if keys.iter().all(address) {
+        return Ok(keys.to_vec());
+    }
+    let (conn, workspace) = authorized(pool, workspace, actor).await?;
+    let mut out = Vec::with_capacity(keys.len());
+    for key in keys {
+        if address(key) {
+            out.push(key.clone());
+            continue;
+        }
+        let row = conn
+            .query_opt(
+                "SELECT kind||':'||local_id FROM joppa.item_ids WHERE workspace=$1 AND id=$2",
+                &[&workspace, key],
+            )
+            .await?;
+        out.push(row.map(|r| r.get(0)).context("unknown object")?);
+    }
+    Ok(out)
+}
+
 #[derive(Default)]
 pub struct ObjectScope<'a> {
     pub address: Option<&'a str>,

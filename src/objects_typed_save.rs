@@ -55,14 +55,6 @@ pub(crate) fn typed_save(
         candidate.document_overrides.insert(key.to_owned());
         let owner = string(data, "owner")?;
         commands::human(w, &owner)?;
-        if let Some(o) = old {
-            ensure!(
-                o.current().data["owner"] == owner
-                    || o.current().data["owner"] == actor
-                    || actor == w.admin,
-                "only current owner can transfer responsibility"
-            );
-        }
         if ["project", "intake", "point"].contains(&kind.as_str()) && !w.schema_migrated {
             ensure!(
                 old.is_some(),
@@ -209,23 +201,4 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// A Task pin stays current across process events, which keep its authored origin revision.
-pub fn pin_current(w: &Workspace, target: &str, pin: Option<u32>) -> bool {
-    let key = resolve_address(w, target);
-    let (Some(pin), Some(o)) = (pin, w.objects.get(key)) else {
-        return false;
-    };
-    // The last revisions that change only the test list keep a pin current.
-    let (contract, current) = (contract_revision(o), o.current().revision);
-    o.current().present
-        && w.task_process
-            .get(key)
-            .map_or(contract <= pin && pin <= current, |t| {
-                t.retired.is_none()
-                    && t.origin_revision >= 1
-                    && t.origin_revision <= pin
-                    && pin <= current
-            })
 }

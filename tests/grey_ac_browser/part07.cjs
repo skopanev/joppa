@@ -24,10 +24,10 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
     await f.command({op: 'archive_object', target: 'ac:B', revision: 2, reason: 'Drop the red criterion'}, true);
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
-    assert.equal(await r.locator('.verification-chip').innerText(), '1 Criteria');
+    assert.equal(await r.locator('.verification-chip').innerText(), '1 AC');
     assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'grey');
     const mixed = card.locator('.common-object[data-object-address="requirement:mixed"] > summary');
-    assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 Criteria');
+    assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 ACs');
     // type-status-rules: a requirement takes the first of red, grey, green that a child has.
     assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'grey');
   } finally { await f.close(); }

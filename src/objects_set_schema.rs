@@ -176,7 +176,6 @@ pub fn set_schema(
             types.contains_key(&obj.kind),
             "object type is absent from the tree schema"
         );
-        validate_required_fields(&types[&obj.kind], &obj.current().data)?;
         if w.task_process.contains_key(&address(&obj.kind, &obj.id)) {
             ensure!(
                 types[&obj.kind].role == "task",

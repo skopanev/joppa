@@ -216,7 +216,7 @@ test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', a
   try {
     const card = await f.open('capability:c');
     const row = card.locator('.common-object[data-object-address="requirement:empty"] > summary');
-    assert.equal(await row.locator('.verification-chip').innerText(), '0 Proofs');
+    assert.equal(await row.locator('.verification-chip').innerText(), '0 Ps');
     assert.equal(await row.locator('.status-circle').getAttribute('data-tone'), 'grey');
   } finally { await f.close(); }
 });

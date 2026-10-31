@@ -87,7 +87,22 @@ async fn named(
         true => Some(rc::detail(reply.clone(), asked, None)?),
         false => None,
     };
-    Ok(rc::object_fields(&reply, detail.as_ref(), fields, inbox))
+    // The number of present children is the total of their list.
+    let children = match fields.iter().any(|f| f == "children") {
+        true => {
+            let address = reply["address"].as_str();
+            let list = store::compact_list(pool, workspace, actor, address, None, 1, None).await?;
+            list["total"].as_i64()
+        }
+        false => None,
+    };
+    Ok(rc::object_fields(
+        &reply,
+        detail.as_ref(),
+        fields,
+        inbox,
+        children,
+    ))
 }
 
 /// The revision headers in pages of 25, oldest first: items, total and next_cursor.

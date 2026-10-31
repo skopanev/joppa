@@ -78,9 +78,11 @@ function priorityBadge(item){
 }
 function showTestCount(chip){
   const green=Number(chip.dataset.passed),red=Number(chip.dataset.failed),total=Number(chip.dataset.total),title=chip.dataset.childTitle;
-  chip.textContent=(green?green+' / '+total:total)+' '+title;
+  // One criterion is 1 AC; any other count is ACs.
+  const unit=total===1||title.endsWith('s')?title:title+'s';
+  chip.textContent=(green?green+' / '+total:total)+' '+unit;
   chip.classList.toggle('has-passes',green>0);chip.classList.toggle('has-failures',red>0);
-  const label=green+' of '+total+' '+title+' ready'+(red?', '+red+' failed':'');
+  const label=green+' of '+total+' '+unit+' ready'+(red?', '+red+' failed':'');
   chip.setAttribute('aria-label',label);
   // The dot keeps the server tone of the type's status rule and the process label.
 }

@@ -14,7 +14,7 @@ pub(super) fn objects() -> Value {
         "parent": text("direct parent address, * for all objects, or omit for roots; combine with fields to read children in one call"),
         "kind": text("type name; the list gives only objects of this type"),
         "fields": {"type":"array","items":{"type":"string"},
-            "description":"dotted paths to return, e.g. [\"title\",\"status\",\"data.description\"]"},
+            "description":"dotted paths to return (default [\"title\",\"status\"] on lists; address is always included), e.g. [\"title\",\"body\",\"status\",\"children\"]"},
         "limit": {"type":"integer","minimum":1,"maximum":100,
             "description":"items in one list page; more than 25 gives 25"},
         "cursor": text("next_cursor of the previous page"),

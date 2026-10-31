@@ -4,33 +4,14 @@ use crate::objects::{RequiredFieldRule, TreeType};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-/// The data fields that the server reads for a type, from its name or its role. The text
-/// of every type is `body`, see body_migration.
-fn data_fields(kind: &str, t: &TreeType) -> &'static [&'static str] {
-    if let Some(fields) = crate::objects::native_document_fields(kind) {
-        return crate::body_migration::body_fields(fields);
-    }
-    match t.role.as_str() {
-        "requirement" => &["title", "body", "owner", "consumers"],
-        "ac" => &[
-            "title",
-            "body",
-            "owner",
-            "decision_required",
-            "depends_on",
-            "before_launch",
-        ],
-        "task" => &["title", "owner", "body", "projects", "purpose"],
-        _ => &["title", "owner", "body"],
-    }
-}
+/// The data fields of every example: the title, the text and the owner. Reference and
+/// required fields of the type follow.
+const DATA_FIELDS: [&str; 3] = ["title", "body", "owner"];
 
 fn placeholder(field: &str, limit: usize) -> Value {
     match field {
         "title" => json!("<one concise statement (max 128 chars)>"),
         "owner" => json!("<member id>"),
-        "consumers" | "depends_on" | "projects" => json!([]),
-        "decision_required" | "before_launch" | "archived" => json!(false),
         _ => json!(format!("<concise text (max {limit} chars)>")),
     }
 }
@@ -40,16 +21,9 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
     let mut examples = Map::new();
     for (kind, t) in types {
         let mut data = Map::new();
-        for field in data_fields(kind, t) {
-            // A requirement names no consumer, see consumer_migration.
-            if t.role == "requirement"
-                && *field == "consumers"
-                && !t.references.contains_key(*field)
-            {
-                continue;
-            }
+        for field in DATA_FIELDS {
             let limit = crate::field_limit::limit(t.field_max_length);
-            data.insert((*field).into(), placeholder(field, limit));
+            data.insert(field.into(), placeholder(field, limit));
         }
         for (field, rule) in &t.required_fields {
             let value = match rule {

@@ -24,20 +24,6 @@ pub fn save(
         .context("Task needs an owner")?
         .to_owned();
     commands::human(w, &owner)?;
-    if let Some(old) = old {
-        ensure!(
-            old.current().data["owner"] == owner
-                || old.current().data["owner"] == actor
-                || actor == w.admin,
-            "only current owner can transfer responsibility"
-        );
-        ensure!(
-            old.current().parent.as_deref() == parent
-                || old.current().data["owner"] == actor
-                || actor == w.admin,
-            "Task owner required to change its parent"
-        );
-    }
     let string = |field: &str| {
         data[field]
             .as_str()
@@ -47,8 +33,8 @@ pub fn save(
     let text = crate::body_migration::text_field(w, "contract");
     commands::nonempty(string("title")?)?;
     commands::nonempty(string(text)?)?;
-    let purpose = string("purpose")?.to_owned();
-    ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
+    // The purpose is an optional label that a save may change.
+    let purpose = data["purpose"].as_str().unwrap_or_default().to_owned();
     let kind = key.split_once(':').context("Task address needs a type")?.0;
     let rules = objects::schema(w)
         .types
@@ -135,9 +121,9 @@ pub fn save(
                 }),
             "Task owner, assignee or unclaimed creator required"
         );
-        ensure!(t.purpose == purpose, "task purpose cannot change");
     }
     t.title = title;
+    t.purpose = purpose;
     t.contract = contract;
     t.projects = projects;
     t.acs.clear();

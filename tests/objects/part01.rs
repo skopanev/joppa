@@ -213,7 +213,6 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
         vec![],
     );
     // dependencies-before-priority: an ordering link of a criterion pins nothing.
-    assert!(objects::review_links(&w.state, "ac:ios").is_empty());
     assert!(objects::work_ready(&w.state, "ac:ios"));
     let r = w.state.requirements["r"].revisions.last().unwrap();
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());

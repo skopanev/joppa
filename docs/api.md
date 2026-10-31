@@ -185,8 +185,8 @@ Reordering records an event but leaves revisions, acceptance and check evidence 
 ## Permanent item IDs
 
 Read responses include `system_ids`, grouped by `domain`, `capability`, `requirement`
-and `ac`. Each ID is `workspace-D|C|R|A-XXXXXXXXXX` with a random 10-character
-uppercase alphanumeric suffix and a database-wide unique constraint. A collision
+and `ac`. Each ID is `workspace-D|C|R|A-XXXXXXXX` with a random 8-character
+uppercase alphanumeric suffix (older IDs have 10) and a database-wide unique constraint. A collision
 is retried; IDs are immutable and survive wording changes, revisions and ordering.
 Existing cards receive IDs additively without rewriting journal events.
 
@@ -247,7 +247,7 @@ return to their registered callback automatically.
 Through `joppa_command`, omit `id` when creating a domain, capability, consumer,
 Note, comment or task. For `revise`,
 omit `req` only when `expected_revision` is 0; omit `id` on newly added ACs.
-The server assigns UUIDs and returns the resolved `command` and `system_ids`
+The server assigns 8-character `[a-z0-9]` IDs and returns the resolved `command` and `system_ids`
 for domains, capabilities, REQs and ACs. Explicit local IDs remain supported.
 An omitted field means a new identity; null or an empty string is not an ID.
 

@@ -35,17 +35,6 @@ pub fn task_kind(w: &Workspace, kind: &str) -> bool {
     schema(w).types.get(kind).is_some_and(|t| t.role == "task")
 }
 
-/// The Task dependencies whose pinned revision is no longer current. The dependencies of
-/// another node order work and pin nothing, so a stored revision there needs no review.
-pub fn review_links(w: &Workspace, key: &str) -> Vec<Value> {
-    w.objects.get(resolve_address(w, key)).filter(|o| task_kind(w, &o.kind)).map(|o|o.current().links.iter().filter_map(|link| {
-        let current=w.objects.get(resolve_address(w, &link.target)).filter(|o|o.current().present).map(|o|o.current().revision);
-        (link.relation=="depends_on" && !pin_current(w, &link.target, link.revision)).then(||json!({"target":link.target,"revision":link.revision,"current_revision":current}))
-    }).collect()).unwrap_or_default()
-}
-
-/// Task dependency pins of the object and its ancestors. The ordering links of other nodes
-/// wait at read time and in live writes, where the test status of their targets is known.
 /// A criterion with a saved test list: its test status from reports decides a link to it.
 pub fn report_decided(w: &Workspace, key: &str) -> bool {
     let key = resolve_address(w, key);
@@ -72,13 +61,9 @@ pub fn work_ready(w: &Workspace, key: &str) -> bool {
             return false;
         };
         let task = types.get(&o.kind).is_some_and(|t| t.role == "task");
+        // A dependency names a node, not a revision: a new target revision changes nothing.
         let mut links = o.current().links.iter().filter(|l| task && l.blocking);
-        if !o.current().present
-            || links
-                .clone()
-                .any(|l| !pin_current(w, &l.target, l.revision))
-            || !stack.insert(key.into())
-        {
+        if !o.current().present || !stack.insert(key.into()) {
             return false;
         }
         let links_ready = links.all(|l| {
@@ -110,10 +95,9 @@ pub fn unready_dependency(w: &Workspace, key: &str) -> Option<String> {
         .iter()
         .filter(|l| l.blocking)
         .find(|l| {
-            !pin_current(w, &l.target, l.revision)
-                || w.objects
-                    .get(resolve_address(w, &l.target))
-                    .is_none_or(|t| task_kind(w, &t.kind) && !verified(w, &address(&t.kind, &t.id)))
+            w.objects
+                .get(resolve_address(w, &l.target))
+                .is_none_or(|t| task_kind(w, &t.kind) && !verified(w, &address(&t.kind, &t.id)))
                 || !work_ready(w, &l.target)
         })
         .map(|l| resolve_address(w, &l.target).to_owned())

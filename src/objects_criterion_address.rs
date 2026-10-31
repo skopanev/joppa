@@ -118,7 +118,7 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
                     ac_kind,
                     ac_id,
                     Some(req_address.clone()),
-                    json!({"title":ac.text,(text):ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.owner.is_some(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
+                    json!({"title":ac.text,(text):ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.decision(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
                 );
             }
             for (tid, t) in &r.tasks {

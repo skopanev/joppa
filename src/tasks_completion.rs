@@ -76,7 +76,7 @@ pub(super) fn check(
             "link the decision for this parent and revision"
         );
         ensure!(
-            ac.owner.as_ref().is_none_or(|owner| owner == &d.actor),
+            ac.decider().is_none_or(|owner| owner == &d.actor),
             "designated specialist must decide"
         );
     }

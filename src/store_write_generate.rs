@@ -1,6 +1,19 @@
 //! Part of `store_write`: `generate` and the items after it, moved from store_write.rs unchanged.
 use super::*;
 
+/// A new local ID: 8 characters of [a-z0-9] from a random UUID, about 2.8e12 values.
+pub(crate) fn short_id() -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut n = Uuid::new_v4().as_u128();
+    (0..8)
+        .map(|_| {
+            let digit = DIGITS[(n % 36) as usize] as char;
+            n /= 36;
+            digit
+        })
+        .collect()
+}
+
 pub(crate) fn generate(command: &mut Value) -> Result<()> {
     let op = command["op"].as_str().unwrap_or("").to_owned();
     let c = command
@@ -14,16 +27,14 @@ pub(crate) fn generate(command: &mut Value) -> Result<()> {
         _ => None,
     };
     if let Some(key) = key {
-        c.entry(key)
-            .or_insert_with(|| json!(Uuid::new_v4().to_string()));
+        c.entry(key).or_insert_with(|| json!(short_id()));
     }
     if op == "revise"
         && let Some(acs) = c.get_mut("acs").and_then(Value::as_array_mut)
     {
         for ac in acs {
             if let Some(ac) = ac.as_object_mut() {
-                ac.entry("id")
-                    .or_insert_with(|| json!(Uuid::new_v4().to_string()));
+                ac.entry("id").or_insert_with(|| json!(short_id()));
             }
         }
     }

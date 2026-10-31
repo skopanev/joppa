@@ -6,10 +6,46 @@ use serde_json::{Value, json};
 
 pub async fn compact(pool: &Pool, actor: &str, name: &str, a: &Value) -> anyhow::Result<Value> {
     if name == "joppa_objects" {
-        objects(pool, actor, a).await
+        let keys = ["address", "parent", "related_to", "links_of"];
+        let resolved = with_addresses(pool, actor, a, &keys).await?;
+        let mut reply = objects(pool, actor, &resolved).await?;
+        // A read of one object by its public item ID names the address that it resolved.
+        let address = &resolved["address"];
+        if a["address"] != *address && reply.get("items").is_none() && reply.is_object() {
+            reply["address"] = address.clone();
+        }
+        Ok(reply)
     } else {
-        super::test_reads::tests(pool, actor, a).await
+        let a = with_addresses(pool, actor, a, &["ac", "parent", "task"]).await?;
+        super::test_reads::tests(pool, actor, &a).await
     }
+}
+
+/// The request with each public item ID in `keys`, also in a list separated by commas,
+/// replaced by the address of its object.
+async fn with_addresses(
+    pool: &Pool,
+    actor: &str,
+    a: &Value,
+    keys: &[&str],
+) -> anyhow::Result<Value> {
+    let workspace = a["workspace"].as_str().context("missing workspace")?;
+    let mut a = a.clone();
+    for key in keys {
+        let Some(text) = a[*key].as_str() else {
+            continue;
+        };
+        let parts: Vec<String> = text.split(',').map(|k| k.trim().to_owned()).collect();
+        if parts
+            .iter()
+            .all(|k| k.is_empty() || k.contains(':') || k == "*")
+        {
+            continue;
+        }
+        let resolved = store::resolve_item_ids(pool, workspace, actor, &parts).await?;
+        a[*key] = json!(resolved.join(","));
+    }
+    Ok(a)
 }
 
 fn number(a: &Value, key: &str) -> anyhow::Result<Option<u64>> {

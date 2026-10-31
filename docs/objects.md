@@ -35,7 +35,7 @@ The event `migrate_body` ran once in each workspace. It moved each stored `descr
 keep the contract revision, so pins, assessments and test results stay. The required fields
 of the tree schema use `body` too.
 AC and Task documents can inherit the REQ owner.
-An AC with `decision_required: true` has an independent human owner who supplies its decision.
+An AC can have its own owner. With `decision_required: true` that owner supplies its decision.
 A Task keeps its assignee separate from its owner.
 
 REQ text changes create a new verification revision and reset all AC checks.
@@ -122,6 +122,7 @@ Set `required_fields` on any configured type:
 ```
 
 Each entry maps a `data` field to its refusal message.
+A new rule binds the saves after it. `set_tree_schema` does not check the stored objects.
 Absent fields, nulls, blank text, empty lists and empty maps have no value.
 The numbers and booleans `0` and `false` are valid values.
 Use a rule object to require literal markers in a text field:
@@ -187,7 +188,8 @@ null for a link without a pin. It is not the current revision of the other objec
 to get its current revision.
 
 - `related` records context. Cycles are permitted.
-- `depends_on` records a dependency and pins its target revision.
+- `depends_on` records a dependency on a node. It needs no target revision, and a new
+  revision of the target asks for no review.
 - `blocking: true` requires that dependency before work can start.
 
 A blocking target can have any configured type.
@@ -196,9 +198,8 @@ Document text and input processing do not supply verification evidence.
 Blocking cycles include inherited parent dependencies and are rejected.
 Dependencies can cross REQ and Domain boundaries inside the workspace.
 
-When a target changes, the system returns `review_required` and the changed revision.
-A blocking dependency prevents claims until an agent checks and updates its pin.
-An informational dependency shows the review hint and permits claims.
+A blocking dependency prevents claims until its target is ready: a done Task, or a node whose
+criteria are green.
 The system preserves earlier test evidence.
 It does not copy old evidence into a new verification revision.
 
@@ -234,7 +235,7 @@ There is no separate comment-to-Note promotion process.
 
 MCP reads give small replies. `docs/read-contract.md` and `docs/read-detail.md` give every shape with JSON. MCP replies give no `item_id`. An MCP list reply holds at most 256 KB; a larger list is refused. One object comes in full.
 
-- A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
+- A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, and `total`; `fields` `["children"]` adds the child count. Follow `next_cursor`; a missing `next_cursor` means the last page.
 - `data: {"tags": ["kyc"]}` lists the objects whose `document.data` contains that JSON object, at every level when `parent` is omitted.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
 - `joppa_objects` with `address` gives the current object: `revision`, `parent` and `data` exactly as stored, `comments` as `{items, next_cursor, total}` pages of 25, and all titled outgoing `links` as one list. `save_object` takes the links back as they are. Send `comments_cursor` for the next comment page. `revision: N` reads one revision. `history: true` gives the revision headers `{revision, at, actor, reason}` as `items`, in pages of 25 with `total`.
@@ -502,7 +503,7 @@ Set `launch_blocker: true` on a type to use its `before_launch` entries as launc
 Current check evidence and owner acceptance must cover each selected entry.
 Use `launch_blocker: false` to disable this behavior. An omitted flag also disables it.
 
-A task purpose can be any nonempty label. The `decision` label retains its configured decision behavior.
+A task purpose is an optional label that a save may change. The `decision` label retains its configured decision behavior.
 
 ## Work and verification status
 

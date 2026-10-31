@@ -134,16 +134,15 @@ pub(crate) fn workflow_command(
                 .map(|v| v.as_bool().context("decision_required must be boolean"))
                 .transpose()?
                 .unwrap_or(false);
-            ensure!(
-                decision || assigned == r.owner,
-                "an independent AC owner requires decision_required=true"
-            );
+            // A criterion may have its own owner without a decision of that owner.
+            let owner = (decision || assigned != r.owner).then_some(assigned);
             let ac_key = process_key(w, kind, id, "ac");
             let ac = Ac {
                 id: ac_key.clone(),
                 text: string(data, "title")?,
                 description: description()?,
-                owner: decision.then_some(assigned),
+                decision_required: (owner.is_some() != decision).then_some(decision),
+                owner,
                 depends_on: list(data, "depends_on")?,
                 before_launch: data
                     .get("before_launch")
@@ -195,10 +194,6 @@ pub(crate) fn workflow_command(
                 ensure!(
                     old.parent == parent.map(str::to_owned),
                     "Task cannot move to another AC"
-                );
-                ensure!(
-                    old.data["purpose"] == data["purpose"],
-                    "task purpose cannot change"
                 );
                 Command::AmendTask(crate::commands::AmendTaskOp {
                     req,
