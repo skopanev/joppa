@@ -1,5 +1,5 @@
 //! The compact MCP reads of joppa_objects and joppa_tests (requirement:read-contract).
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use deadpool_postgres::Pool;
 use joppa::{read_compact as rc, read_shapes, store};
 use serde_json::{Value, json};
@@ -73,49 +73,86 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .await;
     }
     let history = a["history"].as_bool().unwrap_or(false);
-    let reply = store::read_objects(
-        pool,
-        workspace,
-        actor,
-        &store::ObjectScope {
-            address: a["address"].as_str(),
-            parent: a["parent"].as_str(),
-            kind: a["kind"].as_str(),
-            revision,
-            history,
-            limit,
-            // The cursor of a history read pages the revision headers here.
-            cursor: a["cursor"].as_str().filter(|_| !history),
-            note_status: a["note_status"].as_str(),
-            related_to: a["related_to"].as_str(),
-            work_filter: a["work_filter"].as_str(),
-            data: fields
-                .iter()
-                .flatten()
-                .any(|f| f == "data" || f.starts_with("data.")),
-        },
-    )
-    .await?;
-    match a["address"].as_str() {
-        None => {
-            let mut reply = reply;
-            // A list in address order gives the bare address of its last item as the cursor,
-            // as a plain list does, so one sweep may mix plain pages and pages with fields.
-            if !inbox
-                && a["work_filter"].is_null()
-                && let Some((p, address)) = reply["next_cursor"]
-                    .as_str()
-                    .and_then(|c| c.split_once(':'))
-                && p.parse::<i64>().is_ok()
-            {
-                reply["next_cursor"] = json!(address);
+    let scope = |address| store::ObjectScope {
+        address,
+        parent: a["parent"].as_str(),
+        kind: a["kind"].as_str(),
+        revision,
+        history,
+        limit,
+        // The cursor of a history read pages the revision headers here.
+        cursor: a["cursor"].as_str().filter(|_| !history),
+        note_status: a["note_status"].as_str(),
+        related_to: a["related_to"].as_str(),
+        work_filter: a["work_filter"].as_str(),
+        data: fields
+            .iter()
+            .flatten()
+            .any(|f| f == "data" || f.starts_with("data.")),
+    };
+    if let Some(addresses) = addresses(&a["address"])? {
+        let many = addresses.len() > 1;
+        ensure!(
+            !many || !(history || revision.is_some() || a["comments_cursor"].is_string()),
+            "history, revision and comments_cursor read one address"
+        );
+        ensure!(
+            fields.is_none() || !(history || revision.is_some()),
+            "fields reads the current revision"
+        );
+        let mut items = Vec::with_capacity(addresses.len());
+        for asked in addresses {
+            let reply = store::read_objects(pool, workspace, actor, &scope(Some(asked))).await?;
+            let address = reply["address"].clone();
+            let mut item = match &fields {
+                Some(fields) => {
+                    let inbox = fields.iter().any(|f| f.starts_with("note_status"))
+                        && inbox_kind(pool, workspace, actor, reply["kind"].as_str()).await?;
+                    rc::object_fields(&reply, fields, inbox)
+                }
+                None if history => history_page(reply, asked, a["cursor"].as_str())?,
+                None if revision.is_some() => rc::revision(reply, asked),
+                None => rc::detail(reply, asked, a["comments_cursor"].as_str())?,
+            };
+            // Each item of a read of more addresses names its object.
+            if many {
+                item["address"] = address;
             }
-            Ok(rc::list(reply, fields.as_deref()))
+            items.push(item);
         }
-        Some(asked) if history => history_page(reply, asked, a["cursor"].as_str()),
-        Some(asked) if revision.is_some() => Ok(rc::revision(reply, asked)),
-        Some(asked) => rc::detail(reply, asked, a["comments_cursor"].as_str()),
+        return Ok(if many {
+            json!({"items": items})
+        } else {
+            items.remove(0)
+        });
     }
+    let mut reply = store::read_objects(pool, workspace, actor, &scope(None)).await?;
+    // A list in address order gives the bare address of its last item as the cursor,
+    // as a plain list does, so one sweep may mix plain pages and pages with fields.
+    if !inbox
+        && a["work_filter"].is_null()
+        && let Some((p, address)) = reply["next_cursor"]
+            .as_str()
+            .and_then(|c| c.split_once(':'))
+        && p.parse::<i64>().is_ok()
+    {
+        reply["next_cursor"] = json!(address);
+    }
+    Ok(rc::list(reply, fields.as_deref()))
+}
+
+/// The addresses of a read: one address, or 2 to 10 addresses separated by commas.
+fn addresses(value: &Value) -> anyhow::Result<Option<Vec<&str>>> {
+    let Some(text) = value.as_str() else {
+        return Ok(None);
+    };
+    let list: Vec<&str> = text.split(',').map(str::trim).collect();
+    ensure!(
+        list.iter().all(|a| !a.is_empty()),
+        "empty address in the address list"
+    );
+    ensure!(list.len() <= 10, "at most 10 addresses in one call");
+    Ok(Some(list))
 }
 
 /// The revision headers in pages of 25, oldest first: items, total and next_cursor.

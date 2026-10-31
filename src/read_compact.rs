@@ -101,6 +101,28 @@ pub fn list_item(item: &Value, fields: Option<&[String]>) -> Value {
     Value::Object(out)
 }
 
+/// An object read by its address with `fields`: its address, its current revision and each
+/// named path of the list item fields.
+pub fn object_fields(reply: &Value, fields: &[String], inbox: bool) -> Value {
+    let document = &reply["document"];
+    let data = &document["data"];
+    // A list cuts the description to a preview of 300 characters.
+    let description = data["description"]
+        .as_str()
+        .map(|text| json!(text.chars().take(300).collect::<String>()));
+    let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
+    let item = json!({"address": reply["address"], "kind": reply["kind"], "id": reply["id"],
+        "revision": reply["current_revision"], "contract_revision": reply["contract_revision"],
+        "parent": document["parent"], "data": data, "title": data["title"],
+        "owner": data["owner"], "review_required": reply["review_required"],
+        "work_ready": reply["work_ready"], "at": document["at"], "description": description,
+        "signal": reply["signal"], "present": document["present"] != false,
+        "note_status": note_status, "process": reply["process"]});
+    let mut out = list_item(&item, Some(fields));
+    out["revision"] = item["revision"].clone();
+    out
+}
+
 /// A list reply with compact items. Empty envelope keys go; `items` stays.
 pub fn list(mut reply: Value, fields: Option<&[String]>) -> Value {
     let items: Vec<Value> = reply["items"]

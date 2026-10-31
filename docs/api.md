@@ -314,7 +314,7 @@ read indexing limits and failure behavior without a local checkout.
 
 `joppa_objects` with `address` gives the current object. Add `revision: N` to read exactly
 that revision, or `history: true` for the revision headers `{revision, at, actor, reason}` in
-pages of 25. `docs/read-contract.md` gives every shape.
+pages of 25. `docs/read-contract.md` and `docs/read-detail.md` give every shape.
 
 
 ## Configured verification types

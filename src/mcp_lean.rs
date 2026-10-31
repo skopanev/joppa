@@ -39,6 +39,19 @@ fn each(value: &mut Value, key: &str, mut f: impl FnMut(&mut Value)) {
     }
 }
 
+/// The largest text of an MCP tool reply: 256 KiB.
+pub const REPLY_MAX: usize = 262_144;
+
+/// The text of a tool reply. A larger text is refused, so a client never gets a cut reply.
+pub fn text(reply: &Value) -> anyhow::Result<String> {
+    let text = reply.to_string();
+    anyhow::ensure!(
+        text.len() <= REPLY_MAX,
+        "reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit"
+    );
+    Ok(text)
+}
+
 /// The lean reply of `tool` for the request `args`.
 pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
     if READS.contains(&tool) {
@@ -142,4 +155,18 @@ fn write(result: &mut Value) {
         result["command"] = json!({"op": result["command"]["op"]});
     }
     drop_value(result, &["replayed"], &json!(false));
+}
+
+#[cfg(test)]
+mod reply_ceiling {
+    use super::*;
+
+    #[test]
+    fn a_reply_text_above_256_kib_is_refused() {
+        let at = json!("x".repeat(REPLY_MAX - 2));
+        assert_eq!(text(&at).map(|t| t.len()).ok(), Some(REPLY_MAX));
+        let above = json!("x".repeat(REPLY_MAX - 1));
+        let error = text(&above).unwrap_err().to_string();
+        assert!(error.starts_with("reply exceeds 256 KB; narrow the request"));
+    }
 }
