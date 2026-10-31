@@ -55,7 +55,7 @@ fn planning_holder_cannot_move_a_task_or_transfer_its_document_owner() {
         &mut w,
         "planner",
         json!({"op":"save_object","kind":"work","id":"existing","revision":revision,"parent":"criterion:b","data":data,"reason":"Move work"}),
-        "Task owner required to change its parent",
+        "Task owner, assignee or unclaimed creator required",
     );
     let mut data = w.state.objects["work:existing"].current().data.clone();
     w.ok(
@@ -67,7 +67,7 @@ fn planning_holder_cannot_move_a_task_or_transfer_its_document_owner() {
         &mut w,
         "planner",
         json!({"op":"save_object","kind":"work","id":"existing","revision":revision,"parent":"criterion:a","data":data,"reason":"Transfer work"}),
-        "only current owner can transfer responsibility",
+        "Task owner, assignee or unclaimed creator required",
     );
     work(&mut w, "planner", "work:existing");
 }

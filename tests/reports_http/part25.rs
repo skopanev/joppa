@@ -47,7 +47,7 @@ async fn ac3_a_valid_creation_plan_publishes_its_tasks_and_each_refusal_keeps_th
             ensure!(
                 t["claimable"] == false
                     && t["waiting_reason"]
-                        == "Task has an unmet dependency or a changed dependency revision: work:t1",
+                        == "Task has an unmet dependency: work:t1",
                 "{transport}: {t}"
             );
         }

@@ -132,8 +132,9 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     data["title"] = json!("Changed source");
     data["body"] = json!("Implement the agreed mechanism");
     write("agent", json!({"op":"save_object","kind":"work","id":"c","revision":c["current_revision"],"parent":c["document"]["parent"],"data":data,"links":c["document"]["links"],"reason":"Change the source"})).await?;
+    // A dependency names a node: the new source asks for no review, and d waits for c.
     let d = read("work:d").await?;
-    assert_eq!(d["review_required"], true);
+    assert_eq!(d["review_required"], false);
     assert_eq!(d["document"]["links"][0]["revision"], pins[1]);
     assert!(!available().await?.contains(&"work:d".to_owned()));
     Ok(())

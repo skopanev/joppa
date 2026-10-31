@@ -72,7 +72,7 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
             );
             ensure!(
                 work_ready(w, &crate::tasks::address(req, id)),
-                "Task has an unmet dependency or a changed dependency revision"
+                "Task has an unmet dependency"
             )
         }
         Command::ReviewTask(crate::commands::ReviewTaskOp {

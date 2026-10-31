@@ -53,7 +53,7 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
         for (local, id) in items.as_object().unwrap() {
             let old = id.as_str().unwrap();
             let new = after["system_ids"][kind][local].as_str().unwrap();
-            assert_eq!(new, format!("{prefix}{}", &old[old.len() - 13..]));
+            assert_eq!(new, format!("{prefix}{}", code_end(old)));
             for reference in [old, new] {
                 assert_eq!(
                     resolve_id::resolve(&pool, "owner", &ws, reference).await?,
@@ -143,10 +143,7 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
         for (local, id) in items.as_object().unwrap() {
             let old_id = id.as_str().unwrap();
             let new_id = after["system_ids"][kind][local].as_str().unwrap();
-            assert!(
-                new_id.starts_with("current-product-")
-                    && new_id.ends_with(&old_id[old_id.len() - 13..])
-            );
+            assert!(new_id.starts_with("current-product-") && new_id.ends_with(code_end(old_id)));
             for id in [old_id, new_id] {
                 assert_eq!(
                     resolve_id::resolve(&pool, &owner, &new, id).await?,
@@ -211,4 +208,11 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
         new
     );
     Ok(())
+}
+
+/// The "-<type>-<code>" end of a public item ID, for a code of any length.
+fn code_end(id: &str) -> &str {
+    let last = id.rfind('-').unwrap_or_default();
+    let type_dash = id[..last].rfind('-').unwrap_or_default();
+    &id[type_dash..]
 }

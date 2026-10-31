@@ -61,7 +61,7 @@ draft = mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-generated',
 # The saved object names the generated ID; the reply gives only the op of the command.
 assert draft['command'] == {'op':'save_object'} and 'replayed' not in draft
 draft_id = draft['object']['address'].split(':',1)[1]
-uuid.UUID(draft_id)
+assert re.fullmatch(r'[a-z0-9]{8}', draft_id), draft_id
 # Item IDs start with a slug of the workspace title, MCP authoring checks.
 assert re.match(r'^mcp-authoring-checks(-[0-9]+)?-D-', request('/api/workspaces/'+mcp_ws+'/objects?address=domain:'+draft_id)[1]['item_id'])
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-draft-edit',
@@ -177,7 +177,7 @@ assert len(all_refs)==len(set(all_refs))
 for kind,items in refs.items():
     tag={'domain':'D','capability':'C','consumer':'U','requirement':'R','ac':'A','task':'T','note':'N'}.get(kind,'O')
     for local_id,ref in items.items():
-        assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==10
+        assert ref.startswith(ws+'-'+tag+'-') and len(ref.rsplit('-',1)[1])==8
         # A copied ID resolves through search: the first result is the exact match.
         found=mcp('joppa_search',{'workspace':ws,'query':ref})['items'][0]
         assert found['exact_id'] is True and found['address']==kind+':'+local_id, (ref, found)
@@ -230,8 +230,9 @@ def suffixes(value):
         return {k: suffixes(v) for k, v in value.items()}
     if isinstance(value, list):
         return [suffixes(v) for v in value]
-    if isinstance(value, str) and re.match(r'^[a-z0-9._-]+-[A-Z]-[A-Z0-9]{10}$', value):
-        return value[-13:]
+    end = isinstance(value, str) and re.match(r'^[a-z0-9._-]+(-[A-Z]-[A-Z0-9]{8,10})$', value)
+    if end:
+        return end.group(1)
     return value
 assert suffixes(after['index'])==suffixes(before['index'])
 assert 'state' not in after and 'history' not in after

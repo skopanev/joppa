@@ -48,7 +48,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     assert_eq!(a["system_ids"], b["system_ids"]);
     assert_ne!(a["replayed"], b["replayed"]);
     let id = a["command"]["id"].as_str().unwrap();
-    uuid::Uuid::parse_str(id)?;
+    anyhow::ensure!(short_id(id), "a generated ID has 8 characters of [a-z0-9]: {id}");
     let public_id = a["system_ids"]["domain"][id].as_str().unwrap();
     // Item IDs start with the prefix of the workspace, a slug of its title.
     let prefix: String = pool.get().await?.query_one("SELECT COALESCE(state->>'reference_prefix',workspace) FROM joppa.board_cache WHERE workspace=$1", &[&ws]).await?.get(0);
@@ -145,8 +145,8 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
     )
     .await?;
     assert_eq!(consumers["items"][0]["title"], "Buyer");
-    uuid::Uuid::parse_str(req)?;
-    uuid::Uuid::parse_str(ac)?;
+    anyhow::ensure!(short_id(req), "a generated ID has 8 characters of [a-z0-9]: {req}");
+    anyhow::ensure!(short_id(ac), "a generated ID has 8 characters of [a-z0-9]: {ac}");
     assert!(
         a["results"][3]["system_ids"]["ac"][ac]
             .as_str()
@@ -233,4 +233,9 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         "Second area"
     );
     Ok(())
+}
+
+/// A generated local ID: 8 characters of [a-z0-9].
+fn short_id(id: &str) -> bool {
+    id.len() == 8 && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
 }

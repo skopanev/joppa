@@ -188,7 +188,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     .await?;
     let unclaimable = |tasks: Vec<Value>| !tasks.iter().any(|t| t["address"] == "work:dependent");
     ensure!(unclaimable(p.tasks_both("available").await?));
-    ensure!(p.read("work:dependent").await?["review_required"] == true);
+    ensure!(p.read("work:dependent").await?["review_required"] == false);
     for table in ["state_entries", "board_cache"] {
         p.pool
             .get()
@@ -203,7 +203,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     ensure!(unclaimable(p.tasks_both("available").await?));
     let dependent = p.read("work:dependent").await?;
     ensure!(
-        dependent["review_required"] == true
+        dependent["review_required"] == false
             && dependent["document"]["links"][0]["revision"] == pin,
         "{dependent}"
     );

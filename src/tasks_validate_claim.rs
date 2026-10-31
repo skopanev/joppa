@@ -27,7 +27,7 @@ pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) ->
     if !objects::work_ready(w, key) {
         let target = objects::unready_dependency(w, key)
             .map_or_else(String::new, |target| format!(": {target}"));
-        anyhow::bail!("Task has an unmet dependency or a changed dependency revision{target}");
+        anyhow::bail!("Task has an unmet dependency{target}");
     }
     check_projects(
         w,

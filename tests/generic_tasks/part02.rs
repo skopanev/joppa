@@ -11,8 +11,8 @@ fn task_parent_change_preserves_id_and_requires_owner_review() {
         contract("Implement the child"),
     );
     let before = w.state.objects["task:one"].revisions[0].clone();
-    w.no("agent",json!({"op":"save_object","kind":"task","id":"one","revision":1,"parent":"spec:root","data":contract("Implement the child"),"reason":"Move the Task"}));
-    w.ok("owner",json!({"op":"save_object","kind":"task","id":"one","revision":1,"parent":"spec:root","data":contract("Implement the child"),"reason":"Move the Task"}));
+    // The unclaimed creator moves the Task; a move still asks for owner review.
+    w.ok("agent",json!({"op":"save_object","kind":"task","id":"one","revision":1,"parent":"spec:root","data":contract("Implement the child"),"reason":"Move the Task"}));
     assert!(
         tasks::claimable(
             &w.state,

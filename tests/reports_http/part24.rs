@@ -28,6 +28,7 @@ async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result
         .await?;
         let before = p.object(&w.token, "work:t").await?;
         for (transport, t) in &before {
+            // The replanned criterion asks for owner review until finish; the dependency does not.
             ensure!(t["review_required"] == true, "{transport}: {t}");
         }
         p.finish(mcp).await?;
@@ -35,17 +36,17 @@ async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result
             t["review_required"] == false
                 && t["claimable"] == false
                 && t["waiting_reason"]
-                    == "Task has an unmet dependency or a changed dependency revision: work:d"
-                && status_label(t) == Some("Dependency revision changed")
+                    == "Task has an unmet dependency: work:d"
+                && status_label(t) == Some("Dependency is not ready")
         })
         .await?;
-        // Finish keeps the dependency pin and the dependency review.
+        // Finish keeps the dependency and its wait; a new dependency revision asks for no review.
         let after = p.object(&w.token, "work:t").await?;
         for ((transport, old), (_, new)) in before.iter().zip(&after) {
             ensure!(
                 document(new)["links"] == document(old)["links"]
-                    && new["review_required"] == true
-                    && status_label(new) == Some("Dependency revision changed"),
+                    && new["review_required"] != true
+                    && status_label(new) == Some("Dependency is not ready"),
                 "{transport}: {old} {new}"
             );
         }

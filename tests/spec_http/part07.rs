@@ -17,7 +17,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
     }
     /// The list item of `address` among the roots or the children of `parent`.
     async fn item(w: &World, bot: &str, parent: Option<&str>, address: &str) -> Result<Value> {
-        let mut arguments = json!({"workspace":w.ws});
+        let mut arguments = json!({"workspace":w.ws,"fields":["title","status","children"]});
         if let Some(parent) = parent {
             arguments["parent"] = json!(parent);
         }
@@ -44,10 +44,10 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
     ] {
         w.command(json!({"op":"save_object","kind":kind,"id":"empty","revision":0,"parent":parent,"data":{"title":"The empty specification","body":"Define the exact behavior before work","owner":"owner","consumers":["customer"]},"reason":"Create a specification"})).await?;
         let address = format!("{kind}:empty");
-        // No criteria: the list item has no children and a grey tone.
+        // No criteria: the list item counts no children and has a grey tone.
         let empty = item(&w, bot, parent, &address).await?;
         ensure!(
-            empty.get("children").is_none() && empty["status"] == "grey",
+            empty["children"] == 0 && empty["status"] == "grey",
             "{empty}"
         );
         w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","body":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;

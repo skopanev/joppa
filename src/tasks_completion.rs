@@ -46,10 +46,7 @@ pub(super) fn check(
         !review_required(w, key, t),
         "Task must be claimed, unfinished and reviewed"
     );
-    ensure!(
-        objects::work_ready(w, key),
-        "Task has an unmet dependency or a changed dependency revision"
-    );
+    ensure!(objects::work_ready(w, key), "Task has an unmet dependency");
     check_projects(w, o.current().parent.as_deref(), &subjects(w, key)?)?;
     parent_ready(w, actor, key, &t.purpose)?;
     if t.purpose == "decision"

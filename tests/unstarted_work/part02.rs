@@ -132,6 +132,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         .find(|item| item["address"] == "spec:s")
         .unwrap();
     spec["verification_summary"] = json!({"total":3,"passed":0,"failed":0});
+    spec["children"] = json!(3);
     assert_eq!(expected, ordinary_after["items"]);
     let direct = store::read_objects(
         &pool,

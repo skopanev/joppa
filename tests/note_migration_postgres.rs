@@ -100,7 +100,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     assert_eq!(migrated["kind"], "note");
     // The old ID reads the note; the read gives the ID with the prefix of the title.
     let item_id = migrated["item_id"].as_str().unwrap();
-    assert!(item_id.ends_with(&public[public.len() - 13..]) && item_id != public);
+    assert!(item_id.ends_with(code_end(&public)) && item_id != public);
     assert_eq!(migrated["document"]["data"]["body"], said);
     assert_eq!(migrated["document"]["data"]["author"], "customer");
     assert_eq!(
@@ -128,7 +128,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
         children["items"][0]["item_id"]
             .as_str()
             .unwrap()
-            .ends_with(&public[public.len() - 13..])
+            .ends_with(code_end(&public))
     );
     let history = store::read_objects(
         &pool,
@@ -163,7 +163,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     data["body"] = json!("Updated source");
     let edited=store::execute_remote_input(&pool,&ws,"owner","edit-note",&json!({"op":"save_object","kind":"note","id":id,"revision":migrated["current_revision"],"parent":migrated["document"]["parent"],"data":data,"links":migrated["document"]["links"],"reason":"Correct the source"})).await?;
     let edited_id = edited["system_ids"]["note"][id].as_str().unwrap();
-    assert!(edited_id.ends_with(&public[public.len() - 13..]));
+    assert!(edited_id.ends_with(code_end(&public)));
     store::execute_remote_input(&pool,&ws,"agent","reply-old-address",&json!({"op":"note","target":"point:source/source.1","id":"followup","text":"New discussion"})).await?;
     let current = store::read_objects(
         &pool,
@@ -223,4 +223,11 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
         .is_err()
     );
     Ok(())
+}
+
+/// The "-<type>-<code>" end of a public item ID, for a code of any length.
+fn code_end(id: &str) -> &str {
+    let last = id.rfind('-').unwrap_or_default();
+    let type_dash = id[..last].rfind('-').unwrap_or_default();
+    &id[type_dash..]
 }

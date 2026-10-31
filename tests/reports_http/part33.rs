@@ -69,9 +69,10 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
 
 // pins-ignore-process-events-ac2
 // Task B depends on open Task A. Planner P saves a new contract of A over HTTP, then over MCP.
+// A dependency names a node: B asks for no review and waits until A is done.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_review() -> Result<()> {
+async fn a_new_contract_of_a_prerequisite_task_asks_its_dependent_for_no_review() -> Result<()> {
     let w = world().await?;
     let contract = |title: &str, contract: &str| json!({"title":title,"owner":"owner","body":contract,"purpose":"implementation"});
     for mcp in [false, true] {
@@ -106,7 +107,7 @@ async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_revi
         );
         let b = p.object_both("work:b").await?;
         ensure!(
-            b["review_required"] == true && b["document"]["links"][0]["revision"] == pin,
+            b["review_required"] == false && b["document"]["links"][0]["revision"] == pin,
             "B after the change: {b}"
         );
         let waiting = p.tasks_both("waiting").await?;
@@ -117,7 +118,7 @@ async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_revi
         ensure!(
             entry["claimable"] == false
                 && entry["waiting_reason"]
-                    == "Task has an unmet dependency or a changed dependency revision: work:a",
+                    == "Task has an unmet dependency: work:a",
             "B in view=waiting: {entry}"
         );
         let available = p.tasks_both("available").await?;
