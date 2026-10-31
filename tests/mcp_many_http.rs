@@ -134,7 +134,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     let properties = objects.map(|t| t["inputSchema"]["properties"].clone());
     let properties = properties.unwrap_or_default();
     ensure!(
-        properties.as_object().is_some_and(|p| p.len() == 16
+        properties.as_object().is_some_and(|p| p.len() == 17
             && p.values()
                 .all(|v| v["description"].as_str().is_some_and(|d| !d.is_empty()))),
         "{properties}"

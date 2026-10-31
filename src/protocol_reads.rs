@@ -26,6 +26,12 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .transpose()
         .context("invalid object revision")?;
     let limit = number(a, "limit")?.map_or(rc::PAGE, |n| (n as usize).min(rc::PAGE));
+    // The data filter: a JSON object that document.data contains, as a JSONB `@>`.
+    let contains = match &a["data"] {
+        Value::Null => None,
+        Value::Object(_) => Some(a["data"].to_string()),
+        _ => anyhow::bail!("data filter must be an object"),
+    };
     if let Some(address) = a["links_of"].as_str() {
         let filter = |name: &str| match a.get(name) {
             None | Some(Value::Null) => Ok(None),
@@ -53,7 +59,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         a["address"].is_null() && inbox_kind(pool, workspace, actor, a["kind"].as_str()).await?;
     let plain = a["address"].is_null()
         && fields.is_none()
-        && ["work_filter", "related_to", "note_status"]
+        && ["work_filter", "related_to", "note_status", "data"]
             .iter()
             .all(|k| a[*k].is_null())
         && !inbox;
@@ -83,6 +89,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         related_to: a["related_to"].as_str(),
         work_filter: a["work_filter"].as_str(),
         data: fields.as_deref().is_some_and(rc::needs_data),
+        contains: contains.as_deref(),
     };
     if let Some(addresses) = address::addresses(&a["address"])? {
         return address::read(
@@ -188,5 +195,7 @@ pub(super) fn objects_schema() -> Value {
         "direction": {"type":"string","enum":["outgoing","incoming"],
             "description":"with links_of: only the links in this direction"},
         "relation": text("with links_of: only the links with this relation"),
+        "data": {"type":"object",
+            "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}; without parent, searches all objects (*)"},
     })
 }

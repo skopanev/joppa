@@ -117,6 +117,21 @@ two reads:
  "fields": ["title", "status", "revision", "data.description", "data.tests"]}
 ```
 
+## Data filter
+
+`data` is a JSON object. The list gives the objects whose `document.data` contains it, as
+the JSONB operator `@>` does. A GIN index on `document->'data'` serves the filter.
+
+```json
+{"workspace": "w", "data": {"tags": ["kyc"]}}
+{"workspace": "w", "data": {"owner": "alex"}, "parent": "requirement:r", "fields": ["title"]}
+```
+
+- Without `parent`, the filter reads objects at every level of the tree, as `parent: "*"`.
+- An array value matches when the stored array holds each of its items.
+- A value that is not an object is refused: `data filter must be an object`.
+- With `address` it is refused: `address cannot be combined with list filters`.
+
 ## Reads by address
 
 `docs/read-detail.md` gives the detail read, one revision, the revision headers, the read of

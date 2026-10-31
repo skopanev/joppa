@@ -228,6 +228,7 @@ There is no separate comment-to-Note promotion process.
 MCP reads give small replies. `docs/read-contract.md` and `docs/read-detail.md` give every shape with JSON. MCP replies give no `item_id`. An MCP list reply holds at most 256 KB; a larger list is refused. One object comes in full.
 
 - A `joppa_objects` list gives at most 25 items a page: `address`, `title`, the status tone, `children` when above 0, and `total`. Follow `next_cursor`; a missing `next_cursor` means the last page.
+- `data: {"tags": ["kyc"]}` lists the objects whose `document.data` contains that JSON object, at every level when `parent` is omitted.
 - Name more item fields with `fields`, as dotted paths such as `process.planning_claim`. Each named path comes back, also when it is empty. An unknown path is refused.
 - `joppa_objects` with `address` gives the current object: `revision`, `parent` and `data` exactly as stored, `comments` as `{items, next_cursor, total}` pages of 25, and all titled outgoing `links` as one list. `save_object` takes the links back as they are. Send `comments_cursor` for the next comment page. `revision: N` reads one revision. `history: true` gives the revision headers `{revision, at, actor, reason}` as `items`, in pages of 25 with `total`.
 - `address` takes up to 25 addresses separated by commas. 2 to 25 addresses give `{items}`, and each item gives its `address`. With `address`, `fields` gives only the named paths; a path may name a detail key such as `links`. A bare document field such as `body` names `data.body`.

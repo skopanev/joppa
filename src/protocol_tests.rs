@@ -35,6 +35,7 @@ async fn criteria(
                 related_to: None,
                 work_filter: None,
                 data: false,
+                contains: None,
             },
         )
         .await?;

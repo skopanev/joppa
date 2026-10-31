@@ -59,7 +59,8 @@ pub(super) async fn list_rows(
         LEFT JOIN work_counts w ON w.address=o.address
         WHERE o.workspace=$1 AND o.present
             AND ($3::text IS NULL OR o.kind=$3)
-            AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
+            AND (($4::text IS NULL AND ($9::boolean OR $8::text IS NOT NULL OR $17::text IS NOT NULL OR o.parent IS NULL)) OR o.parent=$4 OR $4='*')
+            AND ($17::text IS NULL OR o.document->'data' @> $17::text::jsonb)
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
                 AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
@@ -101,6 +102,7 @@ pub(super) async fn list_rows(
                 &green,
                 &values,
                 &scope.data,
+                &scope.contains,
             ],
         )
         .await?;

@@ -27,7 +27,8 @@ pub(super) async fn read_one(
             && scope.cursor.is_none()
             && scope.note_status.is_none()
             && scope.related_to.is_none()
-            && scope.work_filter.is_none(),
+            && scope.work_filter.is_none()
+            && scope.contains.is_none(),
         "address cannot be combined with list filters"
     );
     let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
