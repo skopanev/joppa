@@ -117,7 +117,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
             && s["links"][0]["target"] == "requirement:r",
         "{s} {detail}"
     );
-    // Each parameter of joppa_objects describes itself in the tool schema.
+    // Each parameter of the read tools describes itself in the tool schema.
     let tools = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
     let url = format!("{}/mcp", w.root);
     let tools: Value = w
@@ -129,16 +129,24 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         .await?
         .json()
         .await?;
-    let mut objects = tools["result"]["tools"].as_array().into_iter().flatten();
-    let objects = objects.find(|t| t["name"] == "joppa_objects").cloned();
-    let properties = objects.map(|t| t["inputSchema"]["properties"].clone());
-    let properties = properties.unwrap_or_default();
-    ensure!(
-        properties.as_object().is_some_and(|p| p.len() == 17
-            && p.values()
-                .all(|v| v["description"].as_str().is_some_and(|d| !d.is_empty()))),
-        "{properties}"
-    );
+    let all = tools["result"]["tools"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for (name, count) in [
+        ("joppa_objects", 17),
+        ("joppa_tests", 7),
+        ("joppa_search", 7),
+    ] {
+        let tool = all.iter().find(|t| t["name"] == name);
+        let properties = tool.map(|t| &t["inputSchema"]["properties"]);
+        let described = properties.and_then(Value::as_object).is_some_and(|p| {
+            p.len() == count
+                && p.values()
+                    .all(|v| v["description"].as_str().is_some_and(|d| !d.is_empty()))
+        });
+        ensure!(described, "{name}: {properties:?}");
+    }
     let roots = ok(&w, json!({"fields":["body"]})).await?;
     ensure!(
         roots["items"]
