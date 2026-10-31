@@ -96,6 +96,24 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
         "{}",
         third["comments"]
     );
+    // A read with fields takes the same comment page.
+    let named = read(
+        &w,
+        "joppa_objects",
+        json!({"address":"requirement:d","fields":["comments"],"comments_cursor":"25"}),
+    )
+    .await?;
+    ensure!(named["comments"] == third["comments"], "{named}");
+    let named = read(
+        &w,
+        "joppa_objects",
+        json!({"address":"requirement:d","fields":["comments"]}),
+    )
+    .await?;
+    ensure!(
+        named["comments"] == detail["comments"] && named["comments"]["next_cursor"] == "25",
+        "{named}"
+    );
     let old = read(
         &w,
         "joppa_objects",

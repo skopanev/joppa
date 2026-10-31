@@ -49,7 +49,10 @@ pub(super) async fn read<'a>(
         let reply = store::read_objects(pool, workspace, actor, &scope(Some(asked))).await?;
         let address = reply["address"].clone();
         let mut item = match fields {
-            Some(fields) => named(pool, workspace, actor, reply, asked, fields).await?,
+            Some(fields) => {
+                let cursor = a["comments_cursor"].as_str();
+                named(pool, workspace, actor, reply, asked, fields, cursor).await?
+            }
             None if history => history_page(reply, asked, a["cursor"].as_str())?,
             None if revision.is_some() => rc::revision(reply, asked),
             None => rc::detail(reply, asked, a["comments_cursor"].as_str())?,
@@ -67,7 +70,8 @@ pub(super) async fn read<'a>(
     })
 }
 
-/// The named fields of one object: list fields, detail keys and document fields.
+/// The named fields of one object: list fields, detail keys and document fields. The
+/// comments are the page at `comments_cursor`.
 async fn named(
     pool: &Pool,
     workspace: &str,
@@ -75,6 +79,7 @@ async fn named(
     reply: Value,
     asked: &str,
     fields: &[String],
+    comments_cursor: Option<&str>,
 ) -> anyhow::Result<Value> {
     let data = &reply["document"]["data"];
     super::check(pool, workspace, actor, fields, true, &[data]).await?;
@@ -84,7 +89,7 @@ async fn named(
         .iter()
         .any(|f| rc::DETAIL_FIELDS.contains(&rc::head(f)))
     {
-        true => Some(rc::detail(reply.clone(), asked, None)?),
+        true => Some(rc::detail(reply.clone(), asked, comments_cursor)?),
         false => None,
     };
     // The number of present children is the total of their list.
