@@ -213,8 +213,9 @@ async fn replay_concurrency_ids_and_schema_after_setup(
         store::tree_schema(pool, ws, "agent", None).await?["current_revision"],
         // migrate_consumers adds one revision: one consumer per criterion. migrate_test_rules
         // adds one more: the test rules and the status rule of each type. migrate_note_parents
-        // adds one more: an inbox type has no parent.
-        9
+        // adds one more: an inbox type has no parent. migrate_purpose adds one more: a Task
+        // type has no parent_decision.
+        10
     );
     assert_eq!(
         store::tree_schema(pool, ws, "agent", Some(0)).await?["schema"]["revision"],
