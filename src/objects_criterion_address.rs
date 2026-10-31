@@ -46,14 +46,21 @@ pub(crate) fn document_adapter_fields(
     if w.documents_migrated && role == Some("requirement") {
         return Some(&["title", "body", "owner"]);
     }
-    native_document_fields(match role {
+    let fields = native_document_fields(match role {
         Some(role @ ("requirement" | "ac")) => role,
         _ => kind,
-    })
+    });
+    if w.body_migrated {
+        return fields.map(crate::body_migration::body_fields);
+    }
+    fields
 }
 
 pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<String>, Value)> {
     let mut rows = BTreeMap::new();
+    // After migrate_body the typed description and contract are data.body.
+    let text = crate::body_migration::text_field(w, "description");
+    let contract = crate::body_migration::text_field(w, "contract");
     let mut put = |kind: &str, id: &str, parent: Option<String>, data: Value| {
         rows.insert(address(kind, id), (kind.into(), parent, data));
     };
@@ -62,7 +69,7 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             "domain",
             id,
             None,
-            json!({"title":d.title,"owner":d.owner,"description":d.description,"archived":d.archived}),
+            json!({"title":d.title,"owner":d.owner,(text):d.description,"archived":d.archived}),
         );
     }
     for (id, c) in &w.capabilities {
@@ -70,7 +77,7 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             "capability",
             id,
             c.domain.as_deref().map(|id| address("domain", id)),
-            json!({"title":c.title,"owner":c.owner,"description":c.description}),
+            json!({"title":c.title,"owner":c.owner,(text):c.description}),
         );
     }
     for (id, c) in &w.consumers {
@@ -78,7 +85,7 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             "consumer",
             id,
             None,
-            json!({"title":c.title,"owner":c.owner,"description":c.description}),
+            json!({"title":c.title,"owner":c.owner,(text):c.description}),
         );
     }
     for (id, p) in &w.projects {
@@ -111,11 +118,11 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
                     ac_kind,
                     ac_id,
                     Some(req_address.clone()),
-                    json!({"title":ac.text,"description":ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.owner.is_some(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
+                    json!({"title":ac.text,(text):ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.owner.is_some(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
                 );
             }
             for (tid, t) in &r.tasks {
-                let mut data = json!({"title":t.title,"owner":r.owner,"contract":t.contract,"projects":t.projects,"purpose":t.purpose});
+                let mut data = json!({"title":t.title,"owner":r.owner,(contract):t.contract,"projects":t.projects,"purpose":t.purpose});
                 let parent = if t.acs.len() == 1 {
                     criterion_address(&t.acs[0])
                 } else {

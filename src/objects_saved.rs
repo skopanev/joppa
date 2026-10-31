@@ -55,6 +55,7 @@ pub(crate) fn saved(
         data.get("verification").is_none(),
         "verification comes from test reports"
     );
+    crate::body_migration::check_save(w, data)?;
     if w.documents_migrated {
         for field in data.as_object().unwrap().keys() {
             ensure!(!process_field(field), "use process commands for {field}");
@@ -206,6 +207,9 @@ pub(crate) fn saved(
         {
             saved_data["status"] = json!("unprocessed");
         }
+    }
+    if w.body_migrated {
+        crate::body_migration::to_body(&mut saved_data);
     }
     if same(&saved_data) {
         return Ok(None);

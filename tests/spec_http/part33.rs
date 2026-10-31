@@ -22,7 +22,7 @@ async fn the_owner_releases_an_absent_planners_claim() -> Result<()> {
             w.command_as(p, ready_task_command(id, "key-rights"))
                 .await?;
         }
-        w.command_as(p, json!({"op":"save_object","kind":"task","id":"t0","revision":revision(&t0).await?,"parent":"ac:key-rights","data":{"title":"Implement the planned work","owner":"owner","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Update the older work"})).await?;
+        w.command_as(p, json!({"op":"save_object","kind":"task","id":"t0","revision":revision(&t0).await?,"parent":"ac:key-rights","data":{"title":"Implement the planned work","owner":"owner","body":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Update the older work"})).await?;
         let snapshot = w.get("address=task:t0").await?;
         let history = object_history(&w, "task:t0").await?;
         ensure!(

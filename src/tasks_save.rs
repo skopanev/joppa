@@ -43,8 +43,10 @@ pub fn save(
             .as_str()
             .with_context(|| format!("missing {field}"))
     };
+    // After migrate_body the Task contract is data.body.
+    let text = crate::body_migration::text_field(w, "contract");
     commands::nonempty(string("title")?)?;
-    commands::nonempty(string("contract")?)?;
+    commands::nonempty(string(text)?)?;
     let purpose = string("purpose")?.to_owned();
     ensure!(!purpose.trim().is_empty(), "task purpose must be nonempty");
     let kind = key.split_once(':').context("Task address needs a type")?.0;
@@ -78,7 +80,7 @@ pub fn save(
     check_projects(w, parent, &projects)?;
     for field in data.as_object().context("data must be an object")?.keys() {
         ensure!(
-            ["title", "owner", "contract", "purpose"].contains(&field.as_str())
+            ["title", "owner", text, "purpose"].contains(&field.as_str())
                 || w.schema_migrated
                     && !objects::process_field(field)
                     && (w.documents_migrated || field != "projects")
@@ -91,7 +93,7 @@ pub fn save(
         );
     }
     let title = string("title")?.to_owned();
-    let contract = string("contract")?.to_owned();
+    let contract = string(text)?.to_owned();
     data["owner"] = json!(owner);
     if !w.schema_migrated {
         data["projects"] = json!(projects);

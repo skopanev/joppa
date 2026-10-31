@@ -93,7 +93,7 @@ async fn claimed_task(w: &World) -> Result<()> {
     w.record("b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1", "pass")
         .await?;
     w.ok(&w.owner, &w.p, json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a",
-        "data":{"title":"Build login","owner":"owner","contract":"Call the API","purpose":"implementation","projects":[]},"reason":"Fixture"})).await?;
+        "data":{"title":"Build login","owner":"owner","body":"Call the API","purpose":"implementation","projects":[]},"reason":"Fixture"})).await?;
     let t = w.revision(&w.p, "task:t").await?;
     w.ok(
         &w.bot,

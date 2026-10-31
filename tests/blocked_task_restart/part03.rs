@@ -58,7 +58,7 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
     for (_, task, criterion) in FIXTURES {
         f.write(PLANNER, json!({"op":"assess","req":"spec:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
         let id = task.split_once(':').unwrap().1;
-        f.write(PLANNER, json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":criterion,"data":{"title":id,"owner":OWNER,"contract":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Set the work contract"})).await?;
+        f.write(PLANNER, json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":criterion,"data":{"title":id,"owner":OWNER,"body":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Set the work contract"})).await?;
     }
 
     let mut blocks = BTreeMap::new();
@@ -78,7 +78,7 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
         let current = f.read("work:t2").await?;
         let mut data = current["document"]["data"].clone();
         data["title"] = json!("t2");
-        data["contract"] = json!("Implement the agreed mechanism with a new fix");
+        data["body"] = json!("Implement the agreed mechanism with a new fix");
         f.write(PLANNER, json!({"op":"save_object","kind":"work","id":"t2","revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Amend the contract"})).await?;
     }
     f.write(

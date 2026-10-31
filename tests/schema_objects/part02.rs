@@ -25,7 +25,7 @@ fn every_former_type_name_obeys_the_schema_with_identical_document_fields() {
         );
     }
     w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Names do not select behavior"}));
-    let data = json!({"title":"The same document","owner":"owner","body":"Common text","description":"Common description","consumers":{"ordinary":"data"},"projects":"ordinary data","status":"ordinary"});
+    let data = json!({"title":"The same document","owner":"owner","body":"Common text","body":"Common description","consumers":{"ordinary":"data"},"projects":"ordinary data","status":"ordinary"});
     for name in names {
         let key = format!("{name}:same");
         save(&mut w, &key, None, data.clone());
@@ -66,6 +66,7 @@ fn document_migration_preserves_all_revisions_and_runs_once() {
     let mut w = World::new();
     objects::migrate_notes(&mut w.state, "owner", w.position + 1, "now").unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 2, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 2, "now").unwrap();
     objects::migrate_schema(&mut w.state, "owner", w.position + 3, "now").unwrap();
     let old = serde_json::to_value(&w.state.objects).unwrap();
     objects::migrate_documents(&mut w.state, "owner", w.position + 4, "now").unwrap();

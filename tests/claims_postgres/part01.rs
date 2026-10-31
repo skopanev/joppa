@@ -81,7 +81,7 @@ async fn two_parallel_claims_give_exactly_one_winner() -> Result<()> {
     store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Specifications and tasks only"})).await?;
     store::execute_remote_input(&pool,&ws,"owner","root",&json!({"op":"save_object","kind":"spec","id":"root","revision":0,"parent":null,"data":{"title":"root","owner":"owner"},"reason":"Create a specification"})).await?;
     for run in 0..50 {
-        let task = store::execute_remote_input(&pool,&ws,"owner",&format!("task-{run}"),&json!({"op":"save_object","kind":"task","revision":0,"parent":"spec:root","data":{"title":"Implement","owner":"owner","contract":"Implement the specification","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
+        let task = store::execute_remote_input(&pool,&ws,"owner",&format!("task-{run}"),&json!({"op":"save_object","kind":"task","revision":0,"parent":"spec:root","data":{"title":"Implement","owner":"owner","body":"Implement the specification","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
         let claim = json!({"op":"claim_task","id":task["object"]["address"],"revision":task["object"]["revision"]});
         for member in ["alex", "maria"] {
             let mine = store::task_queue(&pool, &ws, member, "mine", 10, None).await?;

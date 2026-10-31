@@ -42,7 +42,7 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
     {
         let before = w.get(&format!("address={parent}")).await?;
         let task = format!("{kind}:archive-{index}");
-        w.command(json!({"op":"save_object","kind":kind,"id":format!("archive-{index}"),"revision":0,"parent":parent,"data":{"title":"Retired work","owner":"owner","contract":"This work no longer applies","purpose":"implementation","projects":[]},"reason":"Create work under the parent"})).await?;
+        w.command(json!({"op":"save_object","kind":kind,"id":format!("archive-{index}"),"revision":0,"parent":parent,"data":{"title":"Retired work","owner":"owner","body":"This work no longer applies","purpose":"implementation","projects":[]},"reason":"Create work under the parent"})).await?;
         let archive = json!({"op":"archive_object","target":parent,"revision":before["current_revision"],"reason":"Remove the unused parent"});
         let error: Value = serde_json::from_str(&w.refused(archive.clone()).await?)?;
         ensure!(

@@ -85,7 +85,7 @@ async fn workspace(pool: &deadpool_postgres::Pool, tasks: usize) -> Result<Strin
         "task":{"title":"Tasks","role":"task","status":"none","root":true,"parents":["*"]}
     }})).await?;
     for i in 1..=tasks {
-        write(pool, &ws, json!({"op":"save_object","kind":"task","id":format!("t{i}"),"revision":0,"parent":null,"data":{"title":format!("Task {i}"),"owner":"owner","contract":"Implement the agreed part","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
+        write(pool, &ws, json!({"op":"save_object","kind":"task","id":format!("t{i}"),"revision":0,"parent":null,"data":{"title":format!("Task {i}"),"owner":"owner","body":"Implement the agreed part","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
     }
     Ok(ws)
 }

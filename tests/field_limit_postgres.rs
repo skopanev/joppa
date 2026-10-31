@@ -34,14 +34,14 @@ async fn a_save_refuses_a_new_value_over_1024_characters() -> Result<()> {
         let error = refused.err().unwrap_or_default();
         ensure!(error.contains(LIMIT_TEXT), "{id}: {error}");
     }
-    // A long description is a field of data too.
+    // Another text field of data holds the limit too.
     let described = w
         .command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"at-limit","revision":1,"parent":null,
-            "data":{"title":"Field limit","owner":"owner","body":at_limit,"description":"x".repeat(1025)},"reason":"Too long"}))
+            "data":{"title":"Field limit","owner":"owner","body":at_limit,"note":"x".repeat(1025)},"reason":"Too long"}))
         .await?;
     ensure!(
         described.err().unwrap_or_default().contains(LIMIT_TEXT),
-        "a description over 1024 characters passed"
+        "a note over 1024 characters passed"
     );
     Ok(())
 }
@@ -52,7 +52,7 @@ async fn a_save_refuses_a_new_value_over_1024_characters() -> Result<()> {
 async fn the_database_refuses_a_new_long_field_unless_it_replays() -> Result<()> {
     let w = record_world::world(&[]).await?;
     let mut conn = w.pool.get().await?;
-    let long = json!({"data":{"title":"Long","description":"z".repeat(DB_OVER)}});
+    let long = json!({"data":{"title":"Long","body":"z".repeat(DB_OVER)}});
     let insert = "INSERT INTO joppa.object_revisions(workspace,address,revision,document) VALUES($1,'note:direct',$2,$3::text::jsonb)";
     let refused = conn
         .execute(insert, &[&w.ws, &1i32, &long.to_string()])
@@ -66,11 +66,11 @@ async fn the_database_refuses_a_new_long_field_unless_it_replays() -> Result<()>
         .await?;
     tx.commit().await?;
     // A later revision may keep the stored long value and change another field.
-    let kept = json!({"data":{"title":"Changed","description":"z".repeat(DB_OVER)}});
+    let kept = json!({"data":{"title":"Changed","body":"z".repeat(DB_OVER)}});
     conn.execute(insert, &[&w.ws, &2i32, &kept.to_string()])
         .await?;
     // A changed long value is refused again.
-    let changed = json!({"data":{"title":"Changed","description":"y".repeat(DB_OVER)}});
+    let changed = json!({"data":{"title":"Changed","body":"y".repeat(DB_OVER)}});
     let refused = conn
         .execute(insert, &[&w.ws, &3i32, &changed.to_string()])
         .await;
@@ -79,7 +79,7 @@ async fn the_database_refuses_a_new_long_field_unless_it_replays() -> Result<()>
         "a changed long value passed"
     );
     // The trigger holds the ceiling; the server checks the field_max_length of each type.
-    let typed = json!({"data":{"title":"Typed","description":"y".repeat(4096)}});
+    let typed = json!({"data":{"title":"Typed","body":"y".repeat(4096)}});
     conn.execute(insert, &[&w.ws, &3i32, &typed.to_string()])
         .await?;
     // The current row of an object has the same trigger.

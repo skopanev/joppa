@@ -27,6 +27,13 @@ Comments and attachments remain on the object's address.
 They do not replace the document or its test evidence.
 
 All documents have a title and an owner.
+The text of every object type is `data.body`: the rule of a REQ, the Given/When/Then of an AC
+and the contract of a Task. A save with `data.description` or `data.contract` is refused:
+`use body instead of description; read joppa_help`. A `fields` read refuses these names too.
+The event `migrate_body` ran once in each workspace. It moved each stored `description` and
+`contract` into `body`, after the body with a blank line when both had text. Its revisions
+keep the contract revision, so pins, assessments and test results stay. The required fields
+of the tree schema use `body` too.
 AC and Task documents can inherit the REQ owner.
 An AC with `decision_required: true` has an independent human owner who supplies its decision.
 A Task keeps its assignee separate from its owner.
@@ -120,7 +127,7 @@ The numbers and booleans `0` and `false` are valid values.
 Use a rule object to require literal markers in a text field:
 
 ```json
-{"required_fields": {"description": {"contains": ["Given:", "When:", "Then:", "Evidence:"], "error": "an ac description needs Given:, When:, Then: and Evidence:"}}}
+{"required_fields": {"body": {"contains": ["Given:", "When:", "Then:", "Evidence:"], "error": "an ac body needs Given:, When:, Then: and Evidence:"}}}
 ```
 
 The value must be text and contain every configured marker.
@@ -148,12 +155,12 @@ Keep each object text to its own contract. Do not add other data to it.
    - Send the `links` array of `save_object`: `[{"target": "task:<id>", "relation": "related"}]`. Use `depends_on` for a dependency.
    - Use the reference fields of the schema, for example `consumer` or `projects`.
    - Use `set_remote_links` for an object of another workspace.
-   - Do not paste lists of Tasks, tickets or addresses into `description`, `body` or `contract`.
+   - Do not paste lists of Tasks, tickets or addresses into `body`.
 2. Add findings, progress and supplements as comments, never as object text.
    - Send `{"op": "note", "target": "<kind>:<id>", "id": "<unique id>", "text": "..."}`.
    - A comment keeps its author and time. It adds no object revision and does not reset tests.
    - The field limit of a type (`field_max_length`, default 1024 characters) does not apply to a comment. Over 1 kb: prefer attach as a file.
-   - Do not rewrite or extend `description`, `body` or `contract` with these texts.
+   - Do not rewrite or extend `body` with these texts.
 
 One `joppa_batch` can save an object and add its comments atomically.
 
@@ -291,7 +298,7 @@ The immutable event journal is the source for all projections.
 ## Independent Tasks
 
 Create Tasks with `save_object` and a type whose role is `task`.
-The document needs `title`, `owner`, `contract` and `purpose`.
+The document needs `title`, `owner`, `body` and `purpose`. The `body` is the Task contract.
 Its reference fields follow the workspace schema.
 Use the returned object address as the process command `id`. Omit `req`.
 Use the current Task object `revision` for every process command.
@@ -339,7 +346,7 @@ The board and tree diagram use this size at every nesting level and screen width
 For example, set 17 for a root type, 15 for its child type, and 14 for deeper types.
 Each type can set `badge`, a label of 1 to 8 characters without spaces. Omit it to use initials from its title.
 Each type can set `title_preview_length`, from 1 to 256 characters. Omit it to use 128 characters.
-This value is also the maximum length of a new title. The server refuses a longer title, so put the context in `body` or `description`.
+This value is also the maximum length of a new title. The server refuses a longer title, so put the context in `body`.
 Older titles can be longer. The board shows a preview that ends with an ellipsis, and the complete title stays in the Details section.
 Read the current schema before `set_tree_schema`. Preserve the other type fields.
 
@@ -528,6 +535,6 @@ The server applies the same workspace access rules as the board.
 
 A done Task prevents `archive_object` on its parent. Retire the Task before you archive the parent.
 Each tree type can define an optional `question`. Read it from `joppa_tree` or `joppa_help` with `workspace`.
-Before saving, check that the title and description answer the question. Rewrite them when they do not.
+Before saving, check that the title and body answer the question. Rewrite them when they do not.
 For `save_object`, send `question_checked` with the exact configured question. The server refuses an absent or different value before recording the operation.
 The save acknowledgement returns `object.question` for a type with a question. The server stores the question without checking meaning.

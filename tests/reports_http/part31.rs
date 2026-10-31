@@ -7,7 +7,7 @@ async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> 
     let w = world().await?;
     let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
     p.link("spec:b", ordering_link("spec:a")).await?;
-    p.save("work:t", Some("criterion:b1"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([]))
+    p.save("work:t", Some("criterion:b1"), json!({"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([]))
         .await?;
     ensure!(p.tasks_both("mine").await?.is_empty());
     let reason = joppa::dependencies::reason("spec:a");

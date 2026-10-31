@@ -69,10 +69,7 @@ async fn help_with_a_workspace_gives_one_save_example_for_each_type() -> Result<
         "{examples}"
     );
     ensure!(examples["ac"]["parent"] == "<requirement:id>", "{examples}");
-    ensure!(
-        examples["ac"]["data"]["description"].is_string(),
-        "{examples}"
-    );
+    ensure!(examples["ac"]["data"]["body"].is_string(), "{examples}");
     ensure!(
         examples["requirement"]["parent"].is_null(),
         "a root type has no parent: {examples}"
@@ -91,7 +88,7 @@ async fn a_criterion_save_keeps_its_test_list_in_the_document() -> Result<()> {
     // The test list is the field tests of the document: a text change keeps it, and no
     // draft waits for another save.
     let saved = ok(w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r",
-        "data":{"title":"A","owner":"owner","description":"Given R, then A holds.","tests":[TEST]},"reason":"Clarify A"})).await?, "save")?;
+        "data":{"title":"A","owner":"owner","body":"Given R, then A holds.","tests":[TEST]},"reason":"Clarify A"})).await?, "save")?;
     ensure!(saved["object"].get("tests_draft").is_none(), "{saved}");
     let tests = ok(
         w.mcp(&w.alex, "joppa_tests", json!({"ac": A})).await?,

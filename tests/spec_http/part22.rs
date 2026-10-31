@@ -179,10 +179,10 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     );
     for kind in ["observation", "record"] {
         let request_id = uuid::Uuid::new_v4().to_string();
-        let mut command = json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Agent observation","owner":"owner","description":"An observed failure changes the contract."},"reason":"Record the observation"});
+        let mut command = json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Agent observation","owner":"owner","body":"An observed failure changes the contract."},"reason":"Record the observation"});
         if kind == "observation" {
             let error = format!(
-                "Check that the title and description answer: {question}. Rewrite them if they do not. Then resend with question_checked"
+                "Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked"
             );
             let conn = w.pool.get().await?;
             let before: i64 = conn

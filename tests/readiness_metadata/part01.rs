@@ -11,13 +11,14 @@ fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value) {
 }
 
 fn work(title: &str, purpose: &str) -> Value {
-    json!({"title":title,"owner":"legal","contract":"Implement the specified behavior",
+    json!({"title":title,"owner":"legal","body":"Implement the specified behavior",
         "purpose":purpose,"projects":[]})
 }
 
 fn native() -> World {
     let mut w = World::new();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     save(
         &mut w,
         "task:work",
@@ -58,6 +59,7 @@ fn tasks_under_not_ready_criteria_cannot_be_claimed() {
     };
     w.ok("owner", access(0));
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     for (task, ac) in [
         ("task:t1", "ac:a1"),
         ("task:t2", "ac:a2"),

@@ -11,7 +11,7 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
     let mut types = schema["schema"]["types"].clone();
     types["job"] = json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
-    w.command(json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+    w.command(json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","body":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
     let response=w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(&w.bot).json(&json!({"request_id":format!("test-claim-time-86400000-{}",uuid::Uuid::new_v4().simple()),"command":{"op":"claim_task","id":"job:one","revision":1}})).send().await?;
     ensure!(response.status().is_success(), "{}", response.text().await?);
     let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {

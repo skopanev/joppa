@@ -201,7 +201,7 @@ test('done-is-not-green-ac3: a done Task under a green criterion shows Checks pa
   try {
     await f.bind('ac:A', ['X']);
     await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
-      data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
+      data: {title: 'Implement the criterion', owner: 'owner', body: 'Implement the criterion and record the result', purpose: 'implementation'},
       reason: 'Check completion under a green criterion'});
     await f.command({op: 'claim_task', id: 'task:T', revision: 1});
     await f.command({op: 'complete_task', commit: 'c0ffee0', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});

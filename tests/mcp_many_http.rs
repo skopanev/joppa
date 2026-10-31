@@ -107,13 +107,13 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         "status.label",
         "body",
         "comments",
-        "contract"
+        "note"
     ]);
     let s = ok(&w, json!({"address":"requirement:s","fields":keys})).await?;
     ensure!(
         s == json!({"revision":detail["revision"],"links":detail["links"],
             "status.label":detail["status"]["label"],"body":"Second rule","comments":null,
-            "contract":null})
+            "note":null})
             && s["links"][0]["target"] == "requirement:r",
         "{s} {detail}"
     );
@@ -161,6 +161,14 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         ),
         (json!({"fields":["links"]}), "unknown field links"),
         (
+            json!({"address":"ac:a","fields":["description"]}),
+            "use body instead of description; read joppa_help",
+        ),
+        (
+            json!({"fields":["data.contract"]}),
+            "use body instead of contract; read joppa_help",
+        ),
+        (
             json!({"address":"ac:a","fields":["title"],"revision":1}),
             "fields reads the current revision",
         ),
@@ -204,7 +212,7 @@ async fn a_list_reply_above_256_kb_is_refused_and_one_object_comes_in_full() -> 
     let ceiling =
         "reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit";
     let both = read(&w, json!({"address":"requirement:big,requirement:r"})).await?;
-    let list = read(&w, json!({"fields":["body"]})).await?;
+    let list = read(&w, json!({"fields":["data"]})).await?;
     let narrow = json!({"address":"requirement:big,requirement:r","fields":["title"]});
     let narrow = ok(&w, narrow).await?;
     ensure!(

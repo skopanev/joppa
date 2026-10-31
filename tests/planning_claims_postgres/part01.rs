@@ -47,7 +47,7 @@ async fn save_work(
     id: &str,
     revision: u32,
 ) -> Result<Value> {
-    write(pool, workspace, actor, json!({"op":"save_object","kind":"work","id":id,"revision":revision,"parent":"criterion:a", "data":{"title":id,"owner":"owner","contract":format!("Implement the agreed mechanism revision {revision}"),"purpose":"implementation"},"reason":"Set the work contract"})).await
+    write(pool, workspace, actor, json!({"op":"save_object","kind":"work","id":id,"revision":revision,"parent":"criterion:a", "data":{"title":id,"owner":"owner","body":format!("Implement the agreed mechanism revision {revision}"),"purpose":"implementation"},"reason":"Set the work contract"})).await
 }
 
 /// Creates a workspace with ready, unverified criteria A and B under one confirmed spec.

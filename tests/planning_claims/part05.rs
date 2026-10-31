@@ -27,7 +27,7 @@ fn blocked_contract_ignores_link_order_and_starts_at_the_block() {
     let mut w = held();
     w.ok("worker", block(&w, "work:t"));
     let mut data = t_document();
-    data["contract"] = json!("Implement the criterion with a new fix");
+    data["body"] = json!("Implement the criterion with a new fix");
     save_t(&mut w, "owner", data, json!([]));
     claim(&mut w, "planner", "criterion:a");
     refuse(
@@ -51,7 +51,7 @@ fn finish_checks_every_blocked_task_and_keeps_blocks_on_other_refusals() {
     w.ok("worker", block(&w, "work:t"));
     claim(&mut w, "planner", "criterion:a");
     let mut data = t_document();
-    data["contract"] = json!("Implement the criterion with a new fix");
+    data["body"] = json!("Implement the criterion with a new fix");
     save_t(&mut w, "planner", data, json!([]));
     refuse(&mut w, "planner", finish(), NEEDS_CONTRACT);
     // A failed dependency check keeps both blocks.

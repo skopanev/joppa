@@ -11,7 +11,7 @@ fn document(title: &str) -> Value {
 }
 
 fn contract(title: &str) -> Value {
-    json!({"title":title,"owner":"owner","contract":"Implement the specified document behavior","purpose":"implementation","projects":[]})
+    json!({"title":title,"owner":"owner","body":"Implement the specified document behavior","purpose":"implementation","projects":[]})
 }
 
 fn configured() -> World {
@@ -72,6 +72,7 @@ fn configured() -> World {
         document("Nested specification"),
     );
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     w
 }
 

@@ -41,7 +41,7 @@ async fn one_agent_cannot_claim_two_tasks_even_in_parallel() -> Result<()> {
     });
     store::execute_remote_input(&pool, &ws, "owner", "schema", &json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Use two configured work types"})).await?;
     for kind in ["job", "work"] {
-        store::execute_remote_input(&pool, &ws, "owner", kind, &json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","contract":"Implement and test the specified behavior","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
+        store::execute_remote_input(&pool, &ws, "owner", kind, &json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","body":"Implement and test the specified behavior","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
     }
     let claim_a = json!({"op":"claim_task","id":"job:one","revision":1});
     let claim_b = json!({"op":"claim_task","id":"work:one","revision":1});

@@ -32,7 +32,7 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
     // Control: a valid data change saves.
     let criterion = planning_criterion(&w).await?;
     let mut data = criterion["document"]["data"].clone();
-    data["description"] =
+    data["body"] =
         json!("Given: a key.\nWhen: bot reads.\nThen: bot can read.\nEvidence: the test report.");
     let (code, reply) = save(data, criterion).await?;
     ensure!(code == 200, "control save: {code} {reply}");

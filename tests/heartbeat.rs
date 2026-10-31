@@ -62,7 +62,7 @@ fn fixture(timed: bool) -> Result<Workspace> {
     at(
         &mut w,
         "owner",
-        json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and verify","purpose":"implementation"},"reason":"Create work"}),
+        json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","body":"Implement and verify","purpose":"implementation"},"reason":"Create work"}),
         0,
     )?;
     at(

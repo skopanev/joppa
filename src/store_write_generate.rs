@@ -88,7 +88,7 @@ pub(crate) fn resolve_task(value: &mut Value, state: &Workspace) -> Result<()> {
             .data["owner"]
             .clone();
         *value = json!({"op":"save_object","kind":"task","id":format!("{req}/{id}"),"revision":0,
-            "parent":format!("ac:{}",acs[0]),"data":{"title":value["title"],"owner":owner,"contract":value["contract"],"projects":value["projects"],"purpose":value["purpose"]},"reason":"Create a Task"});
+            "parent":format!("ac:{}",acs[0]),"data":{"title":value["title"],"owner":owner,(crate::body_migration::text_field(state,"contract")):value["contract"],"projects":value["projects"],"purpose":value["purpose"]},"reason":"Create a Task"});
     } else if state.task_process.contains_key(&key) {
         if op == "review_task" {
             let ac = value["ac"]

@@ -14,7 +14,7 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
     w.command_as(bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let conn = w.pool.get().await?;
     for kind in ["task", "job"] {
-        w.command(json!({"op":"save_object","kind":kind,"id":"report-only","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the report contract","owner":"owner","contract":"Implement the key rights and record checks","purpose":"implementation","projects":[]},"reason":"Create work for the verification guard"})).await?;
+        w.command(json!({"op":"save_object","kind":kind,"id":"report-only","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the report contract","owner":"owner","body":"Implement the key rights and record checks","purpose":"implementation","projects":[]},"reason":"Create work for the verification guard"})).await?;
         let address = format!("{kind}:report-only");
         w.command_as(bot, json!({"op":"claim_task","id":address,"revision":1}))
             .await?;

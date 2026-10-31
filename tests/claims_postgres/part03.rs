@@ -35,7 +35,7 @@ async fn permanent_fixture(minutes: i64) -> Result<(deadpool_postgres::Pool, Str
     }
     let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
     store::execute_remote_input(&pool,&ws,"owner","schema",&json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"types":{"job":{"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]}},"reason":"Use configured work"})).await?;
-    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation"},"reason":"Create work"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement the contract","owner":"owner","body":"Implement and verify the behavior","purpose":"implementation"},"reason":"Create work"})).await?;
     let request = format!(
         "test-claim-time-{}-{}",
         minutes * 60_000,

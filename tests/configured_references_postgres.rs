@@ -59,7 +59,7 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
         store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner"},"reason":"Create queue context"})).await?;
     }
     for (id, affected) in [("first", "normal"), ("second", "urgent")] {
-        store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":"domain:root","data":{"title":id,"owner":"owner","contract":"Implement the agreed context","purpose":"implementation","affected":[affected]},"reason":"Create work"})).await?;
+        store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":"domain:root","data":{"title":id,"owner":"owner","body":"Implement the agreed context","purpose":"implementation","affected":[affected]},"reason":"Create work"})).await?;
     }
     let priorities = vec!["consumer:urgent".into(), "consumer:normal".into()];
     let queue = store::task_queue_filtered(

@@ -40,7 +40,7 @@ fn a_page_gives_25_items_a_cursor_and_the_total() {
 // read-list-fields
 #[test]
 fn a_list_item_is_short_and_fields_keep_each_named_path() {
-    let item = json!({"address":"ac:a","title":"A","revision":3,"description":"Long",
+    let item = json!({"address":"ac:a","title":"A","revision":3,"body":"Long",
         "signal":{"label":"Ready","tone":"green"},"present":true,"process":{"planning_claim":null}});
     assert_eq!(
         list_item(&item, None),

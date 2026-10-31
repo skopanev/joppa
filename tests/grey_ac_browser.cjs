@@ -157,7 +157,7 @@ test('markdown-text-ac1: object text renders as Markdown and titles stay plain',
   try {
     await f.api('/commands', {request_id: crypto.randomUUID(), command: {op: 'note', target: 'domain:X', id: 'c1', text: '- one\n- two'}}, f.live.alex);
     await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
-      data: {title: 'T', owner: 'owner', contract: 'Run:\n\n```\ncargo test\n```', purpose: 'implementation'}, reason: 'Fixture Task'});
+      data: {title: 'T', owner: 'owner', body: 'Run:\n\n```\ncargo test\n```', purpose: 'implementation'}, reason: 'Fixture Task'});
     const X = await f.open('domain:X');
     const text = X.locator(':scope > .object-body .object-content');
     assert.equal(await text.locator('h2').count(), 1);

@@ -150,7 +150,7 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
         p.save(
             "criterion:a",
             Some("spec:one"),
-            json!({"title":"criterion:a","owner":"owner","description":format!("Draft {n}")}),
+            json!({"title":"criterion:a","owner":"owner","body":format!("Draft {n}")}),
             json!([]),
         )
         .await?;

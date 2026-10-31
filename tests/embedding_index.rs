@@ -56,7 +56,7 @@ async fn save(
         let chars: Vec<char> = description.chars().collect();
         for (i, part) in chars.chunks(1000).enumerate() {
             let key = if i == 0 {
-                "description".to_owned()
+                "body".to_owned()
             } else {
                 format!("part{i}")
             };

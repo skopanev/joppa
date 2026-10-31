@@ -110,7 +110,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
             .iter()
             .all(|item| item["parent"].is_null() && item.get("work_summary").is_none())
     );
-    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"spec-work","revision":0,"parent":"spec:s","data":{"title":"Work on the specification","owner":"owner","contract":"Work on the specification as a whole","purpose":"implementation"},"reason":"Check the specification binding boundary"})).await?;
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"spec-work","revision":0,"parent":"spec:s","data":{"title":"Work on the specification","owner":"owner","body":"Work on the specification as a whole","purpose":"implementation"},"reason":"Check the specification binding boundary"})).await?;
     assert_eq!(
         criteria(&candidates(&pool, &ws).await?),
         vec!["condition:a", "condition:b"]
@@ -145,7 +145,7 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
     )
     .await?;
     assert_eq!(criteria(&direct), vec!["condition:a", "condition:b"]);
-    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":"section:nested","data":{"title":"Implement the first condition","owner":"owner","contract":"Implement this exact condition","purpose":"implementation"},"reason":"Bind work through an intermediate group"})).await?;
+    apply(&pool,&ws,"agent",json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":"section:nested","data":{"title":"Implement the first condition","owner":"owner","body":"Implement this exact condition","purpose":"implementation"},"reason":"Bind work through an intermediate group"})).await?;
     assert_eq!(
         criteria(&candidates(&pool, &ws).await?),
         vec!["condition:b"]

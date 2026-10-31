@@ -50,7 +50,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
             empty.get("children").is_none() && empty["status"] == "grey",
             "{empty}"
         );
-        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","description":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
+        w.command(json!({"op":"save_object","kind":criterion,"id":format!("{kind}-condition"),"revision":0,"parent":address,"data":{"title":"The defined behavior holds","owner":"owner","consumer":"customer","body":"Check the agreed behavior","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Add the first criterion"})).await?;
         let current = item(&w, bot, parent, &address).await?;
         ensure!(current["children"] == 1, "{current}");
         // The saved empty revision still reads whole.

@@ -4,23 +4,24 @@ use crate::objects::{RequiredFieldRule, TreeType};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-/// The data fields that the server reads for a type, from its name or its role.
+/// The data fields that the server reads for a type, from its name or its role. The text
+/// of every type is `body`, see body_migration.
 fn data_fields(kind: &str, t: &TreeType) -> &'static [&'static str] {
     if let Some(fields) = crate::objects::native_document_fields(kind) {
-        return fields;
+        return crate::body_migration::body_fields(fields);
     }
     match t.role.as_str() {
         "requirement" => &["title", "body", "owner", "consumers"],
         "ac" => &[
             "title",
-            "description",
+            "body",
             "owner",
             "decision_required",
             "depends_on",
             "before_launch",
         ],
-        "task" => &["title", "owner", "contract", "projects", "purpose"],
-        _ => &["title", "owner", "description"],
+        "task" => &["title", "owner", "body", "projects", "purpose"],
+        _ => &["title", "owner", "body"],
     }
 }
 

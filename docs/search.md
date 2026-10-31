@@ -106,8 +106,8 @@ The HTTP search reply:
 the `req` of a criterion. It has no `kind`, `id` or `system_id`, and `workspace` only with
 `all_workspaces`. `historical`, `archived` and `exact_id` show only when they are true.
 
-`excerpt` is the own text of the result: the first of its `body`, `description`, `contract`
-and `text` that is not empty, at most 600 characters. The title and the parents stay out.
+`excerpt` is the own text of the result: the first of its `body` and `text` that is not
+empty, at most 600 characters. The title and the parents stay out.
 `revision` is the revision of the result object, also for a criterion. `req` names the
 requirement of a criterion. `historical` is true when the result is not the current revision. `archived` is true
 when the object has no current document. When the provider does not answer a query,

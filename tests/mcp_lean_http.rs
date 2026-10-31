@@ -33,7 +33,7 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             "data":{"title":"S","owner":"owner","body":"Second rule"},
             "links":[{"target":"requirement:r","relation":"related"}],"reason":"Link"}),
         json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a",
-            "data":{"title":"T","owner":"owner","contract":"Do A","purpose":"implementation"},
+            "data":{"title":"T","owner":"owner","body":"Do A","purpose":"implementation"},
             "reason":"Work"}),
     ] {
         w.command(&w.bot, command)

@@ -55,7 +55,7 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     .await?;
     for (task, criterion) in [("t1", "criterion:a"), ("t2", "criterion:b")] {
         f.write(OWNER, json!({"op":"assess","req":"spec:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
-        f.write(OWNER, json!({"op":"save_object","kind":"work","id":task,"revision":0,"parent":criterion,"data":{"title":task,"owner":OWNER,"contract":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Set the work contract"})).await?;
+        f.write(OWNER, json!({"op":"save_object","kind":"work","id":task,"revision":0,"parent":criterion,"data":{"title":task,"owner":OWNER,"body":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Set the work contract"})).await?;
     }
     // P completes T2 and then holds T1. T1 has a comment and a reply.
     f.task(HOLDER, "work:t2", json!({"op":"claim_task"}))

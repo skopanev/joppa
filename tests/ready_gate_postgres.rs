@@ -80,7 +80,7 @@ async fn a_member_writes_a_requirement_and_work_starts_after_ready() -> Result<(
     store::execute_remote_batch(&pool, &ws, "alex", "create-r", &operations).await?;
     let r = read(&pool, &ws, "requirement:r").await?;
     write(&pool, &ws, "alex", json!({"op":"assess","req":"requirement:r","revision":r["process"]["revision"],"ac":"ac:a","assessment":{"ready":true,"reason":"Clear"}})).await?;
-    write(&pool, &ws, "alex", json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a","data":{"title":"T","owner":"alex","contract":"Implement A","purpose":"implementation"},"reason":"Create work"})).await?;
+    write(&pool, &ws, "alex", json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a","data":{"title":"T","owner":"alex","body":"Implement A","purpose":"implementation"},"reason":"Create work"})).await?;
     let t = read(&pool, &ws, "task:t").await?;
     write(
         &pool,

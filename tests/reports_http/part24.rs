@@ -5,7 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn ac7_finish_keeps_the_wait_for_a_changed_blocking_dependency() -> Result<()> {
     let w = world().await?;
-    let dependency = |contract: &str| json!({"title":"D","owner":"owner","contract":contract,"purpose":"implementation"});
+    let dependency = |contract: &str| json!({"title":"D","owner":"owner","body":contract,"purpose":"implementation"});
     for mcp in [false, true] {
         let p = planning(&w).await?;
         p.save(
@@ -96,7 +96,7 @@ async fn ac2_planning_hides_only_the_new_tasks_of_its_holder_over_http_and_mcp()
             .await?;
         let mut created = vec![];
         for id in ["t1", "t2"] {
-            let position = p.position("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+            let position = p.position("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
             created.push((format!("work:{id}"), position));
         }
         ensure!(claim < created[0].1 && created[0].1 < created[1].1);

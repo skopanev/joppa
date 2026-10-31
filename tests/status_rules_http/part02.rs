@@ -89,7 +89,7 @@ impl World {
         parent: Option<&str>,
         consumer: Option<&str>,
     ) -> Result<()> {
-        let mut data = json!({"title":id,"owner":"owner","body":"The contract","description":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
+        let mut data = json!({"title":id,"owner":"owner","body":"The contract","body":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
         if let Some(consumer) = consumer {
             data["consumers"] = json!([consumer]);
             data["consumer"] = json!(consumer);
@@ -133,7 +133,7 @@ impl World {
     async fn blocked_task(&self, task_kind: &str, check: &str) -> Result<()> {
         let id = format!("t-{}", check.replace(':', "-"));
         let parent = json!(check);
-        self.command(&self.owner, json!({"op":"save_object","kind":task_kind,"id":id,"revision":0,"parent":parent,"data":{"title":"Implement","owner":"owner","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+        self.command(&self.owner, json!({"op":"save_object","kind":task_kind,"id":id,"revision":0,"parent":parent,"data":{"title":"Implement","owner":"owner","body":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
         let criterion = self.object(check).await?;
         let p = &criterion["process"];
         self.command(&self.owner, json!({"op":"assess","req":p["req"],"revision":p["revision"],"ac":p["criterion"],"assessment":{"ready":true,"reason":"Known scope","recipient":null,"decision":null}})).await?;

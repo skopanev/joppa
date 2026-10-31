@@ -88,7 +88,7 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     )
     .await?;
     write("agent", json!({"op":"assess","req":"spec:one","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
-    let contract = |title: &str| json!({"title":title,"owner":"owner","contract":"Implement the agreed mechanism","purpose":"implementation"});
+    let contract = |title: &str| json!({"title":title,"owner":"owner","body":"Implement the agreed mechanism","purpose":"implementation"});
     let mut pins = Vec::new();
     for (source, dependent) in [("a", "b"), ("c", "d")] {
         write("agent", json!({"op":"save_object","kind":"work","id":source,"revision":0,"parent":"criterion:a","data":contract(source),"reason":"Set the work contract"})).await?;
@@ -130,7 +130,7 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     let c = read("work:c").await?;
     let mut data = c["document"]["data"].clone();
     data["title"] = json!("Changed source");
-    data["contract"] = json!("Implement the agreed mechanism");
+    data["body"] = json!("Implement the agreed mechanism");
     write("agent", json!({"op":"save_object","kind":"work","id":"c","revision":c["current_revision"],"parent":c["document"]["parent"],"data":data,"links":c["document"]["links"],"reason":"Change the source"})).await?;
     let d = read("work:d").await?;
     assert_eq!(d["review_required"], true);

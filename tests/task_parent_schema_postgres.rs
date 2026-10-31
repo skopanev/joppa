@@ -70,7 +70,7 @@ async fn workspace(pool: &deadpool_postgres::Pool, task_parents: Value) -> Resul
 }
 
 fn task_under_d() -> Value {
-    json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"domain:d","data":{"title":"Task T","owner":"owner","contract":"Implement the domain change","purpose":"implementation","projects":[]},"reason":"Create work"})
+    json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"domain:d","data":{"title":"Task T","owner":"owner","body":"Implement the domain change","purpose":"implementation","projects":[]},"reason":"Create work"})
 }
 
 async fn children_of_d(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Vec<String>> {

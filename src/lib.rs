@@ -1,6 +1,7 @@
 pub mod ac_tests;
 pub mod acceptance;
 pub mod access;
+pub mod body_migration;
 pub mod checks;
 pub mod commands;
 pub mod consumer_drops;

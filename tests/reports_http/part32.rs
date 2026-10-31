@@ -197,7 +197,7 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
     let w = world().await?;
     let p = planning(&w).await?;
     p.ready().await?;
-    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
     p.write(
         "agent",
         json!({"op":"claim_task","id":"work:t","revision":p.revision("work:t").await?}),
@@ -212,12 +212,12 @@ async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> R
         .await?;
     let criterion = p.revision("criterion:a").await?;
     p.owner_command(json!({"op":"save_object","kind":"criterion","id":"a","revision":criterion,"parent":"spec:one",
-        "data":{"title":"criterion:a","owner":"owner","description":"Changed wording"},"links":[],"reason":"Change A"}))
+        "data":{"title":"criterion:a","owner":"owner","body":"Changed wording"},"links":[],"reason":"Change A"}))
         .await?;
     // Controls: R and A are at new revisions.
     ensure!(p.revision("spec:one").await? > spec);
     ensure!(p.revision("criterion:a").await? == criterion + 1);
-    ensure!(p.read("criterion:a").await?["document"]["data"]["description"] == "Changed wording");
+    ensure!(p.read("criterion:a").await?["document"]["data"]["body"] == "Changed wording");
     let t = p.object_both("work:t").await?;
     ensure!(done_without_review(&t), "T after the new texts: {t}");
     let all = p.tasks_both("all").await?;

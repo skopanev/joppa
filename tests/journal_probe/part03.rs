@@ -151,7 +151,7 @@ async fn heartbeat_refusal_reads_current_rows_and_keeps_documents_and_test_evide
     types["job"] =
         json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     store::execute_remote_input(&pool,&ws,"owner","jobs",&json!({"op":"set_tree_schema","revision":current["schema"]["revision"],"types":types,"reason":"Configured work"})).await?;
-    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","contract":"Implement and verify the behavior","purpose":"implementation","body":"Detailed context ".repeat(60)},"reason":"Create work"})).await?;
+    store::execute_remote_input(&pool,&ws,"owner","job",&json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","purpose":"implementation","body":"Detailed context ".repeat(60)},"reason":"Create work"})).await?;
     store::execute_remote_input(
         &pool,
         &ws,

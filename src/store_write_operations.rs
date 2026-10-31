@@ -94,7 +94,7 @@ pub(crate) async fn write(
                 let schema = crate::objects::schema(&state);
                 if let Some(question) = schema.types.get(kind).and_then(|t| t.question.as_ref())
                     && question_checked.as_ref() != Some(question) {
-                    return Err(crate::objects::RequiredField(format!("Check that the title and description answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
+                    return Err(crate::objects::RequiredField(format!("Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
                 }
             }
             if let Command::Revise(crate::commands::ReviseOp { req, consumers, capability, acs, .. }) = &command {
@@ -135,7 +135,7 @@ pub(crate) async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

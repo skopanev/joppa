@@ -123,7 +123,7 @@ fn an_identical_save_keeps_the_workspace_and_a_change_adds_one_revision() {
     save(&mut w, "work:source", None, contract("Source task"));
     assert_eq!(format!("{:?}", w.state), before);
     let mut changed = contract("Source task");
-    changed["contract"] = json!("Implement the changed document behavior");
+    changed["body"] = json!("Implement the changed document behavior");
     save(&mut w, "work:source", None, changed);
     assert_eq!(w.state.objects["work:source"].revisions.len(), 2);
     assert!(!objects::review_links(&w.state, "task:dependent").is_empty());
@@ -153,6 +153,7 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
     let mut w = World::new();
     w.ready();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
     let pinned = |w: &mut World, source: &str, dependent: &str| {
         save(w, source, Some("ac:ios"), contract("Source task"));
         let pin = w.state.objects[source].current().revision;
@@ -202,6 +203,7 @@ fn migration_preserves_old_task_history_and_uses_one_process() {
     w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"old","title":"Existing task","contract":"Implement the iOS flow","acs":["ios"],"projects":["app"],"purpose":"implementation"}));
     let old = serde_json::to_value(&w.state.objects["task:r/old"].revisions).unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
     let migrated = serde_json::to_value(&w.state).unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 2, "later").unwrap();
     assert_eq!(migrated, serde_json::to_value(&w.state).unwrap());

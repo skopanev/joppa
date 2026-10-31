@@ -83,7 +83,7 @@ async fn work_priority_ac2_work_sorts_by_the_priority_chain_from_the_top() -> Re
     ensure!(list == ["check:a3", "check:a2", "check:a1"], "{list:?}");
     // Fixture 2: one open Task under each criterion.
     for (id, parent) in [("t1", "check:a1"), ("t2", "check:a2"), ("t3", "check:a3")] {
-        w.command(&w.owner, json!({"op":"save_object","kind":task,"id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+        w.command(&w.owner, json!({"op":"save_object","kind":task,"id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","body":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
     }
     let available = w
         .mcp(

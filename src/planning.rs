@@ -77,7 +77,8 @@ type Links<'a> = BTreeSet<(&'a str, &'a str, Option<u32>)>;
 fn contract(r: &objects::ObjectRevision) -> (&Value, &Value, &Value, Links<'_>) {
     (
         &r.data["title"],
-        &r.data["contract"],
+        // A revision from before migrate_body names the text contract.
+        r.data.get("body").unwrap_or(&r.data["contract"]),
         &r.data["projects"],
         r.links
             .iter()

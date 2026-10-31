@@ -151,9 +151,7 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
                 .is_some_and(|before| {
                     before.parent != current.parent
                         || content(&before.links) != content(&current.links)
-                        || TEXT_FIELDS
-                            .iter()
-                            .any(|field| before.data.get(field) != current.data.get(field))
+                        || !crate::body_migration::same_text(w, &before.data, &current.data)
                         // A new test list resets the criterion. The migration moves a list
                         // into the document and changes no status.
                         || (migrated

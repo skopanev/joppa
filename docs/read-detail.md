@@ -12,7 +12,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "revision": 3,
   "contract_revision": 2,
   "parent": "ac:a",
-  "data": {"title": "...", "owner": "owner", "contract": "...", "note": null, "projects": []},
+  "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
   "status": {"label": "In progress", "tone": "yellow"},
   "process": {"status": "in_progress", "holder": "bot"},
   "comments": {
@@ -123,14 +123,16 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
            {"address": "requirement:r", "title": "R", "status": "grey"}]}
 ```
 
-- A list field has the value of the list item: `status` is the tone, and `status.label`
-  gives the label. `docs/read-contract.md` names the list fields.
+- A list field has the value of the list item: `status` is the tone, `status.label` gives
+  the label, and `body` is a preview of 300 characters. `data.body` gives the full text.
+  `docs/read-contract.md` names the list fields.
 - A detail key gives its value in the detail read: `links`, `comments`, `files`,
   `references`, `link_groups`, `remote_links`, `remote_review_required`,
   `remote_links_revision`, `child_workspace`, `verification_summary`, `question` and
   `annotations`. A key that the detail omits gives `null`.
-- Any other first part names a document field: `body` gives `data.body`. The rules of
-  `docs/read-contract.md` refuse an unknown path: `unknown field nope`.
+- Any other first part names a document field: `note` gives `data.note`. The rules of
+  `docs/read-contract.md` refuse an unknown path and the old text fields `description` and
+  `contract`.
 - `fields` reads the current revision. With `history` or `revision` it is refused:
   `fields reads the current revision`.
 - `work_summary` comes only from `work_filter: "unstarted"`; a read by address gives `null`.

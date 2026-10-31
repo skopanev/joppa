@@ -28,9 +28,9 @@ async fn an_excerpt_gives_the_own_data_of_the_object_without_its_parents() -> Re
     let ws = format!("excerpt-{}", uuid::Uuid::new_v4().simple());
     write(&pool, &ws, json!({"op":"workspace","title":"Excerpt"})).await?;
     store::enroll_service(&pool, &ws, "owner", "bot", "agent").await?;
-    write(&pool, &ws, json!({"op":"save_object","kind":"domain","id":"p","revision":0,"parent":null,"data":{"title":"Parent","owner":"owner","description":"Parent context alpha"},"reason":"Excerpt test"})).await?;
-    write(&pool, &ws, json!({"op":"save_object","kind":"capability","id":"c","revision":0,"parent":"domain:p","data":{"title":"Child","owner":"owner","description":"Old child text"},"reason":"Excerpt test"})).await?;
-    write(&pool, &ws, json!({"op":"save_object","kind":"capability","id":"c","revision":1,"parent":"domain:p","data":{"title":"Child","owner":"owner","description":"Own child text bravo"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"domain","id":"p","revision":0,"parent":null,"data":{"title":"Parent","owner":"owner","body":"Parent context alpha"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"capability","id":"c","revision":0,"parent":"domain:p","data":{"title":"Child","owner":"owner","body":"Old child text"},"reason":"Excerpt test"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"capability","id":"c","revision":1,"parent":"domain:p","data":{"title":"Child","owner":"owner","body":"Own child text bravo"},"reason":"Excerpt test"})).await?;
     let (_fake, endpoint) = world::provider().await?;
     let server = world::serve(&url, &["owner", "bot"], &endpoint).await?;
     let found = world::mcp(

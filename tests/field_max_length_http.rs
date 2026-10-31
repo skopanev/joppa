@@ -63,7 +63,7 @@ async fn a_type_sets_its_field_max_length_up_to_262144_characters() -> Result<()
     );
     // A type without field_max_length keeps 1024 characters.
     let domain = json!({"op":"save_object","kind":"domain","id":"long","revision":0,"parent":null,
-        "data":{"title":"Long domain","owner":"owner","description":"x".repeat(1025)},"reason":"Default limit"});
+        "data":{"title":"Long domain","owner":"owner","body":"x".repeat(1025)},"reason":"Default limit"});
     let error = w.command(&w.bot, domain).await?.err().unwrap_or_default();
     ensure!(error.contains("at most 1024 characters"), "{error}");
     // The ceiling: 262144 characters pass the server and the database trigger.

@@ -32,7 +32,7 @@ fn edit(w: &mut World, key: &str, description: &str) -> anyhow::Result<()> {
     let id = key.split_once(':').unwrap().1;
     let current = w.state.objects[key].current().clone();
     let mut data = current.data.clone();
-    data["description"] = json!(description);
+    data["body"] = json!(description);
     w.apply(
         "agent",
         json!({"op":"save_object","kind":"ac","id":id,"revision":current.revision,
@@ -74,7 +74,7 @@ fn an_older_criterion_save_in_a_replay_keeps_the_sibling_revision_it_gave() {
         .insert(commands::SINGLE_CRITERION_SAVE.into(), w.position + 100);
     let current = w.state.objects["ac:ios"].current().clone();
     let mut data = current.data.clone();
-    data["description"] = json!("Given a paid user on iOS, then access stays.");
+    data["body"] = json!("Given a paid user on iOS, then access stays.");
     let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
         "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
         "reason":"Clarify the criterion"}))
@@ -116,7 +116,7 @@ fn an_older_criterion_save_in_a_replay_keeps_the_copied_specification_reason() {
         .insert(commands::CRITERION_SAVE_REASON.into(), w.position + 100);
     let current = w.state.objects["ac:ios"].current().clone();
     let mut data = current.data.clone();
-    data["description"] = json!("Given a paid user on iOS, then access stays.");
+    data["body"] = json!("Given a paid user on iOS, then access stays.");
     let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
         "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
         "reason":"Clarify the criterion"}))

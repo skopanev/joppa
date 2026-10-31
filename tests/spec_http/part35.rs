@@ -9,7 +9,7 @@ async fn a_completed_prerequisite_task_unblocks_its_dependent_over_mcp() -> Resu
         mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":address})).await
     };
     let pin = object(&a).await?["revision"].clone();
-    w.command(json!({"op":"save_object","kind":"task","id":"b","revision":0,"parent":"ac:key-rights","data":{"title":"Use the prerequisite work","owner":"owner","contract":"Use the completed prerequisite and record the result","purpose":"implementation","projects":[]},"links":[{"target":a,"relation":"depends_on","revision":pin,"blocking":true}],"reason":"Depend on the prerequisite"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"b","revision":0,"parent":"ac:key-rights","data":{"title":"Use the prerequisite work","owner":"owner","body":"Use the completed prerequisite and record the result","purpose":"implementation","projects":[]},"links":[{"target":a,"relation":"depends_on","revision":pin,"blocking":true}],"reason":"Depend on the prerequisite"})).await?;
     let available = async || {
         let page = mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":"available"})).await?;
         anyhow::Ok(

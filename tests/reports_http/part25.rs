@@ -88,7 +88,7 @@ async fn ac3_an_update_only_plan_finishes_and_a_plan_without_changes_is_refused(
             ensure!(
                 t0["process"]["status"] == "in_progress"
                     && t0["process"]["assignee"] == "worker"
-                    && document(&t0)["data"]["contract"] == "Implement the updated plan",
+                    && document(&t0)["data"]["body"] == "Implement the updated plan",
                 "{transport}: {t0}"
             );
         }

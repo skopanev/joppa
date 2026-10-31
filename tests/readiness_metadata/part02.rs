@@ -7,6 +7,7 @@ fn dependency_question_blocks_work_but_own_decision_task_remains_available() {
     next["acs"][0]["depends_on"] = json!(["key"]);
     w.ok("owner", next);
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     for (ac, ready) in [("ios", true), ("key", false)] {
         let mut cmd = assess(ac, ready);
         cmd["revision"] = json!(2);

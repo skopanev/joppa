@@ -129,14 +129,20 @@ pub async fn build(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
         .collect();
     write(pool, ws, &mut step, reqs).await?;
     let acs = (0..ACS)
-        .map(|a| save("ac", &format!("a{a}"), Some(format!("requirement:r{}", a % REQS)),
-            json!({"title":format!("Criterion {a}"),"owner":"owner","consumer":"user",
-                "description":"Given: a state.\nWhen: an action.\nThen: a result.\nEvidence: a check."})))
+        .map(|a| {
+            save(
+                "ac",
+                &format!("a{a}"),
+                Some(format!("requirement:r{}", a % REQS)),
+                json!({"title":format!("Criterion {a}"),"owner":"owner","consumer":"user",
+                "body":"Given: a state.\nWhen: an action.\nThen: a result.\nEvidence: a check."}),
+            )
+        })
         .collect();
     write(pool, ws, &mut step, acs).await?;
     let tasks = (0..TASKS)
         .map(|t| save("task", &format!("t{t}"), Some(format!("ac:a{}", t % ACS)),
-            json!({"title":format!("Task {t}"),"owner":"owner","contract":"Synthetic work","purpose":"implementation","projects":[]})))
+            json!({"title":format!("Task {t}"),"owner":"owner","body":"Synthetic work","purpose":"implementation","projects":[]})))
         .collect();
     write(pool, ws, &mut step, tasks).await?;
     let lists = (0..ACS)

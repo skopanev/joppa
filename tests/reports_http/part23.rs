@@ -92,7 +92,7 @@ impl Planning<'_> {
         self.save(
             "criterion:a",
             Some("spec:one"),
-            json!({"title":"criterion:a","owner":"owner","description":description}),
+            json!({"title":"criterion:a","owner":"owner","body":description}),
             json!([]),
         )
         .await?;
@@ -114,7 +114,7 @@ impl Planning<'_> {
             revision = self.revise_a(&format!("Wording {revision}")).await?;
         }
         ensure!(revision == 4, "A revision {revision}");
-        self.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), links.clone()).await?;
+        self.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), links.clone()).await?;
         self.expect_t("at A revision 4", |t| t["review_required"] == false)
             .await?;
         ensure!(self.revise_a("Fifth wording").await? == 5);
@@ -152,7 +152,7 @@ impl Planning<'_> {
     /// P saves T0 of W with a new contract.
     async fn update_t0(&self) -> Result<()> {
         let revision = self.revision("work:t0").await?;
-        self.write("agent", json!({"op":"save_object","kind":"work","id":"t0","revision":revision,"parent":"criterion:a","data":{"title":"T0","owner":"owner","contract":"Implement the updated plan","purpose":"implementation"},"reason":"Update the older work"})).await?;
+        self.write("agent", json!({"op":"save_object","kind":"work","id":"t0","revision":revision,"parent":"criterion:a","data":{"title":"T0","owner":"owner","body":"Implement the updated plan","purpose":"implementation"},"reason":"Update the older work"})).await?;
         Ok(())
     }
     /// The planning claim of `ac` on both transports.

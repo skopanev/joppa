@@ -115,7 +115,7 @@ async fn a_refused_finish_rolls_back_the_unblock_in_the_same_batch() -> Result<(
     let p = planning(&w).await?;
     p.blocked_dependency().await?;
     // Fixture 2: a second unchanged blocked Task V under A.
-    p.save("work:v", Some("criterion:a"), json!({"title":"V","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    p.save("work:v", Some("criterion:a"), json!({"title":"V","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
     let revision = p.revision("work:v").await?;
     p.write(
         "other",

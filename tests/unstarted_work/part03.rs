@@ -27,7 +27,7 @@ async fn blocked_fixture(with_v: bool) -> anyhow::Result<(Pool, String)> {
         "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
-    let work = |id: &str| json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Set the work"});
+    let work = |id: &str| json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":"criterion:a","data":{"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"},"reason":"Set the work"});
     for command in [
         json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"}),
         json!({"op":"save_object","kind":"criterion","id":"a","revision":0,"parent":"spec:one","data":{"title":"A","owner":"owner"},"reason":"Set the criterion"}),

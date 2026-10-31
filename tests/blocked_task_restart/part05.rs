@@ -69,7 +69,7 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
         claims.insert(name, json!({"actor":PLANNER,"position":reply["position"]}));
         if let Some(task) = task {
             let id = task.split_once(':').unwrap().1;
-            f.write(PLANNER, json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":criterion,"data":{"title":id,"owner":OWNER,"contract":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Plan the work"})).await?;
+            f.write(PLANNER, json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":criterion,"data":{"title":id,"owner":OWNER,"body":"Implement the agreed mechanism","purpose":"implementation"},"reason":"Plan the work"})).await?;
         }
     }
     f.write(

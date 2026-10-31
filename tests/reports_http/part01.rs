@@ -61,7 +61,7 @@ async fn world() -> Result<World> {
         json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"owner"},"reason":"Setup"}),
         json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"owner"},"reason":"Agreed"}),
         json!({"op":"save_object","kind":"ac","id":"key-rights","revision":0,"parent":"requirement:key","data":criterion("Only read and verify before launch"),"reason":"Agreed"}),
-        json!({"op":"save_object","kind":"task","id":"t1","revision":0,"parent":"ac:key-rights","data":{"title":"Build key rights","owner":"owner","projects":[],"purpose":"implementation","contract":"Implement and provide evidence"},"reason":"Plan the work"}),
+        json!({"op":"save_object","kind":"task","id":"t1","revision":0,"parent":"ac:key-rights","data":{"title":"Build key rights","owner":"owner","projects":[],"purpose":"implementation","body":"Implement and provide evidence"},"reason":"Plan the work"}),
     ]
     .into_iter()
     .enumerate()

@@ -18,7 +18,7 @@ pub const LIST_FIELDS: [&str; 19] = [
     "review_required",
     "work_ready",
     "at",
-    "description",
+    "body",
     "signal",
     "present",
     "note_status",
@@ -45,15 +45,13 @@ pub const DETAIL_FIELDS: [&str; 12] = [
 
 /// The document fields of the object roles. The tree schema adds its references and
 /// required fields, and each key of a returned document counts too.
-pub const DOCUMENT_FIELDS: [&str; 20] = [
+pub const DOCUMENT_FIELDS: [&str; 17] = [
     "archived",
     "author",
     "answers",
     "before_launch",
-    "body",
     "consumer",
     "consumers",
-    "contract",
     "decision",
     "decision_required",
     "depends_on",
@@ -65,7 +63,6 @@ pub const DOCUMENT_FIELDS: [&str; 20] = [
     "repository",
     "requirement",
     "tests",
-    "text",
 ];
 
 /// The first segment of a path.
@@ -81,10 +78,18 @@ pub fn needs_data(fields: &[String]) -> bool {
     })
 }
 
-/// Refuse the first path whose first segment `known` does not accept.
+/// Refuse the first path whose first segment `known` does not accept. The text of every
+/// object type is `body`, so `description` and `contract` are refused, also under `data`.
 pub fn check_fields(fields: &[String], known: impl Fn(&str) -> bool) -> Result<()> {
     for field in fields {
         let head = head(field);
+        let text = field.strip_prefix("data.").map_or(head, self::head);
+        if let Some(old) = crate::body_migration::OLD_FIELDS
+            .iter()
+            .find(|f| **f == text)
+        {
+            bail!(crate::body_migration::refusal(old));
+        }
         if !LIST_FIELDS.contains(&head) && !DOCUMENT_FIELDS.contains(&head) && !known(head) {
             bail!("unknown field {field}");
         }
@@ -122,8 +127,8 @@ pub fn object_fields(
 ) -> Value {
     let document = &reply["document"];
     let data = &document["data"];
-    // A list cuts the description to a preview of 300 characters.
-    let description = data["description"]
+    // A list cuts the body to a preview of 300 characters.
+    let body = data["body"]
         .as_str()
         .map(|text| json!(text.chars().take(300).collect::<String>()));
     let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
@@ -131,7 +136,7 @@ pub fn object_fields(
         "revision": reply["current_revision"], "contract_revision": reply["contract_revision"],
         "parent": document["parent"], "data": data, "title": data["title"],
         "owner": data["owner"], "review_required": reply["review_required"],
-        "work_ready": reply["work_ready"], "at": document["at"], "description": description,
+        "work_ready": reply["work_ready"], "at": document["at"], "body": body,
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],
         "status": crate::read_compact::status(reply)});

@@ -70,7 +70,7 @@ roots. `kind` filters by type. Reply:
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
   inputs first, then processed inputs, each group in address order. Its `next_cursor` is the
   Inbox cursor.
-- No `revision`, `description`, `process` or `id`. Name them with `fields`.
+- No `revision`, `body`, `process` or `id`. Name them with `fields`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
 With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
@@ -97,24 +97,25 @@ Reply item: the address and each named path, also when its value is empty.
 ```
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `parent`,
-`title`, `owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
+`title`, `owner`, `review_required`, `work_ready`, `at`, `body`, `signal`,
 `present`, `note_status`, `status`, `process`, `work_summary`.
 
-Any other first part names a document field: `body` gives `data.body`, and
-`source_section.title` gives `data.source_section.title`. A document field is a field of the
-object roles (such as `body`, `contract`, `text` or `tests`), a `references` or
-`required_fields` key of the tree schema, or a key of a returned document. Any other path is
-refused: `unknown field nope`.
+Any other first part names a document field: `source_section.title` gives
+`data.source_section.title`. A document field is a field of the object roles (such as
+`text`, `tests` or `depends_on`), a `references` or `required_fields` key of the tree
+schema, or a key of a returned document. Any other path is refused: `unknown field nope`.
+The text of every type is `body`: `description`, `contract`, `data.description` and
+`data.contract` are refused with `use body instead of description; read joppa_help`.
 
 `status` is the tone, as in a plain list item; `note_status` gives the Inbox state.
-`description` is a preview of 300 characters. `data` is the full stored `document.data`, and
+`body` is a preview of 300 characters. `data` is the full stored `document.data`, and
 `data.<key>` is one of its values, never cut. One requirement with all its criteria takes
 two reads:
 
 ```json
 {"workspace": "w", "address": "requirement:r"}
 {"workspace": "w", "parent": "requirement:r",
- "fields": ["title", "status", "revision", "data.description", "data.tests"]}
+ "fields": ["title", "status", "revision", "data.body", "data.tests"]}
 ```
 
 ## Data filter
@@ -166,8 +167,7 @@ up to 10 addresses in one call, and `fields` with `address`.
 - `joppa_history` gives no `all`, `limit` or `signal`. Read the current status of an object
   with `joppa_objects`.
 - A `joppa_search` result gives `address`, `title`, `revision`, `score` and `excerpt`, the
-  first text of the object (`body`, `description`, `contract` or `text`, at most 600
-  characters). It has no `kind`, `id` or `system_id`, no `req` on a requirement, and
+  first text of the object (`body` or `text`, at most 600 characters). It has no `kind`, `id` or `system_id`, no `req` on a requirement, and
   `workspace` only with `all_workspaces: true`. `historical`, `archived` and `exact_id`
   show only when they are `true`. The reply gives no `all_versions`, `all_workspaces`,
   `embedded`, `indexed`, `mode` or `semantic_status`, and `workspaces` only with

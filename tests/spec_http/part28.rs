@@ -38,7 +38,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     types["job"] = json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
     member_runs(&w, &help, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
     for id in ["a", "b", "c"] {
-        w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","contract":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
+        w.command(json!({"op":"save_object","kind":"job","id":id,"revision":0,"parent":null,"data":{"title":"Implement","owner":"alex","body":"Implement and check the contract","purpose":"implementation"},"reason":"Create work"})).await?;
     }
     w.note("secret", 0, "Secret note", "Token s3cr3t", json!([]))
         .await?;
@@ -110,7 +110,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         .await?,
     );
     w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
-    w.command_as(&w.bot, json!({"op":"save_object","kind":"task","id":"planned","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","contract":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Plan the work"})).await?;
+    w.command_as(&w.bot, json!({"op":"save_object","kind":"task","id":"planned","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","body":"Implement the key rights and record the result","purpose":"implementation","projects":[]},"reason":"Plan the work"})).await?;
     covered.push(
         check_callers(
             &w,

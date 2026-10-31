@@ -20,7 +20,7 @@ async fn ac8_a_planner_claims_and_finishes_two_criteria_of_a_req_in_one_mcp_batc
         }
     }
     for (id, ac) in [("a1", "criterion:a"), ("b1", "criterion:b")] {
-        p.write("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":ac,"data":{"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+        p.write("agent", json!({"op":"save_object","kind":"work","id":id,"revision":0,"parent":ac,"data":{"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
     }
     let finish =
         per_criterion(|ac| json!({"op":"finish_planning","ac":ac,"reason":"Plan complete"}));
@@ -157,7 +157,7 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
     .await?;
     if plan {
         p.claim("agent", "criterion:a").await?;
-        p.write("agent", json!({"op":"save_object","kind":"work","id":"t","revision":0,"parent":"criterion:a","data":{"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"links":[],"reason":"Plan the criterion"})).await?;
+        p.write("agent", json!({"op":"save_object","kind":"work","id":"t","revision":0,"parent":"criterion:a","data":{"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"},"links":[],"reason":"Plan the criterion"})).await?;
     }
     p.record("c1c1c1c", frozen_run()).await?;
     let (a, b) = (

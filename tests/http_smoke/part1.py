@@ -125,7 +125,7 @@ initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]
 assert writing in initialized['instructions']
 for schema in (tools['joppa_command']['inputSchema']['properties']['command'],
                tools['joppa_batch']['inputSchema']['properties']['operations']['items']['properties']['command']):
-    assert 'ASD-STE100' in schema['properties']['contract']['description']
+    assert 'ASD-STE100' in schema['properties']['body']['description']
     assert 'said' not in schema['properties']
 def mcp(name, arguments, token=agent_token):
     status, response = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',

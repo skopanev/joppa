@@ -111,7 +111,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
         &mut w,
         "ac:custom-ac",
         Some("requirement:custom"),
-        json!({"title":"The release opens","owner":null,"description":"","depends_on":[],"before_launch":false}),
+        json!({"title":"The release opens","owner":null,"body":"","depends_on":[],"before_launch":false}),
         vec![],
     );
     let revision = w.state.requirements["custom"]
@@ -129,7 +129,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
         &mut w,
         "task:custom/t",
         Some("ac:custom-ac"),
-        json!({"title":"Implement the release","contract":"Change the release view","projects":["app"],"purpose":"implementation"}),
+        json!({"title":"Implement the release","body":"Change the release view","projects":["app"],"purpose":"implementation"}),
         vec![],
     );
     assert!(objects::within(&w.state, "task:custom/t", "initiative:i"));

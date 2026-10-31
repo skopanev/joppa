@@ -101,11 +101,11 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
     );
     // data and data.<key> give the stored document data, without a cut.
     let long = "Given: a long text. ".repeat(30);
-    w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"long","revision":0,"parent":"requirement:r","data":{"title":"Long","owner":"owner","description":long},"reason":"Read contract test"})).await?.map_err(anyhow::Error::msg)?;
+    w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"long","revision":0,"parent":"requirement:r","data":{"title":"Long","owner":"owner","body":long},"reason":"Read contract test"})).await?.map_err(anyhow::Error::msg)?;
     let full = read(
         &w,
         "joppa_objects",
-        json!({"parent":"requirement:r","fields":["data.description","data"]}),
+        json!({"parent":"requirement:r","fields":["data.body","data"]}),
     )
     .await?;
     let saved = full["items"]
@@ -116,8 +116,8 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
         .cloned()
         .unwrap_or_default();
     ensure!(
-        saved["data.description"] == json!(long)
-            && saved["data"]["description"] == json!(long)
+        saved["data.body"] == json!(long)
+            && saved["data"]["body"] == json!(long)
             && saved["data"]["title"] == "Long"
             && full.get("position").is_none()
             && full.get("workspace").is_none(),

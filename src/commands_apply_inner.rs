@@ -25,6 +25,9 @@ pub(crate) fn apply_inner(
         Command::MigrateTestRules {} => {
             crate::test_rules::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigrateBody {} => {
+            crate::body_migration::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigrateNoteParents {} => {
             crate::note_parents::migrate(w, actor, position, recorded_at)?;
         }

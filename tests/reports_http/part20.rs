@@ -110,7 +110,7 @@ async fn the_planner_retires_a_blocked_task_and_other_actors_cannot_over_http_an
     let w = world().await?;
     let p = planning(&w).await?;
     let position = p.blocked("work:t").await?;
-    p.save("work:u", Some("criterion:a"), json!({"title":"U","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+    p.save("work:u", Some("criterion:a"), json!({"title":"U","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
     let retire = |key: &str, revision: u64| json!({"op":"retire_task","id":key,"revision":revision,"reason":"The planned work replaces this Task"});
     // P is not yet the planner, the owner or the workspace owner.
     let revision = p.revision("work:t").await?;
@@ -169,7 +169,7 @@ impl Planning<'_> {
     async fn blocked_dependency(&self) -> Result<()> {
         self.blocked("work:t").await?;
         let pin = self.revision("work:t").await?;
-        self.save("work:u", Some("criterion:b"), json!({"title":"U","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+        self.save("work:u", Some("criterion:b"), json!({"title":"U","owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
             json!([{"target":"work:t","relation":"depends_on","revision":pin,"blocking":true}])).await
     }
     /// P sends unblock_task for T and finish_planning for A in one MCP batch.

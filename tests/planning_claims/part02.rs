@@ -70,7 +70,7 @@ fn finish_requires_changes_and_accepts_updates_without_new_tasks() {
         "planner",
         "work:old",
         Some("criterion:a"),
-        json!({"title":"work:old","owner":"owner","contract":"Implement the changed criterion","purpose":"implementation"}),
+        json!({"title":"work:old","owner":"owner","body":"Implement the changed criterion","purpose":"implementation"}),
     );
     w.ok(
         "planner",

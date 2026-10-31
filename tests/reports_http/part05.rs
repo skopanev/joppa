@@ -123,7 +123,7 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
         ("c", "sheet:two", A),
         ("d", "sheet:three", B),
     ] {
-        command(json!({"op":"save_object","kind":"proof","id":id,"revision":0,"parent":parent,"data":{"title":id,"description":"The exact criterion","owner":"owner"},"reason":"Create a configured criterion"})).await?;
+        command(json!({"op":"save_object","kind":"proof","id":id,"revision":0,"parent":parent,"data":{"title":id,"body":"The exact criterion","owner":"owner"},"reason":"Create a configured criterion"})).await?;
         command(json!({"op":"set_ac_tests","target":format!("proof:{id}"),"tests":[test],"reason":"Bind its exact test"})).await?;
     }
     w.record(

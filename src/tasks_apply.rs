@@ -169,7 +169,7 @@ pub fn apply(
             commands::nonempty(reason)?;
             let mut data = o.current().data.clone();
             data["title"] = json!(title);
-            data["contract"] = json!(contract);
+            data[crate::body_migration::text_field(w, "contract")] = json!(contract);
             if !w.schema_migrated
                 || objects::schema(w).types[&o.kind]
                     .references

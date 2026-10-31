@@ -99,7 +99,7 @@ async fn a_new_workspace_starts_with_one_consumer_per_criterion() -> Result<()> 
     )
     .await?;
     let criterion = |consumer: Option<Value>| {
-        let mut data = json!({"title":"Access persists on iOS","owner":"owner","description":"Given: a buyer.\nWhen: the app restarts.\nThen: access stays.\nEvidence: the read."});
+        let mut data = json!({"title":"Access persists on iOS","owner":"owner","body":"Given: a buyer.\nWhen: the app restarts.\nThen: access stays.\nEvidence: the read."});
         if let Some(consumer) = consumer {
             data["consumer"] = consumer;
         }

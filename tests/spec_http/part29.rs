@@ -7,7 +7,7 @@ async fn ready_task(w: &World, id: &str, ac: &str) -> Result<String> {
 }
 
 fn ready_task_command(id: &str, ac: &str) -> Value {
-    json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Plan the criterion"})
+    json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","body":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Plan the criterion"})
 }
 
 async fn journal_position(w: &World) -> Result<i64> {
@@ -28,7 +28,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     let w = world().await?;
     w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     let t = ready_task(&w, "t", "key-rights").await?;
-    let save = |revision: u32, title: &str| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":title,"owner":"owner","contract":"Implement the changed criterion and record the result","purpose":"implementation","projects":[]},"reason":"Save the work contract"});
+    let save = |revision: u32, title: &str| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":title,"owner":"owner","body":"Implement the changed criterion and record the result","purpose":"implementation","projects":[]},"reason":"Save the work contract"});
     let title = "Implement the specified work";
     w.command(save(1, title)).await?;
     let read = async |address: &str| w.get(&format!("address={address}")).await;
@@ -46,7 +46,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
             && done["process"]["assignee"] == "bot",
         "{done}"
     );
-    w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","contract":"Use the completed work and record the result","purpose":"implementation","projects":[]},"links":[{"target":t,"relation":"depends_on","revision":4,"blocking":true}],"reason":"Depend on the completed work"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","body":"Use the completed work and record the result","purpose":"implementation","projects":[]},"links":[{"target":t,"relation":"depends_on","revision":4,"blocking":true}],"reason":"Depend on the completed work"})).await?;
     let position = journal_position(&w).await?;
 
     let http = w.command_as(&w.bot, save(4, title)).await?;

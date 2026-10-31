@@ -15,7 +15,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     w.command(json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Bind"})).await?;
     let a = object_as(&w, &w.bot, "ac:key-rights", None).await?;
     w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":a["process"]["assessment"]["revision"],"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
-    w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","contract":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","body":"Implement the exact key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work for the handover"})).await?;
     w.command_as(
         &w.bot,
         json!({"op":"claim_task","id":"task:handover","revision":1}),

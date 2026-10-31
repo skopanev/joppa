@@ -35,7 +35,7 @@ async fn a_bot_criterion_title_over_128_characters_is_refused() -> Result<()> {
             Ok::<_, anyhow::Error>((status, reply.json::<Value>().await?))
         }
     };
-    let criterion = |id: &str, title: String| json!({"op":"save_object","kind":"ac","id":id,"revision":0,"parent":"requirement:key","data":{"title":title,"owner":"owner","consumer":"customer","description":"Given: a requirement.\nWhen: bot saves a criterion.\nThen: the title fits.\nEvidence: the saved criterion."},"reason":"Check the title length"});
+    let criterion = |id: &str, title: String| json!({"op":"save_object","kind":"ac","id":id,"revision":0,"parent":"requirement:key","data":{"title":title,"owner":"owner","consumer":"customer","body":"Given: a requirement.\nWhen: bot saves a criterion.\nThen: the title fits.\nEvidence: the saved criterion."},"reason":"Check the title length"});
 
     let (status, saved) = text_rule_request(
         &w,

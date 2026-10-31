@@ -63,13 +63,13 @@ pub async fn fixture(pool: &deadpool_postgres::Pool) -> Result<usize> {
                 "ac",
                 id,
                 Some(parent),
-                json!({"title":format!("Criterion {id}"),"owner":"owner","consumer":"user","description":gwt}),
+                json!({"title":format!("Criterion {id}"),"owner":"owner","consumer":"user","body":gwt}),
             ),
         )
         .await?;
     }
     for (id, parent) in [("t1", "ac:a1"), ("t2", "ac:a3")] {
-        run(pool, &mut n, save("task", id, Some(parent), json!({"title":format!("Task {id}"),"owner":"owner","contract":"Do it","purpose":"implementation","projects":[]}))).await?;
+        run(pool, &mut n, save("task", id, Some(parent), json!({"title":format!("Task {id}"),"owner":"owner","body":"Do it","purpose":"implementation","projects":[]}))).await?;
     }
     for (target, tests) in [
         ("ac:a1", list(&["x1", "x2", "x3"])),

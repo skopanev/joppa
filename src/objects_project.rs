@@ -32,6 +32,7 @@ pub(in crate::store) async fn project(
                 | Command::MigrateConsumers {}
                 | Command::MigrateTestRules {}
                 | Command::MigrateNoteParents {}
+                | Command::MigrateBody {}
         )
     });
     // A redaction rewrites the stored revisions of its object; nothing else may.
@@ -97,7 +98,7 @@ pub(in crate::store) async fn project(
         } else {
             json!(r)
         };
-        let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["description"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"review_required":!objects::review_links(state,address).is_empty(),"work_ready":objects::work_ready(state,address),"signal":signal,"process":objects::process(state,address)});
+        let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"review_required":!objects::review_links(state,address).is_empty(),"work_ready":objects::work_ready(state,address),"signal":signal,"process":objects::process(state,address)});
         if previous != Some(&doc) {
             docs.push(doc);
         }

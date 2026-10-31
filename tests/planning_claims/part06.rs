@@ -6,7 +6,7 @@ fn planner_unblocks_a_task_and_its_dependent_pin_stays_current() {
     let mut w = blocked_plan();
     // U under B depends on T with a blocking link pinned to the current T revision.
     let pin = w.state.objects["work:t"].current().revision;
-    w.ok("owner", json!({"op":"save_object","kind":"work","id":"u","revision":0,"parent":"criterion:b","data":{"title":"work:u","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"links":[{"target":"work:t","relation":"depends_on","revision":pin,"blocking":true}],"reason":"Plan dependent work"}));
+    w.ok("owner", json!({"op":"save_object","kind":"work","id":"u","revision":0,"parent":"criterion:b","data":{"title":"work:u","owner":"owner","body":"Implement this criterion","purpose":"implementation"},"links":[{"target":"work:t","relation":"depends_on","revision":pin,"blocking":true}],"reason":"Plan dependent work"}));
     // The revision check comes first.
     let mut stale = unblock(&w, "work:t");
     stale["revision"] = json!(pin - 1);

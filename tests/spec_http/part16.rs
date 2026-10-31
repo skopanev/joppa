@@ -84,7 +84,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
     let error = "an ac description needs Given:, When:, Then: and Evidence:";
     let criterion = w.get("address=ac:key-rights").await?;
     let mut data = criterion["document"]["data"].clone();
-    data["description"] = json!(valid);
+    data["body"] = json!(valid);
     w.command(json!({"op":"save_object","kind":"ac","id":"key-rights","revision":criterion["current_revision"],"parent":criterion["document"]["parent"],"data":data,"reason":"Prepare existing criterion text"})).await?;
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -93,7 +93,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
     types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":["*"]});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Add ordinary document types"})).await?;
     for id in ["original", "archived"] {
-        w.command(json!({"op":"save_object","kind":"observation","id":id,"revision":0,"parent":null,"data":{"title":"An observation","owner":"owner","description":"Original text"},"reason":"Keep original text"})).await?;
+        w.command(json!({"op":"save_object","kind":"observation","id":id,"revision":0,"parent":null,"data":{"title":"An observation","owner":"owner","body":"Original text"},"reason":"Keep original text"})).await?;
     }
     let original = w.get("address=observation:original").await?;
     w.command(json!({"op":"archive_object","target":"observation:archived","revision":1,"reason":"Archive before the new rule"})).await?;
@@ -103,7 +103,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
     let rule = json!({"contains":markers,"error":error});
     for kind in ["ac", "observation"] {
         types[kind]["question"] = json!(question);
-        types[kind]["required_fields"] = json!({"description":rule});
+        types[kind]["required_fields"] = json!({"body":rule});
     }
     if missing == "Given:" {
         types["domain"]["required_fields"] = json!({"title":{"contains":["Sec","urity"],"error":"A domain title needs both markers"}});
@@ -116,7 +116,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
         "A refused schema changed"
     );
     let mut data = original["document"]["data"].clone();
-    data["description"] = json!(valid);
+    data["body"] = json!(valid);
     w.command(json!({"op":"save_object","kind":"observation","id":"original","revision":1,"parent":null,"data":data,"reason":"Prepare current text before the rule"})).await?;
     let (status, saved) = text_rule_request(&w, &w.owner, &schema_request, command, "http").await?;
     ensure!(status == 200, "{status}: {saved}");
@@ -127,7 +127,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
     let archived = w.get("address=observation:archived").await?;
     ensure!(
         archived["document"]["present"] == false
-            && archived["document"]["data"]["description"] == "Original text",
+            && archived["document"]["data"]["body"] == "Original text",
         "The rule changed archived data: {archived}"
     );
     let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
@@ -138,14 +138,14 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
         } else {
             Value::Null
         };
-        let mut command = json!({"op":"save_object","kind":kind,"id":"new","revision":0,"parent":parent,"data":{"title":"The input changes the contract","owner":"owner","description":invalid},"reason":"Check the configured text rule"});
+        let mut command = json!({"op":"save_object","kind":kind,"id":"new","revision":0,"parent":parent,"data":{"title":"The input changes the contract","owner":"owner","body":invalid},"reason":"Check the configured text rule"});
         if kind == "ac" {
             command["data"]["consumer"] = json!("customer");
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         if missing == "Given:" {
             let question_error = format!(
-                "Check that the title and description answer: {question}. Rewrite them if they do not. Then resend with question_checked"
+                "Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked"
             );
             text_rule_refusal(&w, bot, &request_id, command.clone(), &question_error).await?;
             command["question_checked"] = json!("A different question");
@@ -153,7 +153,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
         }
         command["question_checked"] = json!(question);
         text_rule_refusal(&w, bot, &request_id, command.clone(), error).await?;
-        command["data"]["description"] = json!(valid);
+        command["data"]["body"] = json!(valid);
         let transport = if kind == "ac" { "http" } else { "mcp" };
         let (status, saved) =
             text_rule_request(&w, bot, &request_id, command.clone(), transport).await?;
@@ -173,14 +173,14 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             "{saved}"
         );
         command["revision"] = json!(1);
-        command["data"]["description"] = json!(invalid);
+        command["data"]["body"] = json!(invalid);
         text_rule_refusal(&w, bot, &uuid::Uuid::new_v4().to_string(), command, error).await?;
         ensure!(
             w.get(&format!("address={address}")).await?["document"] == saved["document"],
             "The refused update changed the document"
         );
     }
-    w.command_as(bot, json!({"op":"save_object","kind":"record","id":"plain","revision":0,"parent":null,"data":{"title":"An ordinary record","owner":"owner","description":"No markers"},"reason":"Keep a type without a rule unchanged"})).await?;
+    w.command_as(bot, json!({"op":"save_object","kind":"record","id":"plain","revision":0,"parent":null,"data":{"title":"An ordinary record","owner":"owner","body":"No markers"},"reason":"Keep a type without a rule unchanged"})).await?;
     if missing == "Given:" {
         text_rule_refusal(
             &w,

@@ -2,7 +2,8 @@
 use super::*;
 
 /// The data fields that hold the text of an object, in the order that the excerpt prefers.
-const TEXT_FIELDS: [&str; 4] = ["body", "description", "contract", "text"];
+/// The text of every object type is body, see body_migration.
+const TEXT_FIELDS: [&str; 2] = ["body", "text"];
 
 /// The own text of a result: the first text field of its saved data, cut at 600
 /// characters. The title, the other fields and the parents stay out.

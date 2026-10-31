@@ -104,7 +104,7 @@ async fn a_saved_task_moves_through_the_queue_a_claim_race_and_completion() -> R
                 .clone(),
         )
     };
-    let data = |contract: &str, project: &str| json!({"title":"Build access flow","owner":"owner","projects":[project],"purpose":"implementation","contract":contract});
+    let data = |contract: &str, project: &str| json!({"title":"Build access flow","owner":"owner","projects":[project],"purpose":"implementation","body":contract});
     store::execute_input(
         &pool,
         &ws,

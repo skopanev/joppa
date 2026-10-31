@@ -18,6 +18,8 @@ pub enum Command {
     /// Internal migration event: the schema gets every test rule, see test_rules.
     MigrateTestRules {},
     MigrateNoteParents {},
+    /// Internal migration event: the text of every object type is body, see body_migration.
+    MigrateBody {},
     SetTreeSchema(SetTreeSchemaOp),
     /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
     AssessSignal {

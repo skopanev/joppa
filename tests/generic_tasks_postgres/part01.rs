@@ -72,7 +72,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     for (id, parent) in [("root", None), ("urgent", Some("spec:root"))] {
         store::execute_remote_input(&pool,&ws,"agent",id,&json!({"op":"save_object","kind":"spec","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner"},"reason":"Create a specification"})).await?;
     }
-    let make = |parent: &str| json!({"op":"save_object","kind":"task","revision":0,"parent":parent,"data":{"title":"Implement the specification","owner":"owner","contract":"Implement the documented specification","purpose":"implementation","projects":[]},"reason":"Create work"});
+    let make = |parent: &str| json!({"op":"save_object","kind":"task","revision":0,"parent":parent,"data":{"title":"Implement the specification","owner":"owner","body":"Implement the documented specification","purpose":"implementation","projects":[]},"reason":"Create work"});
     let first =
         store::execute_remote_input(&pool, &ws, "agent", "first", &make("spec:root")).await?;
     let second =
@@ -154,7 +154,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     )
     .await?;
     assert_eq!(
-        old["document"]["data"]["contract"],
+        old["document"]["data"]["body"],
         "Implement the documented specification"
     );
     let conn = pool.get().await?;
@@ -176,7 +176,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     types["ac"] =
         json!({"title":"Criterion","role":"ac","status":"tests","root":false,"parents":["spec"]});
     store::execute_remote_input(&pool,&ws,"owner","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
-    let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","description":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
+    let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","body":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
     let ac_id = ac["system_ids"]["ac"]["standalone"].as_str().unwrap();
     let criterion = resolve_id::resolve(&pool, "owner", &ws, ac_id).await?;
     let selected = store::read_objects(

@@ -13,8 +13,12 @@ pub(crate) fn workflow_command(
     reason: &str,
     exists: bool,
 ) -> Result<Option<Command>> {
-    let description =
-        || Ok::<_, anyhow::Error>(optional_string(data, "description")?.unwrap_or_default());
+    // After migrate_body the typed description and contract come from data.body.
+    let (text, contract) = (
+        crate::body_migration::text_field(w, "description"),
+        crate::body_migration::text_field(w, "contract"),
+    );
+    let description = || Ok::<_, anyhow::Error>(optional_string(data, text)?.unwrap_or_default());
     let cmd = match workflow {
         "domain" => {
             ensure!(
@@ -201,7 +205,7 @@ pub(crate) fn workflow_command(
                     revision: r.number,
                     id: tid.into(),
                     title: string(data, "title")?,
-                    contract: string(data, "contract")?,
+                    contract: string(data, contract)?,
                     projects: list(data, "projects")?,
                     reason: reason.into(),
                 })
@@ -211,7 +215,7 @@ pub(crate) fn workflow_command(
                     revision: r.number,
                     id: tid.into(),
                     title: string(data, "title")?,
-                    contract: string(data, "contract")?,
+                    contract: string(data, contract)?,
                     projects: list(data, "projects")?,
                     purpose: string(data, "purpose")?,
                     acs: vec![ac_id],

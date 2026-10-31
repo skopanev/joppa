@@ -127,7 +127,7 @@ async fn claim_next_task_takes_the_ordinary_task_beside_a_blocked_one() -> Resul
     for mcp in [false, true] {
         let p = planning(&w).await?;
         let position = p.blocked("work:t").await?;
-        p.save("work:ordinary", Some("criterion:a"), json!({"title":"Ordinary","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+        p.save("work:ordinary", Some("criterion:a"), json!({"title":"Ordinary","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
         let reply = p
             .send(mcp, &json!({"op":"claim_next_task"}))
             .await?
@@ -173,7 +173,7 @@ async fn claim_next_task_keeps_the_no_match_error_for_held_and_unpublished_tasks
     let p = planning(&w).await?;
     p.ready().await?;
     p.claim("other", "criterion:a").await?;
-    p.write("other", json!({"op":"save_object","kind":"work","id":"new","revision":0,"parent":"criterion:a","data":{"title":"New","owner":"owner","contract":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
+    p.write("other", json!({"op":"save_object","kind":"work","id":"new","revision":0,"parent":"criterion:a","data":{"title":"New","owner":"owner","body":"Implement this criterion","purpose":"implementation"},"reason":"Plan the work"})).await?;
     p.refuse_command(
         "only an unpublished Task",
         json!({"op":"claim_next_task"}),
@@ -202,7 +202,7 @@ impl Planning<'_> {
     async fn plan_task(&self, key: &str, contract: &str, links: Value) -> Result<()> {
         let (kind, id) = key.split_once(':').unwrap();
         let revision = self.revision(key).await.unwrap_or(0);
-        self.write("agent", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":"criterion:a","data":{"title":"T","owner":"owner","contract":contract,"purpose":"implementation"},"links":links,"reason":"Plan the work"})).await?;
+        self.write("agent", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":"criterion:a","data":{"title":"T","owner":"owner","body":contract,"purpose":"implementation"},"links":links,"reason":"Plan the work"})).await?;
         Ok(())
     }
     /// P finishes A through HTTP or MCP.

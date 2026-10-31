@@ -41,7 +41,10 @@ pub(crate) fn typed_command(
     }
     let data = &native_data;
     let exists = w.objects.contains_key(&address(kind, id));
-    let allowed = native_document_fields(workflow);
+    let allowed = native_document_fields(workflow).map(|fields| match w.body_migrated {
+        true => crate::body_migration::body_fields(fields),
+        false => fields,
+    });
     if let Some(allowed) = allowed {
         for field in data.as_object().context("data must be an object")?.keys() {
             ensure!(

@@ -29,7 +29,7 @@ async fn fixture(w: &record_world::World) -> Result<()> {
     for revision in 2..30 {
         operations.push(json!({"command":{"op":"save_object","kind":"ac","id":"a","revision":revision,
             "parent":"requirement:r","links":links,
-            "data":{"title":"A","owner":"owner","tests":["tests/x.rs > t"],"description":format!("Revision {}", revision + 1)},
+            "data":{"title":"A","owner":"owner","tests":["tests/x.rs > t"],"body":format!("Revision {}", revision + 1)},
             "reason":format!("Revision {}", revision + 1)}}));
     }
     w.mcp(

@@ -86,7 +86,7 @@ async fn the_owner_releases_an_absent_workers_task_claim() -> Result<()> {
         let p = p["token"].as_str().unwrap();
         w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
         // Bot authors T. The human owner alex is neither the holder nor the workspace owner.
-        let save = |revision: u32| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":format!("Implement the specified work, draft {revision}"),"owner":"alex","contract":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Draft the work"});
+        let save = |revision: u32| json!({"op":"save_object","kind":"task","id":"t","revision":revision,"parent":"ac:key-rights","data":{"title":format!("Implement the specified work, draft {revision}"),"owner":"alex","body":"Implement the criterion and record the result","purpose":"implementation","projects":[]},"reason":"Draft the work"});
         for revision in 0..7 {
             w.command_as(&w.bot, save(revision)).await?;
         }

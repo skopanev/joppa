@@ -33,6 +33,7 @@ fn fixture(depends_on: &[&str], a: Option<Value>, b: Option<Value>) -> World {
     );
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     objects::migrate_documents(&mut w.state, "owner", w.position + 1, "now").unwrap();
     for (spec, title) in [("spec:one", "One rule"), ("spec:two", "Two rule")] {
         save(
@@ -54,7 +55,7 @@ fn fixture(depends_on: &[&str], a: Option<Value>, b: Option<Value>) -> World {
             &mut w,
             "criterion:a",
             Some("spec:one"),
-            json!({"title":"criterion:a","owner":"owner","description":draft,"depends_on":depends_on}),
+            json!({"title":"criterion:a","owner":"owner","body":draft,"depends_on":depends_on}),
         );
     }
     save(
@@ -73,7 +74,7 @@ fn fixture(depends_on: &[&str], a: Option<Value>, b: Option<Value>) -> World {
         &mut w,
         "work:t0",
         Some("criterion:a"),
-        json!({"title":"T0","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+        json!({"title":"T0","owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
     );
     for actor in ["planner", "other"] {
         assert_eq!(w.state.members[actor], "human");

@@ -92,7 +92,7 @@ task_id = 'task:mcp-open-task'
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-open-task','command':{
     'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
     'data':{'title':'Restore access','owner':'owner','projects':[],'purpose':'implementation',
-        'contract':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
+        'body':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
 assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['address'] == task_id
 criterion_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
 criterion_process = criterion_read['process']
@@ -148,7 +148,7 @@ ok({'op':'assess','req':'requirement:key','revision':key_revision,'ac':'ac:key-r
 gate = subprocess.run([BIN, 'gate', ws, 'code-sha-v1'], env=env, text=True, capture_output=True)
 assert gate.returncode != 0 and 'no acceptance on a commit' in gate.stderr, gate.stderr
 save('task','agent-task','ac:auto-ac',{'title':'Implement command','owner':'owner','projects':[],
-    'purpose':'implementation','contract':'Implement command and attach merged build evidence'},'Plan the work')
+    'purpose':'implementation','body':'Implement command and attach merged build evidence'},'Plan the work')
 # The portal keeps older revisions after a wording change.
 ok({'op':'save_object','kind':'requirement','id':'key','revision':key_revision,'parent':'capability:restrict',
     'data':{'title':'Ключ до запуска','body':'Updated wording','owner':'owner'},'reason':'Clarify scope'})

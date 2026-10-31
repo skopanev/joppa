@@ -11,7 +11,7 @@ Set data.workspace on a node to bind a child workspace; use set_remote_links for
 
 Create incoming source information as a Note with parent:null. Use structural links to connect it to the objects it informs.
 Preserve original source text and language. Record decisions and product inputs in Notes. Keep comments for discussion.
-Use a short title. Put context, conditions and evidence in body or description. Use clean Markdown in authored text.
+Use a short title. Put context, conditions and evidence in body. Use clean Markdown in authored text.
 Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace structural links.
 
 Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.

@@ -23,6 +23,7 @@ fn configured() -> World {
     );
     objects::migrate_schema(&mut w.state, "owner", w.position + 1, "now").unwrap();
     tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
+    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     objects::migrate_documents(&mut w.state, "owner", w.position + 1, "now").unwrap();
     save(
         &mut w,
@@ -91,7 +92,7 @@ fn work(w: &mut World, actor: &str, id: &str) {
         actor,
         id,
         Some("criterion:a"),
-        json!({"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+        json!({"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
     );
 }
 
@@ -174,7 +175,7 @@ fn one_planner_claims_and_finishes_every_criterion_of_one_req() {
             "planner",
             id,
             Some(ac),
-            json!({"title":id,"owner":"owner","contract":"Implement this criterion","purpose":"implementation"}),
+            json!({"title":id,"owner":"owner","body":"Implement this criterion","purpose":"implementation"}),
         );
     }
     for ac in ["criterion:a", "criterion:b"] {

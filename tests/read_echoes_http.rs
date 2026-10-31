@@ -43,7 +43,7 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
     ensure!(tree["schema"]["revision"] == revision + 1, "{tree}");
     // An object write gives no summaries and no public IDs, also inside a batch.
     let saved = write(&w, &w.bot, json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a",
-        "data":{"title":"Do A","owner":"owner","contract":"Make A green","purpose":"implementation","projects":[]},
+        "data":{"title":"Do A","owner":"owner","body":"Make A green","purpose":"implementation","projects":[]},
         "reason":"Create"})).await?;
     ensure!(
         saved["object"]["address"] == "task:t" && absent(&saved, &["summary", "system_ids"]),

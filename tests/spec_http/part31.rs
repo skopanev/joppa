@@ -123,7 +123,7 @@ async fn block_and_blocked_task_actions_refuse_exact_cases_over_http_and_mcp() -
     let (l, m, z, s) = (&tokens[0], &tokens[1], &tokens[2], &w.owner);
     w.command_as(l, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     for id in ["t", "u", "d"] {
-        w.command(json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","contract":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
+        w.command(json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":"ac:key-rights","data":{"title":"Complete the defined work","owner":"owner","body":"Implement the key rights and record the checks","purpose":"implementation","projects":[]},"reason":"Create work"})).await?;
     }
     w.command_as(l, json!({"op":"claim_task","id":"task:t","revision":1}))
         .await?;

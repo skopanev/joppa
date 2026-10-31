@@ -38,10 +38,10 @@ export function fillCommonObject(body,detail){
   if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   const remote=historical?null:workspaceLinksSection(detail);
   if(remote)body.append(remote);
-  const contentKey=['body','description','contract'].find(key=>typeof d[key]==='string'&&d[key].trim());
-  if(contentKey)body.append(markdownBlock(d[contentKey],'object-content node-description'));
+  // The text of every object type is body.
+  if(typeof d.body==='string'&&d.body.trim())body.append(markdownBlock(d.body,'object-content node-description'));
   for(const [key,value] of Object.entries(d)){
-    if(['title','owner',contentKey].includes(key)||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
+    if(['title','owner','body'].includes(key)||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
     const field=E('div',undefined,'object-field');
     const refRule=state.data.objectTypes?.[detail.kind]?.references?.[key];
     field.append(E('small',refRule?refRule.title:key.replaceAll('_',' '),'type-label'));

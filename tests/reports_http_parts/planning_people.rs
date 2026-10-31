@@ -210,7 +210,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
     let p = people(&w).await?;
     while let n @ ..8 = p.revision("criterion:a").await? {
         let data =
-            json!({"title":"criterion:a","owner":"owner","description":format!("Draft {n}")});
+            json!({"title":"criterion:a","owner":"owner","body":format!("Draft {n}")});
         p.save("criterion:a", Some("spec:one"), data, json!([]))
             .await?;
     }

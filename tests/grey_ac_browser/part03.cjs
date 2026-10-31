@@ -16,7 +16,7 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
   const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   const task = (id, contract, revision = 0, links = []) => f.command({op: 'save_object', kind: 'task', id, revision, parent: 'ac:A',
-    data: {title: 'Task ' + id, owner: 'owner', contract, purpose: 'implementation'}, links, reason: 'Define the Task'});
+    data: {title: 'Task ' + id, owner: 'owner', body: contract, purpose: 'implementation'}, links, reason: 'Define the Task'});
   const meta = async () => {
     const card = await f.open('task:B');
     const text = await card.locator(':scope > .object-body .object-links').textContent();
@@ -46,7 +46,7 @@ test('retired-tasks-hidden-ac1: the board tree hides a retired Task and its page
   const f = await fixture(criterionRecords, configured);
   try {
     for (const id of ['open', 'old']) await f.command({op: 'save_object', kind: 'task', id, revision: 0, parent: 'ac:A',
-      data: {title: 'Task ' + id, owner: 'owner', contract: 'Implement the ' + id + ' part', purpose: 'implementation'}, reason: 'Define the Task'});
+      data: {title: 'Task ' + id, owner: 'owner', body: 'Implement the ' + id + ' part', purpose: 'implementation'}, reason: 'Define the Task'});
     await f.command({op: 'retire_task', id: 'task:old', revision: 1, reason: 'A new Task replaces this work'}, true);
     const card = await f.open('ac:A');
     await card.locator('.common-object[data-object-address="task:open"]').waitFor();
@@ -63,7 +63,7 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
   try {
     await f.bind('ac:A', ['X']);
     await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
-      data: {title: 'Implement the criterion', owner: 'owner', contract: 'Implement the criterion and record the result', purpose: 'implementation'},
+      data: {title: 'Implement the criterion', owner: 'owner', body: 'Implement the criterion and record the result', purpose: 'implementation'},
       reason: 'Check the object page under a criterion'});
     await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
     const addresses = ['requirement:r', 'ac:A', 'task:T'];

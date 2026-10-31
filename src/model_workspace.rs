@@ -51,6 +51,9 @@ pub struct Workspace {
     /// The migrate_note_parents event ran: inbox objects have no parent.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub note_parents_migrated: bool,
+    /// The migrate_body event ran: the text of every object type is data.body.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub body_migrated: bool,
     /// The reference prefix comes from the title, so a rename derives it again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefix_from_title: bool,

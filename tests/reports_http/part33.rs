@@ -22,7 +22,7 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
     .await?;
     // The list save gives C a revision that changes only its tests, so the pin stays current.
     ensure!(p.revision("criterion:c").await? == pin + 1);
-    p.save("work:b", Some("criterion:a"), json!({"title":"B","owner":"owner","contract":"Use the prerequisite","purpose":"implementation"}),
+    p.save("work:b", Some("criterion:a"), json!({"title":"B","owner":"owner","body":"Use the prerequisite","purpose":"implementation"}),
         json!([{"target":"criterion:c","relation":"depends_on","revision":pin,"blocking":true}])).await?;
     // Control: B waits while C is grey.
     ensure!(p.status("criterion:c").await?["status"] == "grey");
@@ -73,7 +73,7 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_contract_of_a_prerequisite_task_makes_its_dependent_wait_for_review() -> Result<()> {
     let w = world().await?;
-    let contract = |title: &str, contract: &str| json!({"title":title,"owner":"owner","contract":contract,"purpose":"implementation"});
+    let contract = |title: &str, contract: &str| json!({"title":title,"owner":"owner","body":contract,"purpose":"implementation"});
     for mcp in [false, true] {
         let p = planning(&w).await?;
         p.ready().await?;

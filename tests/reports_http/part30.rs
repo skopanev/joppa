@@ -163,7 +163,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     }
 
     // A Task pin to a changed Task contract still holds its dependent after a rebuild.
-    let contract = |title: &str| json!({"title":title,"owner":"owner","contract":"Implement the agreed mechanism","purpose":"implementation"});
+    let contract = |title: &str| json!({"title":title,"owner":"owner","body":"Implement the agreed mechanism","purpose":"implementation"});
     p.save(
         "work:source",
         Some("criterion:a1"),

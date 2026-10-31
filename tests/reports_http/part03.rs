@@ -46,7 +46,7 @@ impl Planning<'_> {
         let (kind, id) = address.split_once(':').unwrap();
         let mut data = current["document"]["data"].clone();
         data["title"] = json!(title);
-        data["contract"] = json!(contract);
+        data["body"] = json!(contract);
         self.write(actor, json!({"op":"save_object","kind":kind,"id":id,"revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Amend the contract"})).await
     }
     async fn revision(&self, address: &str) -> Result<u64> {
@@ -98,7 +98,7 @@ impl Planning<'_> {
         self.save(
             "criterion:c",
             Some("spec:two"),
-            json!({"title":"criterion:c","owner":"owner","description":description}),
+            json!({"title":"criterion:c","owner":"owner","body":description}),
             json!([]),
         )
         .await?;
@@ -116,7 +116,7 @@ impl Planning<'_> {
     }
     /// T0: an existing Task under A.
     async fn t0(&self) -> Result<()> {
-        self.save("work:t0", Some("criterion:a"), json!({"title":"T0","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await
+        self.save("work:t0", Some("criterion:a"), json!({"title":"T0","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await
     }
     async fn claim(&self, actor: &str, ac: &str) -> Result<()> {
         let revision = self.revision(ac).await?;
@@ -176,7 +176,7 @@ impl Planning<'_> {
     /// at revision 4 and blocks it. Returns the position of the block event.
     async fn blocked(&self, task: &str) -> Result<u64> {
         self.ready().await?;
-        self.save(task, Some("criterion:a"), json!({"title":"T","owner":"owner","contract":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
+        self.save(task, Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion","purpose":"implementation"}), json!([])).await?;
         for (op, reason) in [
             ("claim_task", None),
             ("release_task", Some("Return the Task")),
