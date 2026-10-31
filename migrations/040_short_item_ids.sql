@@ -1,7 +1,7 @@
 -- A new public item ID ends with 8 characters, as a new local object ID has 8 characters.
--- Existing IDs keep their 10 characters: item_ids is append-only. The namespace is the ID
--- without its "-<type>-<code>" end, for codes of each length; for each stored ID it is the
--- same value as the older expression, which assumed 10 characters.
+-- Migration 042 gives the older 10-character codes their first 8 characters. The namespace
+-- is the ID without its "-<type>-<code>" end, for codes of each length; for each stored ID it
+-- is the same value as the older expression, which assumed 10 characters.
 DO $$ BEGIN
     IF pg_get_expr((SELECT d.adbin FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
             WHERE d.adrelid='joppa.item_ids'::regclass AND a.attname='namespace'), 'joppa.item_ids'::regclass) NOT LIKE '%regexp_replace%' THEN

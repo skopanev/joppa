@@ -226,9 +226,11 @@ impl Object {
 pub fn defaults() -> BTreeMap<String, TreeType> {
     let mut types = schema_migration_defaults();
     crate::consumer_migration::convert_types(&mut types);
-    // The built-in tree names the status rule of each type. An inbox type has no parent.
+    // The built-in tree names the status rule of each type. An inbox type has no parent, and a
+    // Task type has no decision rule.
     for t in types.values_mut() {
         t.status = Some(role_status_rule(t).to_owned());
+        t.parent_decision = false;
         if t.inbox == Some(true) {
             t.parents.clear();
             t.root = true;
