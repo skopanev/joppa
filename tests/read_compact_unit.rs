@@ -57,9 +57,21 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
         list_item(&item, Some(&status)),
         json!({"address":"ac:a","status":"green"})
     );
-    assert!(check_fields(&named).is_ok());
+    assert!(check_fields(&named, |_| false).is_ok());
+    // A bare document field names data.<field>; a field of the tree schema is known too.
+    let body = vec!["body".to_owned()];
+    let data = json!({"address":"ac:a","data":{"body":"Rule"}});
+    assert!(check_fields(&body, |_| false).is_ok());
     assert_eq!(
-        check_fields(&["nope".to_owned()]).unwrap_err().to_string(),
+        list_item(&data, Some(&body)),
+        json!({"address":"ac:a","body":"Rule"})
+    );
+    let custom = vec!["source_section.title".to_owned()];
+    assert!(check_fields(&custom, |head| head == "source_section").is_ok());
+    assert_eq!(
+        check_fields(&["nope".to_owned()], |_| false)
+            .unwrap_err()
+            .to_string(),
         "unknown field nope"
     );
 }

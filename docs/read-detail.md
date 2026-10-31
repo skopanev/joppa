@@ -87,13 +87,14 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 
 ## More addresses in one read
 
-`address` takes 1 to 10 addresses separated by commas. Spaces around an address are ignored.
+`address` takes 1 to 25 addresses separated by commas, as many as one page. Spaces around
+an address are ignored.
 
 ```json
 {"workspace": "w", "address": "ac:a,requirement:r"}
 ```
 
-One address gives the object itself, as above. 2 to 10 addresses give `{"items": [...]}`
+One address gives the object itself, as above. 2 to 25 addresses give `{"items": [...]}`
 in the order of the request. Each item is the detail of one object with its `address`:
 
 ```json
@@ -101,27 +102,35 @@ in the order of the request. Each item is the detail of one object with its `add
            {"address": "requirement:r", "revision": 5, "data": {}}]}
 ```
 
-- More than 10 addresses are refused: `at most 10 addresses in one call`.
+- More than 25 addresses are refused: `at most 25 addresses in one call`.
 - An empty address is refused: `empty address in the address list`.
 - `history`, `revision` and `comments_cursor` need one address. With more addresses they are
   refused: `history, revision and comments_cursor read one address`.
 - An unknown address refuses the whole read: `unknown object`.
+- A reply of 2 or more objects above 256 KB is refused. A read of one object comes in full.
 
 ## Named fields of an object read by its address
 
-`fields` with `address` gives the `revision` and each named path of the object, with the
-values of the list fields. `address` shows only for 2 to 10 addresses, or when the request
-named an alias. `docs/read-contract.md` names the list fields.
+`fields` with `address` gives only the named paths. `address` shows only for 2 to 25
+addresses, or when the request named an alias. Name `revision` to get the revision.
 
 ```json
 {"workspace": "w", "address": "ac:a,requirement:r", "fields": ["title", "status"]}
 ```
 
 ```json
-{"items": [{"address": "ac:a", "revision": 2, "title": "A", "status": "green"},
-           {"address": "requirement:r", "revision": 5, "title": "R", "status": "grey"}]}
+{"items": [{"address": "ac:a", "title": "A", "status": "green"},
+           {"address": "requirement:r", "title": "R", "status": "grey"}]}
 ```
 
+- A list field has the value of the list item: `status` is the tone, and `status.label`
+  gives the label. `docs/read-contract.md` names the list fields.
+- A detail key gives its value in the detail read: `links`, `comments`, `files`,
+  `references`, `link_groups`, `remote_links`, `remote_review_required`,
+  `remote_links_revision`, `child_workspace`, `verification_summary`, `question` and
+  `annotations`. A key that the detail omits gives `null`.
+- Any other first part names a document field: `body` gives `data.body`. The rules of
+  `docs/read-contract.md` refuse an unknown path: `unknown field nope`.
 - `fields` reads the current revision. With `history` or `revision` it is refused:
   `fields reads the current revision`.
 - `work_summary` comes only from `work_filter: "unstarted"`; a read by address gives `null`.

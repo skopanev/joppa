@@ -39,14 +39,15 @@ fn each(value: &mut Value, key: &str, mut f: impl FnMut(&mut Value)) {
     }
 }
 
-/// The largest text of an MCP tool reply: 256 KiB.
+/// The largest text of an MCP tool reply with a list of items: 256 KiB.
 pub const REPLY_MAX: usize = 262_144;
 
-/// The text of a tool reply. A larger text is refused, so a client never gets a cut reply.
+/// The text of a tool reply. A reply with `items` above REPLY_MAX is refused, so a client
+/// never gets a cut list. One object comes in full: one field can hold 256 KiB.
 pub fn text(reply: &Value) -> anyhow::Result<String> {
     let text = reply.to_string();
     anyhow::ensure!(
-        text.len() <= REPLY_MAX,
+        text.len() <= REPLY_MAX || !reply["items"].is_array(),
         "reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit"
     );
     Ok(text)
@@ -162,11 +163,15 @@ mod reply_ceiling {
     use super::*;
 
     #[test]
-    fn a_reply_text_above_256_kib_is_refused() {
-        let at = json!("x".repeat(REPLY_MAX - 2));
+    fn a_list_reply_text_above_256_kib_is_refused() {
+        // {"items":[""]} has 14 bytes around the text.
+        let at = json!({"items": ["x".repeat(REPLY_MAX - 14)]});
         assert_eq!(text(&at).map(|t| t.len()).ok(), Some(REPLY_MAX));
-        let above = json!("x".repeat(REPLY_MAX - 1));
+        let above = json!({"items": ["x".repeat(REPLY_MAX - 13)]});
         let error = text(&above).unwrap_err().to_string();
         assert!(error.starts_with("reply exceeds 256 KB; narrow the request"));
+        // One object has no items and comes in full.
+        let object = json!({"data": {"body": "x".repeat(REPLY_MAX)}});
+        assert!(text(&object).is_ok_and(|t| t.len() > REPLY_MAX));
     }
 }

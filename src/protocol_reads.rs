@@ -1,5 +1,5 @@
 //! The compact MCP reads of joppa_objects and joppa_tests (requirement:read-contract).
-use anyhow::{Context, ensure};
+use anyhow::Context;
 use deadpool_postgres::Pool;
 use joppa::{read_compact as rc, read_shapes, store};
 use serde_json::{Value, json};
@@ -21,9 +21,6 @@ fn number(a: &Value, key: &str) -> anyhow::Result<Option<u64>> {
 async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let workspace = a["workspace"].as_str().context("missing workspace")?;
     let fields = read_shapes::fields_argument(&a["fields"])?;
-    if let Some(fields) = &fields {
-        rc::check_fields(fields)?;
-    }
     let revision = number(a, "revision")?
         .map(u32::try_from)
         .transpose()
@@ -85,46 +82,19 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         note_status: a["note_status"].as_str(),
         related_to: a["related_to"].as_str(),
         work_filter: a["work_filter"].as_str(),
-        data: fields
-            .iter()
-            .flatten()
-            .any(|f| f == "data" || f.starts_with("data.")),
+        data: fields.as_deref().is_some_and(rc::needs_data),
     };
-    if let Some(addresses) = addresses(&a["address"])? {
-        let many = addresses.len() > 1;
-        ensure!(
-            !many || !(history || revision.is_some() || a["comments_cursor"].is_string()),
-            "history, revision and comments_cursor read one address"
-        );
-        ensure!(
-            fields.is_none() || !(history || revision.is_some()),
-            "fields reads the current revision"
-        );
-        let mut items = Vec::with_capacity(addresses.len());
-        for asked in addresses {
-            let reply = store::read_objects(pool, workspace, actor, &scope(Some(asked))).await?;
-            let address = reply["address"].clone();
-            let mut item = match &fields {
-                Some(fields) => {
-                    let inbox = fields.iter().any(|f| f.starts_with("note_status"))
-                        && inbox_kind(pool, workspace, actor, reply["kind"].as_str()).await?;
-                    rc::object_fields(&reply, fields, inbox)
-                }
-                None if history => history_page(reply, asked, a["cursor"].as_str())?,
-                None if revision.is_some() => rc::revision(reply, asked),
-                None => rc::detail(reply, asked, a["comments_cursor"].as_str())?,
-            };
-            // Each item of a read of more addresses names its object.
-            if many {
-                item["address"] = address;
-            }
-            items.push(item);
-        }
-        return Ok(if many {
-            json!({"items": items})
-        } else {
-            items.remove(0)
-        });
+    if let Some(addresses) = address::addresses(&a["address"])? {
+        return address::read(
+            pool,
+            workspace,
+            actor,
+            a,
+            &addresses,
+            fields.as_deref(),
+            scope,
+        )
+        .await;
     }
     let mut reply = store::read_objects(pool, workspace, actor, &scope(None)).await?;
     // A list in address order gives the bare address of its last item as the cursor,
@@ -138,38 +108,43 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     {
         reply["next_cursor"] = json!(address);
     }
+    if let Some(fields) = &fields {
+        let items = reply["items"].as_array().into_iter().flatten();
+        let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
+        check(pool, workspace, actor, fields, false, &data).await?;
+    }
     Ok(rc::list(reply, fields.as_deref()))
 }
 
-/// The addresses of a read: one address, or 2 to 10 addresses separated by commas.
-fn addresses(value: &Value) -> anyhow::Result<Option<Vec<&str>>> {
-    let Some(text) = value.as_str() else {
-        return Ok(None);
-    };
-    let list: Vec<&str> = text.split(',').map(str::trim).collect();
-    ensure!(
-        list.iter().all(|a| !a.is_empty()),
-        "empty address in the address list"
-    );
-    ensure!(list.len() <= 10, "at most 10 addresses in one call");
-    Ok(Some(list))
-}
+#[path = "protocol_reads_address.rs"]
+mod address;
 
-/// The revision headers in pages of 25, oldest first: items, total and next_cursor.
-fn history_page(mut reply: Value, asked: &str, cursor: Option<&str>) -> anyhow::Result<Value> {
-    let revisions = match reply["revisions"].take() {
-        Value::Array(revisions) => revisions,
-        _ => vec![],
+/// Refuse a field that names no list field, no document field, no field of the tree schema
+/// and no key of a returned document. A read by address also takes the detail keys.
+async fn check(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    fields: &[String],
+    detail: bool,
+    data: &[&Value],
+) -> anyhow::Result<()> {
+    let found = |head: &str| {
+        (detail && rc::DETAIL_FIELDS.contains(&head)) || data.iter().any(|d| d.get(head).is_some())
     };
-    reply.as_object_mut().map(|m| m.remove("revisions"));
-    let page = rc::page(revisions, cursor)?;
-    let mut out = rc::headers(reply, asked);
-    for key in ["items", "total", "next_cursor"] {
-        if !page[key].is_null() {
-            out[key] = page[key].clone();
-        }
+    if rc::check_fields(fields, found).is_ok() {
+        return Ok(());
     }
-    Ok(out)
+    let tree = store::tree_schema(pool, workspace, actor, None).await?;
+    let types = tree["schema"]["types"].as_object().into_iter().flatten();
+    let schema: Vec<&String> = types
+        .flat_map(|(_, t)| ["references", "required_fields"].map(|k| &t[k]))
+        .filter_map(Value::as_object)
+        .flat_map(|m| m.keys())
+        .collect();
+    rc::check_fields(fields, |head| {
+        found(head) || schema.iter().any(|k| *k == head)
+    })
 }
 
 /// An Inbox type lists unprocessed inputs first, so its list keeps the order of read_objects.

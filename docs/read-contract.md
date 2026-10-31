@@ -17,8 +17,9 @@ MCP reads have one shape. There is no `verbose` switch.
   request named an alias of the object.
 - No key gives a default value: a flag shows only when it is `true`, and a link relation
   only when it is not `related`. Read a missing flag as `false`.
-- An MCP reply text holds at most 256 KB (262144 bytes). A larger reply is refused:
+- An MCP reply with `items` holds at most 256 KB (262144 bytes). A larger list is refused:
   `reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit`.
+  A read of one object comes in full, because one field can hold 256 KiB.
 - MCP replies give no `item_id`. To resolve a copied public ID, send it as `query` to
   `joppa_search`: the reply gives only that object, with `exact_id: true`.
 
@@ -95,10 +96,15 @@ Reply item: the address and each named path, also when its value is empty.
  "work_summary": {"active": 0, "done": 1, "retired": 0}}
 ```
 
-A path whose first part is not a list field is refused: `unknown field nope`.
 List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `parent`,
 `title`, `owner`, `review_required`, `work_ready`, `at`, `description`, `signal`,
 `present`, `note_status`, `status`, `process`, `work_summary`.
+
+Any other first part names a document field: `body` gives `data.body`, and
+`source_section.title` gives `data.source_section.title`. A document field is a field of the
+object roles (such as `body`, `contract`, `text` or `tests`), a `references` or
+`required_fields` key of the tree schema, or a key of a returned document. Any other path is
+refused: `unknown field nope`.
 
 `status` is the tone, as in a plain list item; `note_status` gives the Inbox state.
 `description` is a preview of 300 characters. `data` is the full stored `document.data`, and
