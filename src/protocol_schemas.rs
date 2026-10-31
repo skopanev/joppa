@@ -42,7 +42,7 @@ pub(super) fn tests() -> Value {
     json!({
         "workspace": text("workspace key or alias"),
         "ac": text("1 to 100 comma-separated criterion addresses"),
-        "parent": text("direct parent address, or * for all; reads every criterion below it in pages of 100"),
+        "parent": text("direct parent address (1 level deep, e.g. requirement:id), or * for all; reads direct child criteria in pages of 100"),
         "kind": text("criterion type with parent; default ac"),
         "task": text("Task address; gives its done state and commit"),
         "summary": {"type":"boolean",
