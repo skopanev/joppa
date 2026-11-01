@@ -75,7 +75,7 @@ async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Re
         before == w.get("address=job:one").await?,
         "refusals change no state"
     );
-    let help = read_mcp("joppa_help", json!({"workspace":w.ws})).await?;
+    let help = read_mcp("joppa_help", json!({"workspace":w.ws,"section":"operations"})).await?;
     ensure!(
         !help["operations"]
             .as_object()

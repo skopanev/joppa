@@ -124,7 +124,7 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
 ```
 
 - A list field has the value of the list item: `status` is the tone, `status.label` gives
-  the label, and `body` is a preview of 300 characters. `data.body` gives the full text.
+  the label, and `body` is the full text, the same as `data.body`.
   `docs/read-contract.md` names the list fields.
 - A detail key gives its value in the detail read: `links`, `comments`, `files`,
   `references`, `link_groups`, `remote_links`, `remote_review_required`,
@@ -133,6 +133,8 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
 - Any other first part names a document field: `note` gives `data.note`. The rules of
   `docs/read-contract.md` refuse an unknown path and the old text fields `description` and
   `contract`.
-- `fields` reads the current revision. With `history` or `revision` it is refused:
-  `fields reads the current revision`.
+- `fields` reads the current revision, or the revision that `revision` names. Then the
+  document fields and `revision` come from that revision, and the state fields (`status`,
+  `signal`, `review_required`, `work_ready`, `process`, `children`) stay current. With
+  `history` it is refused: `fields reads one revision; history gives the revision headers`.
 - `work_summary` comes only from `work_filter: "unstarted"`; a read by address gives `null`.

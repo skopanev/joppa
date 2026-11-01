@@ -161,7 +161,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
             Ok::<_, anyhow::Error>(value)
         }
     };
-    let help = call("joppa_help", json!({"workspace":w.ws})).await?;
+    let help = call("joppa_help", json!({"workspace":w.ws,"section":"tree"})).await?;
     let tree = call("joppa_tree", json!({"workspace":w.ws})).await?;
     ensure!(help["tree"] == tree, "{help} vs {tree}");
     ensure!(
@@ -174,7 +174,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     );
     let generic_help = call("joppa_help", json!({})).await?;
     ensure!(
-        generic_help.get("tree").is_none() && generic_help["operations"].is_object(),
+        generic_help.get("tree").is_none() && generic_help["sections"]["tree"].is_string(),
         "{generic_help}"
     );
     for kind in ["observation", "record"] {

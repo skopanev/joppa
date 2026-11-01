@@ -11,7 +11,7 @@ import {valueStatus} from 'board/result-filter.js';
 const testTone=status=>status==='pass'||status==='green'?'green':['fail','red'].includes(status)?'red':'grey';
 function testSummary(s){
   const passed=s.tests.filter(t=>t.status==='pass').length;
-  return 'Tests: '+passed+' of '+s.tests.length+' pass'+(s.commit?' · commit '+s.commit.slice(0,7):'')+(s.commits_behind?' · '+s.commits_behind+' commits behind':'')+(s.tests_draft?' · list needs saving':'');
+  return 'Tests: '+passed+' of '+s.tests.length+' pass'+(s.commit?' · commit '+s.commit.slice(0,7):'')+(s.tests_draft?' · list needs saving':'');
 }
 export async function applyTestStatuses(items){
   const criteria=items.filter(item=>state.data.objectTypes?.[item.kind]?.role==='ac').map(item=>item.address);

@@ -237,9 +237,14 @@ pub fn archive(
     if !commands::rule_applies(w, commands::LIST_SAVE_RESET, position) {
         return Ok(());
     }
-    // An archived spec object resets the criteria at and below its parent.
-    match parent {
-        Some(parent) if !inbox => reset_criteria(w, &parent, at),
+    // An archived spec object resets the criteria at and below itself. Before the epoch of
+    // archive_own_reset, it reset them at and below its parent.
+    let root = match commands::rule_applies(w, commands::ARCHIVE_OWN_RESET, position) {
+        true => Some(target),
+        false => parent,
+    };
+    match root {
+        Some(root) if !inbox => reset_criteria(w, &root, at),
         _ => Ok(()),
     }
 }

@@ -13,7 +13,7 @@ async fn each_removed_operation_is_refused_live_and_names_its_replacement() -> R
     let w = record_world::world(&[]).await?;
     let before = w.position().await?;
     let help = w
-        .mcp(&w.bot, "joppa_help", json!({}))
+        .mcp(&w.bot, "joppa_help", json!({"section":"operations"}))
         .await?
         .map_err(anyhow::Error::msg)?;
     for op in NAMES {
@@ -65,7 +65,7 @@ async fn each_removed_operation_is_refused_live_and_names_its_replacement() -> R
     );
     // The help and the command schema name none of them.
     let help: Value = w
-        .mcp(&w.bot, "joppa_help", json!({}))
+        .mcp(&w.bot, "joppa_help", json!({"section":"operations"}))
         .await?
         .map_err(anyhow::Error::msg)?;
     for op in NAMES {

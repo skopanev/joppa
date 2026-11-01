@@ -25,7 +25,7 @@ At least 80% of sentences in each text must comply. Russian is permitted under t
 Apply this requirement to REQs, ACs, tasks, comments, decisions, descriptions, reasons, scope, and expected and observed results.
 Preserve intake and verbatim user text in their original language. Do not translate existing text or rewrite history and evidence.
 New REQ and AC wording still requires owner confirmation.
-Read the complete [technical writing rules](writing.md), also returned by `joppa_help` under `writing`.
+Read the complete [technical writing rules](writing.md), also returned by `joppa_help` with `section: "writing"`.
 
 ## Commands
 
@@ -74,7 +74,8 @@ attach: target, id, name, content_type, size, hash; the bytes are uploaded first
         in Spaces and answers {hash,size}; any number of attachments per object.
         The MCP tool joppa_attach {workspace, target, filename, content_type?,
         content | content_base64} does the upload and the attach in one call
-detach: target, id, reason; the file itself stays — it may be attached elsewhere
+detach: target, id, reason; the file stays readable for 14 days, then the periodic
+        reconcile deletes it unless an active attachment of the workspace names its hash
 
 target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
 ac:<req>/<ac>, note:<id>, task:<req>/<task>, project:<id>.
@@ -305,8 +306,14 @@ coverage. Workspace authorization applies before any provider request and before
 returning results. See [search](search.md) for the scope flags, the indexer, archived
 data, provider setup and ranking limits.
 
-`joppa_help` also returns the full search guide under `search`, so agents can
+`joppa_help` with `section: "search"` returns the full search guide, so agents can
 read indexing limits and failure behavior without a local checkout.
+
+`joppa_help` without `section` or `op` returns a short table of contents: `sections` with
+one line for each section, `ops` with each operation name, and `hint`. `section` is one of
+`operations`, `writing`, `objects`, `search`, `tree` and `examples`, and the reply gives only
+that key. `op` gives `operations` with only that operation. `tree` and `examples` need
+`workspace`.
 
 ## MCP revision reads
 
@@ -337,6 +344,7 @@ Use view, limit, cursor, project and comma-separated priorities as query paramet
 `GET /api/workspaces/:workspace/timeline` and `joppa_timeline` return the same page.
 The timeline has one entry for each journal event, in journal order.
 Each entry has `position`, `at`, `actor`, `actor_type`, `address`, `title`, `revision`, `change`, `op` and `reason`.
+A comment entry (op `comment`, `note` or `withdraw_note`) also has `comment_id`, the ID of its comment.
 `revision` is the object revision at that change. The board opens it with `?object=ADDRESS&revision=N`.
 `change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other.
 A move is a save that changes only the parent.

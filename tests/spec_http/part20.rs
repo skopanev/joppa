@@ -118,6 +118,26 @@ async fn the_agent_bot_finds_an_object_first_by_its_address() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn the_agent_bot_finds_an_object_first_by_its_generated_local_id() -> Result<()> {
+    let w = world().await?;
+    w.note("k3x9m2p7", 0, "Passkey plan", "passkey for first", json!([]))
+        .await?;
+    w.note("other", 0, "Passkey rollout", "passkey after k3x9m2p7", json!([]))
+        .await?;
+    let found = mcp_value(&w, "joppa_search", json!({"workspace":w.ws,"query":"k3x9m2p7"})).await?;
+    let items = found["items"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        items.len() == 1 && items[0]["address"] == "note:k3x9m2p7" && items[0]["exact_id"] == true,
+        "{found}"
+    );
+    // A query of another form searches the text: both notes match.
+    let words = mcp_value(&w, "joppa_search", json!({"workspace":w.ws,"query":"passkey"})).await?;
+    ensure!(words["items"].as_array().map(Vec::len) == Some(2), "{words}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
     // signal-records-source-ac1
     let w = world().await?;

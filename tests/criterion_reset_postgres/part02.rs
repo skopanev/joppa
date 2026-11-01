@@ -123,15 +123,27 @@ async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
     );
     let b = read(&pool, &ws, "criterion:b").await?["current_revision"].clone();
     write(&pool, &ws, "owner", json!({"op":"archive_object","target":"criterion:b","revision":b,"reason":"Drop the red criterion"})).await?;
+    // An archive resets only the criteria at and below the archived object: A stays.
     let live = snapshot(&pool, &ws).await?;
     ensure!(
-        live["criterion:a"]["status"]["status"] == "grey"
-            && live["criterion:a"]["assessment"]["state"] == "unassessed"
+        live["criterion:a"]["status"]["status"] == "green"
+            && live["criterion:a"]["assessment"]["state"] == "ready"
             && live["criterion:d"]["status"]["status"] == "green",
         "{live}"
     );
     let replayed = replay(&pool, &ws).await?;
     ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
+    // An archive before the epoch of archive_own_reset keeps its old meaning in a replay:
+    // it resets the criteria at and below the parent, so A is grey and unassessed.
+    let after = events(&pool, &ws).await? + 1;
+    pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='archive_own_reset'", &[&ws, &after]).await?;
+    let old = replay(&pool, &ws).await?;
+    ensure!(
+        old["criterion:a"]["status"]["status"] == "grey"
+            && old["criterion:a"]["assessment"]["state"] == "unassessed"
+            && old["criterion:d"]["status"]["status"] == "green",
+        "{old}"
+    );
     Ok(())
 }
 

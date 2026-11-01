@@ -40,7 +40,13 @@ async fn each_save_example_shows_a_related_link_and_a_note_has_no_parent() -> Re
     store::enroll_service(&pool, &ws, "owner", "bot", "agent").await?;
     let (_fake, endpoint) = world::provider().await?;
     let server = world::serve(&url, &["owner", "bot"], &endpoint).await?;
-    let help = world::mcp(&server.root, "bot", "joppa_help", json!({"workspace":ws})).await?;
+    let help = world::mcp(
+        &server.root,
+        "bot",
+        "joppa_help",
+        json!({"workspace":ws,"section":"examples"}),
+    )
+    .await?;
     let examples = help["examples"].as_object().cloned().unwrap_or_default();
     ensure!(!examples.is_empty(), "no save examples: {help}");
     for (kind, example) in &examples {

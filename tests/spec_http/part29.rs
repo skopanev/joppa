@@ -49,13 +49,14 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","body":"Use the completed work and record the result","projects":[]},"links":[{"target":t,"relation":"depends_on","revision":4,"blocking":true}],"reason":"Depend on the completed work"})).await?;
     let position = journal_position(&w).await?;
 
+    // The write gives the current revision of the parent too.
+    let parent = read("ac:key-rights").await?["current_revision"].clone();
+    ensure!(parent.is_u64(), "{parent}");
+    let object = json!({"address":t,"revision":4,"parent_revision":parent});
     let http = w.command_as(&w.bot, save(4, title)).await?;
-    ensure!(
-        http["object"] == json!({"address":t,"revision":4}),
-        "{http}"
-    );
+    ensure!(http["object"] == object, "{http}");
     let mcp = mcp_value(&w, "joppa_command", json!({"workspace":w.ws,"request_id":uuid::Uuid::new_v4().to_string(),"command":save(4, title)})).await?;
-    ensure!(mcp["object"] == json!({"address":t,"revision":4}), "{mcp}");
+    ensure!(mcp["object"] == object, "{mcp}");
     let task = revisions().await?;
     ensure!(
         task["current_revision"] == 4 && task["revisions"].as_array().map(Vec::len) == Some(4),

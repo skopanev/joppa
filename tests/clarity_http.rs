@@ -62,7 +62,11 @@ async fn a_requirement_read_marks_an_archived_requirement_and_an_archived_criter
 #[tokio::test]
 async fn help_with_a_workspace_gives_one_save_example_for_each_type() -> Result<()> {
     let w = world(&[TEST]).await?;
-    let help = ok(w.mcp(&w.bot, "joppa_help", json!({})).await?, "help")?;
+    let help = ok(
+        w.mcp(&w.bot, "joppa_help", json!({"section":"examples"}))
+            .await?,
+        "help",
+    )?;
     let examples = &help["examples"];
     ensure!(
         examples["ac"]["op"] == "save_object" && examples["ac"]["kind"] == "ac",

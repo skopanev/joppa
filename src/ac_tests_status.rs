@@ -94,7 +94,9 @@ pub struct CriterionStatus {
     pub reason: Option<String>,
     pub tests_draft: bool,
     pub commit: Option<String>,
-    pub commits_behind: Option<i64>,
+    /// The order of the record of the oldest commit, to compare statuses. A reply omits it.
+    #[serde(skip)]
+    pub(crate) oldest_order: Option<i64>,
     pub tests: Vec<TestStatus>,
 }
 
@@ -223,13 +225,12 @@ pub fn criterion_status(
         .iter()
         .filter(|t| t.order.is_some())
         .min_by_key(|t| t.order);
-    let newest_order = reports.iter().map(|r| r.order).max();
     CriterionStatus {
         status: status.into(),
         reason: reason.map(String::from),
         tests_draft: draft,
         commit: oldest.and_then(|t| t.commit.clone()),
-        commits_behind: oldest.and_then(|t| Some(newest_order? - t.order?)),
+        oldest_order: oldest.and_then(|t| t.order),
         tests: statuses,
     }
 }

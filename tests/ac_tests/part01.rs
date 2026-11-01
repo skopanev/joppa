@@ -51,7 +51,7 @@ fn each_test_counts_with_its_latest_result() {
     );
     assert_eq!(s.status, "green");
     assert_eq!(s.commit.as_deref(), Some("c1"));
-    assert_eq!(s.commits_behind, Some(1));
+    assert!(!serde_json::to_string(&s).unwrap().contains("commits_behind"));
     // The higher order decides, not the later receipt.
     let late_old = [report(1, "c2", 2, false, 10), report(2, "c1", 1, false, 20)];
     let rows = [result(1, "x", "fail"), result(2, "x", "pass")];

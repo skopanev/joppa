@@ -113,6 +113,10 @@ pub(super) async fn items(
                 }
             }
         }
+        // A comment event names its comment, so a reader can open or answer it.
+        if change == "comment" {
+            item["comment_id"] = command["id"].clone();
+        }
         item["change"] = json!(change);
         item["reason"] = json!(mask(&reason));
         if let Some(title) = item["title"].as_str() {

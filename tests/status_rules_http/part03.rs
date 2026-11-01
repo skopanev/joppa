@@ -77,11 +77,12 @@ async fn type_status_rules_ac3_empty_nodes_are_grey_and_uncounted_children_chang
     w.save("area", "e", None).await?;
     w.save("rule", "q2", Some("area:e")).await?;
     ensure!(w.tones(&["area:e"]).await? == ["grey"]);
-    // Fixture 2: C is archived; then a new record passes every test of A.
+    // Fixture 2: C is archived; then a new record passes every test of A. The archive
+    // resets only the criteria at and below C, so A keeps its pass and R turns green.
     let c = w.object("check:c").await?;
     w.command(&w.owner, json!({"op":"archive_object","target":"check:c","revision":c["current_revision"],"reason":"Drop the check"})).await?;
     ensure!(
-        w.tones(&["rule:r"]).await? == ["grey"],
+        w.tones(&["rule:r"]).await? == ["green"],
         "right after the archive"
     );
     w.report(&[("a", "pass")]).await?;

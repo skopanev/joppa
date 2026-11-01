@@ -181,7 +181,7 @@ test('stable-url-ac1: the original URL keeps the item ID after rename and move',
   } finally { await f.close(); }
 });
 
-test('time-not-stale-ac2: the oldest test commit shows five newer commits', async () => {
+test('time-not-stale-ac2: the card shows the oldest test commit and no commit count', async () => {
   const commit = 'cccccccccccccccccccccccccccccccccccccccc';
   const f = await fixture(criterionRecords);
   try {
@@ -191,7 +191,9 @@ test('time-not-stale-ac2: the oldest test commit shows five newer commits', asyn
     const card = await f.open('ac:A'), group = card.locator('.object-tests');
     await group.locator(':scope > summary').click();
     await group.locator('.ac-check').nth(1).waitFor();
-    assert.match(await group.locator(':scope > .node-meta').innerText(), /commit ccccccc · 5 commits behind/);
+    const meta = await group.locator(':scope > .node-meta').innerText();
+    assert.match(meta, /commit ccccccc/);
+    assert.doesNotMatch(meta, /behind/);
   } finally { await f.close(); }
 });
 

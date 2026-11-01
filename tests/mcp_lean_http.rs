@@ -62,7 +62,7 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
                 })),
         "{tree}"
     );
-    let help = read(&w, "joppa_help", json!({})).await?;
+    let help = read(&w, "joppa_help", json!({"section":"tree"})).await?;
     ensure!(help["tree"] == tree, "{}", help["tree"]);
     // Object reads: no echo of the address; a revision read gives the flat document.
     let list = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;

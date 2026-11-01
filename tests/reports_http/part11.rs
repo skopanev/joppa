@@ -56,7 +56,7 @@ async fn mcp_status_read_returns_100_criteria_in_request_order() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {
+async fn a_criterion_shows_the_oldest_commit_of_its_tests_and_no_commit_count() -> Result<()> {
     // time-not-stale-ac1: A is decided on C; five newer commits ran other tests only.
     let w = world().await?;
     w.record(
@@ -74,7 +74,7 @@ async fn commits_behind_counts_newer_default_branch_commits() -> Result<()> {
     }
     let s = w.status().await?;
     ensure!(
-        s["commit"] == "c1c1c1c" && s["commits_behind"] == 5 && s["status"] == "green",
+        s["commit"] == "c1c1c1c" && s.get("commits_behind").is_none() && s["status"] == "green",
         "{s}"
     );
     Ok(())

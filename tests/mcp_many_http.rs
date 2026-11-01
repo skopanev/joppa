@@ -147,12 +147,36 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         });
         ensure!(described, "{name}: {properties:?}");
     }
+    // A list gives the full body, also above 300 characters.
+    let long = "A long rule. ".repeat(40);
+    save(&w, "long", &long, json!([])).await?;
     let roots = ok(&w, json!({"fields":["body"]})).await?;
+    let bodies: Vec<&Value> = roots["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|i| &i["body"])
+        .collect();
     ensure!(
-        roots["items"]
-            .as_array()
-            .is_some_and(|items| items.iter().any(|i| i["body"] == "Second rule")),
+        bodies.contains(&&json!("Second rule")) && bodies.contains(&&json!(long)),
         "{roots}"
+    );
+    // fields on an older revision give the document of that revision.
+    let edit = json!({"op":"save_object","kind":"requirement","id":"s","revision":1,"parent":null,
+        "data":{"title":"s","owner":"owner","body":"Second rule, edited"},
+        "links":[{"target":"requirement:r"}],"reason":"Edit"});
+    w.command(&w.bot, edit).await?.map_err(anyhow::Error::msg)?;
+    let old = json!({"address":"requirement:s","revision":1,"fields":["revision","body"]});
+    let old = ok(&w, old).await?;
+    ensure!(old == json!({"revision":1,"body":"Second rule"}), "{old}");
+    let now = ok(
+        &w,
+        json!({"address":"requirement:s","fields":["revision","body"]}),
+    )
+    .await?;
+    ensure!(
+        now == json!({"revision":2,"body":"Second rule, edited"}),
+        "{now}"
     );
     for (args, error) in [
         (
@@ -169,12 +193,8 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
             "use body instead of contract; read joppa_help",
         ),
         (
-            json!({"address":"ac:a","fields":["title"],"revision":1}),
-            "fields reads the current revision",
-        ),
-        (
             json!({"address":"ac:a","fields":["title"],"history":true}),
-            "fields reads the current revision",
+            "fields reads one revision; history gives the revision headers",
         ),
     ] {
         let reply = read(&w, args.clone()).await?;

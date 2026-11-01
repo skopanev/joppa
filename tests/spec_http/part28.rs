@@ -27,7 +27,7 @@ async fn member_runs(w: &World, help: &Value, command: Value) -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Result<()> {
     let w = world().await?;
-    let help = mcp_value(&w, "joppa_help", json!({})).await?;
+    let help = mcp_value(&w, "joppa_help", json!({"section":"operations"})).await?;
     let revision = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
@@ -172,7 +172,7 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn help_required_fields_pass_the_live_field_checks() -> Result<()> {
     let w = world().await?;
-    let help = mcp_value(&w, "joppa_help", json!({})).await?;
+    let help = mcp_value(&w, "joppa_help", json!({"section":"operations"})).await?;
     let required = |name: &str| -> Vec<String> {
         help["operations"][name]["required"]
             .as_array()

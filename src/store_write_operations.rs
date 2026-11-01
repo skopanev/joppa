@@ -172,12 +172,13 @@ pub(crate) async fn write(
                 Command::SetNoteStatus(crate::commands::SetNoteStatusOp { target, .. }) | Command::DecideNote(crate::commands::DecideNoteOp { target, .. }) => Some(crate::objects::resolve_address(&state, target).to_owned()),
                 _ => None,
             };
-            // A later command of the batch names a saved object as {"$ref":"label/address"}.
-            if let (Command::SaveObject(crate::commands::SaveObjectOp { .. }), Some(address)) = (&command, &saved_address) { resolved["address"] = json!(address); }
             let saved=if let Some(address)=saved_address {
-                let revision=state.objects[&address].current().revision;
+                let current=state.objects[&address].current();let revision=current.revision;
+                // A later command of the batch names a saved object as {"$ref":"label/address"}.
                 resolved["address"]=json!(address);resolved["saved_revision"]=json!(revision);
                 let mut saved = json!({"address":address,"revision":revision});
+                // The current revision of the parent, for a child write that pins it.
+                if let Some(parent)=current.parent.as_deref().and_then(|p| state.objects.get(crate::objects::resolve_address(&state,p))) { saved["parent_revision"]=json!(parent.current().revision); }
                 if let Command::SaveObject(crate::commands::SaveObjectOp { kind, .. }) = &command
                     && let Some(question) = crate::objects::schema(&state).types[kind].question.as_ref() {
                     saved["question"] = json!(question);

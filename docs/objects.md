@@ -541,7 +541,7 @@ Older revisions omit current children, comments, files, and verification details
 The server applies the same workspace access rules as the board.
 
 A done Task prevents `archive_object` on its parent. Retire the Task before you archive the parent.
-Each tree type can define an optional `question`. Read it from `joppa_tree` or `joppa_help` with `workspace`.
+Each tree type can define an optional `question`. Read it from `joppa_tree` or from `joppa_help` with `workspace` and `section: "tree"`.
 Before saving, check that the title and body answer the question. Rewrite them when they do not.
 For `save_object`, send `question_checked` with the exact configured question. The server refuses an absent or different value before recording the operation.
 The save acknowledgement returns `object.question` for a type with a question. The server stores the question without checking meaning.

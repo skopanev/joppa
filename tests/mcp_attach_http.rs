@@ -153,7 +153,10 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
         .await?)?;
     ensure!(read["files"].as_array().map_or(0, Vec::len) == 2, "{read}");
     // A detached file stays in Spaces for 14 days, then expires when no active attachment keeps its hash.
-    let bin_hash = second["file"]["hash"].as_str().context("bin hash")?.to_owned();
+    let bin_hash = second["file"]["hash"]
+        .as_str()
+        .context("bin hash")?
+        .to_owned();
     let bin_id = second["file"]["id"].as_str().context("bin id")?.to_owned();
     ok(w.mcp(
         &w.bot,
@@ -183,7 +186,10 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     };
     age_detached("ac:a", &bin_id).await?;
     ensure!(joppa::store::sweep_detached(&w.pool).await? == 1);
-    ensure!(!fake.has(&w.ws, &bin_hash), "14-day detached binary stayed in Spaces");
+    ensure!(
+        !fake.has(&w.ws, &bin_hash),
+        "14-day detached binary stayed in Spaces"
+    );
     let shared = ok(attach(
         &w,
         &w.bot,
@@ -191,7 +197,10 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     )
     .await?)?;
     let first_id = first["file"]["id"].as_str().context("first id")?.to_owned();
-    let shared_id = shared["file"]["id"].as_str().context("shared id")?.to_owned();
+    let shared_id = shared["file"]["id"]
+        .as_str()
+        .context("shared id")?
+        .to_owned();
     ok(w.mcp(
         &w.bot,
         "joppa_command",

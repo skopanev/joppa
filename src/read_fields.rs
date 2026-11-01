@@ -129,16 +129,17 @@ pub fn object_fields(
 ) -> Value {
     let document = &reply["document"];
     let data = &document["data"];
-    // A list cuts the body to a preview of 300 characters.
-    let body = data["body"]
-        .as_str()
-        .map(|text| json!(text.chars().take(300).collect::<String>()));
+    // A read of an older revision gives its number. The state fields stay current.
+    let revision = match &document["revision"] {
+        Value::Null => reply["current_revision"].clone(),
+        number => number.clone(),
+    };
     let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
     let item = json!({"address": reply["address"], "kind": reply["kind"], "id": reply["id"],
-        "revision": reply["current_revision"], "contract_revision": reply["contract_revision"],
+        "revision": revision, "contract_revision": reply["contract_revision"],
         "parent": document["parent"], "data": data, "title": data["title"],
         "owner": data["owner"], "review_required": reply["review_required"],
-        "work_ready": reply["work_ready"], "at": document["at"], "body": body,
+        "work_ready": reply["work_ready"], "at": document["at"], "body": data["body"],
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],
         "status": crate::read_compact::status(reply), "children": children});

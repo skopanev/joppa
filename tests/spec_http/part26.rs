@@ -214,7 +214,10 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
     ] {
         ensure!(!command.contains(name), "{name} is in the op enum");
     }
-    for arguments in [json!({}), json!({"workspace":w.ws})] {
+    for arguments in [
+        json!({"section":"operations"}),
+        json!({"workspace":w.ws,"section":"operations"}),
+    ] {
         let help = mcp_value(&w, "joppa_help", arguments.clone()).await?;
         let operations = help["operations"].as_object().unwrap();
         let keys: BTreeSet<String> = operations.keys().cloned().collect();
@@ -235,13 +238,9 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
                 "{name}: {entry}"
             );
         }
-        ensure!(
-            help["search"].is_string()
-                && help["writing"].is_string()
-                && help["objects"].is_string()
-                && help.get("tree").is_some() == arguments.get("workspace").is_some(),
-            "other help fields stay"
-        );
+        // The section operations gives only its key and the field hint.
+        let keys: Vec<&String> = help.as_object().unwrap().keys().collect();
+        ensure!(keys == ["field_hint", "operations"], "{keys:?}");
     }
     Ok(())
 }

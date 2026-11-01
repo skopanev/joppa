@@ -51,7 +51,7 @@ pub(super) async fn list_rows(
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.review_required,o.work_ready,
             (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
-            o.document_at,left(o.description,300),o.signal::text,o.present,o.inbox_status,
+            o.document_at,o.description,o.signal::text,o.present,o.inbox_status,
             jsonb_build_object('active',COALESCE(w.active,0),'done',COALESCE(w.done,0),'retired',COALESCE(w.retired,0))::text,o.process::text,
             CASE WHEN (o.document->'contract'->>0)::int=o.revision THEN (o.document->'contract'->>1)::int ELSE o.revision END,
             CASE WHEN $16::boolean THEN (o.document->'data')::text END,o.total,

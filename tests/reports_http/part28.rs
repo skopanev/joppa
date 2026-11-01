@@ -26,21 +26,25 @@ async fn frozen_f5_an_identical_list_save_makes_a_grey_and_unassessed() -> Resul
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn frozen_f6_an_archived_red_sibling_makes_a_and_r_grey() -> Result<()> {
+async fn frozen_f6_an_archived_red_sibling_keeps_a_green_and_ready() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w, false).await?;
-    let before = p.ac_tests("criterion:a").await?;
+    let (before, assessment) = (
+        p.ac_tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
     let r = p.get("/objects?address=spec:r".into()).await?;
     ensure!(r["verification_summary"]["passed"] == 1, "{r}");
     let revision = p.revision("criterion:b").await?;
     p.post_command(&w.owner, json!({"op":"archive_object","target":"criterion:b","revision":revision,"reason":"Drop the red criterion"})).await?;
-    p.reset(&before).await?;
+    // An archive resets only the criteria at and below the archived object.
+    p.kept(&before, &assessment).await?;
     let r = p
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
     ensure!(
         // MCP gives only the counts above 0.
-        r["verification_summary"] == json!({"total":1}),
+        r["verification_summary"] == json!({"total":1,"passed":1}),
         "MCP joppa_objects R: {r}"
     );
     Ok(())

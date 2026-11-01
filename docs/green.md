@@ -34,6 +34,11 @@ Time alone never changes a tone.
 
 With `reset_on_change`, a change of the criterion or of a node above it makes the earlier
 records stop counting. The criterion is grey until a newer record arrives.
+
+- A new title, text, parent or non-blocking link of a node resets the criteria at and below it.
+- An archive resets only the criteria at and below the archived object. A sibling keeps its status.
+- A write of a Task or of an Inbox item, a blocking `depends_on` link and a Task process event reset nothing.
+
 With `draft_on_text_change`, a change of a `draft_fields` field also makes the saved list a draft.
 Save the list again after you compare it with the new text.
 Old records stay in the history. They are facts about the old text.

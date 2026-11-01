@@ -94,7 +94,10 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
         },
     )
     .await?;
-    assert!(!list.to_string().contains(&raw));
+    assert!(
+        list.to_string().contains(&raw),
+        "a list gives the full body"
+    );
     let detail = store::read_objects(
         &pool,
         &ws,

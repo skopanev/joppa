@@ -12,7 +12,7 @@ const path = require('node:path');
 module.exports = shared => {
   const {server, fixture, criterionRecords, types, root, titlePoint, markdownTypes, markdownBody} = shared;
 
-test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey, not yellow', async () => {
+test('check-list-frozen-ac3: an archived red sibling leaves the requirement green', async () => {
   const f = await fixture({...criterionRecords,
     'ac:B': {title: 'Red sibling', parent: 'requirement:r'},
     'requirement:mixed': {title: 'Mixed requirement', parent: 'capability:c'},
@@ -24,8 +24,9 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement grey
     await f.command({op: 'archive_object', target: 'ac:B', revision: 2, reason: 'Drop the red criterion'}, true);
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
-    assert.equal(await r.locator('.verification-chip').innerText(), '1 AC');
-    assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'grey');
+    // The archive resets only ac:B and below, so ac:A keeps its pass.
+    assert.equal(await r.locator('.verification-chip').innerText(), '1 / 1 AC');
+    assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'green');
     const mixed = card.locator('.common-object[data-object-address="requirement:mixed"] > summary');
     assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 ACs');
     // type-status-rules: a requirement takes the first of red, grey, green that a child has.

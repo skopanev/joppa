@@ -103,13 +103,18 @@ pub const SINGLE_CRITERION_SAVE: &str = "single_criterion_save";
 /// criterion and its reason. An older save keeps the copied reason in a replay.
 pub const CRITERION_SAVE_REASON: &str = "criterion_save_reason";
 
-pub const REPLAY_RULES: [&str; 6] = [
+/// From this rule on, an archive resets the criteria at and below the archived object. An
+/// older archive keeps its reset at and below the parent in a replay.
+pub const ARCHIVE_OWN_RESET: &str = "archive_own_reset";
+
+pub const REPLAY_RULES: [&str; 7] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
     SINGLE_CRITERION_SAVE,
     CRITERION_SAVE_REASON,
+    ARCHIVE_OWN_RESET,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

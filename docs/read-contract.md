@@ -120,8 +120,8 @@ The text of every type is `body`: `description`, `contract`, `data.description` 
 `data.contract` are refused with `use body instead of description; read joppa_help`.
 
 `status` is the tone, as in a plain list item; `note_status` gives the Inbox state.
-`body` is a preview of 300 characters. `data` is the full stored `document.data`, and
-`data.<key>` is one of its values, never cut. One requirement with all its criteria takes
+`body` is the full text. `data` is the full stored `document.data`, and `data.<key>` is
+one of its values. No field is cut. One requirement with all its criteria takes
 two reads:
 
 ```json
@@ -184,8 +184,9 @@ up to 10 addresses in one call, and `fields` with `address`.
   show only when they are `true`. The reply gives no `all_versions`, `all_workspaces`,
   `embedded`, `indexed`, `mode` or `semantic_status`, and `workspaces` only with
   `all_workspaces: true`. `total` counts every text match and
-  the 100 nearest vector matches, so it can be above 100. When the query is an item ID or
-  an address, the reply gives only the exact matches, each with `exact_id: true`.
+  the 100 nearest vector matches, so it can be above 100. When the query is an item ID, an
+  address or a generated local ID of 8 characters `[a-z0-9]`, the reply gives only the
+  exact matches, each with `exact_id: true`.
 
 ## Links of one object
 
@@ -200,7 +201,8 @@ only when they apply. `next_cursor` is `direction/relation/address` of the last 
 
 `joppa_command` and `joppa_batch` give `position`, `command` and `object`, without
 `summary` or `system_ids`. When `object` gives `{address, revision}`, `command` gives only
-its `op`. `replayed: true` marks a retry; a first write gives no `replayed`. A
+its `op`. When the saved object has a parent, `object` also gives `parent_revision`, the
+current revision of the parent. `replayed: true` marks a retry; a first write gives no `replayed`. A
 `set_tree_schema` result gives `schema_revision`, the new schema revision, and its `command`
 without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`.
 
@@ -210,7 +212,7 @@ The tree gives `schema` with its `revision`; send it with `set_tree_schema`. The
 `current_revision`, no write header (`actor`, `actor_type`, `at`, `position`, `reason`) and no
 `status_rules` copy: each type names its `status`. A type gives `inbox`, `root` and
 `launch_blocker` only when they are `true`. `workspace_key` shows only when the request named
-an alias of the workspace. `joppa_help` with a workspace gives the same tree.
+an alias of the workspace. `joppa_help` with a workspace and `section: "tree"` gives the same tree.
 
 ## Titles and texts
 

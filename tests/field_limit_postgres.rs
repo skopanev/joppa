@@ -125,7 +125,9 @@ async fn the_write_tools_and_the_save_examples_name_the_limit() -> Result<()> {
             "{name} does not name the limit"
         );
     }
-    let help = w.mcp(&w.bot, "joppa_help", json!({})).await?; // mcp() adds the workspace
+    let help = w
+        .mcp(&w.bot, "joppa_help", json!({"section":"examples"}))
+        .await?; // mcp() adds the workspace
     let help = help.map_err(|e| anyhow::anyhow!(e))?;
     ensure!(
         help["examples"]["requirement"]["data"]["body"] == "<concise text (max 1024 chars)>",
@@ -178,7 +180,9 @@ async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text
             .is_some_and(|d| d.contains("use links and the note op")),
         "the text field schema does not name links and the note op"
     );
-    let help = w.mcp(&w.bot, "joppa_help", json!({})).await?;
+    let help = w
+        .mcp(&w.bot, "joppa_help", json!({"section":"objects"}))
+        .await?;
     let help = help.map_err(|e| anyhow::anyhow!(e))?;
     let objects = help["objects"].as_str().unwrap_or_default();
     ensure!(

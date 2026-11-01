@@ -41,8 +41,8 @@ pub(super) async fn read<'a>(
         "history, revision and comments_cursor read one address"
     );
     ensure!(
-        fields.is_none() || !(history || revision.is_some()),
-        "fields reads the current revision"
+        fields.is_none() || !history,
+        "fields reads one revision; history gives the revision headers"
     );
     let mut items = Vec::with_capacity(addresses.len());
     for asked in addresses {

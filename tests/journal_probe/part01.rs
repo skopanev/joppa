@@ -145,8 +145,8 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
     )
     .await?;
     assert!(
-        !list.to_string().contains(&raw),
-        "list exposed the unrelated input body"
+        list.to_string().contains(&raw),
+        "a list gives the full body"
     );
     let reads = journal_selects(&pool).await?;
     println!("Current read journal probe: {reads}");

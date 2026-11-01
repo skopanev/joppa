@@ -187,9 +187,10 @@ async fn configured_tree_counts_ready_direct_children_over_http_and_mcp() -> Res
         .await?
         .json()
         .await?;
-    // check-list-frozen-ac3: the archive resets every criterion below bundle:root.
+    // check-list-frozen-ac3: the archive resets only the criteria at and below branch:empty,
+    // so the other branches keep their counts.
     ensure!(
-        after["verification_summary"] == json!({"total":2,"passed":0,"failed":0}),
+        after["verification_summary"] == json!({"total":2,"passed":1,"failed":1}),
         "{after}"
     );
     Ok(())

@@ -149,13 +149,13 @@ fn combine(base: CriterionStatus, all: &[CriterionStatus]) -> CriterionStatus {
     let oldest = all
         .iter()
         .filter(|s| s.commit.is_some())
-        .max_by_key(|s| s.commits_behind.unwrap_or(0));
+        .min_by_key(|s| s.oldest_order);
     CriterionStatus {
         status: status.into(),
         reason,
         tests_draft: base.tests_draft,
         commit: oldest.and_then(|s| s.commit.clone()),
-        commits_behind: oldest.and_then(|s| s.commits_behind),
+        oldest_order: oldest.and_then(|s| s.oldest_order),
         tests,
     }
 }

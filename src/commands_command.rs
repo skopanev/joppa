@@ -154,8 +154,8 @@ pub enum Command {
     },
     /// Вложение. Сами байты уже лежат в хранилище — сюда едет отпечаток.
     Attach(AttachOp),
-    /// Снятие вложения. Файл из хранилища не удаляется: он мог быть
-    /// приложен и в другом месте, а ссылка из истории должна открываться.
+    /// Remove an attachment. The file stays in storage for 14 days, then the periodic
+    /// reconcile deletes it when no active attachment of the workspace names its hash.
     Detach {
         target: String,
         id: String,
