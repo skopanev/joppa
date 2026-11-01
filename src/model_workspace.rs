@@ -154,6 +154,8 @@ pub struct Attachment {
     pub at: String,
     #[serde(default)]
     pub removed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

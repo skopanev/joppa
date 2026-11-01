@@ -201,7 +201,7 @@ pub(crate) fn apply_inner(
         Command::Attach(crate::commands::AttachOp { .. }) => {
             apply_attach(w, actor, command, recorded_at)?
         }
-        Command::Detach { .. } => apply_detach(w, command)?,
+        Command::Detach { .. } => apply_detach(w, command, recorded_at)?,
         Command::Comment(crate::commands::CommentOp { .. }) => {
             apply_comment(w, actor, command, recorded_at)?
         }

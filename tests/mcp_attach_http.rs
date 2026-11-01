@@ -25,6 +25,7 @@ async fn attach(
 async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     let fake = fake_spaces::start();
+    fake.configure();
     let text = format!("MCP evidence {}", uuid::Uuid::new_v4());
     let hash = joppa::digest_hex::sha256_hex(&text);
     let call = json!({"target":"ac:a","filename":"evidence.txt","content_type":"text/plain",
@@ -151,5 +152,69 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
         .mcp(reader, "joppa_attachments", json!({"target":"ac:a"}))
         .await?)?;
     ensure!(read["files"].as_array().map_or(0, Vec::len) == 2, "{read}");
+    // A detached file stays in Spaces for 14 days, then expires when no active attachment keeps its hash.
+    let bin_hash = second["file"]["hash"].as_str().context("bin hash")?.to_owned();
+    let bin_id = second["file"]["id"].as_str().context("bin id")?.to_owned();
+    ok(w.mcp(
+        &w.bot,
+        "joppa_command",
+        json!({"request_id":"detach-bin","command":{"op":"detach","target":"ac:a","id":bin_id,"reason":"remove binary"}}),
+    )
+    .await?)?;
+    ensure!(
+        fake.has(&w.ws, &bin_hash),
+        "freshly detached binary was deleted before 14 days"
+    );
+    let age_detached = |target: &str, id: &str| {
+        let pool = w.pool.clone();
+        let ws = w.ws.clone();
+        let (target, id) = (target.to_owned(), id.to_owned());
+        async move {
+            let old = (chrono::Utc::now() - chrono::TimeDelta::days(15)).to_rfc3339();
+            pool.get()
+                .await?
+                .execute(
+                    "UPDATE joppa.state_entries SET value=jsonb_set(value,ARRAY['attachments',$3,'removed_at'],to_jsonb($4::text)) WHERE workspace=$1 AND section='notes' AND key=$2",
+                    &[&ws, &target, &id, &old],
+                )
+                .await?;
+            Ok::<_, anyhow::Error>(())
+        }
+    };
+    age_detached("ac:a", &bin_id).await?;
+    ensure!(joppa::store::sweep_detached(&w.pool).await? == 1);
+    ensure!(!fake.has(&w.ws, &bin_hash), "14-day detached binary stayed in Spaces");
+    let shared = ok(attach(
+        &w,
+        &w.bot,
+        json!({"target":"requirement:r","filename":"copy.txt","content":text}),
+    )
+    .await?)?;
+    let first_id = first["file"]["id"].as_str().context("first id")?.to_owned();
+    let shared_id = shared["file"]["id"].as_str().context("shared id")?.to_owned();
+    ok(w.mcp(
+        &w.bot,
+        "joppa_command",
+        json!({"request_id":"detach-first","command":{"op":"detach","target":"ac:a","id":first_id,"reason":"drop first"}}),
+    )
+    .await?)?;
+    age_detached("ac:a", &first_id).await?;
+    ensure!(joppa::store::sweep_detached(&w.pool).await? == 0);
+    ensure!(
+        fake.has(&w.ws, &hash),
+        "shared hash was deleted while requirement:r still kept it"
+    );
+    ok(w.mcp(
+        &w.bot,
+        "joppa_command",
+        json!({"request_id":"detach-last","command":{"op":"detach","target":"requirement:r","id":shared_id,"reason":"drop last"}}),
+    )
+    .await?)?;
+    age_detached("requirement:r", &shared_id).await?;
+    ensure!(joppa::store::sweep_detached(&w.pool).await? == 1);
+    ensure!(
+        !fake.has(&w.ws, &hash),
+        "hash stayed in Spaces 14 days after last attachment was detached"
+    );
     Ok(())
 }

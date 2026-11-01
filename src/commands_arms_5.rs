@@ -186,13 +186,14 @@ pub(super) fn apply_attach(
             actor: actor.into(),
             at: recorded_at.to_string(),
             removed: false,
+            removed_at: None,
         },
     );
     Ok(())
 }
 
 /// Apply `detach`.
-pub(super) fn apply_detach(w: &mut Workspace, command: &Command) -> Result<()> {
+pub(super) fn apply_detach(w: &mut Workspace, command: &Command, recorded_at: &str) -> Result<()> {
     let Command::Detach {
         target: t,
         id,
@@ -210,5 +211,6 @@ pub(super) fn apply_detach(w: &mut Workspace, command: &Command) -> Result<()> {
         .and_then(|n| n.attachments.get_mut(id))
         .ok_or_else(|| anyhow::anyhow!("no such attachment: {id}"))?;
     a.removed = true;
+    a.removed_at = Some(recorded_at.to_string());
     Ok(())
 }

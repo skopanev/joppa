@@ -69,6 +69,7 @@ pub async fn reconcile(pool: &Pool) -> Result<()> {
         let workspace = super::search::current(pool, &id, None).await?;
         super::search_revisions::project(&**pool.get().await?, &workspace, None).await?;
     }
+    let _ = super::sweep_detached(pool).await;
     Ok(())
 }
 

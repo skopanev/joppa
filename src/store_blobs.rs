@@ -1,6 +1,7 @@
 //! Who may read and write the files of a workspace. The bytes live in Spaces (crate::spaces),
 //! in the folder `workspaces/<workspace>/` of the resolved workspace ID.
 use super::*;
+use std::collections::BTreeMap;
 
 /// The resolved ID of `workspace` for an actor who can read it: the name of its file folder.
 pub async fn file_workspace(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
@@ -11,7 +12,7 @@ pub async fn file_workspace(pool: &Pool, workspace: &str, actor: &str) -> Result
 }
 
 /// The Spaces key, name and content type of the file `hash`, only for an actor who reads
-/// the workspace, and only when a note of THIS workspace names the hash.
+/// the workspace, and only when an active or <14-day detached attachment names the hash.
 pub async fn attachment(
     pool: &Pool,
     workspace: &str,
@@ -20,9 +21,38 @@ pub async fn attachment(
 ) -> Result<(String, String, String)> {
     let resolved = file_workspace(pool, workspace, actor).await?;
     let conn = pool.get().await?;
-    let found = conn.query_opt("SELECT a.value->>'name',a.value->>'content_type' FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'attachments') a WHERE n.workspace=$1 AND n.section='notes' AND a.value->>'hash'=$2 LIMIT 1", &[&resolved,&hash]).await?.ok_or(AccessDenied)?;
+    let found = conn.query_opt("SELECT a.value->>'name',a.value->>'content_type' FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'attachments') a WHERE n.workspace=$1 AND n.section='notes' AND a.value->>'hash'=$2 AND (NOT COALESCE((a.value->>'removed')::boolean,false) OR NULLIF(a.value->>'removed_at','') IS NULL OR (a.value->>'removed_at')::timestamptz > clock_timestamp() - interval '14 days') ORDER BY COALESCE((a.value->>'removed')::boolean,false) ASC LIMIT 1", &[&resolved,&hash]).await?.ok_or(AccessDenied)?;
     let key = crate::spaces::Spaces::key(&resolved, hash)?;
     Ok((key, found.get(0), found.get(1)))
+}
+
+/// Delete files in Spaces whose only attachments in the workspace were detached at least
+/// 14 days ago. Returns the number of files deleted from Spaces.
+pub async fn sweep_detached(pool: &Pool) -> Result<usize> {
+    let Ok(storage) = crate::spaces::storage() else {
+        return Ok(0);
+    };
+    let rows = pool.get().await?.query(
+        "SELECT n.workspace,a.value->>'hash' FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'attachments') a WHERE n.section='notes' GROUP BY n.workspace,a.value->>'hash' HAVING bool_and(COALESCE((a.value->>'removed')::boolean,false) AND NULLIF(a.value->>'removed_at','') IS NOT NULL) AND max((a.value->>'removed_at')::timestamptz) <= clock_timestamp() - interval '14 days'",
+        &[],
+    ).await?;
+    let mut by_ws: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for row in rows {
+        by_ws.entry(row.get(0)).or_default().push(row.get(1));
+    }
+    let mut removed = 0;
+    for (ws, hashes) in by_ws {
+        let prefix = crate::spaces::Spaces::folder(&ws)?;
+        let present = storage.list(&prefix).await?;
+        for hash in hashes {
+            let key = crate::spaces::Spaces::key(&ws, &hash)?;
+            if present.contains(&key) {
+                storage.delete(&key).await?;
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
 }
 
 /// Remove the file folder of a deleted workspace, after the commit. A failure keeps files
