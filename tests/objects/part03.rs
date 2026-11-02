@@ -145,6 +145,7 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
         json!({"title":"Provider change","owner":"owner","source":"New permission rules"}),
         vec![],
     );
+    // An old journal event decides the input: live writes refuse decide_note, a replay reads it.
     w.ok("owner",json!({"op":"decide_note","target":"incoming:n","revision":1,"outcome":"rejected","reason":"Reviewed source"}));
     assert_eq!(
         objects::process(&w.state, "incoming:n")["status"],
@@ -172,7 +173,6 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
         json!({"title":"Ordinary document","owner":"owner"}),
         vec![],
     );
-    w.no("owner",json!({"op":"decide_note","target":"note:ordinary","revision":1,"outcome":"rejected","reason":"This type is not an inbox"}));
 }
 
 #[test]

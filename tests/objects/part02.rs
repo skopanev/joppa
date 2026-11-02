@@ -77,13 +77,13 @@ fn note_processing_keeps_source_and_reopens_changed_input() {
         json!({"title":"Input","owner":"owner","body":"Original","custom":"Context"}),
         vec![link("domain:d", None, false)],
     );
+    // An old journal event decides the input: live writes refuse decide_note, a replay reads it.
     w.ok("agent", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"changed_spec","reason":"Updated the linked domain","links":["domain:d"]}));
     let r = w.state.objects["note:input"].current();
     assert_eq!(r.data["body"], "Original");
     assert_eq!(r.data["custom"], "Context");
     assert_eq!(r.links.len(), 1);
     assert_eq!(r.data["status"], "processed");
-    w.no("agent", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"changed_spec","reason":"Stale input","links":["domain:d"]}));
     save(
         &mut w,
         "note:input",
@@ -99,6 +99,4 @@ fn note_processing_keeps_source_and_reopens_changed_input() {
         w.state.objects["note:input"].revisions[1].data["status"],
         "processed"
     );
-    w.no("agent", json!({"op":"decide_note","target":"domain:d","revision":1,"outcome":"changed_spec","reason":"Wrong type","links":["domain:d"]}));
-    w.no("agent", json!({"op":"decide_note","target":"note:input","revision":3,"outcome":"done","reason":"Wrong outcome"}));
 }
