@@ -15,9 +15,11 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await live?.stop(); });
 
-/// A new page on `start`, with a log of the API reads and the page errors.
-async function open(start) {
+/// A new page on `start`, with a log of the API reads and the page errors. `remembered` is the
+/// workspace that the session storage of the page names.
+async function open(start, remembered) {
   const page = await setup.context.newPage(), reads = [], errors = [];
+  if (remembered) await page.addInitScript(ws => sessionStorage.setItem('joppa-workspace', ws), remembered.ws);
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.url().includes('/api/')) reads.push(new URL(request.url())); });
   await page.goto(live.root + '/' + (start ? '?workspace=' + encodeURIComponent(start.ws) : ''));
@@ -79,11 +81,13 @@ test('the rows of the old selection are not usable while the new board loads', a
 
 test('Back after the first entry without a workspace returns to the first selection', async () => {
   const {big, other, third, expect} = setup;
-  const {page, errors} = await open();
+  // Other browser files share the database, so the list holds their workspaces too. The session
+  // names the workspace that the list chooses for the first entry.
+  const {page, errors} = await open(null, other);
   await page.locator('#workspaces option').nth(2).waitFor({state: 'attached'});
   const chosen = await page.locator('#workspaces').inputValue();
   const start = [big, other, third].find(target => target.ws === chosen);
-  assert.ok(start, 'the list selects one fixture workspace');
+  assert.equal(start, other, 'the list selects the workspace that the session names');
   await shows(page, expect(start));
   const next = [big, other, third].find(target => target !== start);
   await select(page, next);
