@@ -143,7 +143,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose Task holder is this member ID, else whose `data.assignee` is. Any node can have `data.assignee`. |
-| `ready` | `true`: nodes that wait for nothing and whose assessment, if any, is `ready`. `false`: the others. |
+| `ready` | `false`: nodes that wait for a dependency, for a review or for the answer to their assessment question (state `waiting`). `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. |
 
 ```json

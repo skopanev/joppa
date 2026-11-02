@@ -70,15 +70,22 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"status":tones}))).await? == all,
         "{tones:?}"
     );
-    // ready: true and ready: false split the subtree; the unassessed ac:a is not ready.
+    // Every node is ready until it waits. A question on ac:a makes only ac:a wait.
+    ensure!(
+        kept(&w, under(json!({"ready":true}))).await? == all,
+        "all ready"
+    );
+    let r = w.object("requirement:r").await?["revision"].clone();
+    let question = json!({"op":"assess","req":"requirement:r","revision":r,"ac":"ac:a",
+        "assessment":{"ready":false,"owner":"alex","reason":"Q1: Which limit applies?"}});
+    w.command(&w.bot, question)
+        .await?
+        .map_err(anyhow::Error::msg)?;
     let ready = kept(&w, under(json!({"ready":true}))).await?;
     let waiting = kept(&w, under(json!({"ready":false}))).await?;
     let mut both = [ready.clone(), waiting.clone()].concat();
     both.sort();
-    ensure!(
-        both == all && waiting.contains(&"ac:a".to_owned()),
-        "{ready:?} {waiting:?}"
-    );
+    ensure!(both == all && waiting == ["ac:a"], "{ready:?} {waiting:?}");
     for (args, error) in [
         (
             json!({"status":"blue"}),

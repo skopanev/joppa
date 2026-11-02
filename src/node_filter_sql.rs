@@ -118,5 +118,6 @@ static NONE: Option<String> = None;
 pub const TONE: &str = "COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone')";
 /// The assignee of a node: the holder of a Task, else the document field `assignee`.
 pub const ASSIGNEE: &str = "COALESCE(o.process->>'assignee',o.document->'data'->>'assignee')";
-/// A node is ready when it waits for nothing and its assessment, if any, is ready.
-pub const READY: &str = "(COALESCE((o.rollup->>'work_ready')::boolean,o.work_ready) AND COALESCE(o.process->'assessment'->>'state','ready')='ready')";
+/// A node is ready unless it waits: for a dependency (`work_ready` false), for a review
+/// (`review_required`) or for the answer to its assessment question (state `waiting`).
+pub const READY: &str = "(COALESCE((o.rollup->>'work_ready')::boolean,o.work_ready) AND NOT o.review_required AND COALESCE(o.process->'assessment'->>'state','')<>'waiting')";

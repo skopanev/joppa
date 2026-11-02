@@ -19,7 +19,7 @@ fn node_filters(mut schema: Value) -> Value {
         "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green"),
         "owner": text("member ID in data.owner"),
         "assignee": text("member ID: the holder of a Task, else data.assignee"),
-        "ready": {"type":"boolean","description":"true: the node waits for nothing and its assessment, if any, is ready"},
+        "ready": {"type":"boolean","description":"false: the node waits for a dependency, a review or the answer to its assessment question; true: every other node"},
         "data": {"type":"object",
             "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}"},
     });
