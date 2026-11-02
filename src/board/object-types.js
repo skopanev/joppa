@@ -40,10 +40,3 @@ export function inboxKinds(){
 export function inputQueue(kind){
   return kind?state.data.objectTypes[kind]?.inbox===true:false;
 }
-// The schema selects the next types that can contain verification criteria.
-export function verificationChildTitle(kind){
-  const types=state.data.objectTypes,branches=new Set(Object.keys(types).filter(k=>types[k].role==='ac'));
-  let changed=true;
-  while(changed){const size=branches.size;for(const child of [...branches])for(const parent of types[child]?.parents||[])if(parent==='*')Object.keys(types).forEach(k=>branches.add(k));else branches.add(parent);changed=branches.size!==size;}
-  return [...new Set(Object.entries(types).filter(([k,t])=>branches.has(k)&&(t.parents||[]).some(p=>p===kind||p==='*')).map(([k])=>typeBadge(k)))].join(' / ');
-}

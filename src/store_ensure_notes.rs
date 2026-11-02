@@ -29,6 +29,7 @@ pub(super) async fn ensure_notes(
         (!state.note_parents_migrated, Command::MigrateNoteParents {}),
         (!state.body_migrated, Command::MigrateBody {}),
         (!state.purpose_migrated, Command::MigratePurpose {}),
+        (!state.test_nodes_migrated, Command::MigrateTestNodes {}),
         (
             prefix.is_some(),
             Command::RenameWorkspace(crate::commands::RenameWorkspaceOp {
@@ -50,6 +51,22 @@ pub(super) async fn ensure_notes(
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
         commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
+        // The new test nodes get their public item IDs, as a saved object does.
+        if matches!(command, Command::MigrateTestNodes {}) {
+            let prefix = state.reference_prefix.as_deref().unwrap_or(workspace);
+            for o in state
+                .objects
+                .values()
+                .filter(|o| crate::test_nodes::kinds(state).contains(&o.kind))
+            {
+                client
+                    .execute(
+                        "SELECT joppa.register_item($1,$2,$3,$4)",
+                        &[&workspace, &o.kind, &o.id, &prefix],
+                    )
+                    .await?;
+            }
+        }
         events.push(Event {
             position,
             actor,

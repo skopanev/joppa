@@ -135,7 +135,7 @@ pub(crate) async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {} | Command::MigrateTestNodes {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"

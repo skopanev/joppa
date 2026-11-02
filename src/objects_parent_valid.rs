@@ -106,7 +106,7 @@ pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()>
 }
 
 /// The status rules of a type and the tones that a children rule can order.
-pub const STATUS_RULES: [&str; 4] = ["tests", "children", "links", "none"];
+pub const STATUS_RULES: [&str; 5] = ["tests", "own", "children", "links", "none"];
 
 pub const STATUS_TONES: [&str; 3] = ["red", "grey", "green"];
 

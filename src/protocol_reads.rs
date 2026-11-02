@@ -1,24 +1,19 @@
-//! The compact MCP reads of joppa_objects and joppa_tests (requirement:read-contract).
+//! The compact MCP read of joppa_objects (requirement:read-contract).
 use anyhow::Context;
 use deadpool_postgres::Pool;
 use joppa::{read_compact as rc, read_shapes, store};
 use serde_json::{Value, json};
 
-pub async fn compact(pool: &Pool, actor: &str, name: &str, a: &Value) -> anyhow::Result<Value> {
-    if name == "joppa_objects" {
-        let keys = ["address", "parent", "related_to", "links_of"];
-        let resolved = with_addresses(pool, actor, a, &keys).await?;
-        let mut reply = objects(pool, actor, &resolved).await?;
-        // A read of one object by its public item ID names the address that it resolved.
-        let address = &resolved["address"];
-        if a["address"] != *address && reply.get("items").is_none() && reply.is_object() {
-            reply["address"] = address.clone();
-        }
-        Ok(reply)
-    } else {
-        let a = with_addresses(pool, actor, a, &["ac", "parent", "task"]).await?;
-        super::test_reads::tests(pool, actor, &a).await
+pub async fn compact(pool: &Pool, actor: &str, _name: &str, a: &Value) -> anyhow::Result<Value> {
+    let keys = ["address", "parent", "related_to", "links_of"];
+    let resolved = with_addresses(pool, actor, a, &keys).await?;
+    let mut reply = objects(pool, actor, &resolved).await?;
+    // A read of one object by its public item ID names the address that it resolved.
+    let address = &resolved["address"];
+    if a["address"] != *address && reply.get("items").is_none() && reply.is_object() {
+        reply["address"] = address.clone();
     }
+    Ok(reply)
 }
 
 /// The request with each public item ID in `keys`, also in a list separated by commas,

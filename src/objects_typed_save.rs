@@ -164,7 +164,7 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
     Ok(())
 }
 
-/// Reset each present criterion at and below `root` after a change recorded at `at`.
+/// Reset each present criterion and test node at and below `root` after a change recorded at `at`.
 /// Reports received at or before `at` stop counting for it, and its readiness
 /// assessment is cleared. A later boundary replaces an earlier one.
 pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
@@ -175,7 +175,9 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
         .iter()
         .filter(|(key, o)| {
             o.current().present
-                && types.get(&o.kind).is_some_and(|t| t.role == "ac")
+                && types
+                    .get(&o.kind)
+                    .is_some_and(|t| t.role == "ac" || t.role == crate::test_nodes::ROLE)
                 && within(w, key, &root)
         })
         .map(|(key, _)| key.clone())

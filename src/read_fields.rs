@@ -29,7 +29,7 @@ pub const LIST_FIELDS: [&str; 20] = [
 ];
 
 /// The keys of a detail read that a list item does not give.
-pub const DETAIL_FIELDS: [&str; 12] = [
+pub const DETAIL_FIELDS: [&str; 11] = [
     "links",
     "comments",
     "files",
@@ -39,7 +39,6 @@ pub const DETAIL_FIELDS: [&str; 12] = [
     "remote_review_required",
     "remote_links_revision",
     "child_workspace",
-    "verification_summary",
     "question",
     "annotations",
 ];

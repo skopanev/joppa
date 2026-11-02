@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 3;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 4;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]
@@ -21,12 +21,7 @@ impl std::fmt::Display for ProjectionNotReady {
 impl std::error::Error for ProjectionNotReady {}
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
-const FIELDS: [&str; 4] = [
-    "work_ready",
-    "waits_for",
-    "verification_summary",
-    "value_tones",
-];
+const FIELDS: [&str; 2] = ["work_ready", "waits_for"];
 const PROCESS_FIELDS: [&str; 2] = ["verification", "readiness_blocker"];
 const SIGNAL_FIELDS: [&str; 2] = ["tone", "label"];
 
@@ -86,7 +81,7 @@ pub(in crate::store) async fn rebuild(
     // fields that the helpers read, with the same values as a list row.
     let mut items: Vec<Value> = client
         .query(
-            "SELECT address,kind,signal::text,process::text,work_ready,parent FROM joppa.objects WHERE workspace=$1",
+            "SELECT address,kind,signal::text,process::text,work_ready,parent,present,review_required FROM joppa.objects WHERE workspace=$1",
             &[&workspace],
         )
         .await?
@@ -98,7 +93,8 @@ pub(in crate::store) async fn rebuild(
             };
             json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),
                 "signal":parse(2).unwrap_or_else(|| json!({})),"process":parse(3).unwrap_or(Value::Null),
-                "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5)})
+                "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5),
+                "present":r.get::<_,bool>(6),"review_required":r.get::<_,bool>(7)})
         })
         .collect();
     let base = items.clone();
@@ -107,12 +103,7 @@ pub(in crate::store) async fn rebuild(
         .filter(|(_, t)| t.role == "ac")
         .map(|(kind, _)| kind.clone())
         .collect();
-    add_verification_summaries(client, workspace, &mut items, &types).await?;
-    // Before migrate_test_rules a done Task that links to a node counted with the status
-    // of its parent criterion. After it a Task counts with its own tone.
-    let task_parents = !state.test_rules_migrated;
-    add_status_tones(client, workspace, &mut items, &types, None, task_parents).await?;
-    super::value_tones::add(client, workspace, state, &base, &mut items, &types).await?;
+    add_status_tones(client, workspace, &mut items, &types).await?;
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts, &criteria).await?;
     let patches: Vec<Value> = base

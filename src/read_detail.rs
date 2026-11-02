@@ -116,11 +116,6 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
     reply.as_object_mut().map(|m| m.remove("current_revision"));
     drop_same(&mut reply, &["work_ready"], &json!(true));
     drop_same(&mut reply["process"], &["confirmed"], &json!(false));
-    drop_same(
-        &mut reply["verification_summary"],
-        &["total", "passed", "failed"],
-        &json!(0),
-    );
     // `links` gives the outgoing links, so the counts keep the incoming groups.
     if let Some(groups) = reply["link_groups"].as_array_mut() {
         groups.retain(|g| g["direction"] == "incoming");

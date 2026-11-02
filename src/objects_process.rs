@@ -124,9 +124,9 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             "Object is absent from the current verification revision",
         )
     } else if p["review_required"] == true {
-        ("purple", "Task contract needs owner review")
+        ("yellow", "Task contract needs owner review")
     } else if !work_ready(w, key) {
-        ("purple", "Dependency is not ready")
+        ("yellow", "Dependency is not ready")
     } else if input_type(w, &o.kind) {
         if p["status"] == "processed" {
             ("grey", "Input processed")

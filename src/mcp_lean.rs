@@ -3,13 +3,12 @@
 use serde_json::{Map, Value, json};
 
 /// The tools whose replies give no workspace, no position and no echo of the address.
-const READS: [&str; 9] = [
+const READS: [&str; 8] = [
     "joppa_objects",
     "joppa_search",
     "joppa_tasks",
     "joppa_timeline",
     "joppa_history",
-    "joppa_tests",
     "joppa_tree",
     "joppa_attach",
     "joppa_attachments",
@@ -73,10 +72,6 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
             drop_value(item, &["claimable", "review_required"], &json!(false));
             drop_keys(item, &["created_at"]);
         }),
-        "joppa_tests" => {
-            tests(&mut reply);
-            each(&mut reply, "items", tests);
-        }
         "joppa_tree" => tree(&mut reply, args),
         "joppa_help" => {
             if let Some(schema) = reply.get_mut("tree") {
@@ -108,17 +103,6 @@ fn search(reply: &mut Value) {
         }
         drop_keys(item, &["kind", "id"]);
         drop_value(item, &["archived", "historical", "exact_id"], &json!(false));
-    });
-}
-
-/// One criterion of joppa_tests: no default list flags, no list author, and a test status
-/// name only when it differs from the status.
-fn tests(criterion: &mut Value) {
-    drop_value(criterion, &["tests_draft"], &json!(false));
-    drop_keys(criterion, &["tests_saved_by"]);
-    each(criterion, "tests", |test| {
-        let status = test["status"].clone();
-        drop_value(test, &["status_name"], &status);
     });
 }
 

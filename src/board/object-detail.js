@@ -9,7 +9,6 @@ import {personLabel,when,fileSize} from 'board/format.js';
 import {inputQueue} from 'board/object-types.js';
 import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
-import {criterionTestsSection} from 'board/criterion-tests.js';
 import {workspaceLinksSection} from 'board/workspace-links.js';
 import {incomingGroups} from 'board/link-groups.js';
 export function fillCommonObject(body,detail){
@@ -62,7 +61,6 @@ export function fillCommonObject(body,detail){
   // Blocking dependencies are shown read-only on the board.
   const deps=!historical&&r.present!==false&&body.parentElement?.classList.contains('common-object')?dependencyList(detail):null;
   if(deps)secondary.append(deps);
-  if(!historical&&state.data.objectTypes?.[detail.kind]?.role==='ac')secondary.append(criterionTestsSection(detail.address));
   const links=new Map();
   for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision&&detail.review_required===true?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
   if(links.size){

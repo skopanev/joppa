@@ -119,7 +119,7 @@ pub fn set_schema(
             "parent gates apply to Task roles"
         );
         ensure!(
-            ["group", "document", "requirement", "ac", "task"].contains(&t.role.as_str()),
+            ["group", "document", "requirement", "ac", "task", "test"].contains(&t.role.as_str()),
             "unknown semantic role"
         );
         ensure!(

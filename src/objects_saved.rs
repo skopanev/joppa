@@ -56,6 +56,7 @@ pub(crate) fn saved(
         "verification comes from test reports"
     );
     crate::body_migration::check_save(w, data)?;
+    crate::test_nodes::check_save(w, kind, data)?;
     if w.documents_migrated {
         for field in data.as_object().unwrap().keys() {
             ensure!(!process_field(field), "use process commands for {field}");

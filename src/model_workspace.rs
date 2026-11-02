@@ -57,6 +57,9 @@ pub struct Workspace {
     /// The migrate_purpose event ran: a Task has no purpose.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub purpose_migrated: bool,
+    /// The migrate_test_nodes event ran: each test is a node of a type with role test.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub test_nodes_migrated: bool,
     /// The reference prefix comes from the title, so a rename derives it again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefix_from_title: bool,

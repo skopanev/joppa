@@ -6,7 +6,6 @@ import {objectPart} from 'board/api.js';
 import {applyObjectColor} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
-import {applyTestStatuses} from 'board/criterion-tests.js';
 export async function appendObjectChildren(root,parent,kind,extra={}){
   const generation=state.loadNumber;
   // One level: the direct children of a parent, or the roots without a parent.
@@ -39,7 +38,6 @@ export function appendObjectPage(root,part,params,generation){
       const card=commonObjectCard(item,undefined,root.closest('.common-object')?.dataset.objectTitle);holder.append(card);
     }
   }
-  applyTestStatuses(items);
   if(!items.length&&!part.next_cursor&&!params.parent&&!root.querySelector('.common-object')){
     const type=params.kind&&state.data.objectTypes[params.kind];
     root.append(E('p',type?'No '+type.title.toLowerCase()+' here.':'No objects here yet.','hint collection-empty'));

@@ -60,12 +60,8 @@
 .status-hint{position:fixed;z-index:10000;pointer-events:none;max-width:min(300px,calc(100vw - 16px));padding:.5em .7em;background:var(--heading);color:var(--bg);font-size:.75em;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
 .waiting{--status-ink:var(--waiting)}.available{--status-ink:var(--available)}.progress{--status-ink:var(--progress)}
 .ready{--status-ink:var(--ready)}.pass{--status-ink:var(--pass)}.fail{--status-ink:var(--fail)}
-.verification-chip{display:inline-block;margin-right:.8em;font-size:.8rem;color:var(--muted);white-space:nowrap}
 .node-title>.status-circle{vertical-align:middle}
-.common-object>summary>.verification-chip,.common-object>summary>.count-slot{flex:none;min-width:2.4rem;margin:0;font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
-.verification-chip.has-failures{color:var(--fail)}
-.verification-chip.has-passes{color:var(--pass)}
-.ac-check{padding:.3em 0}
+.common-object>summary>.ac-check{padding:.3em 0}
 .ac-check-heading{display:flex;align-items:baseline;margin:0;font-size:.85em;color:var(--heading)}
 .ac-check .detail-fact{padding-left:1.3em;font-size:.8em}
 
@@ -147,8 +143,7 @@ a.timeline-row .timeline-object{color:var(--link)}
   /* Align the second row with the title text. */
   .common-object>summary{--second-line:calc(var(--row-inset) + 8px + var(--row-gap))}
   .common-object>summary>.count-slot{display:none}
-  .common-object>summary>.verification-chip{min-width:0}
-  .common-object>summary>.node-title+.type-badge{margin-left:var(--second-line)}
+  .common-object>summary>  .common-object>summary>.node-title+.type-badge{margin-left:var(--second-line)}
   .object-children{padding-left:.8rem}
   .notice{top:auto;bottom:18px;left:16px;right:16px;max-width:none}
 }

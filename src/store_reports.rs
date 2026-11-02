@@ -2,10 +2,6 @@
 use super::*;
 use crate::ac_tests::{Boundary, Listed, Report, TestResult, listed};
 
-#[path = "reports_overview.rs"]
-mod overview;
-pub use overview::{criterion_tests, task_status, tests_overview};
-
 #[path = "reports_acceptance.rs"]
 mod acceptance;
 pub use acceptance::check_acceptance;
@@ -42,26 +38,32 @@ pub(super) async fn state_criterion_statuses(
     state: &crate::model::Workspace,
     targets: &[String],
 ) -> Result<std::collections::BTreeMap<String, Value>> {
+    // The test names of each parent come from one pass over the test nodes.
+    let names = state
+        .test_nodes_migrated
+        .then(|| crate::test_nodes::names_by_parent(state));
     let criteria = targets
         .iter()
         .filter_map(|target| {
-            let data = state.objects.get(target)?.current().data.clone();
+            state.objects.get(target)?;
             let boundary =
                 Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
-            Some((target.clone(), data, listed(state, target), boundary))
+            let tests = match &names {
+                Some(names) => crate::ac_tests::listed_node(state, target, names),
+                None => listed(state, target),
+            };
+            Some((target.clone(), tests, boundary))
         })
         .collect();
     let rules = crate::test_rules::rules(state)?;
-    let board = crate::result_values::board_fields(&rules, state);
-    statuses_for_criteria(client, workspace, criteria, &rules, &board).await
+    statuses_for_criteria(client, workspace, criteria, &rules).await
 }
 
 async fn statuses_for_criteria(
     client: &impl GenericClient,
     workspace: &str,
-    criteria: Vec<(String, Value, Option<Listed>, Boundary)>,
+    criteria: Vec<(String, Option<Listed>, Boundary)>,
     rules: &crate::result_shape::ResultShape,
-    board: &[crate::result_values::BoardField],
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
@@ -69,7 +71,7 @@ async fn statuses_for_criteria(
     }
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
-        .filter_map(|(_, _, saved, _)| saved.as_ref())
+        .filter_map(|(_, saved, _)| saved.as_ref())
         .flat_map(|current| current.tests.iter().cloned())
         .collect();
     let reports: Vec<Report> = client
@@ -90,7 +92,7 @@ async fn statuses_for_criteria(
             .push((*id, result.clone()));
     }
     let mut statuses = std::collections::BTreeMap::new();
-    for (address, data, saved, boundary) in criteria {
+    for (address, saved, boundary) in criteria {
         let current = saved.as_ref();
         let tests = current.map(|r| r.tests.as_slice()).unwrap_or_default();
         let draft = current.is_some_and(|r| r.draft);
@@ -98,9 +100,9 @@ async fn statuses_for_criteria(
             .iter()
             .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
             .collect();
-        let mut status = crate::result_values::status_by_value(
-            tests, draft, boundary, &reports, &own, rules, board, &data,
-        )?;
+        let mut status = serde_json::to_value(crate::ac_tests::criterion_status(
+            tests, draft, boundary, &reports, &own, rules,
+        ))?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

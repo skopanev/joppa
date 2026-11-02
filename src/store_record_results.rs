@@ -122,11 +122,14 @@ pub async fn record_results(
         }
     }
     let (commit, results) = parse(args, &shape, &refs)?;
-    // The tests of the record that no present criterion lists. A full run must give none.
+    // The tests of the record that have no present test node. A full run must give none.
     let names: Vec<&str> = results.iter().map(|r| r.address.as_str()).collect();
     let unbound: Vec<String> = tx
         .query(
-            "SELECT DISTINCT n FROM unnest($2::text[]) n WHERE NOT EXISTS (SELECT 1 FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.document->'data'->'tests' ? n) ORDER BY n",
+            "WITH s AS (SELECT value FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1),
+                k AS (SELECT t.key FROM s,jsonb_each(s.value->'types') t WHERE t.value->>'role'='test')
+            SELECT DISTINCT n FROM unnest($2::text[]) n WHERE NOT EXISTS (SELECT 1 FROM joppa.objects o
+                WHERE o.workspace=$1 AND o.present AND o.kind IN (SELECT key FROM k) AND o.title=n) ORDER BY n",
             &[&workspace, &names],
         )
         .await?

@@ -48,7 +48,6 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("restore_object", &["target", "revision", "reason"], MEMBER),
-    op("set_ac_tests", &["target", "tests", "reason"], MEMBER),
     op("accept_commit", &["target", "revision", "commit"], MEMBER),
     op("redact_object", &["target", "fragment", "reason"], OWNER),
     op("rename_workspace", &["title", "reason"], OWNER),

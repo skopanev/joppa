@@ -56,22 +56,6 @@ pub(super) fn objects() -> Value {
     }))
 }
 
-/// The parameters of joppa_tests.
-pub(super) fn tests() -> Value {
-    json!({
-        "workspace": text("workspace key or alias; optional when a public item ID such as joppa-R-12345678 is given"),
-        "ac": text("1 to 100 comma-separated criterion addresses"),
-        "parent": text("node address: the criteria in its whole subtree, or * for all; pages of 100"),
-        "depth": {"type":"integer","minimum":1,"maximum":100,
-            "description":"with parent: criteria at most this many levels below it; 1 gives the direct children"},
-        "kind": text("criterion type with parent; default ac"),
-        "task": text("Task address; gives its done state and commit"),
-        "summary": {"type":"boolean",
-            "description":"true replaces the tests of each criterion with counts per test status"},
-        "cursor": text("next_cursor of the previous page"),
-    })
-}
-
 /// The parameters of joppa_search.
 pub(super) fn search() -> Value {
     node_filters(json!({

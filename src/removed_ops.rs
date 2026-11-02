@@ -3,7 +3,7 @@
 use crate::commands::Command;
 
 /// The operation names that live writes refuse.
-pub const NAMES: [&str; 25] = [
+pub const NAMES: [&str; 26] = [
     "domain",
     "edit_domain",
     "capability",
@@ -29,6 +29,7 @@ pub const NAMES: [&str; 25] = [
     "set_note_status",
     "confirm",
     "decide_note",
+    "set_ac_tests",
 ];
 
 /// The refusal of a removed operation: it names the replacement.
@@ -40,7 +41,9 @@ pub fn refusal(name: &str) -> String {
         "plan" | "result" | "finish" => "joppa_record_results",
         "accept" | "revoke" => "accept_commit",
         "issue" | "resolve" => "note",
-        "review_coverage" | "define_verification_scope" => "set_ac_tests",
+        "review_coverage" | "define_verification_scope" | "set_ac_tests" => {
+            "save_object with kind test"
+        }
         "set_note_status" | "decide_note" => "archive_object",
         "confirm" => "save_object; a saved requirement needs no confirmation",
         _ => "save_object",
@@ -80,6 +83,7 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::SetNoteStatus(crate::commands::SetNoteStatusOp { .. }) => "set_note_status",
         Command::Confirm { .. } => "confirm",
         Command::DecideNote(crate::commands::DecideNoteOp { .. }) => "decide_note",
+        Command::SetAcTests(crate::commands::SetAcTestsOp { .. }) => "set_ac_tests",
         _ => return None,
     })
 }
@@ -94,6 +98,18 @@ pub fn removed_field(command: &Command) -> Option<&'static str> {
             status_colors: Some(_),
             ..
         }) => Some("status_colors was removed; use statuses"),
+        // A test result field has no per-value board status: a test is a node with one tone.
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            test_results: Some(block),
+            ..
+        }) if block["fields"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|f| f.get("board").is_some_and(|b| b != false) || f.get("applies").is_some()) =>
+        {
+            Some("board and applies were removed from result fields; filter test nodes by status")
+        }
         _ => None,
     }
 }
