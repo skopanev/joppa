@@ -154,7 +154,7 @@ async fn an_ordered_list_saves_and_a_higher_tone_wins_in_a_children_rule() -> Re
     )
     .await?;
     for (ac, tone) in [("ac:a", "green"), ("ac:b", "red")] {
-        let status = store::criterion_tests(&pool, &ws, "bot", ac).await?;
+        let status = store::test_status(&pool, &ws, "bot", ac).await?;
         ensure!(status["status"] == tone, "{ac}: {status}");
     }
     let r = store::read_objects(

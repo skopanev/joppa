@@ -6,6 +6,22 @@ use crate::ac_tests::{Boundary, Listed, Report, TestResult, listed};
 mod acceptance;
 pub use acceptance::check_acceptance;
 
+/// The stored test status of one node: a test node, or a node with test nodes below it.
+pub async fn test_status(pool: &Pool, workspace: &str, actor: &str, target: &str) -> Result<Value> {
+    let conn = pool.get().await?;
+    let workspace = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &workspace, actor, false).await?;
+    criterion_test_statuses(
+        &**conn,
+        &workspace,
+        &[target.to_owned()],
+        &Default::default(),
+    )
+    .await?
+    .remove(target)
+    .with_context(|| format!("no test status for {target}"))
+}
+
 /// The stored test statuses of the requested objects, from the status projection of the
 /// last write. A missing or stale projection is an error, never an old status. `optional`
 /// stays for the callers: a stored status is always readable.

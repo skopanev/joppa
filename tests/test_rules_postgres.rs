@@ -71,7 +71,7 @@ async fn record(pool: &deadpool_postgres::Pool, ws: &str, results: Value) -> Res
 }
 
 async fn status(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
-    Ok(store::criterion_tests(pool, ws, "bot", "ac:a").await?["status"].clone())
+    Ok(store::test_status(pool, ws, "bot", "ac:a").await?["status"].clone())
 }
 
 // test-rules-in-schema-ac3

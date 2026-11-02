@@ -102,7 +102,7 @@ async fn a_workspace_without_a_shape_keeps_the_built_in_result() -> Result<()> {
         json!([{"test":X,"status":"pass"},{"test":Y,"status":"pass"}]),
     )
     .await?;
-    let s = store::criterion_tests(&pool, &ws, "bot", "ac:a").await?;
+    let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "green", "{s}");
     let test = &s["tests"][0];
     ensure!(
@@ -168,7 +168,7 @@ async fn a_saved_shape_decides_the_status_names_and_the_fields() -> Result<()> {
         ]),
     )
     .await?;
-    let s = store::criterion_tests(&pool, &ws, "bot", "ac:a").await?;
+    let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "green", "{s}");
     ensure!(
         s["tests"][0]["status"] == "pass"
@@ -183,7 +183,7 @@ async fn a_saved_shape_decides_the_status_names_and_the_fields() -> Result<()> {
         json!([{"test":Y,"status":"broken","browser":"webkit","message":"timeout"}]),
     )
     .await?;
-    let s = store::criterion_tests(&pool, &ws, "bot", "ac:a").await?;
+    let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "red", "{s}");
     let y = &s["tests"][1];
     ensure!(

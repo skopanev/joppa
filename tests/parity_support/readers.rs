@@ -54,8 +54,7 @@ pub async fn reads(pool: &deadpool_postgres::Pool) -> Vec<Result<Value>> {
     for scope in &scopes {
         out.push(store::read_objects(pool, ws(), "owner", scope).await);
     }
-    out.push(store::criterion_tests(pool, ws(), "owner", "ac:a1").await);
-    out.push(store::task_status(pool, ws(), "owner", "task:t1").await);
+    out.push(store::test_status(pool, ws(), "owner", "ac:a1").await);
     for view in ["all", "available"] {
         out.push(store::task_queue(pool, ws(), "owner", view, 100, None).await);
     }

@@ -37,6 +37,7 @@ mod record_results;
 #[path = "store_reports.rs"]
 mod reports;
 pub use record_results::record_results;
+pub use reports::test_status;
 #[path = "store_tasks.rs"]
 mod tasks;
 pub use tasks::{task_queue, task_queue_filtered};

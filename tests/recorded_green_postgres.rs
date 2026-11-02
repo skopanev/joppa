@@ -87,7 +87,7 @@ async fn record(pool: &deadpool_postgres::Pool, ws: &str, tests: &[&str]) -> Res
 }
 
 async fn status(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
-    store::criterion_tests(pool, ws, "bot", "ac:a").await
+    store::test_status(pool, ws, "bot", "ac:a").await
 }
 
 #[tokio::test]

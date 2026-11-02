@@ -54,7 +54,7 @@ async fn read(pool: &deadpool_postgres::Pool, ws: &str, address: &str) -> Result
 }
 
 async fn status(pool: &deadpool_postgres::Pool, ws: &str, ac: &str) -> Result<Value> {
-    store::criterion_tests(pool, ws, "owner", ac).await
+    store::test_status(pool, ws, "owner", ac).await
 }
 
 fn save_g(revision: &Value, body: &str) -> Value {

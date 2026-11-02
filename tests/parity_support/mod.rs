@@ -168,7 +168,7 @@ pub async fn dump(
     for criterion in criteria {
         line(
             format!("tests {criterion}"),
-            store::criterion_tests(pool, ws(), "owner", criterion).await?,
+            store::test_status(pool, ws(), "owner", criterion).await?,
         )?;
     }
     line(

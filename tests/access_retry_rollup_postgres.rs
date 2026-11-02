@@ -226,7 +226,7 @@ async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<(
     )
     .await?;
     // The test status of A is its verification; the read right after the record shows it.
-    let tests = store::criterion_tests(&pool, &ws, "alex", "ac:a").await?;
+    let tests = store::test_status(&pool, &ws, "alex", "ac:a").await?;
     ensure!(tests["status"] == "green", "{tests}");
     let a = read(&pool, &ws, "ac:a").await?;
     ensure!(a["signal"]["tone"] == "green", "{a}");
