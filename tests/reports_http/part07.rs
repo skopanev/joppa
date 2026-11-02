@@ -68,7 +68,7 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
     )
     .await?;
     for (spec, _, criterion) in BRANCH_CRITERIA {
-        p.confirm(
+        p.assess(
             spec,
             &[(criterion, json!({"ready":true,"reason":"Known scope"}))],
         )

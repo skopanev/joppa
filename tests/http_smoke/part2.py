@@ -135,13 +135,11 @@ assert reply['result']['content'][0]['text'] == 'Workspace not found'
 save('requirement','auto','capability:restrict',{'title':'Automated example','body':'','owner':'owner'},'Adapter test')
 save('ac','auto-ac','requirement:auto',criterion('Command exits successfully'))
 auto_revision = 2
-ok({'op': 'confirm', 'req':'requirement:auto', 'revision': auto_revision})
 ok({'op': 'assess', 'req':'requirement:auto', 'revision': auto_revision, 'ac':'ac:auto-ac',
     'assessment': {'ready': True, 'reason': 'Known contract'}})
 status, refused = command({'op':'plan','req':'requirement:auto','revision':auto_revision,'run':'refused'})
 assert status >= 400 and 'plan was removed; use joppa_record_results' in str(refused), (status, refused)
 # Changes are made by an integration; the portal only reads the result.
-ok({'op':'confirm','req':'requirement:key','revision':key_revision})
 ok({'op':'assess','req':'requirement:key','revision':key_revision,'ac':'ac:key-rights',
     'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
 # [launch-gate] Without an acceptance on a commit the gate refuses.
@@ -209,7 +207,6 @@ for kind, ident, parent, text in [
     if kind=='measure': custom_criterion_id=request('/api/workspaces/'+mcp_ws+'/objects?address=measure:'+ident)[1]['item_id']
 def custom(value):
     return mcp('joppa_command', {'workspace':mcp_ws,'request_id':str(uuid.uuid4()),'command':value}, owner_token)
-custom({'op':'confirm','req':'epic:same','revision':3})
 for ac in ('measure:same','rule:same'):
     custom({'op':'assess','req':'epic:same','revision':3,'ac':ac,
             'assessment':{'ready':True,'reason':'The contract is clear'}})

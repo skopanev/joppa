@@ -51,11 +51,6 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
         f.write(OWNER, json!({"op":"save_object","kind":"rule","id":id,"revision":0,"parent":"story:one","data":{"title":id,"owner":OWNER},"reason":"Set the criterion"})).await?;
     }
     let revision = f.read("story:one").await?["process"]["revision"].clone();
-    f.write(
-        OWNER,
-        json!({"op":"confirm","req":"story:one","revision":revision}),
-    )
-    .await?;
     let mut claims = BTreeMap::new();
     for (name, criterion, task) in PLANS {
         f.write(OWNER, json!({"op":"assess","req":"story:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;

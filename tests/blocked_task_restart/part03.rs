@@ -50,11 +50,6 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
         f.write(PLANNER, json!({"op":"save_object","kind":"criterion","id":id,"revision":0,"parent":"spec:one","data":{"title":id,"owner":OWNER},"reason":"Set the criterion"})).await?;
     }
     let revision = f.read("spec:one").await?["process"]["revision"].clone();
-    f.write(
-        OWNER,
-        json!({"op":"confirm","req":"spec:one","revision":revision}),
-    )
-    .await?;
     for (_, task, criterion) in FIXTURES {
         f.write(PLANNER, json!({"op":"assess","req":"spec:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
         let id = task.split_once(':').unwrap().1;

@@ -15,7 +15,7 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
     )
     .await?;
     // The new test list resets the readiness of C, so the owner confirms C ready again.
-    p.confirm(
+    p.assess(
         "spec:two",
         &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
     )

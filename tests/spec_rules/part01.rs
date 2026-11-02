@@ -94,19 +94,6 @@ fn a_link_outside_the_workspace_is_refused() {
 }
 
 #[test]
-fn an_agent_cannot_confirm_the_owner_wording() {
-    // draft-binds-after-confirm-ac1, owner-confirms-wording-ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        json!({"op":"confirm","req":"r","revision":1}),
-        "REQ owner confirms its formulation",
-    );
-    assert!(!w.state.requirements["r"].revisions[0].confirmed);
-}
-
-#[test]
 fn an_object_with_live_children_cannot_be_archived() {
     // removal-is-archiving-ac5
     let mut w = World::new();

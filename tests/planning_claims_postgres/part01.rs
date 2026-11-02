@@ -50,7 +50,7 @@ async fn save_work(
     write(pool, workspace, actor, json!({"op":"save_object","kind":"work","id":id,"revision":revision,"parent":"criterion:a", "data":{"title":id,"owner":"owner","body":format!("Implement the agreed mechanism revision {revision}")},"reason":"Set the work contract"})).await
 }
 
-/// Creates a workspace with ready, unverified criteria A and B under one confirmed spec.
+/// Creates a workspace with ready, unverified criteria A and B under one spec.
 /// Each actor is a human member, as the planners P and Q are people.
 async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> Result<String> {
     let workspace = format!("planning-{}", uuid::Uuid::new_v4().simple());
@@ -83,13 +83,6 @@ async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> 
     }
     let req = read(pool, &workspace, "spec:one").await?;
     let revision = req["process"]["revision"].as_u64().unwrap();
-    write(
-        pool,
-        &workspace,
-        "owner",
-        json!({"op":"confirm","req":"spec:one","revision":revision}),
-    )
-    .await?;
     for ac in ["criterion:a", "criterion:b"] {
         write(pool, &workspace, "planner", json!({"op":"assess","req":"spec:one","revision":revision,"ac":ac,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
     }

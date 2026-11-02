@@ -95,13 +95,6 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     upload_c1(pool, &ws).await?;
     for (spec, criterion) in [("spec:r", "criterion:a"), ("spec:rh", "criterion:d")] {
         let revision = read(pool, &ws, spec).await?["process"]["revision"].clone();
-        write(
-            pool,
-            &ws,
-            "owner",
-            json!({"op":"confirm","req":spec,"revision":revision}),
-        )
-        .await?;
         write(pool, &ws, "planner", json!({"op":"assess","req":spec,"revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
     }
     for ac in ["criterion:a", "criterion:d"] {

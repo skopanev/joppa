@@ -23,6 +23,8 @@ const NOT_PUBLIC: &[&str] = &[
     "set_domain_archived",
     "confirm_tree",
     "link_source",
+    "confirm",
+    "decide_note",
     "migrate_persistent_claims",
     "migrate_notes",
     "migrate_tasks",

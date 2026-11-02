@@ -35,7 +35,7 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
     ensure!(p.read("criterion:a").await?["process"]["planning_claim"]["actor"] == "agent");
 
     let p = planning(&w).await?;
-    p.confirm(
+    p.assess(
         "spec:one",
         &[("criterion:b", json!({"ready":true,"reason":"Known scope"}))],
     )
@@ -51,7 +51,7 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
     .await?;
 
     let p = planning(&w).await?;
-    p.confirm(
+    p.assess(
         "spec:one",
         &[
             (

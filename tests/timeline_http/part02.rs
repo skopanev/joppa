@@ -31,12 +31,6 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     w.save("bot", "ac:a", 0, Some("requirement:q"), "Add criterion A")
         .await?;
     w.save("bot", "signal:n", 0, None, "Add signal N").await?;
-    let a = w.get("pat", "/objects?address=ac:a").await?;
-    w.command(
-        "pat",
-        json!({"op":"confirm","req":a["process"]["req"],"revision":a["process"]["assessment"]["revision"]}),
-    )
-    .await?;
     let p = w.head().await?;
     w.save(
         "bot",

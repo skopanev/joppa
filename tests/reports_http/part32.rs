@@ -13,7 +13,7 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
     .await?;
     // check-list-frozen-ac3: the list save clears readiness, so B1 is assessed after it.
     let ready = json!({"ready":true,"reason":"Known scope"});
-    p.confirm("spec:b", &[("criterion:b1", ready)]).await?;
+    p.assess("spec:b", &[("criterion:b1", ready)]).await?;
     p.record(
         "c1c1c1c",
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),

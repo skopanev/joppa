@@ -83,8 +83,6 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
   }, configured);
   try {
     // The five changes of ac1: bot saves R, P moves R, archives N, marks A ready, bot records test results.
-    const criterion = await f.api('/objects?address=ac:A');
-    await f.command({op: 'confirm', req: criterion.process.req, revision: criterion.process.revision}, true);
     await f.save('requirement:R', {title: 'Requirement R', parent: 'capability:c1'});
     await f.command({op: 'save_object', kind: 'requirement', id: 'R', revision: 1, parent: 'capability:c2',
       data: {title: 'Requirement R', owner: 'owner', body: 'Current source'}, reason: 'Move R to the second capability'}, true);

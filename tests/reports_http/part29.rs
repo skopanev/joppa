@@ -67,7 +67,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         .await?;
     }
     let ready = json!({"ready":true,"reason":"Known scope"});
-    p.confirm(
+    p.assess(
         "spec:r",
         &[
             ("criterion:a", ready.clone()),
@@ -75,7 +75,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         ],
     )
     .await?;
-    p.confirm("spec:r2", &[("criterion:c", ready)]).await?;
+    p.assess("spec:r2", &[("criterion:c", ready)]).await?;
     p.record(
         "c1c1c1c",
         outcomes(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "pass")]),
@@ -196,8 +196,8 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     }
     let ready = json!({"ready":true,"reason":"Known scope"});
     let a: Vec<(&str, Value)> = a_criteria.iter().map(|key| (*key, ready.clone())).collect();
-    p.confirm("spec:a", &a).await?;
-    p.confirm("spec:b", &[("criterion:b1", ready)]).await?;
+    p.assess("spec:a", &a).await?;
+    p.assess("spec:b", &[("criterion:b1", ready)]).await?;
     Ok(p)
 }
 

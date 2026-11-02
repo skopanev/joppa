@@ -63,14 +63,9 @@ impl Planning<'_> {
         self.write("owner", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"links":links,"reason":"Set the contract"})).await?;
         Ok(())
     }
-    /// Confirm `req` and save each assessment.
-    async fn confirm(&self, req: &str, assessments: &[(&str, Value)]) -> Result<()> {
+    /// Save each assessment of the criteria of `req`.
+    async fn assess(&self, req: &str, assessments: &[(&str, Value)]) -> Result<()> {
         let revision = self.read(req).await?["process"]["revision"].clone();
-        self.write(
-            "owner",
-            json!({"op":"confirm","req":req,"revision":revision}),
-        )
-        .await?;
         for (ac, assessment) in assessments {
             self.write("owner", json!({"op":"assess","req":req,"revision":revision,"ac":ac,"assessment":assessment})).await?;
         }
@@ -78,7 +73,7 @@ impl Planning<'_> {
     }
     async fn ready(&self) -> Result<()> {
         let ready = json!({"ready":true,"reason":"Known scope"});
-        self.confirm(
+        self.assess(
             "spec:one",
             &[("criterion:a", ready.clone()), ("criterion:b", ready)],
         )
@@ -102,7 +97,7 @@ impl Planning<'_> {
             json!([]),
         )
         .await?;
-        self.confirm(
+        self.assess(
             "spec:two",
             &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
         )

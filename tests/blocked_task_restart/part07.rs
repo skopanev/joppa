@@ -48,11 +48,6 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     }
     f.write(HOLDER, json!({"op":"set_ac_tests","target":"criterion:a","tests":CHECKS,"reason":"Bind the tests"})).await?;
     let revision = f.read("spec:one").await?["process"]["revision"].clone();
-    f.write(
-        OWNER,
-        json!({"op":"confirm","req":"spec:one","revision":revision}),
-    )
-    .await?;
     for (task, criterion) in [("t1", "criterion:a"), ("t2", "criterion:b")] {
         f.write(OWNER, json!({"op":"assess","req":"spec:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
         f.write(OWNER, json!({"op":"save_object","kind":"work","id":task,"revision":0,"parent":criterion,"data":{"title":task,"owner":OWNER,"body":"Implement the agreed mechanism"},"reason":"Set the work contract"})).await?;

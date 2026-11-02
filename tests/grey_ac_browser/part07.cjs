@@ -134,7 +134,6 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
   try {
     for (const address of ['ac:A', 'ac:B']) assert.equal((await signal(address)).signal.assessment.state, 'unassessed', address);
     const a = await signal('ac:A');
-    await f.command({op: 'confirm', req: a.process.req, revision: a.process.revision}, true);
     await f.command({op: 'assess', req: a.process.req, revision: a.process.revision, ac: a.process.criterion,
       assessment: {ready: true, reason: 'Known scope'}});
     const [A, B] = [await signal('ac:A'), await signal('ac:B')];
@@ -189,7 +188,6 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
   try {
     // B1 is ready and its work is in the queue. A is not green.
     const b1 = await read('ac:B1');
-    await f.command({op: 'confirm', req: b1.process.req, revision: b1.process.revision}, true);
     await f.command({op: 'assess', req: b1.process.req, revision: b1.process.revision, ac: b1.process.criterion,
       assessment: {ready: true, reason: 'Known scope'}}, true);
     assert.ok((await unstarted()).includes('ac:B1'));

@@ -110,7 +110,9 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     .await?;
     assert_eq!(detail["document"]["data"]["body"], raw);
     // Updating the input must hydrate and preserve its earlier revision.
-    store::execute_input(&pool,&ws,"owner","process-input",&json!({"op":"decide_note","target":"note:raw","revision":1,"outcome":"rejected","reason":"Processed source"})).await?;
+    let mut data = detail["document"]["data"].clone();
+    data["title"] = json!("Raw input, read");
+    store::execute_input(&pool,&ws,"owner","update-input",&json!({"op":"save_object","kind":"note","id":"raw","revision":1,"parent":null,"data":data,"links":detail["document"]["links"],"reason":"Mark the source as read"})).await?;
     let old = store::read_objects(
         &pool,
         &ws,
@@ -134,7 +136,8 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     )
     .await?;
     assert_eq!(detail["document"]["data"]["body"], raw);
-    assert_eq!(detail["document"]["data"]["status"], "processed");
+    assert_eq!(detail["document"]["data"]["title"], "Raw input, read");
+    assert_eq!(detail["document"]["revision"], 2);
     Ok(())
 }
 

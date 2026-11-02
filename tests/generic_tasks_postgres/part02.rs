@@ -82,11 +82,6 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     write("agent", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;
     write("agent", json!({"op":"save_object","kind":"criterion","id":"a","revision":0,"parent":"spec:one","data":{"title":"a","owner":"owner"},"reason":"Set the criterion"})).await?;
     let revision = read("spec:one").await?["process"]["revision"].clone();
-    write(
-        "owner",
-        json!({"op":"confirm","req":"spec:one","revision":revision}),
-    )
-    .await?;
     write("agent", json!({"op":"assess","req":"spec:one","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
     let contract = |title: &str| json!({"title":title,"owner":"owner","body":"Implement the agreed mechanism"});
     let mut pins = Vec::new();

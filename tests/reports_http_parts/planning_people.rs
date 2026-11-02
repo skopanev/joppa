@@ -148,7 +148,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
 
     let p = people(&w).await?;
     p.t0().await?;
-    p.confirm("spec:one", &[("criterion:b", ready.clone())])
+    p.assess("spec:one", &[("criterion:b", ready.clone())])
         .await?;
     let revision = p.revision("criterion:a").await?;
     refuse(&p, "unassessed A", "criterion:a", revision, NOT_READY).await?;
@@ -159,7 +159,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
         ("criterion:a", waiting.clone()),
         ("criterion:b", ready.clone()),
     ];
-    p.confirm("spec:one", &assessments).await?;
+    p.assess("spec:one", &assessments).await?;
     let revision = p.revision("criterion:a").await?;
     refuse(&p, "waiting A", "criterion:a", revision, NOT_READY).await?;
 
@@ -170,7 +170,7 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
         .await?;
     p.t0().await?;
     let assessments = [("criterion:a", ready.clone()), ("criterion:b", waiting)];
-    p.confirm("spec:one", &assessments).await?;
+    p.assess("spec:one", &assessments).await?;
     let a = p.read("criterion:a").await?;
     ensure!(
         a["process"]["assessment"]["state"] == "ready"

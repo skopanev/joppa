@@ -1,4 +1,4 @@
-//! Owner wording and agent work rules that the server already enforces, one test per criterion.
+//! Agent work rules that the server already enforces, one test per criterion.
 mod common;
 
 use common::*;
@@ -15,21 +15,6 @@ fn assess_on(revision: u32, ac: &str, ready: bool, recipient: Option<&str>) -> V
 }
 fn task(id: &str, ac: &str) -> Value {
     json!({"op":"task","req":"r","revision":1,"id":id,"title":id,"acs":[ac],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"})
-}
-
-#[test]
-fn the_owner_confirms_the_wording_and_a_member_cannot() {
-    // owner-confirms-wording-ac1, ac3; draft-binds-after-confirm-ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "legal",
-        json!({"op":"confirm","req":"r","revision":1}),
-        "REQ owner confirms its formulation",
-    );
-    assert!(!w.state.requirements["r"].revisions[0].confirmed);
-    w.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
-    assert!(w.state.requirements["r"].revisions[0].confirmed);
 }
 
 #[test]

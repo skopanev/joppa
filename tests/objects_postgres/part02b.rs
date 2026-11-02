@@ -32,7 +32,8 @@ async fn note_queue_links_and_color_after_setup(
     )
     .await?;
     store::execute_remote_input(pool,ws,"agent","domain-link",&json!({"op":"save_object","kind":"domain","id":"d","revision":domain["current_revision"],"parent":null,"data":domain["document"]["data"],"links":[{"target":"note:b","relation":"related"}],"reason":"Link the input"})).await?;
-    store::execute_remote_input(pool,ws,"owner","process-a",&json!({"op":"decide_note","target":"note:a","revision":1,"outcome":"rejected","reason":"Input reviewed"})).await?;
+    // A decision of an old journal: live writes refuse decide_note, a replay reads it.
+    common::append_legacy(pool,ws,"owner","process-a",&json!({"op":"decide_note","target":"note:a","revision":1,"outcome":"rejected","reason":"Input reviewed"})).await?;
     let incoming = store::read_objects(
         pool,
         ws,

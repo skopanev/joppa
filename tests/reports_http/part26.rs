@@ -150,7 +150,7 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
         .await?;
     }
     let ready = json!({"ready":true,"reason":"Known scope"});
-    p.confirm(
+    p.assess(
         "spec:r",
         &[("criterion:a", ready.clone()), ("criterion:b", ready)],
     )

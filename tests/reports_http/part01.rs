@@ -196,7 +196,6 @@ fn outcomes(cases: &[(&str, &str)]) -> Value {
 
 async fn ready_for_planning(w: &World) -> Result<Value> {
     for command in [
-        json!({"op":"confirm","req":"requirement:key","revision":2}),
         json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"Known work scope"}}),
     ] {
         let (code, reply) = post(
