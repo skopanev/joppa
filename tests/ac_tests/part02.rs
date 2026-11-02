@@ -1,6 +1,37 @@
 // Part 2 of tests/ac_tests.rs, included there, so the test names stay unchanged.
 
 #[test]
+fn clock_time_alone_never_changes_status() {
+    // time-not-stale-ac3: the same reports, read seven days apart, give the same status.
+    const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+    let rows = [result(1, "x", "pass")];
+    let now = criterion_status(
+        &tests(&["x"]),
+        false,
+        Boundary::None,
+        &[report(1, "c", 1, true, 10)],
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
+    let later = criterion_status(
+        &tests(&["x"]),
+        false,
+        Boundary::None,
+        &[report(1, "c", 1, true, 10 + 7 * DAY_MS)],
+        &rows,
+        &joppa::test_rules::legacy(),
+    );
+    assert_eq!(
+        (now.status.as_str(), now.commit.as_deref()),
+        ("green", Some("c"))
+    );
+    assert_eq!(
+        (later.status.as_str(), later.commit.as_deref()),
+        ("green", Some("c"))
+    );
+}
+
+#[test]
 fn an_account_without_membership_cannot_save_a_test_list() {
     // checks-listed-first-ac3: "eve" is signed in but not a member.
     let mut w = World::new();

@@ -17,6 +17,27 @@ impl World {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_edit_adds_a_revision_and_keeps_the_original() -> Result<()> {
+    // edits-keep-original-ac1
+    let w = world().await?;
+    w.note("a", 0, "A", "original text", json!([])).await?;
+    w.note("a", 1, "A", "edited text", json!([])).await?;
+    let current = w.get("address=note:a").await?;
+    let first = w.get("address=note:a&revision=1").await?;
+    ensure!(
+        current["document"]["revision"] == 2
+            && current["document"]["data"]["body"] == "edited text",
+        "{current}"
+    );
+    ensure!(
+        first["document"]["data"]["body"] == "original text",
+        "{first}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_link_to_another_workspace_is_refused() -> Result<()> {
     // workspaces-isolated-ac2
     let a = world().await?;

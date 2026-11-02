@@ -6,6 +6,32 @@ mod fake_spaces;
 use common::*;
 use serde_json::json;
 
+/// Адрес проверяется на существование объекта, а не только на форму.
+/// Заметка на несуществующем домене не видна нигде и не находится ничем:
+/// она молча уезжает в карту по ключу, который никто не спросит.
+#[test]
+fn an_address_must_name_something_that_exists() {
+    let mut w = World::new();
+    for bad in [
+        "domain",         // нет двоеточия
+        "domain:missing", // нет такого домена
+        "capability:missing",
+        "requirement:missing",
+        "workspace:x", // неизвестный вид
+    ] {
+        w.no(
+            "owner",
+            json!({"op":"note","target":bad,"id":"n1","text":"hello"}),
+        );
+    }
+    for good in ["domain:d", "capability:c", "requirement:r"] {
+        w.ok(
+            "owner",
+            json!({"op":"note","target":good,"id":format!("n-{}", good.replace([':','/'],"-")),"text":"hello"}),
+        );
+    }
+}
+
 /// Комментарий несёт автора и время ИЗ ЖУРНАЛА. Клиент не присылает ни того,
 /// ни другого: по этим отметкам потом восстанавливают, кто что знал и когда.
 #[test]

@@ -62,6 +62,30 @@ test('comments-on-object-ac2: a comment shows its author and server time', async
   } finally { await f.close(); }
 });
 
+test('edit-makes-revision-ac1: web and MCP read the same saved revision', async () => {
+  const f = await fixture({'domain:d': {title: 'Shared object', body: 'Body at revision 1'}});
+  try {
+    await f.open('domain:d');
+    for (let revision = 1; revision < 4; revision++) await f.save('domain:d', {title: 'Shared object', body: 'Body at revision ' + (revision + 1)}, revision, true);
+    const body = 'Body at revision 5 from MCP';
+    const saved = await f.save('domain:d', {title: 'Shared object', body}, 4, true);
+    assert.equal(saved.object.revision, 5);
+    await f.page.reload();
+    const card = f.page.locator('.object-page > .common-object[data-object-address="domain:d"]');
+    await card.locator(':scope > .object-body > .object-secondary').waitFor({state: 'attached'});
+    const content = await card.locator('.object-content').innerText();
+    const current = await f.api('/objects?address=domain:d');
+    const mcp = await f.mcp('joppa_objects', {address: 'domain:d'});
+    assert.equal(mcp.revision, 5);
+    const fields = card.locator('.object-details');
+    await card.locator(':scope > summary').getByRole('button', {name: 'Properties', exact: true}).click();
+    assert.match(await fields.innerText(), /Revision 5/);
+    const hash = value => createHash('sha256').update(value).digest('hex');
+    assert.equal(hash(content), hash(mcp.data.body));
+    assert.equal(content, body);
+  } finally { await f.close(); }
+});
+
 // dependencies-before-priority narrows the pin to Task links: a domain keeps the stored
 // revision of its blocking link, and the revision gates nothing.
 test('blocking-pins-revision-ac1: a blocking link keeps its stored target revision', async () => {

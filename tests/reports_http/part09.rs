@@ -134,3 +134,60 @@ async fn a_red_test_clears_when_a_newer_commit_passes_it() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
+    // missing-is-not-pass-ac1: X passes on C1; the later record for C2 has X skipped.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
+        "{s}"
+    );
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A
+            && s["tests"][0]["status"] == "pass"
+            && s["status"] == "green",
+        "{s}"
+    );
+    w.record("c2c2c2c", outcomes(&[("opens", "skip")])).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A
+            && s["tests"][0]["status"] == "skipped"
+            && s["status"] == "grey",
+        "{s}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
+    // missing-is-not-pass-ac3: X passes on C1; the later record for C2 has X as todo.
+    let w = world().await?;
+    w.list(&[A]).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests_draft"] == false && s["tests"].as_array().map(Vec::len) == Some(1),
+        "{s}"
+    );
+    w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A
+            && s["tests"][0]["status"] == "pass"
+            && s["status"] == "green",
+        "{s}"
+    );
+    w.record("c2c2c2c", outcomes(&[("opens", "todo")])).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["tests"][0]["address"] == A && s["tests"][0]["status"] == "todo" && s["status"] == "grey",
+        "{s}"
+    );
+    Ok(())
+}

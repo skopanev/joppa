@@ -50,6 +50,43 @@ fn an_agent_records_readiness_per_criterion_with_a_reason() {
 }
 
 #[test]
+fn readiness_on_an_unsaved_revision_is_refused() {
+    // readiness-per-criterion-ac2
+    let mut w = World::new();
+    refused(
+        &mut w,
+        "agent",
+        assess_on(2, "ios", true, None),
+        "stale revision",
+    );
+}
+
+#[test]
+fn a_not_ready_assessment_names_the_gap_and_a_person() {
+    // not-ready-names-gap-ac1, ac2
+    let mut w = World::new();
+    refused(
+        &mut w,
+        "agent",
+        assess_on(1, "key", false, None),
+        "waiting needs a recipient",
+    );
+    w.ok("agent", assess_on(1, "key", false, Some("legal")));
+    let key = w.state.requirements["r"].revisions[0]
+        .acs
+        .iter()
+        .find(|a| a.id == "key")
+        .unwrap()
+        .assessment
+        .clone()
+        .unwrap();
+    assert_eq!(
+        (key.ready, key.reason.as_str(), key.owner.as_deref()),
+        (false, "Which permissions?", Some("legal"))
+    );
+}
+
+#[test]
 fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
     // no-work-before-ready-ac1
     let mut w = World::new();

@@ -172,6 +172,21 @@ async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() 
     Ok(())
 }
 
+// check-list-frozen-ac4, fixture 2
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_new_c2_report_after_a_text_change_turns_the_criterion_green() -> Result<()> {
+    let w = world().await?;
+    let (_, before) = changed_after_c1(&w).await?;
+    w.record("c2c2c2c", passing()).await?;
+    let s = w.status().await?;
+    ensure!(
+        s["status"] == "green" && saved_list(&s) == saved_list(&before),
+        "after the record: {s}"
+    );
+    Ok(())
+}
+
 // check-list-frozen-ac4
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
