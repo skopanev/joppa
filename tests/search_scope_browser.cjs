@@ -1,7 +1,7 @@
-// Chromium checks of the board search scope: with All versions, a click opens the revision
-// that the search found, and with All workspaces, a click opens a result of another
-// workspace in that workspace. The fixture provider does not answer, so the board search
-// uses its full-text half.
+// Chromium checks of the board search scope: each scope checkbox label stays on one line.
+// With All versions, a click opens the revision that the search found, and with All
+// workspaces, a click opens a result of another workspace in that workspace. The fixture
+// provider does not answer, so the board search uses its full-text half.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
@@ -57,5 +57,25 @@ test('search-all-workspaces-board: the board opens a result of another workspace
     await row.click();
     await f.page.waitForFunction(id => document.querySelector('#workspaces')?.value === id, second.id);
     await f.page.locator('.object-page .common-object[data-object-address="domain:keys"]').waitFor();
+  } finally { await f.close(); }
+});
+
+test('search-scope-labels-one-line: each scope checkbox label stays on one line at every width', async () => {
+  const f = await fixture(types);
+  try {
+    await f.save('requirement:billing', 'Billing rules');
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+    await f.page.getByLabel('All workspaces').waitFor();
+    for (const width of [390, 600, 800, 1000, 1280]) {
+      await f.page.setViewportSize({width, height: 900});
+      const lines = await f.page.evaluate(() => [...document.querySelectorAll('label.filter-check')].map(label => {
+        // The text node only: the checkbox has its own box.
+        const range = document.createRange();
+        range.selectNodeContents(label.lastChild);
+        const tops = new Set([...range.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top)));
+        return [label.textContent.trim(), tops.size];
+      }));
+      assert.deepEqual(lines, [['All versions', 1], ['All workspaces', 1]], 'width ' + width);
+    }
   } finally { await f.close(); }
 });
