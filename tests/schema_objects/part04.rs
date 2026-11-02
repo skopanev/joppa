@@ -125,7 +125,7 @@ async fn copied_ids_search_and_rebuild_use_common_documents_for_all_names() -> a
             &ws,
             "owner",
             &ObjectScope {
-                kind: Some("note"),
+                filter: joppa::node_filter::NodeFilter::of(None, Some("note")),
                 note_status: Some("unprocessed"),
                 ..Default::default()
             }

@@ -186,7 +186,7 @@ async fn a_list_save_keeps_the_contract_revision_and_a_text_change_moves_it() ->
         &ws,
         "bot",
         &store::ObjectScope {
-            parent: Some("requirement:r"),
+            filter: joppa::node_filter::NodeFilter::of(Some("requirement:r"), None),
             limit: 100,
             ..Default::default()
         },

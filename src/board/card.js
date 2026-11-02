@@ -59,7 +59,7 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   // Fill the body with the document and its children. Both requests run at once.
   const fill=async()=>{
-    const generation=state.loadNumber,childParams={limit:'50',parent:item.address};
+    const generation=state.loadNumber,childParams={limit:'50',parent:item.address,depth:'1'};
     const [detail,kids]=await Promise.all([loadedDetail||objectPart({address:item.address}),objectPart(childParams).catch(()=>null)]);
     if(generation!==state.loadNumber||!card.isConnected)return;
     body.replaceChildren();fillCommonObject(body,detail);

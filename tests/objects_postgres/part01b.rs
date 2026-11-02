@@ -189,7 +189,7 @@ async fn replay_concurrency_ids_and_schema_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            parent: Some("initiative:release"),
+            filter: joppa::node_filter::NodeFilter::of(Some("initiative:release"), None),
             ..Default::default()
         },
     )

@@ -139,7 +139,7 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
 
     // The domain list reads only its own rows; the Task queue reads the stored waits once.
     let domains = store::ObjectScope {
-        kind: Some("domain"),
+        filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
         limit: 50,
         ..Default::default()
     };

@@ -79,7 +79,7 @@ async fn children_of_d(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Vec<S
         ws,
         "bot",
         &store::ObjectScope {
-            parent: Some("domain:d"),
+            filter: joppa::node_filter::NodeFilter::of(Some("domain:d"), None),
             limit: 100,
             ..Default::default()
         },

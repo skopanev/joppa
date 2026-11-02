@@ -39,8 +39,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             note_status: Some("unprocessed"),
             limit: 1,
             ..Default::default()
@@ -55,8 +54,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             note_status: Some("unprocessed"),
             limit: 1,
             cursor: Some(cursor),
@@ -70,7 +68,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
+            filter: joppa::node_filter::NodeFilter::of(None, Some("note")),
             related_to: Some("domain:d"),
             ..Default::default()
         },
@@ -102,8 +100,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             note_status: Some("processed"),
             ..Default::default()
         },
@@ -118,8 +115,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             note_status: Some("unprocessed"),
             ..Default::default()
         },
@@ -132,8 +128,7 @@ async fn note_queue_links_and_color_after_setup(
             ws,
             "outsider",
             &ObjectScope {
-                kind: Some("note"),
-                parent: Some("*"),
+                filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
                 related_to: Some("domain:d"),
                 ..Default::default()
             }
@@ -176,8 +171,7 @@ async fn note_queue_links_and_color_after_setup(
         ws,
         "agent",
         &ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             ..Default::default()
         },
     )

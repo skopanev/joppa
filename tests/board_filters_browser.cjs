@@ -62,3 +62,30 @@ test('board-filters-and-theme-ac1 filters: tabs, filters and search update the s
     assert.ok(found.items.some(item => item.address === 'domain:gamma'), JSON.stringify(found));
   } finally { await f.close(); }
 });
+
+test('board-link-filters: a board link with node filters opens that list', async () => {
+  const types = {
+    domain: {title: 'Domains', role: 'group', status: 'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status: 'tests', parents: ['domain']},
+  };
+  const f = await fixture(types);
+  try {
+    await f.command({op: 'member', id: 'maria', role: 'human'}, f.live.owner);
+    await f.save('domain:alpha', 'Alpha');
+    for (const [id, assignee] of [['one', 'maria'], ['two', 'alex']]) {
+      const saved = await f.command({op: 'save_object', kind: 'ac', id, revision: 0, parent: 'domain:alpha',
+        data: {title: 'Criterion ' + id, owner: 'owner', body: 'Fixture text', assignee}, reason: 'Define the browser fixture'});
+      assert.ok(!saved.error, JSON.stringify(saved));
+    }
+    // One link names the assignee and the readiness: the board opens with that list only.
+    // A criterion without an assessment that waits for nothing is ready.
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&assignee=maria&ready=true');
+    await f.page.locator('#tree .common-object[data-object-address="ac:one"]').waitFor();
+    const rows = await f.page.evaluate(() => [...document.querySelectorAll('#tree .common-object[data-object-address]')]
+      .filter(row => row.checkVisibility() && !row.parentElement.closest('.common-object')).map(row => row.dataset.objectAddress));
+    assert.deepEqual(rows, ['ac:one']);
+    const line = f.page.locator('.link-filters');
+    assert.ok(await line.isVisible(), 'the link filters show');
+    assert.match(await line.textContent(), /assignee = .+ · ready = true/);
+  } finally { await f.close(); }
+});

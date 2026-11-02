@@ -207,7 +207,6 @@ pub(crate) fn process_field(field: &str) -> bool {
             | "runs"
             | "acs"
             | "tasks"
-            | "assignee"
             | "claim"
             | "planning_claim"
             | "done"

@@ -109,7 +109,7 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
     // pass; r1 holds the odd criteria, which all fail.
     let expected = json!({"passed": 1, "failed": 1, "total": 2});
     let scope = store::ObjectScope {
-        kind: Some("domain"),
+        filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
         limit: 50,
         ..Default::default()
     };

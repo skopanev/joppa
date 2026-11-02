@@ -94,8 +94,8 @@ async fn configured_references_drive_queue_and_index_without_rewriting_history()
         &ws,
         "agent",
         &store::ObjectScope {
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), None),
             related_to: Some("consumer:urgent"),
-            parent: Some("*"),
             limit: 100,
             ..Default::default()
         },

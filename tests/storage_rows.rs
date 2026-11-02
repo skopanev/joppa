@@ -88,8 +88,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
         &ws,
         "owner",
         &store::ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             ..Default::default()
         },
     )
@@ -202,8 +201,7 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
         &ws,
         "owner",
         &store::ObjectScope {
-            kind: Some("domain"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("domain")),
             ..Default::default()
         },
     )

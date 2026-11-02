@@ -116,8 +116,9 @@ pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<
 #[derive(Default)]
 pub struct ObjectScope<'a> {
     pub address: Option<&'a str>,
-    pub parent: Option<&'a str>,
-    pub kind: Option<&'a str>,
+    /// The node filters of a list: parent with depth, kind, status, owner, assignee, ready
+    /// and data.
+    pub filter: crate::node_filter::NodeFilter,
     pub revision: Option<u32>,
     pub history: bool,
     pub limit: usize,
@@ -127,8 +128,6 @@ pub struct ObjectScope<'a> {
     pub work_filter: Option<&'a str>,
     /// Each list item also gives the full `document.data`.
     pub data: bool,
-    /// A JSON object that the `document.data` of each list item contains.
-    pub contains: Option<&'a str>,
 }
 
 /// The priority values of the current tree schema, the first value first in work order.

@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 /// The most criteria that one joppa_tests call reads.
 const TESTS_MAX: usize = 100;
 
-/// The criteria of a parent (direct children) or of every node with `parent: "*"`, of
-/// `kind` (default ac), in address order: one page of TESTS_MAX, next_cursor and total.
+/// The criteria that the node filters keep, of `kind` (default ac), in address order: one
+/// page of TESTS_MAX, next_cursor and total. `parent` keeps the whole subtree of a node.
 async fn criteria(
     pool: &Pool,
     actor: &str,
@@ -17,6 +17,9 @@ async fn criteria(
     a: &Value,
 ) -> anyhow::Result<(Vec<String>, Value)> {
     let mut all = vec![];
+    let mut filter = joppa::node_filter::NodeFilter::parse(a)?;
+    filter.parent.get_or_insert_with(|| "*".to_owned());
+    filter.kinds.get_or_insert_with(|| vec!["ac".to_owned()]);
     let mut cursor: Option<String> = None;
     loop {
         let page = store::read_objects(
@@ -25,8 +28,7 @@ async fn criteria(
             actor,
             &store::ObjectScope {
                 address: None,
-                parent: Some(a["parent"].as_str().unwrap_or("*")),
-                kind: Some(a["kind"].as_str().unwrap_or("ac")),
+                filter: filter.clone(),
                 revision: None,
                 history: false,
                 limit: 100,
@@ -35,7 +37,6 @@ async fn criteria(
                 related_to: None,
                 work_filter: None,
                 data: false,
-                contains: None,
             },
         )
         .await?;

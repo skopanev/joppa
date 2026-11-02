@@ -24,16 +24,16 @@ pub fn delta(before: [u64; 5]) -> [u64; 5] {
 pub async fn reads(pool: &deadpool_postgres::Pool) -> Vec<Result<Value>> {
     let scopes = [
         store::ObjectScope {
-            kind: Some("domain"),
+            filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
             limit: 50,
             ..Default::default()
         },
         store::ObjectScope {
-            parent: Some("ac:a1"),
+            filter: joppa::node_filter::NodeFilter::of(Some("ac:a1"), None),
             ..Default::default()
         },
         store::ObjectScope {
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), None),
             limit: 100,
             ..Default::default()
         },

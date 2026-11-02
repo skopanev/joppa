@@ -8,7 +8,7 @@ pub(super) struct ListPlan<'s> {
     pub(super) inbox: bool,
     pub(super) after_processed: bool,
     pub(super) after: &'s str,
-    pub(super) parent: Option<String>,
+    pub(super) bound: crate::node_filter::Bound,
     pub(super) after_filter: String,
     pub(super) order: String,
     pub(super) values: Vec<String>,
@@ -43,7 +43,8 @@ pub(super) async fn read_list(
     ensure!(
         scope.note_status.is_none()
             || scope
-                .kind
+                .filter
+                .one_kind()
                 .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false))),
         "note_status requires an inbox type"
     );
@@ -56,7 +57,8 @@ pub(super) async fn read_list(
     let limit = if scope.limit == 0 { 50 } else { scope.limit };
     ensure!((1..=100).contains(&limit), "limit must be 1 to 100");
     let inbox = scope
-        .kind
+        .filter
+        .one_kind()
         .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false)));
     let (after_processed, after) = if let Some(cursor) = scope.cursor {
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
@@ -81,7 +83,7 @@ pub(super) async fn read_list(
                     ["0", "1"].contains(&phase)
                         && address
                             .split_once(':')
-                            .is_some_and(|(kind, id)| Some(kind) == scope.kind
+                            .is_some_and(|(kind, id)| Some(kind) == scope.filter.one_kind()
                                 && !id.is_empty()
                                 && !id.contains(':')),
                     "invalid inbox cursor; start again without cursor"
@@ -101,19 +103,16 @@ pub(super) async fn read_list(
     } else {
         (false, "")
     };
-    let parent = if let Some(parent) = scope.parent {
-        Some(
-            conn.query_opt(
-                "SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2",
-                &[&workspace, &parent],
-            )
-            .await?
-            .map(|row| row.get::<_, String>(0))
-            .unwrap_or_else(|| parent.to_owned()),
-        )
-    } else {
-        None
-    };
+    // Without a parent and without a filter, a list gives the roots. Unstarted work and a
+    // related_to list read every level.
+    let bound = crate::node_filter::bind(
+        conn,
+        &workspace,
+        &scope.filter,
+        !unstarted && related_to.is_none(),
+        false,
+    )
+    .await?;
     // Unstarted work follows the priority chain from the top, then journal order. Its pages
     // continue after the cursor object in that order, at the same journal position.
     let chain = priority_chain_sql("o.workspace", "o.address", "$15::text[]");
@@ -165,7 +164,7 @@ pub(super) async fn read_list(
         inbox,
         after_processed,
         after,
-        parent,
+        bound,
         after_filter,
         order,
         values,

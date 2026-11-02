@@ -114,7 +114,7 @@ pub async fn dump(
     let mut cursor: Option<String> = None;
     loop {
         let scope = store::ObjectScope {
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), None),
             limit: 100,
             cursor: cursor.as_deref(),
             ..Default::default()
@@ -130,7 +130,7 @@ pub async fn dump(
         (
             "list domain",
             store::ObjectScope {
-                kind: Some("domain"),
+                filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
                 limit: 50,
                 ..Default::default()
             },
@@ -138,7 +138,7 @@ pub async fn dump(
         (
             "list ac:a1",
             store::ObjectScope {
-                parent: Some("ac:a1"),
+                filter: joppa::node_filter::NodeFilter::of(Some("ac:a1"), None),
                 ..Default::default()
             },
         ),

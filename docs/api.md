@@ -133,8 +133,8 @@ The server command line takes explicit local IDs.
 
 ## Search
 
-`joppa_search` takes `workspace`, `query`, `kind`, `limit` (1 to 50, default 10),
-`all_versions` and `all_workspaces`. `GET /api/workspaces/{workspace}/search` takes `q` and
+`joppa_search` takes `workspace`, `query`, `limit` (1 to 50, default 10), `all_versions`,
+`all_workspaces` and the [node filters](read-contract.md#node-filters) of `joppa_objects`. `GET /api/workspaces/{workspace}/search` takes `q` and
 the same filters. See [search](search.md), also given by `joppa_help` with `section: "search"`.
 
 ## Browser authentication

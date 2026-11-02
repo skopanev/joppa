@@ -61,8 +61,8 @@ Request:
 {"workspace": "w", "parent": "requirement:r", "limit": 100}
 ```
 
-`limit` is capped at 25. `parent` is a node address, `*` for every node, or absent for the
-roots. `kind` filters by type. Reply:
+`limit` is capped at 25. `parent` is a node address (every descendant), `*` for every node,
+or absent for the roots. The [node filters](#node-filters) narrow the list. Reply:
 
 ```json
 {
@@ -130,20 +130,35 @@ two reads:
  "fields": ["title", "status", "revision", "data.body", "data.tests"]}
 ```
 
-## Data filter
+## Node filters
 
-`data` is a JSON object. The list gives the objects whose `document.data` contains it, as
-the JSONB operator `@>` does. A GIN index on `document->'data'` serves the filter.
+`joppa_objects`, `joppa_search`, `joppa_tests` and the HTTP routes `/objects` and `/search`
+take the same filters (`src/node_filter.rs`). All filters must match.
+
+| Filter | Keeps |
+| --- | --- |
+| `parent` | Each descendant of the node, at any depth. `*`: every level. |
+| `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. `1`: the direct children, or the roots. |
+| `kind` | Nodes of one type or of a list of types. |
+| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. |
+| `owner` | Nodes whose `data.owner` is this member ID. |
+| `assignee` | Nodes whose Task holder is this member ID, else whose `data.assignee` is. Any node can have `data.assignee`. |
+| `ready` | `true`: nodes that wait for nothing and whose assessment, if any, is `ready`. `false`: the others. |
+| `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. |
 
 ```json
-{"workspace": "w", "data": {"tags": ["kyc"]}}
-{"workspace": "w", "data": {"owner": "alex"}, "parent": "requirement:r", "fields": ["title"]}
+{"workspace": "w", "parent": "domain:billing", "kind": ["ac"], "status": ["red", "grey"]}
+{"workspace": "w", "data": {"tags": ["kyc"]}, "fields": ["title"]}
 ```
 
-- Without `parent`, the filter reads objects at every level of the tree, as `parent: "*"`.
-- An array value matches when the stored array holds each of its items.
-- A value that is not an object is refused: `data filter must be an object`.
-- With `address` it is refused: `address cannot be combined with list filters`.
+- Without `parent`, a filter reads every level. Without any filter, the list gives the roots.
+- HTTP takes `kind` and `status` comma-separated, `ready` as `true` or `false` and `data` as
+  JSON text. A board link with these query keys, such as `/?workspace=w&assignee=user-1&ready=false`,
+  opens the board with that list.
+- A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
+  `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.
+- Indexes serve `owner`, `assignee`, the tone and `data` (migration 045 and 039).
+- With `address` the filters are refused: `address cannot be combined with list filters`.
 
 ## Reads by address
 
@@ -160,7 +175,7 @@ up to 10 addresses in one call, and `fields` with `address`.
   101 are refused with `at most 100 criteria in one call`.
 - `{"workspace": "w", "kind": "ac", "parent": "*"}`: every criterion in address order, 100 a
   page: `{"total": 212, "next_cursor": "100", "items": [...]}`. Send `cursor` for the next page.
-  `parent` gives the direct children of one node.
+  `parent` gives the whole subtree of one node; `depth: 1` gives the direct children.
   With 101 criteria, the first page has 100 items and `next_cursor` `"100"`; the second has 1.
 - A missing `tests` key means no tests. A missing `message` means no failure message.
 

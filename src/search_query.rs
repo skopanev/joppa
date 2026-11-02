@@ -5,7 +5,7 @@
 //! A candidate key is (workspace, kind, id, revision), where revision -1 is the current
 //! document. A revision row that the current document already covers is not a candidate.
 use super::*;
-use crate::embeddings::{self, Embedder, PROFILE};
+use crate::embeddings::{self, Embedder};
 use std::collections::BTreeMap;
 
 /// The scope of a search. Both flags are false by default. `offset` skips that many ranked
@@ -17,8 +17,6 @@ pub struct Flags {
     pub offset: usize,
 }
 
-const COVERED: &str = "EXISTS(SELECT 1 FROM joppa.search_documents c JOIN joppa.objects o ON o.workspace=c.workspace AND o.address=c.kind||':'||c.local_id WHERE c.workspace=r.workspace AND c.kind||':'||c.local_id=r.address AND o.revision=r.revision)";
-
 pub async fn find(
     pool: &Pool,
     actor: &str,
@@ -28,12 +26,16 @@ pub async fn find(
     limit: i64,
     embedder: Option<&Embedder>,
 ) -> Result<Value> {
+    let filter = crate::node_filter::NodeFilter {
+        kinds: kind.map(|k| vec![k.to_owned()]),
+        ..Default::default()
+    };
     find_with(
         pool,
         actor,
         workspace,
         query,
-        kind,
+        &filter,
         limit,
         embedder,
         Flags::default(),
@@ -47,7 +49,7 @@ pub async fn find_with(
     actor: &str,
     workspace: &str,
     query: &str,
-    kind: Option<&str>,
+    filter: &crate::node_filter::NodeFilter,
     limit: i64,
     embedder: Option<&Embedder>,
     flags: Flags,
@@ -57,10 +59,6 @@ pub async fn find_with(
         "query must contain 1–2000 characters"
     );
     ensure!((1..=50).contains(&limit), "limit must be 1–50");
-    ensure!(
-        kind.is_none_or(|v| !v.is_empty() && v.len() <= 100),
-        "unknown search kind"
-    );
     // Authorization precedes any query embedding or provider traffic.
     let home = super::search::current(pool, workspace, Some(actor)).await?;
     let mut scope = vec![home.clone()];
@@ -102,13 +100,9 @@ pub async fn find_with(
         .await?;
     let canonical: String = state.get(0);
     let position: i64 = state.get(1);
-    let counts = tx.query_one(&format!("SELECT (SELECT count(*) FROM joppa.search_documents WHERE workspace=ANY($1) AND ($2::text IS NULL OR kind=$2))
-        + CASE WHEN $4 THEN (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND ($2::text IS NULL OR kind=$2) AND NOT {COVERED}) ELSE 0 END,
-        (SELECT count(*) FROM joppa.search_documents WHERE workspace=ANY($1) AND ($2::text IS NULL OR kind=$2) AND embedding IS NOT NULL AND embedding_profile=$3)
-        + CASE WHEN $4 THEN (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND ($2::text IS NULL OR kind=$2) AND embedding IS NOT NULL AND embedding_profile=$3 AND NOT {COVERED}) ELSE 0 END"),
-        &[&scope, &kind, &PROFILE, &flags.all_versions]).await?;
-    let total: i64 = counts.get(0);
-    let embedded: i64 = counts.get(1);
+    // The node filters keep the same objects in the counts and in each candidate list.
+    let bound = crate::node_filter::bind(&*tx, &home, filter, false, flags.all_versions).await?;
+    let (total, embedded) = candidates::counts(&tx, &scope, flags.all_versions, &bound).await?;
     if semantic == "ready" && embedded < total {
         semantic = "pending";
     }
@@ -116,23 +110,7 @@ pub async fn find_with(
     let mut scores = BTreeMap::<Key, f64>::new();
     // (exact ID or address, matched by item ID): a kept item ID is reported as queried.
     let mut exact = BTreeMap::<Key, (bool, bool)>::new();
-    let rows = tx.query(&format!("WITH q AS (SELECT websearch_to_tsquery('simple',$2) || websearch_to_tsquery('english',$2) || websearch_to_tsquery('russian',$2) AS terms), matches AS (
-      SELECT d.workspace,d.kind,d.local_id,-1 AS rev,false AS exact,false AS item,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
-      WHERE d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3) AND d.terms @@ q.terms
-      UNION ALL
-      SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,ts_rank_cd(r.terms,q.terms) FROM joppa.search_revisions r,q
-      WHERE $4 AND r.workspace=ANY($1) AND ($3::text IS NULL OR r.kind=$3) AND r.terms @@ q.terms AND NOT {COVERED}
-      UNION ALL
-      SELECT d.workspace,d.kind,d.local_id,-1,true,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
-      ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
-      WHERE i.id=joppa.short_item_id($2) AND d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)
-      UNION ALL
-      SELECT d.workspace,d.kind,d.local_id,-1,true,false,0::real FROM joppa.search_documents d
-      WHERE d.workspace=ANY($1) AND ($3::text IS NULL OR d.kind=$3)
-        AND (d.kind||':'||d.local_id=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND address=$2),$2)
-          OR ($2 ~ '^[a-z0-9]{{8}}$' AND (d.local_id=$2 OR d.kind||':'||d.local_id IN (SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND split_part(address,':',2)=$2)))))
-      SELECT workspace,kind,local_id,rev,bool_or(exact),bool_or(item) FROM matches GROUP BY workspace,kind,local_id,rev
-      ORDER BY bool_or(exact) DESC,max(rank) DESC,workspace,kind,local_id,rev"), &[&scope, &query, &kind, &flags.all_versions]).await?;
+    let rows = candidates::words(&tx, &scope, query, flags.all_versions, &bound).await?;
     for (rank, row) in rows.iter().enumerate() {
         let key: Key = (row.get(0), row.get(1), row.get(2), row.get(3));
         let is_exact: bool = row.get(4);
@@ -147,15 +125,7 @@ pub async fn find_with(
         exact.insert(key, (is_exact, row.get(5)));
     }
     if let Some(vector) = &vector {
-        // Restrict the candidate set by workspace before exact cosine ranking. Each indexed
-        // row has a distance, so only the 100 nearest rows count as vector matches.
-        let rows = tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
-            SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $4::text::vector AS distance FROM joppa.search_documents d
-            WHERE d.workspace=ANY($1) AND ($2::text IS NULL OR d.kind=$2) AND d.embedding IS NOT NULL AND d.embedding_profile=$3
-            UNION ALL
-            SELECT r.workspace,r.kind,r.local_id,r.revision,r.embedding <=> $4::text::vector FROM joppa.search_revisions r
-            WHERE $5 AND r.workspace=ANY($1) AND ($2::text IS NULL OR r.kind=$2) AND r.embedding IS NOT NULL AND r.embedding_profile=$3 AND NOT {COVERED}
-          ) c ORDER BY distance,workspace,kind,local_id,rev LIMIT 100"), &[&scope, &kind, &PROFILE, &vector, &flags.all_versions]).await?;
+        let rows = candidates::nearest(&tx, &scope, vector, flags.all_versions, &bound).await?;
         for (rank, row) in rows.iter().enumerate() {
             *scores
                 .entry((row.get(0), row.get(1), row.get(2), row.get(3)))
@@ -243,6 +213,8 @@ pub async fn find_with(
     }))
 }
 
+#[path = "search_candidates.rs"]
+mod candidates;
 #[path = "search_excerpt.rs"]
 mod excerpt_text;
 use excerpt_text::excerpt;

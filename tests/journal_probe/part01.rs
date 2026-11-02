@@ -107,7 +107,7 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
         &ws,
         "owner",
         &store::ObjectScope {
-            kind: Some("domain"),
+            filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
             limit: 100,
             ..Default::default()
         },
@@ -137,8 +137,7 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
         &ws,
         "owner",
         &store::ObjectScope {
-            kind: Some("note"),
-            parent: Some("*"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             limit: 100,
             ..Default::default()
         },

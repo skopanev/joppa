@@ -95,8 +95,12 @@ async fn named(
     // The number of present children is the total of their list.
     let children = match fields.iter().any(|f| f == "children") {
         true => {
-            let address = reply["address"].as_str();
-            let list = store::compact_list(pool, workspace, actor, address, None, 1, None).await?;
+            let filter = joppa::node_filter::NodeFilter {
+                depth: Some(1),
+                ..Default::default()
+            }
+            .parent(reply["address"].as_str().unwrap_or_default());
+            let list = store::compact_list(pool, workspace, actor, &filter, 1, None).await?;
             list["total"].as_i64()
         }
         false => None,

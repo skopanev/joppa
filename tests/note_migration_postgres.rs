@@ -69,8 +69,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
         &ws,
         "owner",
         &ObjectScope {
-            parent: Some("*"),
-            kind: Some("note"),
+            filter: joppa::node_filter::NodeFilter::of(Some("*"), Some("note")),
             ..Default::default()
         },
     )

@@ -24,7 +24,7 @@ pub async fn compact(pool: &Pool, actor: &str, name: &str, a: &Value) -> anyhow:
 /// The request with each public item ID in `keys`, also in a list separated by commas,
 /// replaced by the address of its object. A request without a workspace reads the workspace
 /// of its public item IDs.
-async fn with_addresses(
+pub(super) async fn with_addresses(
     pool: &Pool,
     actor: &str,
     a: &Value,
@@ -78,12 +78,6 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .transpose()
         .context("invalid object revision")?;
     let limit = number(a, "limit")?.map_or(rc::PAGE, |n| (n as usize).min(rc::PAGE));
-    // The data filter: a JSON object that document.data contains, as a JSONB `@>`.
-    let contains = match &a["data"] {
-        Value::Null => None,
-        Value::Object(_) => Some(a["data"].to_string()),
-        _ => anyhow::bail!("data filter must be an object"),
-    };
     if let Some(address) = a["links_of"].as_str() {
         let filter = |name: &str| match a.get(name) {
             None | Some(Value::Null) => Ok(None),
@@ -107,31 +101,24 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         let reply = joppa::mcp_shapes::links(reply, a);
         return Ok(rc::strip_reply(reply));
     }
+    // The node filters: parent with depth, kind, status, owner, assignee, ready and data.
+    let filter = joppa::node_filter::NodeFilter::parse(a)?;
     let inbox =
-        a["address"].is_null() && inbox_kind(pool, workspace, actor, a["kind"].as_str()).await?;
+        a["address"].is_null() && inbox_kind(pool, workspace, actor, filter.one_kind()).await?;
     let plain = a["address"].is_null()
         && fields.is_none()
-        && ["work_filter", "related_to", "note_status", "data"]
+        && ["work_filter", "related_to", "note_status"]
             .iter()
             .all(|k| a[*k].is_null())
         && !inbox;
     if plain {
-        return store::compact_list(
-            pool,
-            workspace,
-            actor,
-            a["parent"].as_str(),
-            a["kind"].as_str(),
-            limit,
-            a["cursor"].as_str(),
-        )
-        .await;
+        return store::compact_list(pool, workspace, actor, &filter, limit, a["cursor"].as_str())
+            .await;
     }
     let history = a["history"].as_bool().unwrap_or(false);
     let scope = |address| store::ObjectScope {
         address,
-        parent: a["parent"].as_str(),
-        kind: a["kind"].as_str(),
+        filter: filter.clone(),
         revision,
         history,
         limit,
@@ -141,7 +128,6 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         related_to: a["related_to"].as_str(),
         work_filter: a["work_filter"].as_str(),
         data: fields.as_deref().is_some_and(rc::needs_data),
-        contains: contains.as_deref(),
     };
     if let Some(addresses) = address::addresses(&a["address"])? {
         return address::read(

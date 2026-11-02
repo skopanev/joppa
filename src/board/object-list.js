@@ -9,7 +9,8 @@ import {commonObjectCard} from 'board/card.js';
 import {applyTestStatuses} from 'board/criterion-tests.js';
 export async function appendObjectChildren(root,parent,kind,extra={}){
   const generation=state.loadNumber;
-  const params={limit:'50',...extra};if(parent)params.parent=parent;if(kind)params.kind=kind;
+  // One level: the direct children of a parent, or the roots without a parent.
+  const params={limit:'50',...extra};if(parent)params.parent=parent;if(parent!=='*')params.depth='1';if(kind)params.kind=kind;
   const part=await objectPart(params);if(generation!==state.loadNumber||!root.isConnected)return;
   root.querySelector(':scope > .object-loading')?.remove();
   appendObjectPage(root,part,params,generation);

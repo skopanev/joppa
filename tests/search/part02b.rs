@@ -100,7 +100,7 @@ async fn hybrid_search_after_the_index_reads(
         ws,
         "owner",
         &store::ObjectScope {
-            parent: Some("requirement:r"),
+            filter: joppa::node_filter::NodeFilter::of(Some("requirement:r"), None),
             ..Default::default()
         },
     )

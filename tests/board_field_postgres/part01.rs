@@ -79,7 +79,7 @@ async fn record(
 /// The value tones of A and of R, from the stored rows.
 async fn tones(pool: &deadpool_postgres::Pool, ws: &str) -> Result<(Value, Value)> {
     let read = |parent: Option<&'static str>| store::ObjectScope {
-        parent,
+        filter: joppa::node_filter::NodeFilter::of(parent, None),
         limit: 100,
         ..Default::default()
     };

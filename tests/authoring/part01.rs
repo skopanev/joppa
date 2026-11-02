@@ -114,7 +114,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &ws,
         "owner",
         &store::ObjectScope {
-            parent: Some(&domain_key),
+            filter: joppa::node_filter::NodeFilter::of(Some(&domain_key), None),
             ..Default::default()
         },
     )
@@ -126,7 +126,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &ws,
         "owner",
         &store::ObjectScope {
-            parent: Some(&capability_key),
+            filter: joppa::node_filter::NodeFilter::of(Some(&capability_key), None),
             ..Default::default()
         },
     )
@@ -139,7 +139,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         &ws,
         "owner",
         &store::ObjectScope {
-            kind: Some("consumer"),
+            filter: joppa::node_filter::NodeFilter::of(None, Some("consumer")),
             ..Default::default()
         },
     )

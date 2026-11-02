@@ -42,6 +42,12 @@ pub(super) struct ObjectQuery {
     relation: Option<String>,
     /// Comma-separated keys to keep in each list item; the address always stays.
     fields: Option<String>,
+    depth: Option<String>,
+    status: Option<String>,
+    owner: Option<String>,
+    assignee: Option<String>,
+    ready: Option<String>,
+    data: Option<String>,
 }
 pub(super) async fn objects(
     State(app): State<App>,
@@ -66,6 +72,20 @@ pub(super) async fn objects(
             .await,
         );
     }
+    // The node filters, in the same form as joppa_objects.
+    let filter = match joppa::node_filter::NodeFilter::parse_query(&[
+        ("parent", q.parent.as_deref()),
+        ("depth", q.depth.as_deref()),
+        ("kind", q.kind.as_deref()),
+        ("status", q.status.as_deref()),
+        ("owner", q.owner.as_deref()),
+        ("assignee", q.assignee.as_deref()),
+        ("ready", q.ready.as_deref()),
+        ("data", q.data.as_deref()),
+    ]) {
+        Ok(filter) => filter,
+        Err(e) => return result(Err(e)),
+    };
     result(
         store::read_objects(
             &app.pool,
@@ -73,8 +93,7 @@ pub(super) async fn objects(
             &actor,
             &store::ObjectScope {
                 address: q.address.as_deref(),
-                parent: q.parent.as_deref(),
-                kind: q.kind.as_deref(),
+                filter,
                 revision: q.revision,
                 history: q.history.unwrap_or(false),
                 limit: q.limit.unwrap_or(50),
@@ -83,7 +102,6 @@ pub(super) async fn objects(
                 related_to: q.related_to.as_deref(),
                 work_filter: q.work_filter.as_deref(),
                 data: false,
-                contains: None,
             },
         )
         .await

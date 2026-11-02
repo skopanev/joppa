@@ -1,5 +1,5 @@
-//! The lean list of requirement:read-contract: the current objects under one node, or the
-//! roots, or every node with parent "*", in address order. Each row gives only the address,
+//! The lean list of requirement:read-contract: the current objects that the node filters
+//! keep, or the roots without a filter, in address order. Each row gives only the address,
 //! the title and the status tone, with no item ID, process or priority lookup. `total`
 //! counts every matching object. The reply gives the workspace and the journal position of
 //! its snapshot. The tone is the one that the last write stored in the row: the rollup
@@ -10,8 +10,7 @@ pub async fn compact_list(
     pool: &Pool,
     workspace: &str,
     actor: &str,
-    parent: Option<&str>,
-    kind: Option<&str>,
+    filter: &crate::node_filter::NodeFilter,
     limit: usize,
     cursor: Option<&str>,
 ) -> Result<Value> {
@@ -37,18 +36,25 @@ pub async fn compact_list(
         .await?;
     // The stored rollup belongs to the last write only when the projection is ready.
     crate::store::objects::projection::ensure_ready(&*conn, &workspace).await?;
-    let rows = conn
-        .query(
-            "SELECT x.address,x.title,x.tone,x.total
-            FROM (SELECT o.address,o.title,COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone') AS tone,
-                count(*) OVER() AS total FROM joppa.objects o
-                WHERE o.workspace=$1 AND o.present AND ($2::text IS NULL OR o.kind=$2)
-                    AND (($3::text IS NULL AND o.parent IS NULL) OR $3='*'
-                        OR o.parent=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$3),$3))) x
-            WHERE x.address>$4 ORDER BY x.address LIMIT $5",
-            &[&workspace, &kind, &parent, &cursor.unwrap_or(""), &((limit + 1) as i64)],
-        )
-        .await?;
+    let bound = crate::node_filter::bind(&*conn, &workspace, filter, true, false).await?;
+    let query = format!(
+        "SELECT x.address,x.title,x.tone,x.total
+        FROM (SELECT o.address,o.title,{tone} AS tone,count(*) OVER() AS total FROM joppa.objects o
+            WHERE o.workspace=$1 AND o.present AND {clause}) x
+        WHERE x.address>$11 ORDER BY x.address LIMIT $12",
+        tone = crate::node_filter::TONE,
+        clause = bound.clause(2),
+    );
+    let cursor = cursor.unwrap_or("");
+    let limit = (limit + 1) as i64;
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&workspace];
+    params.extend(bound.params());
+    params.extend([
+        &cursor as &(dyn tokio_postgres::types::ToSql + Sync),
+        &limit,
+    ]);
+    let rows = conn.query(&query, &params).await?;
+    let limit = (limit - 1) as usize;
     let total: i64 = rows.first().map_or(0, |r| r.get(3));
     let mut items: Vec<Value> = rows
         .iter()

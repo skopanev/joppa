@@ -139,8 +139,8 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         &ws,
         "agent",
         &ObjectScope {
+            filter: joppa::node_filter::NodeFilter::of(Some("spec:s"), None),
             work_filter: Some("unstarted"),
-            parent: Some("spec:s"),
             ..Default::default()
         },
     )

@@ -6,13 +6,34 @@ fn text(description: &str) -> Value {
     json!({"type":"string","description":description})
 }
 
+/// The node filters that joppa_objects and joppa_search take in the same form
+/// (src/node_filter.rs). All filters must match.
+fn node_filters(mut schema: Value) -> Value {
+    let one_or_list =
+        |d: &str| json!({"type":["string","array"],"items":{"type":"string"},"description":d});
+    let filters = json!({
+        "parent": text("node address or public item ID: every descendant at any depth; * for every level"),
+        "depth": {"type":"integer","minimum":1,"maximum":100,
+            "description":"levels below the parent, or below the top without a parent; 1 gives the direct children or the roots"},
+        "kind": one_or_list("type name or a list of type names"),
+        "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green"),
+        "owner": text("member ID in data.owner"),
+        "assignee": text("member ID: the holder of a Task, else data.assignee"),
+        "ready": {"type":"boolean","description":"true: the node waits for nothing and its assessment, if any, is ready"},
+        "data": {"type":"object",
+            "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}"},
+    });
+    for (name, value) in filters.as_object().unwrap() {
+        schema[name] = value.clone();
+    }
+    schema
+}
+
 /// The parameters of joppa_objects, each with a short description.
 pub(super) fn objects() -> Value {
-    json!({
+    node_filters(json!({
         "workspace": text("workspace key or alias; optional when a public item ID such as joppa-R-12345678 is given"),
         "address": text("1 to 25 comma-separated kind:id addresses"),
-        "parent": text("direct parent address, * for all objects, or omit for roots; combine with fields to read children in one call"),
-        "kind": text("type name; the list gives only objects of this type"),
         "fields": {"type":"array","items":{"type":"string"},
             "description":"dotted paths to return (default [\"title\",\"status\"] on lists; address is always included), e.g. [\"title\",\"body\",\"status\",\"children\"]"},
         "limit": {"type":"integer","minimum":1,"maximum":100,
@@ -32,9 +53,7 @@ pub(super) fn objects() -> Value {
         "direction": {"type":"string","enum":["outgoing","incoming"],
             "description":"with links_of: only the links in this direction"},
         "relation": text("with links_of: only the links with this relation"),
-        "data": {"type":"object",
-            "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}; without parent, searches all objects (*)"},
-    })
+    }))
 }
 
 /// The parameters of joppa_tests.
@@ -42,7 +61,9 @@ pub(super) fn tests() -> Value {
     json!({
         "workspace": text("workspace key or alias; optional when a public item ID such as joppa-R-12345678 is given"),
         "ac": text("1 to 100 comma-separated criterion addresses"),
-        "parent": text("direct parent address (1 level deep, e.g. requirement:id), or * for all; reads direct child criteria in pages of 100"),
+        "parent": text("node address: the criteria in its whole subtree, or * for all; pages of 100"),
+        "depth": {"type":"integer","minimum":1,"maximum":100,
+            "description":"with parent: criteria at most this many levels below it; 1 gives the direct children"},
         "kind": text("criterion type with parent; default ac"),
         "task": text("Task address; gives its done state and commit"),
         "summary": {"type":"boolean",
@@ -53,11 +74,10 @@ pub(super) fn tests() -> Value {
 
 /// The parameters of joppa_search.
 pub(super) fn search() -> Value {
-    json!({
+    node_filters(json!({
         "workspace": text("workspace key or alias"),
         "query": {"type":"string","minLength":1,"maxLength":2000,
             "description":"words or a copied public ID; full-text and vector search"},
-        "kind": text("type name; only results of this type"),
         "limit": {"type":"integer","minimum":1,"default":10,
             "description":"results in one page; default 10, more than 25 gives 25"},
         "cursor": text("next_cursor of the previous page"),
@@ -65,5 +85,5 @@ pub(super) fn search() -> Value {
             "description":"true also reads past revisions and archived objects"},
         "all_workspaces": {"type":"boolean","default":false,
             "description":"true reads each workspace that you can read"},
-    })
+    }))
 }

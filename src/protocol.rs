@@ -132,7 +132,10 @@ async fn call(
     }
     let reply = match name {
         "joppa_list" => pages::list(pool, actor, a).await,
-        "joppa_search" => pages::search(pool, actor, a, embedder).await,
+        "joppa_search" => match reads::with_addresses(pool, actor, a, &["parent"]).await {
+            Ok(a) => pages::search(pool, actor, &a, embedder).await,
+            Err(e) => Err(e),
+        },
         "joppa_tree" => {
             store::tree_schema(
                 pool,

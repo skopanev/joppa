@@ -32,10 +32,8 @@ pub async fn search(
     embedder: Option<&joppa::embeddings::Embedder>,
 ) -> anyhow::Result<Value> {
     let text = |k: &str| a[k].as_str().with_context(|| format!("missing {k}"));
-    let kind = match a.get("kind") {
-        Some(v) => Some(v.as_str().context("kind must be a string")?),
-        None => None,
-    };
+    // The node filters, in the same form as joppa_objects.
+    let filter = joppa::node_filter::NodeFilter::parse(a)?;
     let flag = |name: &str| match a.get(name) {
         Some(v) => v
             .as_bool()
@@ -56,7 +54,7 @@ pub async fn search(
         actor,
         text("workspace")?,
         text("query")?,
-        kind,
+        &filter,
         limit(a, 10)? as i64,
         embedder,
         flags,
