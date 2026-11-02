@@ -41,7 +41,7 @@ Include task contracts, verification scope, and expected and observed results.
 Keep intake and verbatim user text in their original language and wording.
 These rules do not apply to code, commands, identifiers, quotations, logs, or verbatim user text.
 Do not translate or rewrite existing REQs, ACs, history, or evidence to apply this standard.
-New REQ and AC wording still requires owner confirmation under the existing process.
+New REQ and AC wording needs owner confirmation.
 Preserve the exact meaning of decisions and evidence when writing new text.
 Ask the owner when a policy decision is needed.
 

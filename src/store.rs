@@ -65,9 +65,7 @@ pub use references::workspace_references;
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 #[path = "store_setup.rs"]
 mod setup;
-pub use setup::{
-    backfill_board, check_journal, migrate, migrate_notes, pool, refresh_readiness_metadata,
-};
+pub use setup::{backfill_board, check_journal, migrate, migrate_notes, pool};
 #[path = "store_ensure_notes.rs"]
 mod migrations;
 use migrations::ensure_notes;

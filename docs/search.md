@@ -29,7 +29,7 @@ past revision opens that revision. A click on a result of another workspace open
 that workspace and that object.
 
 ```json
-{"workspace":"product","query":"legacy export","all_versions":true,"all_workspaces":true}
+{"workspace":"product","query":"refund export","all_versions":true,"all_workspaces":true}
 ```
 
 ## What is indexed

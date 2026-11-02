@@ -24,8 +24,8 @@ MCP reads have one shape. There is no `verbose` switch.
   address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `ac`,
   `parent` and `task` of `joppa_tests`. A read of one object by its item ID gives its
   `address`. An unknown item ID is refused: `unknown object`.
-- A public item ID ends with an 8-character code of uppercase letters and digits. An older
-  copy with a longer code reads the object of its first 8 characters.
+- A public item ID ends with an 8-character code of uppercase letters and digits. A copy
+  with a longer code reads the object of its first 8 characters.
 - `workspace` is optional in `joppa_objects` and `joppa_tests` when the call names a public
   item ID. The call reads the workspace of its IDs. The IDs of one call belong to one
   workspace: `the public item IDs of one call belong to one workspace`. An ID that the caller
@@ -219,6 +219,5 @@ an alias of the workspace. `joppa_help` with a workspace and `section: "tree"` g
 ## Titles and texts
 
 - `data.title`: one concise statement (max 128 characters by default). A type sets its own
-  maximum as `title_max_length` in `joppa_tree`; `set_tree_schema` takes `title_max_length`
-  and the older `title_preview_length`.
+  maximum as `title_max_length` in `joppa_tree`; `set_tree_schema` takes `title_max_length`.
 - Each other text value: concise text (max `field_max_length` of the type, default 1024 characters). Over 1 kb: prefer attach as a file. Comments have no limit.

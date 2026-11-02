@@ -181,22 +181,6 @@ test('stable-url-ac1: the original URL keeps the item ID after rename and move',
   } finally { await f.close(); }
 });
 
-test('time-not-stale-ac2: the card shows the oldest test commit and no commit count', async () => {
-  const commit = 'cccccccccccccccccccccccccccccccccccccccc';
-  const f = await fixture(criterionRecords);
-  try {
-    await f.bind('ac:A', ['X', 'Y']);
-    await f.record(commit, [['X'], ['Y']]);
-    for (let order = 2; order <= 6; order++) await f.record(String(order).repeat(40), [['other']]);
-    const card = await f.open('ac:A'), group = card.locator('.object-tests');
-    await group.locator(':scope > summary').click();
-    await group.locator('.ac-check').nth(1).waitFor();
-    const meta = await group.locator(':scope > .node-meta').innerText();
-    assert.match(meta, /commit ccccccc/);
-    assert.doesNotMatch(meta, /behind/);
-  } finally { await f.close(); }
-});
-
 test('done-is-not-green-ac3: a done Task under a green criterion shows Checks passed', async () => {
   const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);

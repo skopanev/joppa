@@ -108,48 +108,6 @@ fn archive_requires_an_empty_group_and_restore_requires_a_present_parent() {
 }
 
 #[test]
-fn archive_legacy_group_does_not_resync() {
-    let mut w = World::new();
-    w.legacy(
-        "owner",
-        json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
-    );
-    w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive empty group"}));
-    w.legacy(
-        "owner",
-        json!({"op":"domain","id":"other","title":"Other","owner":"owner"}),
-    );
-    assert!(!w.state.objects["domain:unused"].current().present);
-    assert_eq!(w.state.objects["domain:unused"].current().revision, 2);
-    w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
-    w.legacy(
-        "owner",
-        json!({"op":"domain","id":"another","title":"Another","owner":"owner"}),
-    );
-    assert!(w.state.objects["domain:unused"].current().present);
-    assert_eq!(w.state.objects["domain:unused"].current().revision, 3);
-}
-
-#[test]
-fn restore_legacy_group_reflects_edits() {
-    let mut w = World::new();
-    w.legacy(
-        "owner",
-        json!({"op":"domain","id":"unused","title":"Unused","owner":"owner"}),
-    );
-    w.ok("owner", json!({"op":"archive_object","target":"domain:unused","revision":1,"reason":"Archive group"}));
-    w.no("owner", json!({"op":"edit_domain","id":"unused","title":"Hidden edit","owner":"owner","reason":"Edit an archived group"}));
-    w.ok("owner", json!({"op":"restore_object","target":"domain:unused","revision":2,"reason":"Restore group"}));
-    w.legacy("owner", json!({"op":"edit_domain","id":"unused","title":"Changed","owner":"owner","reason":"Edit restored group"}));
-    assert!(w.state.objects["domain:unused"].current().present);
-    assert_eq!(
-        w.state.objects["domain:unused"].current().data["title"],
-        "Changed"
-    );
-    assert_eq!(w.state.objects["domain:unused"].current().revision, 4);
-}
-
-#[test]
 fn custom_group_fields_survive_archive() {
     let mut w = archive_world();
     save(

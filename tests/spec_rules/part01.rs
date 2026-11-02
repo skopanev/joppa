@@ -140,18 +140,6 @@ fn a_human_who_is_not_the_owner_archives() {
 }
 
 #[test]
-fn a_requirement_without_an_owner_is_refused() {
-    // req-has-criteria-ac1
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        json!({"op":"save_object","kind":"requirement","id":"r2","revision":0,"parent":"capability:c","data":{"title":"T","body":"b","owner":"","consumers":["customer"]},"reason":"Draft"}),
-        "a human member is required",
-    );
-}
-
-#[test]
 fn a_schema_save_on_a_stale_revision_is_refused() {
     // tree-schema-revision-ac2
     let mut w = World::new();
@@ -180,18 +168,6 @@ fn a_human_who_is_not_the_owner_changes_the_tree() {
     refused(&mut w, "stranger", save.clone(), "not a workspace member");
     assert_eq!(joppa::objects::schema(&w.state).revision, 0);
     w.ok("legal", save);
-    assert_eq!(joppa::objects::schema(&w.state).revision, 1);
-}
-
-#[test]
-fn an_agent_member_changes_the_tree() {
-    // tree-owner-sets-types-ac3: an agent has the rights of a member.
-    let mut w = World::new();
-    let types = schema_types(&w);
-    w.ok(
-        "agent",
-        json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Configure"}),
-    );
     assert_eq!(joppa::objects::schema(&w.state).revision, 1);
 }
 

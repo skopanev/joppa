@@ -9,7 +9,7 @@ The model below describes the default tree and its verification roles.
 
 Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.
 Russian is permitted under the same rules. Preserve intake, verbatim user text, existing wording, history, and evidence.
-Read the [technical writing rules](writing.md). New REQ and AC wording still requires owner confirmation.
+Read the [technical writing rules](writing.md). New REQ and AC wording needs owner confirmation.
 
 One workspace represents one product, even when several repositories deliver it.
 Use the question each level answers to decide where an item belongs.
@@ -75,9 +75,6 @@ Each AC names exactly one consumer from the workspace consumer list, in its fiel
 behavior, not necessarily a workspace member. A green AC therefore closes one consumer
 without doubt. A REQ and every level above it name no consumer. If two consumers need
 the same behavior, write one AC for each consumer.
-A criterion that lost consumers in the migration to one consumer has the comment
-`consumer-migration`. It lists the removed consumers. A read of a REQ omits its old
-`consumers` field.
 People and agents formulate REQ and ACs together. Agents help make conditions
 clear and testable; authorized people decide business policy and scope.
 
@@ -87,16 +84,12 @@ suggestion with a reason, obtaining a specialist decision where needed. There
 is no separate proposal entity or approval workflow to maintain.
 
 Each saved change to the REQ or its ACs creates a new REQ revision. History
-preserves who changed what and when, including previous wording and removed
-ACs. Each revision owns its check results and acceptance. **Every AC in a new
-revision starts at n/a**, including unchanged ones. Comments alone do not create
-revisions. See the [process](process.md).
-Changing the capability uses the same REQ ID and a new revision with a reason.
-Previous revisions keep their original capability and their old consumer lists.
-Sources can be linked to a revision with a type, a URI or external identifier,
-a source version and a relation to the requirement.
-Linking or withdrawing a source records an event.
-Previous revision sources remain available in history.
+keeps who changed what and when, with the previous wording and removed ACs.
+A change of a node resets the criteria at and below it: they are grey until a
+newer test record arrives. Comments do not create revisions. See the
+[process](process.md) and [what green means](green.md).
+A move to another capability keeps the REQ ID and adds a revision with a reason.
+Link a source as a Note with `depends_on` and the Note revision.
 
 ### Immutable history — WORM
 
@@ -164,11 +157,11 @@ requires. Never manufacture ACs to reach a target count.
 
 ## Creating and maintaining the tree
 
-Agents can propose domains and capabilities. The workspace owner confirms the
-tree. An agent can clarify an unconfirmed title, but cannot change the domain's
-authority or edit a confirmed item. Confirmation is an explicit human decision.
+Agents and people save domains and capabilities with `save_object`. A saved tree
+needs no confirmation. The REQ owner confirms the REQ wording with `confirm`.
+Confirmation is an explicit human decision.
 
-Creation through MCP can omit local IDs; the server generates them and returns
-both resolved command fields and permanent public IDs. Keep IDs when revising
-existing objects. Archived objects retain their identity and history; create a
-new object for genuinely new scope. See [API authoring](api.md#automatic-ids-and-batches).
+Creation through MCP can omit local IDs: the server makes them and returns the
+resolved command. Keep IDs when you edit existing objects. Archived objects keep
+their identity and history. Create a new object for new scope. See
+[generated IDs and batches](api.md#generated-ids-and-batches).

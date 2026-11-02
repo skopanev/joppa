@@ -2,7 +2,7 @@
 
 A command becomes an event only after model validation inside a transaction.
 A workspace advisory lock covers reading, validation and insertion. Two edits
-with the same `expected_revision` cannot both succeed. Replaying a request does
+with the same `revision` cannot both succeed. Replaying a request does
 not duplicate its event.
 
 The business journal uses `workspaces` and `events`. Separate tables store
@@ -18,22 +18,16 @@ A batch uses one transaction and lock, but one event per operation. An error
 rolls back all events, generated IDs, aliases and the receipt. Receipt lookup
 occurs after access checks; knowing a request ID never grants access.
 
-Migration copies missing legacy request receipts from the journal under the same workspace lock.
-It preserves the stored command and compares its typed form when a caller retries it.
-The migration marks a workspace complete only after every existing event has a receipt or belongs to a batch receipt.
-An incomplete migration keeps the indexed journal lookup to prevent duplicate effects.
-Completed workspaces use receipts for normal retries and do not query events on a receipt miss.
-New batches retain one receipt with the complete original operations and reference labels.
+A retry reads the receipt and does not query events on a receipt miss.
+A batch keeps one receipt with the original operations and reference labels.
 Callers retry a batch with its public request ID, not an internal event ID.
-Migration excludes internal batch events by the positions in their complete batch receipt.
 
 Workspace renames append a canonical ID and reserve a new alias; the immutable
 storage identity and old links survive. Both names resolve through the same
 access checks. A name cannot be reassigned to another workspace.
 
-A revision fixes the REQ wording, owner and entire AC set. `revise` never edits
-an old revision. Assessments, checks, acceptance and discussion reference the
-revision number. Evidence author and time come from authentication and the
+A revision fixes the REQ wording, owner and entire AC set. No write edits an old
+revision. Assessments, checks, acceptance and discussion name the revision number. Evidence author and time come from authentication and the
 server event, not caller-supplied labels. `intake.author` attributes the source
 message; the authenticated writer remains separately visible in history.
 
@@ -44,24 +38,23 @@ message; the authenticated writer remains separately visible in history.
 The task queue uses indexed rows for each member. Card lists read separate columns without loading document bodies.
 Document and history requests read only the selected object or revision.
 
-Writes read the current validation graph. They exclude past revisions and large Input bodies from that graph.
-An addressed Input command loads its body before validation. Search loads bodies only for affected documents and their ancestors.
+Writes read the current validation graph. They exclude past revisions and large Note bodies from that graph.
+A command on one Note loads its body before validation. Search loads bodies only for affected documents and their ancestors.
 The transaction stores changed rows, affected search documents and affected queue entries.
 The journal remains the source for administrative recovery.
 
 The isolated database test uses `pg_stat_statements` to count queries that select journal events.
-It checks current reads, normal writes, legacy retries, one selected past revision, and a large unrelated Input.
+It checks current reads, normal writes, retries, one selected past revision, and a large unrelated Note.
 It also requires administrative recovery to produce observed journal reads and the same projection rows.
 This extension runs in test databases and is not required by the production application.
 
 Current event inserts supply their reference prefix through a transaction-local database setting.
 The ID trigger uses this prefix without selecting journal events.
 Each operation sets the prefix, so creation follows a preceding rename inside the same batch.
-Commit and rollback clear the setting. Current object registration also passes its known prefix directly.
-Older binaries and direct administrative imports retain the journal-based registration function.
+Commit and rollback clear the setting. Object registration also passes its known prefix directly.
 
 `backfill-board` rebuilds projections under a workspace lock. It commits all projections, including search, in one transaction.
-Deployment stops the application before projection migration. Rollback rebuilds the previous cache format before restarting the previous binary.
+Deployment stops the application before it changes the projections.
 
 ## PostgreSQL roles
 
@@ -93,16 +86,10 @@ triggers. A database superuser can bypass those protections. Only the function
 that its owner deletes. The runtime role can only execute it. Physical storage,
 backups and protection against infrastructure administrators are separate duties.
 
-## Compatibility
+## Derived data
 
-The 0.1 schema remains in `public`; migrations neither import nor overwrite it.
-Old `done_at` values cannot become verified evidence automatically, and free-text
-`by` values cannot become authenticated human decisions.
-
-Business migration means assigning a workspace and owners, importing wording as
-new revisions, confirming it and collecting evidence. Changing a persisted event
-format requires a version or read-time conversion, never an UPDATE to history.
-Do not silently change the meaning of already-recorded commands.
+A change of a stored event format needs a version or a read-time conversion, never
+an UPDATE of history. Do not change the meaning of recorded commands.
 
 Search documents and their checkpoint are derived caches, rebuilt from events.
 Current projections permit updates. A trigger rejects changes to stored revision contracts.

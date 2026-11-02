@@ -5,11 +5,21 @@
 A criterion names its tests in the field `tests` of its document. Save the list with
 `save_object` and `data.tests`, or with `set_ac_tests {target, tests, revision, reason}`.
 The block `test_results` of the workspace schema gives the form of a test name, for example
-`tests/billing.rs > refund_keeps_access`. See [objects](objects.md) for each rule of the block.
+`tests/billing.rs > refund_keeps_access`. See [the workspace schema](schema.md) for each rule of the block.
 
-Only the tests in the list count for the criterion. A test outside the list changes nothing.
+Only the tests in the list count for the criterion.
 One test can be in the lists of more than one criterion. One criterion can list many tests.
 An inclusive threshold can need tests below, at and above the boundary.
+
+## No AC, no test
+
+Every test in the repository must be bound to at least one present AC through `data.tests`
+or `set_ac_tests`.
+
+- Never add or rename a test without binding it to its AC in the same change.
+- When you archive an AC, delete its tests or bind them to another present AC.
+- `joppa_record_results` gives `unbound`: the test names of the record that no present criterion lists.
+- A full-run record must give `"unbound": []` before a merge.
 
 ## Records
 
@@ -54,5 +64,4 @@ A completed Task does not make a criterion green. Only `complete_task` marks a T
 
 A passing test can check the wrong thing or contain an empty assertion.
 A record cannot show that a test is sufficient. A person must review the tests.
-A test that the list omits is not visible to Joppa.
 The criterion set can omit a significant condition. Acceptance does not prove that the set is complete.

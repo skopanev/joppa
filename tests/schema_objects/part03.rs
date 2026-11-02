@@ -1,31 +1,6 @@
 // Part 3 of tests/schema_objects.rs, included there, so the test names stay unchanged.
 
 #[test]
-fn explicit_legacy_grouping_changes_do_not_depend_on_prior_criterion_edits() {
-    for edit_first in [false, true] {
-        let mut w = World::new();
-        migrate(&mut w);
-        if edit_first {
-            let mut data = w.state.objects["ac:ios"].current().data.clone();
-            data["title"] = json!("The iOS client follows the access contract");
-            save(&mut w, "ac:ios", Some("requirement:r"), data);
-        }
-        w.legacy("agent",json!({"op":"capability","id":"other","domain":"d","title":"Other grouping","owner":"owner"}));
-        let current = w.state.requirements["r"].revisions.last().unwrap().clone();
-        let mut acs = current.acs.clone();
-        for ac in &mut acs {
-            ac.assessment = None;
-        }
-        w.legacy("agent",json!({"op":"revise","req":"r","expected_revision":current.number,"capability":"other","consumers":current.consumers,"title":current.title,"body":current.body,"owner":current.owner,"reason":"Move explicit legacy grouping","acs":acs,"coverage_policy":true,"carry_tasks":true}));
-        assert_eq!(
-            w.state.objects["requirement:r"].current().parent.as_deref(),
-            Some("capability:other")
-        );
-        assert!(!w.state.objects["requirement:r"].parent_override);
-    }
-}
-
-#[test]
 fn criterion_edits_preserve_custom_specification_type_context() {
     let mut w = empty();
     let types = json!({

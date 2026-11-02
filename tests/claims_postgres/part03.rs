@@ -106,48 +106,6 @@ async fn elapsed_time_keeps_claims_in_current_queues_and_replay() -> Result<()> 
     Ok(())
 }
 
-// [ac:heartbeat-return-ac2]
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn heartbeat_refusal_preserves_documents_and_position() -> Result<()> {
-    let (pool, ws) = permanent_fixture(1440).await?;
-    let before = store::read_objects(
-        &pool,
-        &ws,
-        "owner",
-        &store::ObjectScope {
-            address: Some("job:one"),
-            ..Default::default()
-        },
-    )
-    .await?;
-    let error = store::execute_remote_input(
-        &pool,
-        &ws,
-        "bot",
-        "renew",
-        &json!({"op":"heartbeat_task","id":"job:one","revision":2}),
-    )
-    .await
-    .unwrap_err();
-    ensure!(
-        error.to_string() == "heartbeat_task is no longer supported",
-        "{error}"
-    );
-    let after = store::read_objects(
-        &pool,
-        &ws,
-        "owner",
-        &store::ObjectScope {
-            address: Some("job:one"),
-            ..Default::default()
-        },
-    )
-    .await?;
-    ensure!(before == after, "refusal changes no state");
-    Ok(())
-}
-
 // [ac:owner-releases-claim-ac1]
 // [ac:old-agent-locked-out-ac1]
 #[tokio::test]

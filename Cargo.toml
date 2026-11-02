@@ -35,3 +35,9 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# The Chromium checks start this fixture process. It has no test harness and runs no test.
+[[test]]
+name = "browser_server"
+path = "tests/browser_server.rs"
+harness = false

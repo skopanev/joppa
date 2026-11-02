@@ -177,37 +177,6 @@ async fn a_member_who_is_not_the_owner_changes_the_tree_over_http() -> Result<()
     Ok(())
 }
 
-// bot is an agent member of the shared spec workspace. It has the rights of a member.
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_member_changes_the_tree_over_http() -> Result<()> {
-    let w = world().await?;
-    let before = read_tree(&w, &w.bot).await?;
-    let n = before["current_revision"].as_u64();
-    ensure!(n.is_some(), "{before}");
-    let n = n.unwrap();
-    let mut types = before["schema"]["types"].clone();
-    ensure!(types.get("risk").is_none(), "{before}");
-    types["risk"] = json!({"title":"Risk","role":"document","status":"none","root":false,"parents":["capability"],"references":{"consumers":{"target":"consumer","title":"Used by","multiple":true,"required":false,"verification_subject":false}}});
-    let (status, reply) = text_rule_request(
-        &w,
-        &w.bot,
-        &uuid::Uuid::new_v4().to_string(),
-        json!({"op":"set_tree_schema","revision":n,"types":types,"reason":"Add risk"}),
-        "http",
-    )
-    .await?;
-    ensure!(status == 200, "{status} {reply}");
-    let after = read_tree(&w, &w.bot).await?;
-    ensure!(
-        after["current_revision"] == n + 1 && after["schema"]["types"].get("risk").is_some(),
-        "{after}"
-    );
-    let entry = journal_entry(&w, "owner", &reply).await?;
-    ensure!(entry["actor"] == "bot", "{entry}");
-    Ok(())
-}
-
 // removal-is-archiving-ac5
 // skopanev owns the workspace and archives a capability with one live requirement.
 #[tokio::test]

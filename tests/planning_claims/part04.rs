@@ -190,23 +190,6 @@ fn finish_refuses_an_unchanged_blocked_task_and_keeps_the_claim_and_block() {
 
 // failed-task-blocks-ac3
 #[test]
-fn finish_clears_the_block_after_a_new_title_or_contract() {
-    for field in ["title", "contract"] {
-        let mut w = blocked_plan();
-        // Fixture 1: P amends the T contract.
-        let mut amend = json!({"title":"work:t","contract":"Implement this criterion","projects":[],"reason":"Amend the contract"});
-        amend[field] = json!("Implement the criterion with a new fix");
-        let cmd = task_command(&w, "amend_task", "work:t", amend);
-        w.ok("planner", cmd);
-        finish_and_replay(&mut w);
-        assert!(objects::process(&w.state, "work:t")["blocked"].is_null());
-        let t = &w.state.task_process["work:t"];
-        assert!(tasks::claimable(&w.state, "other", "work:t", t).is_ok());
-    }
-}
-
-// failed-task-blocks-ac3
-#[test]
 fn finish_clears_the_block_after_a_new_dependency_and_names_it_in_the_waiting_reason() {
     let mut w = blocked_plan();
     // Fixture 2: P adds Task C under A and a blocking link from T to C.

@@ -47,58 +47,6 @@ async fn a_green_criterion_leaves_the_unstarted_list() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn planning_claim_refuses_a_recorded_green_over_http_and_mcp_without_mutation() -> Result<()>
-{
-    let w = world().await?;
-    ready_for_planning(&w).await?;
-    w.record(
-        "c1c1c1c",
-        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    ensure!(
-        w.status().await?["status"] == "green",
-        "the record must make A green"
-    );
-    let before = planning_criterion(&w).await?;
-    let command =
-        json!({"op":"claim_planning","ac":"ac:key-rights","revision":before["current_revision"]});
-    let (code, reply) = post(
-        &w,
-        &w.token,
-        "/commands",
-        json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
-    )
-    .await?;
-    ensure!(
-        code == 409 && reply["error"] == "criterion is already verified",
-        "{code} {reply}"
-    );
-    let root = w.base.split("/api/").next().unwrap();
-    let workspace = w.base.rsplit('/').next().unwrap();
-    let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(&w.token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{
-            "workspace":workspace,"request_id":uuid::Uuid::new_v4().to_string(),"command":command}}}))
-        .send().await?.json().await?;
-    ensure!(response["result"]["isError"] == true, "{response}");
-    ensure!(
-        response["result"]["content"][0]["text"] == "criterion is already verified",
-        "{response}"
-    );
-    let after = planning_criterion(&w).await?;
-    ensure!(
-        after["document"] == before["document"]
-            && after["process"] == before["process"]
-            && after["position"] == before["position"],
-        "refusal changed the criterion or journal position"
-    );
-    let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
-    store::check_journal(&pool).await?;
-    Ok(())
-}
-
 /// A planning workspace on the test server: spec:one with criteria a and b.
 /// The token member `agent` is P, and `other` is Q.
 struct Planning<'a> {

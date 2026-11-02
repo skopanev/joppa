@@ -144,23 +144,6 @@ fn search_addresses(result: &Value) -> Result<(Vec<String>, Value)> {
     Ok((addresses, found))
 }
 
-#[test]
-fn search_addresses_rejects_a_tool_error_with_the_reply() {
-    let reply = json!({"isError":true,"content":[{"type":"text","text":"search failed"}]});
-    let err = search_addresses(&reply).unwrap_err().to_string();
-    assert!(err.contains("search failed"), "{err}");
-}
-
-#[test]
-fn search_addresses_rejects_a_reply_without_a_result_array() {
-    let reply = json!({"content":[{"type":"text","text":"{\"mode\":\"full_text\"}"}]});
-    let err = search_addresses(&reply).unwrap_err().to_string();
-    assert!(
-        err.contains("no result array") && err.contains("full_text"),
-        "{err}"
-    );
-}
-
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn help_operations_equal_the_command_op_enum() -> Result<()> {

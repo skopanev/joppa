@@ -13,7 +13,7 @@ owner responsible for its meaning and acceptance.
 | Developer | Implement work and resolve technical questions |
 | Agent | Help formulate REQ/ACs, assess readiness, organize work and run checks; ask for missing decisions |
 
-Technical analysis is work, usually performed by an agent. An Input author does
+Technical analysis is work, usually performed by an agent. A Note author does
 not need to understand code, identify a build or estimate implementation. A
 relevant deadline can be recorded without becoming an implementation estimate.
 
@@ -31,13 +31,14 @@ The MCP queue lists work that the authenticated actor can claim.
 `release_task` returns unfinished work with a reason.
 An unmet gate or dependency prevents a claim. It does not create a Task work status named blocked.
 
-An explicit block records `process.blocked` on the Task and prevents a claim.
-A blocked Task has two exits. No timer clears a block.
-- The planning holder of the parent criterion changes the title, contract, projects or blocking dependency links. A successful finish then clears the block.
+`block_task` records `process.blocked` on the Task and prevents a claim.
+A blocked Task has three exits. No timer clears a block.
+- The planning holder of the parent criterion or the workspace owner sends `unblock_task`.
+- The planning holder changes the title, body, projects or blocking dependency links. A successful finish then clears the block.
 - The Task owner, the workspace owner or that planning holder retires the Task.
 
 Finish fails when a blocked Task has no change to these four fields. The block stays.
-Dependency gates still apply after a block clears.
+Dependency gates apply after a block clears.
 
 Task completion records work evidence. It never supplies a passing criterion check.
 
@@ -92,7 +93,7 @@ Expected behavior is disputed  -> request a decision; affected work waits.
 
 Retrospective wording is easy to tailor to a convenient fix. It needs the same
 owner confirmation as any other REQ. An incomplete tree must not prevent
-Input capture. Input capture does not prove that the tree is complete.
+a new Note. A new Note does not prove that the tree is complete.
 
 ## Readiness and results
 
@@ -121,9 +122,9 @@ After checks, the REQ owner accepts the result or comments in the card. The
 record identifies the author, time, revision and run. Acceptance never replaces
 a missing or failing check.
 
-Saving any REQ or AC wording change creates a new revision. All its ACs start
-unverified, and it has no acceptance. Even a small edit requires fresh results.
-Earlier revisions retain their checks and acceptance unchanged.
+Saving any REQ or AC wording change creates a new revision. Its ACs are grey
+until a newer test record arrives, and it has no acceptance. Even a small edit
+needs fresh results. Earlier revisions keep their checks and acceptance.
 
 The agent compares code and tests with the new revision, changes them where
 needed and reruns every AC's checks. Reuse suitable implementation and tests,
@@ -146,12 +147,11 @@ to tasks, not to separate copies of the business tree.
 A Task records its permitted parent, assignee and technical contract.
 Its reference fields come from the workspace schema.
 Completing a Task records the delivered result. It does not turn an AC green.
-Manual work still needs explicit expected and observed evidence.
+Manual work needs explicit expected and observed evidence.
 
 ## Editing guidance
 
-Approximate character counts can help editing: 60 for domain/capability titles,
-140 for a REQ title, 110 for an AC and 800 for a REQ body. Longer wording is not
-rejected solely for length. Keep detailed sources linked rather than treating
-the body as an entire document. Empty REQ/AC wording is rejected, and source Input text
-is stored without truncation.
+A title has at most `title_max_length` characters of its type, default 128.
+Each other value has at most `field_max_length` characters, default 1024.
+Keep detailed sources in linked Notes or attached files, not in the body.
+Empty REQ and AC wording is refused.

@@ -1,4 +1,4 @@
-//! Decisions on Inbox signals, one test per criterion.
+//! Inbox signal rules: membership and redaction, one test per criterion.
 mod common;
 use common::World;
 use serde_json::{Value, json};

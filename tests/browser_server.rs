@@ -1,4 +1,4 @@
-//! Private fixture process for Chromium tests against the real server.
+//! Private fixture process for the Chromium checks against the real server.
 #[path = "common/fake_spaces.rs"]
 mod fake_spaces;
 use anyhow::{Result, ensure};
@@ -24,12 +24,16 @@ impl Drop for Fixture {
     }
 }
 
-#[tokio::test]
-#[ignore = "started through a private pipe by grey_ac_browser.cjs"]
-async fn browser_server() -> Result<()> {
+/// The fixture runs only when a Chromium check starts it through a private pipe. It is not a
+/// test: the target has no test harness, so a test run starts it and it stops at once.
+fn main() -> Result<()> {
     if std::env::var("JOPPA_BROWSER_HELPER").as_deref() != Ok("1") {
         return Ok(());
     }
+    tokio::runtime::Runtime::new()?.block_on(serve())
+}
+
+async fn serve() -> Result<()> {
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
     let pool = store::pool(&url)?;
     let database: String = pool

@@ -202,7 +202,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn legacy_document_commands_obey_configured_required_fields() -> Result<()> {
+async fn document_commands_obey_configured_required_fields() -> Result<()> {
     let w = world().await?;
     let domain = w.get("address=domain:security").await?;
     let mut data = domain["document"]["data"].clone();
@@ -211,7 +211,7 @@ async fn legacy_document_commands_obey_configured_required_fields() -> Result<()
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["domain"]["required_fields"] = json!({"origin":"origin is required"});
-    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Apply the rule to legacy document writes"})).await?;
+    w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Apply the rule to later document writes"})).await?;
     let conn = w.pool.get().await?;
     let before: i64 = conn
         .query_one(

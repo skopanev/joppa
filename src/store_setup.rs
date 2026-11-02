@@ -207,19 +207,6 @@ async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
     Ok(())
 }
 
-/// Refresh current assessment and verification metadata without reading journal history.
-pub async fn refresh_readiness_metadata(pool: &Pool) -> Result<()> {
-    let mut conn = pool.get().await?;
-    let tx = conn.transaction().await?;
-    tx.execute("SELECT pg_advisory_xact_lock(91827101)", &[])
-        .await?;
-    // Migrations rebuild projections from the journal as it is (see migration 037).
-    tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
-    refresh_readiness_in(&*tx).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
 async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
     for row in client.query("SELECT workspace FROM joppa.board_cache WHERE COALESCE(first_view->>'readiness_metadata_version','')<>$1 ORDER BY workspace", &[&READINESS_METADATA_VERSION]).await? {
         let workspace: String = row.get(0);

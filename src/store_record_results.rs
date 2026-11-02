@@ -6,7 +6,8 @@
 //! latest record of a test decides it. A record names only the tests it ran: an
 //! omitted test gets no result, and a skip or todo in a record is never a pass.
 //! The block test_results of the tree schema gives the status names, the fields of a
-//! result and the largest record, see result_shape.
+//! result and the largest record, see result_shape. The reply names in unbound the tests
+//! of the record that no present criterion lists: each test must have a criterion.
 use super::*;
 use crate::ac_tests::TestResult;
 use crate::result_shape::ResultShape;
@@ -121,6 +122,17 @@ pub async fn record_results(
         }
     }
     let (commit, results) = parse(args, &shape, &refs)?;
+    // The tests of the record that no present criterion lists. A full run must give none.
+    let names: Vec<&str> = results.iter().map(|r| r.address.as_str()).collect();
+    let unbound: Vec<String> = tx
+        .query(
+            "SELECT DISTINCT n FROM unnest($2::text[]) n WHERE NOT EXISTS (SELECT 1 FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.document->'data'->'tests' ? n) ORDER BY n",
+            &[&workspace, &names],
+        )
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
     let body = serde_json::to_string(&results)?;
     let hash = crate::digest_hex::sha256_hex(format!("record\n{commit}\n{body}").as_bytes());
     let event = |report: i64, repeat: bool| {
@@ -149,7 +161,7 @@ pub async fn record_results(
             super::timeline::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
         return Ok(
-            json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position}),
+            json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position, "unbound": unbound}),
         );
     };
     let id: i64 = row.get(0);
@@ -161,82 +173,10 @@ pub async fn record_results(
         super::timeline::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
     Ok(
-        json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position}),
+        json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position, "unbound": unbound}),
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    fn parse_default(
-        args: &serde_json::Value,
-    ) -> anyhow::Result<(String, Vec<crate::ac_tests::TestResult>)> {
-        super::parse(args, &crate::test_rules::legacy(), &Default::default())
-    }
-
-    #[test]
-    fn a_record_maps_skip_and_keeps_the_failure_message() {
-        let (commit, rows) = parse_default(&json!({"workspace":"w","commit":"abcdef1","results":[
-            {"test":"a","status":"pass"},{"test":"b","status":"fail","message":"expected 2, got 3"},
-            {"test":"c","status":"skip"},{"test":"d","status":"todo","duration_ms":4}]}))
-        .unwrap();
-        assert_eq!(commit, "abcdef1");
-        let statuses: Vec<_> = rows.iter().map(|r| r.status.as_str()).collect();
-        assert_eq!(statuses, ["pass", "fail", "skipped", "todo"]);
-        assert_eq!(
-            rows[1].fields,
-            Some(json!({"message": "expected 2, got 3"}))
-        );
-        assert_eq!(rows[3].fields, Some(json!({"duration_ms": 4})));
-    }
-
-    #[test]
-    fn a_record_takes_1000_results_and_refuses_more() {
-        let rows = |n: usize| -> Vec<_> {
-            (0..n)
-                .map(|i| json!({"test": format!("t{i}"), "status": "pass"}))
-                .collect()
-        };
-        let (_, parsed) = parse_default(&json!({"commit":"abcdef1","results":rows(1000)})).unwrap();
-        assert_eq!(parsed.len(), 1000);
-        let error = parse_default(&json!({"commit":"abcdef1","results":rows(1001)})).unwrap_err();
-        assert!(
-            error.to_string().contains("at most 1000 results"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn a_record_refuses_actor_at_unknown_fields_and_bad_input() {
-        for (input, error) in [
-            (
-                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"actor":"x"}),
-                "actor comes from the server",
-            ),
-            (
-                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass"}],"at":"2020-01-01T00:00:00Z"}),
-                "at comes from the server",
-            ),
-            (
-                json!({"commit":"abcdef1","results":[{"test":"a","status":"pass","actor":"x"}]}),
-                "invalid record_results input",
-            ),
-            (
-                json!({"commit":"ABCDEF1","results":[{"test":"a","status":"pass"}]}),
-                "lowercase git sha",
-            ),
-            (
-                json!({"commit":"abcdef1","results":[]}),
-                "at least one test",
-            ),
-            (
-                json!({"commit":"abcdef1","results":[{"test":"a","status":"passed"}]}),
-                "status must be one of: fail, pass, skip, todo",
-            ),
-        ] {
-            let message = parse_default(&input).unwrap_err().to_string();
-            assert!(message.contains(error), "{input}: {message}");
-        }
-    }
-}
+#[path = "store_record_results_tests.rs"]
+mod tests;

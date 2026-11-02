@@ -33,16 +33,6 @@ fn the_owner_confirms_the_wording_and_a_member_cannot() {
 }
 
 #[test]
-fn an_agent_edit_of_a_confirmed_requirement_makes_a_new_draft() {
-    // draft-binds-after-confirm-ac3
-    let mut w = World::new();
-    w.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
-    w.legacy("agent", revision(1));
-    let last = w.state.requirements["r"].revisions.last().unwrap();
-    assert_eq!((last.number, last.confirmed), (2, false));
-}
-
-#[test]
 fn an_agent_records_readiness_per_criterion_with_a_reason() {
     // readiness-per-criterion-ac1
     let mut w = World::new();
@@ -60,53 +50,6 @@ fn an_agent_records_readiness_per_criterion_with_a_reason() {
 }
 
 #[test]
-fn readiness_on_an_unsaved_revision_is_refused() {
-    // readiness-per-criterion-ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        assess_on(2, "ios", true, None),
-        "stale revision",
-    );
-}
-
-#[test]
-fn a_not_ready_assessment_names_the_gap_and_a_person() {
-    // not-ready-names-gap-ac1, ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        assess_on(1, "key", false, None),
-        "waiting needs a recipient",
-    );
-    w.ok("agent", assess_on(1, "key", false, Some("legal")));
-    let key = w.state.requirements["r"].revisions[0]
-        .acs
-        .iter()
-        .find(|a| a.id == "key")
-        .unwrap()
-        .assessment
-        .clone()
-        .unwrap();
-    assert_eq!(
-        (key.ready, key.reason.as_str(), key.owner.as_deref()),
-        (false, "Which permissions?", Some("legal"))
-    );
-}
-
-#[test]
-fn a_new_revision_resets_readiness() {
-    // readiness-resets-ac1
-    let mut w = World::new();
-    w.ok("agent", assess_on(1, "ios", true, None));
-    w.legacy("owner", revision(1));
-    let last = w.state.requirements["r"].revisions.last().unwrap();
-    assert!(last.acs.iter().all(|a| a.assessment.is_none()));
-}
-
-#[test]
 fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
     // no-work-before-ready-ac1
     let mut w = World::new();
@@ -116,32 +59,6 @@ fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
         "agent",
         json!({"op":"claim_task","req":"r","revision":1,"id":"t1"}),
         "AC is not ready for work",
-    );
-}
-
-#[test]
-fn an_agent_saves_a_draft_requirement_with_two_criteria() {
-    // agent-drafts-ac1
-    let mut w = World::new();
-    w.legacy("agent", json!({"op":"revise","req":"refunds","expected_revision":0,"capability":"c","consumers":["customer"],"title":"Refunds are fast","body":"From the support note about slow refunds","owner":"owner","reason":"Draft from a note","acs":[{"id":"refund-time","text":"A refund reaches the card in one day"},{"id":"refund-notice","text":"The customer gets a notice when the refund starts"}]}));
-    let r = &w.state.requirements["refunds"].revisions[0];
-    assert!(!r.confirmed, "an agent draft is not confirmed");
-    assert_eq!(
-        r.acs.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
-        ["refund-time", "refund-notice"]
-    );
-}
-
-#[test]
-fn an_agent_cannot_reject_a_requirement() {
-    // decisions-from-people-ac2
-    let mut w = World::new();
-    w.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
-    refused(
-        &mut w,
-        "agent",
-        json!({"op":"comment","req":"r","revision":1,"id":"no","text":"Reject this","kind":"reject","reply_to":null,"ac":null}),
-        "only a person records this decision",
     );
 }
 

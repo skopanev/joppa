@@ -198,35 +198,3 @@ fn claim_and_completion_keep_a_dependency_pin_current() {
     assert!(!claimable(&w, "task:d"));
 }
 
-#[test]
-fn migration_preserves_old_task_history_and_uses_one_process() {
-    let mut w = World::new();
-    w.ready();
-    w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"old","title":"Existing task","contract":"Implement the iOS flow","acs":["ios"],"projects":["app"],"purpose":"implementation"}));
-    let old = serde_json::to_value(&w.state.objects["task:r/old"].revisions).unwrap();
-    tasks::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
-    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "later").unwrap();
-    let migrated = serde_json::to_value(&w.state).unwrap();
-    tasks::migrate(&mut w.state, "owner", w.position + 2, "later").unwrap();
-    assert_eq!(migrated, serde_json::to_value(&w.state).unwrap());
-    assert_eq!(
-        old,
-        serde_json::to_value(&w.state.objects["task:r/old"].revisions[..1]).unwrap()
-    );
-    action(&mut w, "agent", "task:r/old", "claim_task", json!({}));
-    w.no(
-        "other",
-        json!({"op":"claim_task","req":"r","revision":1,"id":"old"}),
-    );
-    assert_eq!(
-        tasks::task(&w.state, "task:r/old")
-            .unwrap()
-            .assignee
-            .as_deref(),
-        Some("agent")
-    );
-    let cmd: Command =
-        serde_json::from_value(json!({"op":"confirm","req":"r","revision":1})).unwrap();
-    commands::apply(&mut w.state, "owner", &cmd, w.position + 1, "later").unwrap();
-    assert!(w.state.objects["task:r/old"].current().present);
-}

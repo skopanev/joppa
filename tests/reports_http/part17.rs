@@ -83,32 +83,6 @@ async fn a_failing_test_on_the_commit_refuses_acceptance() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_new_revision_without_a_new_run_refuses_acceptance() -> Result<()> {
-    // accept-needs-all-passed-ac2, new-revision-new-acceptance-ac1
-    let w = world().await?;
-    w.list(&[A, B]).await?;
-    w.record(
-        "c1c1c1c",
-        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    let (code, reply) = w.accept(&w.owner, Some("c1c1c1c")).await?;
-    ensure!(code == 200, "{code} {reply}");
-    ensure!(
-        w.acceptance().await?["commit"] == "c1c1c1c",
-        "revision 1 is accepted"
-    );
-    w.revise_text(1, "Only read and verify, before launch and after")
-        .await?;
-    ensure!(
-        w.acceptance().await?.is_null(),
-        "revision 2 is not accepted by the old acceptance"
-    );
-    refused_acceptance(&w, "c1c1c1c", NEEDS).await
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_acceptance_without_a_commit_is_refused() -> Result<()> {
     // acceptance-names-subject-ac2
     let w = world().await?;

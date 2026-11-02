@@ -14,16 +14,17 @@ and accepts the checked result. Agents assess each AC: independent ready
 conditions can proceed while disputed ones wait for a named decision maker.
 An iOS condition means iOS; other clients are never added by assumption.
 
-## What works in 0.2
+## What works
 
 - Workspaces, members, decision authorities, capabilities and owned REQs/ACs.
-  Agents propose the tree; the product owner confirms it.
 - Incoming Notes with revisions, comments, attachments and links to affected objects.
   The default queue shows unprocessed Notes. Processed Notes stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
 - Each AC holds its test list in `data.tests`. Save the list with `save_object`
   or `set_ac_tests`. `joppa_record_results` records the outcomes of one commit.
+- No AC, no test: every test in the repository is bound to a present AC. A
+  full-run record must give `"unbound": []` before a merge.
 - Each type has a status rule: `tests`, `children`, `links` or `none`. An AC is
   green when every listed test passes, red when one fails, and grey otherwise.
 - Tasks under configured object parents, manual work and decision tasks. A completed
@@ -31,8 +32,7 @@ An iOS condition means iOS; other clients are never added by assumption.
   history is never rewritten.
 
 MCP supports generated creation IDs, atomic batches and English methodology
-without a local checkout. Agents can clarify unconfirmed domain/capability
-titles while approval and changes of authority remain with the owner.
+without a local checkout.
 
 ## Run locally for development
 
@@ -47,10 +47,9 @@ docker exec joppa-db pg_isready -U postgres
 docker exec joppa-db createdb -U postgres joppa
 ```
 
-For an existing database, start here. Migration adds the `joppa` schema without
-removing or importing legacy `public` tables.
-Create new workspaces only with the server administrative CLI; HTTP API and MCP
-can edit existing workspaces but cannot create them.
+For an existing database, start here. Migration adds the `joppa` schema.
+Create a workspace with the server command line or on the **Settings** page.
+Commands and MCP cannot create a workspace.
 
 ```sh
 cargo build --locked
@@ -129,10 +128,11 @@ Use **Revisions** to read one saved document. Historical documents omit current
 comments, files and process status. Current comments, attachments and Context
 remain separate annotations.
 
-The portal is read-only. Agents change documents, links and schema through MCP.
-Types with `inbox: true` supply an input queue. It shows unprocessed inputs first.
-The **All** checkbox includes processed inputs. Related inputs remain visible
-under the objects they affect. Processing preserves the source document.
+The board is read-only for content. Agents change documents, links and schema through MCP.
+The **Settings** page creates workspaces, grants access and issues agent tokens.
+Types with `inbox: true` supply a Note queue. It shows unprocessed Notes first.
+The **All** checkbox includes processed Notes. Related Notes stay visible
+under the objects they affect. Processing keeps the source document.
 
 If port 6212 is occupied, use another local port such as 6213. Public access
 requires an HTTPS proxy; see [server deployment](server/README.md).
@@ -140,197 +140,39 @@ requires an HTTPS proxy; see [server deployment](server/README.md).
 ## Connect MCP
 
 **One endpoint: `https://YOUR_JOPPA_DOMAIN/mcp`.** Our instance: `https://joppa.otion.us/mcp`.
-Use HTTP (Streamable HTTP). No local Joppa client binary is needed. Add the server,
-start authentication, sign in with Google and approve access. The client stores
-and refreshes its OAuth credentials.
-
-In agy: `/mcp` → joppa → Authenticate. After approval Joppa displays **Copy code**;
-paste it into agy. The external Antigravity callback page is not needed.
-
-After approval, Joppa sends the browser to the client's callback, local
-(`127.0.0.1`, `localhost`) or hosted. A client with a local listener, such as
-Codex, gets the code at once. If the client runs in a container and the browser
-cannot open the local address, copy the whole address from the browser into the
-client's pending authorization prompt. The code is single-use and expires after
-five minutes.
-
-Claude Code, globally:
+Use HTTP (Streamable HTTP). No local Joppa client binary is needed. For example, Claude Code:
 
 ```sh
 claude mcp add --transport http --scope user joppa https://YOUR_JOPPA_DOMAIN/mcp
 ```
 
-Codex, in the user's `config.toml`:
-
-```toml
-[mcp_servers.joppa]
-url = "https://YOUR_JOPPA_DOMAIN/mcp"
-```
-
-Then run `codex mcp login joppa` in a terminal with the same Codex configuration.
-Complete browser sign-in and choose **Allow access**. The browser returns to
-Codex, which stores the credentials. Then reconnect MCP. In the Codex app, use MCP server settings → **Authenticate**.
-
-agy, globally:
-
-```sh
-agy mcp add --type http joppa https://YOUR_JOPPA_DOMAIN/mcp
-```
-
-OpenCode 1.x, in the global `opencode.jsonc`:
-
-```json
-{"mcp":{"joppa":{"type":"remote","url":"https://YOUR_JOPPA_DOMAIN/mcp","enabled":true}}}
-```
-
-### Connect an agent with a token
-
-An agent that runs without a browser uses an agent token instead of OAuth.
-
-1. The workspace owner opens **Settings** in the name menu, selects the workspace and issues a token for the agent.
-   Select read access for an agent that only reads, for example a planner.
-2. Copy the token once. Joppa does not show it again.
-3. Keep the token in a file or an environment variable with access for the agent only. Never put it in a repository.
-4. Send it as `Authorization: Bearer <token>` to the same endpoint.
-
-Claude Code:
-
-```sh
-claude mcp add --transport http --scope user joppa https://YOUR_JOPPA_DOMAIN/mcp \
-  --header "Authorization: Bearer $JOPPA_TOKEN"
-```
-
-Codex, in `config.toml`:
-
-```toml
-[mcp_servers.joppa]
-url = "https://YOUR_JOPPA_DOMAIN/mcp"
-bearer_token_env_var = "JOPPA_TOKEN"
-```
-
-A read token gets the error `read-only token` on every write. The owner revokes a token in **Settings**; the next call
-with it gets HTTP 401 `token revoked`.
-
-| Tool | Purpose |
-|---|---|
-| `joppa_list` | List accessible products |
-| `joppa_tasks` | List available, assigned or waiting Tasks without opening every REQ |
-| `joppa_timeline` | Read every recorded change of a workspace in journal order, page by page |
-| `joppa_search` | Search current wording inside one authorized workspace |
-| `joppa_help` | Read command shapes and API rules |
-| `joppa_tree` | Read the workspace schema and its saved revisions |
-| `joppa_objects` | Read object lists, documents, links and revisions |
-| `joppa_command` | Append one operation; omit IDs for new objects |
-| `joppa_batch` | Append up to 100 related operations atomically |
-| `joppa_tests` | Read the test status of criteria or of a Task |
-| `joppa_history` | Read history pages |
-| `joppa_history_mark` | Mark history entries processed |
-| `joppa_record_results` | Record the test outcomes of one commit |
-
-Object revisions, comments and schema revisions show `actor_type` beside `actor`.
-The server resolves `person` or `agent` from the author's workspace identity.
-Membership roles are immutable, so the same type applies to earlier records.
-Administrative snapshots also include this field in their journal history.
-
-Write requests cannot supply `actor` in their envelopes or operations.
-The authenticated identity selects the journal author.
-An `actor` field inside document data remains part of that data.
-
-Lists for a configured `inbox=true` type show unprocessed inputs first.
-Each status group uses address order. List items expose `status` and `note_status`.
-Use the returned cursor for the next page. A workspace change expires it.
-
-When a specification has no criteria, its list item has no `children` and the tone `grey`.
-
-For `decide_note` with `outcome="needs_information"`, set `recipient` to name a human workspace member.
-Without it, the question goes to the source author or object owner.
-HTTP and MCP object reads expose `question.recipient` and `question.text` from the selected revision.
-
-Current HTTP and MCP object reads return `files`, with the newest attachment first.
-Each file includes its attachment `id`, `created_at`, and existing metadata.
-Files with the same name remain separate entries. Removed attachments do not appear in this list.
-Each file also has `url`, a presigned Spaces GET that is valid 15 minutes.
-The MCP tool `joppa_attach` uploads a file of at most 50 MiB and attaches it in one call.
-`joppa_attachments` lists the files of one object with the same `url`.
-
-For Bash scripts, [client/joppa](client/joppa) calls the same MCP endpoint.
-It needs Python 3 and a private service bearer for an enrolled agent member;
-the server's administrative executable is not installed on the client machine.
-
-```sh
-export JOPPA_MCP_URL=https://YOUR_JOPPA_DOMAIN/mcp
-export JOPPA_TOKEN_FILE=/private/path/to/agent-token
-export JOPPA_WORKSPACE=product
-python3 client/joppa task list --view available
-python3 client/joppa task next --request-id "$NEXT_REQUEST_ID"
-python3 client/joppa task next --priority domain:billing --priority requirement:r-123
-python3 client/joppa task next --dry-run --priority domain:billing
-python3 client/joppa task claim TASK_ID --request-id "$CLAIM_REQUEST_ID"
-python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
-```
-
-Commands print JSON. `next` selects and claims under one server lock. Repeat
-`--priority kind:id` in preference order. Each priority addresses an object from
-the configured tree. Reference scopes follow the workspace schema. It tries the first scope with a
-claimable Task, then the next, then the ordinary oldest Task. `--project`
-remains a hard filter. `next --dry-run` returns `{ "task": ... }`
-without claiming; `task` is `null` when nothing is available. Another worker
-must atomically `claim` the returned `id`, `req` and `revision`; it may lose a
-race and should retry the preview. `claim`
-accepts the Task ID from the queue; use `--req REQ --revision N` when an ID is
-ambiguous. Reuse a `--request-id` only for an identical retry. Exit code 3 means
-the Task was already claimed or no matching Task is available; other errors
-return 1. Do not pass the bearer token on the command line.
-
-Each write needs a unique `request_id`. Retry identical input with the same ID
-for the same result, including generated IDs. Batches can reference earlier
-created objects without client-generated slugs. See [API examples](docs/api.md#automatic-ids-and-batches).
-
-OAuth uses client registration, authorization codes and PKCE S256. Access tokens
-last one hour. Refresh tokens last 30 days and rotate on use; reuse revokes the
-entire family. Tokens are restricted to `/mcp`, stored server-side only as hashes
-and survive deployment. Workspace access is checked for every operation.
-The public origin comes from the Google callback, or explicit `JOPPA_PUBLIC_URL`.
-Only loopback development origins may use HTTP.
-
-An interactive agent acts as your account. It must confirm wording, record
-human decisions and accept results only on explicit instruction. Unattended
-automation uses a separate `agent` identity and private service bearer token.
-
-The server Rust executable handles serving, migrations and administration. It
-is not installed to user machines and does not expose stdio MCP. Administrative
-commands require `JOPPA_DATABASE_URL` and `JOPPA_ACTOR`; do not give those powers
-to user agents. `gate WORKSPACE COMMIT` is a server-side release check. It passes
-only when the requirement of each launch condition is accepted with `accept_commit`
-on that commit.
+See [connect MCP](docs/connect.md) for other clients, agent tokens, the tool list and scripts.
 
 ## Automated checks
 
 Put the test names of a criterion in its test list: `save_object` with
 `data.tests`, or `set_ac_tests`. Send each run with `joppa_record_results`:
 the commit and one result for each test. The workspace schema gives the status
-names and the rules that make a criterion green or red. See
-[objects](docs/objects.md) and [what green means](docs/green.md).
+names and the rules that make a criterion green or red. Bind every new or renamed
+test to its AC in the same change. See [what green means](docs/green.md) and
+[the workspace schema](docs/schema.md).
 
-## Storage and upgrading from 0.1
+## Storage
 
 `migrations/*.sql` is the schema source; `schema.sql` invokes the same files for
 psql. Migrations are repeatable. `joppa.events` stores immutable typed commands,
 authenticated actors and server time. Current state uses separate object rows. Writes
-serialize within a workspace, and REQ changes also check `expected_revision`.
+serialize within a workspace, and each document write checks the current `revision`.
 
 Triggers reject journal UPDATE, DELETE and TRUNCATE. Run the service with
 SELECT/INSERT and sequence access, without table/schema ownership; see
 [storage](docs/storage.md). A PostgreSQL superuser can disable triggers, so
 physical immutable archiving is separate infrastructure.
 
-Migration does not pretend old `done_at` flags are checks,
-guess owners or confirm actual business rules.
-
 ## Verify
 
 Use the public Bun commands. They hold the shared Rust lock.
-The gate uses a fresh test database and runs all Rust and reported browser tests.
+The gate uses fresh test databases and runs all Rust and browser tests.
 
 ```sh
 bun run gate /absolute/source/.local/lane-test.env
@@ -342,8 +184,8 @@ Name the test file (`planning_claims` for `tests/planning_claims.rs`) as the sec
 argument. Then Cargo builds only that test, not every test binary: about 26 s instead
 of about 300 s after a source change. Use `lib` for a unit test in `src/lib.rs` and `bin` for one in `src/main.rs`
 (such as `web::tests`). The target is required, so a focused run never builds every test.
-The gate runs the full suite in two workers, each with its own database.
-It does not run the browser suite. `test:browser` remains the public browser runner.
+The gate runs the Rust suite in two workers, each with its own database, and then
+the browser files on a third database. `test:browser` is the public browser runner.
 Set `JOPPA_LANE_TEST_ENV` to the private environment file when the default path does not apply.
 The file sets `JOPPA_TEST_ADMIN_URL` for the disposable test server. Keep it outside Git.
 Record test results with the MCP tool `joppa_record_results`: one call holds the commit
@@ -354,7 +196,7 @@ It logs shared lock waiting in seconds. Browser-only commands do not clear compi
 
 Integration tests require an isolated database whose name starts with
 `joppa_test`. They exercise concurrent changes/results/acceptance, workspace
-isolation, retries, migration repeatability, preserved legacy tables and WORM.
+isolation, retries, migration repeatability and WORM.
 CI runs PostgreSQL 16 with pgvector and the HTTP, OAuth, session, search and access checks too.
 
 ## Current boundaries
@@ -366,13 +208,11 @@ legal-policy interpretation or proof that an AC set is complete.
 
 Agent search combines PostgreSQL full-text and pgvector results when the private
 DeepInfra key is configured; otherwise it reports full-text mode. See [search](docs/search.md).
-Attachment upload endpoints are not yet implemented; their storage configuration
-is preparatory. Object lists, selected documents and task queues use database projections.
+Object lists, selected documents and task queues use database projections.
 Writes update changed rows in the same transaction as their events.
-Administrative recovery replays the journal. The portal is read-only; authoring and decisions
-use MCP.
+Administrative recovery replays the journal. The board is read-only for content; authoring and
+decisions use MCP.
 
-See the [model](docs/model.md), [process](docs/process.md), [green rule](docs/green.md),
-[historical review](docs/reviews.md) and [implemented fixes](docs/implementation.md).
-
-Product follow-up work and acceptance criteria: [work queue](docs/roadmap.md).
+See the [model](docs/model.md), [process](docs/process.md), [objects](docs/objects.md),
+[workspace schema](docs/schema.md), [links](docs/links.md), [green rule](docs/green.md),
+[API](docs/api.md), [read contract](docs/read-contract.md) and [storage](docs/storage.md).
