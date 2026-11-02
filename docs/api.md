@@ -75,7 +75,9 @@ attach: target, id, name, content_type, size, hash; the bytes are uploaded first
         The MCP tool joppa_attach {workspace, target, filename, content_type?,
         content | content_base64} does the upload and the attach in one call
 detach: target, id, reason; the file stays readable for 14 days, then the periodic
-        reconcile deletes it unless an active attachment of the workspace names its hash
+        reconcile deletes it unless an active attachment of the workspace names its hash.
+        joppa_attachments {workspace, target, removed: true} also lists the files
+        detached in the last 14 days, with removed: true, removed_at and a download url
 
 target addresses an object: domain:<id>, capability:<id>, consumer:<id>, requirement:<id>,
 ac:<req>/<ac>, note:<id>, task:<req>/<task>, project:<id>.

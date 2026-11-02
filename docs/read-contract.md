@@ -204,7 +204,9 @@ only when they apply. `next_cursor` is `direction/relation/address` of the last 
 its `op`. When the saved object has a parent, `object` also gives `parent_revision`, the
 current revision of the parent. `replayed: true` marks a retry; a first write gives no `replayed`. A
 `set_tree_schema` result gives `schema_revision`, the new schema revision, and its `command`
-without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`.
+without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`. With `removed: true`,
+`joppa_attachments` also gives the files detached in the last 14 days, after the current
+files, newest detach first, each with `removed: true` and `removed_at`.
 
 ## `joppa_tree`
 

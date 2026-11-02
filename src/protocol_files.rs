@@ -17,8 +17,8 @@ pub fn tools() -> [Value; 2] {
         ),
         super::tool(
             "joppa_attachments",
-            "List the files of an object, newest first: id, name, content_type, size, hash, actor, created_at and a download url, valid 15 minutes. A detached file is not listed.",
-            json!({"workspace":text(),"target":text()}),
+            "List the files of an object, newest first: id, name, content_type, size, hash, actor, created_at and a download url, valid 15 minutes. A detached file is not listed. With removed: true, the list also gives the files detached in the last 14 days, after the current files, newest detach first, each with removed: true and removed_at. Download such a file, or attach it again.",
+            json!({"workspace":text(),"target":text(),"removed":{"type":"boolean"}}),
             json!(["workspace", "target"]),
         ),
     ]
@@ -28,9 +28,9 @@ fn field<'a>(a: &'a Value, key: &str) -> Result<&'a str> {
     a[key].as_str().with_context(|| format!("missing {key}"))
 }
 
-/// The current files of `target`. A read of the object checks the access.
-async fn files(pool: &Pool, actor: &str, workspace: &str, target: &str) -> Result<Value> {
-    let item = store::read_objects(
+/// The current object `target` with its files. A read of the object checks the access.
+async fn object(pool: &Pool, actor: &str, workspace: &str, target: &str) -> Result<Value> {
+    store::read_objects(
         pool,
         workspace,
         actor,
@@ -39,13 +39,60 @@ async fn files(pool: &Pool, actor: &str, workspace: &str, target: &str) -> Resul
             ..Default::default()
         },
     )
-    .await?;
-    Ok(item["files"].clone())
+    .await
+}
+
+async fn files(pool: &Pool, actor: &str, workspace: &str, target: &str) -> Result<Value> {
+    Ok(object(pool, actor, workspace, target).await?["files"].clone())
+}
+
+/// The files of `item` detached in the last 14 days, newest detach first, each with a
+/// download url. A detach without removed_at is older than the 14-day rule, so the reconcile
+/// never deletes its file, and the list keeps it.
+fn removed(item: &Value, folder: &str) -> Result<Vec<Value>> {
+    let since = chrono::Utc::now() - chrono::TimeDelta::days(14);
+    let at = |file: &Value| {
+        let text = file["removed_at"].as_str().unwrap_or("");
+        chrono::DateTime::parse_from_rfc3339(text)
+            .or_else(|_| chrono::DateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S%.f%#z"))
+            .ok()
+    };
+    let mut files: Vec<_> = item["annotations"]["attachments"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, file)| file["removed"] == true)
+        .map(|(id, file)| (at(file), id, file))
+        .filter(|(at, _, file)| at.is_some_and(|at| at > since) || file["removed_at"].is_null())
+        .collect();
+    files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(b.1)));
+    files
+        .into_iter()
+        .map(|(_, id, file)| {
+            let mut file = file.clone();
+            let text = |key: &str| file[key].as_str().unwrap_or("").to_owned();
+            let key = spaces::Spaces::key(folder, &text("hash"))?;
+            let url = spaces::storage()?.download_url(&key, &text("name"), &text("content_type"));
+            file["id"] = json!(id);
+            file["created_at"] = file["at"].clone();
+            file["url"] = json!(url);
+            Ok(file)
+        })
+        .collect()
 }
 
 pub async fn attachments(pool: &Pool, actor: &str, a: &Value) -> Result<Value> {
     let (workspace, target) = (field(a, "workspace")?, field(a, "target")?);
-    let files = files(pool, actor, workspace, target).await?;
+    let with_removed = match &a["removed"] {
+        Value::Null => false,
+        value => value.as_bool().context("removed must be a boolean")?,
+    };
+    let item = object(pool, actor, workspace, target).await?;
+    let mut files = item["files"].as_array().cloned().unwrap_or_default();
+    if with_removed {
+        let folder = store::file_workspace(pool, workspace, actor).await?;
+        files.extend(removed(&item, &folder)?);
+    }
     Ok(json!({"workspace":workspace,"target":target,"files":files}))
 }
 

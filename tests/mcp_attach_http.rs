@@ -168,6 +168,24 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
         fake.has(&w.ws, &bin_hash),
         "freshly detached binary was deleted before 14 days"
     );
+    // With removed: true, the list also gives a file detached in the last 14 days.
+    let listed = |removed: bool| {
+        let (w, args) = (&w, json!({"target":"ac:a","removed":removed}));
+        async move { ok(w.mcp(&w.bot, "joppa_attachments", args).await?) }
+    };
+    ensure!(listed(false).await?["files"].as_array().map_or(0, Vec::len) == 1);
+    let with_removed = listed(true).await?;
+    let detached = &with_removed["files"][1];
+    ensure!(
+        with_removed["files"].as_array().map_or(0, Vec::len) == 2
+            && detached["id"] == bin_id.as_str()
+            && detached["removed"] == true
+            && detached["removed_at"].is_string()
+            && detached["url"]
+                .as_str()
+                .is_some_and(|u| u.contains(&bin_hash)),
+        "{with_removed}"
+    );
     let age_detached = |target: &str, id: &str| {
         let pool = w.pool.clone();
         let ws = w.ws.clone();
@@ -184,6 +202,12 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
             Ok::<_, anyhow::Error>(())
         }
     };
+    age_detached("ac:a", &bin_id).await?;
+    ensure!(listed(true).await?["files"].as_array().map_or(0, Vec::len) == 1);
+    // A detach from before the 14-day rule has no removed_at, and the list keeps it.
+    let sql = "UPDATE joppa.state_entries SET value=value #- ARRAY['attachments',$2,'removed_at'] WHERE workspace=$1 AND section='notes' AND key='ac:a'";
+    w.pool.get().await?.execute(sql, &[&w.ws, &bin_id]).await?;
+    ensure!(listed(true).await?["files"][1]["id"] == bin_id.as_str());
     age_detached("ac:a", &bin_id).await?;
     ensure!(joppa::store::sweep_detached(&w.pool).await? == 1);
     ensure!(
