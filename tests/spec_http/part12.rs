@@ -176,7 +176,7 @@ async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<(
 async fn the_children_api_returns_one_level_only() -> Result<()> {
     // lazy-children-ac2
     let w = world().await?;
-    let list = w.get("limit=50&parent=capability:restrict").await?;
+    let list = w.get("limit=50&parent=capability:restrict&depth=1").await?;
     let kinds: Vec<&str> = list["items"]
         .as_array()
         .unwrap()
@@ -198,7 +198,7 @@ async fn the_children_api_returns_one_level_only() -> Result<()> {
     let reply = w
         .http
         .get(format!(
-            "{}/api/workspaces/{}/objects?limit=50&parent=capability:wide",
+            "{}/api/workspaces/{}/objects?limit=50&parent=capability:wide&depth=1",
             w.root, w.ws
         ))
         .bearer_auth(grant["token"].as_str().unwrap())

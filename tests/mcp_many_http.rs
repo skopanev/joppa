@@ -134,9 +134,9 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         .cloned()
         .unwrap_or_default();
     for (name, count) in [
-        ("joppa_objects", 17),
-        ("joppa_tests", 7),
-        ("joppa_search", 7),
+        ("joppa_objects", 22),
+        ("joppa_tests", 8),
+        ("joppa_search", 14),
     ] {
         let tool = all.iter().find(|t| t["name"] == name);
         let properties = tool.map(|t| &t["inputSchema"]["properties"]);
