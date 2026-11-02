@@ -18,7 +18,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "comments": {
     "total": 30,
     "next_cursor": "25",
-    "items": [{"id": "c00", "text": "Finding 1", "actor": "bot", "actor_type": "agent",
+    "items": [{"id": "c00", "text": "Finding 1", "actor": "bot",
                "at": "...", "withdrawn": false}]
   },
   "links": [

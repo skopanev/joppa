@@ -60,7 +60,6 @@ pub(super) async fn migrate_claims(
         events.push(Event {
             position,
             actor: migration_actor.clone(),
-            actor_type: crate::inbox::actor_type(state, &migration_actor).into(),
             recorded_at,
             command,
         });

@@ -79,7 +79,6 @@ pub(super) const READINESS_METADATA_VERSION: &str = "2";
 pub struct Event {
     pub position: u64,
     pub actor: String,
-    pub actor_type: String,
     pub recorded_at: String,
     pub command: Command,
 }
@@ -96,11 +95,9 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
         commands::apply_replay(&mut state, &actor, &command, position, row.get(2))
             .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
-        let actor_type = crate::inbox::actor_type(&state, &actor).to_owned();
         events.push(Event {
             position,
             actor,
-            actor_type,
             recorded_at: row.get(2),
             command,
         });

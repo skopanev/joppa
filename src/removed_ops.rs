@@ -1,9 +1,9 @@
-//! Operations that no live write accepts. Old journals hold them, so `apply_replay` still
+//! Operations and fields that no live write accepts. Old journals hold them, so `apply_replay` still
 //! reads them; HTTP, MCP and the CLI refuse them before any state change.
 use crate::commands::Command;
 
 /// The operation names that live writes refuse.
-pub const NAMES: [&str; 23] = [
+pub const NAMES: [&str; 25] = [
     "domain",
     "edit_domain",
     "capability",
@@ -27,6 +27,8 @@ pub const NAMES: [&str; 23] = [
     "review_coverage",
     "define_verification_scope",
     "set_note_status",
+    "confirm",
+    "decide_note",
 ];
 
 /// The refusal of a removed operation: it names the replacement.
@@ -39,7 +41,8 @@ pub fn refusal(name: &str) -> String {
         "accept" | "revoke" => "accept_commit",
         "issue" | "resolve" => "note",
         "review_coverage" | "define_verification_scope" => "set_ac_tests",
-        "set_note_status" => "decide_note",
+        "set_note_status" | "decide_note" => "archive_object",
+        "confirm" => "save_object; a saved requirement needs no confirmation",
         _ => "save_object",
     };
     format!("{name} was removed; use {replacement}")
@@ -75,6 +78,22 @@ pub fn name(command: &Command) -> Option<&'static str> {
             "define_verification_scope"
         }
         Command::SetNoteStatus(crate::commands::SetNoteStatusOp { .. }) => "set_note_status",
+        Command::Confirm { .. } => "confirm",
+        Command::DecideNote(crate::commands::DecideNoteOp { .. }) => "decide_note",
         _ => return None,
     })
+}
+
+/// The refusal of a removed field of a live operation, or None when the command uses none.
+pub fn removed_field(command: &Command) -> Option<&'static str> {
+    match command {
+        Command::Comment(crate::commands::CommentOp { kind, .. }) if kind == "reject" => {
+            Some("comment kind reject was removed; use kind comment")
+        }
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            status_colors: Some(_),
+            ..
+        }) => Some("status_colors was removed; use statuses"),
+        _ => None,
+    }
 }

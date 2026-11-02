@@ -32,10 +32,7 @@ pub async fn tree_schema(
                 .context("unknown schema revision")?,
         )?
     };
-    let types =
-        access::actor_types(&**conn, &workspace, std::slice::from_ref(&selected.actor)).await?;
     let mut schema = json!(selected);
-    schema["actor_type"] = json!(types[&selected.actor]);
     // Readers see the status list that applies, also when the schema keeps the default list.
     schema["statuses"] = json!(crate::status_colors::effective(
         selected.statuses.as_ref(),

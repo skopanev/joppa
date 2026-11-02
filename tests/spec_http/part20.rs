@@ -198,7 +198,7 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
         "The journal lost or duplicated the write"
     );
     ensure!(
-        events[0]["actor"] == "bot" && events[0]["actor_type"] == "agent",
+        events[0]["actor"] == "bot" && events[0].get("actor_type").is_none(),
         "{:?}",
         events[0]
     );
@@ -219,7 +219,8 @@ async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> 
     ensure!(headers["items"][0]["actor"] == "bot", "{headers}");
     let object = w.get("address=note:agent-author").await?;
     ensure!(
-        object["document"]["actor"] == "bot" && object["document"]["actor_type"] == "agent",
+        object["document"]["actor"] == "bot"
+            && object["document"].get("actor_type").is_none(),
         "{object}"
     );
     ensure!(

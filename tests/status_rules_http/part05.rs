@@ -122,7 +122,7 @@ async fn work_priority_ac5_a_member_sets_the_priority_and_the_timeline_names_it(
     let entry = &entries[0];
     ensure!(
         entry["actor"] == "alex"
-            && entry["actor_type"] == "person"
+            && entry.get("actor_type").is_none()
             && entry["change"] == "priority"
             && entry["address"] == "check:a",
         "{entry}"

@@ -164,7 +164,7 @@ pub(crate) async fn write(
                 }
                 crate::objects::validate_authoring_questions(&state, &command, position)?;
                 crate::objects::validate_tree(&state)?;
-                events.push(Event{position,actor:actor.to_owned(),actor_type:crate::inbox::actor_type(&state, actor).into(),recorded_at,command:command.clone()});
+                events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
             }
             let mut resolved=serde_json::to_value(&command)?;
             let saved_address = match &command {

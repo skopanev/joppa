@@ -132,14 +132,7 @@ fn tree(reply: &mut Value, args: &Value) {
     };
     drop_keys(
         schema,
-        &[
-            "actor",
-            "actor_type",
-            "at",
-            "position",
-            "reason",
-            "status_rules",
-        ],
+        &["actor", "at", "position", "reason", "status_rules"],
     );
     if let Some(types) = schema.get_mut("types").and_then(Value::as_object_mut) {
         for kind in types.values_mut() {

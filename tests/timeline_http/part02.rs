@@ -102,7 +102,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
         "{http}"
     );
     ensure!(
-        column("actor_type") == ["agent", "person", "person", "person", "agent"],
+        items.iter().all(|i| i.get("actor_type").is_none()),
         "{http}"
     );
     ensure!(

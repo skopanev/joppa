@@ -61,13 +61,6 @@ pub(super) async fn items(
             text.replace(fragment, crate::redact::MASK)
         })
     };
-    let actors: Vec<String> = rows
-        .iter()
-        .map(|row| row.get::<_, String>(2))
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let types = access::actor_types(conn, workspace, &actors).await?;
     let mut items = vec![];
     for (i, (row, command)) in rows.iter().zip(&commands).enumerate() {
         let position: i64 = row.get(0);
@@ -78,7 +71,6 @@ pub(super) async fn items(
             "position": position,
             "at": row.get::<_, String>(1),
             "actor": actor,
-            "actor_type": types[&actor],
             "op": command["op"],
             "address": addresses[i],
             "kind": null,

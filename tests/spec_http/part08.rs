@@ -185,7 +185,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
         let object = w.get(&format!("address={address}")).await?;
         let comment = &object["annotations"]["comments"]["n1"];
         ensure!(comment["author"] == "alex", "{comment}");
-        ensure!(comment["actor_type"] == "person", "{comment}");
+        ensure!(comment.get("actor_type").is_none(), "{comment}");
         ensure!(comment["actor"] == comment["author"], "{comment}");
         ensure!(comment["at"] == comment["created_at"], "{comment}");
         let created = chrono::DateTime::parse_from_str(
@@ -224,7 +224,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             .unwrap_or_default();
         ensure!(
             item["actor"] == comment["author"]
-                && item["actor_type"] == "person"
+                && item.get("actor_type").is_none()
                 && item["at"] == comment["created_at"]
                 && item["text"] == comment["text"]
                 && item.get("author").is_none(),

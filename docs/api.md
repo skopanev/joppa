@@ -19,8 +19,8 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 
 - Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
 - Schema and order: `set_tree_schema`, `reorder_tree`, `set_priority`.
-- Criteria and tests: `set_ac_tests`, `accept_commit`, `confirm`, `assess`, `assess_signal`.
-- Discussion and files: `note`, `withdraw_note` (author only), `comment`, `attach`, `detach`, `decide_note`.
+- Criteria and tests: `set_ac_tests`, `accept_commit`, `assess`, `assess_signal`.
+- Discussion and files: `note`, `withdraw_note` (author only), `comment`, `attach`, `detach`.
 - Planning: `claim_planning`, `finish_planning`, `release_planning`.
 - Tasks: `claim_task`, `claim_next_task`, `release_task`, `block_task`, `unblock_task`, `complete_task`, `review_task`, `retire_task`.
 - Workspace (owner): `rename_workspace`, `delete_workspace`, `member`, `remove_member`.
@@ -91,7 +91,7 @@ Only the holder finishes. The holder or the workspace owner releases with a reas
 `GET /api/workspaces/{workspace}/timeline` and `joppa_timeline` give the same page, one entry
 for each journal event, in journal order.
 
-- Each entry has `position`, `at`, `actor`, `actor_type`, `address`, `title`, `revision`, `change`, `op` and `reason`.
+- Each entry has `position`, `at`, `actor`, `address`, `title`, `revision`, `change`, `op` and `reason`.
 - A comment entry (op `comment`, `note` or `withdraw_note`) also has `comment_id`.
 - `change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent.
 - A record of test results has the change `results` and the address `record/ID`.

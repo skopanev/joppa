@@ -45,7 +45,7 @@ test('comments-on-object-ac2: a comment shows its author and server time', async
     const current = await f.api('/objects?address=' + encodeURIComponent(address));
     const comment = current.annotations.comments.comment;
     assert.equal(comment.author, 'alex');
-    assert.equal(comment.actor_type, 'person');
+    assert.equal(comment.actor_type, undefined);
     assert.equal(comment.created_at, comment.at);
     const instant = new Date(comment.created_at.replace(' ', 'T').replace(/\+00$/, 'Z'));
     assert.ok(Number.isFinite(instant.getTime()), 'the server timestamp must parse');

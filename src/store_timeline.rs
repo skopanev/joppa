@@ -130,7 +130,6 @@ pub(super) async fn record_report(
     let events = [Event {
         position,
         actor: actor.into(),
-        actor_type: crate::inbox::actor_type(&state, actor).into(),
         recorded_at,
         command,
     }];

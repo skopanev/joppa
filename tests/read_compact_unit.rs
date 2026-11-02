@@ -82,7 +82,7 @@ fn a_detail_gives_each_fact_once() {
     let related = json!({"target":"ac:b","relation":"related","blocking":false,"revision":null});
     let pinned = json!({"target":"task:t","relation":"depends_on","blocking":true,"revision":3});
     let stored = json!({"revision":4,"parent":"requirement:r","links":[related,pinned],
-        "data":{"title":"A","note":null},"actor":"bot","actor_type":"agent","at":"2026-10-30",
+        "data":{"title":"A","note":null},"actor":"bot","at":"2026-10-30",
         "reason":"Save","schema_revision":20,"position":8,"present":true,"contract":[4,3]});
     let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
         "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,

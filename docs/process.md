@@ -72,7 +72,7 @@ A later change to that Note then asks the agent to review the requirement.
 ## Three routes
 
 1. **Policy request:** clarify amounts, lists and scope; formulate a REQ; have
-   the authority confirm wording; analyze and implement it.
+   the authority approve the wording; analyze and implement it.
 2. **Idea requiring a decision:** ask the responsible person first. Do not create
    implementation work for a disputed AC before the decision. Independent ready
    ACs can proceed. Conditions of the decision, including review dates when

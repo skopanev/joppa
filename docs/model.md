@@ -158,8 +158,7 @@ requires. Never manufacture ACs to reach a target count.
 ## Creating and maintaining the tree
 
 Agents and people save domains and capabilities with `save_object`. A saved tree
-needs no confirmation. The REQ owner confirms the REQ wording with `confirm`.
-Confirmation is an explicit human decision.
+needs no confirmation. A saved REQ needs no confirmation either.
 
 Creation through MCP can omit local IDs: the server makes them and returns the
 resolved command. Keep IDs when you edit existing objects. Archived objects keep

@@ -57,6 +57,9 @@ pub fn apply(
     if let Some(op) = crate::removed_ops::name(command) {
         anyhow::bail!(crate::removed_ops::refusal(op));
     }
+    if let Some(refusal) = crate::removed_ops::removed_field(command) {
+        anyhow::bail!(refusal);
+    }
     crate::objects::validate_current(w, command)?;
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);

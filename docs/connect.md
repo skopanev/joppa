@@ -92,9 +92,7 @@ with it gets HTTP 401 `token revoked`.
 | `joppa_attach` | Upload a file and attach it to an object in one call |
 | `joppa_attachments` | List the files of one object, also the files detached in the last 14 days |
 
-Object revisions, comments and schema revisions show `actor_type` (`person` or
-`agent`) beside `actor`. A write cannot supply `actor`: the authenticated identity
-is the journal author. An `actor` field inside document data stays part of that data.
+A write cannot supply `actor`: the authenticated identity is the journal author. An `actor` field inside document data stays part of that data.
 
 Object reads give `files`, newest first, each with its `id`, `created_at` and a
 presigned `url` that is valid for 15 minutes. `joppa_attach` uploads a file of at
@@ -142,7 +140,7 @@ and survive deployment. Workspace access is checked for every operation.
 The public origin comes from the Google callback, or explicit `JOPPA_PUBLIC_URL`.
 Only loopback development origins may use HTTP.
 
-An interactive agent acts as your account. It must confirm wording, record
+An interactive agent acts as your account. It must approve wording, record
 human decisions and accept results only on explicit instruction. Unattended
 automation uses a separate `agent` identity and private service bearer token.
 

@@ -73,9 +73,7 @@ Link a REQ to a Note with `depends_on` and the Note revision. A later Note chang
 for a review of the requirement.
 
 A type with `inbox: true` holds incoming information. A missing `data.status` means
-`unprocessed`. `decide_note {target, revision, outcome, reason}` records the decision.
-A final outcome sets `processed`. `needs_information` keeps `unprocessed`, and `recipient`
-names the member who answers. A change of a source field opens a processed Note again.
+`unprocessed`. When the agent has processed the Note, archive it with `archive_object`.
 
 ## Tests of a criterion
 

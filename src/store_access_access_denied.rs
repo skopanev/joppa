@@ -20,34 +20,6 @@ pub(crate) const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE
      UNION SELECT workspace FROM joppa.domain_grants WHERE domain=lower($2::text)";
 pub(crate) const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1 AND value->'deleted_at' IS NULL";
 
-/// Resolve types for the authors of the records that this read returns.
-pub(crate) async fn actor_types(
-    client: &impl GenericClient,
-    workspace: &str,
-    actors: &[String],
-) -> Result<std::collections::BTreeMap<String, &'static str>> {
-    if actors.is_empty() {
-        return Ok(Default::default());
-    }
-    let rows = client.query(
-        "SELECT a.actor,m.value#>>'{}', (SELECT value->>'admin' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key='') FROM unnest($2::text[]) a(actor) LEFT JOIN joppa.state_entries m ON m.workspace=$1 AND m.section='members' AND m.key=a.actor",
-        &[&workspace, &actors],
-    ).await?;
-    let mut state = Workspace {
-        admin: rows[0].get::<_, Option<String>>(2).unwrap_or_default(),
-        ..Default::default()
-    };
-    for row in &rows {
-        if let Some(role) = row.get::<_, Option<String>>(1) {
-            state.members.insert(row.get(0), role);
-        }
-    }
-    Ok(actors
-        .iter()
-        .map(|actor| (actor.clone(), crate::inbox::actor_type(&state, actor)))
-        .collect())
-}
-
 pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BTreeSet<String>>> {
     let identity = client
         .query_opt(
@@ -201,7 +173,6 @@ pub(crate) async fn join(
         let events = [Event {
             position: position as u64,
             actor: "joppa-access".into(),
-            actor_type: crate::inbox::actor_type(&state, "joppa-access").into(),
             recorded_at: at,
             command,
         }];

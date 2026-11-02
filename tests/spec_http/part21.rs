@@ -63,7 +63,7 @@ async fn bot1_and_bot2_saves_record_their_own_journal_actor() -> Result<()> {
         ensure!(
             history.len() == 1
                 && history[0]["actor"] == *agent
-                && history[0]["actor_type"] == "agent",
+                && history[0].get("actor_type").is_none(),
             "{agent} request {request_id} at position {position} history events {history:?}"
         );
         for other in ["bot1", "bot2", "owner"]

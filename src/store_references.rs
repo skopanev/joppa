@@ -77,7 +77,6 @@ pub(super) async fn remove(
         let events = [Event {
             position,
             actor: ACTOR.into(),
-            actor_type: crate::inbox::actor_type(&state, ACTOR).into(),
             recorded_at: at,
             command,
         }];
