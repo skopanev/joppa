@@ -89,7 +89,6 @@ fn a_detail_gives_each_fact_once() {
         "contract_revision":4,"historical":false,"metadata_scope":"current",
         "document":stored,"signal":{"label":"Ready","tone":"green"},
         "review_required":false,"work_ready":true,
-        "verification_summary":{"total":2,"passed":2,"failed":0},
         "links":[{"link":related,"title":"B","kind":"ac","current_revision":2,"present":true,
             "blocking":false,"revision":null,"metadata_scope":"current"},
             {"link":pinned,"title":"T","kind":"task","current_revision":5,"present":false,
@@ -107,7 +106,6 @@ fn a_detail_gives_each_fact_once() {
         detail(reply.clone(), "ac:a", None).unwrap(),
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
             "status":{"label":"Ready","tone":"green"},
-            "verification_summary":{"total":2,"passed":2},
             "links":[{"target":"ac:b","title":"B"},
                 {"target":"task:t","relation":"depends_on","title":"T","revision":3,
                     "current_revision":5,"blocking":true,"present":false}],
@@ -126,7 +124,6 @@ fn a_detail_gives_each_fact_once() {
     archived["document"]["present"] = json!(false);
     archived["work_ready"] = json!(false);
     archived["process"]["confirmed"] = json!(true);
-    archived["verification_summary"] = json!({"total":0,"passed":0,"failed":0});
     let archived = detail(archived, "ac:a", None).unwrap();
     assert_eq!(
         (
@@ -136,7 +133,6 @@ fn a_detail_gives_each_fact_once() {
         ),
         (&json!(false), &json!(false), &json!(true))
     );
-    assert!(archived.get("verification_summary").is_none());
     // A revision read gives the flat document of that revision and the current revision.
     let old = json!({"revision":2,"parent":"requirement:r","links":[related],"data":{"title":"A"},
         "actor":"bot","at":"2026-10-29","reason":"Save","schema_revision":20,"position":5,

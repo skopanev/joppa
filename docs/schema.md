@@ -73,7 +73,7 @@ A rule object requires literal markers in a text field:
 - `color: "#RRGGBB"` colours the type on the board and in the schema diagram.
 - `title_size` is an integer from 12 to 48 pixels. The default is 15.
 - `badge` is a label of 1 to 8 characters without spaces. The default is the initials of the title.
-- `title_max_length` is from 1 to 256 characters, default 128. A longer new title is refused. Put the context in `body`.
+- `title_max_length` is from 1 to 400 characters, default 128. A test name can have 400 characters. A longer new title is refused. Put the context in `body`.
 - `field_max_length` limits each other data value, default 1024 characters.
 - `index` is a nonnegative integer. Smaller values come first in the root tabs and the diagram.
 

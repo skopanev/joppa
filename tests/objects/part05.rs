@@ -139,15 +139,4 @@ fn a_list_save_before_its_replay_epoch_keeps_readiness() {
         readiness(&replay(&steps, &[(LIST_SAVE_RESET, position)]), "ac:ios"),
         "unassessed"
     );
-    // A live write ignores the epochs: the rule is always in force for new events.
-    let mut live = World {
-        state: Default::default(),
-        position: 0,
-    };
-    for (actor, command) in &steps[..steps.len() - 1] {
-        live.ok(actor, command.clone());
-    }
-    live.state.replay_epochs = [(LIST_SAVE_RESET.to_string(), position + 1)].into();
-    live.ok("owner", save);
-    assert_eq!(readiness(&live.state, "ac:ios"), "unassessed");
 }

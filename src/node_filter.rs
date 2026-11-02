@@ -52,10 +52,12 @@ impl NodeFilter {
             Some(_) => bail!("{name} must be a non-empty string"),
         };
         let parent = text("parent")?;
+        // A client with an older tool schema sends a number, a boolean or an object as text.
         let depth = match a.get("depth") {
             None | Some(Value::Null) => None,
             Some(v) => Some(
                 v.as_i64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                     .filter(|n| (1..=100).contains(n))
                     .context("depth must be an integer from 1 to 100")? as i32,
             ),
@@ -70,11 +72,19 @@ impl NodeFilter {
         }
         let ready = match a.get("ready") {
             None | Some(Value::Null) => None,
-            Some(v) => Some(v.as_bool().context("ready must be a boolean")?),
+            Some(v) => Some(
+                v.as_bool()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    .context("ready must be a boolean")?,
+            ),
         };
         let data = match a.get("data") {
             None | Some(Value::Null) => None,
             Some(v @ Value::Object(_)) => Some(v.to_string()),
+            Some(Value::String(s)) if s.trim_start().starts_with('{') => {
+                let v: Value = serde_json::from_str(s).context("data filter must be an object")?;
+                Some(v.to_string())
+            }
             Some(_) => bail!("data filter must be an object"),
         };
         Ok(Self {

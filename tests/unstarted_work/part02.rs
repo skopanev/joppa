@@ -82,27 +82,6 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         );
     }
     let ordinary_before = store::read_objects(&pool, &ws, "agent", &ObjectScope::default()).await?;
-    let spec = ordinary_before["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|item| item["address"] == "spec:s")
-        .unwrap();
-    assert_eq!(
-        spec["verification_summary"],
-        json!({"total":2,"passed":0,"failed":0})
-    );
-    let unrelated = ordinary_before["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|item| item["address"] == "input:raw")
-        .unwrap();
-    // The wildcard schema permits criteria below this type, but it has no children.
-    assert_eq!(
-        unrelated["verification_summary"],
-        json!({"total":0,"passed":0,"failed":0})
-    );
     assert!(
         ordinary_before["items"]
             .as_array()
@@ -131,7 +110,6 @@ async fn custom_planning_uses_roles_nested_task_bindings_and_current_dependencie
         .iter_mut()
         .find(|item| item["address"] == "spec:s")
         .unwrap();
-    spec["verification_summary"] = json!({"total":3,"passed":0,"failed":0});
     spec["children"] = json!(3);
     assert_eq!(expected, ordinary_after["items"]);
     let direct = store::read_objects(

@@ -65,15 +65,15 @@ pub async fn world(tests: &[&str]) -> Result<World> {
     };
     write("owner", json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
         "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     }})).await?;
     write("bot", json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"})).await?;
     write("bot", json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"A","owner":"owner"},"reason":"Create"})).await?;
-    write(
-        "bot",
-        json!({"op":"set_ac_tests","target":A,"tests":tests,"reason":"Bind"}),
-    )
-    .await?;
+    // Each test of A is a test node under it.
+    for name in tests {
+        write("bot", json!({"op":"save_object","kind":"test","revision":0,"parent":A,"data":{"title":name,"owner":"owner"},"reason":"Bind"})).await?;
+    }
     let dir = std::env::temp_dir().join(format!("joppa-record-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let token = || uuid::Uuid::new_v4().simple().to_string();

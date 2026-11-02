@@ -79,8 +79,8 @@ pub fn set_schema(
         );
         ensure!(
             t.title_preview_length
-                .is_none_or(|length| (1..=256).contains(&length)),
-            "type title_max_length must be an integer from 1 to 256 characters"
+                .is_none_or(|length| (1..=400).contains(&length)),
+            "type title_max_length must be an integer from 1 to 400 characters"
         );
         ensure!(
             t.field_max_length.is_none_or(|length| {

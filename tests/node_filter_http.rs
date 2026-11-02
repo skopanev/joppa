@@ -75,7 +75,7 @@ async fn parent_gives_the_whole_subtree_and_depth_limits_it() -> Result<()> {
         ),
         (
             "joppa_search",
-            json!({"depth":"2"}),
+            json!({"depth":"x"}),
             "depth must be an integer from 1 to 100",
         ),
     ] {
