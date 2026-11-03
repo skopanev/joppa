@@ -27,8 +27,9 @@ async fn ac6_fixture1_a_holder_test_list_save_finishes_with_no_task_and_replays(
     for mcp in [false, true] {
         let p = planning(&w).await?;
         p.bound_plan().await?;
-        let objects = p.addresses().await?;
         p.send(mcp, &save_xy()).await?.map_err(anyhow::Error::msg)?;
+        // The holder's test node is a change of the plan; finish adds no Task.
+        let objects = p.addresses().await?;
         p.send(mcp, &finish_command())
             .await?
             .map_err(anyhow::Error::msg)?;

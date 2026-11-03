@@ -61,12 +61,12 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
   const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
   try {
-    await f.bind('ac:A', ['X']);
+    const [x] = await f.bind('ac:A', ['X']);
     await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
       data: {title: 'Implement the criterion', owner: 'owner', body: 'Implement the criterion and record the result'},
       reason: 'Check the object page under a criterion'});
     await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
-    const addresses = ['requirement:r', 'ac:A', 'task:T'];
+    const addresses = ['requirement:r', 'ac:A', 'task:T', x];
     const noLegacy = async (card, address) => {
       const sections = await card.locator(':scope > .object-body > .object-secondary > .object-section > summary').allTextContents();
       assert.ok(!sections.some(title => /^Checks|run plan/i.test(title)), address + ': ' + sections.join(', '));
@@ -74,17 +74,24 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
       const text = await card.locator(':scope > .object-body').textContent();
       for (const forbidden of ['Expected', 'Observed', 'Missing result', 'Not checked']) assert.ok(!text.includes(forbidden), address + ': ' + forbidden);
     };
-    const testsShown = async card => {
-      const group = card.locator(':scope > .object-body > .object-secondary > .object-tests');
-      await group.locator(':scope > summary').filter({hasText: /^Tests 1$/}).waitFor();
+    // The test is a green child row of the criterion, and its own card shows the recorded result.
+    const rowShown = async card => {
+      const row = card.locator(':scope > .object-body > .object-children > .common-object[data-object-address="' + x + '"]');
+      await row.waitFor();
+      assert.equal(await row.locator(':scope > summary .node-title').innerText(), 'checks.cjs > X');
+      assert.equal(await row.locator(':scope > summary .status-circle').getAttribute('data-tone'), 'green');
+    };
+    const resultShown = async card => {
+      const group = card.locator(':scope > .object-body > .object-secondary > .test-result');
+      await group.waitFor({state: 'attached'});
       if (await group.getAttribute('open') === null) await group.locator(':scope > summary').click();
-      await group.locator('.ac-check').waitFor();
-      assert.match(await group.locator('.ac-check').innerText(), /checks.cjs > X\s+pass · commit ddddddd/);
+      assert.equal(await group.locator('.test-result-line').innerText(), 'pass · commit ddddddd');
     };
     for (const address of addresses) {
       const card = await f.open(address);
       await noLegacy(card, address);
-      if (address === 'ac:A') await testsShown(card);
+      if (address === 'ac:A') await rowShown(card);
+      if (address === x) await resultShown(card);
     }
     await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
     const cards = {};
@@ -97,7 +104,8 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
     }
     await Promise.all(f.requests.map(entry => entry.body));
     for (const address of addresses) await noLegacy(cards[address], address);
-    await testsShown(cards['ac:A']);
+    await rowShown(cards['ac:A']);
+    await resultShown(cards[x]);
   } finally { await f.close(); }
 });
 

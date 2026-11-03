@@ -208,7 +208,7 @@ test('owner-adds-members-ac5: the sign-in page offers one Google sign-in control
   } finally { await context.close(); await live.stop(); }
 });
 
-test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', async () => {
+test('req-has-criteria-ac3: a row without criteria shows an orange dot', async () => {
   const configured = {...types, ac: {...types.ac, title: 'Proofs'}};
   const f = await fixture({'domain:d': {title: 'Domain'},
     'capability:c': {title: 'Capability', parent: 'domain:d'},
@@ -216,8 +216,8 @@ test('req-has-criteria-ac3: a row without criteria shows zero and a grey dot', a
   try {
     const card = await f.open('capability:c');
     const row = card.locator('.common-object[data-object-address="requirement:empty"] > summary');
-    assert.equal(await row.locator('.verification-chip').innerText(), '0 ACs');
-    assert.equal(await row.locator('.status-circle').getAttribute('data-tone'), 'grey');
+    // A node with no counted child is orange.
+    assert.equal(await row.locator('.status-circle').getAttribute('data-tone'), 'orange');
   } finally { await f.close(); }
 });
 };

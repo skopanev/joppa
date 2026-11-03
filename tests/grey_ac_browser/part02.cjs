@@ -74,39 +74,6 @@ test('account-menu: sign out requires the user menu and ends the real session', 
   } finally { await f.close(); }
 });
 
-test('direct-child-counts: each row uses the shared next-level count', async () => {
-  const configured = {
-    bundle: {title: 'Bundles', role: 'group', status:'children', root: true, parents: []},
-    branch: {title: 'Branches', role: 'group', status:'children', parents: ['bundle']},
-    sheet: {title: 'Sheets', role: 'requirement', status:'children', parents: ['branch']},
-    proof: {title: 'Proofs', role: 'ac', status:'tests', parents: ['sheet']},
-    extra: {title: 'Extra', role: 'document', status:'none', parents: ['bundle']},
-  };
-  const records = {
-    'bundle:root': {title: 'Root'},
-    'branch:good': {title: 'Good', parent: 'bundle:root'},
-    'branch:empty': {title: 'Empty', parent: 'bundle:root'},
-    'branch:bad': {title: 'Bad', parent: 'bundle:root'},
-    'extra:raw': {title: 'Unrelated', parent: 'bundle:root'},
-    'sheet:one': {title: 'First sheet', parent: 'branch:good'},
-    'sheet:two': {title: 'Second sheet', parent: 'branch:good'},
-    'sheet:bad': {title: 'Failed sheet', parent: 'branch:bad'},
-    'proof:a': {title: 'First proof', parent: 'sheet:one'},
-    'proof:b': {title: 'Second proof', parent: 'sheet:two'},
-    'proof:bad': {title: 'Failed proof', parent: 'sheet:bad'},
-  };
-  const f = await fixture(records, configured);
-  try {
-    await f.bind('proof:a', ['pass']); await f.bind('proof:b', ['pass']); await f.bind('proof:bad', ['fail']);
-    await f.record('cccccccc', [['pass'], ['fail', 'failed check']]);
-    const card = await f.open('bundle:root');
-    assert.equal(await card.locator(':scope > summary .verification-chip').innerText(), '1 / 3 Bs');
-    assert.equal(await card.locator('.common-object[data-object-address="branch:good"] > summary .verification-chip').innerText(), '2 / 2 Ss');
-    assert.equal(await card.locator('.common-object[data-object-address="branch:empty"] > summary .verification-chip').innerText(), '0 Ss');
-    assert.equal(f.requests.filter(r => new URL(r.url).pathname.endsWith('/tests')).length, 0);
-  } finally { await f.close(); }
-});
-
 test('child-heading: a repeated parent title shows the configured type and status', async () => {
   const f = await fixture({'domain:d': {title: 'Shared title'},
     'capability:c': {title: 'Shared title', parent: 'domain:d'},
@@ -115,7 +82,8 @@ test('child-heading: a repeated parent title shows the configured type and statu
     const card = await f.open('domain:d');
     const titles = card.locator(':scope > .object-body > .object-children > .common-object > summary > .node-title');
     await titles.nth(1).waitFor();
-    assert.deepEqual(await titles.allTextContents(), ['Capabilities · Current document', 'Different title']);
+    // A capability without children is orange, so its status reads No children.
+    assert.deepEqual(await titles.allTextContents(), ['Capabilities · No children', 'Different title']);
   } finally { await f.close(); }
 });
 
@@ -144,16 +112,29 @@ test('old-results-history-ac2: the criterion shows both results and the failure 
   const commit = 'cccccccccccccccccccccccccccccccccccccccc';
   const f = await fixture(criterionRecords);
   try {
-    await f.bind('ac:A', ['X', 'Y']);
+    const [x, y] = await f.bind('ac:A', ['X', 'Y']);
     await f.record(commit, [['X'], ['Y', 'expected 403, got 200']]);
-    const card = await f.open('ac:A'), group = card.locator('.object-tests');
-    await group.locator(':scope > summary').click();
-    await group.locator('.ac-check').nth(1).waitFor();
-    const rows = group.locator('.ac-check');
-    assert.equal(await rows.count(), 2);
-    assert.match(await rows.nth(0).innerText(), /checks.cjs > X\s+pass · commit ccccccc/);
-    assert.match(await rows.nth(1).innerText(), /checks.cjs > Y\s+fail · commit ccccccc/);
-    assert.equal(await rows.nth(1).locator('pre').innerText(), 'expected 403, got 200');
+    const card = await f.open('ac:A');
+    const rows = card.locator(':scope > .object-body > .object-children > .common-object');
+    await rows.nth(1).waitFor();
+    // Each test is a child row of the criterion: its title is the test name and its dot the result.
+    const shown = await rows.evaluateAll(list => list.map(row => [row.dataset.objectAddress,
+      row.querySelector(':scope > summary .node-title').textContent, row.querySelector(':scope > summary .status-circle').dataset.tone]));
+    assert.deepEqual(shown.sort(), [[x, 'checks.cjs > X', 'green'], [y, 'checks.cjs > Y', 'red']].sort());
+    // The Result section of each test row gives the status, the commit and the failure message.
+    const result = async address => {
+      const row = card.locator('.common-object[data-object-address="' + address + '"]');
+      await row.locator(':scope > summary').click({position: {x: 4, y: 4}});
+      const group = row.locator(':scope > .object-body .test-result');
+      await group.waitFor({state: 'attached'});
+      if (await group.getAttribute('open') === null) await group.locator(':scope > summary').click();
+      return group;
+    };
+    const passed = await result(x), failed = await result(y);
+    assert.equal(await passed.locator('.test-result-line').innerText(), 'pass · commit ccccccc');
+    assert.equal(await passed.locator('pre.test-message').count(), 0);
+    assert.equal(await failed.locator('.test-result-line').innerText(), 'fail · commit ccccccc');
+    assert.equal(await failed.locator('pre.test-message').innerText(), 'expected 403, got 200');
   } finally { await f.close(); }
 });
 
@@ -181,19 +162,22 @@ test('stable-url-ac1: the original URL keeps the item ID after rename and move',
   } finally { await f.close(); }
 });
 
-test('oldest-commit-card: the card shows the oldest test commit and no commit count', async () => {
+test('oldest-commit-card: a test node shows the commit of its own result after newer records of other tests', async () => {
   const commit = 'cccccccccccccccccccccccccccccccccccccccc';
   const f = await fixture(criterionRecords);
   try {
-    await f.bind('ac:A', ['X', 'Y']);
+    const [x] = await f.bind('ac:A', ['X', 'Y']);
     await f.record(commit, [['X'], ['Y']]);
     for (let order = 2; order <= 6; order++) await f.record(String(order).repeat(40), [['other']]);
-    const card = await f.open('ac:A'), group = card.locator('.object-tests');
-    await group.locator(':scope > summary').click();
-    await group.locator('.ac-check').nth(1).waitFor();
-    const meta = await group.locator(':scope > .node-meta').innerText();
-    assert.match(meta, /commit ccccccc/);
-    assert.doesNotMatch(meta, /behind/);
+    // A record changes only the tests that it names: X keeps the result of the first commit.
+    const read = await f.api('/objects?address=' + encodeURIComponent(x));
+    assert.deepEqual([read.result.status, read.result.commit], ['pass', commit]);
+    const card = await f.open(x), group = card.locator(':scope > .object-body .test-result');
+    await group.waitFor({state: 'attached'});
+    if (await group.getAttribute('open') === null) await group.locator(':scope > summary').click();
+    const line = await group.locator('.test-result-line').innerText();
+    assert.equal(line, 'pass · commit ccccccc');
+    assert.doesNotMatch(await card.locator(':scope > .object-body').innerText(), /behind/);
   } finally { await f.close(); }
 });
 

@@ -60,6 +60,8 @@ export function fillCommonObject(body,detail){
   }
   // Blocking dependencies are shown read-only on the board.
   const deps=!historical&&r.present!==false&&body.parentElement?.classList.contains('common-object')?dependencyList(detail):null;
+  // A test node shows the deciding result of its test: status, commit and failure message.
+  if(detail.result&&!historical){const r=detail.result,group=objectSection('Result','test-result');group.append(E('p',[r.status,r.commit&&'commit '+r.commit.slice(0,7)].filter(Boolean).join(' · '),'test-result-line'));if(r.message)group.append(E('pre',r.message,'test-message'));secondary.append(group);}
   if(deps)secondary.append(deps);
   const links=new Map();
   for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision&&detail.review_required===true?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}

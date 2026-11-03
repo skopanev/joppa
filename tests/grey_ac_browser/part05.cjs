@@ -137,7 +137,8 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     const types = structuredClone(tree.schema.types);
     types.area = {title: 'Areas', role: 'group', root: true, parents: ['area'], status: 'children', status_order: ['red', 'grey', 'green']};
     types.rule = {title: 'Rules', role: 'requirement', parents: ['area'], status: 'children'};
-    types.check = {title: 'Checks', role: 'ac', parents: ['rule'], status: 'tests'};
+    types.check = {title: 'Checks', role: 'ac', parents: ['rule'], status: 'children'};
+    types.test = {...types.test, parents: [...types.test.parents, 'check']};
     await f.command({op: 'set_tree_schema', revision: tree.current_revision, types, reason: 'Set the status rules'}, true);
     for (const [address, parent] of [['area:g1', null], ['area:g2', 'area:g1'], ['rule:r', 'area:g2'], ['check:a', 'rule:r'], ['check:b', 'rule:r']]) {
       await f.save(address, {title: address.split(':')[1].toUpperCase(), parent});
@@ -177,14 +178,16 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     };
     await f.bind('check:a', ['a']);
     await report([['a']]);
-    await check('fixture 1', ['grey', 'grey', 'grey']);
+    // B has no test node, so B is orange and R takes orange over the green A.
+    await check('fixture 1', ['orange', 'orange', 'orange']);
     await f.bind('check:b', ['b']);
+    await check('fixture 2', ['grey', 'grey', 'grey']);
     await report([['a'], ['b']]);
-    await check('fixture 2', ['green', 'green', 'green']);
+    await check('fixture 3', ['green', 'green', 'green']);
     await report([['a'], ['b', 'boom']]);
-    await check('fixture 3', ['red', 'red', 'red']);
-    await f.bind('check:a', []);
     await check('fixture 4', ['red', 'red', 'red']);
+    await f.bind('check:a', []);
+    await check('fixture 5', ['red', 'red', 'red']);
     await f.bind('check:a', ['a']);
     await report([['a'], ['b', 'boom']]);
     await f.save('rule:r2', {title: 'R2', parent: 'area:g2'});
@@ -193,10 +196,12 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     const ordered = structuredClone(next.schema.types);
     ordered.area.status_order = ['grey', 'red', 'green'];
     await f.command({op: 'set_tree_schema', revision: next.current_revision, types: ordered, reason: 'Put grey first'}, true);
-    await check('fixture 5', ['grey', 'grey', 'red']);
-    // A grey R keeps its process label. A green R says that its children passed, and a red R
-    // says that a child failed, in every theme.
+    // One rollup decides every tone: a saved status order does not put grey over red.
+    await check('fixture 6', ['red', 'red', 'red']);
+    // An orange R says that a child has no tests, a grey R keeps its process label, a green R
+    // says that its children passed, and a red R says that a child failed, in every theme.
     assert.deepEqual([...new Set(labels)], [
+      'orange: Status: A child has no tests',
       'grey: Status: REQ awaits checks',
       'green: Status: Children checks passed',
       'red: Status: Child checks failed',

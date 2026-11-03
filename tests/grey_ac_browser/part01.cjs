@@ -64,17 +64,18 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
   } finally { await f.close(); }
 });
 
-test('guide-teaches-reports-ac1: the guide teaches test lists and records, not legacy Checks', async () => {
+test('guide-teaches-reports-ac1: the guide teaches test nodes and records, not legacy Checks', async () => {
   const f = await fixture({});
   try {
     assert.equal((await f.page.goto(f.live.root + '/guide')).status(), 200);
     const text = await f.page.locator('body').innerText();
     for (const legacy of [/Expected and observed/i, /runner (records|seals)/i, /check list/i, /manual check/i, /start at n\/a/i])
       assert.doesNotMatch(text, legacy);
-    assert.match(text, /every test in its list passes in its latest record/);
+    assert.match(text, /A test node is green when the latest record of its test passes/);
     assert.match(text, /A failed test makes the criterion red/);
+    assert.match(text, /A criterion without a test node is orange/);
     assert.doesNotMatch(text, /full report|JUnit|pre-push/i);
-    assert.match(text, /status rule: tests, children, links or none/);
+    assert.match(text, /status rule: own, children, links or none/);
   } finally { await f.close(); }
 });
 

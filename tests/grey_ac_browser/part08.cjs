@@ -206,7 +206,8 @@ test('compact-open-object-ac4: copy and revisions are icons at the right end of 
         const lineHeight = await row.evaluate(node => { const before = node.getBoundingClientRect().height;
           const actions = node.querySelector('.item-actions'); actions.style.display = 'none';
           const without = node.getBoundingClientRect().height; actions.style.display = ''; return [before, without]; });
-        assert.ok(Math.abs(lineHeight[0] - lineHeight[1]) <= 1, 'the controls add no line: ' + lineHeight);
+        // At 390 px the 18 px buttons share the second line with the 17 px badges: a line is far more than 2 px.
+        assert.ok(Math.abs(lineHeight[0] - lineHeight[1]) <= 2, 'the controls add no line: ' + lineHeight + ' at ' + width);
       }
     }
     const row = f.page.locator('#tree .common-object[data-object-address="domain:X"] > summary');

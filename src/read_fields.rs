@@ -29,7 +29,7 @@ pub const LIST_FIELDS: [&str; 20] = [
 ];
 
 /// The keys of a detail read that a list item does not give.
-pub const DETAIL_FIELDS: [&str; 11] = [
+pub const DETAIL_FIELDS: [&str; 12] = [
     "links",
     "comments",
     "files",
@@ -41,6 +41,7 @@ pub const DETAIL_FIELDS: [&str; 11] = [
     "child_workspace",
     "question",
     "annotations",
+    "result",
 ];
 
 /// The document fields of the object roles. The tree schema adds its references and

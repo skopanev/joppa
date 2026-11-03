@@ -106,7 +106,9 @@ pub(super) async fn add_status_tones(
             continue;
         };
         if item["signal"]["tone"].as_str() != Some(t) {
-            item["signal"]["label"] = json!(label(rule(kind), t, waits(item)));
+            let counted = children.get(address).is_some_and(|c| !c.is_empty())
+                || linked.get(address).is_some_and(|l| !l.is_empty());
+            item["signal"]["label"] = json!(label(rule(kind), t, waits(item), counted));
         }
         item["signal"]["tone"] = json!(t);
     }
@@ -180,7 +182,7 @@ fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: &str) -> &'
 }
 
 /// The label of a rule tone.
-fn label(rule: &str, tone: &str, waits: bool) -> &'static str {
+fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
     match (rule, tone) {
         (_, "yellow") if waits => "Waits for a dependency, a review or an answer",
         ("own" | "tests", "green") => "Checks passed",
@@ -188,12 +190,14 @@ fn label(rule: &str, tone: &str, waits: bool) -> &'static str {
         ("own" | "tests", _) => "Awaits checks",
         ("children", "green") => "Children checks passed",
         ("children", "red") => "Child checks failed",
-        ("children", "orange") => "No children",
+        ("children", "orange") if !counted => "No children",
+        ("children", "orange") => "A child has no tests",
         ("children", "yellow") => "A child waits",
         ("children", _) => "Children await checks",
         ("links", "green") => "Linked work passed",
         ("links", "red") => "Linked work failed",
-        ("links", "orange") => "No linked work",
+        ("links", "orange") if !counted => "No linked work",
+        ("links", "orange") => "Linked work has no tests",
         ("links", "yellow") => "Linked work waits",
         ("links", _) => "Linked work awaits checks",
         _ => "Status rule not set",

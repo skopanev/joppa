@@ -151,6 +151,15 @@ pub(super) async fn read_one(
         // The decoration comes from the status projection of the last write.
         apply_rollups(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
         add_priorities(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
+        // A test node gives the deciding result of its test: status, commit and message.
+        let kind = item["kind"].as_str().unwrap_or_default().to_owned();
+        let role: Option<String> = conn.query_opt("SELECT value->'types'->$2->>'role' FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace, &kind]).await?.and_then(|r| r.get(0));
+        if role.as_deref() == Some(crate::test_nodes::ROLE) {
+            let mut stored = stored_statuses(&*conn, &workspace, &[key.clone()]).await?;
+            if let Some(result) = stored.remove(&key).and_then(|s| s["tests"].get(0).cloned()) {
+                item["result"] = result;
+            }
+        }
     }
     Ok(item)
 }

@@ -19,18 +19,19 @@ test('check-list-frozen-ac3: an archived red sibling leaves the requirement gree
     'ac:M1': {title: 'Passing criterion', parent: 'requirement:mixed'},
     'ac:M2': {title: 'Criterion without tests', parent: 'requirement:mixed'}});
   try {
-    await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
+    await f.bind('ac:A', ['X']); const [y] = await f.bind('ac:B', ['Y']); await f.bind('ac:M1', ['X']);
     await f.record('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', [['X'], ['Y', 'failed check']]);
-    await f.command({op: 'archive_object', target: 'ac:B', revision: 2, reason: 'Drop the red criterion'}, true);
+    // The owner archives the test node of B before B.
+    const archive = async target => f.command({op: 'archive_object', target,
+      revision: (await f.api('/objects?address=' + encodeURIComponent(target))).current_revision, reason: 'Drop the red criterion'}, true);
+    await archive(y); await archive('ac:B');
     const card = await f.open('capability:c');
     const r = card.locator('.common-object[data-object-address="requirement:r"] > summary');
     // The archive resets only ac:B and below, so ac:A keeps its pass.
-    assert.equal(await r.locator('.verification-chip').innerText(), '1 / 1 AC');
     assert.equal(await r.locator('.status-circle').getAttribute('data-tone'), 'green');
     const mixed = card.locator('.common-object[data-object-address="requirement:mixed"] > summary');
-    assert.equal(await mixed.locator('.verification-chip').innerText(), '1 / 2 ACs');
-    // type-status-rules: a requirement takes the first of red, grey, green that a child has.
-    assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'grey');
+    // A criterion without test nodes is orange, and orange wins over the green M1.
+    assert.equal(await mixed.locator('.status-circle').getAttribute('data-tone'), 'orange');
   } finally { await f.close(); }
 });
 
@@ -132,6 +133,8 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
     return http;
   };
   try {
+    // Each criterion has a test without a result, so the rollup keeps both grey.
+    await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']);
     for (const address of ['ac:A', 'ac:B']) assert.equal((await signal(address)).signal.assessment.state, 'unassessed', address);
     const a = await signal('ac:A');
     await f.command({op: 'assess', req: a.process.req, revision: a.process.revision, ac: a.process.criterion,
@@ -148,8 +151,6 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
       const card = await f.open('requirement:r');
       const row = address => card.locator('.common-object[data-object-address="' + address + '"] > summary');
       await row('ac:B').waitFor();
-      // The board gives each row its test status last. Neither criterion has tests.
-      for (const address of ['ac:A', 'ac:B']) await row(address).getByRole('img', {name: /No tests/}).waitFor();
       // The status dot carries the row status as its name and shows it on hover.
       const status = async address => {
         const dot = row(address).locator('.status-circle');
@@ -160,8 +161,8 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
         return {label: await dot.getAttribute('aria-label'), hint: await hint.innerText(), text: await row(address).innerText()};
       };
       const shownA = await status('ac:A');
-      assert.match(shownA.label, /^Status: Ready for work · No tests(\n|$)/, JSON.stringify(viewport));
-      assert.match(shownA.hint, /^Status: Ready for work · No tests(\n|$)/, JSON.stringify(viewport));
+      assert.match(shownA.label, /^Status: Ready for work(\n|$)/, JSON.stringify(viewport));
+      assert.match(shownA.hint, /^Status: Ready for work(\n|$)/, JSON.stringify(viewport));
       assert.equal(await row('ac:A').getByRole('img', {name: /Ready for work/}).count(), 1);
       const shownB = await status('ac:B');
       for (const text of Object.values(shownB)) assert.ok(!text.includes('Ready for work'), JSON.stringify([viewport, text]));

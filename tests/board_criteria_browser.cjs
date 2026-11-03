@@ -4,7 +4,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const path = require('node:path');
-const {fixture, root} = require('./board_fixture.cjs');
+const {fixture, root, testType} = require('./board_fixture.cjs');
 
 const domains = {domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'D'}};
 
@@ -43,7 +43,8 @@ test('ea0ca1c0 history-tab: History pages 25 rows with Load more, dates and Show
 test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its tone', async () => {
   const types = {
     requirement: {title: 'Requirements', role: 'requirement', status:'children', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement']},
+    ac: {title: 'Criteria', role: 'ac', status:'children', parents: ['requirement']},
+    test: testType(['ac']),
   };
   const statuses = [{tone: 'green', light: '#22a559', dark: '#2fbf6a'}, {tone: 'grey', light: '#c8c3b8', dark: '#8a8f96'}];
   const f = await fixture(types, statuses);
@@ -51,7 +52,9 @@ test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its to
     await f.save('requirement:r', 'Requirement');
     await f.save('ac:g', 'Green criterion', 'requirement:r');
     await f.save('ac:n', 'Grey criterion', 'requirement:r');
-    await f.command({op: 'set_ac_tests', target: 'ac:g', tests: ['tests/x.rs > x'], reason: 'Bind'});
+    // Both criteria have a test node; only the test of ac:g has a result, so ac:n stays grey.
+    await f.addTest('ac:g', 'tests/x.rs > x');
+    await f.addTest('ac:n', 'tests/x.rs > n');
     await f.mcp('joppa_record_results', {commit: 'c0ffee3', results: [{test: 'tests/x.rs > x', status: 'pass'}]});
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     const r = f.page.locator('#tree .common-object[data-object-address="requirement:r"]');

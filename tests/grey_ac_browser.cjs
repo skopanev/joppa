@@ -14,7 +14,8 @@ const types = {
   domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'DOM'},
   capability: {title: 'Capabilities', role: 'group', status:'children', parents: ['domain'], badge: 'CAP'},
   requirement: {title: 'Requirements', role: 'requirement', status:'children', parents: ['capability'], badge: 'REQ'},
-  ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement'], badge: 'AC'},
+  ac: {title: 'Criteria', role: 'ac', status:'children', parents: ['requirement'], badge: 'AC'},
+  test: {title: 'Tests', role: 'test', status: 'own', parents: ['ac'], title_preview_length: 400},
 };
 let browser, helper;
 before(async () => {
@@ -107,8 +108,17 @@ async function fixture(records, configured = types, contextOptions = {}) {
   // Record one commit: each case is [name] for a pass or [name, message] for a failure.
   const record = (commit, cases) => mcp('joppa_record_results', {commit, results: cases.map(([name, message]) =>
     message ? {test: 'checks.cjs > ' + name, status: 'fail', message} : {test: 'checks.cjs > ' + name, status: 'pass'})});
-  const bind = (address, tests) => command({op: 'set_ac_tests', target: address,
-    tests: tests.map(name => 'checks.cjs > ' + name), reason: 'Use the exact recorded checks'});
+  // Make the present test nodes under `address` name exactly `tests`: archive the others, add the missing ones.
+  const bind = async (address, tests) => {
+    const names = tests.map(name => 'checks.cjs > ' + name);
+    const nodes = (await api('/objects?kind=test&depth=1&parent=' + encodeURIComponent(address))).items;
+    for (const node of nodes.filter(node => !names.includes(node.title)))
+      await command({op: 'archive_object', target: node.address, revision: node.revision, reason: 'Remove the check'}, true);
+    for (const title of names.filter(name => !nodes.some(node => node.title === name)))
+      await command({op: 'save_object', kind: 'test', revision: 0, parent: address, data: {title, owner: 'owner'}, reason: 'Use the exact recorded check'});
+    const saved = (await api('/objects?kind=test&depth=1&parent=' + encodeURIComponent(address))).items;
+    return names.map(name => saved.find(node => node.title === name).address);
+  };
   const open = async (address, selectWorkspace = true) => {
     const response = await page.goto(live.root + '/?' + (selectWorkspace ? 'workspace=' + live.ws + '&' : '') + 'object=' + encodeURIComponent(address));
     assert.equal(response.status(), 200);

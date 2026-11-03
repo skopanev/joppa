@@ -73,7 +73,7 @@ pub(crate) fn saved(
         schema(w).types.get(kind).context("unknown object type")?,
         data,
     )?;
-    if w.test_rules_migrated {
+    if w.test_rules_migrated && !w.test_nodes_migrated {
         crate::ac_tests::validate_field(w, kind, data)?;
     }
     crate::test_nodes::check_save(w, kind, &key, parent.as_deref(), data)?;

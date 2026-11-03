@@ -2,12 +2,13 @@
 // change the visible rows in the same document.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {fixture} = require('./board_fixture.cjs');
+const {fixture, testType} = require('./board_fixture.cjs');
 
 test('board-filters-and-theme-ac1 filters: tabs, filters and search update the same document', async () => {
   const types = {
     domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['domain']},
+    ac: {title: 'Criteria', role: 'ac', status:'children', parents: ['domain']},
+    test: testType(['ac']),
     note: {title: 'Inbox', role: 'document', status:'none', root: true, parents: [], inbox: true},
   };
   const f = await fixture(types);
@@ -16,10 +17,10 @@ test('board-filters-and-theme-ac1 filters: tabs, filters and search update the s
     await f.save('domain:alpha', 'Alpha', null, 'alex');
     await f.save('domain:beta', 'Beta', null, 'alex');
     await f.save('domain:gamma', 'Gamma', null, 'maria');
-    // A green domain has a criterion with a recorded pass. Beta has a criterion without tests.
+    // A green domain has a criterion with a recorded pass. Beta has an orange criterion without tests.
     for (const [domain, green] of [['alpha', true], ['beta', false], ['gamma', true]]) {
       await f.save('ac:' + domain, 'Criterion of ' + domain, 'domain:' + domain);
-      if (green) await f.command({op: 'set_ac_tests', target: 'ac:' + domain, tests: ['tests/filters.rs > ' + domain], reason: 'Bind'});
+      if (green) await f.addTest('ac:' + domain, 'tests/filters.rs > ' + domain);
     }
     await f.mcp('joppa_record_results', {commit: 'c0ffee4', results: [
       {test: 'tests/filters.rs > alpha', status: 'pass'}, {test: 'tests/filters.rs > gamma', status: 'pass'}]});
@@ -66,7 +67,8 @@ test('board-filters-and-theme-ac1 filters: tabs, filters and search update the s
 test('board-link-filters: a board link with node filters opens that list', async () => {
   const types = {
     domain: {title: 'Domains', role: 'group', status: 'children', root: true, parents: []},
-    ac: {title: 'Criteria', role: 'ac', status: 'tests', parents: ['domain']},
+    ac: {title: 'Criteria', role: 'ac', status: 'children', parents: ['domain']},
+    test: testType(['ac']),
   };
   const f = await fixture(types);
   try {

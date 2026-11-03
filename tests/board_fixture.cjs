@@ -58,6 +58,8 @@ async function fixture(types, statuses) {
     const [kind, id] = address.split(':');
     return command({op: 'save_object', kind, id, revision: 0, parent, data: {title, owner, body: 'Fixture text'}, reason: 'Define the browser fixture'});
   };
+  // One test node names one test under a criterion.
+  const addTest = (parent, title) => command({op: 'save_object', kind: 'test', revision: 0, parent, data: {title, owner: 'owner'}, reason: 'Bind the test'});
   const context = await browser.newContext({reducedMotion: 'reduce', colorScheme: 'light', viewport: {width: 1280, height: 900}});
   await context.addCookies([{name: 'joppa_session', value: live.cookie, url: live.root}]);
   const page = await context.newPage(), pageErrors = [];
@@ -74,7 +76,10 @@ async function fixture(types, statuses) {
     // Only the workspace owner sets the tree schema.
     await command({op: 'set_tree_schema', revision: tree.current_revision, types, ...(statuses ? {statuses} : {}), reason: 'Configure the browser tree'}, live.owner);
   } catch (error) { await close(); throw error; }
-  return {live, page, api, command, mcp, save, close};
+  return {live, page, api, command, mcp, save, addTest, close};
 }
 
-module.exports = {fixture, root};
+/// The test type under the criterion types `parents`: a schema that replaces the types map needs it.
+const testType = parents => ({title: 'Tests', role: 'test', status: 'own', parents, title_preview_length: 400});
+
+module.exports = {fixture, root, testType};
