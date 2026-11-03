@@ -124,21 +124,13 @@ async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_account_without_membership_cannot_save_a_test_list_over_http() -> Result<()> {
-    // eve learns nothing about the workspace, and the saved test list stays as it was.
+async fn an_account_without_membership_cannot_save_a_test_node_over_http() -> Result<()> {
+    // eve learns nothing about the workspace, and the saved test nodes stay as they were.
     let w = world().await?;
     let list = || async {
-        let status: Value = w
-            .http
-            .get(format!("{}/api/workspaces/{}/tests", w.root, w.ws))
-            .bearer_auth(&w.owner)
-            .query(&[("ac", "ac:key-rights")])
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        Ok::<_, anyhow::Error>((status["tests"].clone(), status["tests_saved_by"].clone()))
+        let status = store::test_status(&w.pool, &w.ws, "owner", "ac:key-rights").await?;
+        let nodes = w.get("parent=ac:key-rights&kind=test&depth=1").await?;
+        Ok::<_, anyhow::Error>((status["tests"].clone(), nodes["items"].clone()))
     };
     let before = list().await?;
     let save = |ws: String| {
@@ -148,7 +140,7 @@ async fn an_account_without_membership_cannot_save_a_test_list_over_http() -> Re
                 .http
                 .post(format!("{}/api/workspaces/{ws}/commands", w.root))
                 .bearer_auth(&w.eve)
-                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"set_ac_tests","target":"ac:key-rights","tests":["a.test.ts > login > ok"],"reason":"Check refusal"}}))
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"test","revision":0,"parent":"ac:key-rights","data":{"title":"a.test.ts > login > ok","owner":"owner"},"reason":"Check refusal"}}))
                 .send()
                 .await?;
             Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))

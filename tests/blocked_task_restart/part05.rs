@@ -42,7 +42,8 @@ async fn held_finished_and_released_plans_keep_their_state_across_a_journal_rebu
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "story":{"title":"Story","role":"requirement","status":"children","root":true,"parents":[]},
-        "rule":{"title":"Rule","role":"ac","status":"tests","parents":["story"]},
+        "rule":{"title":"Rule","role":"ac","status":"children","parents":["story"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["rule"],"title_preview_length":400},
         "job":{"title":"Job","role":"task","status":"none","parents":["rule"],"parent_gate":"ready"}
     }})).await?;
     f.write(OWNER, json!({"op":"save_object","kind":"story","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;

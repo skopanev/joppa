@@ -39,14 +39,17 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     f.write(OWNER, json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;
     for id in ["a", "b"] {
         f.write(OWNER, json!({"op":"save_object","kind":"criterion","id":id,"revision":0,"parent":"spec:one","data":{"title":id,"owner":OWNER},"reason":"Set the criterion"})).await?;
     }
-    f.write(HOLDER, json!({"op":"set_ac_tests","target":"criterion:a","tests":CHECKS,"reason":"Bind the tests"})).await?;
+    for test in CHECKS {
+        f.write(HOLDER, json!({"op":"save_object","kind":"test","revision":0,"parent":"criterion:a","data":{"title":test,"owner":OWNER},"reason":"Bind the tests"})).await?;
+    }
     let revision = f.read("spec:one").await?["process"]["revision"].clone();
     for (task, criterion) in [("t1", "criterion:a"), ("t2", "criterion:b")] {
         f.write(OWNER, json!({"op":"assess","req":"spec:one","revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
@@ -129,6 +132,9 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
                 journal_snapshot(&http, &root, &f.ws, &token, mcp, &listed).await?,
             );
         }
+        // The stored test status of A, from its test nodes.
+        let tests = store::test_status(&f.pool, &f.ws, OWNER, "criterion:a").await?;
+        out.get_mut("HTTP").context("HTTP reads")?.insert("tests criterion:a".into(), tests);
         Ok::<_, anyhow::Error>(out)
     };
     let check = |point: &str, out: &BTreeMap<&str, BTreeMap<String, Value>>| {
@@ -161,15 +167,17 @@ async fn the_holder_done_work_comments_and_test_results_survive_a_journal_rebuil
             );
         }
         let tests = &out["HTTP"]["tests criterion:a"];
-        let results: Vec<(&str, &str)> = tests["tests"]
+        let mut results: Vec<(&str, &str)> = tests["tests"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(|t| Some((t["address"].as_str()?, t["status"].as_str()?)))
             .collect();
+        // The test nodes come in address order: sort the results by test name.
+        results.sort();
         ensure!(
             results == [(CHECKS[0], "pass"), (CHECKS[1], "fail")] && tests["status"] == "red",
-            "{point} GET /tests?ac=criterion:a: {tests}"
+            "{point} test status of criterion:a: {tests}"
         );
         Ok::<_, anyhow::Error>(())
     };

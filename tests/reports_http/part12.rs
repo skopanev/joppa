@@ -2,34 +2,6 @@
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_joppa_tests_tool_states_that_only_complete_task_sets_done() -> Result<()> {
-    let w = world().await?;
-    let root = w.base.split("/api/").next().unwrap();
-    let reply: Value = w
-        .http
-        .post(format!("{root}/mcp"))
-        .bearer_auth(&w.token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
-        .send()
-        .await?
-        .json()
-        .await?;
-    let description = reply["result"]["tools"]
-        .as_array()
-        .and_then(|tools| tools.iter().find(|t| t["name"] == "joppa_tests"))
-        .and_then(|t| t["description"].as_str())
-        .ok_or_else(|| anyhow::anyhow!("no joppa_tests: {reply}"))?;
-    ensure!(
-        description.contains("Only complete_task sets done and commit")
-            && !description.contains("verification follows the criterion status")
-            && !description.contains("while its criterion is green"),
-        "{description}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     // all-bound-checks-pass-ac2: a newer commit makes A red.
     let w = world().await?;
@@ -38,7 +10,7 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    ensure!(task(&w).await?["done"] == false, "not completed on c1");
+    ensure!(task(&w).await?["status"] == "open", "not completed on c1");
     w.record(
         "c2c2c2c",
         outcomes(&[("opens", "fail"), ("refuses", "pass")]),
@@ -46,7 +18,7 @@ async fn a_task_is_no_longer_done_when_its_criterion_turns_red() -> Result<()> {
     .await?;
     let t = task(&w).await?;
     ensure!(
-        t["done"] == false && t["commit"].is_null() && t.get("verification").is_none(),
+        t["status"] == "open" && t["commit"].is_null() && t.get("verification").is_none(),
         "{t}"
     );
     Ok(())
@@ -103,27 +75,15 @@ async fn a_completed_task_stays_done_when_its_criterion_turns_red() -> Result<()
         ),
     ] {
         w.record(commit, outcomes(&cases)).await?;
-        let response = w
-            .http
-            .get(format!("{}/tests?task=task:finished", w.base))
-            .bearer_auth(bot)
-            .send()
-            .await?;
-        let code = response.status().as_u16();
-        let http: Value = response.json().await?;
-        ensure!(code == 200, "HTTP {commit}: {code} {http}");
-        let mcp = mcp_read(
-            &w,
-            bot,
-            "joppa_tests",
-            json!({"workspace":workspace,"task":"task:finished"}),
-        )
-        .await?;
+        let http = task_process(&w, bot, "task:finished", false).await?;
+        let mcp = task_process(&w, bot, "task:finished", true).await?;
         // The Task keeps its own state and commit; the criterion status does not change it.
         let _ = (verification, status);
         for (via, t) in [("HTTP", &http), ("MCP", &mcp)] {
             ensure!(
-                t["done"] == true && t["commit"] == "c0ffee0" && t.get("verification").is_none(),
+                t["status"] == "done"
+                    && t["commit"] == "c0ffee0"
+                    && t.get("verification").is_none(),
                 "{via} {commit}: {t}"
             );
         }

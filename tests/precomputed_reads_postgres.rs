@@ -39,6 +39,11 @@ async fn batch(pool: &deadpool_postgres::Pool, ws: &str, commands: Vec<Value>) -
     Ok(())
 }
 
+/// A test node that binds one test to a criterion.
+fn bind(target: &str, test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
+}
+
 fn counts() -> [u64; 3] {
     [&probe::STATUS, &probe::ROLLUP, &probe::WAITS].map(probe::read)
 }
@@ -72,7 +77,8 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
     batch(&pool, &ws, vec![json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
         "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
         "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["domain"]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     }})]).await?;
     // 5 domains, 2 requirements in each, 20 criteria in each requirement: 200 criteria.
     let mut commands = vec![];
@@ -84,7 +90,7 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
         for n in 0..PER_DOMAIN {
             let id = format!("d{d}c{n}");
             commands.push(json!({"op":"save_object","kind":"ac","id":id,"revision":0,"parent":format!("requirement:d{d}r{}", n % 2),"data":{"title":format!("Criterion {d}.{n}"),"owner":"owner"},"reason":"Create"}));
-            commands.push(json!({"op":"set_ac_tests","target":format!("ac:{id}"),"tests":[test_name(d, n)],"reason":"Bind"}));
+            commands.push(bind(&format!("ac:{id}"), &test_name(d, n)));
         }
     }
     batch(&pool, &ws, commands).await?;
@@ -105,14 +111,22 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
         )
         .await?;
     }
-    // A domain counts its requirements. Requirement r0 holds the even criteria, which all
-    // pass; r1 holds the odd criteria, which all fail.
-    let expected = json!({"passed": 1, "failed": 1, "total": 2});
+    // Requirement r0 holds the even criteria, which all pass, and r1 holds the odd criteria,
+    // which all fail. So each domain shows the stored red of r1.
     let scope = store::ObjectScope {
         filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
         limit: 50,
         ..Default::default()
     };
+    for (r, tone) in [(0, "green"), (1, "red")] {
+        let address = format!("requirement:d0r{r}");
+        let one = store::ObjectScope {
+            address: Some(&address),
+            ..Default::default()
+        };
+        let node = store::read_objects(&pool, &ws, "owner", &one).await?;
+        ensure!(node["signal"]["tone"] == tone, "{node}");
+    }
     store::read_objects(&pool, &ws, "owner", &scope).await?;
     let before = counts();
     let mut times = vec![];
@@ -123,7 +137,7 @@ async fn root_reads_use_stored_rollups_and_stay_under_50_ms() -> Result<()> {
         let items = page["items"].as_array().cloned().unwrap_or_default();
         ensure!(items.len() == DOMAINS, "{page}");
         for item in &items {
-            ensure!(item["verification_summary"] == expected, "{item}");
+            ensure!(item["signal"]["tone"] == "red", "{item}");
         }
     }
     ensure!(

@@ -15,26 +15,11 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
         Ok(())
     }
     async fn read(w: &World, bot: &str, address: &str) -> Result<Value> {
-        let response = w
-            .http
-            .get(format!("{}/tests?task={address}", w.base))
-            .bearer_auth(bot)
-            .send()
-            .await?;
-        let code = response.status().as_u16();
-        let http: Value = response.json().await?;
-        ensure!(code == 200, "{address}: {code} {http}");
-        let root = w.base.split("/api/").next().unwrap();
-        let workspace = w.base.rsplit('/').next().unwrap();
-        let response: Value = w.http.post(format!("{root}/mcp")).bearer_auth(bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_tests","arguments":{"workspace":workspace,"task":address}}})).send().await?.json().await?;
-        ensure!(response["result"]["isError"] != true, "{response}");
-        let mcp: Value = serde_json::from_str(
-            response["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap_or("null"),
-        )?;
+        let http = task_process(w, bot, address, false).await?;
+        let mcp = task_process(w, bot, address, true).await?;
+        // MCP gives the same state and commit as HTTP.
         ensure!(
-            compact_of::compact_of(&http, &mcp) == mcp,
+            http["status"] == mcp["status"] && http["commit"] == mcp["commit"],
             "HTTP {http}; MCP {mcp}"
         );
         Ok(http)
@@ -55,11 +40,13 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
     types["job"]["parents"] = json!(["*"]);
     types["check"] = types["ac"].clone();
     types["check"]["parents"] = json!(["*"]);
+    // A test node may stand under the configured criterion type.
+    types["test"]["parents"] = json!(["ac", "check"]);
     types["record"] = types["project"].clone();
     types["record"]["parents"] = json!(["*"]);
     command(&w,json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check configured task and criterion names"})).await?;
     command(&w,json!({"op":"save_object","kind":"check","id":"configured","revision":0,"parent":"requirement:key","data":{"title":"The configured result passes","body":"Check the configured contract","owner":"owner","consumer":"customer","depends_on":[],"before_launch":false,"decision_required":false},"reason":"Create a configured criterion"})).await?;
-    command(&w,json!({"op":"set_ac_tests","target":"check:configured","tests":[A,B],"reason":"Bind the configured criterion"})).await?;
+    bind_at(&w.http, &w.base, &w.owner, "check:configured", &[A, B]).await?;
     for (kind, id, parent) in [
         ("job", "native", "ac:key-rights"),
         ("task", "configured", "check:configured"),
@@ -101,23 +88,13 @@ async fn configured_task_roles_read_their_criterion_results_over_http_and_mcp() 
             let _ = (criterion, expected, verification);
             let status = read(&w, bot, address).await?;
             ensure!(
-                status["address"] == address
-                    && status["done"] == false
+                status["status"] == "open"
                     && status["commit"].is_null()
                     && status.get("verification").is_none(),
                 "{status}"
             );
         }
     }
-    let response = w
-        .http
-        .get(format!("{}/tests?task=record:not-work", w.base))
-        .bearer_auth(bot)
-        .send()
-        .await?;
-    ensure!(response.status().as_u16() == 409, "{}", response.status());
-    let refused: Value = response.json().await?;
-    ensure!(refused["error"] == "unknown task", "{refused}");
     Ok(())
 }
 

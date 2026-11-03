@@ -112,8 +112,8 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
     .map(|(test, status, message)| (C.to_owned(), "bot".to_owned(), test, status, message))
     .collect();
     ensure!(stored == expected, "{stored:?}");
-    // Member alex reads the results through joppa_tests.
-    let s = w.tests_mcp(&w.alex).await?;
+    // Member alex reads the test status of A.
+    let s = w.a_status(&w.alex).await?;
     for (t, status) in [(P, "pass"), (F, "fail"), (S, "skipped"), (T, "todo")] {
         ensure!(
             test(&s, t)["status"] == status && test(&s, t)["commit"] == C,
@@ -157,7 +157,7 @@ async fn a_caller_without_membership_cannot_record() -> Result<()> {
         "outsider changed the journal"
     );
     ensure!(reports(&w).await? == 0, "a refused call stored a record");
-    let s = w.tests_mcp(&w.alex).await?;
+    let s = w.a_status(&w.alex).await?;
     ensure!(test(&s, X)["status"] == "not_run", "{s}");
     Ok(())
 }
@@ -191,7 +191,7 @@ async fn a_caller_cannot_supply_the_actor_or_time_of_a_record() -> Result<()> {
         );
     }
     ensure!(reports(&w).await? == 0, "a refused call stored a record");
-    let s = w.tests_mcp(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "not_run", "{s}");
     Ok(())
 }
@@ -222,7 +222,7 @@ async fn a_save_cannot_record_a_test_outcome() -> Result<()> {
         w.object(A).await?["revision"] == revision,
         "the save stored a revision"
     );
-    let s = w.tests_mcp(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "not_run", "fixture 1: {s}");
     // Fixture 2: comment is an ordinary text field, so the save succeeds.
     let w = world(&[X]).await?;
@@ -232,7 +232,7 @@ async fn a_save_cannot_record_a_test_outcome() -> Result<()> {
     let a = w.object(A).await?;
     ensure!(a["data"]["comment"] == "Test X passed", "{a}");
     ensure!(reports(&w).await? == 0, "the save stored a record");
-    let s = w.tests_mcp(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "not_run", "fixture 2: {s}");
     Ok(())
 }

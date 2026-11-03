@@ -199,6 +199,15 @@ async fn an_archived_target_is_shown_for_review_and_a_batch_writes_links_atomica
         .is_err(),
         "the refused batch saved nothing"
     );
+    // A node with active children cannot be archived: archive the test node of X first.
+    let tests = json!({"workspace":w.c,"parent":"ac:x","kind":"test","depth":1});
+    let tests = w.mcp(&w.bot, "joppa_objects", tests).await?;
+    let tests = tests.map_err(|e| anyhow::anyhow!("tests of X: {e}"))?;
+    let test = tests["items"][0]["address"].as_str().context("test of X")?;
+    let revision = w.revision(&w.c, test).await?;
+    let retire =
+        json!({"op":"archive_object","target":test,"revision":revision,"reason":"X is retired"});
+    w.ok(&w.owner, &w.c, retire).await?;
     w.ok(
         &w.owner,
         &w.c,

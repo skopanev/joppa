@@ -73,7 +73,7 @@ async fn a_red_dependency_of_a_green_target_keeps_work_waiting() -> Result<()> {
     w.ok(
         &w.owner,
         &q,
-        json!({"op":"set_ac_tests","target":"ac:y","tests":[TEST],"reason":"Bind"}),
+        World::bind("ac:y", TEST),
     )
     .await?;
     let core = w.revision(&q, "requirement:core").await?;

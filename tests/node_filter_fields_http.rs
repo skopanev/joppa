@@ -28,6 +28,17 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         }
         filters
     };
+    let tests = w
+        .mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"parent":"ac:a","kind":"test"}),
+        )
+        .await?;
+    let test = tests.map_err(anyhow::Error::msg)?["items"][0]["address"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
     for (filters, expected) in [
         (json!({"kind":"rule"}), vec!["rule:x", "rule:z"]),
         (
@@ -37,7 +48,11 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         (json!({"owner":"alex"}), vec!["rule:x"]),
         (json!({"assignee":"alex"}), vec!["ac:b"]),
         (json!({"data":{"tags":["x"]}}), vec!["rule:z"]),
-        (under(json!({"status":"green"})), vec!["ac:a"]),
+        // The passing test node of ac:a is green too.
+        (
+            under(json!({"status":"green"})),
+            vec!["ac:a", test.as_str()],
+        ),
         (
             under(json!({"kind":"ac","owner":"owner"})),
             vec!["ac:a", "ac:b"],

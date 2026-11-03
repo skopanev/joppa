@@ -21,12 +21,12 @@ MCP reads have one shape. There is no `verbose` switch.
   `reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit`.
   A read of one object comes in full, because one field can hold 256 KiB.
 - Each MCP read takes a public item ID such as `joppa-R-DP6KXM62` where it takes an
-  address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `ac`,
-  `parent` and `task` of `joppa_tests`. A read of one object by its item ID gives its
+  address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `parent`
+  of `joppa_search`. A read of one object by its item ID gives its
   `address`. An unknown item ID is refused: `unknown object`.
 - A public item ID ends with an 8-character code of uppercase letters and digits. A copy
   with a longer code reads the object of its first 8 characters.
-- `workspace` is optional in `joppa_objects` and `joppa_tests` when the call names a public
+- `workspace` is optional in `joppa_objects` when the call names a public
   item ID. The call reads the workspace of its IDs. The IDs of one call belong to one
   workspace: `the public item IDs of one call belong to one workspace`. An ID that the caller
   cannot read is `unknown object`. A call without an ID and without `workspace` is refused:
@@ -45,9 +45,6 @@ MCP reads have one shape. There is no `verbose` switch.
 | `joppa_tasks`, `joppa_timeline`, `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
 | `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |
 | `joppa_list` | fixed pages of 25 | `next_cursor` and `total` |
-| `joppa_tests` overview (no `ac`, `parent`, `kind` or `task`) | fixed pages of 25 | `next_cursor` and `total` |
-| `joppa_tests` with `ac` | more than 100 criteria are refused | none |
-| `joppa_tests` with `parent` or `kind` | 100 criteria a page | `next_cursor` and `total` |
 
 Every MCP list reply is `{items, total, next_cursor}`. `total` counts every matching entry,
 also on later pages. Send `next_cursor` back as `cursor`; a missing `next_cursor` means the
@@ -127,12 +124,12 @@ two reads:
 ```json
 {"workspace": "w", "address": "requirement:r"}
 {"workspace": "w", "parent": "requirement:r",
- "fields": ["title", "status", "revision", "data.body", "data.tests"]}
+ "fields": ["title", "status", "revision", "data.body"]}
 ```
 
 ## Node filters
 
-`joppa_objects`, `joppa_search`, `joppa_tests` and the HTTP routes `/objects` and `/search`
+`joppa_objects`, `joppa_search` and the HTTP routes `/objects` and `/search`
 take the same filters (`src/node_filter.rs`). All filters must match.
 
 | Filter | Keeps |
@@ -165,19 +162,13 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 `docs/read-detail.md` gives the detail read, one revision, the revision headers, the read of
 up to 10 addresses in one call, and `fields` with `address`.
 
-## `joppa_tests`
+## Tests
 
-- `{"workspace": "w"}`: the overview of green and red criteria in pages of 25.
-- `{"workspace": "w", "ac": "ac:a"}`: one criterion, without its `address`. It gives no
-  `tests_draft: false` and no `tests_saved_by`. A test gives `status_name` only when it
-  differs from `status`.
-- `{"workspace": "w", "ac": "ac:a,ac:b"}`: `{"items": [...]}`. At most 100 criteria in one call;
-  101 are refused with `at most 100 criteria in one call`.
-- `{"workspace": "w", "kind": "ac", "parent": "*"}`: every criterion in address order, 100 a
-  page: `{"total": 212, "next_cursor": "100", "items": [...]}`. Send `cursor` for the next page.
-  `parent` gives the whole subtree of one node; `depth: 1` gives the direct children.
-  With 101 criteria, the first page has 100 items and `next_cursor` `"100"`; the second has 1.
-- A missing `tests` key means no tests. A missing `message` means no failure message.
+A test is a node (see [what green means](green.md)). Read the tests of a criterion and their
+tones with `joppa_objects`, for example `{"workspace": "w", "parent": "ac:a", "kind": "test"}`,
+and every red test with `{"workspace": "w", "kind": "test", "status": "red"}`. The tool
+`joppa_tests` and the route `GET /api/workspaces/{w}/tests` were removed; a call of
+`joppa_tests` is refused with `joppa_tests was removed; use joppa_objects with kind test`.
 
 ## Other read tools
 

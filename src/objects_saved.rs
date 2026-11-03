@@ -56,7 +56,6 @@ pub(crate) fn saved(
         "verification comes from test reports"
     );
     crate::body_migration::check_save(w, data)?;
-    crate::test_nodes::check_save(w, kind, data)?;
     if w.documents_migrated {
         for field in data.as_object().unwrap().keys() {
             ensure!(!process_field(field), "use process commands for {field}");
@@ -77,6 +76,7 @@ pub(crate) fn saved(
     if w.test_rules_migrated {
         crate::ac_tests::validate_field(w, kind, data)?;
     }
+    crate::test_nodes::check_save(w, kind, &key, parent.as_deref(), data)?;
     crate::note_parents::check_save(w, kind, parent.as_deref())?;
     parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;

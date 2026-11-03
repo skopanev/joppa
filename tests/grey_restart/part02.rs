@@ -62,13 +62,14 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure groups","types":{
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400}
     }})).await?;
     for (area, spec, criterion) in [("g", "r", "a"), ("h", "rh", "d")] {
         f.write(OWNER, json!({"op":"save_object","kind":"area","id":area,"revision":0,"parent":null,"data":{"title":area.to_uppercase(),"body":"Group scope","owner":OWNER},"reason":"Create the group"})).await?;
         f.write(OWNER, json!({"op":"save_object","kind":"spec","id":spec,"revision":0,"parent":format!("area:{area}"),"data":{"title":spec,"body":"Implement the rule","owner":OWNER},"reason":"Create the spec"})).await?;
         f.write(OWNER, json!({"op":"save_object","kind":"criterion","id":criterion,"revision":0,"parent":format!("spec:{spec}"),"data":{"title":criterion,"owner":OWNER},"reason":"Create the criterion"})).await?;
-        f.write(AGENT, json!({"op":"set_ac_tests","target":format!("criterion:{criterion}"),"tests":[A,B],"reason":"Bind the tests"})).await?;
+        f.bind(&format!("criterion:{criterion}"), &[A, B]).await?;
     }
     let server = start(&url, &tokens, port).await?;
     let passed = json!([{"test":A,"status":"pass"},{"test":B,"status":"pass"}]);

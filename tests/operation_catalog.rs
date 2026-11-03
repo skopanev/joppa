@@ -25,6 +25,7 @@ const NOT_PUBLIC: &[&str] = &[
     "link_source",
     "confirm",
     "decide_note",
+    "set_ac_tests",
     "migrate_persistent_claims",
     "migrate_notes",
     "migrate_tasks",

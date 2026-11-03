@@ -79,7 +79,8 @@ async fn planning(w: &World) -> Result<Planning<'_>> {
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     p.save(

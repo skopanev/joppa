@@ -5,10 +5,10 @@
 /// explicit error, and backfill_board restores both the corrupted row and the projection.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_corrupted_test_list_and_a_stale_projection_recover_at_backfill() -> Result<()> {
+async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() -> Result<()> {
     let w = world().await?;
     let task = "task:checked";
-    w.command_as(&w.bot, json!({"op":"set_ac_tests","target":"ac:key-rights","tests":["checks.rs > key rights"],"reason":"Bind the checked test"})).await?;
+    bind_tests(&w, &w.bot, "ac:key-rights", &["checks.rs > key rights"]).await?;
     w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","body":"Implement the key rights and record the result","projects":[]},"reason":"Check recovery under a green criterion"})).await?;
     w.command_as(&w.bot, json!({"op":"claim_task","id":task,"revision":1}))

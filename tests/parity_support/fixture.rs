@@ -1,5 +1,5 @@
 //! The parity fixture: a domain, two capabilities, two requirements, three criteria with
-//! test lists and two Tasks.
+//! test nodes and two Tasks.
 use super::*;
 
 pub const ADDRESSES: [&str; 10] = [
@@ -18,6 +18,11 @@ pub const CRITERIA: [&str; 3] = ["ac:a1", "ac:a2", "ac:a3"];
 
 pub fn list(tests: &[&str]) -> Vec<String> {
     tests.iter().map(|t| format!("{FILE} > {t}")).collect()
+}
+
+/// A test node that binds the test `name` of FILE to a criterion.
+pub fn bind(target: &str, name: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":format!("{FILE} > {name}"),"owner":"owner"},"reason":"Bind the tests"})
 }
 
 /// Build the fixture and return the command count.
@@ -81,17 +86,14 @@ pub async fn fixture(pool: &deadpool_postgres::Pool) -> Result<usize> {
         )
         .await?;
     }
-    for (target, tests) in [
-        ("ac:a1", list(&["x1", "x2", "x3"])),
-        ("ac:a2", list(&["y1"])),
-        ("ac:a3", list(&["z1"])),
+    for (target, name) in [
+        ("ac:a1", "x1"),
+        ("ac:a1", "x2"),
+        ("ac:a1", "x3"),
+        ("ac:a2", "y1"),
+        ("ac:a3", "z1"),
     ] {
-        run(
-            pool,
-            &mut n,
-            json!({"op":"set_ac_tests","target":target,"tests":tests,"reason":"Bind the tests"}),
-        )
-        .await?;
+        run(pool, &mut n, bind(target, name)).await?;
     }
     Ok(n)
 }

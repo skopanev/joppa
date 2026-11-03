@@ -6,11 +6,7 @@
 async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() -> Result<()> {
     let w = world().await?;
     let p = ordering(&w, "cap:d", &["criterion:a1"]).await?;
-    p.write(
-        "agent",
-        json!({"op":"set_ac_tests","target":"criterion:b1","tests":[A],"reason":"Bind the test"}),
-    )
-    .await?;
+    p.bind(&w.token, "criterion:b1", &[A]).await?;
     // check-list-frozen-ac3: the list save clears readiness, so B1 is assessed after it.
     let ready = json!({"ready":true,"reason":"Known scope"});
     p.assess("spec:b", &[("criterion:b1", ready)]).await?;

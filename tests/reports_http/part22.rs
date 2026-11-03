@@ -108,7 +108,7 @@ async fn ac6_fixture4_a_refused_batch_rolls_back_the_save_and_the_finish() -> Re
             json!({"request_id":uuid::Uuid::new_v4().to_string(),"operations":[
                 {"command":save_xy()},
                 {"command":finish_command()},
-                {"command":{"op":"set_ac_tests","target":"criterion:missing","tests":[A],"reason":"Refused"}}
+                {"command":{"op":"save_object","kind":"test","revision":0,"parent":"criterion:missing","data":{"title":A,"owner":"owner"},"reason":"Refused"}}
             ]}),
         )
         .await?;
@@ -116,7 +116,7 @@ async fn ac6_fixture4_a_refused_batch_rolls_back_the_save_and_the_finish() -> Re
         response["result"]["isError"] == true
             && response["result"]["content"][0]["text"]
                 .as_str()
-                .is_some_and(|e| e.ends_with("unknown criterion")),
+                .is_some_and(|e| e.ends_with("unknown parent")),
         "{response}"
     );
     let after = p.saved().await?;

@@ -1,7 +1,7 @@
 // Part 33 of tests/reports_http.rs, included there, so the test names stay unchanged.
 
 // pins-ignore-process-events-ac3
-// Task B blocks on criterion C, and C lists test A. Records make C green, then red.
+// Task B blocks on criterion C, and C has the test node A. Records make C green, then red.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() -> Result<()> {
@@ -9,19 +9,15 @@ async fn a_green_criterion_frees_a_blocked_task_and_a_red_one_makes_it_wait() ->
     let p = planning(&w).await?;
     p.ready().await?;
     let pin = p.prerequisite("Deliver the prerequisite").await?;
-    p.write(
-        "agent",
-        json!({"op":"set_ac_tests","target":"criterion:c","tests":[A],"reason":"Bind the test"}),
-    )
-    .await?;
-    // The new test list resets the readiness of C, so the owner confirms C ready again.
+    p.bind(&w.token, "criterion:c", &[A]).await?;
+    // The owner confirms C ready again after the new test node.
     p.assess(
         "spec:two",
         &[("criterion:c", json!({"ready":true,"reason":"Known scope"}))],
     )
     .await?;
-    // The list save gives C a revision that changes only its tests, so the pin stays current.
-    ensure!(p.revision("criterion:c").await? == pin + 1);
+    // A test node is a child of C and gives C no new revision, so the pin stays current.
+    ensure!(p.revision("criterion:c").await? == pin);
     p.save("work:b", Some("criterion:a"), json!({"title":"B","owner":"owner","body":"Use the prerequisite"}),
         json!([{"target":"criterion:c","relation":"depends_on","revision":pin,"blocking":true}])).await?;
     // Control: B waits while C is grey.

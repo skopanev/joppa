@@ -12,9 +12,13 @@
 //!
 //! After the event a save with `data.tests` and the operation set_ac_tests are refused.
 use crate::model::Workspace;
-use crate::objects::{Object, ObjectRevision, contract_revision, schema, status_rule};
+use crate::objects::schema;
 use anyhow::{Context, Result, ensure};
-use serde_json::{Value, json};
+use serde_json::Value;
+
+#[path = "test_nodes_migration.rs"]
+mod migration;
+pub use migration::migrate;
 
 pub const ROLE: &str = "test";
 pub const RULE: &str = "own";
@@ -41,9 +45,17 @@ pub fn is_test(w: &Workspace, address: &str) -> bool {
 
 /// The names of the present test nodes under each parent, in address order.
 pub fn names_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<String>> {
+    let nodes = nodes_by_parent(w).into_iter();
+    nodes
+        .map(|(parent, nodes)| (parent, nodes.into_iter().map(|(_, name)| name).collect()))
+        .collect()
+}
+
+/// The present test nodes under each parent, as (address, test name), in address order.
+pub fn nodes_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<(String, String)>> {
     let kinds = kinds(w);
-    let mut names = std::collections::BTreeMap::<String, Vec<String>>::new();
-    for o in w.objects.values().filter(|o| kinds.contains(&o.kind)) {
+    let mut nodes = std::collections::BTreeMap::<String, Vec<(String, String)>>::new();
+    for (address, o) in w.objects.iter().filter(|(_, o)| kinds.contains(&o.kind)) {
         let current = o.current();
         if let (true, Some(parent), Some(name)) = (
             current.present,
@@ -51,10 +63,13 @@ pub fn names_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<
             current.data["title"].as_str(),
         ) {
             let parent = crate::objects::resolve_address(w, parent).to_owned();
-            names.entry(parent).or_default().push(name.to_owned());
+            nodes
+                .entry(parent)
+                .or_default()
+                .push((address.clone(), name.to_owned()));
         }
     }
-    names
+    nodes
 }
 
 /// The ID of the node of one test under one parent: 12 hex characters of a SHA-256.
@@ -62,119 +77,97 @@ pub fn node_id(parent: &str, name: &str) -> String {
     crate::digest_hex::sha256_hex(format!("{parent}\n{name}"))[..12].to_owned()
 }
 
-/// After the event, a document has no test list, and the title of a test node is a test name
-/// that the name rule of the schema accepts.
-pub fn check_save(w: &Workspace, kind: &str, data: &Value) -> Result<()> {
+/// After the event, a document has no test list. The title of a test node is a test name that
+/// the name rule of the schema accepts, it is unique among the test nodes of its parent, and a
+/// parent has at most `max_tests` test nodes.
+pub fn check_save(
+    w: &Workspace,
+    kind: &str,
+    key: &str,
+    parent: Option<&str>,
+    data: &Value,
+) -> Result<()> {
     if !w.test_nodes_migrated {
         return Ok(());
     }
     ensure!(data.get("tests").is_none(), REFUSAL);
-    if kinds(w).iter().any(|k| k == kind) {
-        let name = data["title"]
-            .as_str()
-            .context("a test node needs a title")?;
-        crate::test_rules::validate_address(&crate::test_rules::rules(w)?, name)?;
+    let kinds = kinds(w);
+    if !kinds.iter().any(|k| k == kind) {
+        return Ok(());
     }
+    let rules = crate::test_rules::rules(w)?;
+    let name = data["title"]
+        .as_str()
+        .context("a test node needs a title")?;
+    crate::test_rules::validate_address(&rules, name)?;
+    let siblings: Vec<&str> = w
+        .objects
+        .iter()
+        .filter(|(address, o)| {
+            let current = o.current();
+            address.as_str() != key
+                && kinds.contains(&o.kind)
+                && current.present
+                && current
+                    .parent
+                    .as_deref()
+                    .map(|p| crate::objects::resolve_address(w, p))
+                    == parent
+        })
+        .filter_map(|(_, o)| o.current().data["title"].as_str())
+        .collect();
+    ensure!(!siblings.contains(&name), "test \"{name}\" is listed twice");
+    ensure!(
+        siblings.len() < rules.max_tests,
+        "a criterion lists at most {} tests",
+        rules.max_tests
+    );
     Ok(())
 }
 
-/// Apply migrate_test_nodes once. The workspace owner is the actor of the event.
-pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
-    if w.test_nodes_migrated {
-        return Ok(());
-    }
-    ensure!(actor == w.admin, "workspace owner required");
-    let mut next = schema(w);
-    let listing: Vec<String> = next
-        .types
-        .iter()
-        .filter(|(_, t)| t.role == "ac" || status_rule(t) == "tests")
-        .map(|(kind, _)| kind.clone())
-        .collect();
-    let kind = match next.types.iter().find(|(_, t)| t.role == ROLE) {
-        Some((kind, _)) => kind.clone(),
-        None => {
-            let kind = ["test", "test_case", "test_node"]
-                .into_iter()
-                .find(|k| !next.types.contains_key(*k))
-                .context("no free name for the test type")?;
-            let t = json!({"title":"Tests","role":ROLE,"status":RULE,"parents":listing,
-                "badge":"TEST","title_preview_length":400});
-            next.types.insert(kind.into(), serde_json::from_value(t)?);
-            kind.to_owned()
-        }
+/// The status of a node from the statuses of its test nodes: red when one is red, green when
+/// every one is green, else grey. It shows the oldest commit among them.
+pub fn combine(parts: Vec<crate::ac_tests::CriterionStatus>) -> crate::ac_tests::CriterionStatus {
+    let (status, reason) = if parts.is_empty() {
+        ("grey", Some("no tests".to_owned()))
+    } else if parts.iter().any(|p| p.status == "red") {
+        ("red", None)
+    } else if parts.iter().all(|p| p.status == "green") {
+        ("green", None)
+    } else {
+        let reason = parts
+            .iter()
+            .find(|p| p.status != "green")
+            .and_then(|p| p.reason.clone());
+        ("grey", reason)
     };
-    for k in &listing {
-        let t = next.types.get_mut(k).expect("listed type");
-        t.status = Some("children".into());
-    }
-    next.revision += 1;
-    next.actor = actor.into();
-    next.at = at.into();
-    next.position = position;
-    next.reason = REASON.into();
-    let schema_revision = next.revision;
-    w.tree_schema.push(next);
-    let lists: Vec<(String, Vec<String>)> = w
-        .objects
+    let oldest = parts
         .iter()
-        .filter(|(_, o)| o.current().present)
-        .filter_map(|(key, o)| {
-            let tests = o.current().data.get("tests")?.as_array()?;
-            Some((
-                key.clone(),
-                tests
-                    .iter()
-                    .filter_map(|t| t.as_str().map(String::from))
-                    .collect(),
-            ))
-        })
-        .collect();
-    for (key, tests) in lists {
-        let o = w.objects.get_mut(&key).expect("listed object");
-        let contract = contract_revision(o);
-        let mut revision = o.current().clone();
-        revision.data.as_object_mut().map(|d| d.remove("tests"));
-        revision.revision += 1;
-        revision.contract = Some([revision.revision, contract]);
-        revision.schema_revision = schema_revision;
-        revision.position = position;
-        revision.actor = actor.into();
-        revision.reason = REASON.into();
-        revision.at = at.into();
-        let owner = revision.data["owner"].clone();
-        o.revisions.push(revision);
-        let boundary = w.criterion_boundaries.get(&key).cloned();
-        for name in tests {
-            let id = node_id(&key, &name);
-            let address = crate::objects::address(&kind, &id);
-            let node = ObjectRevision {
-                revision: 1,
-                schema_revision,
-                parent: Some(key.clone()),
-                data: json!({"title": name, "owner": owner}),
-                links: vec![],
-                actor: actor.into(),
-                at: at.into(),
-                position,
-                reason: REASON.into(),
-                present: true,
-                contract: None,
-            };
-            w.objects.insert(
-                address.clone(),
-                Object {
-                    kind: kind.clone(),
-                    id,
-                    revisions: vec![node],
-                    parent_override: false,
-                },
-            );
-            if let Some(at) = &boundary {
-                w.criterion_boundaries.insert(address, at.clone());
-            }
-        }
+        .filter(|p| p.oldest_order.is_some())
+        .min_by_key(|p| p.oldest_order);
+    crate::ac_tests::CriterionStatus {
+        status: status.into(),
+        reason,
+        tests_draft: false,
+        commit: oldest.and_then(|p| p.commit.clone()),
+        oldest_order: oldest.and_then(|p| p.oldest_order),
+        tests: parts.into_iter().flat_map(|p| p.tests).collect(),
     }
-    w.test_nodes_migrated = true;
-    Ok(())
+}
+
+/// True when the actor saved or archived a test node below `parent` after `position`.
+pub fn saved_since(w: &Workspace, parent: &str, actor: &str, position: u64) -> bool {
+    let kinds = kinds(w);
+    w.objects.values().any(|o| {
+        let p = o
+            .current()
+            .parent
+            .as_deref()
+            .map(|p| crate::objects::resolve_address(w, p));
+        kinds.contains(&o.kind)
+            && p == Some(parent)
+            && o.revisions
+                .iter()
+                .any(|r| r.actor == actor && r.position > position)
+    })
 }

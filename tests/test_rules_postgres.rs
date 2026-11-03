@@ -45,7 +45,8 @@ async fn fixture(pool: &deadpool_postgres::Pool, rules: Value) -> Result<String>
     }
     write(pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
         "requirement":{"title":"Requirements","role":"requirement","root":true,"parents":[],"status":"children"},
-        "ac":{"title":"Criteria","role":"ac","parents":["requirement"],"status":"tests"}
+        "ac":{"title":"Criteria","role":"ac","parents":["requirement"],"status":"children"},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     },"test_results":block})).await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"}),
@@ -56,13 +57,12 @@ async fn fixture(pool: &deadpool_postgres::Pool, rules: Value) -> Result<String>
     Ok(ws)
 }
 
-async fn bind(pool: &deadpool_postgres::Pool, ws: &str, tests: Value) -> Result<Value> {
-    write(
-        pool,
-        ws,
-        json!({"op":"set_ac_tests","target":"ac:a","tests":tests,"reason":"Bind"}),
-    )
-    .await
+/// Save one test node under A for each test name, in order. The first refusal stops.
+async fn bind(pool: &deadpool_postgres::Pool, ws: &str, tests: Value) -> Result<()> {
+    for test in tests.as_array().cloned().unwrap_or_default() {
+        write(pool, ws, json!({"op":"save_object","kind":"test","revision":0,"parent":"ac:a","data":{"title":test,"owner":"owner"},"reason":"Bind"})).await?;
+    }
+    Ok(())
 }
 
 async fn record(pool: &deadpool_postgres::Pool, ws: &str, results: Value) -> Result<()> {
@@ -107,7 +107,7 @@ async fn the_reset_rule_comes_from_the_schema() -> Result<()> {
         bind(&pool, &ws, json!([X])).await?;
         record(&pool, &ws, json!([{"test":X,"status":"pass"}])).await?;
         ensure!(status(&pool, &ws).await? == "green", "before the change");
-        write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r","data":{"title":"A changed","owner":"owner","tests":[X]},"reason":"New wording"})).await?;
+        write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"New wording"})).await?;
         ensure!(status(&pool, &ws).await? == expected, "reset {reset}");
     }
     Ok(())
@@ -129,12 +129,13 @@ async fn the_name_and_limit_rules_come_from_the_schema() -> Result<()> {
             json!(["login::email::with::a::very::long::name"]),
             "at most 20 characters",
         ),
+        // login::email is the one test node of A, so a second node is over the limit.
         (json!(["a::b", "c::d"]), "a criterion lists at most 1 tests"),
     ] {
-        let message = bind(&pool, &ws, tests.clone())
-            .await
-            .unwrap_err()
-            .to_string();
+        let message = match bind(&pool, &ws, tests.clone()).await {
+            Ok(()) => anyhow::bail!("{tests}: saved, expected {error:?}"),
+            Err(e) => e.to_string(),
+        };
         ensure!(message.contains(error), "{tests}: {message}");
     }
     let error = store::record_results(
@@ -154,7 +155,7 @@ async fn the_name_and_limit_rules_come_from_the_schema() -> Result<()> {
 // tests-in-document
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_list_save_keeps_the_contract_revision_and_a_text_change_moves_it() -> Result<()> {
+async fn a_test_node_save_keeps_the_contract_revision_and_a_text_change_moves_it() -> Result<()> {
     let pool = pool().await?;
     let ws = fixture(&pool, json!({})).await?;
     let read = || async {
@@ -175,18 +176,21 @@ async fn a_list_save_keeps_the_contract_revision_and_a_text_change_moves_it() ->
         "{before}"
     );
     bind(&pool, &ws, json!(["tests/x.rs > x"])).await?;
-    let listed = read().await?;
+    let bound = read().await?;
     ensure!(
-        listed["current_revision"] == 2 && listed["contract_revision"] == 1,
-        "a list save keeps the contract: {listed}"
+        bound["current_revision"] == 1 && bound["contract_revision"] == 1,
+        "a test node save keeps the criterion and its contract: {bound}"
     );
-    // A list row gives the same contract revision.
+    // A list row of the direct children gives the same contract revision.
     let rows = store::read_objects(
         &pool,
         &ws,
         "bot",
         &store::ObjectScope {
-            filter: joppa::node_filter::NodeFilter::of(Some("requirement:r"), None),
+            filter: joppa::node_filter::NodeFilter {
+                depth: Some(1),
+                ..joppa::node_filter::NodeFilter::of(Some("requirement:r"), None)
+            },
             limit: 100,
             ..Default::default()
         },
@@ -194,13 +198,13 @@ async fn a_list_save_keeps_the_contract_revision_and_a_text_change_moves_it() ->
     .await?;
     let row = &rows["items"][0];
     ensure!(
-        row["revision"] == 2 && row["contract_revision"] == 1,
+        row["address"] == "ac:a" && row["revision"] == 1 && row["contract_revision"] == 1,
         "the list row: {row}"
     );
-    write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r","data":{"title":"A changed","owner":"owner","tests":["tests/x.rs > x"]},"reason":"New wording"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"New wording"})).await?;
     let changed = read().await?;
     ensure!(
-        changed["current_revision"] == 3 && changed["contract_revision"] == 3,
+        changed["current_revision"] == 2 && changed["contract_revision"] == 2,
         "a text change moves the contract: {changed}"
     );
     Ok(())

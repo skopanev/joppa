@@ -119,7 +119,7 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(entry, &["record", "report"]),
         "{timeline}"
     );
-    // History, the tests overview and links give no workspace and no snapshot position.
+    // History and links give no workspace and no snapshot position.
     for args in [json!({}), json!({"all":true,"limit":5})] {
         let history = read(&w, "joppa_history", args).await?;
         ensure!(
@@ -130,8 +130,6 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             "{history}"
         );
     }
-    let overview = read(&w, "joppa_tests", json!({})).await?;
-    ensure!(absent(&overview, &["workspace", "position"]), "{overview}");
     let links = read(&w, "joppa_objects", json!({"links_of":"ac:a"})).await?;
     ensure!(
         absent(&links, &["workspace", "position", "address"]),

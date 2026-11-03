@@ -1,8 +1,8 @@
-//! A change of a group, a test-list save and a spec archive reset the criteria below
-//! them in the store: in the same batch, after journal replay, and not at all when the
+//! A change of a group, a test-node change and a spec archive reset the criteria and test
+//! nodes below them in the store: in the same batch, after journal replay, and not at all when the
 //! command fails. An identical repeat of a record after the change is a new
 //! receipt that counts after it.
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use joppa::store::{self, BatchOperation};
 use serde_json::{Value, json};
 

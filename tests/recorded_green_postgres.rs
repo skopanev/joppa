@@ -1,4 +1,4 @@
-//! A criterion is green only when every listed test has a pass recorded after the last
+//! A criterion is green only when each of its test nodes has a pass recorded after the last
 //! change of the criterion. Records of one commit in two calls combine.
 use anyhow::{Result, ensure};
 use joppa::store;
@@ -44,7 +44,7 @@ async fn write(
     store::execute_remote_input(pool, ws, actor, &uuid::Uuid::new_v4().to_string(), &command).await
 }
 
-/// One independent fixture: criterion A lists X and Y, and bot is a member.
+/// One independent fixture: criterion A has test nodes X and Y, and bot is a member.
 async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
     let ws = format!("green-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -65,16 +65,23 @@ async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, "owner", json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
         "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     }})).await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"}),
         json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"A","owner":"owner"},"reason":"Create"}),
-        json!({"op":"set_ac_tests","target":"ac:a","tests":[X,Y],"reason":"Bind"}),
+        bind("ac:a", X),
+        bind("ac:a", Y),
     ] {
         write(pool, &ws, "bot", command).await?;
     }
     Ok(ws)
+}
+
+/// A test node that binds one test to a criterion.
+fn bind(target: &str, test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
 }
 
 async fn record(pool: &deadpool_postgres::Pool, ws: &str, tests: &[&str]) -> Result<()> {
@@ -114,7 +121,7 @@ async fn a_record_after_the_last_change_makes_a_criterion_green() -> Result<()> 
         status(&pool, &three).await?["status"] == "green",
         "fixture 3 before the change"
     );
-    write(&pool, &three, "bot", json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r","data":{"title":"A changed","owner":"owner","tests":[X,Y]},"reason":"Sharper wording"})).await?;
+    write(&pool, &three, "bot", json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"Sharper wording"})).await?;
     let s = status(&pool, &three).await?;
     ensure!(s["status"] == "grey", "fixture 3: {s}");
     Ok(())

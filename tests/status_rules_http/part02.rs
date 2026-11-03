@@ -97,24 +97,20 @@ impl World {
         self.command(&self.owner, json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"reason":"Build the tree"})).await?;
         Ok(())
     }
-    async fn bind(&self, address: &str, tests: &[&str]) -> Result<()> {
-        let tests: Vec<String> = tests.iter().map(|t| format!("{SUITE} > {t}")).collect();
-        self.command(
-            &self.owner,
-            json!({"op":"set_ac_tests","target":address,"tests":tests,"reason":"Bind the test"}),
-        )
-        .await?;
-        Ok(())
-    }
-    /// Save the schema of ac1: area and rule climb from children, check takes its tests,
-    /// memo has no status field. Task may sit under a check.
+    /// Save the schema of ac1: area, rule and check climb from children, a test node under a
+    /// check takes its own result, memo has no status field. Task may sit under a check.
     async fn rules_schema(&self, area_order: Value) -> Result<Value> {
         let tree = self.tree().await?;
         let mut types = tree["schema"]["types"].clone();
         types["area"] = json!({"title":"Areas","role":"group","root":true,"parents":["area"],"status":"children","status_order":area_order});
         types["rule"] =
             json!({"title":"Rules","role":"requirement","parents":["area"],"status":"children"});
-        types["check"] = json!({"title":"Checks","role":"ac","parents":["rule"],"status":"tests"});
+        types["check"] =
+            json!({"title":"Checks","role":"ac","parents":["rule"],"status":"children"});
+        types["test"]["parents"]
+            .as_array_mut()
+            .context("test parents")?
+            .push(json!("check"));
         types["memo"] =
             json!({"title":"Memos","role":"document","status":"none","parents":["rule"]});
         let task = types
@@ -168,16 +164,18 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
     ensure!(revision == before + 1, "{before} -> {revision}");
     let types = &tree["schema"]["types"];
     // The MCP tool joppa_tree shows the same revision and the same saved rules, without
-    // the false type flags.
+    // the false type flags, and names the title limit title_max_length.
     let mcp = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
-    let lean = joppa::mcp_lean::lean("joppa_tree", &json!({}), tree.clone());
+    let mut lean = joppa::mcp_lean::lean("joppa_tree", &json!({}), tree.clone());
+    joppa::read_compact::rename_title_length(&mut lean);
     ensure!(
         mcp["schema"]["revision"] == tree["current_revision"]
             && mcp["schema"]["types"] == lean["schema"]["types"],
         "{mcp}"
     );
     ensure!(
-        types["check"]["status"] == "tests"
+        types["check"]["status"] == "children"
+            && types["test"]["status"] == "own"
             && types["rule"]["status"] == "children"
             && types["area"]["status"] == "children"
             && types["area"]["status_order"] == json!(["red", "grey", "green"])

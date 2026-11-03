@@ -86,11 +86,11 @@ async fn a_new_object_gets_8_characters_and_a_public_id_reads_like_its_address()
     let mut named = by_address.clone();
     named["address"] = json!("ac:a");
     let children = ok(&w, "joppa_objects", json!({"parent":r})).await?;
-    let tests = ok(&w, "joppa_tests", json!({"ac":ac})).await?;
+    let tests = ok(&w, "joppa_objects", json!({"parent":ac,"kind":"test"})).await?;
     ensure!(
         by_item == named
             && children["items"][0]["address"] == "ac:a"
-            && tests["tests"][0]["address"] == "tests/x.rs > t",
+            && tests["items"][0]["title"] == "tests/x.rs > t",
         "{by_item} {children} {tests}"
     );
     // Without a workspace, the public ID names its workspace; an unknown ID reads as unknown.

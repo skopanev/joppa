@@ -34,16 +34,11 @@ fn clock_time_alone_never_changes_status() {
 #[test]
 fn an_account_without_membership_cannot_save_a_test_list() {
     // checks-listed-first-ac3: "eve" is signed in but not a member.
-    let mut w = World::new();
+    let mut w = migrated();
     let ac = joppa::objects::criterion_address("ios");
-    let e = w
-        .apply(
-            "eve",
-            json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"No"}),
-        )
-        .unwrap_err();
+    let e = w.apply("eve", bind(&ac, "opens", OPENS)).unwrap_err();
     assert!(e.to_string().contains("not a workspace member"), "{e}");
-    assert!(!w.state.ac_tests.contains_key(&ac));
+    assert!(names(&w, &ac).is_empty());
 }
 
 #[test]
@@ -110,7 +105,7 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         .status,
         "green"
     );
-    // An eligible failure stays red, also on a draft list.
+    // An eligible failure stays red.
     let failed = [result(5, "x", "fail"), result(5, "y", "pass")];
     assert_eq!(
         criterion_status(
@@ -124,64 +119,12 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         .status,
         "red"
     );
-    assert_eq!(
-        criterion_status(
-            &both,
-            true,
-            at,
-            &full,
-            &failed,
-            &joppa::test_rules::legacy()
-        )
-        .status,
-        "red"
-    );
-    // check-list-frozen-ac4: an eligible record decides a draft list after the change.
-    let s = criterion_status(
-        &both,
-        true,
-        at,
-        &full,
-        &pass(5),
-        &joppa::test_rules::legacy(),
-    );
-    assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
-    // After the change, records that give every listed test a result decide a draft.
-    let rows = [result(3, "x", "pass"), result(4, "y", "pass")];
-    let s = criterion_status(
-        &both,
-        true,
-        at,
-        &partial,
-        &rows,
-        &joppa::test_rules::legacy(),
-    );
-    assert_eq!((s.status.as_str(), s.tests_draft), ("green", true));
-    // A draft with a listed test that has no eligible result, or without a boundary, stays a draft.
-    let s = criterion_status(
-        &both,
-        true,
-        at,
-        &partial[..1],
-        &rows[..1],
-        &joppa::test_rules::legacy(),
-    );
-    assert_eq!(s.reason.as_deref(), Some("tests_draft"));
-    let s = criterion_status(
-        &both,
-        true,
-        Boundary::None,
-        &full,
-        &pass(5),
-        &joppa::test_rules::legacy(),
-    );
-    assert_eq!(s.reason.as_deref(), Some("tests_draft"));
     // A report first received before the boundary counts after an identical repeat.
     let mut repeated = report(1, "c1", 1, true, 99);
     repeated.receipt_us = 101;
     let s = criterion_status(
         &both,
-        true,
+        false,
         at,
         &[repeated],
         &pass(1),

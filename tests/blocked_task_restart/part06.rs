@@ -1,7 +1,7 @@
 // Part 6 of tests/blocked_task_restart.rs, included there, so the test names stay unchanged.
 
-/// Every read that the restart must keep on one transport: the Task fields, the
-/// revision history of each object and, on HTTP, the test reply of criterion A.
+/// Every read that the restart must keep on one transport: the Task fields and the
+/// revision history of each object.
 async fn journal_snapshot(
     http: &reqwest::Client,
     root: &str,
@@ -92,10 +92,6 @@ async fn journal_snapshot(
             }
             out.insert(format!("revision {address} {n}"), revision);
         }
-    }
-    if !mcp {
-        let tests = get("tests?ac=criterion:a".into(), "", Value::Null).await?;
-        out.insert("tests criterion:a".into(), tests);
     }
     Ok(out)
 }

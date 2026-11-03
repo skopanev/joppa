@@ -31,42 +31,6 @@ fn addresses(reply: &Value) -> Vec<String> {
         .collect()
 }
 
-// read-tests-sweep
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_tests_sweep_of_101_criteria_gives_100_then_1() -> Result<()> {
-    let w = record_world::world(&[]).await?;
-    save_all(&w, "read-pages-acs", 100, |i| {
-        json!({"op":"save_object","kind":"ac","id":format!("b{i:03}"),"revision":0,
-            "parent":"requirement:r","data":{"title":format!("B{i:03}"),"owner":"owner"},
-            "reason":"Sweep test"})
-    })
-    .await?;
-    let first = read(&w, "joppa_tests", json!({"kind":"ac","parent":"*"})).await?;
-    let first_page = addresses(&first);
-    ensure!(
-        first_page.len() == 100
-            && first["total"] == 101
-            && first["next_cursor"] == "100"
-            && first_page[0] == "ac:a"
-            && first_page[99] == "ac:b098",
-        "{first}"
-    );
-    let second = read(
-        &w,
-        "joppa_tests",
-        json!({"kind":"ac","parent":"*","cursor":"100"}),
-    )
-    .await?;
-    ensure!(
-        addresses(&second) == ["ac:b099"]
-            && second["total"] == 101
-            && second.get("next_cursor").is_none(),
-        "{second}"
-    );
-    Ok(())
-}
-
 // read-detail-links
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -147,12 +111,13 @@ async fn a_list_item_shows_the_same_tone_as_the_detail_read() -> Result<()> {
         json!([{"test":"tests/x.rs > t","status":"pass"}]),
     )
     .await?;
-    let list = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
+    // Depth 1 gives the direct children of R: criterion A, without its test node.
+    let list = read(&w, "joppa_objects", json!({"parent":"requirement:r","depth":1})).await?;
     let detail = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
     let named = read(
         &w,
         "joppa_objects",
-        json!({"parent":"requirement:r","fields":["status"]}),
+        json!({"parent":"requirement:r","depth":1,"fields":["status"]}),
     )
     .await?;
     ensure!(

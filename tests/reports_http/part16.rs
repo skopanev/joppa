@@ -166,8 +166,8 @@ fn four_reads(w: &World) -> [(&'static str, Value); 4] {
             json!({"workspace":workspace,"parent":"*","limit":1}),
         ),
         (
-            "joppa_tests",
-            json!({"workspace":workspace,"ac":"ac:key-rights"}),
+            "joppa_objects",
+            json!({"workspace":workspace,"parent":"ac:key-rights","kind":"test","depth":1}),
         ),
         ("joppa_tasks", json!({"workspace":workspace})),
         ("joppa_tree", json!({"workspace":workspace})),

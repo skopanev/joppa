@@ -188,7 +188,7 @@ pub fn apply(
                     o.revisions
                         .iter()
                         .any(|r| r.actor == actor && r.position > claim.position)
-                }),
+                }) || crate::test_nodes::saved_since(w, &key, actor, claim.position),
                 "planning produced no Task changes"
             );
             validate_dependencies(w, &children)?;

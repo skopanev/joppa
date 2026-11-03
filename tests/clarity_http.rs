@@ -40,8 +40,13 @@ async fn a_requirement_read_marks_an_archived_requirement_and_an_archived_criter
     // A present object has no present key; an archived one gives present: false.
     ensure!(live.get("present").is_none(), "{live}");
     let children = ok(
-        w.mcp(&w.bot, "joppa_objects", json!({"parent":"requirement:r"}))
-            .await?,
+        // Depth 1 gives the direct children of R, without the test node of A.
+        w.mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"parent":"requirement:r","depth":1}),
+        )
+        .await?,
         "children of r",
     )?;
     let listed: Vec<&str> = children["items"]
@@ -87,56 +92,48 @@ async fn help_with_a_workspace_gives_one_save_example_for_each_type() -> Result<
 
 // clarity point 6
 #[tokio::test]
-async fn a_criterion_save_keeps_its_test_list_in_the_document() -> Result<()> {
+async fn a_criterion_save_keeps_its_test_nodes() -> Result<()> {
     let w = world(&[TEST]).await?;
-    // The test list is the field tests of the document: a text change keeps it, and no
-    // draft waits for another save.
-    let saved = ok(w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"a","revision":2,"parent":"requirement:r",
-        "data":{"title":"A","owner":"owner","body":"Given R, then A holds.","tests":[TEST]},"reason":"Clarify A"})).await?, "save")?;
-    ensure!(saved["object"].get("tests_draft").is_none(), "{saved}");
-    let tests = ok(
-        w.mcp(&w.alex, "joppa_tests", json!({"ac": A})).await?,
-        "joppa_tests",
-    )?;
+    // The tests of A are its test nodes: a text change keeps them, and no draft waits for
+    // another save. A save with a test list in the document is refused.
+    let listed = json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r",
+        "data":{"title":"A","owner":"owner","body":"Given R, then A holds.","tests":[TEST]},"reason":"Clarify A"});
+    let refused = w.command(&w.bot, listed).await?;
     ensure!(
-        tests["tests"][0]["address"] == TEST && tests["tests_revision"] == 3,
-        "{tests}"
+        refused
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.contains("use save_object with kind test")),
+        "{refused:?}"
     );
-    Ok(())
-}
-
-// clarity point 7
-#[tokio::test]
-async fn mcp_tests_without_a_criterion_give_the_same_overview_as_http() -> Result<()> {
-    let w = world(&[TEST]).await?;
-    w.recorded(
-        "0123456789abcdef0123",
-        json!([{"test":TEST,"status":"pass"}]),
-    )
-    .await?;
-    let mcp = ok(
-        w.mcp(&w.alex, "joppa_tests", json!({})).await?,
-        "joppa_tests",
+    let saved = ok(
+        w.command(
+            &w.bot,
+            json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r",
+        "data":{"title":"A","owner":"owner","body":"Given R, then A holds."},"reason":"Clarify A"}),
+        )
+        .await?,
+        "save",
     )?;
-    let http: Value = w
-        .http
-        .get(format!("{}/api/workspaces/{}/tests", w.root, w.ws))
-        .bearer_auth(&w.alex)
-        .send()
-        .await?
-        .json()
-        .await?;
-    // MCP gives the same items as one page of 25 with the total.
+    ensure!(saved["object"].get("tests_draft").is_none(), "{saved}");
+    let nodes = json!({"parent": A, "kind": "test"});
+    let nodes = ok(w.mcp(&w.alex, "joppa_objects", nodes).await?, "test nodes")?;
     ensure!(
-        mcp["items"] == http["items"] && mcp["total"] == 1 && mcp["items"][0]["address"] == A,
-        "{mcp} {http}"
+        nodes["total"] == 1 && nodes["items"][0]["title"] == TEST,
+        "{nodes}"
+    );
+    let status = w.a_status(&w.alex).await?;
+    ensure!(
+        status["tests"].as_array().map(Vec::len) == Some(1)
+            && status["tests"][0]["address"] == TEST,
+        "{status}"
     );
     Ok(())
 }
 
 // clarity point 8
 #[tokio::test]
-async fn fields_and_summary_make_large_list_replies_small() -> Result<()> {
+async fn fields_make_large_list_replies_small() -> Result<()> {
     let w = world(&[TEST]).await?;
     let list = ok(
         w.mcp(
@@ -159,14 +156,5 @@ async fn fields_and_summary_make_large_list_replies_small() -> Result<()> {
             "{item}"
         );
     }
-    let summary = ok(
-        w.mcp(&w.bot, "joppa_tests", json!({"ac":A,"summary":true}))
-            .await?,
-        "summary",
-    )?;
-    ensure!(
-        summary.get("tests").is_none() && summary["counts"] == json!({"not_run":1}),
-        "{summary}"
-    );
     Ok(())
 }

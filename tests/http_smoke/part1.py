@@ -116,7 +116,7 @@ assert command(c, request_id=retry)[1]['replayed'] is True
 # Remote MCP notifications return 202 without a JSON-RPC response.
 assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
 reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_search','joppa_tree','joppa_tests','joppa_objects','joppa_timeline','joppa_record_results','joppa_history','joppa_history_mark','joppa_attach','joppa_attachments'}
+assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_search','joppa_tree','joppa_objects','joppa_timeline','joppa_record_results','joppa_history','joppa_history_mark','joppa_attach','joppa_attachments'}
 tools = {tool['name']: tool for tool in reply['result']['tools']}
 writing = (ROOT/'docs/writing.md').read_text()
 initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
@@ -140,7 +140,8 @@ assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
 # migrate_test_rules adds the sixth revision: the test rules and the status rule of each type.
 # migrate_note_parents adds the seventh: an inbox type has no parent.
 # migrate_purpose adds the eighth: a Task type has no parent_decision.
-assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 8
+# migrate_test_nodes adds the ninth: the type test under each criterion type.
+assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 9
 common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
           'data':{'title':'Source note','owner':'owner','body':'Original text'},
           'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
@@ -151,7 +152,7 @@ old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1}
 assert old['data']['body'] == 'Original text' and old['revision'] == 1 and old['current_revision'] == 2
 assert 'historical' not in old and old.get('process') is None and not old.get('link_groups') and not old.get('annotations')
 assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
-assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 8
+assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 9
 empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
     'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
         'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})

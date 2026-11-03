@@ -10,29 +10,35 @@ pub struct Listed {
     pub actor: String,
     /// A list before migrate_test_rules that waits for a save after a text change.
     pub draft: bool,
+    /// After migrate_test_nodes, the reset boundary of the node of each test, in list order.
+    pub boundaries: Option<Vec<Boundary>>,
 }
 
-/// The test list of a node after migrate_test_nodes, with the test names of each parent.
+/// The test list of a node after migrate_test_nodes, with the test nodes of each parent: a test
+/// node lists its own test, another node the tests of its test-node children.
 pub fn listed_node(
     w: &Workspace,
     address: &str,
-    names: &std::collections::BTreeMap<String, Vec<String>>,
+    nodes: &std::collections::BTreeMap<String, Vec<(String, String)>>,
 ) -> Option<Listed> {
     let current = w.objects.get(address)?.current();
-    let tests = if crate::test_nodes::is_test(w, address) {
-        current.data["title"]
-            .as_str()
-            .map(String::from)
-            .into_iter()
-            .collect()
+    let own;
+    let nodes = if crate::test_nodes::is_test(w, address) {
+        own = vec![(
+            address.to_owned(),
+            current.data["title"].as_str()?.to_owned(),
+        )];
+        &own
     } else {
-        names.get(address)?.clone()
+        nodes.get(address)?
     };
+    let boundary = |a: &str| Boundary::read(w.criterion_boundaries.get(a).map(String::as_str));
     Some(Listed {
-        tests,
+        tests: nodes.iter().map(|(_, name)| name.clone()).collect(),
         revision: current.revision,
         actor: current.actor.clone(),
         draft: false,
+        boundaries: Some(nodes.iter().map(|(a, _)| boundary(a)).collect()),
     })
 }
 
@@ -43,7 +49,7 @@ pub fn listed(w: &Workspace, address: &str) -> Option<Listed> {
     // After migrate_test_nodes, a test node names its one test in its title, and another
     // node lists the tests of its test-node children.
     if w.test_nodes_migrated {
-        let names = crate::test_nodes::names_by_parent(w);
+        let names = crate::test_nodes::nodes_by_parent(w);
         return listed_node(w, address, &names);
     }
     if w.test_rules_migrated {
@@ -68,6 +74,7 @@ pub fn listed(w: &Workspace, address: &str) -> Option<Listed> {
             revision: current.revision,
             actor: current.actor.clone(),
             draft: false,
+            boundaries: None,
         });
     }
     let list = w.ac_tests.get(address).and_then(AcTests::current)?;
@@ -77,5 +84,6 @@ pub fn listed(w: &Workspace, address: &str) -> Option<Listed> {
         revision: list.revision,
         actor: list.actor.clone(),
         draft: list.text_hash != hash_of(&legacy, &o.current().data),
+        boundaries: None,
     })
 }

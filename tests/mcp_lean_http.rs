@@ -120,13 +120,18 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             && absent(t, &["review_required", "created_at"]),
         "{tasks}"
     );
-    let tests = read(&w, "joppa_tests", json!({"ac":"ac:a"})).await?;
+    // The test node of A gives its tone in the list and no echo in the detail.
+    let tests = read(&w, "joppa_objects", json!({"parent":"ac:a","kind":"test"})).await?;
+    let node = &tests["items"][0];
+    let address = node["address"].as_str().unwrap_or_default();
+    let detail = read(&w, "joppa_objects", json!({"address":address})).await?;
     ensure!(
         absent(&tests, &ECHOES)
-            && absent(&tests, &["tests_draft", "tests_saved_by"])
-            && tests["tests"][0]["status"] == "pass"
-            && absent(&tests["tests"][0], &["status_name"]),
-        "{tests}"
+            && node["status"] == "green"
+            && absent(node, &["status_name", "tests_draft", "tests_saved_by"])
+            && absent(&detail, &ECHOES)
+            && absent(&detail, &["tests_draft", "tests_saved_by"]),
+        "{tests} {detail}"
     );
     for tool in ["joppa_timeline", "joppa_history"] {
         let page = read(&w, tool, json!({})).await?;

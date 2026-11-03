@@ -16,7 +16,26 @@ pub async fn seed(w: &record_world::World) -> Result<()> {
     w.command(&w.owner, schema)
         .await?
         .map_err(anyhow::Error::msg)?;
-    for address in ["requirement:r", "ac:a"] {
+    // A test node under ac:a gets the same word, so a search finds it too.
+    let tests = w
+        .mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"parent":"ac:a","kind":"test"}),
+        )
+        .await?;
+    let tests: Vec<String> = tests.map_err(anyhow::Error::msg)?["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| i["address"].as_str().map(String::from))
+        .collect();
+    for address in ["requirement:r", "ac:a"]
+        .into_iter()
+        .map(String::from)
+        .chain(tests)
+    {
+        let address = address.as_str();
         let object = w.object(address).await?;
         let mut data = object["data"].clone();
         data["body"] = json!(format!("Fixture text of {address}"));

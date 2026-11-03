@@ -62,7 +62,7 @@ fn schema_badges_and_previews_preserve_full_document_titles() {
         invalid.get_mut("note").unwrap().badge = Some(badge.into());
         w.no("owner",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid badge"}));
     }
-    for length in [0, 257, -1] {
+    for length in [0, 401, -1] {
         let mut invalid = serde_json::to_value(&types).unwrap();
         invalid["note"]["title_preview_length"] = json!(length);
         w.no("owner",json!({"op":"set_tree_schema","revision":2,"types":invalid,"reason":"Reject invalid title preview"}));

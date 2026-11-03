@@ -85,7 +85,6 @@ with it gets HTTP 401 `token revoked`.
 | `joppa_objects` | Read object lists, documents, links and revisions |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
-| `joppa_tests` | Read the test status of criteria or of a Task |
 | `joppa_history` | Read history pages |
 | `joppa_history_mark` | Mark history entries processed |
 | `joppa_record_results` | Record the test outcomes of one commit |

@@ -77,21 +77,11 @@ A type with `inbox: true` holds incoming information. A missing `data.status` me
 
 ## Tests of a criterion
 
-The test list of a node is the field `tests` of its document. Any type with
-`status: "tests"` takes a list. Save it with `save_object` and `data.tests`, or with
-`set_ac_tests {target, tests, revision, reason}`. Its `revision` is the `tests_revision`
-that `joppa_tests` gives. A new list resets the criterion.
-
-Every test in the repository must be bound to at least one present AC through `data.tests`
-or `set_ac_tests`. No AC, no test:
-
-- Never add or rename a test without binding it to its AC in the same change.
-- When you archive an AC, delete its tests or bind them to another present AC.
-- `joppa_record_results` gives `unbound`: the test names of the record that no present criterion lists.
-- A full-run record must give `"unbound": []` before a merge.
-
-Send each test run with `joppa_record_results {workspace, commit, results}`.
-See [what green means](green.md) for the tone rules.
+A test is a node of a type with role `test` under its criterion. Save one node for each test
+with `save_object`: `{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}`.
+No AC, no test: every test in the repository has a present test node, and a full-run record of
+`joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
+for the tones and the rollup.
 
 ## Tasks
 

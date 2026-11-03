@@ -73,8 +73,8 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
             json!({"workspace":w.ws,"query":"Key rights"}),
         ),
         (
-            "joppa_tests",
-            json!({"workspace":w.ws,"ac":"ac:key-rights"}),
+            "joppa_objects",
+            json!({"workspace":w.ws,"parent":"ac:key-rights","kind":"test"}),
         ),
         ("joppa_tree", json!({"workspace":w.ws})),
         ("joppa_objects", json!({"workspace":w.ws,"parent":"*"})),
@@ -91,7 +91,8 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         owner_items == reader_items,
         "{owner_items:?} / {reader_items:?}"
     );
-    ensure!(stored_counts(&w).await? == before, "a read stored data");
+    let after = stored_counts(&w).await?;
+    ensure!(after == before, "a read stored data: {before:?} / {after:?}");
 
     // Write tools and unknown tools are refused before any store call.
     for (name, arguments) in [

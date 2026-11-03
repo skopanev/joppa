@@ -27,7 +27,8 @@ struct World {
 const TYPES: &str = r#"{
     "component":{"title":"Components","role":"group","status":"children","root":true,"parents":[]},
     "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
-    "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
+    "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+    "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400},
     "task":{"title":"Tasks","role":"task","status":"none","parents":["ac"]}
 }"#;
 

@@ -40,15 +40,8 @@ async fn work_priority_ac1_setting_the_priority_resets_nothing() -> Result<()> {
             "{read}"
         );
     }
-    let tests: Value = w
-        .http
-        .get(format!("{}/tests?ac=check:a", w.base))
-        .bearer_auth(&w.bot)
-        .send()
-        .await?
-        .json()
-        .await?;
-    ensure!(tests["status"] == "green", "{tests}");
+    // The test node of A keeps its pass, so A stays green.
+    ensure!(w.tones(&["check:a"]).await? == ["green"]);
     Ok(())
 }
 

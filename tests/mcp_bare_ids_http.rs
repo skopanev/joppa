@@ -1,5 +1,5 @@
-//! joppa_objects and joppa_tests without a workspace read the workspace of their public item
-//! IDs. The IDs of one call belong to one workspace that the caller can read. A stored
+//! joppa_objects without a workspace reads the workspace of its public item IDs, as an
+//! address and as a parent. The IDs of one call belong to one workspace that the caller can read. A stored
 //! 10-character code becomes its first 8 characters, and an old copy still reads the object.
 #[path = "common/record_world.rs"]
 mod record_world;
@@ -41,10 +41,11 @@ async fn a_call_without_a_workspace_reads_the_one_workspace_of_its_ids() -> Resu
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     let other = record_world::world(&["tests/y.rs > u"]).await?;
     let (ac, far) = (item(&w, "ac", "a").await?, item(&other, "ac", "a").await?);
-    let (error, text) = bare(&w, &w.bot, "joppa_tests", json!({"ac":ac})).await?;
+    let nodes = json!({"parent":ac,"kind":"test"});
+    let (error, text) = bare(&w, &w.bot, "joppa_objects", nodes).await?;
     let tests: Value = serde_json::from_str(&text).unwrap_or_default();
     ensure!(
-        !error && tests["tests"][0]["address"] == "tests/x.rs > t",
+        !error && tests["items"][0]["title"] == "tests/x.rs > t" && tests["total"] == 1,
         "{text}"
     );
     let both = json!({"address":format!("{ac},{far}")});

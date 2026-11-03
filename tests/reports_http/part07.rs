@@ -26,7 +26,8 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure nested groups","types":{
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400}
     }})).await?;
     for (key, parent) in [
         ("area:g", None),
@@ -56,11 +57,7 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
             json!([]),
         )
         .await?;
-        p.write(
-            "agent",
-            json!({"op":"set_ac_tests","target":criterion,"tests":[A,B],"reason":"Bind the tests"}),
-        )
-        .await?;
+        p.bind(&w.token, criterion, &[A, B]).await?;
     }
     p.record(
         "c1c1c1c",
@@ -132,13 +129,4 @@ impl Planning<'_> {
         Ok(self.pool.get().await?.query("SELECT key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section='criterion_boundaries' ORDER BY key", &[&self.ws]).await?
             .iter().map(|r| (r.get(0), r.get(1))).collect())
     }
-}
-
-fn addresses(status: &Value) -> Vec<Value> {
-    status["tests"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|t| t["address"].clone())
-        .collect()
 }

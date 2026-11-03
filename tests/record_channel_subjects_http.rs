@@ -1,5 +1,5 @@
 //! One subject per test over a real server: member bot records outcomes through the MCP
-//! tool joppa_record_results, and a member reads GET /tests?ac=A.
+//! tool joppa_record_results, and a member reads store::test_status of A.
 use anyhow::{Result, ensure};
 use serde_json::json;
 
@@ -22,7 +22,7 @@ async fn a_record_updates_only_the_tests_it_names() -> Result<()> {
     )
     .await?;
     w.recorded(c2, json!([{"test":X,"status":"pass"}])).await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(s["status"] == "green", "{s}");
     ensure!(
         test(&s, X)["commit"] == c2 && test(&s, Y)["commit"] == c1,
@@ -40,7 +40,7 @@ async fn a_failure_beats_a_later_pass_on_the_same_commit() -> Result<()> {
     w.recorded(c, json!([{"test":X,"status":"fail","message":"boom"}]))
         .await?;
     w.recorded(c, json!([{"test":X,"status":"pass"}])).await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "fail" && x["commit"] == c, "{s}");
     ensure!(s["status"] == "red", "{s}");

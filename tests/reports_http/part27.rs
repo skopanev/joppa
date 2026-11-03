@@ -2,7 +2,7 @@
 
 impl Planning<'_> {
     async fn ac_tests(&self, ac: &str) -> Result<Value> {
-        self.get(format!("/tests?ac={ac}")).await
+        store::test_status(&self.pool, &self.ws, "agent", ac).await
     }
     async fn assessment(&self, ac: &str) -> Result<Value> {
         Ok(self.get(format!("/objects?address={ac}")).await?["process"]["assessment"].clone())
@@ -27,9 +27,10 @@ impl Planning<'_> {
         let revision = self.revision("spec:r").await?;
         self.post_command(&self.w.owner, json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"links":links,"reason":"Change R"})).await
     }
-    /// Agent bot saves the identical test list of A over HTTP.
-    async fn resave_a(&self) -> Result<()> {
-        self.post_command(&self.w.token, json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Save the list again"})).await
+    /// Owner S saves a new text of criterion A over HTTP, which resets only A.
+    async fn change_a(&self) -> Result<()> {
+        let revision = self.revision("criterion:a").await?;
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"criterion","id":"a","revision":revision,"parent":"spec:r","data":{"title":"criterion:a","owner":"owner","body":"A changed criterion"},"links":[],"reason":"Change A"})).await
     }
     /// Owner S saves inbox signal s under R over HTTP.
     async fn signal(&self) -> Result<()> {
@@ -74,9 +75,9 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
     p.save_r("area:g", "R renamed", json!([])).await?;
     p.reset(&before).await?;
     let mcp = p
-        .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
+        .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
-    ensure!(mcp["status"] == "grey", "MCP joppa_tests: {mcp}");
+    ensure!(mcp["status"]["tone"] == "grey", "MCP joppa_objects: {mcp}");
     Ok(())
 }
 
@@ -110,21 +111,6 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
             anyhow::Ok(http)
         }
     };
-    let tests = || async {
-        let mcp = mcp_read(
-            &w,
-            &w.token,
-            "joppa_tests",
-            json!({"workspace":workspace,"ac":"ac:key-rights"}),
-        )
-        .await?;
-        let http = w.status().await?;
-        ensure!(
-            compact_of::compact_of(&http, &mcp) == mcp,
-            "joppa_tests: HTTP {http}\nMCP {mcp}"
-        );
-        anyhow::Ok(http)
-    };
     ready_for_planning(&w).await?;
     w.record(
         "c1c1c1c",
@@ -138,7 +124,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
     )
     .await?;
     ensure!(r["current_revision"] == 2, "R before the save: {r}");
-    ensure!(tests().await?["status"] == "green", "A must start green");
+    ensure!(w.status().await?["status"] == "green", "A must start green");
     let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
     ensure!(
         a["process"]["assessment"]["state"] == "ready",
@@ -161,7 +147,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
             && r["document"]["data"]["body"] == "Changed scope",
         "R after the save: {r}"
     );
-    let status = tests().await?;
+    let status = w.status().await?;
     ensure!(status["status"] == "grey", "A after the save: {status}");
     let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
     ensure!(

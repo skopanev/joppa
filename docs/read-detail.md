@@ -59,7 +59,6 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `process.status` of a Note shows only when it differs from `data.status`.
   `process.confirmed` shows only when it is `true`.
 - `work_ready` shows only when it is `false`. `review_required` shows only when it is `true`.
-- `verification_summary` gives only the counts above 0. Read a missing count as 0.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.
@@ -128,7 +127,7 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
   `docs/read-contract.md` names the list fields.
 - A detail key gives its value in the detail read: `links`, `comments`, `files`,
   `references`, `link_groups`, `remote_links`, `remote_review_required`,
-  `remote_links_revision`, `child_workspace`, `verification_summary`, `question` and
+  `remote_links_revision`, `child_workspace`, `question` and
   `annotations`. A key that the detail omits gives `null`.
 - Any other first part names a document field: `note` gives `data.note`. The rules of
   `docs/read-contract.md` refuse an unknown path and the old text fields `description` and

@@ -6,7 +6,7 @@
 async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
     let p = branches(&w).await?;
-    let tests = |ac: &str| p.get(format!("/tests?ac={ac}"));
+    let tests = |ac: &'static str| store::test_status(&p.pool, &p.ws, "agent", ac);
     let object = |address: &str| p.get(format!("/objects?address={address}"));
     let mut before = std::collections::BTreeMap::new();
     for (_, _, ac) in BRANCH_CRITERIA {
@@ -14,13 +14,11 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
         ensure!(s["status"] == "green", "{ac} before the change: {s}");
         before.insert(ac, s);
     }
-    let g = object("area:g").await?;
-    ensure!(
-        g["verification_summary"]["passed"].as_u64() > Some(0),
-        "{g}"
-    );
+    let tone = |address: &'static str| async move {
+        Ok::<_, anyhow::Error>(object(address).await?["signal"]["tone"].clone())
+    };
+    ensure!(tone("area:g").await? == "green" && tone("area:h").await? == "green");
     let d_readiness = object("criterion:d").await?["process"]["assessment"].clone();
-    let h_summary = object("area:h").await?["verification_summary"].clone();
 
     // Owner S changes only the text of G.
     p.owner_save(
@@ -43,9 +41,9 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
         ensure!(readiness == "unassessed", "{ac} readiness: {readiness}");
     }
     let mcp = p
-        .mcp_read("joppa_tests", json!({"ac":"criterion:a"}))
+        .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
-    ensure!(mcp["status"] == "grey", "MCP joppa_tests: {mcp}");
+    ensure!(mcp["status"]["tone"] == "grey", "MCP joppa_objects: {mcp}");
     let d = tests("criterion:d").await?;
     ensure!(d["status"] == "green", "{d}");
     ensure!(
@@ -55,12 +53,8 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     let g = p
         .mcp_read("joppa_objects", json!({"address":"area:g"}))
         .await?;
-    // MCP gives only the counts above 0.
-    ensure!(g["verification_summary"].get("passed").is_none(), "{g}");
-    ensure!(
-        object("area:h").await?["verification_summary"] == h_summary,
-        "the summary of H changed"
-    );
+    ensure!(g["status"]["tone"] == "grey", "{g}");
+    ensure!(tone("area:h").await? == "green", "the tone of H changed");
 
     // Partial runs after the change combine: the latest result of each test decides.
     p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
@@ -111,130 +105,5 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
             && p.boundaries().await? == boundaries,
         "{a}"
     );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_changed_test_list_makes_a_new_list_revision() -> Result<()> {
-    // reduced-coverage-reviewed-ac1: the agent removes one test; the document of the
-    // criterion gets a new revision.
-    let w = world().await?;
-    ensure!(w.status().await?["tests_revision"] == 2, "first list");
-    w.list(&[A]).await?;
-    let s = w.status().await?;
-    ensure!(
-        s["tests_revision"] == 3
-            && s["tests"].as_array().map(Vec::len) == Some(1)
-            && s["tests_saved_by"] == "agent",
-        "{s}"
-    );
-    Ok(())
-}
-
-const STALE_LIST: &str = "stale test list revision; read the tests again";
-
-/// Save the list of ac:key-rights over HTTP as the agent, with an optional list revision.
-async fn save_list(w: &World, tests: &[&str], revision: Option<u32>) -> Result<(u16, Value)> {
-    let mut command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Link the tests"});
-    if let Some(revision) = revision {
-        command["revision"] = json!(revision);
-    }
-    post(
-        w,
-        &w.token,
-        "/commands",
-        json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
-    )
-    .await
-}
-
-/// The listed test addresses of one test status read.
-fn listed(status: &Value) -> Vec<&str> {
-    status["tests"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|t| t["address"].as_str())
-        .collect()
-}
-
-async fn journal_count(pool: &deadpool_postgres::Pool, workspace: &str) -> Result<i64> {
-    Ok(pool
-        .get()
-        .await?
-        .query_one(
-            "SELECT count(*) FROM joppa.events WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .get(0))
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_stale_test_list_save_is_refused_and_a_current_or_absent_revision_saves() -> Result<()> {
-    // checks-listed-first-ac4: criterion C has [A] at tests_revision 3, the revision of
-    // its document.
-    let w = world().await?;
-    w.list(&[A]).await?;
-    let s = w.status().await?;
-    ensure!(listed(&s) == [A] && s["tests_revision"] == 3, "{s}");
-    let (code, reply) = save_list(&w, &[A, B], Some(2)).await?;
-    ensure!(
-        code == 409 && reply["error"] == STALE_LIST,
-        "{code} {reply}"
-    );
-    let s = w.status().await?;
-    ensure!(listed(&s) == [A] && s["tests_revision"] == 3, "{s}");
-    let (code, reply) = save_list(&w, &[A, B], Some(3)).await?;
-    ensure!(code == 200, "{code} {reply}");
-    let s = w.status().await?;
-    ensure!(listed(&s) == [A, B] && s["tests_revision"] == 4, "{s}");
-    let (code, reply) = save_list(&w, &[B], None).await?;
-    ensure!(code == 200, "{code} {reply}");
-    let s = w.status().await?;
-    ensure!(listed(&s) == [B] && s["tests_revision"] == 5, "{s}");
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn concurrent_first_test_list_saves_with_revision_zero_accept_exactly_one() -> Result<()> {
-    // checks-listed-first-ac4: criterion D has no saved list; agents P and Q save at the same time.
-    let w = world().await?;
-    let p = planning(&w).await?;
-    let root = w.base.split("/api/").next().unwrap();
-    let read = || async {
-        w.http
-            .get(format!(
-                "{root}/api/workspaces/{}/tests?ac=criterion:a",
-                p.ws
-            ))
-            .bearer_auth(&w.token)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Value>()
-            .await
-    };
-    // A criterion without tests has an empty list at its document revision.
-    let s = read().await?;
-    ensure!(listed(&s).is_empty() && s["tests_revision"] == 1, "{s}");
-    let save = |actor: &'static str, tests: Value| {
-        p.write(
-            actor,
-            json!({"op":"set_ac_tests","target":"criterion:a","tests":tests,"revision":1,"reason":"Link the tests"}),
-        )
-    };
-    let (first, second) = tokio::join!(save("agent", json!([A])), save("other", json!([B])));
-    let (winner, refusal) = match (first, second) {
-        (Ok(_), Err(e)) => (A, e),
-        (Err(e), Ok(_)) => (B, e),
-        (first, second) => anyhow::bail!("expected one success: {first:?} / {second:?}"),
-    };
-    ensure!(format!("{refusal:#}") == STALE_LIST, "{refusal:#}");
-    let s = read().await?;
-    ensure!(listed(&s) == [winner] && s["tests_revision"] == 2, "{s}");
     Ok(())
 }

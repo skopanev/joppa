@@ -115,7 +115,8 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"]},
         "signal":{"title":"Signal","role":"document","status":"none","root":true,"parents":[],"inbox":true}
     }})).await?;
@@ -143,11 +144,7 @@ async fn frozen(w: &World, plan: bool) -> Result<Planning<'_>> {
             json!([]),
         )
         .await?;
-        p.write(
-            "agent",
-            json!({"op":"set_ac_tests","target":ac,"tests":tests,"reason":"Bind the tests"}),
-        )
-        .await?;
+        p.bind(&w.token, ac, &tests).await?;
     }
     let ready = json!({"ready":true,"reason":"Known scope"});
     p.assess(

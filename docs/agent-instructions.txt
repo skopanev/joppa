@@ -16,9 +16,9 @@ Show object references as [Title](kind:id), using the title and address you read
 
 Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.
 A completed Task records its work and Git commit. Test results prove a criterion. Task completion does not prove criterion acceptance.
-No AC, no test. Every test in the repository must be bound to at least one present AC through data.tests or set_ac_tests.
-Never add or rename a test without binding it to its AC in the same change. When you archive an AC, delete its tests or bind them to another present AC.
-joppa_record_results gives "unbound": the test names of the record that no present criterion lists. A full-run record must give "unbound": [] before a merge.
+No AC, no test. A test is a node: save_object with kind test under its AC, data.title = the test name. Every test in the repository must have a present test node.
+Never add or rename a test without its test node in the same change. Archive the test node of a deleted test, and the test nodes of an AC before the AC.
+joppa_record_results gives "unbound": the test names of the record that have no present test node. A full-run record must give "unbound": [] before a merge.
 Use the configured test_results rules. Preserve failures and evidence. Record human decisions only with explicit human instruction.
 
 Prefer English for new technical text. Preserve existing text and quotations in their original language. Apply the writing rules below.

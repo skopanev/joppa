@@ -139,10 +139,10 @@ async fn the_gate_passes_only_on_the_accepted_commit() -> Result<()> {
         .await?
         .map_err(|e| anyhow::anyhow!("joppa_tree: {e}"))?;
     command(&w, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Make criteria launch conditions",
-        "put_types":{"ac":{"title":"Criteria","role":"ac","status":"tests","root":false,"parents":["requirement"],"launch_blocker":true}}})).await?;
+        "put_types":{"ac":{"title":"Criteria","role":"ac","status":"children","root":false,"parents":["requirement"],"launch_blocker":true}}})).await?;
     let ac = revision(&w, record_world::A).await?;
     command(&w, json!({"op":"save_object","kind":"ac","id":"a","revision":ac,"parent":"requirement:r",
-        "data":{"title":"A","owner":"owner","before_launch":true,"tests":[test]},"reason":"Require A before launch"})).await?;
+        "data":{"title":"A","owner":"owner","before_launch":true},"reason":"Require A before launch"})).await?;
     let ws = w.ws.as_str();
     let usage = refused(&url, &["gate", ws])?;
     ensure!(usage.contains("gate WORKSPACE COMMIT"), "{usage}");

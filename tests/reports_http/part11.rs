@@ -2,60 +2,6 @@
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn mcp_status_read_returns_100_criteria_in_request_order() -> Result<()> {
-    // old-results-history-ac4: agent bot calls joppa_tests for A1 to A100 in one request.
-    let (w, bot, addresses) = many_criteria().await?;
-    let workspace = w.base.rsplit('/').next().unwrap();
-    let first = addresses[..100].to_vec();
-    let reply = mcp_read(
-        &w,
-        &bot,
-        "joppa_tests",
-        json!({"workspace":workspace,"ac":first.join(",")}),
-    )
-    .await?;
-    ensure!(
-        reply["items"].as_array().map(Vec::len) == Some(100),
-        "item count: {reply}"
-    );
-    ensure!(item_addresses(&reply) == first, "{reply}");
-    // 101 criteria in one call are refused.
-    let reply = mcp(
-        &w,
-        &bot,
-        "joppa_tests",
-        json!({"workspace":workspace,"ac":addresses.join(",")}),
-    )
-    .await?;
-    ensure!(
-        reply["result"]["content"][0]["text"]
-            .as_str()
-            .is_some_and(|e| e.contains("at most 100 criteria in one call")),
-        "{reply}"
-    );
-
-    // Control: an unknown address at position 100 returns its error and no items.
-    let mut listed = addresses[..99].to_vec();
-    listed.push("ac:missing".into());
-    let reply = mcp(
-        &w,
-        &bot,
-        "joppa_tests",
-        json!({"workspace":workspace,"ac":listed.join(",")}),
-    )
-    .await?;
-    ensure!(
-        reply["result"]["isError"] == true
-            && reply["result"]["content"][0]["text"]
-                .as_str()
-                .is_some_and(|e| e.contains("unknown criterion ac:missing")),
-        "{reply}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_criterion_shows_the_oldest_commit_of_its_tests_and_no_commit_count() -> Result<()> {
     // time-not-stale-ac1: A is decided on C; five newer commits ran other tests only.
     let w = world().await?;
@@ -107,15 +53,9 @@ async fn a_test_tag_in_code_links_nothing() -> Result<()> {
     Ok(())
 }
 
+/// The process of the open Task t1 in the HTTP object read.
 async fn task(w: &World) -> Result<Value> {
-    Ok(w.http
-        .get(format!("{}/tests?task=task:t1", w.base))
-        .bearer_auth(&w.token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?)
+    task_process(w, &w.token, "task:t1", false).await
 }
 
 #[tokio::test]
@@ -124,7 +64,7 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
     // all-bound-checks-pass-ac1: an agent bot reads open task T under green criterion A.
     let w = world().await?;
     ensure!(
-        task(&w).await?["done"] == false,
+        task(&w).await?["status"] == "open",
         "not done before any report"
     );
     w.record(
@@ -135,27 +75,12 @@ async fn a_green_criterion_does_not_mark_an_open_task_done() -> Result<()> {
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
-    let workspace = w.base.rsplit('/').next().unwrap();
-    let t = mcp_read(
-        &w,
-        bot,
-        "joppa_tests",
-        json!({"workspace":workspace,"task":"task:t1"}),
-    )
-    .await?;
+    let t = task_process(&w, bot, "task:t1", true).await?;
     // A green criterion does not complete the Task and gives it no commit.
     ensure!(
-        t["done"] == false && t["commit"].is_null() && t.get("verification").is_none(),
+        t["status"] == "open" && t["commit"].is_null() && t.get("verification").is_none(),
         "{t}"
     );
-    let object = mcp_read(
-        &w,
-        bot,
-        "joppa_objects",
-        json!({"workspace":workspace,"address":"task:t1"}),
-    )
-    .await?;
-    ensure!(object["process"]["status"] == "open", "{object}");
     Ok(())
 }
 
@@ -166,7 +91,6 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
     let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
     ensure!(code == 200, "{code} {created}");
     let bot = created["token"].as_str().unwrap();
-    let workspace = w.base.rsplit('/').next().unwrap();
     for (token, command) in [
         (
             &w.owner,
@@ -194,14 +118,7 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
         .await?;
         ensure!(code == 200, "{command}: {code} {reply}");
     }
-    let read = |address: &'static str| {
-        mcp_read(
-            &w,
-            bot,
-            "joppa_tests",
-            json!({"workspace":workspace,"task":address}),
-        )
-    };
+    let read = |address: &'static str| task_process(&w, bot, address, true);
     for (commit, verification, cases) in [
         (None, "unverified", vec![]),
         (
@@ -222,11 +139,14 @@ async fn only_complete_task_marks_a_task_done() -> Result<()> {
         let _ = verification;
         let finished = read("task:finished").await?;
         ensure!(
-            finished["done"] == true && finished["commit"] == "c0ffee0",
+            finished["status"] == "done" && finished["commit"] == "c0ffee0",
             "{finished}"
         );
         let open = read("task:t1").await?;
-        ensure!(open["done"] == false && open["commit"].is_null(), "{open}");
+        ensure!(
+            open["status"] == "open" && open["commit"].is_null(),
+            "{open}"
+        );
     }
     Ok(())
 }

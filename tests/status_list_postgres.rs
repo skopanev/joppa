@@ -1,5 +1,5 @@
 //! The status list of the tree schema: bad lists are refused, a later save keeps the list,
-//! and the list order decides the status of a children rule.
+//! and a fixed priority, not the list order, decides the status of a children rule.
 use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
@@ -44,8 +44,14 @@ fn types() -> Value {
     json!({
         "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
         "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["domain"]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     })
+}
+
+/// A test node that binds one test to a criterion.
+fn bind(target: &str, test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
 }
 
 async fn workspace(pool: &deadpool_postgres::Pool) -> Result<String> {
@@ -139,8 +145,8 @@ async fn an_ordered_list_saves_and_a_higher_tone_wins_in_a_children_rule() -> Re
         json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":"domain:d","data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"}),
         json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"A","owner":"owner"},"reason":"Create"}),
         json!({"op":"save_object","kind":"ac","id":"b","revision":0,"parent":"requirement:r","data":{"title":"B","owner":"owner"},"reason":"Create"}),
-        json!({"op":"set_ac_tests","target":"ac:a","tests":["tests/x.rs > x"],"reason":"Bind"}),
-        json!({"op":"set_ac_tests","target":"ac:b","tests":["tests/y.rs > y"],"reason":"Bind"}),
+        bind("ac:a", "tests/x.rs > x"),
+        bind("ac:b", "tests/y.rs > y"),
     ] {
         write(&pool, &ws, "bot", command).await?;
     }
@@ -167,6 +173,7 @@ async fn an_ordered_list_saves_and_a_higher_tone_wins_in_a_children_rule() -> Re
         },
     )
     .await?;
-    ensure!(r["signal"]["tone"] == "green", "green is above red: {r}");
+    // The fixed priority puts red above green, although the saved list puts green first.
+    ensure!(r["signal"]["tone"] == "red", "red is above green: {r}");
     Ok(())
 }

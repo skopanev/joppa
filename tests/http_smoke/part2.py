@@ -189,8 +189,8 @@ types.update({
     'spec': {'title':'Spec','role':'requirement','root':True,'parents':['*'],'status':'children'},
     'epic': {'title':'Epic','role':'requirement','root':True,'parents':['*'],'status':'children'},
     'section': {'title':'Section','role':'group','root':True,'parents':['*'],'status':'children'},
-    'measure': {'title':'Measure','role':'ac','root':False,'parents':['*'],'status':'tests'},
-    'rule': {'title':'Rule','role':'ac','root':False,'parents':['*'],'status':'tests'},
+    'measure': {'title':'Measure','role':'ac','root':False,'parents':['*'],'status':'children'},
+    'rule': {'title':'Rule','role':'ac','root':False,'parents':['*'],'status':'children'},
 })
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'custom-schema','command':
     {'op':'set_tree_schema','revision':configured['schema']['revision'],'types':types,'reason':'Configure workflow types'}}, owner_token)

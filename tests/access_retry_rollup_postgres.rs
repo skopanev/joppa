@@ -1,5 +1,5 @@
 //! An identical retry keeps its receipt, an uninvited account cannot write, and a report
-//! upload updates the stored status of a criterion and the counters of its ancestors.
+//! upload updates the stored status of a criterion and the tones of its ancestors.
 use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
@@ -82,7 +82,8 @@ async fn workspace(pool: &deadpool_postgres::Pool) -> Result<String> {
         "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
         "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"]},
         "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     }});
     write(
         pool,
@@ -93,6 +94,11 @@ async fn workspace(pool: &deadpool_postgres::Pool) -> Result<String> {
     )
     .await?;
     Ok(ws)
+}
+
+/// A test node that binds one test to a criterion.
+fn bind(target: &str, test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
 }
 
 fn save(kind: &str, id: &str, parent: Option<&str>, title: &str) -> Value {
@@ -194,7 +200,7 @@ async fn an_uninvited_account_cannot_write_to_a_workspace() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<()> {
+async fn a_record_updates_the_criterion_and_every_ancestor_tone() -> Result<()> {
     // ac:precomputed-status-reads-ac2: A is the only criterion under R, C and D.
     let pool = pool().await?;
     let ws = workspace(&pool).await?;
@@ -203,7 +209,7 @@ async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<(
         save("capability", "c", Some("domain:d"), "C"),
         save("requirement", "r", Some("capability:c"), "R"),
         save("ac", "a", Some("requirement:r"), "A"),
-        json!({"op":"set_ac_tests","target":"ac:a","tests":["tests/rollup.test.ts > rollup > passes"],"reason":"Bind"}),
+        bind("ac:a", "tests/rollup.test.ts > rollup > passes"),
     ] {
         write(
             &pool,
@@ -214,9 +220,10 @@ async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<(
         )
         .await?;
     }
-    for address in ["requirement:r", "capability:c", "domain:d"] {
+    // Without a result the test node is grey, and so is each ancestor.
+    for address in ["ac:a", "requirement:r", "capability:c", "domain:d"] {
         let node = read(&pool, &ws, address).await?;
-        ensure!(node["verification_summary"]["passed"] == 0, "{node}");
+        ensure!(node["signal"]["tone"] == "grey", "{node}");
     }
     store::record_results(
         &pool,
@@ -228,11 +235,9 @@ async fn a_record_updates_the_criterion_and_every_ancestor_counter() -> Result<(
     // The test status of A is its verification; the read right after the record shows it.
     let tests = store::test_status(&pool, &ws, "alex", "ac:a").await?;
     ensure!(tests["status"] == "green", "{tests}");
-    let a = read(&pool, &ws, "ac:a").await?;
-    ensure!(a["signal"]["tone"] == "green", "{a}");
-    for address in ["requirement:r", "capability:c", "domain:d"] {
+    for address in ["ac:a", "requirement:r", "capability:c", "domain:d"] {
         let node = read(&pool, &ws, address).await?;
-        ensure!(node["verification_summary"]["passed"] == 1, "{node}");
+        ensure!(node["signal"]["tone"] == "green", "{node}");
     }
     Ok(())
 }

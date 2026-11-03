@@ -179,9 +179,11 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         verbose.get("signal").is_none(),
         "verbose still works: {verbose}"
     );
-    let empty = read(&w, "joppa_objects", json!({"parent":"ac:a"})).await?;
+    // Criterion B has no child, so its list is empty.
+    let empty = read(&w, "joppa_objects", json!({"parent":"ac:b"})).await?;
     ensure!(empty["items"] == json!([]), "{empty}");
-    let swept = read(&w, "joppa_tests", json!({"kind":"ac","parent":"*"})).await?;
+    // A read by kind gives the criteria of R, and the test node of A.
+    let swept = read(&w, "joppa_objects", json!({"kind":"ac","parent":"*"})).await?;
     let addresses: Vec<&str> = swept["items"]
         .as_array()
         .into_iter()
@@ -192,17 +194,16 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         swept["total"] == 2 && addresses == ["ac:a", "ac:b"],
         "{swept}"
     );
-    let many = (0..101)
-        .map(|i| format!("ac:x{i}"))
-        .collect::<Vec<_>>()
-        .join(",");
-    let refused = w.mcp(&w.bot, "joppa_tests", json!({"ac":many})).await?;
+    let tests = read(&w, "joppa_objects", json!({"parent":"ac:a","kind":"test"})).await?;
+    let items = tests["items"].as_array().cloned().unwrap_or_default();
     ensure!(
-        refused
-            .err()
-            .unwrap_or_default()
-            .contains("at most 100 criteria in one call"),
-        "101 criteria passed"
+        tests["total"] == 1
+            && items.len() == 1
+            && items[0]["title"] == "tests/x.rs > t"
+            && items[0]["address"]
+                .as_str()
+                .is_some_and(|a| a.starts_with("test:")),
+        "{tests}"
     );
     Ok(())
 }

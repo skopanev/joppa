@@ -1,5 +1,5 @@
-//! requirement:read-contract over a real server: the joppa_tests sweep over one page of 100
-//! and the links of a detail read in pages of 25.
+//! requirement:read-contract over a real server: the links of a detail read, the list pages
+//! of joppa_objects and the tone of a list item.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};

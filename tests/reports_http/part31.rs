@@ -40,11 +40,7 @@ async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> 
         );
     }
     // Release: a record makes every criterion of A green.
-    p.write(
-        "agent",
-        json!({"op":"set_ac_tests","target":"criterion:a1","tests":[A],"reason":"Bind the test"}),
-    )
-    .await?;
+    p.bind(&w.token, "criterion:a1", &[A]).await?;
     p.record(
         "c1c1c1c",
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
@@ -93,11 +89,7 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
     let w = world().await?;
     let p = ordering(&w, "cap:c", &["criterion:a1", "criterion:a2"]).await?;
     for (ac, test) in [("criterion:a1", A), ("criterion:a2", B)] {
-        p.write(
-            "agent",
-            json!({"op":"set_ac_tests","target":ac,"tests":[test],"reason":"Bind the test"}),
-        )
-        .await?;
+        p.bind(&w.token, ac, &[test]).await?;
     }
     p.link("spec:b", ordering_link("spec:a")).await?;
     p.record(

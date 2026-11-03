@@ -8,7 +8,7 @@ use std::io::Write;
 
 #[path = "fixture.rs"]
 mod fixture;
-pub use fixture::{ADDRESSES, CRITERIA, fixture, list};
+pub use fixture::{ADDRESSES, CRITERIA, bind, fixture, list};
 
 /// The workspace of this test target. Each target is its own process and sets its own name,
 /// so two targets can share one test database.

@@ -59,3 +59,4 @@ include!("spec_http/part35.rs");
 include!("spec_http/part36.rs");
 include!("spec_http/part37.rs");
 include!("spec_http/part38.rs");
+include!("spec_http/part39.rs");

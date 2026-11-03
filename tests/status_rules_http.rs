@@ -15,3 +15,4 @@ include!("status_rules_http/part02.rs");
 include!("status_rules_http/part03.rs");
 include!("status_rules_http/part04.rs");
 include!("status_rules_http/part05.rs");
+include!("status_rules_http/part06.rs");

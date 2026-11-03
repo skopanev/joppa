@@ -72,46 +72,86 @@ async fn events(pool: &deadpool_postgres::Pool, ws: &str) -> Result<i64> {
         .get(0))
 }
 
-/// A record that passes A and B and fails the check of red criterion B.
+/// The new name of the second test of A after the test-node change.
+const B2: &str = "tests/auth/login.test.ts > login > refuses twice";
+
+/// The test of red criterion B.
+const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
+
+/// A record that passes A, B and B2 and fails the test of red criterion B.
 async fn upload_full(pool: &deadpool_postgres::Pool, ws: &str, commit: &str) -> Result<Value> {
-    let rejects = "tests/auth/login.test.ts > login > rejects";
     store::record_results(
         pool,
         ws,
         "planner",
-        &json!({"commit":commit,"results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"},{"test":rejects,"status":"fail","message":"boom"}]}),
+        &json!({"commit":commit,"results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"},{"test":B2,"status":"pass"},{"test":REJECTS,"status":"fail","message":"boom"}]}),
     )
     .await
 }
 
-fn resave_a() -> Value {
-    json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Save the list again"})
+/// The test node of `test` directly under `criterion`, as a list row.
+async fn test_node(
+    pool: &deadpool_postgres::Pool,
+    ws: &str,
+    criterion: &str,
+    test: &str,
+) -> Result<Value> {
+    let filter = joppa::node_filter::NodeFilter {
+        depth: Some(1),
+        ..joppa::node_filter::NodeFilter::of(Some(criterion), Some("test"))
+    };
+    let scope = store::ObjectScope {
+        filter,
+        limit: 100,
+        ..Default::default()
+    };
+    let tests = store::read_objects(pool, ws, "owner", &scope).await?;
+    let b = tests["items"]
+        .as_array()
+        .and_then(|t| t.iter().find(|t| t["title"] == test));
+    b.cloned()
+        .with_context(|| format!("the test node of {test}: {tests}"))
+}
+
+/// The planner renames the test node of B under criterion A to B2.
+async fn rename_b_of_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
+    let b = test_node(pool, ws, "criterion:a", B).await?;
+    let address = b["address"].as_str().context("address")?;
+    let (_, id) = address.split_once(':').context("address")?;
+    write(pool, ws, "planner", json!({"op":"save_object","kind":"test","id":id,"revision":b["revision"],"parent":"criterion:a","data":{"title":B2,"owner":"owner"},"reason":"Rename the test"})).await
 }
 
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
+async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<()> {
     let pool = pool().await?;
     let ws = branches(&pool).await?;
     // Red criterion B is a sibling of A under R.
     write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"b","revision":0,"parent":"spec:r","data":{"title":"b","owner":"owner"},"reason":"Create the criterion"})).await?;
-    write(&pool, &ws, "planner", json!({"op":"set_ac_tests","target":"criterion:b","tests":["tests/auth/login.test.ts > login > rejects"],"reason":"Bind the tests"})).await?;
+    write(&pool, &ws, "planner", bind("criterion:b", REJECTS)).await?;
     upload_full(&pool, &ws, "c2c2c2c").await?;
     let b = status(&pool, &ws, "criterion:b").await?;
     ensure!(b["status"] == "red", "{b}");
-    // Fixture 5: the planner saves the identical list of A.
-    write(&pool, &ws, "planner", resave_a()).await?;
+    // Fixture 5: the planner renames a test node of A. B2 passed on C2, before the change,
+    // so that pass no longer counts. The change resets the test node, not the criterion:
+    // A keeps its assessment.
+    let renamed = rename_b_of_a(&pool, &ws).await?;
+    let node = renamed["object"]["address"]
+        .as_str()
+        .context("the renamed node")?;
+    let node = status(&pool, &ws, node).await?;
+    ensure!(node["status"] == "grey", "the renamed node: {node}");
     let live = snapshot(&pool, &ws).await?;
     ensure!(
         live["criterion:a"]["status"]["status"] == "grey"
-            && live["criterion:a"]["assessment"]["state"] == "unassessed"
+            && live["criterion:a"]["assessment"]["state"] == "ready"
             && live["criterion:d"]["status"]["status"] == "green",
         "{live}"
     );
     ensure!(
         replay(&pool, &ws).await? == live,
-        "replay after the list save"
+        "replay after the test-node change"
     );
     // A turns green and ready again; fixture 6: the owner archives B.
     let req = read(&pool, &ws, "spec:r").await?["process"]["revision"].clone();
@@ -121,6 +161,9 @@ async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
         status(&pool, &ws, "criterion:a").await?["status"] == "green",
         "A must be green before the archive"
     );
+    // B has an active test node, so the node is archived first.
+    let node = test_node(&pool, &ws, "criterion:b", REJECTS).await?;
+    write(&pool, &ws, "owner", json!({"op":"archive_object","target":node["address"],"revision":node["revision"],"reason":"Drop the red criterion"})).await?;
     let b = read(&pool, &ws, "criterion:b").await?["current_revision"].clone();
     write(&pool, &ws, "owner", json!({"op":"archive_object","target":"criterion:b","revision":b,"reason":"Drop the red criterion"})).await?;
     // An archive resets only the criteria at and below the archived object: A stays.
@@ -150,7 +193,7 @@ async fn a_list_save_and_a_spec_archive_survive_replay() -> Result<()> {
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_failed_reset_rejects_the_list_save() -> Result<()> {
+async fn a_failed_reset_rejects_the_test_node_change() -> Result<()> {
     let pool = pool().await?;
     let ws = branches(&pool).await?;
     let before = snapshot(&pool, &ws).await?;
@@ -158,12 +201,12 @@ async fn a_failed_reset_rejects_the_list_save() -> Result<()> {
     let conn = pool.get().await?;
     conn.batch_execute("CREATE OR REPLACE FUNCTION joppa.test_list_reset_fails() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'list reset failed'; END $$;").await?;
     conn.batch_execute(&format!("CREATE TRIGGER test_list_reset_fails BEFORE INSERT OR UPDATE ON joppa.state_entries FOR EACH ROW WHEN (NEW.workspace='{ws}' AND NEW.section='criterion_boundaries') EXECUTE FUNCTION joppa.test_list_reset_fails()")).await?;
-    let result = write(&pool, &ws, "planner", resave_a()).await;
+    let result = rename_b_of_a(&pool, &ws).await;
     conn.batch_execute("DROP TRIGGER test_list_reset_fails ON joppa.state_entries")
         .await?;
     ensure!(
         result.is_err_and(|e| format!("{e:#}").contains("list reset failed")),
-        "the list save must be rejected"
+        "the test-node change must be rejected"
     );
     ensure!(
         events(&pool, &ws).await? == count,

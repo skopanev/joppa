@@ -13,12 +13,12 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
     w.save("check", "a", Some("rule:r")).await?;
     w.save("check", "b", Some("rule:r")).await?;
     let nodes = ["rule:r", "area:g2", "area:g1"];
-    // Fixture 1: A is green and B is grey.
+    // Fixture 1: A is green and B, without a test node, is orange.
     w.bind("check:a", &["a"]).await?;
     w.report(&[("a", "pass")]).await?;
-    ensure!(w.tones(&["check:a", "check:b"]).await? == ["green", "grey"]);
+    ensure!(w.tones(&["check:a", "check:b"]).await? == ["green", "orange"]);
     ensure!(
-        w.tones(&nodes).await? == ["grey", "grey", "grey"],
+        w.tones(&nodes).await? == ["orange", "orange", "orange"],
         "fixture 1"
     );
     // Fixture 2: B is green.
@@ -31,11 +31,12 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
     // Fixture 3: B is red.
     w.report(&[("a", "pass"), ("b", "fail")]).await?;
     ensure!(w.tones(&nodes).await? == ["red", "red", "red"], "fixture 3");
-    // Fixture 4: A is grey and B is red.
+    // Fixture 4: A loses its test node, so A is orange, and B is red.
     w.bind("check:a", &[]).await?;
-    ensure!(w.tones(&["check:a", "check:b"]).await? == ["grey", "red"]);
+    ensure!(w.tones(&["check:a", "check:b"]).await? == ["orange", "red"]);
     ensure!(w.tones(&nodes).await? == ["red", "red", "red"], "fixture 4");
-    // Fixture 5: B is red, R2 has grey check D, and areas put grey before red.
+    // Fixture 5: B is red, R2 has check D without tests, and areas put grey before red.
+    // The order of the rollup is fixed, so status_order changes nothing: red wins.
     w.bind("check:a", &["a"]).await?;
     w.report(&[("a", "pass"), ("b", "fail")]).await?;
     w.save("rule", "r2", Some("area:g2")).await?;
@@ -47,7 +48,7 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
     ensure!(
         w.tones(&["rule:r", "rule:r2", "area:g2", "area:g1"])
             .await?
-            == ["red", "grey", "grey", "grey"],
+            == ["red", "orange", "red", "red"],
         "fixture 5"
     );
     Ok(())
@@ -56,7 +57,7 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
 // type-status-rules-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn type_status_rules_ac3_empty_nodes_are_grey_and_uncounted_children_change_nothing()
+async fn type_status_rules_ac3_empty_nodes_are_orange_and_uncounted_children_change_nothing()
 -> Result<()> {
     let w = world().await?;
     let task = w.rules_schema(json!(["red", "grey", "green"])).await?;
@@ -71,16 +72,15 @@ async fn type_status_rules_ac3_empty_nodes_are_grey_and_uncounted_children_chang
     w.bind("check:c", &["c"]).await?;
     w.report(&[("a", "pass"), ("c", "fail")]).await?;
     w.blocked_task(task, "check:a").await?;
-    // Q has no checks: grey. R holds green A, red C and memo M: red.
-    ensure!(w.tones(&["rule:q", "check:a", "rule:r"]).await? == ["grey", "green", "red"]);
-    // A new area with only an empty rule stays grey.
+    // Q has no checks: orange. R holds green A, red C and memo M: red.
+    ensure!(w.tones(&["rule:q", "check:a", "rule:r"]).await? == ["orange", "green", "red"]);
+    // A new area with only an empty rule is orange.
     w.save("area", "e", None).await?;
     w.save("rule", "q2", Some("area:e")).await?;
-    ensure!(w.tones(&["area:e"]).await? == ["grey"]);
+    ensure!(w.tones(&["area:e"]).await? == ["orange"]);
     // Fixture 2: C is archived; then a new record passes every test of A. The archive
     // resets only the criteria at and below C, so A keeps its pass and R turns green.
-    let c = w.object("check:c").await?;
-    w.command(&w.owner, json!({"op":"archive_object","target":"check:c","revision":c["current_revision"],"reason":"Drop the check"})).await?;
+    w.archive("check:c").await?;
     ensure!(
         w.tones(&["rule:r"]).await? == ["green"],
         "right after the archive"
@@ -100,12 +100,13 @@ async fn type_status_rules_ac5_a_schema_without_status_rules_uses_the_defaults()
     let w = world().await?;
     let tree = w.tree().await?;
     let types = &tree["schema"]["types"];
-    // The schema of a new workspace names the rule of each type: the rules that the
-    // roles gave before.
+    // The schema of a new workspace names the rule of each type. A criterion climbs from
+    // its test nodes, and a test node takes its own result.
     ensure!(
         types.as_object().is_some_and(|t| t.values().all(|v| {
             let rule = match v["role"].as_str() {
-                Some("ac") => "tests",
+                Some("test") => "own",
+                Some("ac") => "children",
                 Some("group" | "requirement") => "children",
                 _ => "none",
             };
@@ -132,7 +133,7 @@ async fn type_status_rules_ac5_a_schema_without_status_rules_uses_the_defaults()
     w.save_for(&criterion, "b", Some(&r), Some("person"))
         .await?;
     let (a, b) = (format!("{criterion}:a"), format!("{criterion}:b"));
-    // B has no test yet, so it is grey.
+    // B has no test node yet, so it is orange.
     w.bind(&a, &["a"]).await?;
     w.report(&[("a", "pass")]).await?;
     w.blocked_task(&task, &a).await?;
@@ -145,7 +146,7 @@ async fn type_status_rules_ac5_a_schema_without_status_rules_uses_the_defaults()
     ];
     let tones = w.tones(&nodes).await?;
     ensure!(
-        tones == ["green", "grey", "grey", "grey", "grey"],
+        tones == ["green", "orange", "orange", "orange", "orange"],
         "{tones:?}"
     );
     // B turns green.

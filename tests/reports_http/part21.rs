@@ -182,12 +182,8 @@ const NO_TASK_CHANGES: &str = "planning produced no Task changes";
 impl Planning<'_> {
     /// AC6 fixture: A is ready and grey with X listed; Y passes in a record. P claims A.
     async fn bound_plan(&self) -> Result<()> {
-        // check-list-frozen-ac3: a list save clears readiness, so A is assessed after it.
-        self.write(
-            "agent",
-            json!({"op":"set_ac_tests","target":"criterion:a","tests":[A],"reason":"Link the tests"}),
-        )
-        .await?;
+        // check-list-frozen-ac3: a test-node save clears readiness, so A is assessed after it.
+        self.bind(&self.w.token, "criterion:a", &[A]).await?;
         self.ready().await?;
         self.record("c1c1c1c", outcomes(&[("refuses", "pass")]))
             .await?;
@@ -198,22 +194,9 @@ impl Planning<'_> {
         );
         self.claim("agent", "criterion:a").await
     }
-    /// GET /tests?ac=criterion:a.
+    /// The test status of criterion:a.
     async fn tests(&self) -> Result<Value> {
-        let root = self.w.base.split("/api/").next().unwrap();
-        Ok(self
-            .w
-            .http
-            .get(format!(
-                "{root}/api/workspaces/{}/tests?ac=criterion:a",
-                self.ws
-            ))
-            .bearer_auth(&self.w.token)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+        store::test_status(&self.pool, &self.ws, "owner", "criterion:a").await
     }
     /// Addresses of the saved objects.
     async fn addresses(&self) -> Result<Vec<Value>> {
@@ -226,6 +209,7 @@ impl Planning<'_> {
     }
 }
 
+/// The save of the test node B under criterion:a, beside the node A of bound_plan.
 fn save_xy() -> Value {
-    json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Bind the existing tests"})
+    json!({"op":"save_object","kind":"test","revision":0,"parent":"criterion:a","data":{"title":B,"owner":"owner"},"reason":"Bind the existing tests"})
 }

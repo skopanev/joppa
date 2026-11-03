@@ -79,13 +79,15 @@ A rule object requires literal markers in a text field:
 
 `statuses` is the ordered list of status tones with one colour for each theme:
 `[{"tone": "red", "light": "#bc5d52", "dark": "#e07a70"}, ...]`. The tones are red, purple,
-yellow, orange, grey and green. A higher entry wins over a lower one in a children rule.
+yellow, orange, grey and green; purple marks an archived node. The list sets the colours.
+The rollup order is fixed: red, orange, yellow, grey, green (see [what green means](green.md)).
 A tone that the list omits keeps its default colours. A change without `statuses` keeps the list.
 Presentation changes add a schema revision. They do not change objects or evidence.
 
 ## Status rules
 
-Each type names its status rule in `status`: `tests`, `children`, `links` or `none`.
+Each type names its status rule in `status`: `own`, `children`, `links` or `none`. A test node
+type has `own`: the newest result of its test. A criterion type has `children`.
 With `status_required: true`, `set_tree_schema` refuses a type without `status`. With `false`,
 the nodes of such a type have the rule `unset` and the tone orange.
 A rule tone that differs from the process tone also sets the status label, for example
@@ -102,16 +104,13 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
   "statuses": {"pass": "pass", "fail": "fail", "skip": "skip", "todo": "todo"},
   "fields": [
     {"name": "message", "title": "Failure message", "type": "text", "max_length": 8192},
-    {"name": "duration_ms", "title": "Duration in milliseconds", "type": "number"},
-    {"name": "app", "type": "enum", "values": ["ios", "android"], "board": true}
+    {"name": "duration_ms", "title": "Duration in milliseconds", "type": "number"}
   ],
   "name": {"separator": " > ", "min_parts": 2, "file_extension": true, "max_length": 400},
   "max_tests": 200,
   "max_results": 1000,
   "same_commit": "fail_wins",
   "reset_on_change": true,
-  "draft_on_text_change": true,
-  "draft_fields": ["title", "description"],
   "green_if_all": ["pass"],
   "red_if_any": ["fail"],
   "failure_field": "message"
@@ -120,22 +119,18 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
 
 - `statuses` gives the status names of `joppa_record_results`. Each name counts as `pass`, `fail`, `skip` or `todo`. The map needs a name for `pass` and for `fail`.
 - `fields` lists the fields of a result: `text` with `max_length`, `number`, `enum` with `values`, or `ref` with a `target` type.
-- `name` gives the form of a test name. `max_tests` limits a test list, and `max_results` limits one record.
+- `name` gives the form of a test name. `max_tests` limits the test nodes of one parent, and `max_results` limits one record.
 - `same_commit`: with `fail_wins`, a failure in any record of the newest commit decides the test. With `latest_wins`, only the newest record decides it.
-- `reset_on_change` and `draft_on_text_change` are described in [what green means](green.md).
-- `green_if_all` and `red_if_any` give the outcomes that make a criterion green or red.
+- `reset_on_change` is described in [what green means](green.md).
+- `green_if_all` and `red_if_any` give the outcomes that make a test node green or red.
 - `failure_field` names the text field that readers show as the failure message.
 
 The names `test`, `status`, `commit`, `actor` and `at` belong to the record. A field cannot use them.
 The server refuses an unknown status name, an unknown field, a missing required field and a
 value of the wrong type. A `set_tree_schema` with `test_results` sends every rule.
 
-An `enum` or `ref` field with `"board": true` gives each value its own criterion status.
-A result without the field counts for every value. `applies` names the reference field of a
-criterion that lists the values that apply. A reference with `"allow_all": true` also takes
-`all`. A value that does not apply has the status `n/a`. The criterion is red when one value
-is red, green when every value is green, and grey in other cases. `joppa_tests` gives each
-value in `values`. The board has one filter for each board field.
+A result field has no `board` or `applies`: `set_tree_schema` refuses them with
+`board and applies were removed from result fields; filter test nodes by status`.
 
 ## Configured references
 

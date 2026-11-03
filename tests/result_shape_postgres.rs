@@ -1,5 +1,5 @@
 //! A workspace sets the shape of a test result in its tree schema. record_results checks
-//! each result against it, and joppa_tests shows the status name and the fields.
+//! each result against it, and the test status shows the status name and the fields.
 use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
@@ -28,7 +28,7 @@ async fn write(pool: &deadpool_postgres::Pool, ws: &str, command: Value) -> Resu
     store::execute_remote_input(pool, ws, "bot", &uuid::Uuid::new_v4().to_string(), &command).await
 }
 
-/// One workspace: criterion A lists X and Y, and bot is a member.
+/// One workspace: criterion A has test nodes X and Y, and bot is a member.
 async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
     let ws = format!("shape-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -43,16 +43,30 @@ async fn fixture(pool: &deadpool_postgres::Pool) -> Result<String> {
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     write(pool, &ws, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
         "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]}
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}
     }})).await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"r","revision":0,"parent":null,"data":{"title":"R","owner":"owner","body":"The rule"},"reason":"Create"}),
         json!({"op":"save_object","kind":"ac","id":"a","revision":0,"parent":"requirement:r","data":{"title":"A","owner":"owner"},"reason":"Create"}),
-        json!({"op":"set_ac_tests","target":"ac:a","tests":[X,Y],"reason":"Bind"}),
+        bind(X),
+        bind(Y),
     ] {
         write(pool, &ws, command).await?;
     }
     Ok(ws)
+}
+
+/// A test node that binds one test to criterion A.
+fn bind(test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":"ac:a","data":{"title":test,"owner":"owner"},"reason":"Bind"})
+}
+
+/// The row of one test in a test status.
+fn row<'a>(status: &'a Value, test: &str) -> &'a Value {
+    let rows = status["tests"].as_array();
+    rows.and_then(|r| r.iter().find(|t| t["address"] == test))
+        .unwrap_or(&Value::Null)
 }
 
 async fn set_shape(pool: &deadpool_postgres::Pool, ws: &str, shape: Value) -> Result<Value> {
@@ -104,19 +118,13 @@ async fn a_workspace_without_a_shape_keeps_the_built_in_result() -> Result<()> {
     .await?;
     let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "green", "{s}");
-    let test = &s["tests"][0];
+    let test = row(&s, X);
     ensure!(
         test["status_name"] == "pass" && test.get("fields").is_none(),
         "{test}"
     );
-    let error = record(
-        &pool,
-        &ws,
-        json!([{"test":X,"status":"pass","browser":"webkit"}]),
-    )
-    .await
-    .unwrap_err()
-    .to_string();
+    let webkit = json!([{"test":X,"status":"pass","browser":"webkit"}]);
+    let error = record(&pool, &ws, webkit).await.unwrap_err().to_string();
     ensure!(error.contains("unknown result field `browser`"), "{error}");
     Ok(())
 }
@@ -171,9 +179,9 @@ async fn a_saved_shape_decides_the_status_names_and_the_fields() -> Result<()> {
     let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "green", "{s}");
     ensure!(
-        s["tests"][0]["status"] == "pass"
-            && s["tests"][0]["status_name"] == "passed"
-            && s["tests"][0]["fields"]
+        row(&s, X)["status"] == "pass"
+            && row(&s, X)["status_name"] == "passed"
+            && row(&s, X)["fields"]
                 == json!({"browser":"chromium","run_url":"https://ci.example/1"}),
         "{s}"
     );
@@ -185,7 +193,7 @@ async fn a_saved_shape_decides_the_status_names_and_the_fields() -> Result<()> {
     .await?;
     let s = store::test_status(&pool, &ws, "bot", "ac:a").await?;
     ensure!(s["status"] == "red", "{s}");
-    let y = &s["tests"][1];
+    let y = row(&s, Y);
     ensure!(
         y["status"] == "fail" && y["status_name"] == "broken" && y["message"] == "timeout",
         "{y}"

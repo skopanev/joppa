@@ -114,24 +114,11 @@ async fn planning_claim_guards_refuse_over_http_and_mcp_without_changing_saved_s
     let p = planning(&w).await?;
     p.ready().await?;
     p.t0().await?;
-    p.write(
-        "agent",
-        json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Link the tests"}),
-    )
-    .await?;
+    p.bind(&w.token, "criterion:a", &[A, B]).await?;
     let root = w.base.split("/api/").next().unwrap();
-    let base = format!("{root}/api/workspaces/{}", p.ws);
     let passed = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
     record_http::recorded(&w.http, root, &p.ws, &w.token, "c1c1c1c", passed).await?;
-    let status: Value = w
-        .http
-        .get(format!("{base}/tests?ac=criterion:a"))
-        .bearer_auth(&w.token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let status = store::test_status(&p.pool, &p.ws, "agent", "criterion:a").await?;
     ensure!(
         status["status"] == "green",
         "the record must make A green: {status}"

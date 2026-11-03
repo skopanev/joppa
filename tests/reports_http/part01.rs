@@ -34,6 +34,7 @@ struct World {
     /// The token of alex, a person who pushes in the hook tests.
     alex: String,
     http: reqwest::Client,
+    pool: deadpool_postgres::Pool,
 }
 
 const A: &str = "tests/auth/login.test.ts > login > opens";
@@ -114,6 +115,7 @@ async fn world() -> Result<World> {
                 other,
                 alex,
                 http: reqwest::Client::new(),
+                pool,
             };
             world.list(&[A, B]).await?;
             return Ok(world);
@@ -124,21 +126,9 @@ async fn world() -> Result<World> {
 }
 
 impl World {
+    /// Make the test nodes of ac:key-rights name exactly `tests`.
     async fn list(&self, tests: &[&str]) -> Result<()> {
-        let command = json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Link the tests"});
-        let reply = self
-            .http
-            .post(format!("{}/commands", self.base))
-            .bearer_auth(&self.token)
-            .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}))
-            .send()
-            .await?;
-        ensure!(
-            reply.status().is_success(),
-            "set_ac_tests: {}",
-            reply.text().await?
-        );
-        Ok(())
+        bind_at(&self.http, &self.base, &self.token, "ac:key-rights", tests).await
     }
     /// The server address and the workspace name of this world.
     fn root_ws(&self) -> (&str, &str) {
@@ -176,16 +166,9 @@ impl World {
         );
         Ok(())
     }
+    /// The test status of ac:key-rights.
     async fn status(&self) -> Result<Value> {
-        Ok(self
-            .http
-            .get(format!("{}/tests?ac=ac:key-rights", self.base))
-            .bearer_auth(&self.token)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+        store::test_status(&self.pool, self.root_ws().1, "agent", "ac:key-rights").await
     }
 }
 

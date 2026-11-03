@@ -19,7 +19,7 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 
 - Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
 - Schema and order: `set_tree_schema`, `reorder_tree`, `set_priority`.
-- Criteria and tests: `set_ac_tests`, `accept_commit`, `assess`, `assess_signal`.
+- Criteria and tests: `save_object` with a test node, `accept_commit`, `assess`, `assess_signal`.
 - Discussion and files: `note`, `withdraw_note` (author only), `comment`, `attach`, `detach`.
 - Planning: `claim_planning`, `finish_planning`, `release_planning`.
 - Tasks: `claim_task`, `claim_next_task`, `release_task`, `block_task`, `unblock_task`, `complete_task`, `review_task`, `retire_task`.

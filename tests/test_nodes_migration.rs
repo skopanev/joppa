@@ -76,13 +76,45 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
     let count = w.state.objects.len();
     internal(&mut w, "migrate_test_nodes").unwrap();
     assert_eq!(w.state.objects.len(), count);
-    // After it a list is refused, and a node title must be a test name.
-    let refused =
-        joppa::test_nodes::check_save(&w.state, "ac", &json!({"title":"A","tests":["x"]}));
+    // After it a list is refused, a node title must be a test name, and a parent names each
+    // test once.
+    let twice = joppa::test_nodes::check_save(
+        &w.state,
+        "test",
+        "test:new",
+        Some("ac:ios"),
+        &json!({"title":names[0]}),
+    );
+    assert_eq!(
+        twice.unwrap_err().to_string(),
+        format!("test \"{}\" is listed twice", names[0])
+    );
+    let refused = joppa::test_nodes::check_save(
+        &w.state,
+        "ac",
+        "ac:ios",
+        Some("requirement:r"),
+        &json!({"title":"A","tests":["x"]}),
+    );
     assert_eq!(refused.unwrap_err().to_string(), joppa::test_nodes::REFUSAL);
-    assert!(joppa::test_nodes::check_save(&w.state, "test", &json!({"title":"no file"})).is_err());
     assert!(
-        joppa::test_nodes::check_save(&w.state, "test", &json!({"title":"tests/a.rs > three"}))
-            .is_ok()
+        joppa::test_nodes::check_save(
+            &w.state,
+            "test",
+            "test:new",
+            Some("ac:ios"),
+            &json!({"title":"no file"})
+        )
+        .is_err()
+    );
+    assert!(
+        joppa::test_nodes::check_save(
+            &w.state,
+            "test",
+            "test:new",
+            Some("ac:ios"),
+            &json!({"title":"tests/a.rs > three"})
+        )
+        .is_ok()
     );
 }

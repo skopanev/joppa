@@ -1,5 +1,5 @@
 //! requirement:read-contract over a real server: lists, fields, details, empty keys,
-//! no item IDs and joppa_tests by kind.
+//! no item IDs and test nodes by kind.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};

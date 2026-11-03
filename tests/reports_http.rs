@@ -54,3 +54,4 @@ include!("reports_http/part31.rs");
 include!("reports_http/part32.rs");
 include!("reports_http/part33.rs");
 include!("reports_http/part34.rs");
+include!("reports_http/part35.rs");

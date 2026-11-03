@@ -135,7 +135,7 @@ async fn completion_and_acceptance_recheck_a_remote_target_under_the_locks() -> 
     w.ok(
         &w.owner,
         &w.p,
-        json!({"op":"set_ac_tests","target":"ac:a","tests":["tests/a.rs > a"],"reason":"Bind"}),
+        World::bind("ac:a", "tests/a.rs > a"),
     )
     .await?;
     let commit = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1";
@@ -215,7 +215,7 @@ async fn chain_through_q(w: &World) -> Result<String> {
     w.ok(
         &w.owner,
         &q,
-        json!({"op":"set_ac_tests","target":"ac:y","tests":[TEST],"reason":"Bind"}),
+        World::bind("ac:y", TEST),
     )
     .await?;
     let core = w.revision(&q, "requirement:core").await?;

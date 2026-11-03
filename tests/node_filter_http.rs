@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn parent_gives_the_whole_subtree_and_depth_limits_it() -> Result<()> {
-    let w = record_world::world(&["tests/x.rs > t"]).await?;
+    let w = record_world::world(&[]).await?;
     seed(&w).await?;
     for (filters, expected) in [
         (

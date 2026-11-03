@@ -51,7 +51,11 @@ fn each_test_counts_with_its_latest_result() {
     );
     assert_eq!(s.status, "green");
     assert_eq!(s.commit.as_deref(), Some("c1"));
-    assert!(!serde_json::to_string(&s).unwrap().contains("commits_behind"));
+    assert!(
+        !serde_json::to_string(&s)
+            .unwrap()
+            .contains("commits_behind")
+    );
     // The higher order decides, not the later receipt.
     let late_old = [report(1, "c2", 2, false, 10), report(2, "c1", 1, false, 20)];
     let rows = [result(1, "x", "fail"), result(2, "x", "pass")];
@@ -87,7 +91,7 @@ fn one_failing_case_of_a_test_makes_it_red() {
 }
 
 #[test]
-fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
+fn grey_without_tests_without_runs_and_on_skips() {
     let reports = [report(1, "c", 1, false, 10)];
     assert_eq!(
         criterion_status(
@@ -140,74 +144,66 @@ fn grey_without_tests_without_runs_on_skips_and_on_a_draft() {
         (s.status.as_str(), s.commit.as_deref()),
         ("green", Some("c1"))
     );
-    let s = criterion_status(
-        &tests(&["x"]),
-        true,
-        Boundary::None,
-        &reports,
-        &[result(1, "x", "pass")],
-        &joppa::test_rules::legacy(),
-    );
-    assert_eq!(
-        (s.status.as_str(), s.reason.as_deref()),
-        ("grey", Some("tests_draft"))
-    );
+}
+
+/// A world after the journal event migrate_test_nodes, which the store writes.
+fn migrated() -> World {
+    let mut w = World::new();
+    w.legacy("owner", json!({"op":"migrate_test_nodes"}));
+    w
+}
+
+/// A save of one test node `id` under `ac`.
+fn bind(ac: &str, id: &str, test: &str) -> serde_json::Value {
+    json!({"op":"save_object","kind":"test","id":id,"revision":0,"parent":ac,
+        "data":{"title":test,"owner":"owner"},"reason":"Prove iOS access"})
+}
+
+/// The names of the present test nodes under `ac`.
+fn names(w: &World, ac: &str) -> Vec<String> {
+    let names = joppa::test_nodes::names_by_parent(&w.state);
+    names.get(ac).cloned().unwrap_or_default()
 }
 
 #[test]
-fn set_ac_tests_keeps_its_own_history_and_refuses_bad_lists() {
-    let mut w = World::new();
+fn a_test_node_save_never_revises_the_requirement_and_refuses_bad_names() {
+    let mut w = migrated();
     let ac = joppa::objects::criterion_address("ios");
     let req_revision = w.state.requirements["r"].revisions.len();
-    w.ok(
-        "agent",
-        json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"Prove iOS access"}),
-    );
-    w.ok("agent", json!({"op":"set_ac_tests","target":ac,"tests":[OPENS, "a.test.ts > b"],"reason":"Add a case"}));
-    let saved = &w.state.ac_tests[&ac];
-    assert_eq!(saved.revisions.len(), 2);
-    assert_eq!(saved.current().unwrap().actor, "agent");
+    w.ok("agent", bind(&ac, "opens", OPENS));
+    w.ok("agent", bind(&ac, "b", "a.test.ts > b"));
+    assert_eq!(names(&w, &ac), ["a.test.ts > b", OPENS]);
+    assert_eq!(w.state.objects["test:opens"].current().actor, "agent");
     assert_eq!(
         w.state.requirements["r"].revisions.len(),
         req_revision,
-        "a list save never makes a requirement revision"
+        "a test save never makes a requirement revision"
     );
-    for (tests, error) in [
-        (
-            json!(["login ok"]),
-            "a test address needs file > name at least",
-        ),
-        (
-            json!(["login > ok"]),
-            "a test address needs file > name at least",
-        ),
-        (json!([OPENS, OPENS]), "is listed twice"),
+    // checks-listed-first-ac2: the agent and the owner save names without a file.
+    for (actor, name) in [
+        ("agent", "login ok"),
+        ("agent", "login > ok"),
+        ("owner", "login > ok"),
     ] {
-        let e = w
-            .apply(
-                "agent",
-                json!({"op":"set_ac_tests","target":ac,"tests":tests,"reason":"Bad"}),
-            )
-            .unwrap_err();
-        assert!(e.to_string().contains(error), "{e}");
+        let e = w.apply(actor, bind(&ac, "bad", name)).unwrap_err();
+        assert!(
+            e.to_string()
+                .contains("a test address needs file > name at least"),
+            "{e}"
+        );
     }
-    // checks-listed-first-ac2: the owner saves "login > ok", which has no file.
+    // A test list is refused: in a document and as the removed operation.
     let e = w
         .apply(
-            "owner",
-            json!({"op":"set_ac_tests","target":ac,"tests":["login > ok"],"reason":"No file"}),
+            "agent",
+            json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"Old"}),
         )
         .unwrap_err();
-    assert!(
-        e.to_string()
-            .contains("a test address needs file > name at least"),
-        "{e}"
+    assert_eq!(
+        e.to_string(),
+        "set_ac_tests was removed; use save_object with kind test"
     );
-    let e = w
-        .apply(
-            "outsider",
-            json!({"op":"set_ac_tests","target":ac,"tests":[OPENS],"reason":"No"}),
-        )
-        .unwrap_err();
+    let e = w.apply("outsider", bind(&ac, "no", OPENS)).unwrap_err();
     assert!(e.to_string().contains("not a workspace member"), "{e}");
+    assert_eq!(names(&w, &ac), ["a.test.ts > b", OPENS]);
 }

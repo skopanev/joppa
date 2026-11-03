@@ -21,12 +21,13 @@ An iOS condition means iOS; other clients are never added by assumption.
   The default queue shows unprocessed Notes. Processed Notes stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
-- Each AC holds its test list in `data.tests`. Save the list with `save_object`
-  or `set_ac_tests`. `joppa_record_results` records the outcomes of one commit.
-- No AC, no test: every test in the repository is bound to a present AC. A
+- Each test is a node under its AC: `save_object` with kind `test`.
+  `joppa_record_results` records the outcomes of one commit.
+- No AC, no test: every test in the repository has a present test node. A
   full-run record must give `"unbound": []` before a merge.
-- Each type has a status rule: `tests`, `children`, `links` or `none`. An AC is
-  green when every listed test passes, red when one fails, and grey otherwise.
+- Each type has a status rule: `own`, `children`, `links` or `none`. One rollup
+  gives every level the highest tone of its children: red, orange, yellow, grey,
+  green. A criterion without a test node is orange.
 - Tasks under configured object parents, manual work and decision tasks. A completed
   task is not a verified AC. Owner acceptance stays separate. Records append;
   history is never rewritten.
@@ -150,8 +151,8 @@ See [connect MCP](docs/connect.md) for other clients, agent tokens, the tool lis
 
 ## Automated checks
 
-Put the test names of a criterion in its test list: `save_object` with
-`data.tests`, or `set_ac_tests`. Send each run with `joppa_record_results`:
+Save one test node under the criterion for each test: `save_object` with kind
+`test` and the test name as `data.title`. Send each run with `joppa_record_results`:
 the commit and one result for each test. The workspace schema gives the status
 names and the rules that make a criterion green or red. Bind every new or renamed
 test to its AC in the same change. See [what green means](docs/green.md) and

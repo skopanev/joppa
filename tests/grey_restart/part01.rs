@@ -97,21 +97,16 @@ impl Fixture {
             .await?
             .get(0))
     }
-    /// The GET /tests reply for one criterion.
+    /// The stored test status of one criterion, from the test nodes under it.
     async fn tests(&self, ac: &str) -> Result<Value> {
-        let response = self
-            .http
-            .get(format!(
-                "{}/api/workspaces/{}/tests?ac={ac}",
-                self.root, self.ws
-            ))
-            .bearer_auth(&self.agent)
-            .send()
-            .await?;
-        let code = response.status();
-        let body: Value = response.json().await?;
-        ensure!(code.is_success(), "GET /tests?ac={ac}: {code} {body}");
-        Ok(body)
+        store::test_status(&self.pool, &self.ws, AGENT, ac).await
+    }
+    /// Bind each test to a criterion with one test node.
+    async fn bind(&self, criterion: &str, tests: &[&str]) -> Result<()> {
+        for test in tests {
+            self.write(AGENT, json!({"op":"save_object","kind":"test","revision":0,"parent":criterion,"data":{"title":test,"owner":OWNER},"reason":"Bind the tests"})).await?;
+        }
+        Ok(())
     }
     /// Assert the status of A and D at one step and return both replies.
     async fn expect(&self, step: &str, a: &str, d: &str) -> Result<(Value, Value)> {

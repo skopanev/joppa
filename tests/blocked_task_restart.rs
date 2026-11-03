@@ -3,7 +3,7 @@
 //! restarts and rebuilds the workspace projections from the journal.
 #[path = "common/fake_spaces.rs"]
 mod fake_spaces;
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
 use std::{

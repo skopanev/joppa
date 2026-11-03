@@ -58,9 +58,10 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         "reads computed status={status} rollup={rollup} waits={waits} rebuild={rebuild}"
     );
 
-    // A command, an record, a repeat receipt and a batch of three: one rebuild each.
+    // A command, a record, a repeat receipt and a batch of three: one rebuild each.
     let before = counts();
-    run(&pool, &mut n, json!({"op":"set_ac_tests","target":"ac:a2","tests":list(&["y1"]),"reason":"Save the same list"})).await?;
+    let priority = json!({"op":"set_priority","target":"requirement:r2","priority":"p1"});
+    run(&pool, &mut n, priority).await?;
     ensure!(
         delta(before)[4] == 1,
         "a command rebuilds once: {:?}",
@@ -81,7 +82,7 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     .await?;
     ensure!(
         delta(before)[4] == 1,
-        "an record rebuilds once: {:?}",
+        "a record rebuilds once: {:?}",
         delta(before)
     );
     let before = counts();
@@ -102,9 +103,9 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         "a repeat receipt rebuilds once: {:?}",
         delta(before)
     );
-    let operations: Vec<store::BatchOperation> = ["x1", "x2", "x3"]
+    let operations: Vec<store::BatchOperation> = ["y2", "y3", "y4"]
         .iter()
-        .map(|t| serde_json::from_value(json!({"command":{"op":"set_ac_tests","target":"ac:a1","tests":list(&[t]),"reason":"Narrow the list"}})))
+        .map(|t| serde_json::from_value(json!({ "command": bind("ac:a2", t) })))
         .collect::<Result<_, _>>()?;
     let before = counts();
     store::execute_batch(&pool, ws(), "owner", "counters-batch", &operations).await?;
@@ -132,7 +133,8 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         }
     }
     // The next write rebuilds the projection, and the readers work again.
-    run(&pool, &mut n, json!({"op":"set_ac_tests","target":"ac:a2","tests":list(&["y1"]),"reason":"Save the same list again"})).await?;
+    let priority = json!({"op":"set_priority","target":"requirement:r2","priority":"p2"});
+    run(&pool, &mut n, priority).await?;
     for result in reads(&pool).await {
         result?;
     }

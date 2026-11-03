@@ -1,5 +1,5 @@
 //! Criterion status from records over a real server: member bot records outcomes through
-//! the MCP tool joppa_record_results, and a member reads GET /tests?ac=A.
+//! the MCP tool joppa_record_results, and a member reads store::test_status of A.
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 
@@ -20,8 +20,8 @@ fn pass(tests: &[&str]) -> Value {
 /// Member bot changes the title of A, so A has a new text.
 async fn change_text(w: &World) -> Result<()> {
     let a = w.object(record_world::A).await?;
-    // The save keeps the test list, the field tests of the document.
-    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],"parent":"requirement:r","data":{"title":"A changed","owner":"owner","tests":a["data"]["tests"]},"reason":"Sharper wording"});
+    // The test nodes under A stay. Only the text of A changes.
+    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"Sharper wording"});
     w.command(&w.bot, command)
         .await?
         .map_err(|e| anyhow::anyhow!("text change: {e}"))?;
@@ -36,16 +36,16 @@ async fn only_a_record_after_the_last_change_turns_a_criterion_green() -> Result
     for (fixture, commit) in [(1, c1), (2, c2)] {
         let w = world(&[X, Y]).await?;
         w.recorded(c1, pass(&[X, Y])).await?;
-        let s = w.tests_http(&w.alex).await?;
+        let s = w.a_status(&w.alex).await?;
         ensure!(
             s["status"] == "green",
             "fixture {fixture}, record on C1: {s}"
         );
         change_text(&w).await?;
-        let s = w.tests_http(&w.alex).await?;
+        let s = w.a_status(&w.alex).await?;
         ensure!(s["status"] == "grey", "fixture {fixture}, before: {s}");
         w.recorded(commit, pass(&[X, Y])).await?;
-        let s = w.tests_http(&w.alex).await?;
+        let s = w.a_status(&w.alex).await?;
         ensure!(s["status"] == "green", "fixture {fixture}, after: {s}");
         for t in [X, Y] {
             ensure!(
@@ -66,7 +66,7 @@ async fn the_newest_record_decides_a_test_and_not_the_newest_commit() -> Result<
     w.recorded(c2, pass(&[X])).await?;
     w.recorded(c1, json!([{"test":X,"status":"fail","message":"boom"}]))
         .await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "fail" && x["commit"] == c1, "{s}");
     ensure!(s["status"] == "red", "{s}");
@@ -81,7 +81,7 @@ async fn a_recorded_skip_keeps_the_criterion_grey() -> Result<()> {
     w.recorded("b0b0b0b", pass(&[X])).await?;
     w.recorded("c0c0c0c", json!([{"test":X,"status":"skip"}]))
         .await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "skipped" && x["commit"] == "c0c0c0c", "{s}");
     ensure!(s["status"] == "grey", "{s}");
@@ -103,7 +103,7 @@ async fn one_failing_case_of_three_in_a_record_makes_the_test_red() -> Result<()
     )
     .await?;
     // Agent bot reads with its own token.
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "fail", "{s}");
     ensure!(s["status"] == "red", "{s}");
     Ok(())
@@ -117,7 +117,7 @@ async fn a_recorded_todo_keeps_the_criterion_grey() -> Result<()> {
     w.recorded("b0b0b0b", pass(&[X])).await?;
     w.recorded("c0c0c0c", json!([{"test":X,"status":"todo"}]))
         .await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "todo" && x["commit"] == "c0c0c0c", "{s}");
     ensure!(s["status"] == "grey", "{s}");
@@ -158,10 +158,10 @@ async fn a_record_on_a_feature_branch_commit_turns_the_criterion_green() -> Resu
     let c = feature_commit(&dir)?;
     let _ = std::fs::remove_dir_all(&dir);
     let w = world(&[X]).await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     ensure!(test(&s, X)["status"] == "not_run", "{s}");
     w.recorded(&c, pass(&[X])).await?;
-    let s = w.tests_http(&w.bot).await?;
+    let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "pass" && x["commit"] == c.as_str(), "{s}");
     ensure!(s["status"] == "green", "{s}");

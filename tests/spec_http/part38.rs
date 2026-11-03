@@ -68,8 +68,7 @@ async fn a_task_that_depends_on_a_requirement_waits_for_its_criteria() -> Result
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
     let test = "tests/key.rs > rights";
-    w.command(json!({"op":"set_ac_tests","target":"ac:key-rights","tests":[test],"reason":"Bind"}))
-        .await?;
+    bind_tests(&w, &w.owner, "ac:key-rights", &[test]).await?;
     let pin = w.get("address=requirement:key").await?["current_revision"].clone();
     let mut command = linked_task_command("t2", 1, "other-rights", "requirement:key");
     command["links"][0]["revision"] = pin;

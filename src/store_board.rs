@@ -41,9 +41,12 @@ pub(super) async fn project_current(
     let configured = &launch["configured"];
     let blocker_count = &launch["blocker_count"];
     let object_types = crate::objects::schema(state).types;
+    // The test type comes from migrate_test_nodes in every workspace; it does not make a tree custom.
+    let mut compared = object_types.clone();
+    compared.retain(|_, t| t.role != crate::test_nodes::ROLE);
     let defaults = crate::objects::defaults();
-    let custom_tree = object_types.len() != defaults.len()
-        || object_types.iter().any(|(kind, t)| {
+    let custom_tree = compared.len() != defaults.len()
+        || compared.iter().any(|(kind, t)| {
             defaults.get(kind).is_none_or(|default| {
                 (
                     t.role.as_str(),

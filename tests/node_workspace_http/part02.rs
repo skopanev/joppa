@@ -75,6 +75,10 @@ impl World {
         .map_err(|e| anyhow::anyhow!("record: {e}"))?;
         Ok(())
     }
+    /// A test node that binds one test to a criterion.
+    fn bind(target: &str, test: &str) -> Value {
+        json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
+    }
     fn save(kind: &str, id: &str, revision: u64, parent: Option<&str>, data: Value) -> Value {
         json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"reason":"Fixture"})
     }
@@ -136,7 +140,7 @@ impl World {
         self.ok(
             owner,
             c,
-            json!({"op":"set_ac_tests","target":"ac:x","tests":[TEST],"reason":"Bind"}),
+            Self::bind("ac:x", TEST),
         )
         .await?;
         Ok(())

@@ -94,6 +94,9 @@ pub struct CriterionStatus {
     pub reason: Option<String>,
     pub tests_draft: bool,
     pub commit: Option<String>,
+    /// The order of the record of the oldest commit; a reply omits it.
+    #[serde(skip)]
+    pub(crate) oldest_order: Option<i64>,
     pub tests: Vec<TestStatus>,
 }
 
@@ -227,6 +230,7 @@ pub fn criterion_status(
         reason: reason.map(String::from),
         tests_draft: draft,
         commit: oldest.and_then(|t| t.commit.clone()),
+        oldest_order: oldest.and_then(|t| t.order),
         tests: statuses,
     }
 }

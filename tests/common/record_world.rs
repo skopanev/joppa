@@ -191,29 +191,21 @@ impl World {
         )
         .await
     }
-    /// The status of A through HTTP: GET /tests?ac=A.
-    pub async fn tests_http(&self, token: &str) -> Result<Value> {
-        let reply = self
-            .http
-            .get(format!(
-                "{}/api/workspaces/{}/tests?ac={A}",
-                self.root, self.ws
-            ))
-            .bearer_auth(token)
-            .send()
-            .await?;
-        ensure!(
-            reply.status().is_success(),
-            "GET /tests: {}",
-            reply.text().await?
-        );
-        Ok(reply.json().await?)
+    /// The member name of a token of this world. The outsider token gives "outsider".
+    pub fn member(&self, token: &str) -> &'static str {
+        [
+            (&self.owner, "owner"),
+            (&self.bot, "bot"),
+            (&self.alex, "alex"),
+        ]
+        .into_iter()
+        .find(|(t, _)| t.as_str() == token)
+        .map_or("outsider", |(_, name)| name)
     }
-    /// The status of A through MCP joppa_tests.
-    pub async fn tests_mcp(&self, token: &str) -> Result<Value> {
-        self.mcp(token, "joppa_tests", json!({"ac":A}))
-            .await?
-            .map_err(|e| anyhow::anyhow!("joppa_tests: {e}"))
+    /// The detailed test status of A for the member of `token`, from store::test_status.
+    /// HTTP and MCP have no other read of this status. A non-member gets the access error.
+    pub async fn a_status(&self, token: &str) -> Result<Value> {
+        store::test_status(&self.pool, &self.ws, self.member(token), A).await
     }
     /// The journal position of the newest entry that member alex reads in joppa_timeline.
     pub async fn position(&self) -> Result<Value> {

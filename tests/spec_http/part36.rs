@@ -104,14 +104,14 @@ async fn bot_saves_on_a_stale_revision_over_http_and_is_refused() -> Result<()> 
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn bot_saves_a_test_list_on_a_task_over_http_and_is_refused() -> Result<()> {
+async fn bot_saves_a_test_node_under_a_task_over_http_and_is_refused() -> Result<()> {
     // foreign-check-ignored-ac1: task T is under ac:key-rights.
     let w = world().await?;
     let task = ready_task(&w, "t", "key-rights").await?;
     bot_refused_over_http(
         &w,
-        json!({"op":"set_ac_tests","target":task,"tests":["checks.rs > key rights"],"reason":"Wrong target"}),
-        "tests are listed on criteria, not on tasks",
+        json!({"op":"save_object","kind":"test","revision":0,"parent":task,"data":{"title":"checks.rs > key rights","owner":"owner"},"reason":"Wrong target"}),
+        "parent type is not permitted by the tree schema",
     )
     .await
 }

@@ -28,7 +28,8 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure the fixture tree","types":{
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400}
     }})).await?;
     // P holds R with criteria A and B, and R2 with criterion C.
     p.save(
@@ -60,11 +61,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
             json!([]),
         )
         .await?;
-        p.write(
-            "agent",
-            json!({"op":"set_ac_tests","target":ac,"tests":[test],"reason":"Bind the tests"}),
-        )
-        .await?;
+        p.bind(&w.token, ac, &[test]).await?;
     }
     let ready = json!({"ready":true,"reason":"Known scope"});
     p.assess(
@@ -84,10 +81,11 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     let mut before = std::collections::BTreeMap::new();
     for (ac, _, _) in criteria {
         let s = p.ac_tests(ac).await?;
-        let mcp = p.mcp_read("joppa_tests", json!({"ac":ac})).await?;
+        let mcp =
+            p.mcp_read("joppa_objects", json!({"address":ac})).await?["status"]["tone"].clone();
         let readiness = p.assessment(ac).await?;
         ensure!(
-            s["status"] == "green" && mcp["status"] == "green" && readiness["state"] == "ready",
+            s["status"] == "green" && mcp == "green" && readiness["state"] == "ready",
             "{ac} before the change: {s} {mcp} {readiness}"
         );
         before.insert(ac, (s, readiness));
@@ -102,11 +100,10 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     .await?;
     for ac in ["criterion:a", "criterion:b"] {
         let s = p.ac_tests(ac).await?;
-        let mcp = p.mcp_read("joppa_tests", json!({"ac":ac})).await?;
+        let mcp =
+            p.mcp_read("joppa_objects", json!({"address":ac})).await?["status"]["tone"].clone();
         ensure!(
-            s["status"] == "grey"
-                && mcp["status"] == "grey"
-                && addresses(&s) == addresses(&before[ac].0),
+            s["status"] == "grey" && mcp == "grey" && addresses(&s) == addresses(&before[ac].0),
             "{ac} after the change: {s} {mcp}"
         );
         let readiness = p.assessment(ac).await?;
@@ -117,10 +114,10 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     }
     let c = p.ac_tests("criterion:c").await?;
     let mcp = p
-        .mcp_read("joppa_tests", json!({"ac":"criterion:c"}))
+        .mcp_read("joppa_objects", json!({"address":"criterion:c"}))
         .await?;
     ensure!(
-        c["status"] == "green" && mcp["status"] == "green",
+        c["status"] == "green" && mcp["status"]["tone"] == "green",
         "C after the change: {c} {mcp}"
     );
     ensure!(
@@ -131,8 +128,8 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
     ensure!(
-        // MCP gives only the counts above 0.
-        r["verification_summary"].get("passed").is_none(),
+        // R shows the grey tone of its reset criteria.
+        r["status"]["tone"] == "grey",
         "MCP joppa_objects R: {r}"
     );
     Ok(())
@@ -164,7 +161,8 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ordered work","types":{
         "cap":{"title":"Capability","role":"group","status":"children","root":true,"parents":[]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["cap"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     for (key, parent) in [

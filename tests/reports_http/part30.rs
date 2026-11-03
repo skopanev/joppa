@@ -43,7 +43,7 @@ impl Planning<'_> {
         Ok(http["tasks"].as_array().cloned().unwrap_or_default())
     }
     async fn status(&self, ac: &str) -> Result<Value> {
-        self.get(format!("/tests?ac={ac}")).await
+        store::test_status(&self.pool, &self.ws, "agent", ac).await
     }
     /// Member P (the owner) sends one command over HTTP.
     async fn owner_command(&self, command: Value) -> Result<Value> {
@@ -132,11 +132,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     .await?;
 
     // A record passes every listed test of A1.
-    p.write(
-        "agent",
-        json!({"op":"set_ac_tests","target":"criterion:a1","tests":[A],"reason":"Bind the test"}),
-    )
-    .await?;
+    p.bind(&w.token, "criterion:a1", &[A]).await?;
     let report = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
     p.record("c1c1c1c", report.clone()).await?;
     ensure!(p.status("criterion:a1").await?["status"] == "green");

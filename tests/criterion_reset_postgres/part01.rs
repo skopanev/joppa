@@ -61,8 +61,13 @@ fn save_g(revision: &Value, body: &str) -> Value {
     json!({"op":"save_object","kind":"area","id":"g","revision":revision,"parent":null,"data":{"title":"G","body":body,"owner":"owner"},"reason":"Change the group"})
 }
 
+/// A test node that binds one test to a criterion.
+fn bind(criterion: &str, test: &str) -> Value {
+    json!({"op":"save_object","kind":"test","revision":0,"parent":criterion,"data":{"title":test,"owner":"owner"},"reason":"Bind the tests"})
+}
+
 /// G holds spec R with criterion A; sibling group H holds spec RH with criterion D.
-/// Both list A and B, one record passes both, and both are assessed ready.
+/// Both have test nodes for A and B, one record passes both, and both are assessed ready.
 async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     let ws = format!("reset-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -84,13 +89,22 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     write(pool, &ws, "owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure groups","types":{
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400}
     }})).await?;
     for (area, spec, criterion) in [("g", "r", "a"), ("h", "rh", "d")] {
         write(pool, &ws, "owner", json!({"op":"save_object","kind":"area","id":area,"revision":0,"parent":null,"data":{"title":area.to_uppercase(),"body":"Group scope","owner":"owner"},"reason":"Create the group"})).await?;
         write(pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":spec,"revision":0,"parent":format!("area:{area}"),"data":{"title":spec,"body":"Implement the rule","owner":"owner"},"reason":"Create the spec"})).await?;
         write(pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":criterion,"revision":0,"parent":format!("spec:{spec}"),"data":{"title":criterion,"owner":"owner"},"reason":"Create the criterion"})).await?;
-        write(pool, &ws, "planner", json!({"op":"set_ac_tests","target":format!("criterion:{criterion}"),"tests":[A,B],"reason":"Bind the tests"})).await?;
+        for test in [A, B] {
+            write(
+                pool,
+                &ws,
+                "planner",
+                bind(&format!("criterion:{criterion}"), test),
+            )
+            .await?;
+        }
     }
     upload_c1(pool, &ws).await?;
     for (spec, criterion) in [("spec:r", "criterion:a"), ("spec:rh", "criterion:d")] {
@@ -117,12 +131,11 @@ async fn upload_c1(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     .await
 }
 
-/// The owner changes the text of criterion A and keeps its tests, so A is grey until a
+/// The owner changes the text of criterion A and keeps its test nodes, so A is grey until a
 /// newer record.
 async fn change_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
     let a = read(pool, ws, "criterion:a").await?;
-    let tests = a["document"]["data"]["tests"].clone();
-    write(pool, ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a["current_revision"],"parent":"spec:r","data":{"title":"a changed","owner":"owner","tests":tests},"reason":"Sharper wording"})).await?;
+    write(pool, ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a["current_revision"],"parent":"spec:r","data":{"title":"a changed","owner":"owner"},"reason":"Sharper wording"})).await?;
     let s = status(pool, ws, "criterion:a").await?;
     ensure!(
         s["status"] == "grey" && s["tests"].as_array().is_some_and(|t| t.len() == 2),
@@ -172,7 +185,7 @@ async fn a_group_change_reaches_the_batch_planning_read_and_survives_replay() ->
         refused.is_err_and(|e| format!("{e:#}").contains("criterion is already verified")),
         "a green criterion must refuse planning"
     );
-    // The list save of D stored its boundary; the change of G must keep it.
+    // The change of G must keep the stored boundary of D, if D has one.
     let d = snapshot(&pool, &ws).await?["boundaries"]["criterion:d"].clone();
     let g = read(&pool, &ws, "area:g").await?["current_revision"].clone();
     let operations: Vec<BatchOperation> = [

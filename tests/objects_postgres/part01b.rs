@@ -116,11 +116,10 @@ async fn replay_concurrency_ids_and_schema_after_setup(
         .iter()
         .find(|item| item["address"] == "domain:d")
         .unwrap();
-    assert_eq!(
-        parent["verification_summary"],
-        listed_parent["verification_summary"]
-    );
-    assert_eq!(parent["verification_summary"]["total"], 1);
+    // The list shows the same stored tone as the read of the node.
+    assert_eq!(parent["signal"], listed_parent["signal"]);
+    // The criteria of the domain have no test node, so the domain is orange.
+    assert_eq!(parent["signal"]["tone"], "orange");
     let ops: Vec<store::BatchOperation> = serde_json::from_value(json!([
         {"ref":"one","command":{"op":"save_object","kind":"note","revision":0,"parent":null,"data":{"title":"Generated note","owner":"owner","body":"First"},"reason":"Create source"}},
         {"command":{"op":"save_object","kind":"note","id":{"$ref":"one/id"},"revision":{"$ref":"one/saved_revision"},"parent":null,"data":{"title":"Generated note","owner":"owner","body":"Second"},"reason":"Update source"}}
@@ -214,15 +213,14 @@ async fn replay_concurrency_ids_and_schema_after_setup(
         // migrate_consumers adds one revision: one consumer per criterion. migrate_test_rules
         // adds one more: the test rules and the status rule of each type. migrate_note_parents
         // adds one more: an inbox type has no parent. migrate_purpose adds one more: a Task
-        // type has no parent_decision.
-        10
+        // type has no parent_decision. migrate_test_nodes adds one more: the type test.
+        11
     );
     assert_eq!(
         store::tree_schema(pool, ws, "agent", Some(0)).await?["schema"]["revision"],
         0
     );
-    let found =
-        store::search::find(pool, "agent", ws, "Generated", Some("note"), 10, None).await?;
+    let found = store::search::find(pool, "agent", ws, "Generated", Some("note"), 10, None).await?;
     assert!(
         found["items"]
             .as_array()

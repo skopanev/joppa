@@ -160,15 +160,8 @@ async fn an_identical_c1_report_after_a_text_change_turns_the_criterion_green() 
         s["status"] == "green" && saved_list(&s) == saved_list(&before),
         "after the record: {s}"
     );
-    let workspace = w.base.rsplit('/').next().unwrap();
-    let mcp = mcp_read(
-        &w,
-        &w.token,
-        "joppa_tests",
-        json!({"workspace":workspace,"ac":"ac:key-rights"}),
-    )
-    .await?;
-    ensure!(mcp["status"] == "green", "MCP joppa_tests: {mcp}");
+    let mcp = w.mcp_tone(&w.token, "ac:key-rights").await?;
+    ensure!(mcp == "green", "MCP joppa_objects: {mcp}");
     Ok(())
 }
 
@@ -215,8 +208,8 @@ async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterio
 async fn a_text_change_without_a_stored_boundary_counts_a_newer_record() -> Result<()> {
     let w = world().await?;
     let (_, before) = changed_after_c1(&w).await?;
-    // A criterion whose text changed before boundaries were stored has none. The test
-    // list is a field of its document, so no draft waits for another save.
+    // A criterion whose text changed before boundaries were stored has none. The text
+    // change stores one boundary for the criterion and one for each of its 2 test nodes.
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let workspace = w.base.rsplit('/').next().unwrap();
     let removed = pool
@@ -227,7 +220,7 @@ async fn a_text_change_without_a_stored_boundary_counts_a_newer_record() -> Resu
             &[&workspace],
         )
         .await?;
-    ensure!(removed == 1, "the text change stored no boundary");
+    ensure!(removed == 3, "the text change stored {removed} boundaries");
     w.record("c2c2c2c", passing()).await?;
     let s = w.status().await?;
     ensure!(

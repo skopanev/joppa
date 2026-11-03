@@ -1,6 +1,6 @@
 //! requirement:http-routes and requirement:mcp-tools over a real server: each listed route
 //! answers its method, an unlisted path gets the router 404, and tools/list names exactly
-//! the 15 MCP tools.
+//! the 14 MCP tools.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 /// Every route of the server: the method and the path pattern.
-const ROUTES: [(&str, &str); 54] = [
+const ROUTES: [(&str, &str); 53] = [
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/.well-known/oauth-protected-resource/mcp"),
     ("GET", "/.well-known/oauth-authorization-server"),
@@ -54,7 +54,6 @@ const ROUTES: [(&str, &str); 54] = [
     ("GET", "/api/workspaces/{workspace}/timeline"),
     ("GET", "/api/workspaces/{workspace}/history"),
     ("GET", "/api/workspaces/{workspace}/tree"),
-    ("GET", "/api/workspaces/{workspace}/tests"),
     ("GET", "/api/workspaces/{workspace}/agent-tokens"),
     ("POST", "/api/workspaces/{workspace}/agent-tokens"),
     (
@@ -70,7 +69,7 @@ const ROUTES: [(&str, &str); 54] = [
     ("POST", "/api/workspaces/{workspace}/delete"),
 ];
 
-const TOOLS: [&str; 15] = [
+const TOOLS: [&str; 14] = [
     "joppa_attach",
     "joppa_attachments",
     "joppa_batch",
@@ -83,7 +82,6 @@ const TOOLS: [&str; 15] = [
     "joppa_record_results",
     "joppa_search",
     "joppa_tasks",
-    "joppa_tests",
     "joppa_timeline",
     "joppa_tree",
 ];
@@ -119,8 +117,9 @@ async fn every_listed_route_answers_and_an_unlisted_path_is_404() -> Result<()> 
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
-    // The router fallback: 404 and an empty body.
-    for path in ["/api/no-such-route", "/no-such-page"] {
+    // The router fallback: 404 and an empty body. The removed tests route is one of them.
+    let removed = format!("/api/workspaces/{}/tests", w.ws);
+    for path in ["/api/no-such-route", "/no-such-page", removed.as_str()] {
         let (status, _, body) = call(&http, &w, "GET", path).await?;
         ensure!(
             status == 404 && body.is_empty(),
@@ -164,7 +163,7 @@ async fn every_listed_route_answers_and_an_unlisted_path_is_404() -> Result<()> 
 // mcp-tools-list
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn mcp_tools_list_names_exactly_15_tools() -> Result<()> {
+async fn mcp_tools_list_names_exactly_14_tools() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     let reply: Value = w
         .http
@@ -186,7 +185,7 @@ async fn mcp_tools_list_names_exactly_15_tools() -> Result<()> {
     let expected: BTreeSet<&str> = TOOLS.into_iter().collect();
     ensure!(names == expected, "{names:?}");
     ensure!(
-        reply["result"]["tools"].as_array().map(Vec::len) == Some(15),
+        reply["result"]["tools"].as_array().map(Vec::len) == Some(14),
         "a tool name repeats"
     );
     Ok(())

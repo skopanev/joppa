@@ -12,7 +12,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     ];
     // Two tests prove the criterion; the list is saved before the readiness assessment.
     let tests = ["tests/key.rs > first_boundary", "tests/key.rs > second_boundary"];
-    w.command(json!({"op":"set_ac_tests","target":"ac:key-rights","tests":tests,"reason":"Bind"})).await?;
+    bind_tests(&w, &w.owner, "ac:key-rights", &tests).await?;
     let a = object_as(&w, &w.bot, "ac:key-rights", None).await?;
     w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":a["process"]["assessment"]["revision"],"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
     w.command(json!({"op":"save_object","kind":"task","id":"handover","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key contract","owner":"owner","body":"Implement the exact key rights and record the checks","projects":[]},"reason":"Create work for the handover"})).await?;
@@ -139,8 +139,7 @@ async fn returned_work_handover(owner_release: bool) -> Result<()> {
     );
 
     // Q reads the partial result that P recorded.
-    let status = mcp_call(&w, bot2, "joppa_tests", json!({"workspace":w.ws,"ac":"ac:key-rights"})).await?;
-    let status: Value = serde_json::from_str(status["content"][0]["text"].as_str().unwrap_or("null"))?;
+    let status = store::test_status(&w.pool, &w.ws, "bot2", "ac:key-rights").await?;
     let first = status["tests"].as_array().and_then(|t| t.iter().find(|t| t["address"] == tests[0]).cloned());
     ensure!(
         first.is_some_and(|t| t["status"] == "pass" && t["commit"] == "def4567") && status["status"] != "green",

@@ -41,7 +41,8 @@ async fn blocked_tasks_keep_their_state_across_a_restart_that_rebuilds_the_journ
     let schema = store::tree_schema(&f.pool, &f.ws, OWNER, None).await?;
     f.write(OWNER, json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     f.write(PLANNER, json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":OWNER},"reason":"Set the rule"})).await?;

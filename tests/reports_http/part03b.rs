@@ -1,6 +1,15 @@
 // Part 3b of tests/reports_http.rs, included there, so the test names stay unchanged.
 
 impl Planning<'_> {
+    /// The address of this workspace on the test server.
+    fn base(&self) -> String {
+        let root = self.w.base.split("/api/").next().unwrap();
+        format!("{root}/api/workspaces/{}", self.ws)
+    }
+    /// The `token` member makes the test nodes of `ac` name exactly `tests`.
+    async fn bind(&self, token: &str, ac: &str, tests: &[&str]) -> Result<()> {
+        bind_at(&self.w.http, &self.base(), token, ac, tests).await
+    }
     /// P sends the claim through HTTP and then MCP. Each refusal returns `expected`
     /// and leaves the committed workspace rows unchanged.
     async fn refuse(&self, case: &str, ac: &str, revision: u64, expected: &str) -> Result<()> {

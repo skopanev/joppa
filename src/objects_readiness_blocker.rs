@@ -197,14 +197,12 @@ pub fn archive(
         "object is absent from the current tree"
     );
     let kind = &old.kind;
+    let roles = ["group", "document", "requirement", "ac", "test"];
+    let role = schema(w).types.get(kind).map(|t| t.role.clone());
     ensure!(
-        schema(w)
-            .types
-            .get(kind)
-            .is_some_and(|t| ["group", "document", "requirement", "ac"].contains(&t.role.as_str())),
-        "archive_object requires a group, document, requirement or criterion"
+        role.is_some_and(|r| roles.contains(&r.as_str())),
+        "archive_object requires a group, document, requirement, criterion or test"
     );
-
     ensure!(
         !w.planning_claims.keys().any(|ac| within(w, ac, &target)),
         "cannot archive an object with an active planning claim"

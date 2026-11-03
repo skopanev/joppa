@@ -155,8 +155,8 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
         }
         json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"links":link,"reason":"Link to the user"})
     };
-    // Fixture 1: no object links to U, so U is grey.
-    ensure!(w.tones(&["user:u"]).await? == ["grey"], "fixture 1");
+    // Fixture 1: no object links to U, so U is orange.
+    ensure!(w.tones(&["user:u"]).await? == ["orange"], "fixture 1");
     // Fixture 2: green check A links to U.
     w.command(&w.owner, save_linked("check", "a", "rule:r", json!({})))
         .await?;
@@ -199,9 +199,9 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
     w.bind("check:b", &["b"]).await?;
     w.report(&[("a", "pass"), ("b", "fail")]).await?;
     ensure!(w.tones(&["user:u"]).await? == ["red"], "fixture 4");
-    // Fixture 5: B is archived and an open Task links to U, so U is grey.
-    let b = w.object("check:b").await?;
-    w.command(&w.owner, json!({"op":"archive_object","target":"check:b","revision":b["current_revision"],"reason":"Drop the check"})).await?;
+    // Fixture 5: B is archived and an open Task links to U. A Task has the rule none, so
+    // U does not count it and stays green.
+    w.archive("check:b").await?;
     w.report(&[("a", "pass")]).await?;
     ensure!(
         w.tones(&["user:u"]).await? == ["green"],
@@ -217,7 +217,7 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
         ),
     )
     .await?;
-    ensure!(w.tones(&["user:u"]).await? == ["grey"], "fixture 5");
+    ensure!(w.tones(&["user:u"]).await? == ["green"], "fixture 5");
     // Fixture 6: the open Task is retired, and a retired Task does not count.
     let o = format!("{task}:open");
     let revision = w.object(&o).await?["current_revision"].clone();

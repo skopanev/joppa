@@ -57,7 +57,7 @@ pub(super) async fn state_criterion_statuses(
     // The test names of each parent come from one pass over the test nodes.
     let names = state
         .test_nodes_migrated
-        .then(|| crate::test_nodes::names_by_parent(state));
+        .then(|| crate::test_nodes::nodes_by_parent(state));
     let criteria = targets
         .iter()
         .filter_map(|target| {
@@ -116,9 +116,30 @@ async fn statuses_for_criteria(
             .iter()
             .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
             .collect();
-        let mut status = serde_json::to_value(crate::ac_tests::criterion_status(
-            tests, draft, boundary, &reports, &own, rules,
-        ))?;
+        // After migrate_test_nodes, each test counts from the reset of its own node.
+        let status = match current.and_then(|r| r.boundaries.as_ref()) {
+            Some(boundaries) => crate::test_nodes::combine(
+                tests
+                    .iter()
+                    .zip(boundaries)
+                    .map(|(test, b)| {
+                        let own = by_test.get(test.as_str()).cloned().unwrap_or_default();
+                        crate::ac_tests::criterion_status(
+                            std::slice::from_ref(test),
+                            false,
+                            *b,
+                            &reports,
+                            &own,
+                            rules,
+                        )
+                    })
+                    .collect(),
+            ),
+            None => {
+                crate::ac_tests::criterion_status(tests, draft, boundary, &reports, &own, rules)
+            }
+        };
+        let mut status = serde_json::to_value(status)?;
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));

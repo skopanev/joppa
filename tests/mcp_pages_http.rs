@@ -13,7 +13,7 @@ fn count(reply: &Value) -> usize {
     reply["items"].as_array().map_or(0, Vec::len)
 }
 
-/// 30 criteria `ac:b00` ... `ac:b29` titled "Paging item NN", and 28 more revisions of `ac:a`
+/// 30 criteria `ac:b00` ... `ac:b29` titled "Paging item NN", and 29 more revisions of `ac:a`
 /// that link to all of them.
 async fn fixture(w: &record_world::World) -> Result<()> {
     let mut operations: Vec<Value> = (0..30)
@@ -26,11 +26,13 @@ async fn fixture(w: &record_world::World) -> Result<()> {
     let links: Vec<Value> = (0..30)
         .map(|i| json!({"target":format!("ac:b{i:02}"),"relation":"related"}))
         .collect();
-    for revision in 2..30 {
-        operations.push(json!({"command":{"op":"save_object","kind":"ac","id":"a","revision":revision,
+    for revision in 1..30 {
+        operations.push(
+            json!({"command":{"op":"save_object","kind":"ac","id":"a","revision":revision,
             "parent":"requirement:r","links":links,
-            "data":{"title":"A","owner":"owner","tests":["tests/x.rs > t"],"body":format!("Revision {}", revision + 1)},
-            "reason":format!("Revision {}", revision + 1)}}));
+            "data":{"title":"A","owner":"owner","body":format!("Revision {}", revision + 1)},
+            "reason":format!("Revision {}", revision + 1)}}),
+        );
     }
     w.mcp(
         &w.bot,
@@ -141,7 +143,7 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
         tasks["items"].is_array() && tasks.get("tasks").is_none() && tasks["total"] == 0,
         "{tasks}"
     );
-    // Workspaces and the test overview.
+    // Workspaces and the test nodes.
     // The test database can hold the workspaces of earlier runs, so the check does not
     // count them. It follows the pages until it finds this workspace; each page has at most
     // 25 items and the same total.
@@ -178,12 +180,17 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
         json!([{"test":"tests/x.rs > t","status":"pass"}]),
     )
     .await?;
-    let overview = read(&w, "joppa_tests", json!({})).await?;
+    // The test nodes of the workspace: one page with the green test node of A.
+    let nodes = json!({"kind":"test","parent":"*","fields":["title","status","parent"]});
+    let nodes = read(&w, "joppa_objects", nodes).await?;
     ensure!(
-        overview["total"] == 1
-            && overview["items"][0]
-                == json!({"address":"ac:a","status":"green","ancestors":["requirement:r"]}),
-        "{overview}"
+        nodes["total"] == 1
+            && count(&nodes) == 1
+            && nodes.get("next_cursor").is_none()
+            && nodes["items"][0]["title"] == "tests/x.rs > t"
+            && nodes["items"][0]["status"] == "green"
+            && nodes["items"][0]["parent"] == "ac:a",
+        "{nodes}"
     );
     Ok(())
 }

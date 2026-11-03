@@ -24,7 +24,8 @@ async fn people(w: &World) -> Result<Planning<'_>> {
     let schema = store::tree_schema(&p.pool, &p.ws, "owner", None).await?;
     p.write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     p.save(
@@ -184,24 +185,12 @@ async fn each_claim_guard_refuses_a_person_over_http_and_mcp() -> Result<()> {
     let p = people(&w).await?;
     p.ready().await?;
     p.t0().await?;
-    let tests =
-        json!({"op":"set_ac_tests","target":"criterion:a","tests":[A,B],"reason":"Link the tests"});
-    p.send_as(&w.alex, false, &tests)
-        .await?
-        .map_err(anyhow::Error::msg)?;
     let root = w.base.split("/api/").next().unwrap();
     let base = format!("{root}/api/workspaces/{}", p.ws);
+    bind_at(&w.http, &base, &w.alex, "criterion:a", &[A, B]).await?;
     let passed = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
     record_http::recorded(&w.http, root, &p.ws, &w.alex, "c1c1c1c", passed).await?;
-    let status: Value = w
-        .http
-        .get(format!("{base}/tests?ac=criterion:a"))
-        .bearer_auth(&w.alex)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let status = store::test_status(&p.pool, &p.ws, "alex", "criterion:a").await?;
     ensure!(status["status"] == "green", "the record must make A green: {status}");
     let revision = p.revision("criterion:a").await?;
     let verified = "criterion is already verified";
