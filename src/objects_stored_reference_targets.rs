@@ -156,6 +156,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         statuses: previous_schema.statuses.clone(),
         test_results: previous_schema.test_results.clone(),
         status_required: previous_schema.status_required,
+        filters: previous_schema.filters.clone(),
         actor: actor.into(),
         at: at.into(),
         position,

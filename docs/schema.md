@@ -97,6 +97,17 @@ The rule tone also sets the status label, for example "Children checks passed" o
 `process_fields` lists `confirmed` for a requirement or a criterion and `acceptance` for a
 requirement.
 
+## Filter fields
+
+`filters` names up to 16 `data` fields that the board offers as filter drop-downs, for example
+`["tags", "priority"]`. A name is a lowercase letter, then up to 31 lowercase letters, digits or
+`_`. `title` and `body` are refused. A change without `filters` keeps the list.
+The board read (`GET /api/workspaces/{w}/board`) gives `filters`: for each field, its present
+values in text order, at most 200: `[{"field": "tags", "values": [{"value": "swap", "list": true}]}]`.
+`list` is true for an element of a list field. A choice filters with the `data` node filter:
+`{"tags": ["swap"]}` for a list element, `{"priority": "p0"}` for a string. `/tree` lists the
+fields under Filter fields.
+
 ## Test rules
 
 The schema holds every test rule in the block `test_results`. A new workspace gets this block:

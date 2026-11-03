@@ -5,7 +5,8 @@ const svgElement=(tag,attributes)=>{const el=document.createElementNS('http://ww
 async function api(path){const response=await fetch('/api/'+path);const value=await response.json();if(!response.ok)throw Error(value.error||'Could not read the schema.');return value;}
 
 // The configuration lists repeat the schema in words: root types, parent rules, link
-// relations, priority levels and the status rule of each type. Nothing here is editable.
+// relations, priority levels, the data fields of the board filter drop-downs and the status
+// rule of each type. Nothing here is editable.
 const RULE_TEXT={own:'Result of its own test',children:'Highest tone of its children',links:'Highest tone of linking objects',none:'Process status'};
 function renderConfig(schema){
   const list=(id,values)=>document.querySelector('#'+id).replaceChildren(...values.map(text=>element('li',text)));
@@ -15,6 +16,7 @@ function renderConfig(schema){
   list('config-edges',kinds.flatMap(kind=>[...(schema.types[kind].root?['Workspace']:[]),...schema.types[kind].parents.map(title)].map(parent=>parent+' → '+title(kind))));
   list('config-relations',schema.link_relations||[]);
   list('config-priorities',schema.priority_levels||[]);
+  list('config-filters',schema.filters||[]);
   list('config-status-rules',kinds.map(kind=>title(kind)+': '+(RULE_TEXT[schema.status_rules?.[kind]]||schema.status_rules?.[kind]||'')));
 }
 function renderTree(schema){

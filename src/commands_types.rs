@@ -31,6 +31,9 @@ pub struct SetTreeSchemaOp {
     /// With true, each type needs a status rule; without it the schema keeps its flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_required: Option<bool>,
+    /// The data fields of the board filter drop-downs; without it the schema keeps its list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filters: Option<Vec<String>>,
     pub reason: String,
 }
 

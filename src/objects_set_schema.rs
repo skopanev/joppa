@@ -12,6 +12,7 @@ pub fn set_schema(
     statuses: Option<&Vec<crate::status_colors::Status>>,
     test_results: Option<&Value>,
     status_required: Option<bool>,
+    filters: Option<&Vec<String>>,
     reason: &str,
     position: u64,
     at: &str,
@@ -198,6 +199,10 @@ pub fn set_schema(
     let statuses = statuses.cloned().or_else(|| schema(w).statuses);
     let test_results = test_results.or_else(|| schema(w).test_results);
     let status_required = status_required.or_else(|| schema(w).status_required);
+    if let Some(fields) = filters {
+        crate::filter_fields::validate(fields)?;
+    }
+    let filters = filters.cloned().or_else(|| schema(w).filters);
     if status_required == Some(true) {
         for (kind, t) in types {
             ensure!(
@@ -210,6 +215,7 @@ pub fn set_schema(
         revision: revision + 1,
         types: types.clone(),
         status_required,
+        filters,
         priorities,
         status_colors,
         statuses,

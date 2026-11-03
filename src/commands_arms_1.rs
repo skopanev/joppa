@@ -37,6 +37,7 @@ pub(super) fn apply_set_tree_schema(
         statuses,
         test_results,
         status_required,
+        filters,
         reason,
     }) = command
     else {
@@ -58,6 +59,7 @@ pub(super) fn apply_set_tree_schema(
         statuses.as_ref(),
         test_results.as_ref(),
         *status_required,
+        filters.as_ref(),
         reason,
         position,
         recorded_at,

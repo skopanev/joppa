@@ -21,6 +21,7 @@ pub async fn tree_schema(
             statuses: None,
             test_results: None,
             status_required: None,
+            filters: None,
             actor: row.get(0),
             at: String::new(),
             position: 0,

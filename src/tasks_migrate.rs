@@ -81,6 +81,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             None,
             None,
             None,
+            None,
             objects::TASK_GATE_SCHEMA_REASON,
             position,
             at,

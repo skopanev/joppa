@@ -143,3 +143,39 @@ test('board-filter-pages: a filter list and a search show 25 rows, and Load more
     }
   } finally { await f.close(); }
 });
+
+test('filter-fields-ac2 field-filters: each schema filter field is a drop-down of its values and a part of the data filter', async () => {
+  const types = {domain: {title: 'Domains', role: 'group', status: 'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status: 'children', parents: ['domain']}, test: testType(['ac'])};
+  const f = await fixture(types);
+  try {
+    const tree = await f.api('/tree');
+    await f.command({op: 'set_tree_schema', revision: tree.current_revision, filters: ['tags', 'priority'], reason: 'Offer two filters'}, f.live.owner);
+    const domain = (id, data) => f.command({op: 'save_object', kind: 'domain', id, revision: 0, parent: null, data: {title: id, owner: 'owner', body: 'Fixture text', ...data}, reason: 'Define the browser fixture'});
+    await domain('swap', {tags: ['swap', 'fx'], priority: 'p0'});
+    await domain('fx', {tags: ['fx']});
+    await domain('plain', {});
+    const rows = () => f.page.evaluate(() => [...document.querySelectorAll('.object-filter-results .common-object')].map(row => row.dataset.objectAddress).sort());
+    const shows = async (wanted, step) => f.page.waitForFunction(w => JSON.stringify([...document.querySelectorAll('.object-filter-results .common-object')].map(r => r.dataset.objectAddress).sort()) === w, JSON.stringify(wanted))
+      .catch(async () => assert.fail(step + ': ' + JSON.stringify(await rows())));
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+    const tags = f.page.getByLabel('Filter tags'), priority = f.page.getByLabel('Filter priority');
+    await tags.waitFor();
+    assert.deepEqual(await tags.locator('option').allTextContents(), ['All tags', 'fx', 'swap']);
+    assert.deepEqual(await priority.locator('option').allTextContents(), ['All priority', 'p0']);
+    await tags.selectOption({label: 'fx'});
+    await shows(['domain:fx', 'domain:swap'], 'tag fx');
+    await priority.selectOption({label: 'p0'});
+    await shows(['domain:swap'], 'tag fx and priority p0');
+    assert.deepEqual(JSON.parse(new URL(f.page.url()).searchParams.get('data')), {tags: ['fx'], priority: 'p0'});
+    // A link names the choice of each drop-down. A part that no drop-down shows stays in the filter.
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&data=' + encodeURIComponent('{"tags":["swap"],"owner":"owner"}'));
+    await shows(['domain:swap'], 'the link filter');
+    await tags.waitFor();
+    assert.equal(await tags.inputValue(), '{"tags":["swap"]}');
+    assert.equal(await f.page.locator('.link-filters').textContent(), 'data = {"owner":"owner"}');
+    await tags.selectOption('');
+    await shows(['domain:fx', 'domain:plain', 'domain:swap'], 'only the rest of the link filter');
+    assert.equal(new URL(f.page.url()).searchParams.get('data'), '{"owner":"owner"}');
+  } finally { await f.close(); }
+});

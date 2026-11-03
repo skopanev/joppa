@@ -16,19 +16,21 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
   try {
     const tree = await f.api('/tree');
     await f.command({op: 'set_tree_schema', revision: tree.current_revision, types, priorities: ['urgent', 'normal', 'later'],
-      reason: 'Set the priority levels'}, f.live.owner);
+      filters: ['tags', 'priority'], reason: 'Set the priority levels and the filter fields'}, f.live.owner);
     // The expected lists come from the configuration above, not from the page.
     const expected = {
       roots: ['Areas', 'Memos'],
       edges: ['Areas → Rules', 'Rules → Checks', 'Workspace → Memos', 'Any object type → Memos', 'Workspace → Areas', 'Checks → Work'].sort(),
       relations: ['related', 'depends_on'],
       priorities: ['urgent', 'normal', 'later'],
+      filters: ['tags', 'priority'],
       'status-rules': ['Areas: Highest tone of its children', 'Checks: Highest tone of its children', 'Memos: Process status',
         'Rules: Highest tone of its children', 'Work: Highest tone of linking objects'],
     };
     const saved = (await f.api('/tree')).schema;
     assert.deepEqual(saved.priority_levels, expected.priorities);
     assert.deepEqual(saved.link_relations, expected.relations);
+    assert.deepEqual(saved.filters, expected.filters);
     assert.deepEqual(saved.status_rules, {area: 'children', check: 'children', memo: 'none', rule: 'children', work: 'links'});
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     await f.page.locator('#tree-schema-link').click();

@@ -112,6 +112,9 @@ pub struct SchemaRevision {
     /// the type, and its nodes take the tone of an unset rule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_required: Option<bool>,
+    /// The data fields that the board offers as filter drop-downs (filter_fields).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filters: Option<Vec<String>>,
     pub actor: String,
     pub at: String,
     pub position: u64,

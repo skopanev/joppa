@@ -152,6 +152,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             statuses: None,
             test_results: None,
             status_required: None,
+            filters: None,
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,

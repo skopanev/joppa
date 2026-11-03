@@ -1,7 +1,8 @@
-// The owner, assignee, status, readiness and search filters of the board. The server applies
-// the node filters (src/node_filter.rs) at every level of the tree. A board link can carry
-// them in its query, for example /?workspace=w&assignee=user-1&ready=false: each picker shows
-// its link value, and a picker change writes its value back to the link.
+// The owner, assignee, status, readiness, field and search filters of the board. The server
+// applies the node filters (src/node_filter.rs) at every level of the tree. A board link can
+// carry them in its query, for example /?workspace=w&assignee=user-1&ready=false: each picker
+// shows its link value, and a picker change writes its value back to the link. The schema
+// filter fields add one drop-down each (filter-fields.js), and a view can offer more pickers.
 import {state} from 'board/state.js';
 import {E} from 'board/dom.js';
 import {notify,button} from 'board/feedback.js';
@@ -11,6 +12,7 @@ import {inputQueue} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
 import {searchScope,searchRows} from 'board/search-results.js';
+import {fieldPickers} from 'board/filter-fields.js';
 export const LINK_FILTERS=['parent','depth','kind','status','owner','assignee','ready','data'];
 export function commonObjectFilters(root,contents,apply){
   const controls=E('div',undefined,'filter-fields');let request=0;
@@ -22,15 +24,18 @@ export function commonObjectFilters(root,contents,apply){
   const status=picker('status','Object status',[['','All statuses']]);const markStatus=statusFilter(status);
   const ready=picker('ready','Object readiness',[['','All readiness'],['true','Ready'],['false','Not ready']]);
   const pickers=[owner,assignee,status,ready];
+  const fields=fieldPickers(picker,linked.data);if(fields.parsed)delete linked.data;
   // Each picker takes its link value. The other link filters show in one line.
-  for(const select of pickers)if([...select.options].some(o=>o.value===linked[select.name])){select.value=linked[select.name];delete linked[select.name];}markStatus();
-  const fromLink=E('p',Object.entries(linked).map(([k,v])=>k+' = '+v).join(' · '),'link-filters hint');fromLink.hidden=!Object.keys(linked).length;
+  const take=select=>{if([...select.options].some(o=>o.value===linked[select.name])){select.value=linked[select.name];delete linked[select.name];}};
+  for(const select of pickers)take(select);markStatus();
+  const fromLink=E('p',undefined,'link-filters hint');
+  const showLink=()=>{const rest=Object.entries(linked);if(fields.rest())rest.push(['data',fields.rest()]);fromLink.textContent=rest.map(([k,v])=>k+' = '+v).join(' · ');fromLink.hidden=!rest.length;};showLink();
   // The search box uses the server search of joppa_search and combines with the other filters.
   const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
   const scope=searchScope(controls,()=>update());
   // A graph gives `apply`: it reads the matches itself and dims the other nodes.
   const update=async()=>{const mine=++request,generation=state.loadNumber;const text=search.value.trim();
-    const params={...linked,...Object.fromEntries(pickers.filter(s=>s.value).map(s=>[s.name,s.value]))};
+    const params={...linked,...Object.fromEntries(pickers.filter(s=>s.value).map(s=>[s.name,s.value])),...(fields.data()?{data:fields.data()}:{})};
     const filtering=Boolean(text||Object.keys(params).length);state.data.filterActive=filtering;
     const current=()=>mine===request&&generation===state.loadNumber&&controls.isConnected;
     if(apply)return apply({params,text,scope:scope(),filtering,current}).catch(e=>{if(mine===request)notify(e);});
@@ -49,10 +54,16 @@ export function commonObjectFilters(root,contents,apply){
     await show();
   }catch(e){if(mine===request)notify(e);}};
   // A picker change writes the picker values to the link and keeps the other query values.
-  const relink=()=>{const next=new URLSearchParams(location.search);for(const select of pickers){if(select.value)next.set(select.name,select.value);else next.delete(select.name);}history.replaceState(history.state,'',location.pathname+'?'+next+location.hash);};
+  const relink=()=>{const next=new URLSearchParams(location.search);for(const select of pickers){if(select.value)next.set(select.name,select.value);else next.delete(select.name);}
+    if(fields.parsed){if(fields.data())next.set('data',fields.data());else next.delete('data');}
+    history.replaceState(history.state,'',location.pathname+'?'+next+location.hash);};
   state.data.filterActive=false;
-  for(const select of pickers)select.onchange=()=>{markStatus();relink();update();};
-  let typing;search.oninput=()=>{clearTimeout(typing);typing=setTimeout(update,250);};root.append(controls,fromLink);if(Object.keys(linked).length||pickers.some(s=>s.value))update();return controls;
+  const changed=()=>{markStatus();relink();update();};
+  for(const select of [...pickers,...fields.selects])select.onchange=changed;
+  let typing;search.oninput=()=>{clearTimeout(typing);typing=setTimeout(update,250);};root.append(controls,fromLink);if(Object.keys(linked).length||fields.data()||pickers.some(s=>s.value))update();
+  // A view offers one more picker of a link filter, for example the graph its roots.
+  const offer=(name,label,options)=>{const select=picker(name,label,options);controls.insertBefore(select,search);take(select);showLink();pickers.push(select);select.onchange=changed;return select;};
+  return {controls,offer};
 }
 // One page of the matches: the server search for a text, else the node list.
 export function matches(text,params){

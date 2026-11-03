@@ -69,17 +69,30 @@ The board shows the timeline at `/?workspace=W&view=timeline`, newest first.
 
 ## Board views
 
-The header links Tree and Graph switch the board view and keep the node filters of the link.
+The header switch Tree | Graph changes the board view and keeps the node filters of the link.
 Every board list reads one page of 25 rows. Load more reads the next page with its cursor.
+Each filter field of the tree schema (`filters`, see [schema](schema.md#filter-fields)) adds
+one drop-down to the filter bar. A choice is a part of the `data` node filter.
 
 - Tree, `/?workspace=W`: the root collections, the cards and their children.
-- Graph, `/?workspace=W&view=graph`: one SVG of every present node. A dot has the colour of
-  its status tone. A line joins a node to its parent, and an arrow goes from a node to each
-  node that it `depends_on`. The graph reads the nodes with
+- Graph, `/?workspace=W&view=graph`: one SVG of every present node in a live force layout.
+  The graph reads the nodes with
   `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,links`.
-- In the graph, the filter bar and a click on a dot select the seed nodes. The seeds and their
-  full `depends_on` chain, upstream and downstream, stay lit. Every other dot, edge and label
-  has opacity 0.15. A click on the empty canvas clears the pick.
+  - A dot has the colour of its status tone. Its radius shows its level: 12 for a root, 8.5,
+    6, and 4.5 for a node 3 or more levels down.
+  - A line joins a parent to its child. An arrow goes from a node to each node that
+    `depends_on` it.
+  - The path of a node set is the set, every node below it, every node that they depend on
+    and every node that depends on them at any distance, and their parents up to the root.
+    Each node of a path shows its step: 1 for a node with no upstream node in the path.
+  - Without a filter every node shows, muted. A click on a dot lights its path, and the other
+    nodes fade to opacity 0.08. A card shows the node, its parent, its data fields, the start
+    of its body and the nodes one `depends_on` step up and down. A step picks its node.
+  - With a filter, a field choice, the Object root picker or a search, only the matches and
+    their path show. The layout runs on them alone and orders the steps from left to right.
+  - A drag of a dot pulls its linked dots. A drag from any other place pans. A wheel or a
+    two-finger swipe pans, and a pinch (a wheel with Ctrl or Cmd, or a Safari gesture) zooms.
+    The camera fits the path after each pick or filter.
 
 ## Generated IDs and batches
 

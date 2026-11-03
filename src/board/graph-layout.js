@@ -1,115 +1,128 @@
-// The layout and the drawing of the board graph. The parent edges make a radial tree: every
-// node without children sits on the outer ring at an equal step, and a parent sits on the ring
-// of its depth at the mean angle of its leaves. The same nodes give the same places.
+// The drawing of the board graph: one SVG with a dot for each node, a line from each parent to
+// its child and an arrow from each prerequisite to the node that depends_on it. A live force
+// layout (graph-force.js) moves the dots, and the camera (graph-camera.js) moves the view.
+// - A drag of a dot holds it at the pointer, and the linked dots follow it.
+// - A drag from any other place pans the view. A click with no drag picks a dot or clears.
+// - A pointer over a dot shows its label and marks its direct neighbours.
+// - A dot is larger the higher its level: a root is the largest, a node 3 levels down or
+//   deeper the smallest. A lit dot grows by 1.5 and keeps its place in this order.
+import {forceSimulation,seedPoints,PARENT_LENGTH,LINK_LENGTH,REST} from 'board/graph-force.js';
+import {graphCamera} from 'board/graph-camera.js';
 const SVG='http://www.w3.org/2000/svg';
-// The ring step and the arc between two neighbour leaves, in SVG units.
-const RING=110,LEAF_ARC=16;
+// The distance between two flow layers, in SVG units, and the dot radius of each level.
+const LAYER_GAP=150,RADIUS=[12,8.5,6,4.5],LIT_GROWTH=1.5;
 export function svg(tag,attributes={},cls){
   const element=document.createElementNS(SVG,tag);
   for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
   if(cls)element.setAttribute('class',cls);
   return element;
 }
-// The place of each node: {x, y, depth}. A node whose parent is not in the graph is a root.
-export function radialLayout(nodes){
-  const children=new Map(),roots=[];
-  for(const node of nodes.values()){
-    const parent=node.parent&&node.parent!==node.address&&nodes.has(node.parent)?node.parent:null;
-    if(parent){if(!children.has(parent))children.set(parent,[]);children.get(parent).push(node.address);}
-    else roots.push(node.address);
-  }
-  for(const list of children.values())list.sort();roots.sort();
-  // The leaves in tree order, and the depth of each node. A node is placed once.
-  const leaves=[],depth=new Map(),order=[];
-  const walk=(address,level)=>{
-    if(depth.has(address))return;depth.set(address,level);order.push(address);
-    const below=children.get(address)||[];
-    if(!below.length)leaves.push(address);
-    for(const child of below)walk(child,level+1);
-  };
-  for(const address of roots)walk(address,0);
-  const deepest=Math.max(0,...depth.values());
-  const outer=Math.max((deepest+1)*RING,leaves.length*LEAF_ARC/(2*Math.PI));
-  const angle=new Map(leaves.map((address,i)=>[address,2*Math.PI*i/Math.max(1,leaves.length)]));
-  // A parent takes the mean angle of its leaves: the children come after it in tree order.
-  for(const address of [...order].reverse()){
-    const below=children.get(address)||[];
-    if(below.length)angle.set(address,below.reduce((sum,child)=>sum+angle.get(child),0)/below.length);
-  }
-  const places=new Map();
-  for(const address of order){
-    const leaf=!(children.get(address)||[]).length;
-    const radius=leaf?outer:outer*(depth.get(address)+1)/(deepest+1);
-    const a=angle.get(address);
-    places.set(address,{x:radius*Math.cos(a),y:radius*Math.sin(a),depth:depth.get(address)});
-  }
-  return {places,outer};
-}
-// The drawing: a group of parent edges, a group of depends_on arrows and a group of dots.
-// Each dot has the colour of its status tone and the title of its node.
-export function drawGraph(nodes,layout,onPick){
-  const pad=60,size=2*(layout.outer+pad);
-  const canvas=svg('svg',{viewBox:[-size/2,-size/2,size,size].join(' '),role:'img','aria-label':'Graph of the workspace nodes'},'graph-canvas');
-  const defs=svg('defs');const marker=svg('marker',{id:'graph-arrow',viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
+// Each edge goes from upstream to downstream: {from, to, element, depends}. The canvas goes
+// into `holder` before the layout starts, so the frame loop sees it.
+export function drawGraph(nodes,onPick,holder){
+  const points=seedPoints(nodes);
+  const canvas=svg('svg',{role:'img','aria-label':'Graph of the workspace nodes'},'graph-canvas');
+  const defs=svg('defs'),marker=svg('marker',{id:'graph-arrow',viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
   marker.append(svg('path',{d:'M0 0L10 5L0 10z'},'graph-arrow-head'));defs.append(marker);
-  const parents=svg('g',{},'graph-parents'),arrows=svg('g',{},'graph-arrows'),dots=svg('g',{},'graph-dots'),labels=svg('g',{},'graph-labels');
-  canvas.append(defs,parents,arrows,dots,labels);
-  const edges=[],dotOf=new Map(),labelOf=new Map();
-  const at=address=>layout.places.get(address);
+  const layers=['graph-parents','graph-arrows','graph-dots','graph-labels'].map(cls=>svg('g',{},cls));
+  canvas.append(defs,...layers);
+  const edges=[],dotOf=new Map(),labelOf=new Map(),stepOf=new Map(),neighbors=new Map();
+  const near=(a,b)=>{for(const [x,y] of [[a,b],[b,a]]){if(!neighbors.has(x))neighbors.set(x,new Set());neighbors.get(x).add(y);}};
+  const edge=(from,to,depends)=>{
+    if(!points.has(from)||!points.has(to)||from===to)return;
+    const element=depends?svg('path',{'marker-end':'url(#graph-arrow)'},'graph-edge graph-depends'):svg('line',{},'graph-edge graph-parent');
+    element.dataset.from=from;element.dataset.to=to;layers[depends?1:0].append(element);
+    edges.push({from,to,element,depends});near(from,to);
+  };
   for(const node of nodes.values()){
-    const from=at(node.parent),to=at(node.address);
-    if(!from||!to||node.parent===node.address)continue;
-    const line=svg('line',{x1:from.x,y1:from.y,x2:to.x,y2:to.y},'graph-edge graph-parent');
-    parents.append(line);edges.push({from:node.parent,to:node.address,element:line});
-  }
-  for(const node of nodes.values())for(const link of node.links||[]){
-    if(link.relation!=='depends_on'||!at(link.target)||link.target===node.address)continue;
-    const from=at(node.address),to=at(link.target);
-    // The arrow bends to the left of its direction and ends at the rim of the target dot.
-    const dx=to.x-from.x,dy=to.y-from.y,r=radius(to)+2;
-    const cx=(from.x+to.x)/2-dy*0.2,cy=(from.y+to.y)/2+dx*0.2;
-    const ex=to.x-(to.x-cx)/Math.hypot(to.x-cx,to.y-cy)*r,ey=to.y-(to.y-cy)/Math.hypot(to.x-cx,to.y-cy)*r;
-    const path=svg('path',{d:`M${from.x} ${from.y}Q${cx} ${cy} ${ex} ${ey}`,'marker-end':'url(#graph-arrow)'},'graph-edge graph-depends');
-    path.dataset.from=node.address;path.dataset.to=link.target;
-    arrows.append(path);edges.push({from:node.address,to:link.target,element:path,depends:true});
+    edge(node.parent,node.address,false);
+    for(const link of node.links||[])if(link.relation==='depends_on')edge(link.target,node.address,true);
   }
   for(const node of nodes.values()){
-    const place=at(node.address);if(!place)continue;
-    const tone=node.signal?.tone||'grey';
-    const dot=svg('circle',{cx:place.x,cy:place.y,r:radius(place)},'graph-node');
-    dot.dataset.address=node.address;dot.dataset.tone=tone;dot.style.fill='var(--dot-'+tone+')';
+    const tone=node.signal?.tone||'grey',level=Math.min(depth(nodes,node.address),RADIUS.length-1);
+    const dot=svg('circle',{r:RADIUS[level]},'graph-node');dot.dataset.address=node.address;dot.dataset.tone=tone;dot.dataset.level=String(level);dot.style.fill='var(--dot-'+tone+')';
     const title=svg('title');title.textContent=node.title||node.address;dot.append(title);
-    dot.addEventListener('click',event=>{event.stopPropagation();onPick(node.address);});
-    dots.append(dot);dotOf.set(node.address,dot);
-    const label=svg('text',{x:place.x+radius(place)+3,y:place.y+4},'graph-label');label.textContent=short(node.title||node.address);
-    label.dataset.address=node.address;labels.append(label);labelOf.set(node.address,label);
+    const label=svg('text',{},'graph-label graph-label-level-'+level);label.textContent=short(node.title||node.address);label.dataset.address=node.address;
+    const step=svg('text',{},'graph-step');step.dataset.address=node.address;
+    layers[2].append(dot);layers[3].append(label,step);dotOf.set(node.address,dot);labelOf.set(node.address,label);stepOf.set(node.address,step);
   }
-  canvas.addEventListener('click',()=>onPick(null));
-  panAndZoom(canvas,size);
-  return {canvas,edges,dotOf,labelOf};
+  const camera=graphCamera(canvas);
+  const graph={canvas,edges,dotOf,labelOf,stepOf,neighbors,points,camera,follow:null,sim:null};
+  const render=()=>{
+    for(const [address,dot] of dotOf){
+      const p=points.get(address),r=Number(dot.getAttribute('r'));
+      dot.setAttribute('cx',p.x.toFixed(1));dot.setAttribute('cy',p.y.toFixed(1));
+      labelOf.get(address).setAttribute('x',(p.x+r+3).toFixed(1));labelOf.get(address).setAttribute('y',(p.y+4).toFixed(1));
+      stepOf.get(address).setAttribute('x',(p.x-r-2).toFixed(1));stepOf.get(address).setAttribute('y',(p.y-r-2).toFixed(1));
+    }
+    for(const {from,to,element,depends} of edges){
+      const a=points.get(from),b=points.get(to);
+      if(!depends){element.setAttribute('x1',a.x.toFixed(1));element.setAttribute('y1',a.y.toFixed(1));element.setAttribute('x2',b.x.toFixed(1));element.setAttribute('y2',b.y.toFixed(1));continue;}
+      // The arrow bends to the left of its direction and ends at the rim of the target dot.
+      const cx=(a.x+b.x)/2-(b.y-a.y)*0.15,cy=(a.y+b.y)/2+(b.x-a.x)*0.15,l=Math.hypot(b.x-cx,b.y-cy)||1,r=Number(dotOf.get(to).getAttribute('r'))+2;
+      element.setAttribute('d',`M${a.x.toFixed(1)} ${a.y.toFixed(1)}Q${cx.toFixed(1)} ${cy.toFixed(1)} ${(b.x-(b.x-cx)/l*r).toFixed(1)} ${(b.y-(b.y-cy)/l*r).toFixed(1)}`);
+    }
+  };
+  const followed=()=>[...(graph.follow||points.keys())].map(a=>points.get(a)).filter(Boolean);
+  // The canvas names the state of the layout in data-state: running or rest.
+  const tick=alpha=>{if(!canvas.isConnected)return false;render();if(graph.follow!==false)camera.fit(followed());canvas.dataset.state=alpha>REST?'running':'rest';return true;};
+  // Run the layout on the `active` nodes only, or on every node. `layer` gives the flow layer.
+  graph.run=(active,layer)=>{
+    graph.sim?.stop();
+    const moving=[...points.values()].filter(p=>!active||active.has(p.address));
+    const springs=edges.filter(e=>!active||(active.has(e.from)&&active.has(e.to)))
+      .map(e=>({source:points.get(e.from),target:points.get(e.to),length:e.depends?LINK_LENGTH:PARENT_LENGTH}));
+    graph.sim=forceSimulation(moving,springs,tick,layer&&(p=>layer.has(p.address)?(layer.get(p.address)-layer.max/2)*LAYER_GAP:null));
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches)graph.sim.settle();else{canvas.dataset.state='running';graph.sim.heat(1);}
+  };
+  // A lit dot grows by LIT_GROWTH over the radius of its level.
+  graph.grow=(address,lit)=>{const dot=dotOf.get(address);if(dot)dot.setAttribute('r',RADIUS[Number(dot.dataset.level)]+(lit?LIT_GROWTH:0));};
+  // The camera follows a set of nodes, or every node, until the reader moves the view.
+  graph.focus=set=>{graph.follow=set;camera.fit(followed());};
+  camera.onMove=()=>{graph.follow=false;};
+  pointer(graph,onPick,render);
+  holder.prepend(canvas);render();graph.run(null,null);
+  return graph;
 }
-function radius(place){return place.depth===0?7:4.5;}
+// The number of parents above a node in the graph. A parent cycle stops the count.
+function depth(nodes,address){
+  const seen=new Set([address]);let level=0;
+  for(let up=nodes.get(address)?.parent;up&&nodes.has(up)&&!seen.has(up);up=nodes.get(up).parent){seen.add(up);level++;}
+  return level;
+}
 function short(text){return text.length>40?text.slice(0,39)+'…':text;}
-// The wheel zooms around the pointer, and a drag moves the view.
-function panAndZoom(canvas,size){
-  let view=canvas.getAttribute('viewBox').split(' ').map(Number),drag=null,moved=false;
-  const set=()=>canvas.setAttribute('viewBox',view.join(' '));
-  const point=event=>{const box=canvas.getBoundingClientRect();return [view[0]+(event.clientX-box.left)/box.width*view[2],view[1]+(event.clientY-box.top)/box.height*view[3]];};
-  canvas.addEventListener('wheel',event=>{
-    event.preventDefault();const [x,y]=point(event),k=Math.exp(Math.sign(event.deltaY)*0.15);
-    const width=Math.min(size*2,Math.max(size/40,view[2]*k)),scale=width/view[2];
-    view=[x-(x-view[0])*scale,y-(y-view[1])*scale,width,view[3]*scale];set();
-  },{passive:false});
+function pointer(graph,onPick,render){
+  const {canvas,camera,points}=graph;let drag=null;
   canvas.addEventListener('pointerdown',event=>{
-    if(event.target!==canvas)return;drag={x:event.clientX,y:event.clientY,view:[...view]};moved=false;canvas.setPointerCapture?.(event.pointerId);
+    if(event.button!==0)return;
+    // No text selection and no native drag start from inside the graph.
+    event.preventDefault();try{canvas.setPointerCapture(event.pointerId);}catch{}
+    const dot=event.target.closest?.('.graph-node');
+    drag={x:event.clientX,y:event.clientY,last:[event.clientX,event.clientY],moved:false,point:dot?points.get(dot.dataset.address):null};
+    camera.stop();hover(graph,null);
   });
   canvas.addEventListener('pointermove',event=>{
-    if(!drag)return;const box=canvas.getBoundingClientRect();
-    const dx=(event.clientX-drag.x)/box.width*view[2],dy=(event.clientY-drag.y)/box.height*view[3];
-    if(Math.abs(event.clientX-drag.x)+Math.abs(event.clientY-drag.y)>3)moved=true;
-    view=[drag.view[0]-dx,drag.view[1]-dy,view[2],view[3]];set();
+    if(!drag){const dot=event.target.closest?.('.graph-node');hover(graph,dot?dot.dataset.address:null);return;}
+    if(Math.hypot(event.clientX-drag.x,event.clientY-drag.y)>3)drag.moved=true;
+    if(!drag.moved)return;
+    if(drag.point){const [x,y]=camera.point(event);drag.point.fx=x;drag.point.fy=y;graph.follow=false;graph.sim?.heat(0.3);render();}
+    else{camera.pan(drag.last[0]-event.clientX,drag.last[1]-event.clientY);graph.follow=false;}
+    drag.last=[event.clientX,event.clientY];
   });
-  const end=()=>{drag=null;};canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
-  // The click after a drag does not clear the picked node.
-  canvas.addEventListener('click',event=>{if(moved)event.stopImmediatePropagation();moved=false;},true);
+  const end=event=>{
+    if(!drag)return;const {point,moved}=drag;drag=null;
+    if(point){point.fx=point.fy=null;if(moved)graph.sim?.heat(0.1);}
+    if(!moved&&event.type==='pointerup')onPick(point?point.address:null);
+  };
+  canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('pointerleave',()=>{if(!drag)hover(graph,null);});
+}
+// Mark the dot under the pointer, its direct neighbours and the edges between them.
+function hover(graph,address){
+  if(graph.hovered===address)return;graph.hovered=address;
+  for(const element of graph.canvas.querySelectorAll('.graph-near'))element.classList.remove('graph-near');
+  if(!address)return;
+  const near=new Set([address,...(graph.neighbors.get(address)||[])]);
+  for(const a of near){graph.dotOf.get(a)?.classList.add('graph-near');graph.labelOf.get(a)?.classList.add('graph-near');}
+  for(const e of graph.edges)if((e.from===address&&near.has(e.to))||(e.to===address&&near.has(e.from)))e.element.classList.add('graph-near');
 }
