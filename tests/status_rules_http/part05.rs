@@ -133,7 +133,7 @@ async fn work_priority_ac5_a_member_sets_the_priority_and_the_timeline_names_it(
 // type-status-rules-ac6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linking_object_has()
+async fn type_status_rules_ac6_a_links_node_takes_the_highest_tone_of_its_linking_objects()
 -> Result<()> {
     let w = world().await?;
     let task = w.rules_schema().await?;
@@ -149,7 +149,7 @@ async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linkin
     w.save("rule", "r", Some("area:g")).await?;
     let link = json!([{"target":"user:u","relation":"related","blocking":false}]);
     let save_linked = |kind: &str, id: &str, parent: &str, extra: Value| {
-        let mut data = json!({"title":id,"owner":"owner","body":"The contract","body":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
+        let mut data = json!({"title":id,"owner":"owner","body":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
         for (k, v) in extra.as_object().into_iter().flatten() {
             data[k] = v.clone();
         }

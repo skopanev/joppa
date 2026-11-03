@@ -3,7 +3,7 @@
 // type-status-rules-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a_child_has()
+async fn type_status_rules_ac2_a_node_takes_the_highest_tone_of_its_children()
 -> Result<()> {
     let w = world().await?;
     w.rules_schema().await?;
