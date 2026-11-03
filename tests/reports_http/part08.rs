@@ -37,8 +37,8 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
                 && s["tests_saved_by"] == old["tests_saved_by"],
             "{ac} after the change: {s}"
         );
-        let readiness = object(ac).await?["process"]["assessment"]["state"].clone();
-        ensure!(readiness == "unassessed", "{ac} readiness: {readiness}");
+        let readiness = object(ac).await?["process"]["assessment"].clone();
+        ensure!(readiness.is_null(), "{ac} readiness: {readiness}");
     }
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
@@ -78,8 +78,7 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     );
 
     // An identical revision of G stores no boundary; only a readiness write changes A.
-    let revision = p.read("spec:r").await?["process"]["revision"].clone();
-    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
     let boundaries = p.boundaries().await?;
     let readiness = object("criterion:a").await?["process"]["assessment"].clone();
     p.owner_save(
@@ -97,7 +96,7 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
             && object("criterion:a").await?["process"]["assessment"] == readiness,
         "an identical revision changed A"
     );
-    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":false,"reason":"Which scope?","recipient":"owner"}})).await?;
+    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":false,"reason":"Which scope?"})).await?;
     let a = object("criterion:a").await?;
     ensure!(
         a["process"]["assessment"]["state"] == "waiting"

@@ -4,8 +4,7 @@ import {hideStatusHint,showStatusHint} from 'board/status-hint.js';
 import {personLabel,eventDate} from 'board/format.js';
 export function statusCircle(signal,number){
   const circle=E('span',number===undefined?undefined:String(number),'status-circle '+signal.tone+(number===undefined?'':' numbered'));
-  const assessment=signal.readiness_blocker||signal.assessment;
-  const hint='Status: '+signal.label+assessmentHint(assessment)+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
+  const hint='Status: '+signal.label+assessmentHint(signal.assessment)+(signal.at?'\nStatus event: '+eventDate(signal.at):'');
   circle.dataset.tone=signal.tone;circle.dataset.hint=hint;circle.tabIndex=0;
   circle.setAttribute('role','img');circle.setAttribute('aria-label',hint);
   circle.addEventListener('pointerenter',()=>showStatusHint(circle));
@@ -14,11 +13,10 @@ export function statusCircle(signal,number){
   circle.addEventListener('blur',hideStatusHint);
   return circle;
 }
+// The readiness mark of a node, as assess sets it: ready, or waiting with a reason.
 export function assessmentHint(a){
   if(!a)return '';
-  if(a.state==='dependency')return '\nWaits for: '+a.target;
-  if(a.state==='unassessed')return '\nReadiness: Not assessed. Next step: assess';
-  if(a.state==='waiting')return '\nQuestion: '+a.reason+'\nRecipient: '+personLabel(a.recipient||'Unassigned');
+  if(a.state==='waiting')return '\nWaits: '+a.reason+'\nMarked by: '+personLabel(a.actor);
   return '\nReadiness: Ready';
 }
 export function nodeTitle(text,signal){

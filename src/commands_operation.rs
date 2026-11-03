@@ -4,7 +4,7 @@ use super::*;
 /// One public operation of joppa_command and joppa_batch.
 /// `required` lists the fields that the caller must send. Generated identifiers,
 /// optional fields and fields with defaults are absent from it.
-/// `callers` uses member, agent, holder and workspace owner. Value checks, such as
+/// `callers` uses member and workspace owner. Value checks, such as
 /// REQ ownership or a person decision, still apply inside each category.
 pub struct Operation {
     pub name: &'static str,
@@ -15,10 +15,6 @@ pub struct Operation {
 pub(crate) const MEMBER: &[&str] = &["member"];
 
 pub(crate) const OWNER: &[&str] = &["workspace owner"];
-
-pub(crate) const HOLDER: &[&str] = &["holder"];
-
-pub(crate) const HOLDER_OR_OWNER: &[&str] = &["holder", "workspace owner"];
 
 pub(crate) const fn op(
     name: &'static str,
@@ -51,13 +47,10 @@ pub const OPERATIONS: &[Operation] = &[
     op("accept_commit", &["target", "revision", "commit"], MEMBER),
     op("redact_object", &["target", "fragment", "reason"], OWNER),
     op("rename_workspace", &["title", "reason"], OWNER),
-    op("set_priority", &["target", "priority"], MEMBER),
-    op("assess_signal", &["target", "ready", "reason"], MEMBER),
     op("delete_workspace", &["reason"], OWNER),
     op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
     op("member", &["id", "role"], OWNER),
     op("remove_member", &["id", "reason"], OWNER),
-    op("comment", &["req", "revision", "text", "kind"], MEMBER),
     op("note", &["target", "id", "text"], MEMBER),
     op("withdraw_note", &["target", "id", "reason"], MEMBER),
     op(
@@ -66,35 +59,7 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("detach", &["target", "id", "reason"], MEMBER),
-    op("assess", &["req", "revision", "ac", "assessment"], MEMBER),
-    op("claim_planning", &["ac", "revision"], MEMBER),
-    op("finish_planning", &["ac", "reason"], HOLDER),
-    op("release_planning", &["ac", "reason"], HOLDER_OR_OWNER),
-    op("claim_task", &["revision", "id"], MEMBER),
-    // Public alias: the server resolves it to claim_task under the write lock.
-    op("claim_next_task", &[], MEMBER),
-    op(
-        "release_task",
-        &["revision", "id", "reason"],
-        HOLDER_OR_OWNER,
-    ),
-    op(
-        "block_task",
-        &["revision", "id", "reason", "evidence"],
-        HOLDER_OR_OWNER,
-    ),
-    op(
-        "unblock_task",
-        &["revision", "id", "reason", "evidence"],
-        HOLDER_OR_OWNER,
-    ),
-    op(
-        "complete_task",
-        &["revision", "id", "evidence", "commit"],
-        HOLDER,
-    ),
-    op("review_task", &["revision", "id", "reason"], MEMBER),
-    op("retire_task", &["revision", "id", "reason"], MEMBER),
+    op("assess", &["target", "ready", "reason"], MEMBER),
 ];
 
 pub fn operation(name: &str) -> Option<&'static Operation> {

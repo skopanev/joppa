@@ -66,7 +66,7 @@ async fn type_status_rules_ac3_empty_nodes_are_orange_and_uncounted_children_cha
     w.bind("check:a", &["a"]).await?;
     w.bind("check:c", &["c"]).await?;
     w.report(&[("a", "pass"), ("c", "fail")]).await?;
-    w.blocked_task(task, "check:a").await?;
+    w.task(task, "check:a").await?;
     // Q has no checks: orange. R holds green A, red C and memo M: red.
     ensure!(w.tones(&["rule:q", "check:a", "rule:r"]).await? == ["orange", "green", "red"]);
     // A new area with only an empty rule is orange.
@@ -131,7 +131,7 @@ async fn type_status_rules_ac5_a_schema_without_status_rules_uses_the_defaults()
     // B has no test node yet, so it is orange.
     w.bind(&a, &["a"]).await?;
     w.report(&[("a", "pass")]).await?;
-    w.blocked_task(&task, &a).await?;
+    w.task(&task, &a).await?;
     let nodes = [
         a.as_str(),
         b.as_str(),
@@ -176,41 +176,5 @@ impl World {
             .with_context(|| format!("MCP reply: {reply}"))?;
         ensure!(reply["result"]["isError"] != true, "{tool}: {text}");
         Ok(serde_json::from_str(text)?)
-    }
-    /// Mark a criterion ready for work, as its owner.
-    async fn ready(&self, criterion: &str) -> Result<()> {
-        let p = self.object(criterion).await?["process"].clone();
-        self.command(&self.owner, json!({"op":"assess","req":p["req"],"revision":p["revision"],"ac":p["criterion"],"assessment":{"ready":true,"reason":"Known scope","recipient":null,"decision":null}})).await?;
-        Ok(())
-    }
-    async fn set_priority(
-        &self,
-        token: &str,
-        target: &str,
-        priority: &str,
-    ) -> Result<(u16, Value)> {
-        self.try_command(
-            token,
-            json!({"op":"set_priority","target":target,"priority":priority}),
-        )
-        .await
-    }
-    /// The addresses of the unstarted list that start with `prefix`, in list order.
-    async fn unstarted(&self, prefix: &str) -> Result<Vec<String>> {
-        let list = self
-            .mcp(
-                &self.bot,
-                "joppa_objects",
-                json!({"work_filter":"unstarted","limit":100}),
-            )
-            .await?;
-        Ok(list["items"]
-            .as_array()
-            .context("items")?
-            .iter()
-            .filter_map(|i| i["address"].as_str())
-            .filter(|a| a.starts_with(prefix))
-            .map(String::from)
-            .collect())
     }
 }

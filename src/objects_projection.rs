@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 5;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 6;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]
@@ -22,8 +22,8 @@ impl std::error::Error for ProjectionNotReady {}
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
 const FIELDS: [&str; 2] = ["work_ready", "waits_for"];
-const PROCESS_FIELDS: [&str; 2] = ["verification", "readiness_blocker"];
-const SIGNAL_FIELDS: [&str; 2] = ["tone", "label"];
+const PROCESS_FIELDS: &[&str] = &["verification"];
+const SIGNAL_FIELDS: &[&str] = &["tone", "label"];
 
 /// Refuse a read unless the projection matches the board position and the code version,
 /// and every object of the workspace has a stored status and decoration.
@@ -81,7 +81,7 @@ pub(in crate::store) async fn rebuild(
     // fields that the helpers read, with the same values as a list row.
     let mut items: Vec<Value> = client
         .query(
-            "SELECT address,kind,signal::text,process::text,work_ready,parent,present,review_required FROM joppa.objects WHERE workspace=$1",
+            "SELECT address,kind,signal::text,process::text,work_ready,parent,present FROM joppa.objects WHERE workspace=$1",
             &[&workspace],
         )
         .await?
@@ -94,18 +94,13 @@ pub(in crate::store) async fn rebuild(
             json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),
                 "signal":parse(2).unwrap_or_else(|| json!({})),"process":parse(3).unwrap_or(Value::Null),
                 "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5),
-                "present":r.get::<_,bool>(6),"review_required":r.get::<_,bool>(7)})
+                "present":r.get::<_,bool>(6)})
         })
         .collect();
     let base = items.clone();
-    let criteria: Vec<String> = types
-        .iter()
-        .filter(|(_, t)| t.role == "ac")
-        .map(|(kind, _)| kind.clone())
-        .collect();
     add_status_tones(client, workspace, &mut items, &types).await?;
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
-    add_waits(client, workspace, &mut items, &waits, &counts, &criteria).await?;
+    add_waits(client, workspace, &mut items, &waits, &counts).await?;
     let patches: Vec<Value> = base
         .iter()
         .zip(&items)
@@ -116,7 +111,7 @@ pub(in crate::store) async fn rebuild(
                     patch.insert(field.into(), after[field].clone());
                 }
             }
-            for (part, fields) in [("process", &PROCESS_FIELDS), ("signal", &SIGNAL_FIELDS)] {
+            for (part, fields) in [("process", PROCESS_FIELDS), ("signal", SIGNAL_FIELDS)] {
                 let mut inner = serde_json::Map::new();
                 for field in fields {
                     if before[part].get(field) != after[part].get(field) {
@@ -175,27 +170,6 @@ pub(in crate::store) async fn apply_rollups(
         }
     }
     Ok(())
-}
-
-/// The stored waits: each waiting node with its first unsatisfied target.
-pub(in crate::store) async fn projected_waits(
-    client: &impl GenericClient,
-    workspace: &str,
-) -> Result<BTreeMap<String, String>> {
-    crate::probe::count(&crate::probe::WAIT_READS);
-    ensure_ready(client, workspace).await?;
-    client
-        .query(
-            "SELECT address,(rollup->'waits_for'->>'address'),rollup IS NULL FROM joppa.objects WHERE workspace=$1 AND (rollup IS NULL OR rollup ? 'waits_for')",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|r| match r.get::<_, bool>(2) {
-            true => Err(ProjectionNotReady.into()),
-            false => Ok((r.get(0), r.get(1))),
-        })
-        .collect::<Result<_>>()
 }
 
 /// The stored statuses of the requested objects. Objects without a stored status are left

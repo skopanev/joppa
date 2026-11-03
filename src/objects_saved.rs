@@ -56,6 +56,7 @@ pub(crate) fn saved(
         "verification comes from test reports"
     );
     crate::body_migration::check_save(w, data)?;
+    crate::purpose_migration::check_save(w, data)?;
     if w.documents_migrated {
         for field in data.as_object().unwrap().keys() {
             ensure!(!process_field(field), "use process commands for {field}");
@@ -66,6 +67,17 @@ pub(crate) fn saved(
             data.get("status")
                 .is_none_or(|v| matches!(v.as_str(), Some("unprocessed" | "processed"))),
             "Note status must be unprocessed or processed"
+        );
+    }
+    // A priority is one value of the priority list of the tree schema.
+    if let Some(priority) = data.get("priority").filter(|p| !p.is_null()) {
+        let values = priority_values(w);
+        ensure!(
+            priority
+                .as_str()
+                .is_some_and(|p| values.iter().any(|v| v == p)),
+            "priority is one of {}",
+            values.join(", ")
         );
     }
     commands::nonempty(&string(data, "title")?)?;
@@ -99,7 +111,8 @@ pub(crate) fn saved(
             })
     };
     let mut candidate = w.clone();
-    let generic_task = schema(w).types[kind].role == "task" && w.tasks_migrated;
+    // Before migrate_generic_nodes a save of a Task also writes its Task record.
+    let generic_task = schema(w).types[kind].role == "task" && w.tasks_migrated && !w.generic_nodes;
     let task_data = if generic_task {
         Some(crate::tasks::save(
             &mut candidate,

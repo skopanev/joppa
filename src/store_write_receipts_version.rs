@@ -140,7 +140,7 @@ pub async fn save_dependency(
         address: Some(source),
         ..Default::default()
     };
-    let object = super::objects::read_stored_objects(pool, workspace, actor, &scope).await?;
+    let object = super::objects::read_objects(pool, workspace, actor, &scope).await?;
     let document = &object["document"];
     let mut links: Vec<crate::objects::ObjectLink> =
         serde_json::from_value(document["links"].clone())?;

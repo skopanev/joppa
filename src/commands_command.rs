@@ -23,14 +23,16 @@ pub enum Command {
     /// Internal migration event: a Task has no purpose, see purpose_migration.
     MigratePurpose {},
     MigrateTestNodes {},
+    /// Internal migration event: a Task is a node like any other, see generic_nodes.
+    MigrateGenericNodes {},
     SetTreeSchema(SetTreeSchemaOp),
-    /// A member marks a signal of an inbox type ready for work, or not ready, with a reason.
+    /// The older readiness mark of an inbox signal. Only journal replay reads it; see `assess`.
     AssessSignal {
         target: String,
         ready: bool,
         reason: String,
     },
-    /// Set the priority of a node. It changes no revision, status or readiness.
+    /// The older priority of a node. Only journal replay reads it; a priority is `data.priority`.
     SetPriority {
         target: String,
         priority: String,
@@ -162,12 +164,7 @@ pub enum Command {
         id: String,
         reason: String,
     },
-    Assess {
-        req: String,
-        revision: u32,
-        ac: String,
-        assessment: Assessment,
-    },
+    Assess(AssessOp),
     Task(TaskOp),
     ClaimPlanning {
         ac: String,

@@ -9,8 +9,6 @@ use std::{
     time::Duration,
 };
 
-#[path = "common/claim_time.rs"]
-mod claim_time;
 #[path = "common/compact_of.rs"]
 mod compact_of;
 #[path = "common/detail_read.rs"]
@@ -22,10 +20,7 @@ mod operation_samples;
 mod record_http;
 
 include!("spec_http/part01.rs");
-include!("spec_http/part02.rs");
 include!("spec_http/part03.rs");
-include!("spec_http/part04.rs");
-include!("spec_http/part05.rs");
 include!("spec_http/part06.rs");
 include!("spec_http/part07.rs");
 include!("spec_http/part08.rs");
@@ -51,11 +46,9 @@ include!("spec_http/part27.rs");
 include!("spec_http/part28.rs");
 include!("spec_http/part29.rs");
 include!("spec_http/part30.rs");
-include!("spec_http/part31.rs");
 include!("spec_http/part32.rs");
 include!("spec_http/part33.rs");
 include!("spec_http/part34.rs");
-include!("spec_http/part35.rs");
 include!("spec_http/part36.rs");
 include!("spec_http/part37.rs");
 include!("spec_http/part38.rs");

@@ -18,8 +18,8 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
     let (k, kept) = workspace(&pool, "kept", &shared).await?;
     let before = rows(&pool, &w).await?;
     ensure!(folder(&w).len() == 3, "the folder of W: {:?}", folder(&w));
-    // The fixture writes every table, except the tables of Tasks, aliases and report receipts.
-    let unwritten = ["object_aliases", "task_queue", "test_report_receipts"];
+    // The fixture writes every table, except the tables of aliases and report receipts.
+    let unwritten = ["object_aliases", "test_report_receipts"];
     ensure!(
         before
             .iter()

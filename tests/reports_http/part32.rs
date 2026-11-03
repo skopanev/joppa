@@ -60,9 +60,7 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
         p.owner_command(json!({"op":"archive_object","target":target,"revision":revision,"reason":"Retire the scope"}))
             .await?;
         let b1 = p.object_both("criterion:b1").await?;
-        let free = b1["work_ready"] == true
-            && b1["process"]["readiness_blocker"].is_null()
-            && b1.get("waits_for").is_none();
+        let free = b1["work_ready"] == true && b1.get("waits_for").is_none();
         ensure!(
             if held { waits_for(&b1, "spec:a") } else { free },
             "after archiving {target}: {b1}"
@@ -143,17 +141,6 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
             403,
         ),
         (
-            "member cookie priority",
-            send(
-                member.clone(),
-                root.clone(),
-                "/priority",
-                json!({"target":"spec:b","priority":"p0"}),
-            )
-            .await?,
-            403,
-        ),
-        (
             "cookie commands",
             send(member.clone(), root.clone(), "/commands",
                 json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":"spec","id":"b",
@@ -167,68 +154,6 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
         ensure!(p.saved().await? == before, "{case} changed saved state");
     }
     ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
-    store::check_journal(&p.pool).await?;
-    Ok(())
-}
-
-/// The addresses on one Task view page.
-fn task_addresses(tasks: &[Value]) -> Vec<&str> {
-    tasks.iter().filter_map(|t| t["address"].as_str()).collect()
-}
-
-/// T is done, needs no review and has no review label.
-fn done_without_review(t: &Value) -> bool {
-    t["process"]["status"] == "done"
-        && t["process"]["review_required"] == false
-        && t["signal"]["label"]
-            .as_str()
-            .is_some_and(|l| !l.contains("needs owner review"))
-}
-
-// completion-record-ac4
-// Bot completes T under A. Then owner S saves a new text of R, then of A.
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_done_task_stays_done_without_review_after_new_texts_of_r_and_a() -> Result<()> {
-    let w = world().await?;
-    let p = planning(&w).await?;
-    p.ready().await?;
-    p.save("work:t", Some("criterion:a"), json!({"title":"T","owner":"owner","body":"Implement this criterion"}), json!([])).await?;
-    p.write(
-        "agent",
-        json!({"op":"claim_task","id":"work:t","revision":p.revision("work:t").await?}),
-    )
-    .await?;
-    p.write("agent", json!({"op":"complete_task","commit":"c0ffee0","id":"work:t","revision":p.revision("work:t").await?,"evidence":"commit abc123 on master"})).await?;
-    let t = p.object_both("work:t").await?;
-    ensure!(done_without_review(&t), "T after completion: {t}");
-    let spec = p.revision("spec:one").await?;
-    p.owner_command(json!({"op":"save_object","kind":"spec","id":"one","revision":spec,"parent":null,
-        "data":{"title":"One rule","body":"Implement the changed rule","owner":"owner"},"links":[],"reason":"Change R"}))
-        .await?;
-    let criterion = p.revision("criterion:a").await?;
-    p.owner_command(json!({"op":"save_object","kind":"criterion","id":"a","revision":criterion,"parent":"spec:one",
-        "data":{"title":"criterion:a","owner":"owner","body":"Changed wording"},"links":[],"reason":"Change A"}))
-        .await?;
-    // Controls: R and A are at new revisions.
-    ensure!(p.revision("spec:one").await? > spec);
-    ensure!(p.revision("criterion:a").await? == criterion + 1);
-    ensure!(p.read("criterion:a").await?["document"]["data"]["body"] == "Changed wording");
-    let t = p.object_both("work:t").await?;
-    ensure!(done_without_review(&t), "T after the new texts: {t}");
-    let all = p.tasks_both("all").await?;
-    let entry = all
-        .iter()
-        .find(|t| t["address"] == "work:t")
-        .ok_or_else(|| anyhow::anyhow!("T is missing in view=all: {all:?}"))?;
-    ensure!(
-        entry["status"] == "done"
-            && entry["review_required"] == false
-            && entry["signal"]["label"]
-                .as_str()
-                .is_some_and(|l| !l.contains("needs owner review")),
-        "T in view=all: {entry}"
-    );
     store::check_journal(&p.pool).await?;
     Ok(())
 }

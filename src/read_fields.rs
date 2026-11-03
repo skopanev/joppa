@@ -5,17 +5,15 @@ use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
 /// The first path segments that a list item gives itself. `status` is the status tone.
-pub const LIST_FIELDS: [&str; 20] = [
+pub const LIST_FIELDS: [&str; 17] = [
     "address",
     "data",
     "kind",
     "id",
     "revision",
-    "contract_revision",
     "parent",
     "title",
     "owner",
-    "review_required",
     "work_ready",
     "at",
     "body",
@@ -24,7 +22,6 @@ pub const LIST_FIELDS: [&str; 20] = [
     "note_status",
     "status",
     "process",
-    "work_summary",
     "children",
 ];
 
@@ -136,9 +133,9 @@ pub fn object_fields(
     };
     let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
     let item = json!({"address": reply["address"], "kind": reply["kind"], "id": reply["id"],
-        "revision": revision, "contract_revision": reply["contract_revision"],
+        "revision": revision,
         "parent": document["parent"], "data": data, "title": data["title"],
-        "owner": data["owner"], "review_required": reply["review_required"],
+        "owner": data["owner"],
         "work_ready": reply["work_ready"], "at": document["at"], "body": data["body"],
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],

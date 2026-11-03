@@ -110,9 +110,7 @@ impl World {
             ),
         )
         .await?;
-        let a = self.object(owner, p, "ac:a").await?;
-        self.ok(owner, p, json!({"op":"assess","req":a["parent"],"revision":a["process"]["assessment"]["revision"],"ac":"ac:a",
-            "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
+        self.ok(owner, p, json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
         self.ok(
             owner,
             c,
@@ -185,21 +183,19 @@ impl World {
         )
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-        let a = self.object(&self.owner, &self.p, "ac:a").await?;
-        self.ok(&self.owner, &self.p, json!({"op":"assess","req":a["parent"],"revision":a["process"]["assessment"]["revision"],"ac":"ac:a",
-            "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
+        self.ok(&self.owner, &self.p, json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
         Ok(())
     }
     fn waiting(&self) -> String {
         format!("waits for @{}/requirement:api, which is not green", self.c)
     }
-    async fn claim(&self) -> Result<Result<Value, String>> {
+    /// Work under A is free when every blocking remote link of A is satisfied for the bot.
+    async fn free(&self) -> Result<Result<Value, String>> {
         let a = self.object(&self.bot, &self.p, "ac:a").await?;
-        self.command(
-            &self.bot,
-            &self.p,
-            json!({"op":"claim_planning","ac":"ac:a","revision":a["revision"]}),
-        )
-        .await
+        let links = a["remote_links"].as_array().cloned().unwrap_or_default();
+        let waits = links
+            .iter()
+            .any(|l| l["blocking"] == true && l["status"]["satisfied"] != true);
+        Ok(if waits { Err(self.waiting()) } else { Ok(a) })
     }
 }

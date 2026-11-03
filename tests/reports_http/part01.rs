@@ -1,14 +1,5 @@
 // Part 1 of tests/reports_http.rs, included there, so the test names stay unchanged.
 
-/// The Task list of a queue reply: MCP gives `items`, HTTP gives `tasks`.
-fn task_list(page: &Value) -> &Value {
-    if page["items"].is_array() {
-        &page["items"]
-    } else {
-        &page["tasks"]
-    }
-}
-
 /// The data of one criterion under requirement:key.
 fn criterion(title: &str) -> Value {
     json!({"title":title,"owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]})
@@ -179,7 +170,7 @@ fn outcomes(cases: &[(&str, &str)]) -> Value {
 
 async fn ready_for_planning(w: &World) -> Result<Value> {
     for command in [
-        json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"Known work scope"}}),
+        json!({"op":"assess","target":"ac:key-rights","ready":true,"reason":"Known work scope"}),
     ] {
         let (code, reply) = post(
             w,
@@ -202,13 +193,4 @@ async fn planning_criterion(w: &World) -> Result<Value> {
         .error_for_status()?
         .json()
         .await?)
-}
-
-async fn planning_batch(w: &World, operations: Value) -> Result<Value> {
-    let root = w.base.split("/api/").next().unwrap();
-    let workspace = w.base.rsplit('/').next().unwrap();
-    Ok(w.http.post(format!("{root}/mcp")).bearer_auth(&w.token)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_batch","arguments":{
-            "workspace":workspace,"request_id":uuid::Uuid::new_v4().to_string(),"operations":operations}}}))
-        .send().await?.json().await?)
 }

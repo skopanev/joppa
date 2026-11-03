@@ -122,21 +122,11 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
                 "reason":"Depend on a criterion"}),
         ),
         (
-            "task",
-            json!({"op":"task","req":"r","revision":1,"id":"t1","title":"Carry the work",
-                "acs":["ios"],"projects":["app"],"purpose":"implementation",
-                "contract":"Change the access path"}),
-        ),
-        (
-            "claim",
-            json!({"op":"claim_task","req":"r","revision":1,"id":"t1"}),
-        ),
-        (
             "process the input",
             json!({"op":"decide_note","target":"note:top","revision":1,"outcome":"changed_spec",
                 "reason":"Applied to the tree","links":["requirement:r"]}),
         ),
-        // A new revision resets readiness and marks carried work for review.
+        // A new revision resets readiness.
         ("revise", revision(1)),
     ]);
     steps

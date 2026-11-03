@@ -42,27 +42,4 @@ DROP TRIGGER IF EXISTS state_revision_contract ON joppa.state_revisions;
 CREATE TRIGGER state_revision_contract BEFORE UPDATE ON joppa.state_revisions
     FOR EACH ROW EXECUTE FUNCTION joppa.protect_state_revision();
 
-CREATE TABLE IF NOT EXISTS joppa.task_queue (
-    workspace text NOT NULL REFERENCES joppa.workspaces(id),
-    address text NOT NULL,
-    actor text NOT NULL,
-    created_at bigint NOT NULL,
-    sort_req text NOT NULL,
-    sort_id text NOT NULL,
-    status text NOT NULL,
-    assignee text,
-    purpose text NOT NULL,
-    claimable boolean NOT NULL,
-    targets text[] NOT NULL,
-    subjects text[] NOT NULL,
-    data jsonb NOT NULL,
-    PRIMARY KEY(workspace,actor,address)
-);
-CREATE INDEX IF NOT EXISTS task_queue_order ON joppa.task_queue(workspace,actor,created_at,sort_req,sort_id);
-CREATE INDEX IF NOT EXISTS task_queue_available ON joppa.task_queue(workspace,actor,created_at,sort_req,sort_id) WHERE claimable;
-CREATE INDEX IF NOT EXISTS task_queue_assignee ON joppa.task_queue(workspace,actor,assignee,status,created_at);
-CREATE INDEX IF NOT EXISTS task_queue_subjects ON joppa.task_queue USING gin(subjects);
-CREATE INDEX IF NOT EXISTS task_queue_targets ON joppa.task_queue USING gin(targets);
 CREATE INDEX IF NOT EXISTS objects_all_children ON joppa.objects(workspace,parent,address);
-CREATE INDEX IF NOT EXISTS objects_process_req ON joppa.objects(workspace,(process->>'req'),address);
-REVOKE ALL ON joppa.task_queue FROM PUBLIC;

@@ -1,13 +1,12 @@
 // Part 1 of tests/incremental_projection.rs, included there, so the test names stay unchanged.
 
 /// Derived tables that a rebuild must reproduce exactly.
-const TABLES: [&str; 7] = [
+const TABLES: [&str; 6] = [
     "objects",
     "object_revisions",
     "object_links",
     "state_entries",
     "state_revisions",
-    "task_queue",
     "search_documents",
 ];
 

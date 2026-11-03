@@ -35,6 +35,7 @@ pub(super) struct ObjectQuery {
     cursor: Option<String>,
     note_status: Option<String>,
     related_to: Option<String>,
+    /// Refused: work_filter was removed.
     work_filter: Option<String>,
     /// The address whose links to read, with optional direction, relation and kind.
     links_of: Option<String>,
@@ -72,6 +73,9 @@ pub(super) async fn objects(
             .await,
         );
     }
+    if q.work_filter.is_some() {
+        return result(Err(anyhow::anyhow!(joppa::removed_ops::WORK_FILTER)));
+    }
     // The node filters, in the same form as joppa_objects.
     let filter = match joppa::node_filter::NodeFilter::parse_query(&[
         ("parent", q.parent.as_deref()),
@@ -100,7 +104,6 @@ pub(super) async fn objects(
                 cursor: q.cursor.as_deref(),
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
-                work_filter: q.work_filter.as_deref(),
                 data: false,
             },
         )
@@ -163,40 +166,6 @@ pub(super) async fn history(
     let limit = q.limit.unwrap_or(store::HISTORY_LIMIT);
     let args = serde_json::json!({"limit": limit, "cursor": q.cursor, "all": q.all});
     result(store::read_history(&app.pool, &workspace, &actor, &args).await)
-}
-#[derive(Deserialize)]
-pub(super) struct TaskQuery {
-    view: Option<String>,
-    limit: Option<usize>,
-    cursor: Option<String>,
-    project: Option<String>,
-    priorities: Option<String>,
-}
-pub(super) async fn tasks(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    Query(query): Query<TaskQuery>,
-    headers: HeaderMap,
-) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
-    let priorities = query
-        .priorities
-        .as_deref()
-        .map(|text| text.split(',').map(str::to_owned).collect::<Vec<_>>())
-        .unwrap_or_default();
-    result(
-        store::task_queue_filtered(
-            &app.pool,
-            &workspace,
-            &actor,
-            query.view.as_deref().unwrap_or("available"),
-            query.limit.unwrap_or(50),
-            query.cursor.as_deref(),
-            query.project.as_deref(),
-            &priorities,
-        )
-        .await,
-    )
 }
 pub(super) async fn tree_schema(
     State(app): State<App>,

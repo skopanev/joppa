@@ -1,4 +1,4 @@
-//! The list read, part 1: the filters, the cursor, the waits and the work order.
+//! The list read, part 1: the filters, the cursor and the order.
 use super::*;
 
 /// What the list query needs from part 1.
@@ -11,8 +11,6 @@ pub(super) struct ListPlan<'s> {
     pub(super) bound: crate::node_filter::Bound,
     pub(super) after_filter: String,
     pub(super) order: String,
-    pub(super) values: Vec<String>,
-    pub(super) green: Vec<String>,
 }
 
 // The body moved from read_objects unchanged, so it keeps `&*conn` on a borrowed transaction.
@@ -24,10 +22,6 @@ pub(super) async fn read_list(
     position: i64,
     prefix: String,
     selected: std::collections::BTreeMap<String, objects::TreeType>,
-    task_kinds: Vec<String>,
-    criterion_kinds: Vec<String>,
-    specification_kinds: Vec<String>,
-    unstarted: bool,
     scope: &ObjectScope<'_>,
 ) -> Result<Value> {
     ensure!(
@@ -64,7 +58,7 @@ pub(super) async fn read_list(
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
         // A list in address order also takes the bare address of its last item, as the
         // compact MCP list gives it. That cursor stays valid across writes.
-        if p.parse::<i64>().is_err() && !inbox && !unstarted {
+        if p.parse::<i64>().is_err() && !inbox {
             ensure!(
                 address_cursor(cursor),
                 "invalid object cursor; start again without cursor"
@@ -103,60 +97,21 @@ pub(super) async fn read_list(
     } else {
         (false, "")
     };
-    // Without a parent and without a filter, a list gives the roots. Unstarted work and a
-    // related_to list read every level.
-    let bound = crate::node_filter::bind(
-        conn,
-        &workspace,
-        &scope.filter,
-        !unstarted && related_to.is_none(),
-        false,
-    )
-    .await?;
-    // Unstarted work follows the priority chain from the top, then journal order. Its pages
-    // continue after the cursor object in that order, at the same journal position.
-    let chain = priority_chain_sql("o.workspace", "o.address", "$15::text[]");
-    let unstarted_order = format!(
-        "{chain},(SELECT (r.document->>'at')::timestamptz FROM joppa.object_revisions r WHERE r.workspace=o.workspace AND r.address=o.address AND r.revision=1),o.address"
-    );
+    // Without a parent and without a filter, a list gives the roots. A related_to list reads
+    // every level.
+    let bound =
+        crate::node_filter::bind(conn, &workspace, &scope.filter, related_to.is_none(), false)
+            .await?;
     let (after_filter, order) = if inbox {
         (
-            "((o.inbox_status='processed'),o.address)>($13::boolean,$2::text) AND $15::text[] IS NOT NULL".to_owned(),
+            "((o.inbox_status='processed'),o.address)>($9::boolean,$2::text)".to_owned(),
             "(o.inbox_status='processed'),o.address".to_owned(),
         )
-    } else if unstarted {
-        (
-            "$2::text IS NOT NULL AND NOT $13::boolean".to_owned(),
-            unstarted_order,
-        )
     } else {
         (
-            "o.address>$2 AND NOT $13::boolean AND $15::text[] IS NOT NULL".to_owned(),
+            "o.address>$2 AND NOT $9::boolean".to_owned(),
             "o.address".to_owned(),
         )
-    };
-    let values = priority_values(&*conn, &workspace).await?;
-    // A criterion that is green by its test reports has nothing left to plan.
-    // It leaves the unstarted list before LIMIT, so pages stay full.
-    let green: Vec<String> = if unstarted {
-        let targets: Vec<String> = conn
-            .query(
-                "SELECT address FROM joppa.objects WHERE workspace=$1 AND present AND kind=ANY($2)",
-                &[&workspace, &criterion_kinds],
-            )
-            .await?
-            .iter()
-            .map(|row| row.get(0))
-            .collect();
-        let optional = targets.iter().cloned().collect();
-        super::reports::criterion_test_statuses(&*conn, &workspace, &targets, &optional)
-            .await?
-            .into_iter()
-            .filter(|(_, status)| status["status"] == "green")
-            .map(|(address, _)| address)
-            .collect()
-    } else {
-        Vec::new()
     };
     let plan = ListPlan {
         related_to,
@@ -167,22 +122,9 @@ pub(super) async fn read_list(
         bound,
         after_filter,
         order,
-        values,
-        green,
     };
     super::object_list_rows::list_rows(
-        conn,
-        workspace,
-        public,
-        position,
-        prefix,
-        selected,
-        task_kinds,
-        criterion_kinds,
-        specification_kinds,
-        unstarted,
-        scope,
-        plan,
+        conn, workspace, public, position, prefix, selected, scope, plan,
     )
     .await
 }

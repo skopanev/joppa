@@ -1,6 +1,6 @@
 //! The MCP reply shapes (requirement:read-contract): one copy of each fact, and no echo of
 //! the request arguments. The HTTP routes keep their own shapes.
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 fn remove(value: &mut Value, keys: &[&str]) {
     if let Some(map) = value.as_object_mut() {
@@ -8,11 +8,6 @@ fn remove(value: &mut Value, keys: &[&str]) {
             map.remove(*key);
         }
     }
-}
-
-/// Remove each key of `map` whose value equals `same`.
-fn remove_same(map: &mut Map<String, Value>, keys: &[&str], same: &Value) {
-    map.retain(|key, value| !(keys.contains(&key.as_str()) && value == same));
 }
 
 /// joppa_command and joppa_batch: no changed-object summaries and no public IDs. A schema
@@ -36,31 +31,6 @@ fn operation(result: &mut Value) {
             json!({"op":"set_tree_schema","revision":revision,"reason":command["reason"]});
         result["schema_revision"] = json!(revision + 1);
     }
-}
-
-/// joppa_tasks: the address is the ID, the parent is the criterion, and the signal gives
-/// only its tone, label and time.
-pub fn tasks(mut reply: Value) -> Value {
-    remove(&mut reply, &["view"]);
-    for item in reply
-        .get_mut("items")
-        .and_then(Value::as_array_mut)
-        .into_iter()
-        .flatten()
-    {
-        let (address, parent) = (item["address"].clone(), item["parent"].clone());
-        let assessment = item["assessment"].clone();
-        let Some(map) = item.as_object_mut() else {
-            continue;
-        };
-        remove_same(map, &["id"], &address);
-        remove_same(map, &["ac"], &parent);
-        remove_same(map, &["readiness_blocker"], &assessment);
-        if let Some(signal) = item.get_mut("signal") {
-            remove(signal, &["assessment", "readiness_blocker"]);
-        }
-    }
-    reply
 }
 
 /// joppa_timeline: no echo of after and order.
@@ -137,22 +107,6 @@ mod tests {
         assert_eq!(
             batch,
             json!({"results":[{"position":1,"command":{"op":"note"}}]})
-        );
-    }
-
-    #[test]
-    fn a_task_item_keeps_one_copy_of_each_fact() {
-        let blocker = json!({"state":"unassessed"});
-        let reply = tasks(
-            json!({"view":"all","items":[{"id":"task:t","address":"task:t",
-            "ac":"ac:a","parent":"ac:a","status":"retired",
-            "assessment":blocker,"readiness_blocker":blocker,
-            "signal":{"tone":"grey","label":"Retired","assessment":blocker,"readiness_blocker":blocker}}]}),
-        );
-        assert_eq!(
-            reply,
-            json!({"items":[{"address":"task:t","parent":"ac:a","status":"retired",
-                "assessment":blocker,"signal":{"tone":"grey","label":"Retired"}}]})
         );
     }
 

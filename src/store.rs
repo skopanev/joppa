@@ -26,8 +26,6 @@ pub use objects::{
 };
 #[path = "store_grants.rs"]
 mod grants;
-#[path = "store_queue.rs"]
-mod queue_rows;
 pub use grants::{
     Access, READ_ONLY_REFUSAL, TokenGrant, create_agent_token, list_agent_tokens,
     revoke_agent_token, token_actor,
@@ -38,9 +36,6 @@ mod record_results;
 mod reports;
 pub use record_results::record_results;
 pub use reports::test_status;
-#[path = "store_tasks.rs"]
-mod tasks;
-pub use tasks::{task_queue, task_queue_filtered};
 #[path = "store_remote.rs"]
 pub(crate) mod remote;
 #[path = "store_remote_status.rs"]
@@ -72,7 +67,7 @@ use migrations::ensure_notes;
 
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "17";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "18";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]

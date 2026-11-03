@@ -185,15 +185,13 @@ pub fn set_schema(
                 "a type with existing verification evidence must retain its role"
             );
         }
-        if !legacy_task_binding(w, obj) {
-            parent_valid(
-                types,
-                w,
-                &obj.kind,
-                obj.current().parent.as_deref(),
-                Some(&address(&obj.kind, &obj.id)),
-            )?;
-        }
+        parent_valid(
+            types,
+            w,
+            &obj.kind,
+            obj.current().parent.as_deref(),
+            Some(&key),
+        )?;
     }
     let priorities = priorities.cloned().or_else(|| schema(w).priorities);
     let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);

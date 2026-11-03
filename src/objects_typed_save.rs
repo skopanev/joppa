@@ -195,6 +195,8 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
                 r.acceptance = None;
             }
         }
+        // A changed criterion asks for a new readiness mark.
+        w.signal_assessments.remove(&key);
         // An earlier or equal time keeps the stored boundary.
         let later = w.criterion_boundaries.get(&key).is_some_and(|old| {
             use crate::ac_tests::Boundary;

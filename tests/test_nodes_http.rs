@@ -83,9 +83,8 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
         .map_err(anyhow::Error::msg)?;
     ensure!(tone(&w, "ac:b").await? == "purple" && tone(&w, "requirement:r").await? == "green");
     // A node that waits for an answer is yellow, and yellow beats green above it.
-    let r = w.object("requirement:r").await?["revision"].clone();
-    let question = json!({"op":"assess","req":"requirement:r","revision":r,"ac":"ac:a",
-        "assessment":{"ready":false,"owner":"alex","reason":"Q1: Which limit applies?"}});
+    let question =
+        json!({"op":"assess","target":"ac:a","ready":false,"reason":"Q1: Which limit applies?"});
     w.command(&w.bot, question)
         .await?
         .map_err(anyhow::Error::msg)?;

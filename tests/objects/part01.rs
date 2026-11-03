@@ -122,7 +122,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
         "owner",
         json!({"op":"confirm","req":"custom","revision":revision}),
     );
-    w.ok("agent",json!({"op":"assess","req":"custom","revision":revision,"ac":"custom-ac","assessment":{"ready":true,"reason":"Contract is clear","owner":null,"decision":null}}));
+    w.ok("agent",json!({"op":"assess","target":"ac:custom-ac","ready":true,"reason":"Contract is clear"}));
     joppa::tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     save(
         &mut w,
@@ -132,15 +132,6 @@ fn schema_supports_custom_grouping_without_a_capability() {
         vec![],
     );
     assert!(objects::within(&w.state, "task:custom/t", "initiative:i"));
-    assert!(
-        joppa::tasks::claimable(
-            &w.state,
-            "agent",
-            "task:custom/t",
-            &w.state.task_process["task:custom/t"]
-        )
-        .is_ok()
-    );
     w.no("owner",json!({"op":"set_tree_schema","revision":0,"types":objects::defaults(),"reason":"Stale schema"}));
     let mut invalid = objects::schema(&w.state).types;
     invalid.get_mut("ac").unwrap().parents = vec!["initiative".into()];

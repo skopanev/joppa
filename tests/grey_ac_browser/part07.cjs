@@ -108,7 +108,7 @@ test('blocking-pins-revision-ac1: a blocking link keeps its stored target revisi
     };
     const pinned = await read('domain:s');
     assert.deepEqual([pinned.links[0].blocking, pinned.links[0].revision, pinned.links[0].current_revision], [true, 3, 3]);
-    assert.equal(pinned.review_required, false);
+    assert.equal(pinned.review_required, undefined);
     const unpinned = await read('domain:u&revision=1');
     assert.deepEqual([unpinned.historical, unpinned.links[0].blocking, unpinned.links[0].revision], [true, false, null]);
     assert.deepEqual(unpinned.links[0].link, {target: 'domain:t', relation: 'related', revision: null, blocking: false});
@@ -118,12 +118,12 @@ test('blocking-pins-revision-ac1: a blocking link keeps its stored target revisi
     const stale = await read('domain:s');
     assert.deepEqual([stale.links[0].blocking, stale.links[0].revision, stale.links[0].current_revision], [true, 3, 4]);
     assert.deepEqual(stale.document.links, pinned.document.links);
-    assert.equal(stale.review_required, false);
+    assert.equal(stale.review_required, undefined);
   } finally { await f.close(); }
 });
 
 // The bot marks A ready. Alex reads the rows of A and B under the requirement.
-test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for work', async t => {
+test('readiness-per-criterion-ac1: only the ready criterion A shows its readiness mark', async t => {
   const f = await fixture({...criterionRecords, 'ac:B': {title: 'Second condition', parent: 'requirement:r'}});
   // Alex reads the status of each criterion over HTTP and MCP; both give the same label and tone.
   const signal = async address => {
@@ -135,16 +135,11 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
   try {
     // Each criterion has a test without a result, so the rollup keeps both grey.
     await f.bind('ac:A', ['X']); await f.bind('ac:B', ['Y']);
-    for (const address of ['ac:A', 'ac:B']) assert.equal((await signal(address)).signal.assessment.state, 'unassessed', address);
-    const a = await signal('ac:A');
-    await f.command({op: 'assess', req: a.process.req, revision: a.process.revision, ac: a.process.criterion,
-      assessment: {ready: true, reason: 'Known scope'}});
+    for (const address of ['ac:A', 'ac:B']) assert.equal((await signal(address)).signal.assessment, undefined, address);
+    await f.command({op: 'assess', target: 'ac:A', ready: true, reason: 'Known scope'});
     const [A, B] = [await signal('ac:A'), await signal('ac:B')];
     assert.deepEqual([A.signal.assessment.state, A.signal.assessment.reason], ['ready', 'Known scope']);
-    assert.equal(A.process.readiness_blocker, null);
-    assert.equal(A.signal.label, 'Ready for work');
-    assert.equal(B.signal.assessment.state, 'unassessed');
-    assert.notEqual(B.signal.label, 'Ready for work');
+    assert.equal(B.signal.assessment, undefined);
     // Each width is its own subtest, so the output names both runs.
     for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('readiness-per-criterion-ac1: ' + viewport.width + ' px', async () => {
       await f.page.setViewportSize(viewport);
@@ -161,12 +156,12 @@ test('readiness-per-criterion-ac1: only the ready criterion A shows Ready for wo
         return {label: await dot.getAttribute('aria-label'), hint: await hint.innerText(), text: await row(address).innerText()};
       };
       const shownA = await status('ac:A');
-      assert.match(shownA.label, /^Status: Ready for work(\n|$)/, JSON.stringify(viewport));
-      assert.match(shownA.hint, /^Status: Ready for work(\n|$)/, JSON.stringify(viewport));
-      assert.equal(await row('ac:A').getByRole('img', {name: /Ready for work/}).count(), 1);
+      assert.match(shownA.label, /\nReadiness: Ready(\n|$)/, JSON.stringify(viewport));
+      assert.match(shownA.hint, /\nReadiness: Ready(\n|$)/, JSON.stringify(viewport));
+      assert.equal(await row('ac:A').getByRole('img', {name: /Readiness: Ready/}).count(), 1);
       const shownB = await status('ac:B');
-      for (const text of Object.values(shownB)) assert.ok(!text.includes('Ready for work'), JSON.stringify([viewport, text]));
-      assert.equal(await row('ac:B').getByRole('img', {name: /Ready for work/}).count(), 0);
+      for (const text of Object.values(shownB)) assert.ok(!text.includes('Readiness: Ready'), JSON.stringify([viewport, text]));
+      assert.equal(await row('ac:B').getByRole('img', {name: /Readiness: Ready/}).count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
     });
   } finally { await f.close(); }
@@ -178,9 +173,9 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     'ac:A1': {title: 'Sign-in condition', parent: 'requirement:A'}, 'ac:B1': {title: 'Billing condition', parent: 'requirement:B'}};
   const f = await fixture(records);
   const read = address => f.api('/objects?address=' + encodeURIComponent(address));
-  const unstarted = async () => {
-    const http = await f.api('/objects?work_filter=unstarted&limit=100');
-    const mcp = await f.mcp('joppa_objects', {work_filter: 'unstarted', limit: 100});
+  const readyWork = async () => {
+    const http = await f.api('/objects?kind=ac&ready=true&limit=100');
+    const mcp = await f.mcp('joppa_objects', {kind: 'ac', ready: true, limit: 100});
     assert.deepEqual(mcp.items.map(item => item.address), http.items.map(item => item.address));
     return http.items.map(item => item.address);
   };
@@ -188,10 +183,8 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
   const waiting = () => card().locator(':scope > summary > .waits-for');
   try {
     // B1 is ready and its work is in the queue. A is not green.
-    const b1 = await read('ac:B1');
-    await f.command({op: 'assess', req: b1.process.req, revision: b1.process.revision, ac: b1.process.criterion,
-      assessment: {ready: true, reason: 'Known scope'}}, true);
-    assert.ok((await unstarted()).includes('ac:B1'));
+    await f.command({op: 'assess', target: 'ac:B1', ready: true, reason: 'Known scope'}, true);
+    assert.ok((await readyWork()).includes('ac:B1'));
     const readiness = (await read('ac:B1')).process.assessment.state;
     assert.equal(readiness, 'ready');
     // Save the blocking dependency on B via MCP/API command; the board displays it read-only.
@@ -199,7 +192,7 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     await f.command({op: 'save_object', kind: 'requirement', id: 'B', revision: currentB.current_revision,
       parent: 'capability:c', data: currentB.document.data,
       links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Add blocking dependency'});
-    assert.ok(!(await unstarted()).includes('ac:B1'), 'the work of B leaves the queue');
+    assert.ok(!(await readyWork()).includes('ac:B1'), 'the work of B leaves the queue');
     // Each width is its own subtest, so the output names both runs.
     for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('dependencies-before-priority-ac5: ' + viewport.width + ' px', async () => {
       await f.page.setViewportSize(viewport);

@@ -4,7 +4,7 @@
 //! once, and each read or claim reads their current state with the access of its actor.
 use super::*;
 use crate::remote_links::RemoteLink;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 
 /// The advisory lock key of a workspace. Every write and record of it takes this lock.
 const WORKSPACE_LOCK: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))";
@@ -229,7 +229,3 @@ pub(super) async fn check_child(
 ) -> Result<()> {
     readable(client, own, actor, child).await
 }
-
-#[path = "store_remote_edges.rs"]
-mod edges;
-pub(super) use edges::remote_edges;

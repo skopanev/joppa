@@ -3,7 +3,7 @@
 use crate::commands::Command;
 
 /// The operation names that live writes refuse.
-pub const NAMES: [&str; 26] = [
+pub const NAMES: &[&str] = &[
     "domain",
     "edit_domain",
     "capability",
@@ -30,7 +30,26 @@ pub const NAMES: [&str; 26] = [
     "confirm",
     "decide_note",
     "set_ac_tests",
+    "assess_signal",
+    "set_priority",
+    "claim_planning",
+    "finish_planning",
+    "release_planning",
+    "claim_task",
+    "claim_next_task",
+    "heartbeat_task",
+    "release_task",
+    "block_task",
+    "unblock_task",
+    "complete_task",
+    "review_task",
+    "retire_task",
+    "comment",
 ];
+
+/// The refusal of the removed read parameter `work_filter`.
+pub const WORK_FILTER: &str =
+    "work_filter was removed; use the node filters, for example kind and ready";
 
 /// The refusal of a removed operation: it names the replacement.
 pub fn refusal(name: &str) -> String {
@@ -46,6 +65,12 @@ pub fn refusal(name: &str) -> String {
         }
         "set_note_status" | "decide_note" => "archive_object",
         "confirm" => "save_object; a saved requirement needs no confirmation",
+        "assess_signal" | "block_task" | "unblock_task" => "assess",
+        "set_priority" => "save_object with data.priority",
+        "claim_planning" | "finish_planning" | "release_planning" | "claim_task"
+        | "claim_next_task" | "heartbeat_task" | "release_task" => "save_object with data.assignee",
+        "complete_task" | "retire_task" => "archive_object",
+        "comment" => "note",
         _ => "save_object",
     };
     format!("{name} was removed; use {replacement}")
@@ -84,6 +109,20 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::Confirm { .. } => "confirm",
         Command::DecideNote(crate::commands::DecideNoteOp { .. }) => "decide_note",
         Command::SetAcTests(crate::commands::SetAcTestsOp { .. }) => "set_ac_tests",
+        Command::AssessSignal { .. } => "assess_signal",
+        Command::SetPriority { .. } => "set_priority",
+        Command::ClaimPlanning { .. } => "claim_planning",
+        Command::FinishPlanning { .. } => "finish_planning",
+        Command::ReleasePlanning { .. } => "release_planning",
+        Command::ClaimTask { .. } => "claim_task",
+        Command::HeartbeatTask { .. } => "heartbeat_task",
+        Command::ReleaseTask { .. } => "release_task",
+        Command::BlockTask { .. } => "block_task",
+        Command::UnblockTask { .. } => "unblock_task",
+        Command::CompleteTask(crate::commands::CompleteTaskOp { .. }) => "complete_task",
+        Command::ReviewTask(crate::commands::ReviewTaskOp { .. }) => "review_task",
+        Command::RetireTask { .. } => "retire_task",
+        Command::Comment(crate::commands::CommentOp { .. }) => "comment",
         _ => return None,
     })
 }
@@ -91,8 +130,8 @@ pub fn name(command: &Command) -> Option<&'static str> {
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
-        Command::Comment(crate::commands::CommentOp { kind, .. }) if kind == "reject" => {
-            Some("comment kind reject was removed; use kind comment")
+        Command::Assess(crate::commands::AssessOp::Criterion(_)) => {
+            Some("assess with req, revision and ac was removed; use assess {target, ready, reason}")
         }
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             status_colors: Some(_),

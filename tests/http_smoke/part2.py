@@ -1,10 +1,7 @@
 """Part 2 of tests/http_smoke.py. The script runs it in its own global names, in order."""
-# Agents can still add both object notes and revision discussion through MCP.
-for request_id, value in [
-    ('agent-note', {'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}),
-    ('agent-comment', {'op':'comment','req':'requirement:key','revision':key_revision,'id':'agent-comment','text':'Agent discussion','kind':'comment'}),
-]:
-    mcp('joppa_command', {'workspace':ws,'request_id':request_id,'command':value})
+# Agents add object notes through MCP.
+mcp('joppa_command', {'workspace':ws,'request_id':'agent-note',
+    'command':{'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}})
 readback = mcp('joppa_objects', {'workspace':ws,'address':'requirement:key'})
 assert any(c['id'] == 'agent-note' and c['text'] == 'Agent note' for c in readback['comments']['items'])
 upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Attachment evidence',
@@ -93,33 +90,25 @@ mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-open-task','command':
     'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
     'data':{'title':'Restore access','owner':'owner','projects':[],
         'body':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
-assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'waiting'})['items'][0]['address'] == task_id
-criterion_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':'ac:'+task_ac})
-criterion_process = criterion_read['process']
-mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':{
-    'op':'assess','req':criterion_read['parent'],'revision':criterion_process['assessment']['revision'],'ac':'ac:'+task_ac,
-    'assessment':{'ready':True,'reason':'Technical contract is clear'}}})
-assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'available'})['items'][0]['address'] == task_id
-claimed = mcp('joppa_command',{'workspace':mcp_ws,'request_id':'mcp-claim-next',
-    'command':{'op':'claim_next_task','priorities':['domain:'+draft_id]}})
-# A claim saves no object, so its reply gives the whole command.
-assert claimed['command']['op'] == 'claim_task' and claimed['command']['id'] == task_id
-assert mcp('joppa_tasks',{'workspace':mcp_ws,'view':'mine'})['items'][0]['status'] == 'in_progress'
+# A Task is a node: assess marks it, and the node filters find it with its assignee.
+mark = lambda ready, reason: {'op':'assess','target':task_id,'ready':ready,'reason':reason}
+mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-waits','command':mark(False,'Which build?')})
+tasks = lambda **filters: [i['address'] for i in mcp('joppa_objects',{'workspace':mcp_ws,'kind':'task',**filters})['items']]
+assert tasks(ready=False) == [task_id] and tasks(ready=True) == []
+mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-ready','command':mark(True,'Technical contract is clear')})
+task_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':task_id})
+assigned = {'op':'save_object','kind':'task','id':'mcp-open-task','revision':task_read['revision'],
+    'parent':'ac:'+task_ac,'data':{**task_read['data'],'assignee':'agent'},'reason':'Take the work'}
+mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-assign','command':assigned})
+assert tasks(ready=True, assignee='agent') == [task_id]
 client_env={**env,'XDG_CACHE_HOME':str(Path(temp)/'client-cache'),'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
-def client(*arguments):
-    result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),'task',*arguments],
+def client(*arguments, stdin=None):
+    result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),*arguments],input=stdin,
                           env=client_env,capture_output=True,text=True,check=True)
     return json.loads(result.stdout)
-assert client('list','--view','mine')['items'][0]['address'] == task_id
-client('release','mcp-open-task','--reason','Handoff to another process')
-preview = client('next','--dry-run','--priority','domain:'+draft_id)
-assert preview['task']['address'] == task_id
-assert client('list','--view','available')['items'][0]['address'] == task_id
-assert client('next','--priority','requirement:'+task_req,
-              '--request-id','cli-priority-next')['command']['id'] == task_id
-client('release','mcp-open-task','--reason','Return to explicit claim')
-assert client('claim','mcp-open-task','--request-id','cli-claim')['command']['id'] == task_id
-assert client('claim','mcp-open-task','--request-id','cli-claim')['replayed'] is True
+assert client('search','Restore access','--kind','task')['items'][0]['address'] == task_id
+note = json.dumps({'op':'note','target':task_id,'id':'cli-note','text':'Started the build'})
+assert client('command',mcp_ws,'cli-note',stdin=note)['command']['op'] == 'note'
 found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
 assert not {'mode','semantic_status','embedded','indexed'} & found.keys()
 assert found['items'][0]['address'] == 'requirement:'+task_req and not {'system_id','req','kind','id'} & found['items'][0].keys()
@@ -135,13 +124,11 @@ assert reply['result']['content'][0]['text'] == 'Workspace not found'
 save('requirement','auto','capability:restrict',{'title':'Automated example','body':'','owner':'owner'},'Adapter test')
 save('ac','auto-ac','requirement:auto',criterion('Command exits successfully'))
 auto_revision = 2
-ok({'op': 'assess', 'req':'requirement:auto', 'revision': auto_revision, 'ac':'ac:auto-ac',
-    'assessment': {'ready': True, 'reason': 'Known contract'}})
+ok({'op': 'assess', 'target':'ac:auto-ac', 'ready': True, 'reason': 'Known contract'})
 status, refused = command({'op':'plan','req':'requirement:auto','revision':auto_revision,'run':'refused'})
 assert status >= 400 and 'plan was removed; use joppa_record_results' in str(refused), (status, refused)
 # Changes are made by an integration; the portal only reads the result.
-ok({'op':'assess','req':'requirement:key','revision':key_revision,'ac':'ac:key-rights',
-    'assessment':{'ready':True,'reason':'Confirmed exact permission list'}})
+ok({'op':'assess','target':'ac:key-rights','ready':True,'reason':'Confirmed exact permission list'})
 # [launch-gate] Without an acceptance on a commit the gate refuses.
 gate = subprocess.run([BIN, 'gate', ws, 'code-sha-v1'], env=env, text=True, capture_output=True)
 assert gate.returncode != 0 and 'no acceptance on a commit' in gate.stderr, gate.stderr
@@ -208,8 +195,7 @@ for kind, ident, parent, text in [
 def custom(value):
     return mcp('joppa_command', {'workspace':mcp_ws,'request_id':str(uuid.uuid4()),'command':value}, owner_token)
 for ac in ('measure:same','rule:same'):
-    custom({'op':'assess','req':'epic:same','revision':3,'ac':ac,
-            'assessment':{'ready':True,'reason':'The contract is clear'}})
+    custom({'op':'assess','target':ac,'ready':True,'reason':'The contract is clear'})
 copied=mcp('joppa_search',{'workspace':mcp_ws,'query':custom_criterion_id})['items'][0]
 assert copied['exact_id'] is True and copied['address']=='measure:same'
 

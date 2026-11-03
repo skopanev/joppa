@@ -30,6 +30,7 @@ pub(super) async fn ensure_notes(
         (!state.body_migrated, Command::MigrateBody {}),
         (!state.purpose_migrated, Command::MigratePurpose {}),
         (!state.test_nodes_migrated, Command::MigrateTestNodes {}),
+        (!state.generic_nodes, Command::MigrateGenericNodes {}),
         (
             prefix.is_some(),
             Command::RenameWorkspace(crate::commands::RenameWorkspaceOp {

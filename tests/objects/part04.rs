@@ -136,7 +136,7 @@ fn custom_group_fields_survive_archive() {
 fn a_criterion_change_keeps_sibling_readiness_and_an_identical_requirement_save_keeps_all() {
     let mut w = World::new();
     w.ready();
-    let state = |w: &World, ac: &str| objects::assessment(&w.state, ac).unwrap()["state"].clone();
+    let state = |w: &World, ac: &str| objects::criterion_assessment(&w.state, ac).unwrap()["state"].clone();
     let req = w.state.objects["requirement:r"].current().clone();
     save(
         &mut w,

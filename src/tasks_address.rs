@@ -1,4 +1,5 @@
-//! Part of `tasks`: `address` and the items after it, moved from tasks.rs unchanged.
+//! The address, the holder and the review of a Task, as the replay of the older checks reads
+//! them.
 use super::*;
 
 pub fn address(req: &str, id: &str) -> String {
@@ -21,8 +22,6 @@ pub fn task<'a>(w: &'a Workspace, key: &str) -> Option<&'a Task> {
 
 pub const CLAIM_DURATION_MS: i64 = 30 * 60 * 1000;
 
-pub const BLOCKED: &str = "Task is blocked for planning";
-
 pub(crate) fn parse_time(at: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(at)
         .or_else(|_| chrono::DateTime::parse_from_str(at, "%Y-%m-%d %H:%M:%S%.f%#z"))
@@ -31,7 +30,7 @@ pub(crate) fn parse_time(at: &str) -> Option<i64> {
 }
 
 pub(crate) fn expired(w: &Workspace, t: &Task) -> bool {
-    w.replay_claims
+    w.replaying
         && !w.persistent_claims
         && t.done.is_none()
         && t.retired.is_none()
@@ -46,45 +45,6 @@ pub(crate) fn holder<'a>(w: &Workspace, t: &'a Task) -> Option<&'a str> {
     } else {
         t.assignee.as_deref()
     }
-}
-
-pub(crate) fn unclaimed_eligibility(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
-    let mut open = t.clone();
-    open.assignee = None;
-    open.claim = None;
-    validate_claim(w, actor, key, &open)
-}
-
-pub fn status(t: &Task) -> &'static str {
-    if t.retired.is_some() {
-        "retired"
-    } else if t.done.is_some() {
-        "done"
-    } else if t.assignee.is_some() {
-        "in_progress"
-    } else {
-        "open"
-    }
-}
-
-pub fn display_tasks(w: &Workspace, req: &str) -> std::collections::BTreeMap<String, Task> {
-    let mut result = std::collections::BTreeMap::new();
-    for (key, t) in &w.task_process {
-        if !objects::within(w, key, &objects::requirement_address(req)) {
-            continue;
-        }
-        let mut t = t.clone();
-        t.review_required = review_required(w, key, &t);
-        t.acs = w.objects[key]
-            .current()
-            .parent
-            .as_deref()
-            .and_then(|p| objects::criterion_context(w, p).map(|(_, _, ac)| vec![ac.id.clone()]))
-            .unwrap_or_default();
-        let id = key.strip_prefix(&format!("task:{req}/")).unwrap_or(key);
-        result.insert(id.into(), t);
-    }
-    result
 }
 
 pub(crate) fn context(w: &Workspace, key: &str) -> Option<(String, u32)> {
@@ -108,10 +68,6 @@ pub fn review_required(w: &Workspace, key: &str, t: &Task) -> bool {
                 .is_some_and(|old| old != &context(w, key)))
 }
 
-pub fn parent_assessment(w: &Workspace, key: &str) -> Option<Value> {
-    objects::assessment(w, w.objects.get(key)?.current().parent.as_deref()?)
-}
-
 pub fn readiness_blocker(w: &Workspace, key: &str) -> Option<Value> {
     let o = w.objects.get(key)?;
     let schema = objects::schema(w);
@@ -120,51 +76,6 @@ pub fn readiness_blocker(w: &Workspace, key: &str) -> Option<Value> {
         return None;
     }
     objects::readiness_blocker(w, o.current().parent.as_deref()?, true)
-}
-
-pub(crate) fn parent_ready(w: &Workspace, key: &str) -> Result<()> {
-    let o = w.objects.get(key).context("unknown Task")?;
-    let schema = objects::schema(w);
-    let Some(gate) = schema
-        .types
-        .get(&o.kind)
-        .context("Task type is absent from schema")?
-        .parent_gate
-        .as_deref()
-    else {
-        return Ok(());
-    };
-    let Some(parent) = o.current().parent.as_deref() else {
-        return Ok(());
-    };
-    w.objects.get(parent).context("unknown Task parent")?;
-    let process = objects::run_process(w, parent);
-    let ready = match gate {
-        "completed" => task(w, parent).is_some_and(|t| t.done.is_some() && t.retired.is_none()),
-        "verified" => process["verification"] == "pass",
-        "ready" => {
-            if objects::criterion_context(w, parent).is_some() {
-                readiness_blocker(w, key).is_none()
-            } else if objects::input_type(w, &w.objects[parent].kind) {
-                // A Task under a signal needs the signal marked ready for work.
-                match w.signal_assessments.get(parent) {
-                    None => anyhow::bail!("{parent} has no readiness assessment"),
-                    Some(a) if !a.ready => {
-                        anyhow::bail!("{parent} is not ready for work: {}", a.reason)
-                    }
-                    Some(_) => objects::work_ready(w, parent),
-                }
-            } else {
-                objects::work_ready(w, parent)
-            }
-        }
-        _ => false,
-    };
-    if !ready && let Some(blocker) = readiness_blocker(w, key) {
-        anyhow::bail!("{}", objects::assessment_reason(&blocker));
-    }
-    ensure!(ready, "Task parent does not satisfy its configured gate");
-    Ok(())
 }
 
 /// The REQ above a Task, found through its configured parents.
@@ -214,9 +125,4 @@ pub(crate) fn ensure_agent_available(w: &Workspace, actor: &str, candidate: &str
         }
     }
     Ok(())
-}
-
-/// An agent may hold any number of Tasks; the older journal rule lives on for its claims.
-pub fn claimable(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
-    validate_claim(w, actor, key, t)
 }

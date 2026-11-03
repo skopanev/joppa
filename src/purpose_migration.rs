@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 
 pub const REASON: &str = "A Task has no purpose";
 
-/// The refusal of a purpose after the migration.
-pub const REFUSAL: &str = "a Task has no purpose; read joppa_help";
+/// The refusal of a purpose field on any node after the migration.
+pub const REFUSAL: &str = "a node has no purpose field; read joppa_help";
 
 /// The native document fields of a Task type after the migration have no purpose.
 pub fn task_fields(w: &Workspace, fields: &'static [&'static str]) -> &'static [&'static str] {

@@ -1,41 +1,5 @@
-//! Part of `tasks`: `validate_claim` and the items after it, moved from tasks.rs unchanged.
+//! The subjects of a Task: the project references of the Task and of its ancestors.
 use super::*;
-
-// Existing journal claims can predate the limit on active work.
-pub(crate) fn validate_claim(w: &Workspace, actor: &str, key: &str, t: &Task) -> Result<()> {
-    ensure!(
-        !crate::planning::awaiting_publication(w, key, t),
-        "Task is awaiting planning publication"
-    );
-    ensure!(
-        w.members.contains_key(actor),
-        "claimant is not a workspace member"
-    );
-    ensure!(t.blocked.is_none(), "{BLOCKED}");
-    ensure!(holder(w, t).is_none(), "task is already claimed");
-    ensure!(t.done.is_none(), "task is already completed");
-    ensure!(t.retired.is_none(), "task is retired");
-    parent_ready(w, key)?;
-    ensure!(
-        !review_required(w, key, t),
-        "task needs owner review after its parent revision changed"
-    );
-    ensure!(
-        !t.contract.trim().is_empty(),
-        "Task needs a technical contract before claim"
-    );
-    if !objects::work_ready(w, key) {
-        let target = objects::unready_dependency(w, key)
-            .map_or_else(String::new, |target| format!(": {target}"));
-        anyhow::bail!("Task has an unmet dependency{target}");
-    }
-    check_projects(
-        w,
-        w.objects[key].current().parent.as_deref(),
-        &subjects(w, key)?,
-    )?;
-    Ok(())
-}
 
 pub fn subjects(w: &Workspace, key: &str) -> Result<Vec<String>> {
     if !w.schema_migrated {

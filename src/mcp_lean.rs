@@ -3,10 +3,9 @@
 use serde_json::{Map, Value, json};
 
 /// The tools whose replies give no workspace, no position and no echo of the address.
-const READS: [&str; 8] = [
+const READS: [&str; 7] = [
     "joppa_objects",
     "joppa_search",
-    "joppa_tasks",
     "joppa_timeline",
     "joppa_history",
     "joppa_tree",
@@ -68,10 +67,6 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
             drop_value(item, &["relation"], &json!("related"));
         }),
         "joppa_search" => search(&mut reply),
-        "joppa_tasks" => each(&mut reply, "items", |item| {
-            drop_value(item, &["claimable", "review_required"], &json!(false));
-            drop_keys(item, &["created_at"]);
-        }),
         "joppa_tree" => tree(&mut reply, args),
         "joppa_help" => {
             if let Some(schema) = reply.get_mut("tree") {

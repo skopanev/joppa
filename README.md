@@ -5,7 +5,6 @@
 Each workspace defines its object types, parents, links, colors and order.
 The default recipe is Domain → Capability → Requirement → AC → Task.
 Tasks belong to the parents that the workspace schema permits.
-The queue selects the next eligible task from priorities and dependencies.
 One workspace is one product, even when several repositories deliver it.
 Repository references follow the workspace schema.
 
@@ -28,8 +27,8 @@ An iOS condition means iOS; other clients are never added by assumption.
 - Each type has a status rule: `own`, `children`, `links` or `none`. One rollup
   gives every level the highest tone of its children: red, orange, yellow, grey,
   green. A criterion without a test node is orange.
-- Tasks under configured object parents, manual work and decision tasks. A completed
-  task is not a verified AC. Owner acceptance stays separate. Records append;
+- Tasks under configured object parents, manual work and decision tasks. A Task is not
+  a verified AC. Owner acceptance stays separate. Records append;
   history is never rewritten.
 
 MCP supports generated creation IDs, atomic batches and English methodology
@@ -177,11 +176,11 @@ The gate uses fresh test databases and runs all Rust and browser tests.
 
 ```sh
 bun run gate /absolute/source/.local/lane-test.env
-bun run test:only test_name_substring planning_claims
+bun run test:only test_name_substring timeline_http
 ```
 
 `test:only` runs matching Rust tests on a fresh database. It fails when no tests match.
-Name the test file (`planning_claims` for `tests/planning_claims.rs`) as the second
+Name the test file (`timeline_http` for `tests/timeline_http.rs`) as the second
 argument. Then Cargo builds only that test, not every test binary: about 26 s instead
 of about 300 s after a source change. Use `lib` for a unit test in `src/lib.rs` and `bin` for one in `src/main.rs`
 (such as `web::tests`). The target is required, so a focused run never builds every test.
@@ -209,7 +208,7 @@ legal-policy interpretation or proof that an AC set is complete.
 
 Agent search combines PostgreSQL full-text and pgvector results when the private
 DeepInfra key is configured; otherwise it reports full-text mode. See [search](docs/search.md).
-Object lists, selected documents and task queues use database projections.
+Object lists and selected documents use database projections.
 Writes update changed rows in the same transaction as their events.
 Administrative recovery replays the journal. The board is read-only for content; authoring and
 decisions use MCP.

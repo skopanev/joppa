@@ -23,7 +23,7 @@ Domain                  Which business area is this, and who decides?
 ```
 
 Tasks are work attached to ACs, not a fifth level of business classification.
-Tests implement checks of ACs. A task being complete does not prove an AC.
+Tests implement checks of ACs. A Task does not prove an AC.
 
 ## Domain — where a decision belongs
 

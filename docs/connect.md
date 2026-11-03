@@ -77,7 +77,6 @@ with it gets HTTP 401 `token revoked`.
 | Tool | Purpose |
 |---|---|
 | `joppa_list` | List accessible products |
-| `joppa_tasks` | List available, assigned or waiting Tasks without opening every REQ |
 | `joppa_timeline` | Read every recorded change of a workspace in journal order, page by page |
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_help` | Read command shapes and API rules |
@@ -107,26 +106,13 @@ the server's administrative executable is not installed on the client machine.
 export JOPPA_MCP_URL=https://YOUR_JOPPA_DOMAIN/mcp
 export JOPPA_TOKEN_FILE=/private/path/to/agent-token
 export JOPPA_WORKSPACE=product
-python3 client/joppa task list --view available
-python3 client/joppa task next --request-id "$NEXT_REQUEST_ID"
-python3 client/joppa task next --priority domain:billing --priority requirement:r-123
-python3 client/joppa task next --dry-run --priority domain:billing
-python3 client/joppa task claim TASK_ID --request-id "$CLAIM_REQUEST_ID"
-python3 client/joppa task complete TASK_ID --evidence 'merge abc123'
+python3 client/joppa search "paid access" --kind requirement
+python3 client/joppa command product "$REQUEST_ID" < operation.json
 ```
 
-Commands print JSON. `next` selects and claims under one server lock. Repeat
-`--priority kind:id` in preference order. Each priority addresses an object from
-the configured tree. Reference scopes follow the workspace schema. It tries the first scope with a
-claimable Task, then the next, then the ordinary oldest Task. `--project`
-remains a hard filter. `next --dry-run` returns `{ "task": ... }`
-without claiming; `task` is `null` when nothing is available. Another worker
-must atomically `claim` the returned `id`, `req` and `revision`; it may lose a
-race and should retry the preview. `claim`
-accepts the Task ID from the queue. Use the full Task address with `--revision N`
-when an ID is ambiguous. Reuse a `--request-id` only for an identical retry. Exit code 3 means
-the Task was already claimed or no matching Task is available; other errors
-return 1. Do not pass the bearer token on the command line.
+Commands print JSON. `search` calls `joppa_search`. `command` reads one JSON operation
+from stdin and sends it with `joppa_command`. Errors return 1. Do not pass the bearer
+token on the command line.
 
 Each write needs a unique `request_id`. Retry identical input with the same ID
 for the same result, including generated IDs. Batches can reference earlier

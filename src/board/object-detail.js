@@ -6,7 +6,6 @@ import {button} from 'board/feedback.js';
 import {enableBranchMotion} from 'board/motion.js';
 import {assessmentHint} from 'board/status.js';
 import {personLabel,when,fileSize} from 'board/format.js';
-import {inputQueue} from 'board/object-types.js';
 import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
 import {workspaceLinksSection} from 'board/workspace-links.js';
@@ -30,11 +29,8 @@ export function fillCommonObject(body,detail){
   if(full)fields.append(full);
   const verification=detail.process?.verification&&({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification);
   if(verification)fields.append(E('p','Verification: '+verification,'node-meta'));
-  const status=typeof detail.process?.status==='string'?detail.process.status:detail.signal?.label;
-  if(detail.process?.status&&!inputQueue(detail.kind)&&status!==verification&&status!=='Checks '+verification?.toLowerCase())fields.append(E('p','Status: '+status,'node-meta'));
-  const assessment=detail.process?.readiness_blocker||detail.process?.assessment;
+  const assessment=detail.process?.assessment;
   if(!historical&&assessment)fields.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
-  if(detail.review_required)body.append(E('p','A dependency changed. Review the linked revision.','dependency-review'));
   const remote=historical?null:workspaceLinksSection(detail);
   if(remote)body.append(remote);
   // The text of every object type is body.

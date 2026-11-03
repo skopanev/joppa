@@ -55,7 +55,7 @@ pub(crate) async fn item_ids(
 }
 
 /// Public writes accept only catalog operations, before alias resolution and any write.
-/// Remote workspace creation and heartbeat_task keep their own refusals.
+/// Remote workspace creation keeps its own refusal.
 pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
     fn op(operation: &BatchOperation) -> Option<&str> {
         operation.command["op"].as_str()
@@ -66,7 +66,6 @@ pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
     );
     for (index, operation) in operations.iter().enumerate() {
         let admitted = match op(operation) {
-            Some("heartbeat_task") => Err(anyhow::anyhow!("heartbeat_task is no longer supported")),
             Some(name) if crate::removed_ops::NAMES.contains(&name) => {
                 Err(anyhow::anyhow!(crate::removed_ops::refusal(name)))
             }
@@ -84,24 +83,21 @@ pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
 
 /// Field validation of one command after generated fields, before state checks.
 /// Historical events keep their serde defaults; current writes must send these fields.
-/// claim_next_task has only optional filters; the write path checks them under the lock.
 pub(crate) fn fields(value: &Value) -> Result<()> {
-    for (op, field, refusal) in [
-        ("accept_commit", "commit", "acceptance needs a commit"),
-        ("task", "contract", "Task needs a technical contract"),
-        (
-            "complete_task",
-            "commit",
-            "complete_task needs the git sha where the Task is ready",
-        ),
-    ] {
+    for (op, field, refusal) in [("accept_commit", "commit", "acceptance needs a commit")] {
         if value["op"] == op && value.get(field).is_none_or(Value::is_null) {
             anyhow::bail!("missing field `{field}`: {refusal}");
         }
     }
-    if value["op"] != "claim_next_task" {
-        serde_json::from_value::<Command>(value.clone())?;
+    // The live assess names a node; a missing field gets its name, as other operations do.
+    if value["op"] == "assess" && value.get("req").is_none() {
+        for field in ["target", "ready", "reason"] {
+            if value.get(field).is_none_or(Value::is_null) {
+                anyhow::bail!("missing field `{field}`: assess needs target, ready and reason");
+            }
+        }
     }
+    serde_json::from_value::<Command>(value.clone())?;
     Ok(())
 }
 

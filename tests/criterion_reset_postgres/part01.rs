@@ -107,9 +107,8 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
         }
     }
     upload_c1(pool, &ws).await?;
-    for (spec, criterion) in [("spec:r", "criterion:a"), ("spec:rh", "criterion:d")] {
-        let revision = read(pool, &ws, spec).await?["process"]["revision"].clone();
-        write(pool, &ws, "planner", json!({"op":"assess","req":spec,"revision":revision,"ac":criterion,"assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    for criterion in ["criterion:a", "criterion:d"] {
+        write(pool, &ws, "planner", json!({"op":"assess","target":criterion,"ready":true,"reason":"Known scope"})).await?;
     }
     for ac in ["criterion:a", "criterion:d"] {
         ensure!(
@@ -159,75 +158,4 @@ async fn snapshot(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     let boundaries: String = pool.get().await?.query_one("SELECT COALESCE(jsonb_object_agg(key,value),'{}')::text FROM joppa.state_entries WHERE workspace=$1 AND section='criterion_boundaries'", &[&ws]).await?.get(0);
     snapshot["boundaries"] = serde_json::from_str(&boundaries)?;
     Ok(snapshot)
-}
-
-// check-list-frozen-ac2
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_group_change_reaches_the_batch_planning_read_and_survives_replay() -> Result<()> {
-    let pool = pool().await?;
-    let ws = branches(&pool).await?;
-    let a = read(&pool, &ws, "criterion:a").await?;
-    let req = read(&pool, &ws, "spec:r").await?["process"]["revision"].clone();
-    let claim = json!({"op":"claim_planning","ac":"criterion:a","revision":a["current_revision"]});
-    let refused = store::execute_remote_batch(
-        &pool,
-        &ws,
-        "planner",
-        &uuid::Uuid::new_v4().to_string(),
-        &[BatchOperation {
-            reference: None,
-            command: claim.clone(),
-        }],
-    )
-    .await;
-    ensure!(
-        refused.is_err_and(|e| format!("{e:#}").contains("criterion is already verified")),
-        "a green criterion must refuse planning"
-    );
-    // The change of G must keep the stored boundary of D, if D has one.
-    let d = snapshot(&pool, &ws).await?["boundaries"]["criterion:d"].clone();
-    let g = read(&pool, &ws, "area:g").await?["current_revision"].clone();
-    let operations: Vec<BatchOperation> = [
-        save_g(&g, "Changed group scope"),
-        json!({"op":"assess","req":"spec:r","revision":req,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}}),
-        claim,
-    ]
-    .into_iter()
-    .map(|command| BatchOperation { reference: None, command })
-    .collect();
-    // The planning read in the same batch sees the change of G, so A is grey there.
-    store::execute_remote_batch(
-        &pool,
-        &ws,
-        "planner",
-        &uuid::Uuid::new_v4().to_string(),
-        &operations,
-    )
-    .await?;
-    ensure!(
-        read(&pool, &ws, "criterion:a").await?["process"]["planning_claim"]["actor"] == "planner",
-        "the claim must follow the grey planning read"
-    );
-    let live = snapshot(&pool, &ws).await?;
-    ensure!(
-        live["criterion:a"]["status"]["status"] == "grey"
-            && live["criterion:d"]["status"]["status"] == "green"
-            && live["boundaries"].get("criterion:a").is_some()
-            && live["boundaries"]["criterion:d"] == d,
-        "{live}"
-    );
-    // Replay the journal into a new projection of the workspace.
-    pool.get()
-        .await?
-        .execute("DELETE FROM joppa.state_entries WHERE workspace=$1", &[&ws])
-        .await?;
-    pool.get()
-        .await?
-        .execute("DELETE FROM joppa.board_cache WHERE workspace=$1", &[&ws])
-        .await?;
-    store::migrate(&pool).await?;
-    let replayed = snapshot(&pool, &ws).await?;
-    ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
-    Ok(())
 }

@@ -1,6 +1,6 @@
 //! requirement:http-routes and requirement:mcp-tools over a real server: each listed route
 //! answers its method, an unlisted path gets the router 404, and tools/list names exactly
-//! the 14 MCP tools.
+//! the listed MCP tools.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 /// Every route of the server: the method and the path pattern.
-const ROUTES: [(&str, &str); 53] = [
+const ROUTES: [(&str, &str); 51] = [
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/.well-known/oauth-protected-resource/mcp"),
     ("GET", "/.well-known/oauth-authorization-server"),
@@ -45,12 +45,10 @@ const ROUTES: [(&str, &str); 53] = [
     ("POST", "/api/domain-grants"),
     ("GET", "/api/workspaces/{workspace}"),
     ("POST", "/api/workspaces/{workspace}/rename"),
-    ("POST", "/api/workspaces/{workspace}/priority"),
     ("GET", "/api/workspaces/{workspace}/references"),
     ("GET", "/api/workspaces/{workspace}/board"),
     ("GET", "/api/workspaces/{workspace}/objects"),
     ("GET", "/api/workspaces/{workspace}/search"),
-    ("GET", "/api/workspaces/{workspace}/tasks"),
     ("GET", "/api/workspaces/{workspace}/timeline"),
     ("GET", "/api/workspaces/{workspace}/history"),
     ("GET", "/api/workspaces/{workspace}/tree"),
@@ -69,7 +67,7 @@ const ROUTES: [(&str, &str); 53] = [
     ("POST", "/api/workspaces/{workspace}/delete"),
 ];
 
-const TOOLS: [&str; 14] = [
+const TOOLS: [&str; 13] = [
     "joppa_attach",
     "joppa_attachments",
     "joppa_batch",
@@ -81,7 +79,6 @@ const TOOLS: [&str; 14] = [
     "joppa_objects",
     "joppa_record_results",
     "joppa_search",
-    "joppa_tasks",
     "joppa_timeline",
     "joppa_tree",
 ];
@@ -163,7 +160,7 @@ async fn every_listed_route_answers_and_an_unlisted_path_is_404() -> Result<()> 
 // mcp-tools-list
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn mcp_tools_list_names_exactly_14_tools() -> Result<()> {
+async fn mcp_tools_list_names_exactly_the_listed_tools() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     let reply: Value = w
         .http
@@ -185,7 +182,7 @@ async fn mcp_tools_list_names_exactly_14_tools() -> Result<()> {
     let expected: BTreeSet<&str> = TOOLS.into_iter().collect();
     ensure!(names == expected, "{names:?}");
     ensure!(
-        reply["result"]["tools"].as_array().map(Vec::len) == Some(14),
+        reply["result"]["tools"].as_array().map(Vec::len) == Some(TOOLS.len()),
         "a tool name repeats"
     );
     Ok(())

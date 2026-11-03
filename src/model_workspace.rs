@@ -5,8 +5,9 @@ use super::*;
 pub struct Workspace {
     #[serde(default)]
     pub persistent_claims: bool,
+    /// True while apply_replay applies a stored event.
     #[serde(skip)]
-    pub replay_claims: bool,
+    pub replaying: bool,
     #[serde(skip)]
     pub claim_time_ms: Option<i64>,
     /// The first journal position of each replay rule (joppa.replay_epochs). A replay
@@ -60,6 +61,9 @@ pub struct Workspace {
     /// The migrate_test_nodes event ran: each test is a node of a type with role test.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub test_nodes_migrated: bool,
+    /// The migrate_generic_nodes event ran: a Task is a node like any other.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub generic_nodes: bool,
     /// The reference prefix comes from the title, so a rename derives it again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefix_from_title: bool,

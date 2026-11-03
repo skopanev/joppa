@@ -110,7 +110,7 @@ fn the_migration_removes_each_purpose_and_keeps_the_contract_revision() {
     assert_eq!(w.state.task_process["task:text"].contract, joined);
     let same = "Keep the paid access. Prove the restart rule.";
     assert_eq!(data(&w, "task:same")["body"], same);
-    let process = joppa::tasks::process(&w.state, "task:label").unwrap();
+    let process = joppa::objects::process(&w.state, "task:label");
     assert!(process.get("purpose").is_none(), "{process}");
     // The event runs once.
     let once = serde_json::to_value(&w.state).unwrap();

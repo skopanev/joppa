@@ -65,38 +65,27 @@ pub(super) fn apply_set_tree_schema(
     Ok(())
 }
 
-/// Apply `assess_signal`.
-pub(super) fn apply_assess_signal(
+/// Apply `assess` to a node, or replay the older `assess_signal`: the readiness mark of any
+/// present node.
+pub(super) fn apply_assess(
     w: &mut Workspace,
     actor: &str,
-    command: &Command,
+    target: &str,
+    ready: bool,
+    reason: &str,
     position: u64,
 ) -> Result<()> {
-    let Command::AssessSignal {
-        target,
-        ready,
-        reason,
-    } = command
-    else {
-        unreachable!()
-    };
     nonempty(reason)?;
     let key = crate::objects::resolve_address(w, target).to_owned();
-    let kind = w
-        .objects
-        .get(&key)
-        .filter(|o| o.current().present)
-        .map(|o| o.kind.clone())
-        .context("unknown object")?;
     ensure!(
-        crate::objects::input_type(w, &kind),
-        "only a signal of an inbox type takes a readiness mark"
+        w.objects.get(&key).is_some_and(|o| o.current().present),
+        "unknown object"
     );
     w.signal_assessments.insert(
         key,
         crate::model::SignalAssessment {
-            ready: *ready,
-            reason: reason.clone(),
+            ready,
+            reason: reason.into(),
             actor: actor.into(),
             position,
         },
@@ -104,24 +93,10 @@ pub(super) fn apply_assess_signal(
     Ok(())
 }
 
-/// Apply `set_priority`.
-pub(super) fn apply_set_priority(w: &mut Workspace, command: &Command) -> Result<()> {
-    let Command::SetPriority { target, priority } = command else {
-        unreachable!()
-    };
+/// Replay the older `set_priority`.
+pub(super) fn apply_set_priority(w: &mut Workspace, target: &str, priority: &str) {
     let key = crate::objects::resolve_address(w, target).to_owned();
-    ensure!(
-        w.objects.get(&key).is_some_and(|o| o.current().present),
-        "unknown object"
-    );
-    let values = crate::objects::priority_values(w);
-    ensure!(
-        values.contains(priority),
-        "priority is one of {}",
-        values.join(", ")
-    );
-    w.priorities.insert(key, priority.clone());
-    Ok(())
+    w.priorities.insert(key, priority.into());
 }
 
 /// Apply `set_remote_links`.

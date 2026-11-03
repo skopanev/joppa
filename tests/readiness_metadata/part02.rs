@@ -1,124 +1,58 @@
 // Part 2 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
 
-#[test]
-fn dependency_question_blocks_work_and_a_dependent_task() {
-    let mut w = World::new();
-    let mut next = revision(1);
-    next["acs"][0]["depends_on"] = json!(["key"]);
-    w.ok("owner", next);
-    tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    for (ac, ready) in [("ios", true), ("key", false)] {
-        let mut cmd = assess(ac, ready);
-        cmd["revision"] = json!(2);
-        w.ok("agent", cmd);
-    }
-    save(
-        &mut w,
-        "task:work",
-        Some("ac:ios"),
-        work("Implement access"),
+// A new workspace stores an epoch at position 1 for each replay rule. A journal without the
+// epoch of a rule refuses to replay: the replay cannot tell the old meaning of its events.
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_journal_without_a_replay_epoch_refuses_to_replay() -> anyhow::Result<()> {
+    let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
+    let pool = store::pool(&url)?;
+    let conn = pool.get().await?;
+    let name: String = conn
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(
+        name.starts_with("joppa_test"),
+        "isolated test database required"
     );
-    let p = objects::process(&w.state, "task:work");
-    assert_eq!(p["assessment"]["state"], "ready");
-    assert_eq!(p["readiness_blocker"]["criterion"], "key");
-    assert_eq!(p["readiness_blocker"]["recipient"], "legal");
-    save(
-        &mut w,
-        "task:dependent",
-        Some("ac:ios"),
-        work("Implement the dependent part"),
-    );
-    let dependent = objects::process(&w.state, "task:dependent");
-    assert_eq!(dependent["readiness_blocker"]["criterion"], "key");
-    let refusal = tasks::claimable(
-        &w.state,
-        "legal",
-        "task:dependent",
-        &w.state.task_process["task:dependent"],
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(refusal.contains("Which exact permissions?"));
-    assert!(refusal.contains("Recipient: legal"));
-}
-
-#[test]
-fn custom_role_names_and_parent_changes_select_the_current_assessment() {
-    let mut w = World {
-        state: Default::default(),
-        position: 0,
-    };
-    w.ok("owner", json!({"op":"workspace","title":"Custom roles"}));
-    w.ok("owner", json!({"op":"member","id":"legal","role":"human"}));
-    for op in [
-        "migrate_notes",
-        "migrate_tasks",
-        "migrate_schema",
-        "migrate_documents",
-        "migrate_body",
-    ] {
-        let cmd = serde_json::from_value(json!({"op":op})).unwrap();
-        joppa::commands::apply_replay(&mut w.state, "owner", &cmd, w.position + 1, "now").unwrap();
-        w.position += 1;
-    }
-    assert!(w.state.schema_migrated);
-    assert!(w.state.documents_migrated);
-    w.ok(
-        "owner",
-        json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
-        "spec":{"title":"Specification","role":"requirement","status":"children","root":true},
-        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
-        "work":{"title":"Work","role":"task","status":"none","parents":["*"],"parent_gate":"ready"}
-    },"reason":"Configure semantic roles"}),
-    );
-    for id in ["a", "b"] {
-        save(
-            &mut w,
-            &format!("spec:{id}"),
-            None,
-            json!({"title":id,"owner":"owner","body":"Current contract"}),
-        );
-        save(
-            &mut w,
-            &format!("criterion:{id}"),
-            Some(&format!("spec:{id}")),
-            json!({"title":"Specified behavior","owner":"owner"}),
-        );
-    }
-    let (req, r, ac) = objects::criterion_context(&w.state, "criterion:a").unwrap();
-    let cmd = json!({"op":"assess","req":req,"revision":r.number,"ac":ac.id,"assessment":{
-        "ready":false,"reason":"Which account can use this?","recipient":"legal","decision":null}});
-    w.ok("owner", cmd);
-    save(
-        &mut w,
-        "work:one",
-        Some("criterion:a"),
-        work("Implement behavior"),
-    );
-    let p = objects::process(&w.state, "work:one");
-    assert_eq!(p["assessment"]["state"], "waiting");
-    assert_eq!(p["assessment"]["req"], "spec:a");
-    assert!(
-        tasks::claimable(
-            &w.state,
-            "legal",
-            "work:one",
-            &w.state.task_process["work:one"]
+    store::migrate(&pool).await?;
+    let ws = format!("epochs-{}", uuid::Uuid::new_v4().simple());
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
+    let epochs: Vec<(String, i64)> = conn
+        .query(
+            "SELECT rule,first_position FROM joppa.replay_epochs WHERE workspace=$1 ORDER BY rule",
+            &[&ws],
         )
-        .unwrap_err()
-        .to_string()
-        .contains("Which account")
+        .await?
+        .iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    let mut expected: Vec<(String, i64)> = joppa::commands::REPLAY_RULES
+        .iter()
+        .map(|rule| (rule.to_string(), 1))
+        .collect();
+    expected.sort();
+    assert_eq!(epochs, expected);
+    store::check_journal(&pool).await?;
+    conn.execute(
+        "DELETE FROM joppa.replay_epochs WHERE workspace=$1 AND rule=$2",
+        &[&ws, &joppa::commands::LIST_SAVE_RESET],
+    )
+    .await?;
+    let error = format!("{:#}", store::check_journal(&pool).await.unwrap_err());
+    // Restore the epoch first, so that later tests in this database can replay every journal.
+    conn.execute(
+        "INSERT INTO joppa.replay_epochs(workspace,rule,first_position) VALUES($1,$2,1)",
+        &[&ws, &joppa::commands::LIST_SAVE_RESET],
+    )
+    .await?;
+    assert!(
+        error.contains(&format!(
+            "workspace {ws} has no replay epoch for rule list_save_reset"
+        )),
+        "{error}"
     );
-    save(
-        &mut w,
-        "work:one",
-        Some("criterion:b"),
-        work("Implement behavior"),
-    );
-    let p = objects::process(&w.state, "work:one");
-    assert_eq!(p["assessment"]["state"], "unassessed");
-    assert_eq!(p["assessment"]["req"], "spec:b");
-    assert!(p["assessment"]["reason"].is_null());
-    assert_eq!(p["review_required"], true);
+    store::check_journal(&pool).await?;
+    Ok(())
 }

@@ -72,9 +72,15 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     assert!(visible.as_array().unwrap().iter().any(|w| w["id"] == other));
     assert!(!visible.as_array().unwrap().iter().any(|w| w["id"] == ws));
     assert!(
-        execute(&pool, &other, "outsider", "foreign", assess("ios", true))
-            .await
-            .is_err()
+        execute(
+            &pool,
+            &other,
+            "outsider",
+            "foreign",
+            json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"})
+        )
+        .await
+        .is_err()
     );
     // A live edit of requirement:r: the document of the old journal with a new title.
     let current = store::read_objects(

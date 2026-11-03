@@ -131,13 +131,6 @@ pub(super) async fn rename_workspace(
             .map(|_| json!({"id": workspace, "title": body.title})),
     )
 }
-/// The board is read-only; priority changes go through Joppa MCP.
-pub(super) async fn set_priority() -> ApiResult {
-    Err((
-        StatusCode::FORBIDDEN,
-        Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
-    ))
-}
 /// The owner reads the workspaces that link to this workspace, before a deletion.
 pub(super) async fn workspace_references(
     State(app): State<App>,

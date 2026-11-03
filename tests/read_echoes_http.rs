@@ -76,28 +76,6 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             "{batch}"
         );
     }
-    write(
-        &w,
-        &w.owner,
-        json!({"op":"retire_task","id":"task:t","revision":1,"reason":"Not needed"}),
-    )
-    .await?;
-    // A Task item: the address is the ID, the parent is the criterion, and a retired Task
-    // has no waiting reason.
-    let tasks = read(&w, "joppa_tasks", json!({"view":"all"})).await?;
-    let task = &tasks["items"][0];
-    ensure!(
-        tasks.get("view").is_none()
-            && task["address"] == "task:t"
-            && task["parent"] == "ac:a"
-            && task["status"] == "retired"
-            && absent(task, &["id", "ac", "waiting_reason"])
-            && (task.get("readiness_blocker").is_none()
-                || task["readiness_blocker"] != task["assessment"])
-            && absent(&task["signal"], &["assessment", "readiness_blocker"])
-            && task["signal"]["tone"].is_string(),
-        "{tasks}"
-    );
     // A record names itself only by its address.
     w.recorded(
         &"a".repeat(40),
@@ -142,17 +120,22 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(&found, &["all_versions", "all_workspaces", "workspaces"]),
         "{found}"
     );
-    // The test results decide a criterion: its process gives no run status or revision,
-    // and assessment gives the requirement revision that assess sends.
+    // The test results decide a criterion: its process gives no run status or revision.
     let ac = w.object("ac:a").await?;
     ensure!(
         absent(
             &ac["process"],
-            &["revision", "status", "verification", "pending_run"]
-        ) && ac["process"]["assessment"]["revision"].is_u64(),
+            &[
+                "revision",
+                "status",
+                "verification",
+                "pending_run",
+                "assessment"
+            ]
+        ),
         "{ac}"
     );
-    // A requirement gives no copy of its current revision, and false review_required goes.
+    // A requirement gives no copy of its current revision and no review_required.
     let requirement = w.object("requirement:r").await?;
     ensure!(
         absent(
@@ -163,34 +146,5 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(&ac, &["review_required"]),
         "{requirement}"
     );
-    Ok(())
-}
-
-// read-mcp-echoes
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_requirement_list_with_data_omits_the_old_consumers_field() -> Result<()> {
-    let w = record_world::world(&["tests/x.rs > t"]).await?;
-    write(
-        &w,
-        &w.bot,
-        json!({"op":"save_object","kind":"requirement","id":"old","revision":0,"parent":null,
-        "data":{"title":"Old","owner":"owner","body":"Old rule","consumers":[]},"reason":"Create"}),
-    )
-    .await?;
-    let list = read(
-        &w,
-        "joppa_objects",
-        json!({"kind":"requirement","parent":"*","fields":["data"]}),
-    )
-    .await?;
-    let items = list["items"].as_array().cloned().unwrap_or_default();
-    let old = items.iter().find(|i| i["address"] == "requirement:old");
-    ensure!(
-        old.is_some_and(|i| i["data"]["body"] == "Old rule" && i["data"].get("consumers").is_none()),
-        "{list}"
-    );
-    let detail = w.object("requirement:old").await?;
-    ensure!(detail["data"].get("consumers").is_none(), "{detail}");
     Ok(())
 }

@@ -1,10 +1,10 @@
-//! The acceptance check of a requirement against the records of one commit.
+//! The acceptance check of a node against the records of one commit.
 use super::*;
 
-/// An acceptance needs a commit where every listed test of every present criterion of the
-/// requirement has a record, and the outcome of every recorded case of it is in the
-/// green_if_all list of the schema. With reset_on_change, only a record received after the
-/// last change of the criterion counts. A criterion with an older draft list blocks it.
+/// An acceptance needs a green node and a commit where every present test node at and below
+/// the node has a record, and the outcome of every recorded case of it is in the green_if_all
+/// list of the schema. With reset_on_change, only a record received after the last reset of
+/// the test node counts. A criterion without a test node is orange, so the node is not green.
 pub async fn check_acceptance(
     client: &impl GenericClient,
     workspace: &str,
@@ -13,28 +13,31 @@ pub async fn check_acceptance(
     commit: &str,
 ) -> Result<()> {
     use crate::ac_tests::Boundary;
-    const NEEDS: &str = "acceptance needs records on the commit where every listed test passes";
+    const NEEDS: &str = "acceptance needs records on the commit where every test below passes";
     let rules = crate::test_rules::rules(state)?;
     let key = crate::objects::resolve_address(state, target);
-    let mut listed: Vec<(String, Boundary)> = vec![];
-    let criteria = crate::acceptance::criteria(state, key);
-    ensure!(!criteria.is_empty(), NEEDS);
-    for criterion in criteria {
-        let list = crate::ac_tests::listed(state, &criterion)
-            .filter(|l| !l.tests.is_empty() && !l.draft)
-            .with_context(|| NEEDS)?;
-        let boundary = if rules.reset_on_change {
-            Boundary::read(
-                state
-                    .criterion_boundaries
-                    .get(&criterion)
-                    .map(String::as_str),
-            )
-        } else {
-            Boundary::None
-        };
-        listed.extend(list.tests.iter().map(|t| (t.clone(), boundary)));
-    }
+    let listed: Vec<(String, Boundary)> = crate::acceptance::tests(state, key)
+        .into_iter()
+        .map(|(node, name)| {
+            let at = state.criterion_boundaries.get(&node).map(String::as_str);
+            let boundary = if rules.reset_on_change {
+                Boundary::read(at)
+            } else {
+                Boundary::None
+            };
+            (name, boundary)
+        })
+        .collect();
+    ensure!(!listed.is_empty(), NEEDS);
+    let tone = format!(
+        "SELECT {} FROM joppa.objects o WHERE o.workspace=$1 AND o.address=$2",
+        crate::node_filter::TONE
+    );
+    let tone: Option<String> = client
+        .query_opt(&tone, &[&workspace, &key])
+        .await?
+        .and_then(|r| r.get(0));
+    ensure!(tone.as_deref() == Some("green"), NEEDS);
     let tests: Vec<&str> = listed.iter().map(|(t, _)| t.as_str()).collect();
     let rows = client
         .query(

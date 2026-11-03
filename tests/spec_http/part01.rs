@@ -139,10 +139,8 @@ impl World {
     }
     /// Bot marks criterion `ac` ready at the current revision of its requirement.
     async fn assess_ready(&self, ac: &str) -> Result<Value> {
-        let process = self.get(&format!("address=ac:{ac}")).await?["process"].clone();
-        self.command_as(&self.bot, json!({"op":"assess","req":process["req"],"revision":process["revision"],
-            "ac":process["criterion"],"assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}}))
-            .await
+        let mark = json!({"op":"assess","target":format!("ac:{ac}"),"ready":true,"reason":"The contract is clear"});
+        self.command_as(&self.bot, mark).await
     }
     async fn command(&self, command: Value) -> Result<Value> {
         self.command_as(&self.owner, command).await

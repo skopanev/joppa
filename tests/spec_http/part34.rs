@@ -7,25 +7,13 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() -> Result<()> {
     let w = world().await?;
-    let task = "task:checked";
-    bind_tests(&w, &w.bot, "ac:key-rights", &["checks.rs > key rights"]).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
-    w.command(json!({"op":"save_object","kind":"task","id":"checked","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the specified work","owner":"owner","body":"Implement the key rights and record the result","projects":[]},"reason":"Check recovery under a green criterion"})).await?;
-    w.command_as(&w.bot, json!({"op":"claim_task","id":task,"revision":1}))
-        .await?;
-    w.command_as(
-        &w.bot,
-        json!({"op":"complete_task","commit":"c0ffee0","id":task,"revision":2,"evidence":"Implemented the contract"}),
-    )
-    .await?;
+    let node = "ac:key-rights";
+    bind_tests(&w, &w.bot, node, &["checks.rs > key rights"]).await?;
+    w.command_as(&w.bot, json!({"op":"assess","target":node,"ready":true,"reason":"The contract is clear"})).await?;
     let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
     record_http::recorded(&w.http, &w.root, &w.ws, &w.bot, "c4c4c4c", passed).await?;
-    let passed = |object: &Value| {
-        object["process"].get("verification").is_none()
-            && object["signal"]["tone"] == "green"
-            && object["signal"]["label"] == "Work complete"
-    };
-    let before = w.get(&format!("address={task}")).await?;
+    let passed = |object: &Value| object["signal"]["tone"] == "green";
+    let before = w.get(&format!("address={node}")).await?;
     ensure!(passed(&before), "{before}");
 
     let row = "SELECT value::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='ac:key-rights'";
@@ -36,7 +24,7 @@ async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() 
     ).await?;
     ensure!(broken == 1, "the criterion document must exist");
     // The corruption is not a journal write: the read keeps the status of the last write.
-    let kept = w.get(&format!("address={task}")).await?;
+    let kept = w.get(&format!("address={node}")).await?;
     ensure!(passed(&kept), "{kept}");
 
     // A stale projection is refused with an explicit error on HTTP and on MCP.
@@ -47,7 +35,7 @@ async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() 
     let reply = w
         .http
         .get(format!(
-            "{}/api/workspaces/{}/objects?address={task}",
+            "{}/api/workspaces/{}/objects?address={node}",
             w.root, w.ws
         ))
         .bearer_auth(&w.owner)
@@ -64,7 +52,7 @@ async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() 
         "{body}"
     );
     let mcp: Value = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.owner)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":task}}}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":node}}}))
         .send().await?.error_for_status()?.json().await?;
     ensure!(
         mcp["result"]["isError"] == true
@@ -81,7 +69,7 @@ async fn a_corrupted_criterion_row_and_a_stale_projection_recover_at_backfill() 
         restored == original,
         "restored {restored}, original {original}"
     );
-    let after = w.get(&format!("address={task}")).await?;
+    let after = w.get(&format!("address={node}")).await?;
     ensure!(passed(&after), "{after}");
     Ok(())
 }

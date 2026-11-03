@@ -16,24 +16,17 @@ async fn save_criterion(
     send_as(w, &w.owner, &command).await
 }
 
-/// Bot claims `task` at its current revision.
-async fn claim(w: &World, task: &str) -> Result<(bool, Value)> {
-    let revision = w.get(&format!("address={task}")).await?["current_revision"].clone();
-    send_as(
-        w,
-        &w.bot,
-        &json!({"op":"claim_task","id":task,"revision":revision}),
-    )
-    .await
+/// The target that `node` waits for, as a read gives it.
+async fn waits(w: &World, node: &str) -> Result<Option<String>> {
+    let read = w.get(&format!("address={node}")).await?;
+    Ok(read["waits_for"]["address"].as_str().map(String::from))
 }
 
-/// Bot claims and completes `task`.
+/// The owner archives `task`: its work is done.
 async fn finish(w: &World, task: &str) -> Result<()> {
-    let (ok, claimed) = claim(w, task).await?;
-    ensure!(ok, "{task}: {claimed}");
     let revision = w.get(&format!("address={task}")).await?["current_revision"].clone();
-    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":task,
-        "revision":revision,"evidence":"Implemented the contract"}))
+    w.command_as(&w.owner, json!({"op":"archive_object","target":task,"revision":revision,
+        "reason":"Implemented the contract"}))
         .await?;
     Ok(())
 }
@@ -53,11 +46,9 @@ async fn a_criterion_that_depends_on_a_task_waits_until_the_task_is_done() -> Re
     ensure!(saved.0, "{}", saved.1);
     w.assess_ready("other-audit").await?;
     ready_task(&w, "t4", "other-audit").await?;
-    let early = claim(&w, "task:t4").await?;
-    ensure!(refused(&early, "waits for task:t1"), "{early:?}");
+    ensure!(waits(&w, "task:t4").await?.as_deref() == Some("task:t1"), "t4 waits");
     finish(&w, "task:t1").await?;
-    let late = claim(&w, "task:t4").await?;
-    ensure!(late.0, "{late:?}");
+    ensure!(waits(&w, "task:t4").await?.is_none(), "t4 is free");
     Ok(())
 }
 
@@ -74,13 +65,12 @@ async fn a_task_that_depends_on_a_requirement_waits_for_its_criteria() -> Result
     command["links"][0]["revision"] = pin;
     let (ok, saved) = send_as(&w, &w.owner, &command).await?;
     ensure!(ok, "{saved}");
-    let early = claim(&w, "task:t2").await?;
-    ensure!(refused(&early, "waits for requirement:key"), "{early:?}");
+    let early = waits(&w, "task:t2").await?;
+    ensure!(early.as_deref() == Some("requirement:key"), "{early:?}");
     let results = json!({"workspace":w.ws,"commit":"c0ffee0","results":[{"test":test,"status":"pass"}]});
     let recorded = mcp_call(&w, &w.bot, "joppa_record_results", results).await?;
     ensure!(recorded["isError"] != true, "{recorded}");
-    let late = claim(&w, "task:t2").await?;
-    ensure!(late.0, "{late:?}");
+    ensure!(waits(&w, "task:t2").await?.is_none(), "t2 is free");
     Ok(())
 }
 
@@ -110,34 +100,5 @@ async fn a_dependency_cycle_through_tasks_is_refused_like_any_other() -> Result<
     ensure!(refused(&reply, "dependency cycle"), "{reply:?}");
     let after = w.get("address=task:t1").await?;
     ensure!(after["document"] == saved["document"], "{after}");
-    Ok(())
-}
-
-// dependency-types-ac4
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_criterion_depends_on_a_criterion_of_another_requirement() -> Result<()> {
-    let w = world().await?;
-    tasks_under_two_requirements(&w).await?;
-    w.requirement("third", "restrict", "Third", "Scope", &[("third-check", "Check the third")])
-        .await?;
-    let saved = save_criterion(&w, "other-audit", "other", json!(["third-check"]), json!([])).await?;
-    ensure!(saved.0, "{}", saved.1);
-    let audit = w.get("address=ac:other-audit").await?;
-    ensure!(
-        audit["document"]["data"]["depends_on"] == json!(["third-check"]),
-        "{audit}"
-    );
-    w.assess_ready("other-audit").await?;
-    ready_task(&w, "t4", "other-audit").await?;
-    // The dependency of another requirement has no readiness assessment yet.
-    let early = claim(&w, "task:t4").await?;
-    ensure!(refused(&early, "third-check"), "{early:?}");
-    w.assess_ready("third-check").await?;
-    let late = claim(&w, "task:t4").await?;
-    ensure!(late.0, "{late:?}");
-    // A cycle across requirements is refused.
-    let back = save_criterion(&w, "third-check", "third", json!(["other-audit"]), json!([])).await?;
-    ensure!(refused(&back, "AC dependency cycle"), "{back:?}");
     Ok(())
 }

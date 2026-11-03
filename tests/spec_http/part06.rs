@@ -11,17 +11,14 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
     let mut types = schema["schema"]["types"].clone();
     types["job"] = types["task"].clone();
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check verification with a configured task type"})).await?;
-    w.command_as(bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(bot, json!({"op":"assess","target":"ac:key-rights","ready":true,"reason":"The contract is clear"})).await?;
     let conn = w.pool.get().await?;
     for kind in ["task", "job"] {
         w.command(json!({"op":"save_object","kind":kind,"id":"report-only","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the report contract","owner":"owner","body":"Implement the key rights and record checks","projects":[]},"reason":"Create work for the verification guard"})).await?;
         let address = format!("{kind}:report-only");
-        w.command_as(bot, json!({"op":"claim_task","id":address,"revision":1}))
-            .await?;
         let claimed = w.get(&format!("address={address}")).await?;
         ensure!(
-            claimed["process"]["assignee"] == "bot"
-                && claimed["process"].get("verification").is_none(),
+            claimed["process"].get("verification").is_none(),
             "{claimed}"
         );
         let before: i64 = conn
@@ -108,7 +105,6 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
                 && updated["process"].get("verification").is_none(),
             "{updated}"
         );
-        w.command_as(bot, json!({"op":"release_task","id":address,"revision":updated["current_revision"],"reason":"Return the tested work"})).await?;
     }
     Ok(())
 }

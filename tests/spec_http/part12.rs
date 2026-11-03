@@ -28,7 +28,7 @@ async fn an_archived_object_still_reads_by_address() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
+async fn an_archived_task_does_not_prevent_archiving_its_parent() -> Result<()> {
     let w = world().await?;
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -49,9 +49,9 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
             error["error"] == "cannot archive an object with active children",
             "{error}"
         );
-        w.command(json!({"op":"retire_task","id":task,"revision":1,"reason":"The owner no longer needs this work"})).await?;
-        let retired = w.get(&format!("address={task}")).await?;
-        ensure!(retired["process"]["status"] == "retired", "{retired}");
+        w.command(json!({"op":"archive_object","target":task,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+        let archived = w.get(&format!("address={task}")).await?;
+        ensure!(archived["document"]["present"] == false, "{archived}");
         // A note has no parent, so a configured document is the present child.
         let note = format!("record:live-child-{index}");
         w.command(json!({"op":"save_object","kind":"record","id":format!("live-child-{index}"),"revision":0,"parent":parent,"data":{"title":"Present input","owner":"owner","body":"This input still applies"},"reason":"Keep an ordinary present child"})).await?;
@@ -76,9 +76,8 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
         );
         let after_task = w.get(&format!("address={task}")).await?;
         ensure!(
-            after_task["document"] == retired["document"]
-                && after_task["process"]["status"] == "retired",
-            "Archive changed the retired Task: {after_task}"
+            after_task["document"] == archived["document"],
+            "Archive changed the archived Task: {after_task}"
         );
         let list = w
             .get(&format!(
@@ -100,30 +99,26 @@ async fn retired_task_does_not_prevent_archiving_its_parent() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<()> {
+async fn archived_tasks_do_not_block_archiving_a_criterion() -> Result<()> {
     // removal-is-archiving-ac6
     for mcp in [false, true] {
         let w = world().await?;
         w.requirement("arch", "restrict", "Archive rule", "Scope", &[("arch-a", "Criterion A"), ("arch-b", "Criterion B"), ("arch-c", "Criterion C")]).await?;
-        w.command_as(&w.bot, json!({"op":"assess","req":"requirement:arch","revision":4,"ac":"ac:arch-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+        w.command_as(&w.bot, json!({"op":"assess","target":"ac:arch-a","ready":true,"reason":"The contract is clear"})).await?;
         let done = ready_task(&w, "a-done", "arch-a").await?;
-        w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
-            .await?;
-        w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":done,"revision":2,"evidence":"Implemented the contract"})).await?;
-        let retired = ready_task(&w, "a-retired", "arch-a").await?;
-        w.command(json!({"op":"retire_task","id":retired,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+        let dropped = ready_task(&w, "a-retired", "arch-a").await?;
+        for (task, reason) in [(&done, "Implemented the contract"), (&dropped, "The owner no longer needs this work")] {
+            w.command(json!({"op":"archive_object","target":task,"revision":1,"reason":reason})).await?;
+        }
         ready_task(&w, "b-open", "arch-b").await?;
-        let blocked = ready_task(&w, "c-blocked", "arch-c").await?;
-        w.command(json!({"op":"block_task","id":blocked,"revision":1,"reason":"Verification failed","evidence":"test x failed on abc123"})).await?;
-        let blocked = w.get(&format!("address={blocked}")).await?;
-        ensure!(blocked["process"]["blocked"].is_object(), "{blocked}");
+        let waiting = ready_task(&w, "c-waiting", "arch-c").await?;
+        w.command(json!({"op":"assess","target":waiting,"ready":false,"reason":"Verification failed on abc123"})).await?;
         let tasks_before = [
             w.get(&format!("address={done}")).await?,
-            w.get(&format!("address={retired}")).await?,
+            w.get(&format!("address={dropped}")).await?,
         ];
         ensure!(
-            tasks_before[0]["process"]["status"] == "done"
-                && tasks_before[1]["process"]["status"] == "retired",
+            tasks_before.iter().all(|t| t["document"]["present"] == false),
             "{tasks_before:?}"
         );
         let archive = async |criterion: &str| -> Result<Value> {
@@ -161,8 +156,7 @@ async fn done_and_retired_tasks_do_not_block_archiving_a_criterion() -> Result<(
                 .get(&format!("address={}", before["address"].as_str().unwrap()))
                 .await?;
             ensure!(
-                after["document"] == before["document"]
-                    && after["process"]["status"] == before["process"]["status"],
+                after["document"] == before["document"],
                 "mcp={mcp}: archive changed {before} -> {after}"
             );
         }

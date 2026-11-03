@@ -8,10 +8,9 @@
 //! - `none`: the process tone stays, and a parent does not count the node.
 //! - A type without a rule is orange.
 //!
-//! A node that waits is at least yellow: it waits for a dependency (`work_ready` false), for a
-//! review (`review_required`) or for the answer to its assessment question (state `waiting`).
-//! An archived node is purple and does not count. A rule tone that differs from the process
-//! tone sets the label.
+//! A node that waits is at least yellow: it waits for a dependency (`work_ready` false) or for
+//! the answer that its readiness mark asks for (state `waiting`).
+//! An archived node is purple and does not count. The rule tone sets the label too.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -23,11 +22,9 @@ fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'static str>
     PRIORITY.into_iter().find(|t| found.contains(t))
 }
 
-/// True when the node waits for a dependency, a review or the answer to its question.
+/// True when the node waits for a dependency or for the answer that its mark asks for.
 pub(super) fn waits(item: &Value) -> bool {
-    item["work_ready"] == false
-        || item["review_required"] == true
-        || item["process"]["assessment"]["state"] == "waiting"
+    item["work_ready"] == false || item["process"]["assessment"]["state"] == "waiting"
 }
 
 pub(super) async fn add_status_tones(
@@ -106,11 +103,9 @@ pub(super) async fn add_status_tones(
         let (Some(Some(t)), Some(kind)) = (tones.get(address).copied(), kinds.get(address)) else {
             continue;
         };
-        if item["signal"]["tone"].as_str() != Some(t) {
-            let counted = children.get(address).is_some_and(|c| !c.is_empty())
-                || linked.get(address).is_some_and(|l| !l.is_empty());
-            item["signal"]["label"] = json!(label(rule(kind), t, waits(item), counted));
-        }
+        let counted = children.get(address).is_some_and(|c| !c.is_empty())
+            || linked.get(address).is_some_and(|l| !l.is_empty());
+        item["signal"]["label"] = json!(label(rule(kind), t, waits(item), counted));
         item["signal"]["tone"] = json!(t);
     }
     for item in items.iter_mut().filter(|i| i["present"] == false) {
@@ -189,7 +184,7 @@ fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: &str) -> &'
 /// The label of a rule tone.
 fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
     match (rule, tone) {
-        (_, "yellow") if waits => "Waits for a dependency, a review or an answer",
+        (_, "yellow") if waits => "Waits for a dependency or an answer",
         ("own" | "tests", "green") => "Checks passed",
         ("own" | "tests", "red") => "Checks failed",
         ("own" | "tests", _) => "Awaits checks",

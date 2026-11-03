@@ -114,11 +114,13 @@ test('5e504068 status-filter: the Object status filter lists the schema tones in
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     const select = f.page.getByLabel('Object status');
     await select.waitFor();
-    const options = await select.locator('option').evaluateAll(list => list.map(option => ({value: option.value,
+    const options = await select.locator('option').evaluateAll(list => list.map(option => ({value: option.value, label: option.textContent.trim(),
       dot: option.querySelector('.status-circle') && getComputedStyle(option.querySelector('.status-circle')).backgroundColor})));
     // The saved order comes first; the tones that the list omits follow in the default order.
     // The purple tone of archived nodes is not listed: the board lists only present nodes.
     assert.deepEqual(options.map(option => option.value), ['', 'orange', 'green', 'red', 'yellow', 'grey']);
+    // The server gives the label of each tone (status_colors::LABELS).
+    assert.deepEqual(options.slice(1).map(option => option.label), ['No tests', 'Checks passed', 'Checks failed', 'Waits', 'Awaits checks']);
     assert.deepEqual(options.slice(1, 4).map(option => option.dot), ['rgb(208, 102, 26)', 'rgb(34, 165, 89)', 'rgb(192, 57, 43)']);
     assert.ok(options.slice(4).every(option => option.dot && option.dot !== 'rgba(0, 0, 0, 0)'), JSON.stringify(options));
     await select.click();

@@ -31,16 +31,16 @@ To change single types, send `put_types` and `remove_types` in place of `types`:
 - `remove_types` deletes types. The server refuses a type that present objects use, or that another type names as a parent or a reference target.
 - A command with `types` cannot also have `put_types` or `remove_types`.
 - A command without all three keeps every type and changes only `priorities` or `statuses`.
+- `priorities` lists the values of `data.priority`, default `p0`, `p1` and `p2`. A save with another value is refused: `priority is one of ...`.
 
 Read the current schema before you change it. The server refuses a schema that makes the
 current tree invalid. A member of the workspace configures the schema. The `/tree` page only reads it.
 
 The role of a type gives its workflow. The type name does not.
 
-- `task`: claim, release, completion and queue operations.
 - `requirement`: specification revisions and owner acceptance.
 - `ac`: a criterion in its nearest ancestor specification.
-- `group` and `document`: ordinary nodes.
+- `group`, `document` and `task`: ordinary nodes.
 
 `root: true` permits an object without a parent. `parents: ["*"]` permits any parent type.
 A type with `inbox: true` has `parents: []`. The server refuses parent cycles.
@@ -92,10 +92,10 @@ Each type names its status rule in `status`: `own`, `children`, `links` or `none
 type has `own`: the newest result of its test. A criterion type has `children`.
 With `status_required: true`, `set_tree_schema` refuses a type without `status`. With `false`,
 the nodes of such a type have the rule `unset` and the tone orange.
-A rule tone that differs from the process tone also sets the status label, for example
-"Children checks passed" or "Checks failed".
+The rule tone also sets the status label, for example "Children checks passed" or
+"Checks failed".
 `process_fields` lists `confirmed` for a requirement or a criterion and `acceptance` for a
-requirement. An object shows only the process fields that its type lists.
+requirement.
 
 ## Test rules
 

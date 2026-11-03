@@ -4,15 +4,10 @@ use serde_json::Value;
 
 /// The tool that gives the MCP copy of `http`.
 fn tool_of(http: &Value) -> &'static str {
-    let first = &http["items"][0];
-    if http.get("tasks").is_some() {
-        "joppa_tasks"
-    } else if http.get("schema").is_some() {
+    if http.get("schema").is_some() {
         "joppa_tree"
     } else if http.get("semantic_status").is_some() || http.get("mode").is_some() {
         "joppa_search"
-    } else if http.get("tests").is_some() || first.get("tests").is_some() {
-        "joppa_tests"
     } else {
         "joppa_objects"
     }
@@ -27,16 +22,7 @@ pub fn compact_of(http: &Value, mcp: &Value) -> Value {
 
 fn shape(http: &Value, mcp: &Value, asked: &str) -> Value {
     use joppa::read_compact as rc;
-    if http.get("tasks").is_some() {
-        // The Task queue: MCP gives the tasks as `items`.
-        let mut http = http.clone();
-        if let Some(map) = http.as_object_mut()
-            && let Some(tasks) = map.remove("tasks")
-        {
-            map.insert("items".into(), tasks);
-        }
-        rc::strip_reply(joppa::mcp_shapes::tasks(http))
-    } else if http.get("items").is_some() && http.get("address").is_none() {
+    if http.get("items").is_some() && http.get("address").is_none() {
         let mut http = http.clone();
         if let Some(cursor) = mcp.get("next_cursor") {
             http["next_cursor"] = cursor.clone();

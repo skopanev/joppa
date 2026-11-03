@@ -50,15 +50,15 @@ export function commonObjectFilters(root,contents){
 }
 // The status filter lists the tones of the schema status list in its order, each with its dot.
 // The board lists only present nodes, so the filter omits the tone of archived nodes.
-// The closed filter shows the dot of the selected tone. A native list colours the option text.
-const STATUS_LABELS={green:'Checks passed',red:'Checks failed',yellow:'Waiting or in progress',grey:'Unchecked or completed'};
+// The server gives the label of each tone. The closed filter shows the dot of the selected
+// tone. A native list colours the option text.
 function statusFilter(select){
   select.classList.add('status-filter');
-  const listed=(Array.isArray(state.data.statuses)?state.data.statuses:[]).map(item=>item?.tone).filter(tone=>/^[a-z]+$/.test(tone||'')&&tone!==state.data.archived_tone);
-  for(const tone of listed.length?listed:Object.keys(STATUS_LABELS)){
+  const listed=(Array.isArray(state.data.statuses)?state.data.statuses:[]).filter(item=>/^[a-z]+$/.test(item?.tone||'')&&item.tone!==state.data.archived_tone);
+  for(const {tone,label} of listed){
     const option=E('option',undefined,'status-option');option.value=tone;option.dataset.tone=tone;
     option.style.setProperty('--tone','var(--dot-'+tone+')');
-    option.append(E('span',undefined,'status-circle '+tone),STATUS_LABELS[tone]||tone[0].toUpperCase()+tone.slice(1));select.append(option);
+    option.append(E('span',undefined,'status-circle '+tone),label||tone);select.append(option);
   }
   const mark=()=>{select.dataset.tone=select.value;select.style.setProperty('--tone',select.value?'var(--dot-'+select.value+')':'transparent');};
   mark();return mark;

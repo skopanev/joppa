@@ -31,6 +31,9 @@ pub(crate) fn apply_inner(
         Command::MigrateTestNodes {} => {
             crate::test_nodes::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigrateGenericNodes {} => {
+            crate::generic_nodes::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigratePurpose {} => {
             crate::purpose_migration::migrate(w, actor, position, recorded_at)?;
         }
@@ -58,8 +61,17 @@ pub(crate) fn apply_inner(
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp { .. }) => {
             apply_set_tree_schema(w, actor, command, position, recorded_at)?
         }
-        Command::AssessSignal { .. } => apply_assess_signal(w, actor, command, position)?,
-        Command::SetPriority { .. } => apply_set_priority(w, command)?,
+        Command::AssessSignal {
+            target,
+            ready,
+            reason,
+        }
+        | Command::Assess(AssessOp::Node(AssessNode {
+            target,
+            ready,
+            reason,
+        })) => apply_assess(w, actor, target, *ready, reason, position)?,
+        Command::SetPriority { target, priority } => apply_set_priority(w, target, priority),
         Command::SaveObject(crate::commands::SaveObjectOp { .. }) => {
             crate::objects::save(w, actor, command, position, recorded_at)?;
         }
@@ -208,7 +220,7 @@ pub(crate) fn apply_inner(
         Command::Comment(crate::commands::CommentOp { .. }) => {
             apply_comment(w, actor, command, recorded_at)?
         }
-        Command::Assess { .. } => apply_assess(w, command)?,
+        Command::Assess(AssessOp::Criterion(op)) => apply_assess_criterion(w, op)?,
         Command::Workspace { .. } => unreachable!(),
         _ => checks::apply(w, actor, command, position, recorded_at)?,
     }

@@ -157,8 +157,8 @@ async fn all_objects(w: &World, token: &str) -> Result<(Vec<String>, usize)> {
     }
 }
 
-/// The four reads of read-only-agent-token-ac1 with valid arguments; joppa_objects reads its first page.
-fn four_reads(w: &World) -> [(&'static str, Value); 4] {
+/// The reads of read-only-agent-token-ac1 with valid arguments; joppa_objects reads its first page.
+fn read_calls(w: &World) -> [(&'static str, Value); 3] {
     let workspace = w.base.rsplit('/').next().unwrap();
     [
         (
@@ -169,7 +169,6 @@ fn four_reads(w: &World) -> [(&'static str, Value); 4] {
             "joppa_objects",
             json!({"workspace":workspace,"parent":"ac:key-rights","kind":"test","depth":1}),
         ),
-        ("joppa_tasks", json!({"workspace":workspace})),
         ("joppa_tree", json!({"workspace":workspace})),
     ]
 }
@@ -206,7 +205,7 @@ async fn an_agent_token_with_read_access_reads_the_workspace_as_the_owner() -> R
         "the fixture objects are listed: {read:?}"
     );
     ensure!(read == owned, "reader {read:?} owner {owned:?}");
-    for (tool, arguments) in four_reads(&w).into_iter().skip(1) {
+    for (tool, arguments) in read_calls(&w).into_iter().skip(1) {
         mcp_read(&w, &reader, tool, arguments).await?;
     }
     Ok(())
@@ -219,7 +218,7 @@ async fn the_read_check_fails_for_a_read_token_without_membership() -> Result<()
     let a = world().await?;
     let b = world().await?;
     let outsider = read_token(&b).await?;
-    for (tool, arguments) in four_reads(&a) {
+    for (tool, arguments) in read_calls(&a) {
         let reply = mcp(&a, &outsider, tool, arguments).await?;
         let result = &reply["result"];
         ensure!(
@@ -236,4 +235,4 @@ async fn the_read_check_fails_for_a_read_token_without_membership() -> Result<()
     Ok(())
 }
 
-const NEEDS: &str = "acceptance needs records on the commit where every listed test passes";
+const NEEDS: &str = "acceptance needs records on the commit where every test below passes";

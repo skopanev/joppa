@@ -34,19 +34,6 @@ pub(super) async fn criterion_test_statuses(
     super::objects::stored_statuses(client, workspace, targets).await
 }
 
-/// Use the current transaction's text and test list, including earlier batch writes.
-pub(super) async fn planning_criterion_status(
-    client: &impl GenericClient,
-    workspace: &str,
-    state: &crate::model::Workspace,
-    target: &str,
-) -> Result<Value> {
-    state_criterion_statuses(client, workspace, state, &[target.to_owned()])
-        .await?
-        .remove(target)
-        .context("unknown criterion")
-}
-
 /// Statuses of the criteria from the current transaction's texts and test lists.
 pub(super) async fn state_criterion_statuses(
     client: &impl GenericClient,

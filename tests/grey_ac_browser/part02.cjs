@@ -181,21 +181,4 @@ test('oldest-commit-card: a test node shows the commit of its own result after n
   } finally { await f.close(); }
 });
 
-test('done-is-not-green-ac3: a done Task under a green criterion shows Checks passed', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
-  const f = await fixture(criterionRecords, configured);
-  try {
-    await f.bind('ac:A', ['X']);
-    await f.command({op: 'save_object', kind: 'task', id: 'T', revision: 0, parent: 'ac:A',
-      data: {title: 'Implement the criterion', owner: 'owner', body: 'Implement the criterion and record the result'},
-      reason: 'Check completion under a green criterion'});
-    await f.command({op: 'claim_task', id: 'task:T', revision: 1});
-    await f.command({op: 'complete_task', commit: 'c0ffee0', id: 'task:T', revision: 2, evidence: 'Implemented the criterion'});
-    await f.record('dddddddddddddddddddddddddddddddddddddddd', [['X']]);
-    const card = await f.open('ac:A');
-    const circle = card.locator('.common-object[data-object-address="task:T"] > summary .status-circle');
-    assert.equal(await circle.getAttribute('data-tone'), 'green');
-    assert.match(await circle.getAttribute('data-hint'), /^Status: Work complete(\n|$)/);
-  } finally { await f.close(); }
-});
 };

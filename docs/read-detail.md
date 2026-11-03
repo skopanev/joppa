@@ -10,11 +10,10 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 ```json
 {
   "revision": 3,
-  "contract_revision": 2,
   "parent": "ac:a",
   "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
-  "status": {"label": "In progress", "tone": "yellow"},
-  "process": {"status": "in_progress", "holder": "bot"},
+  "status": {"label": "Waits for an answer", "tone": "yellow"},
+  "process": {"assessment": {"state": "waiting", "reason": "Which currency?", "actor": "bot"}},
   "comments": {
     "total": 30,
     "next_cursor": "25",
@@ -31,7 +30,6 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 
 - `revision` is the current revision. Send it with `save_object`.
 - `parent` and `data` are the stored values, byte for byte. A root object has no `parent`.
-- `contract_revision` shows only when it differs from `revision`.
 - There are no `workspace`, `workspace_key`, `address`, `position`, `document`, `kind`,
   `id`, `current_revision`, `revision_count`, `historical` or `metadata_scope` keys. The
   actor, time and reason of a revision come with `history: true` or `revision: N`.
@@ -49,16 +47,13 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - An object without comments has no `comments` key. An object without outgoing links has no
   `links` key.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
-- `process` keeps one `assessment`; `readiness_blocker` is omitted when it repeats it.
-  `process` and `assessment` give no copy of the address, of `req` or of its revision.
-  The `req` of a criterion is its `parent`, so `process` of a criterion has no `req`.
-  Test results decide a criterion, so its `process` has no run `status` or `revision`: the
-  requirement revision that `assess` sends is in `assessment`. `verification` shows only the
-  `pass` or `fail` of a finished run, on every kind of object.
-- `process.revision` of a requirement shows only when it differs from `revision`.
-  `process.status` of a Note shows only when it differs from `data.status`.
-  `process.confirmed` shows only when it is `true`.
-- `work_ready` shows only when it is `false`. `review_required` shows only when it is `true`.
+- `process` is the same for every type: `annotation_address`, `verification`, `assessment`,
+  `acceptance`, and the `status` of an inbox type. `annotation_address` shows only when it
+  differs from the address.
+- `assessment` is the readiness mark that `assess` sets: `state` (`ready` or `waiting`),
+  `reason` and `actor`. `verification` shows only the `pass` or `fail` of a finished run.
+- `process.status` of a Note shows only when it differs from `data.status`.
+- `work_ready` shows only when it is `false`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.
@@ -70,9 +65,9 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 ## One revision and the revision headers
 
 `{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 as `revision`,
-`parent`, `data` and `links`, with `current_revision`. `contract_revision` shows only when
-it differs from `revision`, and `present: false` marks an archived revision. It gives no
-`document`, `historical`, actor, time, reason, status, process, comments or link counts.
+`parent`, `data` and `links`, with `current_revision`. `present: false` marks an archived
+revision. It gives no `document`, `historical`, actor, time, reason, status, process, comments
+or link counts.
 
 `{"workspace": "w", "address": "task:t", "history": true}` gives the revision headers,
 oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next page:
@@ -81,7 +76,7 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 {"current_revision": 3, "total": 3,
  "items": [{"revision": 1, "at": "...", "actor": "bot", "reason": "Create"},
            {"revision": 2, "at": "...", "actor": "bot", "reason": "Sharper contract"},
-           {"revision": 3, "at": "...", "actor": "bot", "reason": "Claim"}]}
+           {"revision": 3, "at": "...", "actor": "bot", "reason": "Assign the work"}]}
 ```
 
 ## More addresses in one read
@@ -134,6 +129,5 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
   `contract`.
 - `fields` reads the current revision, or the revision that `revision` names. Then the
   document fields and `revision` come from that revision, and the state fields (`status`,
-  `signal`, `review_required`, `work_ready`, `process`, `children`) stay current. With
+  `signal`, `work_ready`, `process`, `children`) stay current. With
   `history` it is refused: `fields reads one revision; history gives the revision headers`.
-- `work_summary` comes only from `work_filter: "unstarted"`; a read by address gives `null`.

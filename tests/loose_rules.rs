@@ -1,9 +1,9 @@
-//! The removed artificial rules: a dependency names a node and needs no revision, a Task has
-//! no purpose, the holder may move or hand over a Task, a criterion may have
-//! its own owner without a decision, and a new required field binds only later saves.
+//! The loose rules: a dependency names a node and needs no revision, a Task has no purpose, a
+//! member may move or hand over a Task, a criterion may have its own owner without a decision,
+//! and a new required field binds only later saves.
 mod common;
 use common::*;
-use joppa::{objects, tasks};
+use joppa::objects;
 use serde_json::{Value, json};
 
 fn internal(w: &mut World, op: &str) {
@@ -28,6 +28,7 @@ fn current() -> World {
         "migrate_note_parents",
         "migrate_body",
         "migrate_purpose",
+        "migrate_generic_nodes",
     ] {
         internal(&mut w, op);
     }
@@ -79,7 +80,8 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
     )
     .unwrap();
     assert_eq!(w.state.objects["task:b"].current().links[0].revision, None);
-    // A new text of A changes nothing for B: B waits until A is done.
+    // A new text of A changes nothing for B: its link and its process stay the same.
+    let before = objects::process(&w.state, "task:b");
     save(
         &mut w,
         "owner",
@@ -89,31 +91,14 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         json!([]),
     )
     .unwrap();
-    assert_eq!(
-        objects::process(&w.state, "task:b")["review_required"],
-        false
-    );
-    let claimable = |w: &World, key: &str| {
-        tasks::claimable(&w.state, "agent", key, &w.state.task_process[key]).is_ok()
-    };
-    assert!(!claimable(&w, "task:b"));
-    let revision = w.state.objects["task:a"].current().revision;
-    w.ok(
-        "agent",
-        json!({"op":"claim_task","id":"task:a","revision":revision}),
-    );
-    let revision = w.state.objects["task:a"].current().revision;
-    w.ok(
-        "agent",
-        json!({"op":"complete_task","id":"task:a","revision":revision,
-        "evidence":"A is done","commit":"a".repeat(40)}),
-    );
-    assert!(objects::work_ready(&w.state, "task:b"));
+    assert_eq!(objects::process(&w.state, "task:b"), before);
+    assert_eq!(w.state.objects["task:b"].current().links[0].revision, None);
+    assert_eq!(w.state.objects["task:b"].revisions.len(), 1);
 }
 
 // loose-rules-ac2
 #[test]
-fn a_task_has_no_purpose_and_the_holder_moves_or_hands_over_a_task() {
+fn a_task_has_no_purpose_and_a_member_moves_or_hands_over_a_task() {
     let mut w = current();
     save(
         &mut w,
@@ -125,8 +110,9 @@ fn a_task_has_no_purpose_and_the_holder_moves_or_hands_over_a_task() {
     )
     .unwrap();
     assert!(
-        joppa::tasks::process(&w.state, "task:p")
-            .unwrap()
+        w.state.objects["task:p"]
+            .current()
+            .data
             .get("purpose")
             .is_none()
     );
@@ -134,12 +120,7 @@ fn a_task_has_no_purpose_and_the_holder_moves_or_hands_over_a_task() {
     labelled["purpose"] = json!("documentation");
     let error = save(&mut w, "owner", "task:p", "ac:ios", labelled, json!([])).unwrap_err();
     assert_eq!(error.to_string(), joppa::purpose_migration::REFUSAL);
-    // The holder, who is not the owner, moves the Task and hands it over.
-    let revision = w.state.objects["task:p"].current().revision;
-    w.ok(
-        "agent",
-        json!({"op":"claim_task","id":"task:p","revision":revision}),
-    );
+    // A member who is not the owner moves the Task and hands it over.
     save(
         &mut w,
         "agent",
@@ -176,11 +157,9 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
         (&json!("legal"), &json!(false))
     );
     // No decision: an agent assesses the criterion as ready without a linked decision.
-    let number = w.state.requirements["r"].revisions.last().unwrap().number;
     w.ok(
         "agent",
-        json!({"op":"assess","req":"r","revision":number,"ac":"key",
-        "assessment":{"ready":true,"reason":"Known scope"}}),
+        json!({"op":"assess","target":"ac:key","ready":true,"reason":"Known scope"}),
     );
     assert_eq!(
         objects::assessment(&w.state, "ac:key").unwrap()["state"],

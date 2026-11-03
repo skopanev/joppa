@@ -68,22 +68,6 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
     Ok(())
 }
 
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent_after_holder_release()
--> Result<()> {
-    // returned-work-kept-ac1
-    returned_work_handover(false).await
-}
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn returned_work_keeps_notes_and_partial_results_for_the_next_agent_after_owner_release()
--> Result<()> {
-    // returned-work-kept-ac1
-    returned_work_handover(true).await
-}
-
 /// One object read through MCP as `token`: the current revision, or exactly `revision`.
 async fn object_as(w: &World, token: &str, address: &str, revision: Option<u32>) -> Result<Value> {
     let mut arguments = json!({"workspace":w.ws,"address":address});

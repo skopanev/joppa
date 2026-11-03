@@ -38,11 +38,11 @@ MCP reads have one shape. There is no `verbose` switch.
 
 | Tool | `limit` above the page size | Paging |
 | --- | --- | --- |
-| `joppa_objects` lists, also with `fields`, `work_filter`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
+| `joppa_objects` lists, also with `fields`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
 | `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_objects` detail comments | fixed pages of 25 | `comments_cursor` |
-| `joppa_tasks`, `joppa_timeline`, `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
+| `joppa_timeline`, `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
 | `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |
 | `joppa_list` | fixed pages of 25 | `next_cursor` and `total` |
 
@@ -82,7 +82,7 @@ or absent for the roots. The [node filters](#node-filters) narrow the list. Repl
 - No `revision`, `body`, `process` or `id`. Name them with `fields`.
 - The next page: `{"workspace": "w", "parent": "requirement:r", "cursor": "ac:a3"}`.
 
-With `work_filter`, `related_to`, `note_status` or `fields`, the list keeps the earlier
+With `related_to`, `note_status` or `fields`, the list keeps the earlier
 filters and order. `total` counts every matching object, also on later pages. A list in address order gives the bare address of
 its last item as `next_cursor`, so one sweep may mix plain pages and pages with `fields`.
 A cursor that is not an address `kind:id` is refused: `invalid object cursor`.
@@ -92,22 +92,18 @@ A cursor that is not an address `kind:id` is refused: `invalid object cursor`.
 Request:
 
 ```json
-{"workspace": "w", "kind": "ac", "parent": "*", "work_filter": "unstarted",
- "fields": ["revision", "contract_revision", "work_ready", "review_required",
-            "process.planning_claim", "work_summary"]}
+{"workspace": "w", "kind": "ac", "parent": "*",
+ "fields": ["revision", "work_ready", "process.assessment"]}
 ```
 
 Reply item: the address and each named path, also when its value is empty.
 
 ```json
-{"address": "ac:a", "revision": 3, "contract_revision": 2, "work_ready": true,
- "review_required": false, "process.planning_claim": null,
- "work_summary": {"active": 0, "done": 1, "retired": 0}}
+{"address": "ac:a", "revision": 3, "work_ready": true, "process.assessment": null}
 ```
 
-List fields: `address`, `data`, `kind`, `id`, `revision`, `contract_revision`, `parent`,
-`title`, `owner`, `review_required`, `work_ready`, `at`, `body`, `signal`,
-`present`, `note_status`, `status`, `process`, `work_summary`, `children`.
+List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
+`work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`.
 
 Any other first part names a document field: `source_section.title` gives
 `data.source_section.title`. A document field is a field of the object roles (such as
@@ -139,8 +135,8 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `kind` | Nodes of one type or of a list of types. |
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: only `joppa_search` with `all_versions` reads them. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
-| `assignee` | Nodes whose Task holder is this member ID, else whose `data.assignee` is. Any node can have `data.assignee`. |
-| `ready` | `false`: nodes that wait for a dependency, for a review or for the answer to their assessment question (state `waiting`). `true`: every other node. |
+| `assignee` | Nodes whose `data.assignee` is this member ID. Any node can have `data.assignee`. |
+| `ready` | `false`: nodes that wait for a dependency, or for the answer that their readiness mark asks for (`assess` with `ready: false`, state `waiting`). `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. |
 
 ```json
@@ -157,8 +153,9 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 - A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
   `status purple marks archived nodes; find them with joppa_search and all_versions`,
   `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.
-- Indexes serve `owner`, `assignee`, the tone and `data` (migration 045 and 039).
+- Indexes serve `owner`, `assignee`, the tone and `data` (migrations 039, 045 and 046).
 - With `address` the filters are refused: `address cannot be combined with list filters`.
+- A read with `work_filter` is refused: `work_filter was removed; use the node filters, for example kind and ready`.
 
 ## Reads by address
 
@@ -175,14 +172,12 @@ and every red test with `{"workspace": "w", "kind": "test", "status": "red"}`. T
 
 ## Other read tools
 
-`joppa_tasks`, `joppa_timeline`, `joppa_history` and `joppa_search` lose the empty keys,
-`item_id` and the echo of the request:
+Read Tasks with the node filters, for example `{"kind":"task","assignee":"alex","ready":true}`.
+A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_objects with kind task, for example {"kind":"task","assignee":"alex","ready":true}`.
 
-- `joppa_tasks` gives its tasks as `items`, without `view`. A task has no `id` (the address
-  is the ID), no `ac` when the criterion is its `parent`, and no `created_at`. `claimable`
-  and `review_required` show only when they are `true`. `readiness_blocker` is omitted
-  when it repeats `assessment`. `signal` gives `tone`, `label` and `at` only. A done or
-  retired task has no `waiting_reason`.
+`joppa_timeline`, `joppa_history` and `joppa_search` lose the empty keys, `item_id` and the
+echo of the request:
+
 - `joppa_timeline` gives no `after` or `order`. A record of test results names itself only
   by its address `record/N`.
 - `joppa_history` gives no `all`, `limit` or `signal`. Read the current status of an object

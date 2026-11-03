@@ -9,9 +9,10 @@ A link does not change the parent of an object.
 - `depends_on` records a dependency on a node. A new revision of the target asks for no review.
 - `blocking: true` makes the dependency a condition for the start of work.
 
-A blocking target needs completion evidence from its role: a verified criterion, a requirement
-whose current checks pass, or a done Task. Blocking cycles, also through inherited parent
-dependencies, are refused. A blocking dependency prevents claims until its target is ready.
+A live blocking target is satisfied when it is a green criterion, or when it has live criteria
+below it and each is green. An archived target does not make work wait. Blocking cycles, also
+through inherited parent dependencies, are refused. A blocking dependency makes the work wait
+until its target is satisfied.
 
 One object read gives `links`, its outgoing links with titles, and `link_groups`: a count for
 each direction, relation and kind of the other object. The MCP read keeps only the incoming
@@ -53,12 +54,11 @@ the object has none. Each link has `workspace` (name or ID; the server stores th
 - A read gives `remote_links`, each with `status`: `access`, `present`, `current_revision`, `review_required` and `satisfied`.
 - `review_required` is true when the target has a newer revision, or is archived or absent. The object then has `remote_review_required: true`.
 - A new, changed or removed pin resets the criteria below the object. Save the links again with the new revision after the review.
-- A plan or a Task claimed before such a change cannot finish on the old pin: finish_planning and complete_task refuse with "the remote links changed after the claim; release and claim again".
 - A blocking link makes the work below the object wait until the target is ready: its pin is current, every criterion at and below it is green, and its own blocking links are ready.
 - Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
 - An empty `links` list removes the remote links of the object.
 
-Claims, completions and acceptances check this wait with the access of the writer. They lock
+An acceptance checks this wait with the access of the writer. It locks
 every workspace that a chain of blocking remote links reaches, in sorted ID order. A write that
 reaches a workspace outside its locks fails and asks for a retry.
 `workspace_key` in joppa_tree is the immutable ID of the workspace. joppa_tree gives it only

@@ -49,9 +49,7 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     )
     .await?;
     w.command("pat", json!({"op":"archive_object","target":"signal:n","revision":1,"reason":"Signal N is handled"})).await?;
-    let a = w.get("pat", "/objects?address=ac:a").await?;
-    w.command("pat", json!({"op":"assess","req":a["process"]["req"],"revision":a["process"]["assessment"]["revision"],"ac":a["process"]["criterion"],
-        "assessment":{"ready":true,"reason":"The scope of A is known"}})).await?;
+    w.command("pat", json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
     let report = w.record("runner", "0123456789abcdef0123").await?;
     Ok((p, report["record"].as_i64().unwrap_or_default()))
 }

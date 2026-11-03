@@ -3,9 +3,8 @@
 //! command fails. An identical repeat of a record after the change is a new
 //! receipt that counts after it.
 use anyhow::{Context, Result, ensure};
-use joppa::store::{self, BatchOperation};
+use joppa::store;
 use serde_json::{Value, json};
 
 include!("criterion_reset_postgres/part01.rs");
 include!("criterion_reset_postgres/part02.rs");
-include!("criterion_reset_postgres/part03.rs");

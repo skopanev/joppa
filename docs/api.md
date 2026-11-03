@@ -7,7 +7,7 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 
 - MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or an agent token.
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
-- Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `tasks`, `timeline`, `history`, `tree`, `tests` and `dependencies` under it.
+- Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `timeline`, `history`, `tree` and `dependencies` under it.
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
 
 Each command has `op` with its name. IDs hold ASCII letters, digits, `-`, `_` and `.`, 120 bytes
@@ -18,17 +18,14 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 ## Operations
 
 - Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
-- Schema and order: `set_tree_schema`, `reorder_tree`, `set_priority`.
-- Criteria and tests: `save_object` with a test node, `accept_commit`, `assess`, `assess_signal`.
-- Discussion and files: `note`, `withdraw_note` (author only), `comment`, `attach`, `detach`.
-- Planning: `claim_planning`, `finish_planning`, `release_planning`.
-- Tasks: `claim_task`, `claim_next_task`, `release_task`, `block_task`, `unblock_task`, `complete_task`, `review_task`, `retire_task`.
+- Schema and order: `set_tree_schema`, `reorder_tree`.
+- Criteria and tests: `save_object` with a test node, `accept_commit`, `assess`.
+- Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
 - Workspace (owner): `rename_workspace`, `delete_workspace`, `member`, `remove_member`.
 
 HTTP and MCP refuse every other operation. The server command line also creates a workspace
 with `workspace {title}`. `joppa_record_results` records test outcomes. It is a tool, not an operation.
 
-- `comment {req, revision, id, text, kind, reply_to, ac}` adds revision discussion. `kind` is `comment`, `decision`, `accept`, `change`, `reject` or `correction`.
 - `note {target, id, text, reply_to}` adds a comment to any object.
 - `attach {target, id, name, content_type, size, hash}` names bytes that the blob route stored. `joppa_attach {workspace, target, filename, content_type?, content | content_base64}` uploads and attaches in one call.
 - `detach {target, id, reason}` keeps the file readable for 14 days. Then the periodic reconcile deletes it, unless an active attachment of the workspace names its hash. `joppa_attachments {workspace, target, removed: true}` also lists the files detached in the last 14 days, with `removed: true`, `removed_at` and a download `url`.
@@ -37,54 +34,23 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 
 ## Readiness
 
-The process metadata of a criterion includes `assessment.state`: `unassessed`, `waiting` or
-`ready`. It also gives the specification revision, reason, recipient and decision reference.
-The metadata of a Task includes the assessment of a direct criterion parent.
-`readiness_blocker` names the assessment that stops a readiness gate.
-A waiting Task gives the same question and recipient in `waiting_reason` and in its claim refusal.
-These fields change no check evidence and no completion.
+`assess {target, ready, reason}` sets the readiness mark of any present node.
+The process metadata of the node then gives `assessment`: `{state, reason, actor}`.
+`state` is `ready` or `waiting`. The node filter `ready` is false for a waiting node.
+The mark changes no check evidence and no acceptance. A change that resets a criterion also
+removes its mark.
 
-## Task queue
+Live writes refuse the form with `req`, `revision` and `ac`:
+"assess with req, revision and ac was removed; use assess {target, ready, reason}".
 
-`joppa_tasks` and `GET /api/workspaces/{workspace}/tasks` give the `available`, `mine`,
-`waiting` and `all` queues in pages. Over HTTP, send `view`, `limit`, `cursor`, `project` and
-comma-separated `priorities`.
+## Tasks
 
-- `available` uses the rules of `claim_task`: a contract, a reviewed parent, met dependencies and the parent gate. The Task has no claim, completion or retirement.
-- `claim_next_task {project?, priorities?}` selects, under the workspace lock, the oldest claimable Task of the first priority that has one, else the oldest claimable Task. `project` is a hard filter. Unknown priority targets are errors.
-- A preview is `joppa_tasks` with `view=available`, `limit=1` and the same filters. A later claim can lose a race.
-- A claim stays until a recorded action changes it. Time, heartbeats and restarts never release a Task.
-- Only the holder completes work. The holder or the workspace owner releases it with a reason.
-- An agent can hold several Tasks at the same time.
-- Task status is `open`, `in_progress` or `done`. Task completion never verifies a criterion.
-- `created_at` is the journal position of the Task creation, not a clock time.
+A Task is a node like any other. See [objects](objects.md#tasks).
 
-`joppa_objects` with `work_filter="unstarted"` lists the criteria that need planned work.
-A candidate has a ready assessment, current dependencies and a status other than green.
-An active Task counts for its nearest criterion through its parents, up to the nearest
-specification. Each candidate gives `work_summary` with the counts of active, done and retired
-Tasks. Check `work_summary.done` before you plan new work: a done Task can need only a test run.
-
-## Planning a criterion
-
-Planning uses the criterion role of the schema. The type name can differ from `ac`.
-
-- `claim_planning {ac, revision}` claims a ready criterion that is not green, at its current revision.
-- `finish_planning {ac, reason}` publishes the Task set and removes the claim.
-- `release_planning {ac, reason}` removes the claim and retires only its new Tasks.
-
-Each workspace permits one planning claim per criterion and per actor. Existing Tasks do not prevent a
-claim. A criterion read gives `process.planning_claim`: `null` or `{actor, position}`.
-New Tasks of the holder after the claim wait with `waiting_reason="Task is awaiting planning publication"`.
-They cannot be claimed until the finish.
-
-Finish needs a Task creation or revision by the holder after the claim. It checks dependency
-targets and cycles. It also compares each blocked child Task with its document at the block:
-title, body, projects and blocking dependency links. An unchanged blocked Task makes finish
-fail with "blocked Task needs a new contract or retirement". This refusal comes before
-"planning produced no Task changes". A failed finish keeps the claim and every block.
-A successful finish clears `process.blocked` of each changed blocked Task.
-Only the holder finishes. The holder or the workspace owner releases with a reason.
+Live writes refuse the operations `claim_task`, `claim_next_task`, `heartbeat_task`, `release_task`,
+`block_task`, `unblock_task`, `complete_task`, `review_task`, `retire_task`, `claim_planning`,
+`finish_planning`, `release_planning`, `set_priority`, `assess_signal` and `comment`.
+The refusal is "<op> was removed; use <replacement>". The replacement of `comment` is `note`.
 
 ## Workspace timeline
 

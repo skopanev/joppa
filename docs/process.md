@@ -25,22 +25,11 @@ requires a new decision. Platforms come from the agreed AC and context; see
 
 Each Task has one parent permitted by the workspace schema and a technical contract.
 The default recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
-Triage can create unassigned Tasks before their configured parent gate permits a claim.
-The MCP queue lists work that the authenticated actor can claim.
-`claim_task` and `claim_next_task` assign eligible work atomically.
-`release_task` returns unfinished work with a reason.
-An unmet gate or dependency prevents a claim. It does not create a Task work status named blocked.
+`data.assignee` names the member who does the Task. Triage can create Tasks without an assignee.
+A Task waits for its dependencies and for its readiness mark, the same as any other node.
+`data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
-`block_task` records `process.blocked` on the Task and prevents a claim.
-A blocked Task has three exits. No timer clears a block.
-- The planning holder of the parent criterion or the workspace owner sends `unblock_task`.
-- The planning holder changes the title, body, projects or blocking dependency links. A successful finish then clears the block.
-- The Task owner, the workspace owner or that planning holder retires the Task.
-
-Finish fails when a blocked Task has no change to these four fields. The block stays.
-Dependency gates apply after a block clears.
-
-Task completion records work evidence. It never supplies a passing criterion check.
+A Task records work evidence. It never supplies a passing criterion check.
 
 ## Discussion and corrections
 
@@ -146,7 +135,7 @@ to tasks, not to separate copies of the business tree.
 
 A Task records its permitted parent, assignee and technical contract.
 Its reference fields come from the workspace schema.
-Completing a Task records the delivered result. It does not turn an AC green.
+The `data.commit` of a Task records the delivered result. It does not turn an AC green.
 Manual work needs explicit expected and observed evidence.
 
 ## Editing guidance

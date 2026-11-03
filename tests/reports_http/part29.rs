@@ -108,7 +108,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         );
         let readiness = p.assessment(ac).await?;
         ensure!(
-            readiness["state"] == "unassessed",
+            readiness.is_null(),
             "{ac} readiness: {readiness}"
         );
     }
@@ -197,13 +197,6 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
     p.assess("spec:a", &a).await?;
     p.assess("spec:b", &[("criterion:b1", ready)]).await?;
     Ok(p)
-}
-
-/// The status label of an object: HTTP gives `signal`, MCP gives `status`.
-fn status_label(t: &Value) -> Option<&str> {
-    t["signal"]["label"]
-        .as_str()
-        .or_else(|| t["status"]["label"].as_str())
 }
 
 /// A blocking ordering link without a revision.

@@ -108,7 +108,7 @@ fn the_migration_moves_each_old_text_into_body_and_keeps_pins_assessments_and_te
     );
     for ac in ["ac:ios", "ac:key"] {
         assert_eq!(
-            objects::assessment(&w.state, ac).unwrap()["state"],
+            objects::criterion_assessment(&w.state, ac).unwrap()["state"],
             "ready",
             "{ac}"
         );

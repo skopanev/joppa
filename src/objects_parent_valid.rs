@@ -180,40 +180,6 @@ pub fn priority_values(w: &Workspace) -> Vec<String> {
         .unwrap_or_else(|| ["p0", "p1", "p2"].map(String::from).to_vec())
 }
 
-/// The priority of a node: its own value of the current list, else the last value.
-pub fn priority(w: &Workspace, key: &str) -> String {
-    let values = priority_values(w);
-    w.priorities
-        .get(resolve_address(w, key))
-        .filter(|v| values.contains(v))
-        .cloned()
-        .unwrap_or_else(|| values.last().cloned().unwrap_or_default())
-}
-
-/// The work order key of a node: the rank of each priority from the root down to it.
-pub fn priority_chain(w: &Workspace, key: &str) -> Vec<usize> {
-    let values = priority_values(w);
-    let mut chain = vec![];
-    let mut seen = BTreeSet::new();
-    let mut current = Some(resolve_address(w, key).to_owned());
-    while let Some(node) = current.filter(|n| seen.insert(n.clone())) {
-        let value = priority(w, &node);
-        chain.push(
-            values
-                .iter()
-                .position(|v| *v == value)
-                .unwrap_or(values.len()),
-        );
-        current = w
-            .objects
-            .get(&node)
-            .and_then(|o| o.current().parent.clone())
-            .map(|p| resolve_address(w, &p).to_owned());
-    }
-    chain.reverse();
-    chain
-}
-
 #[allow(clippy::too_many_arguments)]
 /// Any member of the workspace edits the tree: the schema, the order, archives and restores.
 pub(crate) fn may_edit_tree(w: &Workspace, actor: &str) -> bool {

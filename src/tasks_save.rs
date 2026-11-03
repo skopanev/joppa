@@ -23,7 +23,6 @@ pub fn save(
         .context("Task needs an owner")?
         .to_owned();
     commands::human(w, &owner)?;
-    crate::purpose_migration::check_save(w, &data)?;
     let string = |field: &str| {
         data[field]
             .as_str()
@@ -120,19 +119,4 @@ pub fn save(
     }
     w.task_process.insert(key.into(), t);
     Ok(data)
-}
-
-pub fn process(w: &Workspace, key: &str) -> Option<Value> {
-    let t = w.task_process.get(key)?;
-    let o = w.objects.get(key)?;
-    let mut p = serde_json::to_value(t).ok()?;
-    // A Task has no purpose. Only the replay of old journals reads Task.purpose.
-    p.as_object_mut()?.remove("purpose");
-    p["revision"] = json!(o.current().revision);
-    p["review_required"] = json!(review_required(w, key, t));
-    p["status"] = json!(status(t));
-    p["blocked"] = json!(t.blocked);
-    p["assessment"] = json!(parent_assessment(w, key));
-    p["readiness_blocker"] = json!(readiness_blocker(w, key));
-    Some(p)
 }

@@ -10,78 +10,21 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
         .expect_err(&format!("{command} must be refused"));
     assert!(e.to_string().contains(error), "{command}: {e}");
 }
-fn assess_on(revision: u32, ac: &str, ready: bool, recipient: Option<&str>) -> Value {
-    json!({"op":"assess","req":"r","revision":revision,"ac":ac,"assessment":{"ready":ready,"reason":if ready {"Known scope"} else {"Which permissions?"},"recipient":recipient,"decision":null}})
-}
-fn task(id: &str, ac: &str) -> Value {
-    json!({"op":"task","req":"r","revision":1,"id":id,"title":id,"acs":[ac],"projects":[],"purpose":"implementation","contract":"Implement and provide evidence"})
-}
 
 #[test]
 fn an_agent_records_readiness_per_criterion_with_a_reason() {
     // readiness-per-criterion-ac1
     let mut w = World::new();
-    w.ok("agent", assess_on(1, "ios", true, None));
-    let acs = &w.state.requirements["r"].revisions[0].acs;
-    let ios = acs.iter().find(|a| a.id == "ios").unwrap();
-    let key = acs.iter().find(|a| a.id == "key").unwrap();
+    w.ok(
+        "agent",
+        json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"}),
+    );
+    let ios = joppa::objects::assessment(&w.state, "ac:ios").unwrap();
     assert_eq!(
-        ios.assessment
-            .as_ref()
-            .map(|a| (a.ready, a.reason.as_str())),
-        Some((true, "Known scope"))
+        (&ios["state"], &ios["reason"], &ios["actor"]),
+        (&json!("ready"), &json!("Known scope"), &json!("agent"))
     );
-    assert!(key.assessment.is_none());
-}
-
-#[test]
-fn readiness_on_an_unsaved_revision_is_refused() {
-    // readiness-per-criterion-ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        assess_on(2, "ios", true, None),
-        "stale revision",
-    );
-}
-
-#[test]
-fn a_not_ready_assessment_names_the_gap_and_a_person() {
-    // not-ready-names-gap-ac1, ac2
-    let mut w = World::new();
-    refused(
-        &mut w,
-        "agent",
-        assess_on(1, "key", false, None),
-        "waiting needs a recipient",
-    );
-    w.ok("agent", assess_on(1, "key", false, Some("legal")));
-    let key = w.state.requirements["r"].revisions[0]
-        .acs
-        .iter()
-        .find(|a| a.id == "key")
-        .unwrap()
-        .assessment
-        .clone()
-        .unwrap();
-    assert_eq!(
-        (key.ready, key.reason.as_str(), key.owner.as_deref()),
-        (false, "Which permissions?", Some("legal"))
-    );
-}
-
-#[test]
-fn a_task_on_a_not_ready_criterion_cannot_be_claimed() {
-    // no-work-before-ready-ac1
-    let mut w = World::new();
-    w.ok("owner", task("t1", "key"));
-    refused(
-        &mut w,
-        "agent",
-        json!({"op":"claim_task","req":"r","revision":1,"id":"t1"}),
-        "AC is not ready for work",
-    );
+    assert!(joppa::objects::assessment(&w.state, "ac:key").is_none());
 }
 
 #[test]
@@ -92,6 +35,6 @@ fn a_member_who_is_not_the_owner_cannot_accept() {
         &mut w,
         "legal",
         json!({"op":"accept_commit","target":"requirement:r","revision":1,"commit":"c1c1c1c"}),
-        "only the requirement owner or its decider accepts",
+        "only the owner of the node accepts",
     );
 }

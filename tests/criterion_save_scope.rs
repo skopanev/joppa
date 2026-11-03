@@ -1,12 +1,8 @@
-//! A save of one criterion changes only that criterion, and an unassessed criterion
-//! names its next step.
+//! A save of one criterion changes only that criterion.
 mod common;
 
 use common::*;
-use joppa::{
-    commands::{self, Command},
-    objects,
-};
+use joppa::commands::{self, Command};
 use serde_json::json;
 
 fn migrated() -> World {
@@ -123,15 +119,4 @@ fn an_older_criterion_save_in_a_replay_keeps_the_copied_specification_reason() {
     .unwrap();
     commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();
     assert_eq!(spec_reason(&w, "ac:ios"), "Clarify the criterion");
-}
-
-#[test]
-fn an_unassessed_criterion_names_the_assess_command_as_its_next_step() {
-    let w = migrated();
-    let assessment = objects::assessment(&w.state, "ac:ios").unwrap();
-    assert_eq!(assessment["state"], "unassessed");
-    assert_eq!(
-        assessment["next"],
-        json!({"op":"assess","req":assessment["req"],"revision":assessment["revision"],"ac":"ios"})
-    );
 }

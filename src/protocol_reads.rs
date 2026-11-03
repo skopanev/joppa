@@ -96,13 +96,14 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         let reply = joppa::mcp_shapes::links(reply, a);
         return Ok(rc::strip_reply(reply));
     }
+    anyhow::ensure!(a["work_filter"].is_null(), joppa::removed_ops::WORK_FILTER);
     // The node filters: parent with depth, kind, status, owner, assignee, ready and data.
     let filter = joppa::node_filter::NodeFilter::parse(a)?;
     let inbox =
         a["address"].is_null() && inbox_kind(pool, workspace, actor, filter.one_kind()).await?;
     let plain = a["address"].is_null()
         && fields.is_none()
-        && ["work_filter", "related_to", "note_status"]
+        && ["related_to", "note_status"]
             .iter()
             .all(|k| a[*k].is_null())
         && !inbox;
@@ -121,7 +122,6 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         cursor: a["cursor"].as_str().filter(|_| !history),
         note_status: a["note_status"].as_str(),
         related_to: a["related_to"].as_str(),
-        work_filter: a["work_filter"].as_str(),
         data: fields.as_deref().is_some_and(rc::needs_data),
     };
     if let Some(addresses) = address::addresses(&a["address"])? {
@@ -140,7 +140,6 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     // A list in address order gives the bare address of its last item as the cursor,
     // as a plain list does, so one sweep may mix plain pages and pages with fields.
     if !inbox
-        && a["work_filter"].is_null()
         && let Some((p, address)) = reply["next_cursor"]
             .as_str()
             .and_then(|c| c.split_once(':'))

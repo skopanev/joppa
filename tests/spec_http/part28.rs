@@ -69,59 +69,6 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
         )
         .await?,
     );
-    // alex owns each job. The Task owner is neither the holder nor the workspace owner.
-    let bot = Some(w.bot.as_str());
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"job:a","revision":revision("job:a").await?}),
-    )
-    .await?;
-    covered.push(check_callers(&w, &help, bot, json!({"op":"block_task","id":"job:a","revision":revision("job:a").await?,"reason":"The test fails","evidence":"test a failed at commit c1"}), &w.bot, "Task holder required").await?);
-    covered.push(check_callers(&w, &help, None, json!({"op":"unblock_task","id":"job:a","revision":revision("job:a").await?,"reason":"The failure was outside the Task","evidence":"Run: r1"}), &w.owner, "planning holder or workspace owner required").await?);
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"job:b","revision":revision("job:b").await?}),
-    )
-    .await?;
-    check_callers(&w, &help, bot, json!({"op":"block_task","id":"job:b","revision":revision("job:b").await?,"reason":"The test fails","evidence":"test b failed at commit c1"}), &w.owner, "Task holder required").await?;
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"job:c","revision":revision("job:c").await?}),
-    )
-    .await?;
-    covered.push(check_callers(&w, &help, bot, json!({"op":"release_task","id":"job:c","revision":revision("job:c").await?,"reason":"Return the work"}), &w.bot, owner_only).await?);
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"job:c","revision":revision("job:c").await?}),
-    )
-    .await?;
-    covered.push(check_callers(&w, &help, bot, json!({"op":"complete_task","commit":"c0ffee0","id":"job:c","revision":revision("job:c").await?,"evidence":"Implemented and checked"}), &w.bot, "Task is not claimed unfinished work").await?);
-    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:key","revision":2,"ac":"ac:key-rights","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
-    w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
-    covered.push(
-        check_callers(
-            &w,
-            &help,
-            bot,
-            json!({"op":"release_planning","ac":"ac:key-rights","reason":"Plan later"}),
-            &w.bot,
-            owner_only,
-        )
-        .await?,
-    );
-    w.command_as(&w.bot, json!({"op":"claim_planning","ac":"ac:key-rights","revision":revision("ac:key-rights").await?})).await?;
-    w.command_as(&w.bot, json!({"op":"save_object","kind":"task","id":"planned","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the key rights","owner":"owner","body":"Implement the key rights and record the result","projects":[]},"reason":"Plan the work"})).await?;
-    covered.push(
-        check_callers(
-            &w,
-            &help,
-            bot,
-            json!({"op":"finish_planning","ac":"ac:key-rights","reason":"The plan is complete"}),
-            &w.bot,
-            "planning holder required",
-        )
-        .await?,
-    );
     covered.push(
         check_callers(
             &w,

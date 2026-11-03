@@ -1,36 +1,5 @@
 // Part 30 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_holding_a_task_claims_a_task_of_another_req() -> Result<()> {
-    let w = world().await?;
-    w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review")]).await?;
-    for ac in ["key-rights", "other-rights"] {
-        w.assess_ready(ac).await?;
-    }
-    let held = ready_task(&w, "a1", "key-rights").await?;
-    let other = ready_task(&w, "b1", "other-rights").await?;
-    w.command_as(&w.bot, json!({"op":"claim_task","id":held,"revision":1}))
-        .await?;
-    let available =
-        mcp_value(&w, "joppa_tasks", json!({"workspace":w.ws,"view":"available"})).await?;
-    ensure!(
-        available["items"].as_array().unwrap().len() == 1
-            && available["items"][0]["address"] == other
-            && available["items"][0]["claimable"] == true,
-        "{available}"
-    );
-    let next = w
-        .command_as(&w.bot, json!({"op":"claim_next_task"}))
-        .await?;
-    ensure!(next["command"]["id"] == other, "{next}");
-    for task in [&held, &other] {
-        let read = w.get(&format!("address={task}")).await?;
-        ensure!(read["process"]["assignee"] == "bot", "{read}");
-    }
-    Ok(())
-}
-
 /// REQ key holds task:t1; REQ other holds task:t2 under other-rights and a second AC other-audit.
 async fn tasks_under_two_requirements(w: &World) -> Result<()> {
     w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review"), ("other-audit", "Record each write")]).await?;
@@ -74,25 +43,15 @@ async fn a_task_link_to_a_task_of_another_requirement_is_saved_and_waits() -> Re
     let current = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
-    // Each dependent Task keeps the link and waits until T1 is done.
+    // Each dependent Task keeps the link and waits until T1 is done and archived.
     for task in ["task:t2", "task:t3"] {
         let read = w.get(&format!("address={task}")).await?;
         ensure!(read["document"]["links"] == link, "{read}");
-        let claim = json!({"op":"claim_task","id":task,"revision":read["current_revision"]});
-        let (ok, early) = send_as(&w, &w.bot, &claim).await?;
-        ensure!(
-            !ok && early["error"]
-                .as_str()
-                .is_some_and(|e| e.starts_with("Task has an unmet dependency")),
-            "{task}: {early}"
-        );
+        ensure!(read["waits_for"]["address"] == "task:t1", "{task}: {read}");
     }
-    let claim = json!({"op":"claim_task","id":"task:t1","revision":current("task:t1").await?});
-    w.command_as(&w.bot, claim).await?;
-    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":"task:t1","revision":current("task:t1").await?,"evidence":"Implemented the contract"})).await?;
-    let claim = json!({"op":"claim_task","id":"task:t2","revision":current("task:t2").await?});
-    let (ok, claimed) = send_as(&w, &w.bot, &claim).await?;
-    ensure!(ok, "{claimed}");
+    w.command(json!({"op":"archive_object","target":"task:t1","revision":current("task:t1").await?,"reason":"Implemented the contract"})).await?;
+    let t2 = w.get("address=task:t2").await?;
+    ensure!(t2.get("waits_for").is_none(), "{t2}");
     Ok(())
 }
 
@@ -140,36 +99,13 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
         links[0]["target"] == "task:t2" && links[0]["blocking"] == true,
         "{read}"
     );
-    let (ok, early) = send_as(
-        &w,
-        &w.bot,
-        &json!({"op":"claim_task","id":t4,"revision":read["current_revision"]}),
-    )
-    .await?;
-    ensure!(
-        !ok && early["error"]
-            .as_str()
-            .is_some_and(|e| e.starts_with("Task has an unmet dependency")),
-        "{early}"
-    );
-    let waiting = w.get(&format!("address={t4}")).await?;
-    ensure!(waiting["process"]["assignee"].is_null(), "{waiting}");
+    ensure!(read["waits_for"]["address"] == "task:t2", "{read}");
     let current = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
-    w.command_as(
-        &w.bot,
-        json!({"op":"claim_task","id":"task:t2","revision":current("task:t2").await?}),
-    )
-    .await?;
-    w.command_as(&w.bot, json!({"op":"complete_task","commit":"c0ffee0","id":"task:t2","revision":current("task:t2").await?,"evidence":"Implemented the contract"})).await?;
-    let (ok, claimed) = send_as(
-        &w,
-        &w.bot,
-        &json!({"op":"claim_task","id":t4,"revision":current(t4).await?}),
-    )
-    .await?;
-    ensure!(ok, "{claimed}");
+    w.command(json!({"op":"archive_object","target":"task:t2","revision":current("task:t2").await?,"reason":"Implemented the contract"})).await?;
+    let free = w.get(&format!("address={t4}")).await?;
+    ensure!(free.get("waits_for").is_none(), "{free}");
     Ok(())
 }
 

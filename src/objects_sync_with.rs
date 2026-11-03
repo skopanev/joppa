@@ -29,8 +29,14 @@ pub(crate) fn sync_with(
         Command::Revise(crate::commands::ReviseOp { req, .. }) => Some(req.as_str()),
         _ => None,
     };
+    // After migrate_generic_nodes a Task is a node like any other: no record keeps it.
+    let types = schema(w).types;
+    let generic_task = |w: &Workspace, kind: &str| {
+        w.generic_nodes && types.get(kind).is_some_and(|t| t.role == "task")
+    };
     for (key, (kind, parent, data)) in &rows {
         if w.task_process.contains_key(key)
+            || generic_task(w, kind)
             || w.document_overrides.contains(key)
             || w.archived_objects.contains(key)
         {
@@ -159,6 +165,7 @@ pub(crate) fn sync_with(
                 .is_some_and(|t| t.role == "ac" || t.role == "requirement"))
             && obj.kind != "note"
             && !w.task_process.contains_key(key)
+            && !(w.generic_nodes && roles.get(&obj.kind).is_some_and(|t| t.role == "task"))
             && !w.document_overrides.contains(key)
             && !rows.contains_key(key)
             && obj.current().present

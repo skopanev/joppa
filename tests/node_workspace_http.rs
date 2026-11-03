@@ -14,4 +14,3 @@ include!("node_workspace_http/part02.rs");
 include!("node_workspace_http/part03.rs");
 include!("node_workspace_http/part04.rs");
 include!("node_workspace_http/part05.rs");
-include!("node_workspace_http/part06.rs");

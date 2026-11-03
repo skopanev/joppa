@@ -1,18 +1,10 @@
-//! The dependency-wait reader over the current projections or a live write state.
-//! Both read the criterion statuses of GET /tests; a status read error is returned.
+//! The dependency-wait reader over the current projections. It reads the test statuses of
+//! the criteria; a status read error is returned.
 use super::*;
 use crate::dependencies::Graph;
 use std::collections::{BTreeMap, BTreeSet};
 
 type Types = BTreeMap<String, crate::objects::TreeType>;
-
-fn kinds(types: &Types, role: &str) -> Vec<String> {
-    types
-        .iter()
-        .filter(|(_, t)| t.role == role)
-        .map(|(kind, _)| kind.clone())
-        .collect()
-}
 
 fn green(statuses: BTreeMap<String, Value>) -> BTreeSet<String> {
     statuses
@@ -36,14 +28,9 @@ pub(super) async fn read_with_counts(
         return Ok((BTreeMap::new(), BTreeMap::new()));
     }
     let mut graph = Graph::default();
-    let tasks = kinds(types, "task");
-    for row in client.query("SELECT o.address,o.kind,COALESCE(a.target,o.parent),COALESCE(o.process->>'status','') FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.address=o.parent WHERE o.workspace=$1 AND o.present", &[&workspace]).await? {
+    for row in client.query("SELECT o.address,o.kind,COALESCE(a.target,o.parent) FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.address=o.parent WHERE o.workspace=$1 AND o.present", &[&workspace]).await? {
         let kind: String = row.get(1);
         graph.node(row.get(0), row.get(2), types.get(&kind).is_some_and(|t| t.role == "ac"));
-        // A link to a Task is satisfied when the Task is done.
-        if tasks.contains(&kind) {
-            graph.task(row.get(0), row.get::<_, String>(3) == "done");
-        }
     }
     for row in links {
         graph.link(row.get(0), row.get(1));
@@ -57,49 +44,6 @@ pub(super) async fn read_with_counts(
     .await?;
     let green = green(statuses);
     Ok((graph.waits(&green), graph.wait_counts(&green)))
-}
-
-/// The same wait in a live write, from the transaction state with earlier batch writes.
-pub(super) async fn live(
-    client: &impl GenericClient,
-    workspace: &str,
-    actor: &str,
-    state: &Workspace,
-    locked: &BTreeSet<String>,
-) -> Result<BTreeMap<String, String>> {
-    let mut graph = Graph::from_state(state);
-    // A blocking remote target is one more criterion node: green when the actor can read it
-    // and each of its criteria is green.
-    for (source, targets) in super::remote::remote_edges(state) {
-        for target in targets {
-            graph.node(target.clone(), None, true);
-            graph.link(source.clone(), target);
-        }
-    }
-    if !graph.has_links() {
-        return Ok(BTreeMap::new());
-    }
-    let named: BTreeSet<&String> = state
-        .remote_links
-        .values()
-        .flat_map(|l| &l.links)
-        .filter(|l| l.blocking)
-        .map(|l| &l.workspace)
-        .collect();
-    ensure!(
-        named.iter().all(|w| locked.contains(*w)),
-        "the remote links changed during this claim; send it again"
-    );
-    let local: Vec<String> = graph
-        .criteria_needed()
-        .into_iter()
-        .filter(|c| !c.starts_with('@'))
-        .collect();
-    let statuses =
-        super::reports::state_criterion_statuses(client, workspace, state, &local).await?;
-    let mut green = green(statuses);
-    green.extend(super::remote_status::green_targets(client, actor, state, locked).await?);
-    Ok(graph.waits(&green))
 }
 
 /// The first blocking remote target that is not ready for this actor and that applies to

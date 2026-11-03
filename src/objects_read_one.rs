@@ -25,11 +25,10 @@ pub(super) async fn read_one(
         scope.filter == crate::node_filter::NodeFilter::default()
             && scope.cursor.is_none()
             && scope.note_status.is_none()
-            && scope.related_to.is_none()
-            && scope.work_filter.is_none(),
+            && scope.related_to.is_none(),
         "address cannot be combined with list filters"
     );
-    let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.review_required,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
+    let row=conn.query_opt("SELECT o.kind,o.local_id,o.revision,o.document::text,o.work_ready,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", &[&workspace,&key,&prefix]).await?.context("unknown object")?;
     let current: i32 = row.get(2);
     if scope.history {
         ensure!(
@@ -92,7 +91,7 @@ pub(super) async fn read_one(
     } else {
         json!([])
     };
-    let projected_process: Value = serde_json::from_str(row.get(8))?;
+    let projected_process: Value = serde_json::from_str(row.get(7))?;
     let annotation = projected_process["annotation_address"]
         .as_str()
         .unwrap_or(&key);
@@ -103,15 +102,7 @@ pub(super) async fn read_one(
             comment["created_at"] = comment["at"].clone();
         }
     }
-    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(6),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"review_required":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"work_ready":if n == current as u32 {json!(row.get::<_,bool>(5))}else{Value::Null},"links":outgoing,"references":references,"link_groups":link_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(8))?}else{Value::Null}});
-    // The contract revision: a revision that changes only the test list keeps the contract
-    // of the revision before it. A pin is current from this revision to current_revision.
-    let contract = document["contract"]
-        .as_array()
-        .filter(|pair| pair.first().and_then(Value::as_u64) == Some(u64::from(n)))
-        .and_then(|pair| pair.get(1).and_then(Value::as_u64))
-        .unwrap_or(u64::from(n));
-    item["contract_revision"] = json!(contract);
+    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(5),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"work_ready":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"links":outgoing,"references":references,"link_groups":link_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(6))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null}});
     let decision = &document["data"]["decision"];
     if decision["outcome"] == "needs_information"
         && let (Some(recipient), Some(text)) =
@@ -150,7 +141,6 @@ pub(super) async fn read_one(
         item["files"] = json!(files);
         // The decoration comes from the status projection of the last write.
         apply_rollups(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
-        add_priorities(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;
         // A test node gives the deciding result of its test: status, commit and message.
         let kind = item["kind"].as_str().unwrap_or_default().to_owned();
         let role: Option<String> = conn.query_opt("SELECT value->'types'->$2->>'role' FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace, &kind]).await?.and_then(|r| r.get(0));

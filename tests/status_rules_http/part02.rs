@@ -125,27 +125,11 @@ impl World {
         self.command(&self.owner, json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Set the status rules"})).await?;
         Ok(json!(task))
     }
-    /// Task T under a check, claimed and blocked by bot.
-    async fn blocked_task(&self, task_kind: &str, check: &str) -> Result<()> {
+    /// Task T under a check.
+    async fn task(&self, task_kind: &str, check: &str) -> Result<()> {
         let id = format!("t-{}", check.replace(':', "-"));
         let parent = json!(check);
         self.command(&self.owner, json!({"op":"save_object","kind":task_kind,"id":id,"revision":0,"parent":parent,"data":{"title":"Implement","owner":"owner","body":"Implement and check the contract"},"reason":"Create work"})).await?;
-        let criterion = self.object(check).await?;
-        let p = &criterion["process"];
-        self.command(&self.owner, json!({"op":"assess","req":p["req"],"revision":p["revision"],"ac":p["criterion"],"assessment":{"ready":true,"reason":"Known scope","recipient":null,"decision":null}})).await?;
-        let address = format!("{task_kind}:{id}");
-        let revision = self.object(&address).await?["current_revision"].clone();
-        self.command(
-            &self.bot,
-            json!({"op":"claim_task","id":address,"revision":revision}),
-        )
-        .await?;
-        let revision = self.object(&address).await?["current_revision"].clone();
-        self.command(&self.bot, json!({"op":"block_task","id":address,"revision":revision,"reason":"The test fails","evidence":"test a failed"})).await?;
-        ensure!(
-            self.object(&address).await?["process"]["blocked"].is_object(),
-            "Task is not blocked"
-        );
         Ok(())
     }
 }

@@ -1,175 +1,71 @@
 // Part 1 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
 
-fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value) {
-    let (kind, id) = key.split_once(':').unwrap();
-    let revision = w.state.objects.get(key).map_or(0, |o| o.current().revision);
-    w.ok(
-        "owner",
-        json!({"op":"save_object","kind":kind,"id":id,"revision":revision,
-        "parent":parent,"data":data,"reason":"Set the current contract"}),
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> anyhow::Result<()> {
+    let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
+    let pool = store::pool(&url)?;
+    let name: String = pool
+        .get()
+        .await?
+        .query_one("SELECT current_database()", &[])
+        .await?
+        .get(0);
+    anyhow::ensure!(
+        name.starts_with("joppa_test"),
+        "isolated test database required"
     );
+    store::migrate(&pool).await?;
+    let ws = format!("readiness-{}", uuid::Uuid::new_v4().simple());
+    common::seed(&pool, &ws, "owner", common::setup()).await?;
+    store::execute_input(&pool, &ws, "owner", "other", &json!({"op":"save_object","kind":"requirement","id":"other","revision":0,
+        "parent":"capability:c","data":{"title":"Other scope","body":"Scope","owner":"owner","consumers":["customer"]},"reason":"Define"})).await?;
+    let conn = pool.get().await?;
+    let object = "SELECT revision,document::text,work_ready,process::text,signal::text FROM joppa.objects WHERE workspace=$1 AND address=$2";
+    let (requirement, other) = (
+        conn.query_one(object, &[&ws, &"requirement:r"]).await?,
+        conn.query_one(object, &[&ws, &"requirement:other"]).await?,
+    );
+    let data = serde_json::from_str::<Value>(requirement.get(1))?["data"].clone();
+    store::execute_input(&pool, &ws, "owner", "link", &json!({"op":"save_object","kind":"requirement","id":"r",
+        "revision":requirement.get::<_,i32>(0),"parent":"capability:c","data":data,
+        "links":[{"target":"requirement:other","relation":"depends_on","revision":other.get::<_,i32>(0),"blocking":true}],
+        "reason":"Order after the other requirement"})).await?;
+    let ready = json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"});
+    store::execute_input(&pool, &ws, "agent", "ready", &ready).await?;
+    let current = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
+    let full = (
+        current.get::<_, bool>(2),
+        serde_json::from_str::<Value>(current.get(3))?,
+        serde_json::from_str::<Value>(current.get(4))?,
+    );
+    assert!(full.0);
+    assert_eq!(full.1["assessment"]["state"], "ready");
+    conn.execute("UPDATE joppa.objects SET work_ready=false,process=jsonb_set(process,'{assessment,state}','\"waiting\"') WHERE workspace=$1 AND address='ac:ios'", &[&ws]).await?;
+    conn.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{projection_version}','\"8\"') WHERE workspace=$1", &[&ws]).await?;
+    let stale = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
+    assert!(!stale.get::<_, bool>(2));
+    store::backfill_board(&pool).await?;
+    let repaired = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
+    assert!(repaired.get::<_, bool>(2));
+    let repaired_process: Value = serde_json::from_str(repaired.get(3))?;
+    assert_eq!(repaired_process["assessment"]["state"], "ready");
+    assert_eq!(
+        (
+            repaired.get::<_, bool>(2),
+            repaired_process,
+            serde_json::from_str::<Value>(repaired.get(4))?
+        ),
+        full
+    );
+    let snapshot = "SELECT jsonb_build_array(b.xmin::text,b.first_view->>'projection_version',(SELECT jsonb_agg(jsonb_build_array(o.address,o.xmin::text) ORDER BY o.address) FROM joppa.objects o WHERE o.workspace=b.workspace))::text FROM joppa.board_cache b WHERE b.workspace=$1";
+    let before: String = conn.query_one(snapshot, &[&ws]).await?.get(0);
+    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "18");
+    store::backfill_board(&pool).await?;
+    assert_eq!(
+        conn.query_one(snapshot, &[&ws]).await?.get::<_, String>(0),
+        before,
+        "a current projection must not be rewritten"
+    );
+    Ok(())
 }
-
-fn work(title: &str) -> Value {
-    json!({"title":title,"owner":"legal","body":"Implement the specified behavior","projects":[]})
-}
-
-fn native() -> World {
-    let mut w = World::new();
-    tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    save(
-        &mut w,
-        "task:work",
-        Some("ac:ios"),
-        work("Implement access"),
-    );
-    w
-}
-
-fn claim(w: &mut World, actor: &str, key: &str) -> anyhow::Result<()> {
-    let revision = w.state.objects[key].current().revision;
-    w.apply(
-        actor,
-        json!({"op":"claim_task","id":key,"revision":revision}),
-    )
-}
-
-fn refuse_claim(w: &mut World, key: &str) -> String {
-    let error = claim(w, "bot", key).unwrap_err().to_string();
-    assert!(w.state.task_process[key].assignee.is_none());
-    error
-}
-
-// [no-work-before-ready-ac1]
-#[test]
-fn tasks_under_not_ready_criteria_cannot_be_claimed() {
-    let mut w = World::new();
-    w.ok(
-        "owner",
-        json!({"op":"enroll_service","id":"bot","role":"agent"}),
-    );
-    w.ok("owner", json!({"op":"member","id":"alex","role":"human"}));
-    let access = |expected: u32| {
-        json!({"op":"revise","req":"access","expected_revision":expected,"capability":"c",
-            "consumers":["customer"],"title":"Access","body":"Scope","owner":"owner",
-            "reason":"Agreed wording","acs":[{"id":"a1","text":"First"},
-            {"id":"a2","text":"Second"},{"id":"a3","text":"Third"}]})
-    };
-    w.ok("owner", access(0));
-    tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    joppa::body_migration::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
-    for (task, ac) in [
-        ("task:t1", "ac:a1"),
-        ("task:t2", "ac:a2"),
-        ("task:t3", "ac:a3"),
-    ] {
-        save(
-            &mut w,
-            task,
-            Some(ac),
-            work("Implement access"),
-        );
-    }
-    w.ok(
-        "agent",
-        json!({"op":"assess","req":"access","revision":1,"ac":"a3","assessment":{
-            "ready":true,"reason":"Known scope","recipient":null,"decision":null}}),
-    );
-    w.ok("owner", access(1));
-    let assess_access = |ac: &str, ready: bool, reason: &str, recipient: Option<&str>| {
-        json!({"op":"assess","req":"access","revision":2,"ac":ac,"assessment":{
-            "ready":ready,"reason":reason,"recipient":recipient,"decision":null}})
-    };
-    w.ok(
-        "agent",
-        assess_access("a2", false, "Which permissions?", Some("alex")),
-    );
-    assert_eq!(
-        refuse_claim(&mut w, "task:t1"),
-        "Criterion a1 has no readiness assessment"
-    );
-    assert_eq!(
-        refuse_claim(&mut w, "task:t2"),
-        "Which permissions? · Recipient: alex"
-    );
-    assert_eq!(
-        refuse_claim(&mut w, "task:t3"),
-        "Criterion a3 has no readiness assessment"
-    );
-    w.ok("agent", assess_access("a3", true, "Known scope", None));
-    save(
-        &mut w,
-        "task:t4",
-        Some("ac:a3"),
-        work("Implement access"),
-    );
-    claim(&mut w, "bot", "task:t4").unwrap();
-    assert_eq!(
-        w.state.task_process["task:t4"].assignee.as_deref(),
-        Some("bot")
-    );
-}
-
-// [open-questions-visible-ac2]
-#[test]
-fn current_assessment_and_claim_refusal_show_the_same_question() {
-    let mut w = native();
-    assert_eq!(
-        objects::process(&w.state, "ac:ios")["assessment"]["state"],
-        "unassessed"
-    );
-    let unassessed = tasks::claimable(
-        &w.state,
-        "agent",
-        "task:work",
-        &w.state.task_process["task:work"],
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(unassessed.contains("no readiness assessment"));
-    w.ok("agent", assess("ios", false));
-    let ac = objects::process(&w.state, "ac:ios");
-    let task = objects::process(&w.state, "task:work");
-    assert_eq!(ac["assessment"]["state"], "waiting");
-    assert_eq!(ac["assessment"]["recipient"], "legal");
-    assert_eq!(ac["assessment"], task["assessment"]);
-    assert_eq!(
-        objects::signal(&w.state, "task:work")["readiness_blocker"],
-        ac["assessment"]
-    );
-    assert_eq!(objects::signal(&w.state, "task:work")["tone"], "yellow");
-    let refusal = tasks::claimable(
-        &w.state,
-        "agent",
-        "task:work",
-        &w.state.task_process["task:work"],
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(refusal.contains("Which exact permissions?"));
-    assert!(refusal.contains("Recipient: legal"));
-    w.ok("agent", assess("ios", true));
-    assert_eq!(
-        objects::process(&w.state, "task:work")["assessment"]["state"],
-        "ready"
-    );
-    assert!(objects::process(&w.state, "task:work")["readiness_blocker"].is_null());
-    assert!(
-        tasks::claimable(
-            &w.state,
-            "agent",
-            "task:work",
-            &w.state.task_process["task:work"]
-        )
-        .is_ok()
-    );
-    assert_eq!(
-        objects::process(&w.state, "ac:ios")["verification"],
-        "unverified"
-    );
-    let signal = objects::signal(&w.state, "ac:ios");
-    assert_eq!(signal["tone"], "grey");
-    assert_eq!(signal["label"], "Ready for work");
-}
-

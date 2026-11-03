@@ -11,19 +11,13 @@ use std::{
 };
 #[path = "common/compact_of.rs"]
 mod compact_of;
-#[path = "common/detail_read.rs"]
-mod detail_read;
-use detail_read::{current_revision, document};
 #[path = "common/record_http.rs"]
 mod record_http;
-include!("reports_http_parts/planning_people.rs");
-include!("reports_http_parts/planning_people_wait.rs");
 
 include!("reports_http/part01.rs");
 include!("reports_http/part02.rs");
 include!("reports_http/part03.rs");
 include!("reports_http/part03b.rs");
-include!("reports_http/part04.rs");
 include!("reports_http/part05.rs");
 include!("reports_http/part06.rs");
 include!("reports_http/part07.rs");
@@ -37,14 +31,6 @@ include!("reports_http/part14.rs");
 include!("reports_http/part15.rs");
 include!("reports_http/part16.rs");
 include!("reports_http/part17.rs");
-include!("reports_http/part18.rs");
-include!("reports_http/part19.rs");
-include!("reports_http/part20.rs");
-include!("reports_http/part21.rs");
-include!("reports_http/part22.rs");
-include!("reports_http/part23.rs");
-include!("reports_http/part24.rs");
-include!("reports_http/part25.rs");
 include!("reports_http/part26.rs");
 include!("reports_http/part27.rs");
 include!("reports_http/part28.rs");
@@ -52,6 +38,4 @@ include!("reports_http/part29.rs");
 include!("reports_http/part30.rs");
 include!("reports_http/part31.rs");
 include!("reports_http/part32.rs");
-include!("reports_http/part33.rs");
-include!("reports_http/part34.rs");
 include!("reports_http/part35.rs");

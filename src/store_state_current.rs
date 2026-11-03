@@ -86,82 +86,8 @@ pub(crate) async fn hydrate_command(
     if let (Some(kind), Some(id)) = (command["kind"].as_str(), command["id"].as_str()) {
         addresses.push(format!("{kind}:{id}"));
     }
-    if matches!(
-        command["op"].as_str(),
-        Some(
-            "claim_task"
-                | "release_task"
-                | "block_task"
-                | "unblock_task"
-                | "complete_task"
-                | "review_task"
-                | "retire_task"
-                | "amend_task"
-        )
-    ) && let Some(id) = command["id"].as_str()
-    {
-        addresses.push(crate::objects::resolve_address(state, id).to_owned());
-    }
-    if matches!(
-        command["op"].as_str(),
-        Some("claim_planning" | "finish_planning" | "release_planning")
-    ) && let Some(ac) = command["ac"].as_str()
-    {
-        let ac = crate::objects::resolve_address(state, ac).to_owned();
-        addresses.push(ac.clone());
-        if command["op"] == "release_planning" {
-            addresses.extend(
-                state
-                    .task_process
-                    .keys()
-                    .filter(|key| {
-                        state
-                            .objects
-                            .get(*key)
-                            .is_some_and(|o| o.current().parent.as_deref() == Some(ac.as_str()))
-                    })
-                    .cloned(),
-            );
-        }
-    }
     if let Some(target) = command["target"].as_str() {
         addresses.push(crate::objects::resolve_address(state, target).to_owned());
-    }
-    if command["op"] == "finish_planning"
-        && let Some(ac) = command["ac"].as_str()
-    {
-        let ac = crate::objects::resolve_address(state, ac);
-        if let Some(claim) = state.planning_claims.get(ac) {
-            let keys: Vec<String> = state
-                .task_process
-                .keys()
-                .filter(|key| {
-                    state.objects.get(*key).is_some_and(|o| {
-                        o.current()
-                            .parent
-                            .as_deref()
-                            .map(|p| crate::objects::resolve_address(state, p))
-                            == Some(ac)
-                    })
-                })
-                .cloned()
-                .collect();
-            // A blocked Task also needs its document revision at the block position.
-            let (blocked, positions): (Vec<String>, Vec<i64>) = keys
-                .iter()
-                .filter_map(|key| {
-                    let block = state.task_process[key].blocked.as_ref()?;
-                    Some((key.clone(), block.position as i64))
-                })
-                .unzip();
-            for row in client.query("SELECT address,document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=ANY($2) AND ((document->>'position')::bigint>$3 OR (address,(document->>'position')::bigint) IN (SELECT * FROM unnest($4::text[],$5::bigint[]))) ORDER BY address,revision", &[&workspace, &keys, &(claim.position as i64), &blocked, &positions]).await? {
-                    let key: String = row.get(0);
-                    let revision: crate::objects::ObjectRevision = serde_json::from_str(row.get(1))?;
-                    let object = state.objects.get_mut(&key).context("unknown Task")?;
-                    if !object.revisions.iter().any(|r| r.revision == revision.revision) { object.revisions.push(revision); }
-                    object.revisions.sort_by_key(|r| r.revision);
-                }
-        }
     }
     hydrate_objects(client, workspace, state, &addresses).await?;
     hydrate_objects(client, workspace, previous, &addresses).await?;

@@ -34,42 +34,13 @@ fn comment_list(comments: &Value) -> Vec<Value> {
     list
 }
 
-/// The process facts without copies of the address, the parent, the requirement and its
-/// revision. The requirement of a criterion is its document parent.
+/// The process facts without copies of the address and of the stored status.
 fn process(reply: &mut Value) {
     let address = reply["address"].clone();
-    let parent = reply["document"]["parent"].clone();
-    let (current, status) = (
-        reply["current_revision"].clone(),
-        reply["document"]["data"]["status"].clone(),
-    );
+    let status = reply["document"]["data"]["status"].clone();
     let process = &mut reply["process"];
-    // No run gives no verification, and a copy of the revision or of the stored status goes.
-    // The requirement revision of a criterion stays only in assessment, which assess reads.
-    drop_same(process, &["verification"], &json!("unverified"));
-    if process["assessment"].is_object() {
-        process.as_object_mut().map(|p| p.remove("revision"));
-    }
-    drop_same(process, &["revision"], &current);
+    drop_same(process, &["annotation_address"], &address);
     drop_same(process, &["status"], &status);
-    for entry in process["summary"]["acs"]
-        .as_object_mut()
-        .into_iter()
-        .flatten()
-    {
-        drop_same(entry.1, &["verification"], &json!("n/a"));
-    }
-    let (req, revision) = (process["req"].clone(), process["revision"].clone());
-    drop_same(
-        process,
-        &["annotation_address", "criterion", "req"],
-        &address,
-    );
-    drop_same(process, &["req"], &parent);
-    drop_same(&mut process["assessment"], &["criterion"], &address);
-    drop_same(&mut process["assessment"], &["req"], &req);
-    drop_same(&mut process["assessment"], &["revision"], &revision);
-    drop_same(&mut process["summary"], &["revision"], &revision);
 }
 
 /// A detail reply: revision, parent and data, one page of comments, all titled links, the
@@ -98,16 +69,7 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
     if let Some(status) = status(&reply) {
         reply["status"] = status;
     }
-    if reply["process"]["readiness_blocker"] == reply["process"]["assessment"] {
-        reply["process"]
-            .as_object_mut()
-            .map(|p| p.remove("readiness_blocker"));
-    }
     process(&mut reply);
-    // `current_revision` is the revision that a write sends. A contract revision shows only
-    // when a test list change kept the contract of an older revision.
-    let revision = reply["current_revision"].clone();
-    drop_same(&mut reply, &["contract_revision"], &revision);
     if let Some(map) = reply.as_object_mut() {
         map.remove("historical");
     }
@@ -115,7 +77,6 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
     flatten(&mut reply);
     reply.as_object_mut().map(|m| m.remove("current_revision"));
     drop_same(&mut reply, &["work_ready"], &json!(true));
-    drop_same(&mut reply["process"], &["confirmed"], &json!(false));
     // `links` gives the outgoing links, so the counts keep the incoming groups.
     if let Some(groups) = reply["link_groups"].as_array_mut() {
         groups.retain(|g| g["direction"] == "incoming");
@@ -126,8 +87,6 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
         }
     }
     drop_empty_remote(&mut reply);
-    // A missing review_required reads as false.
-    drop_same(&mut reply, &["review_required"], &json!(false));
     strip_empty(&mut reply);
     Ok(reply)
 }

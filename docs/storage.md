@@ -35,12 +35,12 @@ message; the authenticated writer remains separately visible in history.
 
 `state_entries` stores one current entry per row. `state_revisions` stores verification records and schema revisions.
 `object_revisions` stores immutable document revisions. `board_cache` stores workspace metadata and launch counts.
-The task queue uses indexed rows for each member. Card lists read separate columns without loading document bodies.
+Card lists read separate columns without loading document bodies.
 Document and history requests read only the selected object or revision.
 
 Writes read the current validation graph. They exclude past revisions and large Note bodies from that graph.
 A command on one Note loads its body before validation. Search loads bodies only for affected documents and their ancestors.
-The transaction stores changed rows, affected search documents and affected queue entries.
+The transaction stores changed rows and affected search documents.
 The journal remains the source for administrative recovery.
 
 The isolated database test uses `pg_stat_statements` to count queries that select journal events.
@@ -69,7 +69,7 @@ GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_runtime;
 GRANT UPDATE, DELETE ON joppa.search_documents, joppa.search_state TO joppa_runtime;
 GRANT UPDATE ON joppa.board_cache, joppa.objects, joppa.state_revisions TO joppa_runtime;
 GRANT UPDATE, DELETE ON joppa.state_entries TO joppa_runtime;
-GRANT DELETE ON joppa.object_links, joppa.task_queue TO joppa_runtime;
+GRANT DELETE ON joppa.object_links TO joppa_runtime;
 GRANT UPDATE(display_name) ON joppa.google_identities TO joppa_runtime;
 GRANT EXECUTE ON FUNCTION joppa.purge_workspace(text) TO joppa_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA joppa TO joppa_runtime;

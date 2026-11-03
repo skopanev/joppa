@@ -194,40 +194,15 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     await f.save('check:d', {title: 'D', parent: 'rule:r2'});
     // One rollup decides every tone: the orange R2 does not put orange over red.
     await check('fixture 6', ['red', 'red', 'red']);
-    // An orange R says that a child has no tests, a grey R keeps its process label, a green R
-    // says that its children passed, and a red R says that a child failed, in every theme.
+    // An orange R says that a child has no tests, a grey R that its children await checks, a
+    // green R that its children passed, and a red R that a child failed, in every theme.
     assert.deepEqual([...new Set(labels)], [
       'orange: Status: A child has no tests',
-      'grey: Status: REQ awaits checks',
+      'grey: Status: Children await checks',
       'green: Status: Children checks passed',
       'red: Status: Child checks failed',
     ], JSON.stringify(labels));
   } finally { await f.close(); }
 });
 
-// work-priority-ac4
-test('work-priority-ac4: each row shows its priority read-only and browser POST /priority is refused with 403', async () => {
-  const f = await fixture(criterionRecords);
-  try {
-    for (const [target, priority] of [['domain:d', 'p1'], ['capability:c', 'p0'], ['ac:A', 'p1']]) {
-      await f.command({op: 'set_priority', target, priority});
-    }
-    const expected = {'domain:d': 'P1', 'capability:c': 'P0', 'requirement:r': 'P2', 'ac:A': 'P1'};
-    for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
-      await f.page.setViewportSize({width, height});
-      for (const [address, label] of Object.entries(expected)) {
-        const card = await f.open(address);
-        const badge = card.locator(':scope > summary .priority-badge');
-        assert.equal(await badge.innerText(), label, width + ' ' + address);
-        assert.ok(await badge.isVisible(), width + ' ' + address);
-        assert.equal(await card.locator(':scope > summary .priority-select').count(), 0);
-      }
-      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-    }
-    const refused = await f.page.request.post(f.live.root + '/api/workspaces/' + f.live.ws + '/priority',
-      {headers: {Origin: f.live.root}, data: {target: 'requirement:r', priority: 'p0'}});
-    assert.equal(refused.status(), 403);
-    assert.equal((await f.api('/objects?address=requirement:r')).process.priority, 'p2');
-  } finally { await f.close(); }
-});
 };

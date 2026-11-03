@@ -2,31 +2,26 @@
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_archived_capability_leaves_the_list_when_done_and_retired_tasks_remain() -> Result<()> {
+async fn an_archived_capability_leaves_the_list_and_its_archived_tasks_stay_archived() -> Result<()> {
     // removal-is-archiving-ac1
     let w = world().await?;
     let seed = json!({"op":"save_object","kind":"capability","id":"spent","revision":0,"parent":"domain:security","data":{"title":"Finished work","owner":"owner"},"reason":"Setup"});
     let seed: Operation = serde_json::from_value(seed)?;
     store::execute(&w.pool, &w.ws, "owner", "spent", &seed).await?;
     w.requirement("spent", "spent", "Finished rule", "Scope", &[("spent-a", "Criterion A")]).await?;
-    w.command_as(&w.bot, json!({"op":"assess","req":"requirement:spent","revision":2,"ac":"ac:spent-a","assessment":{"ready":true,"reason":"The contract is clear","recipient":null,"decision":null}})).await?;
+    w.command_as(&w.bot, json!({"op":"assess","target":"ac:spent-a","ready":true,"reason":"The contract is clear"})).await?;
     let done = ready_task(&w, "spent-done", "spent-a").await?;
-    w.command_as(&w.bot, json!({"op":"claim_task","id":done,"revision":1}))
-        .await?;
-    w.command_as(
-        &w.bot,
-        json!({"op":"complete_task","commit":"c0ffee0","id":done,"revision":2,"evidence":"Implemented the contract"}),
-    )
-    .await?;
-    let retired = ready_task(&w, "spent-retired", "spent-a").await?;
-    w.command(json!({"op":"retire_task","id":retired,"revision":1,"reason":"The owner no longer needs this work"})).await?;
+    let dropped = ready_task(&w, "spent-retired", "spent-a").await?;
+    for (task, reason) in [(&done, "Implemented the contract"), (&dropped, "The owner no longer needs this work")] {
+        w.command(json!({"op":"archive_object","target":task,"revision":1,"reason":reason})).await?;
+    }
     for target in ["ac:spent-a", "requirement:spent", "capability:spent"] {
         let before = w.get(&format!("address={target}")).await?;
         w.command(json!({"op":"archive_object","target":target,"revision":before["current_revision"],"reason":"Remove the finished work"})).await?;
     }
-    for task in [&done, &retired] {
+    for task in [&done, &dropped] {
         let read = w.get(&format!("address={task}")).await?;
-        ensure!(read["document"]["present"] == true, "{read}");
+        ensure!(read["document"]["present"] == false, "{read}");
     }
     let addresses = list_addresses(&w, &w.bot, "domain:security").await?;
     ensure!(

@@ -95,11 +95,13 @@ impl World {
         );
     }
 }
-/// An operation that live writes refuse and old journals still hold.
+/// An operation that live writes refuse and old journals still hold, also the older
+/// `assess` of a criterion in its requirement revision.
 pub fn is_removed(value: &Value) -> bool {
     value["op"]
         .as_str()
         .is_some_and(|op| joppa::removed_ops::NAMES.contains(&op))
+        || value["op"] == "assess" && value.get("req").is_some()
 }
 pub fn setup() -> Vec<Value> {
     vec![

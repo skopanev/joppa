@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS joppa.objects (
     present boolean NOT NULL,
     title text NOT NULL,
     document jsonb NOT NULL,
-    review_required boolean NOT NULL,
     work_ready boolean NOT NULL,
     signal jsonb NOT NULL DEFAULT '{}'::jsonb,
     process jsonb NOT NULL DEFAULT '{}'::jsonb,

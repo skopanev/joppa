@@ -38,13 +38,12 @@ async fn start(url: &str, tokens: &std::path::Path, port: u16) -> Result<Server>
 }
 
 /// Derived tables that server startup must rebuild from the journal.
-const TABLES: [&str; 7] = [
+const TABLES: [&str; 6] = [
     "objects",
     "object_revisions",
     "object_links",
     "state_entries",
     "state_revisions",
-    "task_queue",
     "search_documents",
 ];
 

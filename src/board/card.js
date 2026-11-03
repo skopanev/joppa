@@ -14,8 +14,8 @@ import {showObjectRevisions} from 'board/revisions.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
-  const tone=item.review_required||!item.work_ready?'yellow':'grey';
-  const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.review_required?'Dependency changed':item.work_ready?'Current document':'Dependency not ready',at:item.at};
+  const tone=item.work_ready?'grey':'yellow';
+  const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.work_ready?'Current document':'Dependency not ready',at:item.at};
   const repeatsParent=item.title===parentTitle;
   const heading=repeatsParent?state.data.objectTypes[item.kind].title+' · '+signal.label:item.title;
   const preview=objectTitlePreview(heading,item.kind);
@@ -25,9 +25,7 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const deps=item.waits_for?.count||1;
   const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
   if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
-  // Every live node shows its priority read-only in the row.
-  const priority=item.process?.priority&&!item.historical&&item.present!==false?priorityBadge(item):null;
-  summary.append(title,...(priority?[priority]:[]),objectTypeLabel(item.kind),...waits);
+  summary.append(title,objectTypeLabel(item.kind),...waits);
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
@@ -57,12 +55,6 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   card.branchPrepare=async()=>{if(loaded)return;loaded=true;try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
   card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
-}
-// Every live node shows its priority read-only in the row.
-function priorityBadge(item){
-  const badge=E('span',item.process.priority.toUpperCase(),'priority-badge');
-  badge.setAttribute('aria-label','Priority of '+item.title);
-  return badge;
 }
 function syncObjectTitles(root=document){
   for(const title of root.querySelectorAll('.object-full-title')){

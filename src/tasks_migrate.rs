@@ -1,21 +1,5 @@
-//! Part of `tasks`: `release_authority` and the items after it, moved from tasks.rs unchanged.
+//! The revision of a Task operation, and the older migrate_tasks.
 use super::*;
-
-/// The holder or the workspace owner may take a Task out of active work.
-pub(crate) fn release_authority(
-    w: &Workspace,
-    actor: &str,
-    t: &Task,
-    authority: bool,
-) -> Result<()> {
-    ensure!(
-        actor == w.admin
-            || t.assignee.as_deref() == Some(actor)
-            || w.replay_claims && !w.persistent_claims && authority,
-        "workspace owner required"
-    );
-    Ok(())
-}
 
 pub(crate) fn append(
     w: &mut Workspace,

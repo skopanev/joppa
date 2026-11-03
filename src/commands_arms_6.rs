@@ -73,75 +73,15 @@ pub(super) fn apply_comment(
     Ok(())
 }
 
-/// Apply `assess`.
-pub(super) fn apply_assess(w: &mut Workspace, command: &Command) -> Result<()> {
-    let Command::Assess {
-        req,
-        revision: n,
-        ac,
-        assessment,
-    } = command
-    else {
-        unreachable!()
-    };
-    nonempty(&assessment.reason)?;
-    let q = w
-        .requirements
-        .get(req)
-        .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
-    let r = q.revisions.last().unwrap();
-    ensure!(r.number == *n, "stale revision");
-    let a = r
+/// Replay the older `assess` of a criterion in a requirement revision.
+pub(super) fn apply_assess_criterion(w: &mut Workspace, op: &AssessCriterion) -> Result<()> {
+    let r = revision(w, &op.req, op.revision, true)?;
+    let ac = r
         .acs
-        .iter()
-        .find(|a| &a.id == ac)
-        .ok_or_else(|| anyhow::anyhow!("unknown AC"))?;
-    if !assessment.ready {
-        let recipient = assessment
-            .owner
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("waiting needs a recipient"))?;
-        ensure!(w.members.contains_key(recipient), "unknown recipient");
-    }
-    if assessment.ready && a.decider().is_some() {
-        let decision = assessment
-            .decision
-            .as_ref()
-            .and_then(|id| q.comments.get(id))
-            .ok_or_else(|| anyhow::anyhow!("specialist decision must be linked"))?;
-        let same_formulation = q
-            .revisions
-            .iter()
-            .find(|source| source.number == decision.revision)
-            .is_some_and(|source| {
-                source.title == r.title
-                    && source.body == r.body
-                    && source.acs.iter().any(|old| {
-                        old.id == a.id
-                            && old.text == a.text
-                            && old.owner == a.owner
-                            && old.depends_on == a.depends_on
-                            && old.before_launch == a.before_launch
-                    })
-            });
-        ensure!(
-            decision.kind == "decision"
-                && !decision.withdrawn
-                && Some(&decision.actor) == a.decider()
-                && decision.ac.as_ref() == Some(ac)
-                && (decision.revision == *n || same_formulation),
-            "decision must be by designated human for this AC and unchanged formulation"
-        );
-    } else if let Some(id) = &assessment.decision {
-        ensure!(
-            q.comments
-                .get(id)
-                .is_some_and(|c| c.kind == "decision" && !c.withdrawn),
-            "unknown or withdrawn decision reference"
-        );
-    }
-    let r = revision(w, req, *n, true)?;
-    r.acs.iter_mut().find(|a| &a.id == ac).unwrap().assessment = Some(assessment.clone());
+        .iter_mut()
+        .find(|a| a.id == op.ac)
+        .context("unknown AC")?;
+    ac.assessment = Some(op.assessment.clone());
     r.acceptance = None;
     Ok(())
 }

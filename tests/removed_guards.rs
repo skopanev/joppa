@@ -1,5 +1,4 @@
-//! The removed guards: an agent may hold several Tasks, a completed Task takes a new revision,
-//! any member may change a Task, and a criterion may move to another requirement.
+//! The removed guards: a criterion may move to another requirement.
 mod common;
 use common::*;
 use joppa::objects;
@@ -27,6 +26,7 @@ fn current() -> World {
         "migrate_note_parents",
         "migrate_body",
         "migrate_purpose",
+        "migrate_generic_nodes",
     ] {
         internal(&mut w, op);
     }
@@ -48,52 +48,6 @@ fn save(w: &mut World, actor: &str, key: &str, parent: &str, data: Value) -> any
 
 fn task(title: &str) -> Value {
     json!({"title":title,"owner":"owner","body":"Implement the agreed part"})
-}
-
-fn claim(w: &mut World, key: &str) -> anyhow::Result<()> {
-    let revision = revision(w, key);
-    w.apply(
-        "agent",
-        json!({"op":"claim_task","id":key,"revision":revision}),
-    )
-}
-
-#[test]
-fn an_agent_claims_a_second_task_while_it_holds_one() {
-    let mut w = current();
-    save(&mut w, "owner", "task:a", "ac:ios", task("A")).unwrap();
-    save(&mut w, "owner", "task:b", "ac:key", task("B")).unwrap();
-    claim(&mut w, "task:a").unwrap();
-    claim(&mut w, "task:b").unwrap();
-    for key in ["task:a", "task:b"] {
-        assert_eq!(w.state.task_process[key].assignee.as_deref(), Some("agent"));
-    }
-}
-
-#[test]
-fn a_completed_task_takes_a_new_revision_from_any_member() {
-    let mut w = current();
-    save(&mut w, "owner", "task:a", "ac:ios", task("A")).unwrap();
-    claim(&mut w, "task:a").unwrap();
-    let revision = revision(&w, "task:a");
-    w.ok(
-        "agent",
-        json!({"op":"complete_task","id":"task:a","revision":revision,
-        "evidence":"A is done","commit":"a".repeat(40)}),
-    );
-    // A member who is not the owner, the holder or the creator changes the completed Task.
-    save(
-        &mut w,
-        "legal",
-        "task:a",
-        "ac:ios",
-        task("A, with the agreed name"),
-    )
-    .unwrap();
-    let a = w.state.objects["task:a"].current();
-    assert_eq!(a.data["title"], "A, with the agreed name");
-    assert_eq!(a.actor, "legal");
-    assert!(w.state.task_process["task:a"].done.is_some());
 }
 
 #[test]

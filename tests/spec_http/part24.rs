@@ -78,7 +78,6 @@ async fn a_read_only_agent_token_reads_the_workspace() -> Result<()> {
         ),
         ("joppa_tree", json!({"workspace":w.ws})),
         ("joppa_objects", json!({"workspace":w.ws,"parent":"*"})),
-        ("joppa_tasks", json!({"workspace":w.ws})),
         ("joppa_help", json!({})),
         ("joppa_help", json!({"workspace":w.ws})),
     ] {

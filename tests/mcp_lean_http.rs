@@ -110,16 +110,7 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             && absent(hit, &["kind", "id", "archived", "historical", "exact_id"]),
         "{search}"
     );
-    // Tasks, tests, timeline and History give no default flag and no echo.
-    let tasks = read(&w, "joppa_tasks", json!({"view":"all"})).await?;
-    let t = &tasks["items"][0];
-    ensure!(
-        absent(&tasks, &ECHOES)
-            && t["address"] == "task:t"
-            && t["claimable"] != false
-            && absent(t, &["review_required", "created_at"]),
-        "{tasks}"
-    );
+    // Timeline and History give no default flag and no echo.
     // The test node of A gives its tone in the list and no echo in the detail.
     let tests = read(&w, "joppa_objects", json!({"parent":"ac:a","kind":"test"})).await?;
     let node = &tests["items"][0];

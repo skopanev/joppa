@@ -136,7 +136,7 @@ async fn a_stored_revision_on_an_ordering_link_asks_for_no_review() -> Result<()
     ensure!(
         source["document"]["links"][0]["revision"] == 1
             && source["document"]["links"][0]["blocking"] == true
-            && source["review_required"] == false,
+            && source.get("review_required").is_none(),
         "{source}"
     );
     Ok(())
@@ -179,7 +179,7 @@ async fn bot_adds_and_removes_a_blocking_link_that_stores_no_target_revision() -
             && shown["blocking"] == true
             && shown.get("revision").is_none()
             && shown["current_revision"] == 4
-            && s["review_required"] == false,
+            && s.get("review_required").is_none(),
         "after revision 4 of T: {s}"
     );
     // Agent bot removes the link.

@@ -41,15 +41,15 @@ fn a_page_gives_25_items_a_cursor_and_the_total() {
 #[test]
 fn a_list_item_is_short_and_fields_keep_each_named_path() {
     let item = json!({"address":"ac:a","title":"A","revision":3,"body":"Long",
-        "signal":{"label":"Ready","tone":"green"},"present":true,"process":{"planning_claim":null}});
+        "signal":{"label":"Ready","tone":"green"},"present":true,"process":{"verification":"pass"}});
     assert_eq!(
         list_item(&item, None),
         json!({"address":"ac:a","title":"A","status":"green"})
     );
-    let named = vec!["revision".to_owned(), "process.planning_claim".to_owned()];
+    let named = vec!["revision".to_owned(), "process.verification".to_owned()];
     assert_eq!(
         list_item(&item, Some(&named)),
-        json!({"address":"ac:a","revision":3,"process.planning_claim":null})
+        json!({"address":"ac:a","revision":3,"process.verification":"pass"})
     );
     // status is the tone in both shapes.
     let status = vec!["status".to_owned()];
@@ -86,9 +86,9 @@ fn a_detail_gives_each_fact_once() {
         "reason":"Save","schema_revision":20,"position":8,"present":true,"contract":[4,3]});
     let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
         "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,
-        "contract_revision":4,"historical":false,"metadata_scope":"current",
+        "historical":false,"metadata_scope":"current",
         "document":stored,"signal":{"label":"Ready","tone":"green"},
-        "review_required":false,"work_ready":true,
+        "work_ready":true,
         "links":[{"link":related,"title":"B","kind":"ac","current_revision":2,"present":true,
             "blocking":false,"revision":null,"metadata_scope":"current"},
             {"link":pinned,"title":"T","kind":"task","current_revision":5,"present":false,
@@ -97,9 +97,8 @@ fn a_detail_gives_each_fact_once() {
         "link_groups":[{"direction":"outgoing","relation":"related","kind":"ac","count":1},
             {"direction":"incoming","relation":"related","kind":"task","count":2}],
         "annotations":{"comments":{},"attachments":{}},
-        "process":{"annotation_address":"ac:a","criterion":"ac:a","req":"requirement:r","revision":7,
-            "confirmed":false,
-            "assessment":{"criterion":"ac:a","req":"requirement:r","revision":7,"state":"ready","reason":"Clear"}},
+        "process":{"annotation_address":"ac:a",
+            "assessment":{"state":"ready","reason":"Clear","actor":"bot"}},
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
     // One links list: a related link has no pin, and a pin shows the current revision.
     assert_eq!(
@@ -111,27 +110,22 @@ fn a_detail_gives_each_fact_once() {
                     "current_revision":5,"blocking":true,"present":false}],
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
-            // `req` repeats the parent; the requirement revision stays in assessment.
-            "process":{"assessment":{"state":"ready","reason":"Clear","revision":7}}})
+            // The annotation address repeats the address.
+            "process":{"assessment":{"state":"ready","reason":"Clear","actor":"bot"}}})
     );
     // A read by an alias names the address that the alias resolves to.
     assert_eq!(
         detail(reply.clone(), "ac:old", None).unwrap()["address"],
         "ac:a"
     );
-    // An archived object, a work that is not ready and a confirmed run show.
+    // An archived object and a work that is not ready show.
     let mut archived = reply;
     archived["document"]["present"] = json!(false);
     archived["work_ready"] = json!(false);
-    archived["process"]["confirmed"] = json!(true);
     let archived = detail(archived, "ac:a", None).unwrap();
     assert_eq!(
-        (
-            &archived["present"],
-            &archived["work_ready"],
-            &archived["process"]["confirmed"]
-        ),
-        (&json!(false), &json!(false), &json!(true))
+        (&archived["present"], &archived["work_ready"]),
+        (&json!(false), &json!(false))
     );
     // A revision read gives the flat document of that revision and the current revision.
     let old = json!({"revision":2,"parent":"requirement:r","links":[related],"data":{"title":"A"},
@@ -140,7 +134,7 @@ fn a_detail_gives_each_fact_once() {
     assert_eq!(
         revision(
             json!({"workspace":"w","workspace_key":"w","address":"ac:a","kind":"ac","id":"a",
-            "historical":true,"current_revision":4,"contract_revision":2,"document":old,
+            "historical":true,"current_revision":4,"document":old,
             "position":9,"links":[{"link":related,"title":"B","current_revision":2,
             "present":true}],"remote_links":[],"remote_links_revision":0,
             "remote_review_required":false}),

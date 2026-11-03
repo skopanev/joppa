@@ -49,11 +49,7 @@ pub fn apply(
         return Ok(());
     }
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
-    w.replay_claims = false;
-    ensure!(
-        !matches!(command, Command::HeartbeatTask { .. }),
-        "heartbeat_task is no longer supported"
-    );
+    w.replaying = false;
     if let Some(op) = crate::removed_ops::name(command) {
         anyhow::bail!(crate::removed_ops::refusal(op));
     }
@@ -129,7 +125,7 @@ pub(crate) fn epoch_reached(w: &Workspace, rule: &str, position: u64) -> bool {
 
 /// The rule applies to the event at `position`.
 pub fn rule_applies(w: &Workspace, rule: &str, position: u64) -> bool {
-    !w.replay_claims || epoch_reached(w, rule, position)
+    !w.replaying || epoch_reached(w, rule, position)
 }
 
 pub fn apply_replay(
@@ -140,13 +136,17 @@ pub fn apply_replay(
     recorded_at: &str,
 ) -> Result<()> {
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
-    w.replay_claims = true;
+    w.replaying = true;
     let result = apply_inner(w, actor, command, position, recorded_at);
-    w.replay_claims = false;
+    w.replaying = false;
     result?;
     crate::objects::sync(w, actor, command, position, recorded_at);
-    // migrate_test_nodes moves each test list into test nodes and changes no status.
-    if !epoch_reached(w, RESET_CHANGED, position) || matches!(command, Command::MigrateTestNodes {})
+    // migrate_test_nodes and migrate_generic_nodes change no status of a criterion.
+    if !epoch_reached(w, RESET_CHANGED, position)
+        || matches!(
+            command,
+            Command::MigrateTestNodes {} | Command::MigrateGenericNodes {}
+        )
     {
         return Ok(());
     }

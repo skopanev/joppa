@@ -156,3 +156,30 @@ pub struct ReviewTaskOp {
     pub ac: String,
     pub reason: String,
 }
+
+/// The fields of `assess`: a member marks a node ready for work, or waiting with a reason.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AssessOp {
+    Node(AssessNode),
+    /// The older assessment of a criterion in a requirement revision. Only journal replay
+    /// reads it.
+    Criterion(AssessCriterion),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssessNode {
+    pub target: String,
+    pub ready: bool,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssessCriterion {
+    pub req: String,
+    pub revision: u32,
+    pub ac: String,
+    pub assessment: Assessment,
+}

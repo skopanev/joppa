@@ -5,7 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f6_an_archived_red_sibling_keeps_a_green_and_ready() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let (before, assessment) = (
         p.ac_tests("criterion:a").await?,
         p.assessment("criterion:a").await?,
@@ -32,7 +32,7 @@ async fn frozen_f6_an_archived_red_sibling_keeps_a_green_and_ready() -> Result<(
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f6_control_an_archived_inbox_signal_keeps_a_green() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     p.signal().await?;
     let (before, assessment) = (
         p.ac_tests("criterion:a").await?,
@@ -51,12 +51,11 @@ async fn frozen_f6_control_an_archived_inbox_signal_keeps_a_green() -> Result<()
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     p.change_a().await?;
     p.reset(&before).await?;
-    let revision = p.read("spec:r").await?["process"]["revision"].clone();
-    p.write("owner", json!({"op":"assess","req":"spec:r","revision":revision,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
     let readiness = p.assessment("criterion:a").await?;
     let s = p.ac_tests("criterion:a").await?;
     ensure!(
@@ -71,7 +70,7 @@ async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     let b = (
         p.ac_tests("criterion:b").await?,
@@ -110,29 +109,9 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn frozen_f9_finish_planning_under_green_a_keeps_a_green() -> Result<()> {
-    let w = world().await?;
-    let p = frozen(&w, true).await?;
-    let (before, assessment) = (
-        p.ac_tests("criterion:a").await?,
-        p.assessment("criterion:a").await?,
-    );
-    p.post_command(
-        &w.token,
-        json!({"op":"finish_planning","ac":"criterion:a","reason":"Plan complete"}),
-    )
-    .await?;
-    let a = p.read("criterion:a").await?;
-    ensure!(a["process"]["planning_claim"].is_null(), "{a}");
-    p.kept(&before, &assessment).await
-}
-
-// check-list-frozen-ac3
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let (before, assessment) = (
         p.ac_tests("criterion:a").await?,
         p.assessment("criterion:a").await?,
@@ -148,7 +127,7 @@ async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     p.write("owner", json!({"op":"member","id":"alex","role":"human"}))
         .await?;
     for id in ["http-n", "mcp-n"] {

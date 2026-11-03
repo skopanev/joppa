@@ -34,7 +34,7 @@ fn a_native_revise_of_one_criterion_keeps_sibling_readiness_live_and_on_replay()
         .unwrap();
     }
     for w in [&live.state, &replayed] {
-        let state = |ac: &str| objects::assessment(w, ac).unwrap()["state"].clone();
+        let state = |ac: &str| objects::criterion_assessment(w, ac).unwrap()["state"].clone();
         assert_eq!(state("ac:ios"), "unassessed");
         assert_eq!(state("ac:key"), "ready", "a sibling keeps its readiness");
         assert_eq!(
@@ -67,7 +67,7 @@ fn replay(steps: &[(&str, Value)], epochs: &[(&str, u64)]) -> joppa::model::Work
 }
 
 fn readiness(w: &joppa::model::Workspace, ac: &str) -> Value {
-    objects::assessment(w, ac).unwrap()["state"].clone()
+    objects::criterion_assessment(w, ac).unwrap()["state"].clone()
 }
 
 // A replay gives each event the meaning of the rules at its position. A revise before the

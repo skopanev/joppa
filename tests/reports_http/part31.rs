@@ -1,60 +1,5 @@
 // Part 31 of tests/reports_http.rs, included there, so the test names stay unchanged.
 
-// dependencies-before-priority-ac2
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn ac2_a_task_under_waiting_work_cannot_be_claimed_over_http_and_mcp() -> Result<()> {
-    let w = world().await?;
-    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
-    p.link("spec:b", ordering_link("spec:a")).await?;
-    p.save("work:t", Some("criterion:b1"), json!({"title":"T","owner":"owner","body":"Implement this criterion"}), json!([]))
-        .await?;
-    ensure!(p.tasks_both("mine").await?.is_empty());
-    let reason = joppa::dependencies::reason("spec:a");
-    let revision = p.revision("work:t").await?;
-    p.refuse_command(
-        "claim_task on T",
-        json!({"op":"claim_task","id":"work:t","revision":revision}),
-        &reason,
-    )
-    .await?;
-    p.refuse_command(
-        "claim_next_task with only T",
-        json!({"op":"claim_next_task"}),
-        &reason,
-    )
-    .await?;
-    let t = p.object_both("work:t").await?;
-    ensure!(
-        t["process"]["assignee"].is_null() && t["process"]["status"] == "open",
-        "{t}"
-    );
-    let listed = |tasks: &[Value]| tasks.iter().find(|t| t["address"] == "work:t").cloned();
-    ensure!(listed(&p.tasks_both("available").await?).is_none());
-    for view in ["all", "waiting"] {
-        let t = listed(&p.tasks_both(view).await?);
-        ensure!(
-            t.as_ref()
-                .is_some_and(|t| t["claimable"] == false && t["waiting_reason"] == reason.as_str()),
-            "view={view}: {t:?}"
-        );
-    }
-    // Release: a record makes every criterion of A green.
-    p.bind(&w.token, "criterion:a1", &[A]).await?;
-    p.record(
-        "c1c1c1c",
-        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
-    )
-    .await?;
-    let t = listed(&p.tasks_both("available").await?);
-    ensure!(
-        t.is_some_and(|t| t["claimable"] == true),
-        "available after A is green"
-    );
-    store::check_journal(&p.pool).await?;
-    Ok(())
-}
-
 // dependencies-before-priority-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -66,16 +11,15 @@ async fn ac3_a_shared_parent_alone_never_makes_work_wait_over_http_and_mcp() -> 
     ensure!(p.status("criterion:b1").await?["status"] == "grey");
     let readiness = p.readiness("criterion:b1").await?;
     ensure!(readiness[0] == "ready", "{readiness}");
-    let free =
-        |b1: &Value| b1["work_ready"] == true && b1["process"]["readiness_blocker"].is_null();
-    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    let free = |b1: &Value| b1["work_ready"] == true && b1.get("waits_for").is_none();
+    ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(free(&b1), "{b1}");
     // Control: a blocking link from B to A makes B1 wait until it is removed.
     p.link("spec:b", ordering_link("spec:a")).await?;
-    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    ensure!(!p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     p.link("spec:b", json!([])).await?;
-    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(free(&b1), "{b1}");
     ensure!(p.readiness("criterion:b1").await? == readiness);
@@ -104,7 +48,7 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
     ensure!(p.status("criterion:b1").await?["status"] == "grey");
     let readiness = p.readiness("criterion:b1").await?;
     ensure!(readiness[0] == "ready", "{readiness}");
-    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     // A record fails the test of A2.
     p.record(
         "c2c2c2c",
@@ -112,7 +56,7 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
     )
     .await?;
     ensure!(p.status("criterion:a2").await?["status"] == "red");
-    ensure!(!p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    ensure!(!p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(waits_for(&b1, "spec:a"), "{b1}");
     // A later record passes every listed test of A.
@@ -122,7 +66,7 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
     )
     .await?;
     ensure!(p.status("criterion:a2").await?["status"] == "green");
-    ensure!(p.unstarted().await?.contains(&"criterion:b1".to_owned()));
+    ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     Ok(())
 }
 

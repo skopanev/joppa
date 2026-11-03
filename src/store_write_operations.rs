@@ -23,11 +23,9 @@ pub(crate) async fn write(
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
-    // A claim, a completion and an acceptance read the workspaces of blocking remote links,
-    // so they lock them with their own workspace in sorted ID order. A record of results
-    // there waits for them, or comes first.
-    let claims = receipts::locks_remote(operations);
-    let remote_locked = if claims {
+    // An acceptance reads the workspaces of blocking remote links, so it locks them with its
+    // own workspace in sorted ID order. A record of results there waits for it, or comes first.
+    let remote_locked = if receipts::locks_remote(operations) {
         super::remote::blocking_closure(&*tx, &workspace).await?
     } else {
         Default::default()
@@ -50,7 +48,6 @@ pub(crate) async fn write(
     let (mut state, base_position) = state_rows::current(&*tx, &workspace).await?;
     let mut previous = state.clone();
     let mut events = Vec::new();
-    receipts::migrate_claims(&*tx, &workspace, &mut state, &mut events, base_position).await?;
     let mut refs = BTreeMap::new();
     let mut results = vec![];
     let batch_id = Uuid::new_v4();
@@ -66,17 +63,6 @@ pub(crate) async fn write(
             fields(&value)?;
             // The journal stores the immutable ID of another workspace, never a name.
             super::remote::canonical_ids(&*tx, &mut value).await?;
-            if value["op"] == "claim_next_task" {
-                state.claim_time_ms = Some(tx.query_one("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint", &[]).await?.get(0));
-            }
-            resolve_task(&mut value, &state)?;
-            // Work waits for its unsatisfied ordering dependencies; the wait is never stored.
-            let waits = if matches!(value["op"].as_str(), Some("claim_next_task" | "claim_task" | "claim_planning")) {
-                super::waits::live(&*tx, &workspace, actor, &state, &remote_locked).await?
-            } else {
-                BTreeMap::new()
-            };
-            resolve_claim_next(&mut value, &state, actor, &waits)?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let command: Command = serde_json::from_value(value)?;
@@ -97,17 +83,6 @@ pub(crate) async fn write(
                     return Err(crate::objects::RequiredField(format!("Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
                 }
             }
-            if let Command::Revise(crate::commands::ReviseOp { req, consumers, capability, acs, .. }) = &command {
-                ensure!(capability.is_some() || req.contains(':'), "legacy revise requires a Capability; use save_object for a custom tree");
-                if state.schema_migrated {
-                    let mut data = state.objects.get(&crate::objects::requirement_address(req)).map(|o| o.current().data.clone()).unwrap_or_else(|| json!({}));
-                    data["consumers"] = json!(consumers);
-                    let req_address = crate::objects::requirement_address(req);
-                    let kind = req_address.split_once(':').unwrap().0;
-                    crate::objects::reference_targets(&state, kind, &data)?;
-                    crate::consumer_migration::check_revise(&state, consumers, acs)?;
-                } else { ensure!(!consumers.is_empty(), "REQ requires at least one consumer"); }
-            }
             if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
                 super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
                 // An acceptance needs every blocking remote target of the node, its ancestors
@@ -116,26 +91,12 @@ pub(crate) async fn write(
                     anyhow::bail!("{}", crate::dependencies::reason(&target));
                 }
             }
-            if let Command::CompleteTask(crate::commands::CompleteTaskOp { req, id, .. }) = &command {
-                let task = crate::objects::resolve_address(&state, &crate::tasks::address(req, id)).to_owned();
-                if let Some(target) = super::waits::remote_gate(&*tx, actor, &state, &task, false, &remote_locked).await? {
-                    anyhow::bail!("{}", crate::dependencies::reason(&target));
-                }
-            }
-            if let Command::ClaimPlanning { ac, revision } = &command {
-                let target = crate::planning::validate_claim(&state, ac, *revision)?;
-                let status = super::reports::planning_criterion_status(&*tx, &workspace, &state, &target).await?;
-                ensure!(status["status"] != "green", "criterion is already verified");
-                if let Some(dependency) = waits.get(&target) {
-                    anyhow::bail!("{}", crate::dependencies::reason(dependency));
-                }
-            }
             // Only server code enrolls an agent or a runner; HTTP and MCP writes refuse it.
             ensure!(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {} | Command::MigrateTestNodes {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {} | Command::MigrateTestNodes {} | Command::MigrateGenericNodes {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
@@ -156,12 +117,6 @@ pub(crate) async fn write(
                 let payload = serde_json::to_string(&command)?;
                 let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,$2,$3,$4,$5::text::jsonb FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace)]).await?.get(0);
                 commands::apply(&mut state, actor, &command, position, &recorded_at)?;
-                // The Task pin, block and hold refusals come first; the refused write rolls back.
-                if let Command::ClaimTask { req, id, .. } = &command
-                    && let Some(dependency) = waits.get(crate::objects::resolve_address(&state, &crate::tasks::address(req, id)))
-                {
-                    anyhow::bail!("{}", crate::dependencies::reason(dependency));
-                }
                 crate::objects::validate_authoring_questions(&state, &command, position)?;
                 crate::objects::validate_tree(&state)?;
                 events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
@@ -169,7 +124,6 @@ pub(crate) async fn write(
             let mut resolved=serde_json::to_value(&command)?;
             let saved_address = match &command {
                 Command::SaveObject(crate::commands::SaveObjectOp { id, kind, .. }) => Some(format!("{kind}:{id}")),
-                Command::SetNoteStatus(crate::commands::SetNoteStatusOp { target, .. }) | Command::DecideNote(crate::commands::DecideNoteOp { target, .. }) => Some(crate::objects::resolve_address(&state, target).to_owned()),
                 _ => None,
             };
             let saved=if let Some(address)=saved_address {

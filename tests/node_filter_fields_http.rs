@@ -90,9 +90,8 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"ready":true}))).await? == all,
         "all ready"
     );
-    let r = w.object("requirement:r").await?["revision"].clone();
-    let question = json!({"op":"assess","req":"requirement:r","revision":r,"ac":"ac:a",
-        "assessment":{"ready":false,"owner":"alex","reason":"Q1: Which limit applies?"}});
+    let question =
+        json!({"op":"assess","target":"ac:a","ready":false,"reason":"Q1: Which limit applies?"});
     w.command(&w.bot, question)
         .await?
         .map_err(anyhow::Error::msg)?;
@@ -162,7 +161,7 @@ async fn the_owner_assignee_and_status_filters_use_their_indexes() -> Result<()>
     for (index, predicate) in [
         ("objects_owner", "o.owner='alex'".to_owned()),
         (
-            "objects_assignee",
+            "objects_data_assignee",
             format!("{}='alex'", joppa::node_filter::ASSIGNEE),
         ),
         (

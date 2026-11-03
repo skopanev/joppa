@@ -42,45 +42,7 @@ pub fn readiness_blocker(w: &Workspace, key: &str, include_self: bool) -> Option
             visit(w, r, ac, &mut seen)
         })
     }?;
-    assessment(w, &criterion_address(&blocker.id))
-}
-
-pub fn assessment_reason(a: &Value) -> String {
-    if a["state"] == "unassessed" {
-        format!(
-            "Criterion {} has no readiness assessment",
-            a["criterion"].as_str().unwrap_or("")
-        )
-    } else {
-        format!(
-            "{} · Recipient: {}",
-            a["reason"]
-                .as_str()
-                .unwrap_or("Readiness decision required"),
-            a["recipient"].as_str().unwrap_or("Unassigned")
-        )
-    }
-}
-
-pub(crate) fn verified(w: &Workspace, key: &str) -> bool {
-    if let Some(t) = crate::tasks::task(w, key) {
-        return t.done.is_some() && t.retired.is_none();
-    }
-    if let Some((_, r, ac)) = criterion_context(w, key) {
-        return crate::checks::latest(r)
-            .is_some_and(|(_, run)| crate::checks::verdict(r, run, &ac.id) == "pass");
-    }
-    let Some(o) = w.objects.get(resolve_address(w, key)) else {
-        return false;
-    };
-    !w.document_overrides.contains(resolve_address(w, key))
-        && schema(w)
-            .types
-            .get(&o.kind)
-            .is_some_and(|t| t.role == "requirement")
-        && verification_context(w, key)
-            .map(|(_, r)| r)
-            .is_some_and(|r| crate::checks::summary(r)["ready_for_acceptance"] == true)
+    criterion_assessment(w, &criterion_address(&blocker.id))
 }
 
 pub fn launch_objects(w: &Workspace) -> Vec<&str> {
@@ -197,25 +159,13 @@ pub fn archive(
         "object is absent from the current tree"
     );
     let kind = &old.kind;
-    let roles = ["group", "document", "requirement", "ac", "test"];
-    let role = schema(w).types.get(kind).map(|t| t.role.clone());
+    let has_live_children = w
+        .objects
+        .values()
+        .any(|o| o.current().parent.as_ref() == Some(&target) && o.current().present);
+    // A stored archive passed this check when its done and retired Tasks did not count.
     ensure!(
-        role.is_some_and(|r| roles.contains(&r.as_str())),
-        "archive_object requires a group, document, requirement, criterion or test"
-    );
-    ensure!(
-        !w.planning_claims.keys().any(|ac| within(w, ac, &target)),
-        "cannot archive an object with an active planning claim"
-    );
-
-    let has_live_children = w.objects.values().any(|o| {
-        o.current().parent.as_ref() == Some(&target)
-            && o.current().present
-            && crate::tasks::task(w, &address(&o.kind, &o.id))
-                .is_none_or(|task| task.retired.is_none() && task.done.is_none())
-    });
-    ensure!(
-        !has_live_children,
+        w.replaying || !has_live_children,
         "cannot archive an object with active children"
     );
 

@@ -77,35 +77,16 @@ async fn each_removed_operation_is_refused_live_and_names_its_replacement() -> R
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn each_removed_field_is_refused_live_and_names_its_replacement() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    let url = format!(
-        "{}/api/workspaces/{}/objects?address=requirement:r",
-        w.root, w.ws
-    );
-    let r: Value = w
-        .http
-        .get(url)
-        .bearer_auth(&w.bot)
-        .send()
-        .await?
-        .json()
-        .await?;
     let tree = w
         .mcp(&w.bot, "joppa_tree", json!({}))
         .await?
         .map_err(anyhow::Error::msg)?;
     let before = w.position().await?;
-    for (command, expected) in [
-        (
-            json!({"op":"comment","req":"requirement:r","revision":r["process"]["revision"],"id":"k1",
-                "text":"No","kind":"reject","reply_to":null,"ac":null}),
-            "comment kind reject was removed; use kind comment",
-        ),
-        (
-            json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],
+    for (command, expected) in [(
+        json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],
                 "status_colors":{"green":"#00aa00"},"reason":"Colour"}),
-            "status_colors was removed; use statuses",
-        ),
-    ] {
+        "status_colors was removed; use statuses",
+    )] {
         let refused = w.command(&w.bot, command.clone()).await?;
         ensure!(
             refused.as_ref().err().is_some_and(|e| e.contains(expected)),

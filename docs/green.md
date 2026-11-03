@@ -53,8 +53,8 @@ order red, orange, yellow, grey, green.
 
 - A node with no counted child or link is orange: a criterion without a test node is orange.
 - A child with `status: "none"`, for example a Task, does not count.
-- A node that waits is at least yellow: it waits for a dependency, a review, or the answer to
-  its question (`assess` with `ready: false`).
+- A node that waits is at least yellow: it waits for a dependency or for the answer to its
+  question (`assess` with `ready: false`).
 - An archived node is purple and does not count.
 
 ## Changes
@@ -64,16 +64,21 @@ counting for the test nodes at and below it. Such a test is grey until a newer r
 
 - A new title, text, parent or non-blocking link of a node resets the test nodes at and below it.
 - An archive resets only the test nodes at and below the archived object.
-- A write of a Task or of an Inbox item, a blocking `depends_on` link and a Task process event reset nothing.
+- A write of a Task or of an Inbox item and a blocking `depends_on` link reset nothing.
 
 Old records stay in the history. They are facts about the old text.
 
 ## Acceptance
 
-`accept_commit {target, revision, commit}` records that a person accepts the requirement at one commit.
-The server refuses it when a test node below the requirement has no `green_if_all` outcome on that commit.
-An agent cannot accept a requirement.
-A completed Task does not make a criterion green. Only `complete_task` marks a Task done.
+`accept_commit {target, revision, commit}` records that a person accepts a node at one commit.
+Only the `data.owner` of the node accepts. An agent cannot accept a node.
+
+- The commit needs a record for every present test node at and below the node.
+- Every recorded case of these tests has an outcome in `green_if_all`.
+- With `reset_on_change`, only the records after the last reset of each test node count.
+
+Else the server refuses: `acceptance needs records on the commit where every test below passes`.
+A Task does not make a criterion green.
 
 ## Limits
 

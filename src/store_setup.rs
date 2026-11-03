@@ -77,8 +77,6 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/019_inbox_order.sql"))
         .await?;
-    tx.batch_execute(include_str!("../migrations/020_task_claims.sql"))
-        .await?;
     tx.batch_execute(include_str!("../migrations/021_agent_token_access.sql"))
         .await?;
     tx.batch_execute(include_str!("../migrations/022_email_grants.sql"))
@@ -135,6 +133,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     tx.batch_execute(include_str!("../migrations/045_node_filter_indexes.sql"))
         .await?;
+    tx.batch_execute(include_str!("../migrations/046_generic_nodes.sql"))
+        .await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -172,7 +172,7 @@ pub async fn check_journal(pool: &Pool) -> Result<()> {
 }
 async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
     for row in client
-        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) OR NOT COALESCE((b.state->>'persistent_claims')::boolean,false) OR NOT COALESCE((b.state->>'consumers_migrated')::boolean,false) OR NOT COALESCE((b.state->>'consumer_drops_noted')::boolean,false) OR NOT COALESCE((b.state->>'test_rules_migrated')::boolean,false) OR NOT COALESCE((b.state->>'note_parents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'body_migrated')::boolean,false) OR NOT COALESCE((b.state->>'purpose_migrated')::boolean,false) OR NOT COALESCE((b.state->>'test_nodes_migrated')::boolean,false) OR ((b.state->>'reference_prefix' IS NULL OR COALESCE((b.state->>'prefix_from_title')::boolean,false)) AND COALESCE(b.state->>'reference_prefix',w.id) NOT LIKE trim(both '-' from left(lower(regexp_replace(COALESCE(b.state->>'title',''),'[^A-Za-z0-9]+','-','g')),40))||'%') ORDER BY w.id", &[])
+        .query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE NOT COALESCE((b.state->>'notes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'tasks_migrated')::boolean,false) OR NOT COALESCE((b.state->>'schema_migrated')::boolean,false) OR NOT COALESCE((b.state->>'documents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'claims_migrated')::boolean,false) OR NOT COALESCE((b.state->>'persistent_claims')::boolean,false) OR NOT COALESCE((b.state->>'consumers_migrated')::boolean,false) OR NOT COALESCE((b.state->>'consumer_drops_noted')::boolean,false) OR NOT COALESCE((b.state->>'test_rules_migrated')::boolean,false) OR NOT COALESCE((b.state->>'note_parents_migrated')::boolean,false) OR NOT COALESCE((b.state->>'body_migrated')::boolean,false) OR NOT COALESCE((b.state->>'purpose_migrated')::boolean,false) OR NOT COALESCE((b.state->>'test_nodes_migrated')::boolean,false) OR NOT COALESCE((b.state->>'generic_nodes')::boolean,false) OR ((b.state->>'reference_prefix' IS NULL OR COALESCE((b.state->>'prefix_from_title')::boolean,false)) AND COALESCE(b.state->>'reference_prefix',w.id) NOT LIKE trim(both '-' from left(lower(regexp_replace(COALESCE(b.state->>'title',''),'[^A-Za-z0-9]+','-','g')),40))||'%') ORDER BY w.id", &[])
         .await?
     {
         let workspace: String = row.get(0);
@@ -228,7 +228,6 @@ async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
             selected.extend(dependents);
         }
         objects::project(client, &workspace, &state, &[], Some(&selected)).await?;
-        queue_rows::project(client, &workspace, &state, Some(&selected)).await?;
         client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{readiness_metadata_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&READINESS_METADATA_VERSION]).await?;
     }
     Ok(())

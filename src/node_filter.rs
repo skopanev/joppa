@@ -8,10 +8,9 @@
 //!   `parent: "*"` keeps every level.
 //! - `kind` and `status` take one value or a list.
 //! - `status` is the stored tone of the node: the rollup tone, else the signal tone.
-//! - `owner` is `data.owner`. `assignee` is the holder of a Task (`process.assignee`), else
-//!   `data.assignee`. Any node can have both.
-//! - `ready` is false when the node waits: for a dependency, for a review or for the answer
-//!   to its assessment question (state `waiting`). Every other node is ready.
+//! - `owner` is `data.owner` and `assignee` is `data.assignee`. Any node can have both.
+//! - `ready` is false when the node waits: for a dependency, or for the answer that its
+//!   readiness mark asks for (`assess` with `ready: false`). Every other node is ready.
 //! - `data` is a JSON object that `document.data` contains, as the JSONB operator `@>`.
 //!
 //! The same SQL clause serves every read, with the alias `o` for `joppa.objects`.

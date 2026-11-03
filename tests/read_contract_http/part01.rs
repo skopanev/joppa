@@ -89,12 +89,12 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    let reply = read(&w, "joppa_objects", json!({"parent":"requirement:r","fields":["revision","process.planning_claim","work_ready"]})).await?;
+    let reply = read(&w, "joppa_objects", json!({"parent":"requirement:r","fields":["revision","process.verification","work_ready"]})).await?;
     let item = &reply["items"][0];
     ensure!(
         item["address"] == "ac:a"
             && item["revision"].is_number()
-            && item.get("process.planning_claim") == Some(&Value::Null)
+            && item.get("process.verification") == Some(&Value::Null)
             && item["work_ready"].is_boolean()
             && item.get("title").is_none(),
         "{reply}"

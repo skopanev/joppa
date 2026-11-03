@@ -88,16 +88,11 @@ for the tones and the rollup.
 Create a Task with `save_object` and a type whose role is `task`. The `body` is the contract.
 A Task has no purpose: `save_object` refuses `data.purpose` with
 `a Task has no purpose; read joppa_help`. A member who can write can change any Task.
-Use the Task address and its current `revision` in each process command.
 
-- `claim_task` and `claim_next_task` assign eligible work atomically. `joppa_tasks` reads the queue.
-- `release_task` returns unfinished work. `complete_task {id, revision, evidence, commit}` sets done.
-- `block_task` stops a claim. `unblock_task`, a finish of planning with a new contract, or `retire_task` ends a block.
-- A Task type can set `parent_gate`: `ready`, `verified` or `completed`.
-- A changed parent document needs `review_task` before a claim or a completion.
-
-A Task has the status rule `none`: open is grey, in progress is yellow and done is green.
-Task completion never verifies a criterion. A done Task prevents `archive_object` on its parent.
+- `data.assignee` names the member ID that does the work.
+- `data.commit` gives the Git sha of the finished work.
+- `assess` sets the readiness of the Task. `archive_object` ends it.
+- Read Tasks with the node filters of `joppa_objects`, for example `{"kind":"task","assignee":"alex","ready":true}`.
 
 ## Archive and restore
 

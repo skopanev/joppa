@@ -16,7 +16,7 @@ const COPIES: [&str; 8] = [
 
 /// The keys of a revision read: the document of that revision, its open question and the
 /// current revision. Status, process, comments and link counts belong to the current object.
-const REVISION_KEYS: [&str; 9] = [
+const REVISION_KEYS: [&str; 8] = [
     "address",
     "revision",
     "parent",
@@ -24,7 +24,6 @@ const REVISION_KEYS: [&str; 9] = [
     "links",
     "present",
     "current_revision",
-    "contract_revision",
     "question",
 ];
 
@@ -98,7 +97,7 @@ pub(super) fn drop_empty_remote(reply: &mut Value) {
 }
 
 /// A revision read (`revision: N`): the revision, parent, data and links of that document,
-/// the current revision, and the contract revision only when it differs.
+/// and the current revision.
 pub fn revision(mut reply: Value, asked: &str) -> Value {
     drop_copies(&mut reply, asked);
     drop_empty_remote(&mut reply);
@@ -110,8 +109,6 @@ pub fn revision(mut reply: Value, asked: &str) -> Value {
         .collect();
     reply["links"] = json!(links);
     flatten(&mut reply);
-    let revision = reply["revision"].clone();
-    drop_same(&mut reply, &["contract_revision"], &revision);
     if let Some(map) = reply.as_object_mut() {
         map.retain(|key, _| REVISION_KEYS.contains(&key.as_str()));
     }

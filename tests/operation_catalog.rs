@@ -6,26 +6,9 @@ use std::collections::BTreeSet;
 #[path = "common/operation_samples.rs"]
 mod operation_samples;
 
-/// Command variants that public writes refuse: internal events, retired inputs, retired check runs,
-/// typed commands that save_object replaces and CLI-only creation.
+/// Command variants that public writes refuse besides the removed operations: internal events
+/// and CLI-only creation.
 const NOT_PUBLIC: &[&str] = &[
-    // Removed operations: old journals hold them, live writes refuse them.
-    "domain",
-    "edit_domain",
-    "capability",
-    "edit_capability",
-    "consumer",
-    "edit_consumer",
-    "revise",
-    "task",
-    "amend_task",
-    "describe",
-    "set_domain_archived",
-    "confirm_tree",
-    "link_source",
-    "confirm",
-    "decide_note",
-    "set_ac_tests",
     "migrate_persistent_claims",
     "migrate_notes",
     "migrate_tasks",
@@ -39,11 +22,11 @@ const NOT_PUBLIC: &[&str] = &[
     "migrate_body",
     "migrate_purpose",
     "migrate_test_nodes",
+    "migrate_generic_nodes",
     "enroll_member",
     "enroll_service",
     "remove_workspace_references",
     "record_report",
-    "heartbeat_task",
     "intake",
     "split",
     "questions",
@@ -51,24 +34,13 @@ const NOT_PUBLIC: &[&str] = &[
     "answer",
     "route",
     "workspace",
-    "plan",
-    "result",
-    "finish",
-    "accept",
-    "revoke",
-    "issue",
-    "resolve",
-    "review_coverage",
-    "define_verification_scope",
-    "edit_consumer",
     "project",
     "withdraw_decision",
     "withdraw_source",
-    "set_note_status",
 ];
-/// Public operation names without their own Command variant.
-const ALIASES: &[&str] = &["claim_next_task"];
-const CALLERS: &[&str] = &["member", "agent", "holder", "workspace owner"];
+/// A removed operation without its own Command variant: old journals hold claim_task.
+const NO_VARIANT: &[&str] = &["claim_next_task"];
+const CALLERS: &[&str] = &["member", "workspace owner"];
 
 /// Every operation name that the Command enum accepts, read from the serde error.
 fn variants() -> BTreeSet<String> {
@@ -97,15 +69,16 @@ fn every_accepted_public_operation_has_one_catalog_entry() {
         commands::OPERATIONS.len(),
         "duplicate entry"
     );
+    let removed = joppa::removed_ops::NAMES;
     let expected: BTreeSet<&str> = variants
         .iter()
         .map(String::as_str)
-        .filter(|name| !NOT_PUBLIC.contains(name))
-        .chain(ALIASES.iter().copied())
+        .filter(|name| !NOT_PUBLIC.contains(name) && !removed.contains(name))
         .collect();
     assert_eq!(catalog(), expected);
-    for name in NOT_PUBLIC {
-        assert!(variants.contains(*name), "{name} is not a command");
+    for name in NOT_PUBLIC.iter().chain(removed) {
+        let known = variants.contains(*name) || NO_VARIANT.contains(name);
+        assert!(known, "{name} is not a command");
         assert!(commands::operation(name).is_none(), "{name} is public");
     }
 }
@@ -118,8 +91,6 @@ fn every_catalog_entry_names_known_callers() {
             assert!(CALLERS.contains(caller), "{}: {caller}", o.name);
         }
     }
-    let block = commands::operation("block_task").unwrap();
-    assert_eq!(block.callers, ["holder", "workspace owner"]);
 }
 
 #[test]

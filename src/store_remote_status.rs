@@ -82,7 +82,7 @@ async fn link_state(
         .revision
         .is_some_and(|r| i64::from(contract) > i64::from(r));
     Ok((
-        json!({"access":true,"present":true,"current_revision":current,"contract_revision":contract,"review_required":stale,"satisfied":false}),
+        json!({"access":true,"present":true,"current_revision":current,"review_required":stale,"satisfied":false}),
         (!stale).then_some(address),
     ))
 }
@@ -143,27 +143,6 @@ pub(crate) async fn link_status(
             json!(target_ready(client, actor, &link.workspace, &address, locked).await?);
     }
     Ok(status)
-}
-
-/// The blocking remote targets of a live claim that count as green for this actor.
-pub(super) async fn green_targets(
-    client: &impl GenericClient,
-    actor: &str,
-    state: &Workspace,
-    locked: &BTreeSet<String>,
-) -> Result<BTreeSet<String>> {
-    let mut green = BTreeSet::new();
-    for link in state
-        .remote_links
-        .values()
-        .flat_map(|l| &l.links)
-        .filter(|l| l.blocking)
-    {
-        if link_status(client, actor, link, Some(locked)).await?["satisfied"] == true {
-            green.insert(link.node());
-        }
-    }
-    Ok(green)
 }
 
 /// Remote links and a child workspace on one object read, with the access of the reader.

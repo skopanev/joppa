@@ -33,7 +33,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateNoteParents {}
         | Command::MigrateBody {}
         | Command::MigratePurpose {}
-        | Command::MigrateTestNodes {} => {
+        | Command::MigrateTestNodes {}
+        | Command::MigrateGenericNodes {} => {
             bail!("internal migration operation")
         }
         Command::Intake(crate::commands::IntakeOp { .. })
@@ -65,41 +66,6 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 .all(|t| !t.contains_key("intake") && !t.contains_key("point")),
             "incoming source types are removed; use Note"
         ),
-        Command::CompleteTask(crate::commands::CompleteTaskOp {
-            req, id, commit, ..
-        }) => {
-            ensure!(
-                !w.test_rules_migrated || commit.is_some(),
-                "missing field `commit`: complete_task needs the git sha where the Task is ready"
-            );
-            ensure!(
-                work_ready(w, &crate::tasks::address(req, id)),
-                "Task has an unmet dependency"
-            )
-        }
-        Command::ReviewTask(crate::commands::ReviewTaskOp {
-            req,
-            revision,
-            id,
-            ac,
-            ..
-        }) => {
-            if req.is_empty() {
-                return Ok(());
-            }
-            let r = w
-                .requirements
-                .get(req)
-                .and_then(|q| q.revisions.last())
-                .context("unknown REQ")?;
-            ensure!(r.number == *revision, "stale REQ revision");
-            let task = r.tasks.get(id).context("unknown Task")?;
-            ensure!(
-                task.done.is_none() || task.acs == vec![ac.clone()],
-                "completed Task cannot move to another AC"
-            );
-            ensure!(task.retired.is_none(), "retired Task cannot be reviewed");
-        }
         Command::Accept(crate::commands::AcceptOp { req, .. }) => {
             let r = w
                 .requirements
@@ -197,20 +163,19 @@ pub fn criterion_context<'a>(
 }
 
 /// Read the assessment from the current configured verification context.
-pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
+/// The older assessment of a criterion in its requirement revision. Only the replay of the
+/// older checks reads it.
+pub fn criterion_assessment(w: &Workspace, key: &str) -> Option<Value> {
     let (req, r, ac) = criterion_context(w, key)?;
     let state = match ac.assessment.as_ref() {
         None => "unassessed",
         Some(a) if a.ready => "ready",
         Some(_) => "waiting",
     };
-    let mut out = json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
+    Some(
+        json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
         "reason":ac.assessment.as_ref().map(|a| &a.reason),
         "recipient":ac.assessment.as_ref().and_then(|a| a.owner.as_ref()),
-        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())});
-    if state == "unassessed" {
-        // The next step: the command that sets readiness, without the assessment itself.
-        out["next"] = json!({"op":"assess","req":req,"revision":r.number,"ac":ac.id});
-    }
-    Some(out)
+        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())}),
+    )
 }

@@ -110,13 +110,13 @@ for request_id in ('create','guessed-request'):
     assert status == 404 and body == missing[1]
 assert command({'op':'enroll_member','id':'other-owner'})[0] == 409
 retry = str(uuid.uuid4())
-c = {'op': 'comment', 'req':'requirement:key', 'revision': key_revision, 'id': 'hello', 'text': 'Hello', 'kind': 'comment'}
+c = {'op': 'note', 'target':'requirement:key', 'id': 'hello', 'text': 'Hello'}
 assert command(c, request_id=retry)[0] == 200
 assert command(c, request_id=retry)[1]['replayed'] is True
 # Remote MCP notifications return 202 without a JSON-RPC response.
 assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
 reply=request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
-assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_tasks','joppa_command','joppa_batch','joppa_help','joppa_search','joppa_tree','joppa_objects','joppa_timeline','joppa_record_results','joppa_history','joppa_history_mark','joppa_attach','joppa_attachments'}
+assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_command','joppa_batch','joppa_help','joppa_search','joppa_tree','joppa_objects','joppa_timeline','joppa_record_results','joppa_history','joppa_history_mark','joppa_attach','joppa_attachments'}
 tools = {tool['name']: tool for tool in reply['result']['tools']}
 writing = (ROOT/'docs/writing.md').read_text()
 initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
@@ -136,7 +136,6 @@ assert mcp('joppa_help', {'section':'search'}) == {'search':(ROOT/'docs/search.m
 assert mcp('joppa_help', {'section':'writing'})['writing'] == writing
 operations = mcp('joppa_help', {'section':'operations'})['operations']
 assert 'archive_object' in operations and 'restore_object' in operations
-assert mcp('joppa_tasks', {'workspace':ws})['total'] == 0
 # migrate_test_rules adds the sixth revision: the test rules and the status rule of each type.
 # migrate_note_parents adds the seventh: an inbox type has no parent.
 # migrate_purpose adds the eighth: a Task type has no parent_decision.

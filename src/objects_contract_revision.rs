@@ -1,4 +1,5 @@
-//! Part of `objects`: `contract_revision` and the items after it, moved from objects.rs unchanged.
+//! Part of `objects`: the contract revision that the replay and the remote pins compare, the
+//! work readiness, the tree validation and the title length.
 use super::*;
 
 /// The revision of the contract of an object: the current revision before the last
@@ -30,91 +31,22 @@ pub fn tests_only_change(before: &ObjectRevision, after: &ObjectRevision) -> boo
         && without(&before.data) == without(&after.data)
 }
 
-/// A Task type: its dependencies pin the target contract.
-pub fn task_kind(w: &Workspace, kind: &str) -> bool {
-    schema(w).types.get(kind).is_some_and(|t| t.role == "task")
-}
-
-/// A criterion with a saved test list: its test status from reports decides a link to it.
-pub fn report_decided(w: &Workspace, key: &str) -> bool {
-    let key = resolve_address(w, key);
-    w.objects.get(key).is_some_and(|o| {
-        schema(w).types.get(&o.kind).is_some_and(|t| {
-            if w.test_rules_migrated {
-                status_rule(t) == "tests"
-            } else {
-                t.role == "ac"
-            }
-        })
-    }) && crate::ac_tests::listed(w, key).is_some_and(|r| !r.tests.is_empty())
-}
-
+/// True when the node and each ancestor are present. The blocking links of a node are
+/// decided at read time by the test status of their criteria (dependencies::Graph).
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
-    fn visit(
-        w: &Workspace,
-        key: &str,
-        types: &BTreeMap<String, TreeType>,
-        stack: &mut BTreeSet<String>,
-    ) -> bool {
+    let mut current = Some(key);
+    let mut seen = BTreeSet::new();
+    while let Some(key) = current {
         let key = resolve_address(w, key);
-        let Some(o) = w.objects.get(resolve_address(w, key)) else {
+        let Some(o) = w.objects.get(key).filter(|o| o.current().present) else {
             return false;
         };
-        let task = types.get(&o.kind).is_some_and(|t| t.role == "task");
-        // A dependency names a node, not a revision: a new target revision changes nothing.
-        let mut links = o.current().links.iter().filter(|l| task && l.blocking);
-        if !o.current().present || !stack.insert(key.into()) {
+        if !seen.insert(key) {
             return false;
         }
-        let links_ready = links.all(|l| {
-            let Some(target) = w.objects.get(resolve_address(w, &l.target)) else {
-                return false;
-            };
-            // A Task target is ready when it is done. Any other target is decided at read
-            // time by the test status of its criteria (dependencies::Graph).
-            let target_key = address(&target.kind, &target.id);
-            let evidence = !task_kind(w, &target.kind) || verified(w, &target_key);
-            evidence && visit(w, &l.target, types, stack)
-        });
-        let parent_ready = o
-            .current()
-            .parent
-            .as_deref()
-            .is_none_or(|p| visit(w, p, types, stack));
-        stack.remove(key);
-        links_ready && parent_ready
+        current = o.current().parent.as_deref();
     }
-    visit(w, key, &schema(w).types, &mut BTreeSet::new())
-}
-
-/// The first direct blocking dependency that keeps the object out of work.
-pub fn unready_dependency(w: &Workspace, key: &str) -> Option<String> {
-    let o = w.objects.get(resolve_address(w, key))?;
-    o.current()
-        .links
-        .iter()
-        .filter(|l| l.blocking)
-        .find(|l| {
-            w.objects
-                .get(resolve_address(w, &l.target))
-                .is_none_or(|t| task_kind(w, &t.kind) && !verified(w, &address(&t.kind, &t.id)))
-                || !work_ready(w, &l.target)
-        })
-        .map(|l| resolve_address(w, &l.target).to_owned())
-}
-
-pub(crate) fn legacy_task_binding(w: &Workspace, obj: &Object) -> bool {
-    obj.kind == "task"
-        && obj.id.split_once('/').is_some_and(|(req, id)| {
-            obj.current().parent.as_deref() == Some(&requirement_address(req))
-                && w.requirements
-                    .get(req)
-                    .and_then(|q| q.revisions.last())
-                    .and_then(|r| r.tasks.get(id))
-                    .is_some_and(|t| {
-                        t.acs.len() != 1 && obj.current().data["legacy_acs"] == json!(t.acs)
-                    })
-        })
+    true
 }
 
 /// New writes validate the active schema. Replay preserves earlier schema rules.
@@ -126,9 +58,7 @@ pub fn validate_tree(w: &Workspace) -> Result<()> {
             "object type is absent from the tree schema"
         );
         validate_required_fields(&types[&o.kind], &o.current().data)?;
-        if !legacy_task_binding(w, o) {
-            parent_valid(&types, w, &o.kind, o.current().parent.as_deref(), Some(key))?;
-        }
+        parent_valid(&types, w, &o.kind, o.current().parent.as_deref(), Some(key))?;
         parent_cycle(w, key, o.current().parent.as_deref())?;
     }
     Ok(())

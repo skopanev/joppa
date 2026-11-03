@@ -13,6 +13,24 @@ pub const STATUS_TONES: [&str; 6] = ["red", "purple", "yellow", "orange", "grey"
 /// The tone of an archived node. Only a read that includes archived nodes finds it.
 pub const ARCHIVED_TONE: &str = "purple";
 
+/// The label of each tone in the status filter of the board.
+pub const LABELS: [(&str, &str); 6] = [
+    ("red", "Checks failed"),
+    ("purple", "Archived"),
+    ("yellow", "Waits"),
+    ("orange", "No tests"),
+    ("grey", "Awaits checks"),
+    ("green", "Checks passed"),
+];
+
+/// The label of a tone in the status filter of the board.
+pub fn label(tone: &str) -> &'static str {
+    LABELS
+        .iter()
+        .find(|(t, _)| *t == tone)
+        .map_or("", |(_, l)| l)
+}
+
 /// One status tone with its colour in the light and in the dark theme.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -107,6 +125,14 @@ mod tests {
             light: light.into(),
             dark: dark.into(),
         }
+    }
+
+    #[test]
+    fn every_tone_has_one_filter_label() {
+        for tone in STATUS_TONES {
+            assert!(!label(tone).is_empty(), "{tone}");
+        }
+        assert_eq!((label("orange"), label("blue")), ("No tests", ""));
     }
 
     #[test]

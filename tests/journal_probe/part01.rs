@@ -70,7 +70,6 @@ async fn snapshot(pool: &Pool, workspace: &str) -> anyhow::Result<BTreeMap<Strin
         "object_links",
         "state_entries",
         "state_revisions",
-        "task_queue",
         "search_documents",
     ] {
         let statement = format!("SELECT to_jsonb(t)::text FROM joppa.{table} t WHERE workspace=$1");
@@ -120,13 +119,12 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
         &store::Scope::from_args(&json!({"req":"r"}))?,
     )
     .await?;
-    store::task_queue(&pool, &ws, "owner", "available", 100, None).await?;
     store::read_objects(
         &pool,
         &ws,
         "owner",
         &store::ObjectScope {
-            work_filter: Some("unstarted"),
+            filter: joppa::node_filter::NodeFilter::parse(&json!({"kind":"task","ready":true}))?,
             limit: 100,
             ..Default::default()
         },
@@ -187,28 +185,6 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
     println!(
         "Large input: bytes={}, unchanged_row=true, compact_body=false, list_body=false",
         raw.len()
-    );
-
-    let mut rev = revision(1);
-    rev["acs"][1]["decider"] = json!("legal");
-    // Old journals hold revise; the replay reads it.
-    common::append_legacy(&pool, &ws, "agent", "revision-2", &rev).await?;
-    store::execute_input(&pool, &ws, "legal", "decision", &json!({"op":"comment","req":"r","revision":2,"id":"law","text":"Confirmed rights","kind":"decision","ac":"key"})).await?;
-    rev["expected_revision"] = json!(2);
-    rev["acs"][0]["text"] = json!("On iOS access survives reauthentication");
-    common::append_legacy(&pool, &ws, "agent", "revision-3", &rev).await?;
-    let mut assessment = assess("key", true);
-    assessment["revision"] = json!(3);
-    assessment["assessment"]["decision"] = json!("law");
-    reset(&pool).await?;
-    store::execute_input(&pool, &ws, "agent", "reuse-decision", &assessment).await?;
-    let journal = journal_selects(&pool).await?;
-    let history = selects(&pool, "joppa.state_revisions").await?;
-    println!("Prior decision reuse: journal={journal}, history={history}");
-    assert_eq!(journal["calls"], 0);
-    assert_eq!(
-        history["rows"], 1,
-        "reuse must select only the decision revision"
     );
 
     let incremental = snapshot(&pool, &ws).await?;

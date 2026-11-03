@@ -143,9 +143,11 @@ pub async fn dump(
             },
         ),
         (
-            "list unstarted",
+            "list ready tasks",
             store::ObjectScope {
-                work_filter: Some("unstarted"),
+                filter: joppa::node_filter::NodeFilter::parse(
+                    &json!({"kind":"task","ready":true}),
+                )?,
                 ..Default::default()
             },
         ),
@@ -171,9 +173,5 @@ pub async fn dump(
             store::test_status(pool, ws(), "owner", criterion).await?,
         )?;
     }
-    line(
-        "tasks all".into(),
-        store::task_queue(pool, ws(), "owner", "all", 100, None).await?,
-    )?;
     Ok(())
 }

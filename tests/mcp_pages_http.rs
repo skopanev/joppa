@@ -137,12 +137,6 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
             && all["total"] == timeline["total"],
         "{history} {all}"
     );
-    // Tasks: `items`, not `tasks`, with the total.
-    let tasks = read(&w, "joppa_tasks", json!({"view":"all","limit":100})).await?;
-    ensure!(
-        tasks["items"].is_array() && tasks.get("tasks").is_none() && tasks["total"] == 0,
-        "{tasks}"
-    );
     // Workspaces and the test nodes.
     // The test database can hold the workspaces of earlier runs, so the check does not
     // count them. It follows the pages until it finds this workspace; each page has at most

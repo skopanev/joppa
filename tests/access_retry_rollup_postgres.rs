@@ -159,8 +159,8 @@ async fn an_uninvited_account_cannot_write_to_a_workspace() -> Result<()> {
     let before = read(&pool, &ws, "domain:o").await?;
     let position = head(&pool, &ws).await?;
     let edit = json!({"op":"save_object","kind":"domain","id":"o","revision":before["current_revision"],"parent":null,"data":{"title":"Eve was here","owner":"owner","body":"The rule"},"reason":"Edit"});
-    let priority = json!({"op":"set_priority","target":"domain:o","priority":"p0"});
-    for command in [edit, priority] {
+    let mark = json!({"op":"assess","target":"domain:o","ready":false,"reason":"Who owns it?"});
+    for command in [edit, mark] {
         let error = write(
             &pool,
             &ws,

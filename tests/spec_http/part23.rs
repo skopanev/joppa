@@ -1,92 +1,5 @@
 // Part 23 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-// mod claim_time is declared in tests/spec_http.rs, so its #[path] resolves from tests/.
-
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn permanent_claims_and_heartbeat_refusals_agree_over_http_and_mcp() -> Result<()> {
-    let w = world().await?;
-    claim_time::install(&w.pool).await?;
-    let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
-    let mut types = schema["schema"]["types"].clone();
-    types["job"] = json!({"title":"Jobs","role":"task","status":"none","root":true,"parents":["*"]});
-    w.command(json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Use configured work"})).await?;
-    w.command(json!({"op":"save_object","kind":"job","id":"one","revision":0,"parent":null,"data":{"title":"Implement","owner":"owner","body":"Implement and check the contract"},"reason":"Create work"})).await?;
-    let response=w.http.post(format!("{}/api/workspaces/{}/commands",w.root,w.ws)).bearer_auth(&w.bot).json(&json!({"request_id":format!("test-claim-time-86400000-{}",uuid::Uuid::new_v4().simple()),"command":{"op":"claim_task","id":"job:one","revision":1}})).send().await?;
-    ensure!(response.status().is_success(), "{}", response.text().await?);
-    let read_mcp = async |name: &str, arguments: Value| -> Result<Value> {
-        let reply:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}})).send().await?.json().await?;
-        ensure!(reply["result"]["isError"] != true, "{reply}");
-        Ok(serde_json::from_str(
-            reply["result"]["content"][0]["text"].as_str().unwrap(),
-        )?)
-    };
-    let before = w.get("address=job:one").await?;
-    for view in ["all", "mine", "available"] {
-        let http: Value = w
-            .http
-            .get(format!(
-                "{}/api/workspaces/{}/tasks?view={view}",
-                w.root, w.ws
-            ))
-            .bearer_auth(&w.bot)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        let mcp = read_mcp("joppa_tasks", json!({"workspace":w.ws,"view":view})).await?;
-        let shaped = joppa::read_compact::strip_reply(joppa::mcp_shapes::tasks(json!({"items": http["tasks"]})));
-        ensure!(
-            joppa::mcp_lean::lean("joppa_tasks", &json!({}), shaped)["items"] == mcp["items"],
-            "HTTP {http} / MCP {mcp}"
-        );
-        if view == "available" {
-            ensure!(http["total"] == 0, "held work is unavailable");
-        } else {
-            ensure!(
-                http["tasks"][0]["status"] == "in_progress"
-                    && http["tasks"][0]["assignee"] == "bot",
-                "{http}"
-            );
-        }
-    }
-    let command = json!({"op":"heartbeat_task","id":"job:one","revision":2});
-    let http: Value = w
-        .http
-        .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
-        .bearer_auth(&w.bot)
-        .json(&json!({"request_id":"refused-http","command":command}))
-        .send()
-        .await?
-        .json()
-        .await?;
-    ensure!(
-        http["error"] == "heartbeat_task is no longer supported",
-        "{http}"
-    );
-    let mcp:Value=w.http.post(format!("{}/mcp",w.root)).bearer_auth(&w.bot).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":"refused-mcp","command":command}}})).send().await?.json().await?;
-    ensure!(
-        mcp["result"]["isError"] == true
-            && mcp["result"]["content"][0]["text"] == "heartbeat_task is no longer supported",
-        "{mcp}"
-    );
-    ensure!(
-        before == w.get("address=job:one").await?,
-        "refusals change no state"
-    );
-    let help = read_mcp("joppa_help", json!({"workspace":w.ws,"section":"operations"})).await?;
-    ensure!(
-        !help["operations"]
-            .as_object()
-            .unwrap()
-            .contains_key("heartbeat_task"),
-        "help does not advertise heartbeat writes"
-    );
-    store::check_journal(&w.pool).await?;
-    Ok(())
-}
-
 /// One MCP tools/call; returns the JSON-RPC result.
 async fn mcp_call(w: &World, token: &str, name: &str, arguments: Value) -> Result<Value> {
     let reply: Value = w
@@ -136,7 +49,6 @@ async fn saved_rows(w: &World) -> Result<Value> {
         "state_revisions",
         "board_cache",
         "command_receipts",
-        "task_queue",
         "agent_tokens",
         "test_reports",
     ] {

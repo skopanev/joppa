@@ -87,9 +87,7 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     await f.command({op: 'save_object', kind: 'requirement', id: 'R', revision: 1, parent: 'capability:c2',
       data: {title: 'Requirement R', owner: 'owner', body: 'Current source'}, reason: 'Move R to the second capability'}, true);
     await f.command({op: 'archive_object', target: 'signal:n', revision: 1, reason: 'Signal N is handled'}, true);
-    const ready = await f.api('/objects?address=ac:A');
-    await f.command({op: 'assess', req: ready.process.req, revision: ready.process.revision, ac: ready.process.criterion,
-      assessment: {ready: true, reason: 'The scope of A is known'}}, true);
+    await f.command({op: 'assess', target: 'ac:A', ready: true, reason: 'The scope of A is known'}, true);
     await f.record('0123abc', [['one']]);
     const newest = (await f.api('/timeline?order=newest&limit=5')).items;
     assert.deepEqual(newest.map(item => item.change), ['results', 'readiness', 'archive', 'move', 'save']);

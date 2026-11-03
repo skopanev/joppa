@@ -155,7 +155,7 @@ async fn the_name_and_limit_rules_come_from_the_schema() -> Result<()> {
 // tests-in-document
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_test_node_save_keeps_the_contract_revision_and_a_text_change_moves_it() -> Result<()> {
+async fn a_test_node_save_keeps_the_criterion_revision_and_a_text_change_moves_it() -> Result<()> {
     let pool = pool().await?;
     let ws = fixture(&pool, json!({})).await?;
     let read = || async {
@@ -172,16 +172,16 @@ async fn a_test_node_save_keeps_the_contract_revision_and_a_text_change_moves_it
     };
     let before = read().await?;
     ensure!(
-        before["current_revision"] == 1 && before["contract_revision"] == 1,
+        before["current_revision"] == 1 && before.get("contract_revision").is_none(),
         "{before}"
     );
     bind(&pool, &ws, json!(["tests/x.rs > x"])).await?;
     let bound = read().await?;
     ensure!(
-        bound["current_revision"] == 1 && bound["contract_revision"] == 1,
-        "a test node save keeps the criterion and its contract: {bound}"
+        bound["current_revision"] == 1,
+        "a test node save keeps the criterion revision: {bound}"
     );
-    // A list row of the direct children gives the same contract revision.
+    // A list row of the direct children gives the same revision and no contract revision.
     let rows = store::read_objects(
         &pool,
         &ws,
@@ -198,14 +198,14 @@ async fn a_test_node_save_keeps_the_contract_revision_and_a_text_change_moves_it
     .await?;
     let row = &rows["items"][0];
     ensure!(
-        row["address"] == "ac:a" && row["revision"] == 1 && row["contract_revision"] == 1,
+        row["address"] == "ac:a" && row["revision"] == 1 && row.get("contract_revision").is_none(),
         "the list row: {row}"
     );
     write(&pool, &ws, json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"New wording"})).await?;
     let changed = read().await?;
     ensure!(
-        changed["current_revision"] == 2 && changed["contract_revision"] == 2,
-        "a text change moves the contract: {changed}"
+        changed["current_revision"] == 2,
+        "a text change makes a new revision: {changed}"
     );
     Ok(())
 }

@@ -154,8 +154,7 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
         "replay after the test-node change"
     );
     // A turns green and ready again; fixture 6: the owner archives B.
-    let req = read(&pool, &ws, "spec:r").await?["process"]["revision"].clone();
-    write(&pool, &ws, "planner", json!({"op":"assess","req":"spec:r","revision":req,"ac":"criterion:a","assessment":{"ready":true,"reason":"Known scope"}})).await?;
+    write(&pool, &ws, "planner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
     upload_full(&pool, &ws, "c3c3c3c").await?;
     ensure!(
         status(&pool, &ws, "criterion:a").await?["status"] == "green",
@@ -177,13 +176,13 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     let replayed = replay(&pool, &ws).await?;
     ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
     // An archive before the epoch of archive_own_reset keeps its old meaning in a replay:
-    // it resets the criteria at and below the parent, so A is grey and unassessed.
+    // it resets the criteria at and below the parent, so A is grey and has no readiness mark.
     let after = events(&pool, &ws).await? + 1;
     pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='archive_own_reset'", &[&ws, &after]).await?;
     let old = replay(&pool, &ws).await?;
     ensure!(
         old["criterion:a"]["status"]["status"] == "grey"
-            && old["criterion:a"]["assessment"]["state"] == "unassessed"
+            && old["criterion:a"]["assessment"].is_null()
             && old["criterion:d"]["status"]["status"] == "green",
         "{old}"
     );

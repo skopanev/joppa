@@ -74,11 +74,20 @@ pub(super) async fn project_current(
     let first_view = json!({"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"members":&state.members,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
-    super::queue_rows::project(client, workspace, state, selected.as_ref()).await?;
     client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,launch,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb,$7::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,launch=EXCLUDED.launch,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END",
         &[&workspace,&(position as i64),&super::state_rows::metadata(state)?,&"{}",&"{}",&launch.to_string(),&first_view.to_string()]).await?;
     super::objects::rebuild_status_projection(client, workspace, state, position).await?;
     Ok(())
+}
+
+/// The status list with the filter label of each tone.
+fn labelled(statuses: &Value) -> Value {
+    let mut statuses = statuses.clone();
+    for s in statuses.as_array_mut().into_iter().flatten() {
+        let label = crate::status_colors::label(s["tone"].as_str().unwrap_or_default());
+        s["label"] = json!(label);
+    }
+    statuses
 }
 
 fn parsed(row: &tokio_postgres::Row, index: usize) -> Result<Value> {
@@ -112,6 +121,6 @@ pub async fn board_read(pool: &Pool, workspace: &str, actor: &str) -> Result<Val
         json!({"workspace":first["workspace_id"],"position":row.get::<_,i64>(0),"lazy":true,
                 "state":{"title":first["title"],"members":members},
                 "member_labels":labels,"launch":first["launch"],
-                "object_types":first["object_types"],"statuses":first["statuses"],"archived_tone":crate::status_colors::ARCHIVED_TONE,"counts":first["counts"],"custom_tree":first["custom_tree"]}),
+                "object_types":first["object_types"],"statuses":labelled(&first["statuses"]),"archived_tone":crate::status_colors::ARCHIVED_TONE,"counts":first["counts"],"custom_tree":first["custom_tree"]}),
     )
 }

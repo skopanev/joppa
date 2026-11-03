@@ -106,9 +106,10 @@ pub fn address(command: &Value) -> Option<String> {
     match op {
         "save_object" => Some(format!("{}:{}", text("kind")?, text("id")?)),
         "record_report" => command["report"].as_i64().map(record_address),
-        "assess" | "claim_planning" | "finish_planning" | "release_planning" => {
-            text("ac").map(crate::objects::criterion_address)
-        }
+        // The live assess names its node in target; an older one names a criterion in ac.
+        "assess" | "claim_planning" | "finish_planning" | "release_planning" => text("ac")
+            .map(crate::objects::criterion_address)
+            .or_else(|| text("target").map(str::to_owned)),
         "comment" => text("ac")
             .map(crate::objects::criterion_address)
             .or_else(|| text("req").map(crate::objects::requirement_address)),

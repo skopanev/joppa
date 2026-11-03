@@ -128,22 +128,3 @@ fn test_of<'a>(status: &'a Value, name: &str) -> &'a Value {
         .and_then(|tests| tests.iter().find(|t| t["address"] == name))
         .unwrap_or(&Value::Null)
 }
-
-/// The process of a Task in the HTTP object read (`mcp` false) or the joppa_objects read.
-async fn task_process(w: &World, token: &str, address: &str, mcp: bool) -> Result<Value> {
-    if mcp {
-        let args = json!({"workspace":w.root_ws().1,"address":address});
-        return Ok(mcp_read(w, token, "joppa_objects", args).await?["process"].clone());
-    }
-    let url = format!("{}/objects?address={address}", w.base);
-    let read: Value = w
-        .http
-        .get(url)
-        .bearer_auth(token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    Ok(read["process"].clone())
-}

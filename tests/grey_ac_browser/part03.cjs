@@ -26,9 +26,6 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
   try {
     await task('A', 'Implement the first part');
     await task('B', 'Implement the second part', 0, [{target: 'task:A', relation: 'depends_on', revision: 1, blocking: true}]);
-    // Process events move A to revision 3; the server keeps the pin of B current.
-    await f.command({op: 'claim_task', id: 'task:A', revision: 1});
-    await f.command({op: 'release_task', id: 'task:A', revision: 2, reason: 'Hand the work back'});
     let read = await f.mcp('joppa_objects', {address: 'task:B'});
     assert.equal(read.review_required, undefined, JSON.stringify(read));
     assert.doesNotMatch((await meta()).text, /changed/);
@@ -38,22 +35,6 @@ test('pins-ignore-process-events-ac4: the board marks a link changed only when t
     read = await f.mcp('joppa_objects', {address: 'task:B'});
     assert.equal(read.review_required, undefined, JSON.stringify(read));
     assert.doesNotMatch((await meta()).text, /changed/);
-  } finally { await f.close(); }
-});
-
-test('retired-tasks-hidden-ac1: the board tree hides a retired Task and its page still opens', async () => {
-  const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
-  const f = await fixture(criterionRecords, configured);
-  try {
-    for (const id of ['open', 'old']) await f.command({op: 'save_object', kind: 'task', id, revision: 0, parent: 'ac:A',
-      data: {title: 'Task ' + id, owner: 'owner', body: 'Implement the ' + id + ' part'}, reason: 'Define the Task'});
-    await f.command({op: 'retire_task', id: 'task:old', revision: 1, reason: 'A new Task replaces this work'}, true);
-    const card = await f.open('ac:A');
-    await card.locator('.common-object[data-object-address="task:open"]').waitFor();
-    assert.equal(await card.locator('.common-object[data-object-address="task:old"]').count(), 0);
-    const retired = await f.open('task:old');
-    const circle = retired.locator(':scope > summary .status-circle');
-    assert.match(await circle.getAttribute('data-hint'), /^Status: Retired(\n|$)/);
   } finally { await f.close(); }
 });
 

@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""Small Bash-friendly client for Joppa Tasks over the public MCP endpoint."""
+"""Small Bash-friendly client for Joppa over the public MCP endpoint."""
 
 import argparse
-import hashlib
 import json
 import os
 import sys
-import tempfile
 import urllib.error
 import urllib.request
-import uuid
-from pathlib import Path
 
 
 class JoppaError(Exception):
@@ -63,94 +59,9 @@ def workspace(args):
     return value
 
 
-def task_address(args, space):
-    if args.revision:
-        return {"revision": args.revision, "id": args.id, **({"req": args.req} if args.req else {})}
-    if args.req:
-        raise JoppaError("supply --revision with --req")
-    matches = []
-    cursor = None
-    while True:
-        query = {"workspace": space, "view": "all", "limit": 100}
-        if cursor:
-            query["cursor"] = cursor
-        page = mcp(args, "joppa_tasks", query)
-        matches.extend(task for task in page["items"] if task.get("address", task.get("id")) == args.id or task.get("address", task.get("id")).split(":", 1)[-1].rsplit("/", 1)[-1] == args.id)
-        cursor = page.get("next_cursor")
-        if not cursor:
-            break
-    if len(matches) != 1:
-        raise JoppaError("Task ID is absent or ambiguous; supply the common Task address and --revision")
-    task = matches[0]
-    return {"revision": task["revision"], "id": task.get("address", task.get("id")), **({"req": task["req"]} if task.get("req") else {})}
-
-
-def command(args, space, value):
-    if args.request_id:
-        intent = {key: val for key, val in vars(args).items()
-                  if key not in {"url", "workspace", "token_file", "json"}}
-        endpoint = args.url or os.getenv("JOPPA_MCP_URL", "")
-        key = hashlib.sha256(json.dumps([endpoint, space, args.request_id]).encode()).hexdigest()
-        directory = Path(os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "joppa" / "requests"
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        filename = directory / (key + ".json")
-        descriptor, pending = tempfile.mkstemp(dir=directory)
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as target:
-                json.dump({"intent": intent, "command": value}, target)
-            try:
-                os.link(pending, filename)
-            except FileExistsError:
-                stored = json.loads(filename.read_text(encoding="utf-8"))
-                if stored["intent"] != intent:
-                    raise JoppaError("request-id was used with different arguments")
-                value = stored["command"]
-        finally:
-            os.unlink(pending)
-    return mcp(args, "joppa_command", {
-        "workspace": space,
-        "request_id": args.request_id or str(uuid.uuid4()),
-        "command": value,
-    })
-
-
 def main():
-    parser = argparse.ArgumentParser(prog="joppa", description="Joppa MCP Task client")
+    parser = argparse.ArgumentParser(prog="joppa", description="Joppa MCP client")
     group = parser.add_subparsers(dest="resource", required=True)
-    task = group.add_parser("task")
-    actions = task.add_subparsers(dest="action", required=True)
-
-    def common(action, write=False, address=False):
-        action.add_argument("--workspace")
-        action.add_argument("--url", help="MCP endpoint; defaults to JOPPA_MCP_URL")
-        action.add_argument("--token-file", help="private bearer token file; defaults to JOPPA_TOKEN_FILE")
-        action.add_argument("--json", action="store_true", help="JSON is the default output format")
-        if write:
-            action.add_argument("--request-id", help="reuse on an identical retry")
-        if address:
-            action.add_argument("id")
-            action.add_argument("--req")
-            action.add_argument("--revision", type=int)
-
-    listing = actions.add_parser("list", help="read one page of the Task queue")
-    common(listing)
-    listing.add_argument("--view", choices=["available", "mine", "waiting", "all"], default="available")
-    listing.add_argument("--limit", type=int, default=25)
-    listing.add_argument("--cursor")
-    claim = actions.add_parser("claim", help="atomically claim a Task by ID")
-    common(claim, write=True, address=True)
-    next_task = actions.add_parser("next", help="atomically take the oldest claimable Task")
-    common(next_task, write=True)
-    next_task.add_argument("--dry-run", action="store_true", help="preview the next Task without claiming it")
-    next_task.add_argument("--project")
-    next_task.add_argument("--priority", action="append", default=[], metavar="KIND:ID",
-                           help="ordered preferred domain, capability, requirement, ac, task, project or consumer; repeat")
-    release = actions.add_parser("release", help="return unfinished work to the queue")
-    common(release, write=True, address=True)
-    release.add_argument("--reason", required=True)
-    complete = actions.add_parser("complete", help="record Task completion evidence")
-    common(complete, write=True, address=True)
-    complete.add_argument("--evidence", required=True)
 
     find = group.add_parser("search", help="hybrid search of objects through authenticated MCP")
     find.add_argument("query")
@@ -186,36 +97,6 @@ def main():
             raise JoppaError("operation must be a JSON object")
         output = mcp(args, "joppa_command", {"workspace":space,"request_id":args.request_id,"command":value})
         print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
-        return
-    if args.action == "list":
-        query = {"workspace": space, "view": args.view, "limit": args.limit}
-        if args.cursor:
-            query["cursor"] = args.cursor
-        output = mcp(args, "joppa_tasks", query)
-    elif args.action == "next":
-        value = {"op": "claim_next_task"}
-        if args.project:
-            value["project"] = args.project
-        if args.priority:
-            value["priorities"] = args.priority
-        if args.dry_run:
-            page = mcp(args, "joppa_tasks", {
-                "workspace": space, "view": "available", "limit": 1,
-                **({"project": args.project} if args.project else {}),
-                **({"priorities": args.priority} if args.priority else {}),
-            })
-            output = {"task": page["items"][0] if page["items"] else None}
-        else:
-            output = command(args, space, value)
-    else:
-        value = {"op": {"claim": "claim_task", "release": "release_task", "complete": "complete_task"}[args.action]}
-        value.update(task_address(args, space))
-        if args.action == "release":
-            value["reason"] = args.reason
-        if args.action == "complete":
-            value["evidence"] = args.evidence
-        output = command(args, space, value)
-    print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
 
 
 if __name__ == "__main__":
@@ -223,4 +104,4 @@ if __name__ == "__main__":
         main()
     except JoppaError as error:
         print(f"joppa: {error}", file=sys.stderr)
-        sys.exit(3 if "already claimed" in str(error) or "no available Task" in str(error) else 1)
+        sys.exit(1)

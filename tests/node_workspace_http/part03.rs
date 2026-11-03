@@ -102,7 +102,7 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
     ensure!(
-        read["process"]["assessment"]["state"] == "unassessed",
+        read["process"]["assessment"].is_null(),
         "a new pin resets the criteria below: {read}"
     );
     ensure!(
@@ -112,7 +112,7 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     let status = &read["remote_links"][0]["status"];
     ensure!(
         *status
-            == json!({"access":true,"present":true,"current_revision":pin,"contract_revision":pin,"review_required":false,"satisfied":false}),
+            == json!({"access":true,"present":true,"current_revision":pin,"review_required":false,"satisfied":false}),
         "{read}"
     );
     // C changes its contract: the pinned link now asks for a review.
@@ -229,14 +229,14 @@ async fn an_archived_target_is_shown_for_review_and_a_batch_writes_links_atomica
 async fn work_waits_for_a_blocking_remote_link_until_its_target_is_green() -> Result<()> {
     let w = world().await?;
     w.block_a_on_api().await?;
-    match w.claim().await? {
+    match w.free().await? {
         Err(e) if e.contains(&w.waiting()) => {}
         other => anyhow::bail!("expected the wait, got {other:?}"),
     }
     w.record("2222222222222222222222222222222222222222", "pass")
         .await?;
-    w.claim()
+    w.free()
         .await?
-        .map_err(|e| anyhow::anyhow!("claim after green: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("free after green: {e}"))?;
     Ok(())
 }

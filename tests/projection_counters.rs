@@ -60,8 +60,9 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
 
     // A command, a record, a repeat receipt and a batch of three: one rebuild each.
     let before = counts();
-    let priority = json!({"op":"set_priority","target":"requirement:r2","priority":"p1"});
-    run(&pool, &mut n, priority).await?;
+    let mark =
+        json!({"op":"assess","target":"requirement:r2","ready":false,"reason":"Which scope?"});
+    run(&pool, &mut n, mark).await?;
     ensure!(
         delta(before)[4] == 1,
         "a command rebuilds once: {:?}",
@@ -133,13 +134,13 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         }
     }
     // The next write rebuilds the projection, and the readers work again.
-    let priority = json!({"op":"set_priority","target":"requirement:r2","priority":"p2"});
-    run(&pool, &mut n, priority).await?;
+    let mark = json!({"op":"assess","target":"requirement:r2","ready":true,"reason":"Known scope"});
+    run(&pool, &mut n, mark).await?;
     for result in reads(&pool).await {
         result?;
     }
 
-    // The domain list reads only its own rows; the Task queue reads the stored waits once.
+    // The domain list reads only its own rows.
     let domains = store::ObjectScope {
         filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
         limit: 50,
@@ -150,13 +151,6 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     ensure!(
         delta(before)[3] == 0,
         "the domain list read the waits of the workspace"
-    );
-    let before = counts();
-    store::task_queue(&pool, ws(), "owner", "all", 100, None).await?;
-    ensure!(
-        delta(before)[3] == 1,
-        "the queue reads the stored waits once: {:?}",
-        delta(before)
     );
 
     // A lost row in a valid projection is refused by every reader; backfill_board repairs it.

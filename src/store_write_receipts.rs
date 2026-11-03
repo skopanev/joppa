@@ -42,43 +42,9 @@ pub(super) async fn replayed(
     Ok(None)
 }
 
-/// Append the persistent claim migration of a workspace that has an owner and no such event.
-pub(super) async fn migrate_claims(
-    tx: &impl GenericClient,
-    workspace: &str,
-    state: &mut Workspace,
-    events: &mut Vec<Event>,
-    base_position: u64,
-) -> Result<()> {
-    if !state.admin.is_empty() && !state.persistent_claims {
-        let command = Command::MigratePersistentClaims {};
-        let position = base_position + 1;
-        let migration_actor = state.admin.clone();
-        let payload = serde_json::to_string(&command)?;
-        let recorded_at: String = tx.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&migration_actor,&Uuid::new_v4().to_string(),&payload]).await?.get(0);
-        commands::apply_replay(state, &migration_actor, &command, position, &recorded_at)?;
-        events.push(Event {
-            position,
-            actor: migration_actor.clone(),
-            recorded_at,
-            command,
-        });
-    }
-    Ok(())
-}
-
-/// A claim, a completion and an acceptance read the workspaces of blocking remote links.
+/// An acceptance reads the workspaces of blocking remote links.
 pub(super) fn locks_remote(operations: &[BatchOperation]) -> bool {
-    operations.iter().any(|o| {
-        matches!(
-            o.command["op"].as_str(),
-            Some(
-                "claim_next_task"
-                    | "claim_task"
-                    | "claim_planning"
-                    | "complete_task"
-                    | "accept_commit"
-            )
-        )
-    })
+    operations
+        .iter()
+        .any(|o| o.command["op"].as_str() == Some("accept_commit"))
 }

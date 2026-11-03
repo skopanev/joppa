@@ -75,27 +75,6 @@ pub async fn search(
     Ok(reply)
 }
 
-/// joppa_tasks: one page of the Task queue of a view, with optional filters.
-pub async fn task_queue(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
-    let priorities: Vec<String> = a
-        .get("priorities")
-        .map(|v| serde_json::from_value(v.clone()))
-        .transpose()?
-        .unwrap_or_default();
-    store::task_queue_filtered(
-        pool,
-        a["workspace"].as_str().context("missing workspace")?,
-        actor,
-        a["view"].as_str().unwrap_or("available"),
-        limit(a, rc::PAGE)?,
-        a["cursor"].as_str(),
-        a["project"].as_str(),
-        &priorities,
-    )
-    .await
-    .map(tasks)
-}
-
 /// joppa_timeline: the entries after `after`, oldest or newest first.
 pub async fn timeline(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let after = match a.get("after") {
@@ -114,16 +93,6 @@ pub async fn timeline(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Val
         },
     )
     .await
-}
-
-/// joppa_tasks: the Task queue with its tasks as `items`.
-pub fn tasks(mut reply: Value) -> Value {
-    if let Some(map) = reply.as_object_mut()
-        && let Some(tasks) = map.remove("tasks")
-    {
-        map.insert("items".into(), tasks);
-    }
-    reply
 }
 
 /// joppa_history: the History read with a clamped page size, 25 by default.

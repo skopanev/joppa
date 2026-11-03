@@ -45,7 +45,7 @@ impl Planning<'_> {
         );
         let readiness = self.assessment("criterion:a").await?;
         ensure!(
-            readiness["state"] == "unassessed",
+            readiness.is_null(),
             "A readiness: {readiness}"
         );
         Ok(())
@@ -70,7 +70,7 @@ impl Planning<'_> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     p.save_r("area:g", "R renamed", json!([])).await?;
     p.reset(&before).await?;
@@ -151,8 +151,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
     ensure!(status["status"] == "grey", "A after the save: {status}");
     let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
     ensure!(
-        a["process"]["assessment"]["state"] == "unassessed"
-            && a["process"]["readiness_blocker"]["state"] == "unassessed",
+        a["process"]["assessment"].is_null(),
         "A after the save: {a}"
     );
     let old = read(
@@ -174,7 +173,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     p.save_r(
         "area:g",
@@ -190,7 +189,7 @@ async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f3_a_move_of_r_makes_a_grey() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     p.save_r("area:h", "R", json!([])).await?;
     p.reset(&before).await
@@ -201,7 +200,7 @@ async fn frozen_f3_a_move_of_r_makes_a_grey() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn frozen_f4_a_comment_on_r_keeps_a_green() -> Result<()> {
     let w = world().await?;
-    let p = frozen(&w, false).await?;
+    let p = frozen(&w).await?;
     let (before, assessment) = (
         p.ac_tests("criterion:a").await?,
         p.assessment("criterion:a").await?,

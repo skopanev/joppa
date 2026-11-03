@@ -10,16 +10,6 @@ impl Planning<'_> {
     async fn bind(&self, token: &str, ac: &str, tests: &[&str]) -> Result<()> {
         bind_at(&self.w.http, &self.base(), token, ac, tests).await
     }
-    /// P sends the claim through HTTP and then MCP. Each refusal returns `expected`
-    /// and leaves the committed workspace rows unchanged.
-    async fn refuse(&self, case: &str, ac: &str, revision: u64, expected: &str) -> Result<()> {
-        let command = json!({"op":"claim_planning","ac":ac,"revision":revision});
-        self.refuse_command(case, command, expected).await
-    }
-    /// P posts the request body to the HTTP command endpoint.
-    async fn http(&self, body: Value) -> Result<(u16, Value)> {
-        self.http_as(&self.w.token, body).await
-    }
     /// The `token` member posts the request body to the HTTP command endpoint.
     async fn http_as(&self, token: &str, body: Value) -> Result<(u16, Value)> {
         let root = self.w.base.split("/api/").next().unwrap();
@@ -45,10 +35,6 @@ impl Planning<'_> {
         Ok(self.w.http.post(format!("{root}/mcp")).bearer_auth(token)
             .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":arguments}}))
             .send().await?.json().await?)
-    }
-    /// P sends `command` through HTTP or MCP and gets the result or the error text.
-    async fn send(&self, mcp: bool, command: &Value) -> Result<std::result::Result<Value, String>> {
-        self.send_as(&self.w.token, mcp, command).await
     }
     /// The `token` member sends `command` through HTTP or MCP.
     async fn send_as(
@@ -84,12 +70,6 @@ impl Planning<'_> {
         } else {
             Err(format!("{code} {reply}"))
         })
-    }
-    /// P sends the command through HTTP and then MCP. Each refusal returns `expected`
-    /// and leaves the committed workspace rows unchanged.
-    async fn refuse_command(&self, case: &str, command: Value, expected: &str) -> Result<()> {
-        self.refuse_command_as(&self.w.token, case, command, expected)
-            .await
     }
     /// The `token` member sends the command through HTTP and then MCP, with the same checks.
     async fn refuse_command_as(
