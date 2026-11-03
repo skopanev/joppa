@@ -145,7 +145,9 @@ pub fn apply_replay(
     w.replay_claims = false;
     result?;
     crate::objects::sync(w, actor, command, position, recorded_at);
-    if !epoch_reached(w, RESET_CHANGED, position) {
+    // migrate_test_nodes moves each test list into test nodes and changes no status.
+    if !epoch_reached(w, RESET_CHANGED, position) || matches!(command, Command::MigrateTestNodes {})
+    {
         return Ok(());
     }
     crate::objects::reset_changed(w, position, recorded_at)

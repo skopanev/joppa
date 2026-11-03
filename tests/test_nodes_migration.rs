@@ -40,7 +40,13 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
         json!({"op":"set_ac_tests","target":"ac:ios","tests":names,"reason":"Bind"}),
     );
     let before = w.state.objects["ac:ios"].clone();
+    // The records before the migration keep counting: it resets no criterion and no node.
+    let boundary = "2025-12-31T00:00:00Z".to_owned();
+    w.state
+        .criterion_boundaries
+        .insert("ac:ios".into(), boundary.clone());
     internal(&mut w, "migrate_test_nodes").unwrap();
+    assert_eq!(w.state.criterion_boundaries["ac:ios"], boundary);
     let schema = joppa::objects::schema(&w.state);
     let test = &schema.types["test"];
     assert_eq!(
@@ -64,6 +70,10 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
         let node = w.state.objects[&format!("test:{id}")].current();
         assert_eq!(node.parent.as_deref(), Some("ac:ios"));
         assert_eq!(node.data["owner"], before.current().data["owner"]);
+        assert_eq!(
+            w.state.criterion_boundaries[&format!("test:{id}")],
+            boundary
+        );
     }
     // The list leaves the document; the contract revision stays, so pins and reviews stay.
     let after = &w.state.objects["ac:ios"];
