@@ -1,7 +1,7 @@
 //! Status tones in the tree schema: an ordered list with a light and a dark colour each.
-//! A higher entry wins over a lower one: the list order is the default order of a children
-//! rule. A schema without `statuses` uses the default list. The older `status_colors` map
-//! stays readable for earlier journal events. It colours the default list for both themes,
+//! The list sets the colours and the order of the status filter. One fixed priority decides
+//! every rollup. A schema without `statuses` uses the default list. The older `status_colors`
+//! map stays readable for earlier journal events. It colours the default list for both themes,
 //! and a saved `statuses` list replaces it.
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// The status tones that the status rules produce.
 pub const STATUS_TONES: [&str; 6] = ["red", "purple", "yellow", "orange", "grey", "green"];
+
+/// The tone of an archived node. Only a read that includes archived nodes finds it.
+pub const ARCHIVED_TONE: &str = "purple";
 
 /// One status tone with its colour in the light and in the dark theme.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,7 +22,7 @@ pub struct Status {
     pub dark: String,
 }
 
-/// The default list for a workspace without its own: red wins over grey, grey over green.
+/// The default list for a workspace without its own.
 pub fn defaults() -> Vec<Status> {
     [
         ("red", "#bc5d52", "#bc5d52"),
@@ -94,14 +97,6 @@ pub fn effective(
     list
 }
 
-/// The default order of a children rule: the tones it can produce, in the list order.
-pub fn children_order(list: &[Status]) -> Vec<String> {
-    list.iter()
-        .filter(|s| ["red", "grey", "green"].contains(&s.tone.as_str()))
-        .map(|s| s.tone.clone())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,17 +110,18 @@ mod tests {
     }
 
     #[test]
-    fn the_list_order_is_the_children_order_and_missing_tones_follow() {
+    fn missing_tones_follow_the_saved_list() {
         let list = vec![
             status("green", "#22a559", "#22a559"),
             status("red", "#ff0000", "#ff0000"),
         ];
-        let all = effective(Some(&list), None);
-        assert_eq!(all.len(), 6);
-        assert_eq!(children_order(&all), ["green", "red", "grey"]);
+        let tones: Vec<String> = effective(Some(&list), None)
+            .into_iter()
+            .map(|s| s.tone)
+            .collect();
         assert_eq!(
-            children_order(&effective(None, None)),
-            ["red", "grey", "green"]
+            tones,
+            ["green", "red", "purple", "yellow", "orange", "grey"]
         );
     }
 

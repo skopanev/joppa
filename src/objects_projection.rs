@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 4;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 5;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]
@@ -59,7 +59,7 @@ pub(in crate::store) async fn rebuild(
     position: u64,
 ) -> Result<()> {
     crate::probe::count(&crate::probe::REBUILD);
-    let types = crate::objects::ordered_types(&crate::objects::schema(state));
+    let types = crate::objects::schema(state).types;
     let addresses: Vec<String> = state.objects.keys().cloned().collect();
     let statuses =
         super::reports::state_criterion_statuses(client, workspace, state, &addresses).await?;

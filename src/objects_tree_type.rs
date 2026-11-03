@@ -46,9 +46,6 @@ pub struct TreeType {
     /// role decides: the criterion role uses tests, group and requirement use children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// The order in which a children or links rule takes the first status that it finds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status_order: Option<Vec<String>>,
     /// The process fields that an object of this type shows: confirmed for a requirement or a
     /// criterion, acceptance for a requirement. A type without the list shows neither.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,7 +102,7 @@ pub struct SchemaRevision {
     /// The colour of each status dot, as #RRGGBB per tone. Without it the board colours stay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_colors: Option<BTreeMap<String, String>>,
-    /// The ordered status tones with a light and a dark colour; a higher entry wins.
+    /// The ordered status tones with a light and a dark colour each.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statuses: Option<Vec<crate::status_colors::Status>>,
     /// The test rules: the block test_results, see result_shape.

@@ -22,7 +22,6 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
             required_fields: Default::default(),
             parent_decision: false,
             status: None,
-            status_order: None,
             process_fields: None,
             inbox: None,
             launch_blocker: None,

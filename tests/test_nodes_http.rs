@@ -75,13 +75,13 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
         "data":{"title":"B","owner":"owner"},"reason":"Create"});
     w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
     ensure!(tone(&w, "ac:b").await? == "orange" && tone(&w, "requirement:r").await? == "orange");
-    // An archived node does not count.
+    // An archived node is purple and does not count.
     let archive =
         json!({"op":"archive_object","target":"ac:b","revision":1,"reason":"Out of scope"});
     w.command(&w.owner, archive)
         .await?
         .map_err(anyhow::Error::msg)?;
-    ensure!(tone(&w, "requirement:r").await? == "green");
+    ensure!(tone(&w, "ac:b").await? == "purple" && tone(&w, "requirement:r").await? == "green");
     // A node that waits for an answer is yellow, and yellow beats green above it.
     let r = w.object("requirement:r").await?["revision"].clone();
     let question = json!({"op":"assess","req":"requirement:r","revision":r,"ac":"ac:a",

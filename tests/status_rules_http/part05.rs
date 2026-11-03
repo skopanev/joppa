@@ -86,7 +86,7 @@ async fn ready_signal_takes_tasks_ac1_a_task_under_a_signal_waits_for_its_ready_
 async fn work_priority_ac5_a_member_sets_the_priority_and_the_timeline_names_it() -> Result<()> {
     // alex is a member with write access and is not the owner.
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     w.save("area", "d", None).await?;
     w.save("rule", "r", Some("area:d")).await?;
     w.save("check", "a", Some("rule:r")).await?;
@@ -136,7 +136,7 @@ async fn work_priority_ac5_a_member_sets_the_priority_and_the_timeline_names_it(
 async fn type_status_rules_ac6_a_links_node_takes_the_first_status_that_a_linking_object_has()
 -> Result<()> {
     let w = world().await?;
-    let task = w.rules_schema(json!(["red", "grey", "green"])).await?;
+    let task = w.rules_schema().await?;
     let task = task.as_str().context("task kind")?;
     let tree = w.tree().await?;
     let mut types = tree["schema"]["types"].clone();

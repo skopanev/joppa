@@ -99,10 +99,10 @@ impl World {
     }
     /// Save the schema of ac1: area, rule and check climb from children, a test node under a
     /// check takes its own result, memo has no status field. Task may sit under a check.
-    async fn rules_schema(&self, area_order: Value) -> Result<Value> {
+    async fn rules_schema(&self) -> Result<Value> {
         let tree = self.tree().await?;
         let mut types = tree["schema"]["types"].clone();
-        types["area"] = json!({"title":"Areas","role":"group","root":true,"parents":["area"],"status":"children","status_order":area_order});
+        types["area"] = json!({"title":"Areas","role":"group","root":true,"parents":["area"],"status":"children"});
         types["rule"] =
             json!({"title":"Rules","role":"requirement","parents":["area"],"status":"children"});
         types["check"] =
@@ -158,7 +158,7 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
     let before = w.tree().await?["current_revision"]
         .as_u64()
         .context("revision")?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     let tree = w.tree().await?;
     let revision = tree["current_revision"].as_u64().context("revision")?;
     ensure!(revision == before + 1, "{before} -> {revision}");
@@ -178,7 +178,6 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
             && types["test"]["status"] == "own"
             && types["rule"]["status"] == "children"
             && types["area"]["status"] == "children"
-            && types["area"]["status_order"] == json!(["red", "grey", "green"])
             && types["memo"]["status"] == "none",
         "{types}"
     );
@@ -188,10 +187,11 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
             json!("parent"),
             "a status rule is tests, children, links or none",
         ),
+        // One priority decides every rollup, so a type has no status order.
         (
             "status_order",
-            json!(["red", "blue"]),
-            "a status order allows only red, grey and green",
+            json!(["grey", "red", "green"]),
+            "unknown field `status_order`",
         ),
     ] {
         let mut changed = types.clone();

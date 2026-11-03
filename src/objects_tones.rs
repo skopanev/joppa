@@ -10,7 +10,8 @@
 //!
 //! A node that waits is at least yellow: it waits for a dependency (`work_ready` false), for a
 //! review (`review_required`) or for the answer to its assessment question (state `waiting`).
-//! Archived nodes do not count. A rule tone that differs from the process tone sets the label.
+//! An archived node is purple and does not count. A rule tone that differs from the process
+//! tone sets the label.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -111,6 +112,10 @@ pub(super) async fn add_status_tones(
             item["signal"]["label"] = json!(label(rule(kind), t, waits(item), counted));
         }
         item["signal"]["tone"] = json!(t);
+    }
+    for item in items.iter_mut().filter(|i| i["present"] == false) {
+        item["signal"]["tone"] = json!(crate::status_colors::ARCHIVED_TONE);
+        item["signal"]["label"] = json!("Archived");
     }
     Ok(())
 }

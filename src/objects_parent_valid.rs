@@ -105,10 +105,8 @@ pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()>
     Ok(())
 }
 
-/// The status rules of a type and the tones that a children rule can order.
+/// The status rules of a type.
 pub const STATUS_RULES: [&str; 5] = ["tests", "own", "children", "links", "none"];
-
-pub const STATUS_TONES: [&str; 3] = ["red", "grey", "green"];
 
 /// The status rule of a type. A type without a rule has the rule unset: its nodes take
 /// the tone orange.
@@ -124,24 +122,6 @@ pub fn role_status_rule(t: &TreeType) -> &str {
         "group" | "requirement" => "children",
         _ => "none",
     })
-}
-
-/// The types of a schema with each children order filled from the schema status list.
-pub fn ordered_types(s: &SchemaRevision) -> BTreeMap<String, TreeType> {
-    let list = crate::status_colors::effective(s.statuses.as_ref(), s.status_colors.as_ref());
-    let order = crate::status_colors::children_order(&list);
-    let mut types = s.types.clone();
-    for t in types.values_mut() {
-        t.status_order.get_or_insert_with(|| order.clone());
-    }
-    types
-}
-
-/// The order of a children rule: its own order, else red, grey, green.
-pub fn status_order(t: &TreeType) -> Vec<String> {
-    t.status_order
-        .clone()
-        .unwrap_or_else(|| STATUS_TONES.iter().map(|s| (*s).to_owned()).collect())
 }
 
 /// The reasons of the schema revisions that the migrations write. A replay of an old

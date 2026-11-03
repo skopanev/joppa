@@ -40,11 +40,12 @@ export function commonObjectFilters(root,contents,redraw){
   owner.onchange=update;status.onchange=()=>{markStatus();update();};let typing;search.oninput=()=>{clearTimeout(typing);typing=setTimeout(update,250);};root.append(controls,fromLink);if(Object.keys(linked).length||status.value||owner.value)update();return controls;
 }
 // The status filter lists the tones of the schema status list in its order, each with its dot.
+// The board lists only present nodes, so the filter omits the tone of archived nodes.
 // The closed filter shows the dot of the selected tone. A native list colours the option text.
-const STATUS_LABELS={green:'Checks passed',red:'Checks failed',purple:'Dependency review',yellow:'Waiting or in progress',grey:'Unchecked or completed'};
+const STATUS_LABELS={green:'Checks passed',red:'Checks failed',yellow:'Waiting or in progress',grey:'Unchecked or completed'};
 function statusFilter(select){
   select.classList.add('status-filter');
-  const listed=(Array.isArray(state.data.statuses)?state.data.statuses:[]).map(item=>item?.tone).filter(tone=>/^[a-z]+$/.test(tone||''));
+  const listed=(Array.isArray(state.data.statuses)?state.data.statuses:[]).map(item=>item?.tone).filter(tone=>/^[a-z]+$/.test(tone||'')&&tone!==state.data.archived_tone);
   for(const tone of listed.length?listed:Object.keys(STATUS_LABELS)){
     const option=E('option',undefined,'status-option');option.value=tone;option.dataset.tone=tone;
     option.style.setProperty('--tone','var(--dot-'+tone+')');

@@ -104,11 +104,6 @@ pub fn set_schema(
             "process_fields allows confirmed for a requirement or a criterion and acceptance for a requirement"
         );
         ensure!(
-            t.status_order.as_ref().is_none_or(|order| !order.is_empty()
-                && order.iter().all(|s| STATUS_TONES.contains(&s.as_str()))),
-            "a status order allows only red, grey and green"
-        );
-        ensure!(
             t.parent_gate
                 .as_deref()
                 .is_none_or(|g| ["ready", "verified", "completed"].contains(&g)),

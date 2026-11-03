@@ -5,7 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn work_priority_ac1_setting_the_priority_resets_nothing() -> Result<()> {
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     w.save("area", "d", None).await?;
     w.save("rule", "r", Some("area:d")).await?;
     w.save("check", "a", Some("rule:r")).await?;
@@ -50,7 +50,7 @@ async fn work_priority_ac1_setting_the_priority_resets_nothing() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn work_priority_ac2_work_sorts_by_the_priority_chain_from_the_top() -> Result<()> {
     let w = world().await?;
-    let task = w.rules_schema(json!(["red", "grey", "green"])).await?;
+    let task = w.rules_schema().await?;
     let task = task.as_str().context("task kind")?;
     w.save("area", "d1", None).await?;
     w.save("area", "d2", None).await?;
@@ -107,7 +107,7 @@ async fn work_priority_ac2_work_sorts_by_the_priority_chain_from_the_top() -> Re
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn work_priority_ac3_only_a_value_of_the_configured_set_is_a_priority() -> Result<()> {
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     w.save("area", "d", None).await?;
     w.save("rule", "r", Some("area:d")).await?;
     let (code, reply) = w.set_priority(&w.alex, "rule:r", "high").await?;
@@ -133,7 +133,7 @@ async fn work_priority_ac3_only_a_value_of_the_configured_set_is_a_priority() ->
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn work_priority_ac6_the_owner_sets_the_list_of_priority_values() -> Result<()> {
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     let tree = w.tree().await?;
     w.command(&w.owner, json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":tree["schema"]["types"],"priorities":["urgent","normal","later"],"reason":"Use our priority words"})).await?;
     ensure!(w.tree().await?["schema"]["priorities"] == json!(["urgent", "normal", "later"]));
@@ -166,7 +166,7 @@ async fn work_priority_ac6_the_owner_sets_the_list_of_priority_values() -> Resul
 async fn dependencies_before_priority_ac1_a_p0_requirement_waits_for_the_p2_one_it_depends_on()
 -> Result<()> {
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     w.save("area", "c", None).await?;
     w.save("rule", "a", Some("area:c")).await?;
     w.save("rule", "b", Some("area:c")).await?;

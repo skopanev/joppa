@@ -55,7 +55,7 @@ order red, orange, yellow, grey, green.
 - A child with `status: "none"`, for example a Task, does not count.
 - A node that waits is at least yellow: it waits for a dependency, a review, or the answer to
   its question (`assess` with `ready: false`).
-- An archived node does not count.
+- An archived node is purple and does not count.
 
 ## Changes
 

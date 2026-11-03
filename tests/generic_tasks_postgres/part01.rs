@@ -51,7 +51,6 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
                 required_fields: Default::default(),
                 parent_decision: false,
                 status: Some("none".into()),
-                status_order: None,
                 process_fields: None,
                 inbox: None,
                 launch_blocker: None,

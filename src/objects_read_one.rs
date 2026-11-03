@@ -155,7 +155,8 @@ pub(super) async fn read_one(
         let kind = item["kind"].as_str().unwrap_or_default().to_owned();
         let role: Option<String> = conn.query_opt("SELECT value->'types'->$2->>'role' FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace, &kind]).await?.and_then(|r| r.get(0));
         if role.as_deref() == Some(crate::test_nodes::ROLE) {
-            let mut stored = stored_statuses(&*conn, &workspace, &[key.clone()]).await?;
+            let mut stored =
+                stored_statuses(&*conn, &workspace, std::slice::from_ref(&key)).await?;
             if let Some(result) = stored.remove(&key).and_then(|s| s["tests"].get(0).cloned()) {
                 item["result"] = result;
             }

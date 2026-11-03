@@ -36,10 +36,10 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
     );
     ensure!(w.status().await?["status"] == "red", "the new list must be red");
     ensure!(
-        planning_criterion(&w).await?["process"]["planning_claim"]["actor"] == "agent",
+        planning_criterion(w).await?["process"]["planning_claim"]["actor"] == "agent",
         "claim missing"
     );
-    let (code, reply) = post(&w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{
+    let (code, reply) = post(w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{
         "op":"release_planning","ac":"ac:key-rights","reason":"Check the opposite batch transition"}})).await?;
     ensure!(code == 200, "{code} {reply}");
     // The batch archives B: A turns green in the batch, so the claim is refused and nothing changes.
@@ -53,7 +53,7 @@ async fn planning_claim_uses_the_current_batch_test_list_in_both_directions() ->
     );
     ensure!(w.status().await?["status"] == "red", "the refused batch changed the list");
     ensure!(
-        planning_criterion(&w).await?["process"]["planning_claim"].is_null(),
+        planning_criterion(w).await?["process"]["planning_claim"].is_null(),
         "the refused batch kept a claim"
     );
     Ok(())

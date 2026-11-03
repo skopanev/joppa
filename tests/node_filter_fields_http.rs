@@ -106,6 +106,11 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
             json!({"status":"blue"}),
             "unknown status blue; use red, purple, yellow, orange, grey, green",
         ),
+        // Only a read that includes archived nodes can find the tone of archived nodes.
+        (
+            json!({"status":"purple"}),
+            "status purple marks archived nodes; find them with joppa_search and all_versions",
+        ),
         (json!({"ready":"yes"}), "ready must be a boolean"),
         (
             json!({"kind":[]}),

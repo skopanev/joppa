@@ -137,7 +137,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `parent` | Each descendant of the node, at any depth. `*`: every level. |
 | `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. `1`: the direct children, or the roots. |
 | `kind` | Nodes of one type or of a list of types. |
-| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. |
+| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: only `joppa_search` with `all_versions` reads them. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose Task holder is this member ID, else whose `data.assignee` is. Any node can have `data.assignee`. |
 | `ready` | `false`: nodes that wait for a dependency, for a review or for the answer to their assessment question (state `waiting`). `true`: every other node. |
@@ -153,6 +153,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
   JSON text. A board link with these query keys, such as `/?workspace=w&assignee=user-1&ready=false`,
   opens the board with that list.
 - A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
+  `status purple marks archived nodes; find them with joppa_search and all_versions`,
   `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.
 - Indexes serve `owner`, `assignee`, the tone and `data` (migration 045 and 039).
 - With `address` the filters are refused: `address cannot be combined with list filters`.

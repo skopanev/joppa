@@ -70,7 +70,6 @@ fn schema_supports_custom_grouping_without_a_capability() {
             required_fields: Default::default(),
             parent_decision: false,
             status: None,
-            status_order: None,
             process_fields: None,
             inbox: None,
             launch_blocker: None,

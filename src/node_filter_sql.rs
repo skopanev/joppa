@@ -21,6 +21,11 @@ pub async fn bind(
     roots: bool,
     archived: bool,
 ) -> Result<Bound> {
+    let tone = crate::status_colors::ARCHIVED_TONE;
+    anyhow::ensure!(
+        archived || !filter.statuses.iter().flatten().any(|s| s == tone),
+        "status {tone} marks archived nodes; find them with joppa_search and all_versions"
+    );
     // The start of the walk: the parent, or the top of the workspace when only depth is set.
     let parent = match (filter.parent.as_deref(), filter.depth) {
         (Some("*") | None, None) => None,

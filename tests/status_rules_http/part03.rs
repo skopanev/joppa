@@ -6,7 +6,7 @@
 async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a_child_has()
 -> Result<()> {
     let w = world().await?;
-    w.rules_schema(json!(["red", "grey", "green"])).await?;
+    w.rules_schema().await?;
     w.save("area", "g1", None).await?;
     w.save("area", "g2", Some("area:g1")).await?;
     w.save("rule", "r", Some("area:g2")).await?;
@@ -35,16 +35,11 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
     w.bind("check:a", &[]).await?;
     ensure!(w.tones(&["check:a", "check:b"]).await? == ["orange", "red"]);
     ensure!(w.tones(&nodes).await? == ["red", "red", "red"], "fixture 4");
-    // Fixture 5: B is red, R2 has check D without tests, and areas put grey before red.
-    // The order of the rollup is fixed, so status_order changes nothing: red wins.
+    // Fixture 5: B is red, and R2 has check D without tests: R2 is orange, and red wins above.
     w.bind("check:a", &["a"]).await?;
     w.report(&[("a", "pass"), ("b", "fail")]).await?;
     w.save("rule", "r2", Some("area:g2")).await?;
     w.save("check", "d", Some("rule:r2")).await?;
-    let tree = w.tree().await?;
-    let mut types = tree["schema"]["types"].clone();
-    types["area"]["status_order"] = json!(["grey", "red", "green"]);
-    w.command(&w.owner, json!({"op":"set_tree_schema","revision":tree["current_revision"],"types":types,"reason":"Put grey first"})).await?;
     ensure!(
         w.tones(&["rule:r", "rule:r2", "area:g2", "area:g1"])
             .await?
@@ -60,7 +55,7 @@ async fn type_status_rules_ac2_a_node_takes_the_first_status_in_its_order_that_a
 async fn type_status_rules_ac3_empty_nodes_are_orange_and_uncounted_children_change_nothing()
 -> Result<()> {
     let w = world().await?;
-    let task = w.rules_schema(json!(["red", "grey", "green"])).await?;
+    let task = w.rules_schema().await?;
     let task = task.as_str().context("task kind")?;
     w.save("area", "h", None).await?;
     w.save("rule", "q", Some("area:h")).await?;

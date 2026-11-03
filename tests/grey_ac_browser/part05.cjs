@@ -135,7 +135,7 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
   try {
     const tree = await f.api('/tree');
     const types = structuredClone(tree.schema.types);
-    types.area = {title: 'Areas', role: 'group', root: true, parents: ['area'], status: 'children', status_order: ['red', 'grey', 'green']};
+    types.area = {title: 'Areas', role: 'group', root: true, parents: ['area'], status: 'children'};
     types.rule = {title: 'Rules', role: 'requirement', parents: ['area'], status: 'children'};
     types.check = {title: 'Checks', role: 'ac', parents: ['rule'], status: 'children'};
     types.test = {...types.test, parents: [...types.test.parents, 'check']};
@@ -192,11 +192,7 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     await report([['a'], ['b', 'boom']]);
     await f.save('rule:r2', {title: 'R2', parent: 'area:g2'});
     await f.save('check:d', {title: 'D', parent: 'rule:r2'});
-    const next = await f.api('/tree');
-    const ordered = structuredClone(next.schema.types);
-    ordered.area.status_order = ['grey', 'red', 'green'];
-    await f.command({op: 'set_tree_schema', revision: next.current_revision, types: ordered, reason: 'Put grey first'}, true);
-    // One rollup decides every tone: a saved status order does not put grey over red.
+    // One rollup decides every tone: the orange R2 does not put orange over red.
     await check('fixture 6', ['red', 'red', 'red']);
     // An orange R says that a child has no tests, a grey R keeps its process label, a green R
     // says that its children passed, and a red R says that a child failed, in every theme.

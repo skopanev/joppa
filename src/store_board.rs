@@ -111,6 +111,6 @@ pub async fn board_read(pool: &Pool, workspace: &str, actor: &str) -> Result<Val
         json!({"workspace":first["workspace_id"],"position":row.get::<_,i64>(0),"lazy":true,
                 "state":{"title":first["title"],"members":members},
                 "member_labels":labels,"launch":first["launch"],
-                "object_types":first["object_types"],"statuses":first["statuses"],"counts":first["counts"],"custom_tree":first["custom_tree"]}),
+                "object_types":first["object_types"],"statuses":first["statuses"],"archived_tone":crate::status_colors::ARCHIVED_TONE,"counts":first["counts"],"custom_tree":first["custom_tree"]}),
     )
 }

@@ -12,7 +12,7 @@ fn schema_types(w: &World) -> Value {
 }
 
 #[test]
-fn ordered_statuses_save_with_both_themes_and_set_the_children_order() {
+fn ordered_statuses_save_with_both_themes() {
     let mut w = World::new();
     let types = schema_types(&w);
     let statuses = json!([
@@ -26,12 +26,6 @@ fn ordered_statuses_save_with_both_themes_and_set_the_children_order() {
     );
     let schema = joppa::objects::schema(&w.state);
     assert_eq!(serde_json::to_value(&schema.statuses).unwrap(), statuses);
-    let ordered = joppa::objects::ordered_types(&schema);
-    assert_eq!(
-        ordered["requirement"].status_order.as_deref(),
-        Some(&["green".to_owned(), "red".to_owned(), "grey".to_owned()][..]),
-        "a higher entry wins in a children rule"
-    );
     let e = w
         .apply(
             "owner",
