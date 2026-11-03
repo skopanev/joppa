@@ -10,20 +10,28 @@ import {objectURL} from 'board/links.js';
 import {personLabel} from 'board/format.js';
 // The card shows this many characters of the body, and this many characters of a field value.
 const BODY=280,VALUE=120;
-export function nodeCard(card,graph,nodes,address,pick){
+let collapsed=false;
+export function nodeCard(card,graph,nodes,address,pick,onFocus){
   card.replaceChildren();card.hidden=!address;
   if(!address)return;
   const node=nodes.get(address)||{address},generation=state.loadNumber;card.dataset.address=address;
+  card.classList.toggle('graph-card-collapsed',collapsed);
   const close=E('button','×','graph-card-close');close.type='button';close.setAttribute('aria-label','Close the card');close.onclick=()=>pick(null);
-  const tone=node.signal?.tone||'grey',head=E('div',undefined,'graph-card-head');
-  head.append(E('span',undefined,'status-circle '+tone),E('strong',node.title||address,'graph-card-title'),close);
+  const toggle=E('button',collapsed?'Details ▾':'Hide ▴','graph-hop');toggle.type='button';
+  toggle.onclick=()=>{collapsed=!collapsed;card.classList.toggle('graph-card-collapsed',collapsed);toggle.textContent=collapsed?'Details ▾':'Hide ▴';};
+  const focusBtn=E('button','Focus flow','graph-hop');focusBtn.type='button';
+  if(onFocus)focusBtn.onclick=()=>onFocus(address);
   const open=E('a','Open →','graph-open');open.href=objectURL(address);
+  const tone=node.signal?.tone||'grey',head=E('div',undefined,'graph-card-head');
+  head.append(E('span',undefined,'status-circle '+tone),E('strong',node.title||address,'graph-card-title'), ...(onFocus?[focusBtn]:[]),toggle,open,close);
+  const details=E('div',undefined,'graph-card-details');
   const facts=E('dl',undefined,'graph-card-facts');
   const fact=(term,value)=>{if(value===undefined||value===null||value==='')return;facts.append(E('dt',term),value instanceof Node?wrap(value):E('dd',String(value)));};
   fact('Address',address);fact('Status',node.signal?.label||tone);
   if(node.parent)fact('Parent',hop(nodes,node.parent,pick));
   const body=E('p',undefined,'graph-card-body hint');
-  card.append(head,facts,body,steps(graph,nodes,address,pick),open);
+  details.append(facts,body,steps(graph,nodes,address,pick));
+  card.append(head,details);
   // The detail read gives the readiness, the data fields and the body.
   objectPart({address}).then(detail=>{
     if(generation!==state.loadNumber||card.dataset.address!==address||!card.isConnected)return;

@@ -69,30 +69,32 @@ The board shows the timeline at `/?workspace=W&view=timeline`, newest first.
 
 ## Board views
 
-The header switch Tree | Graph changes the board view and keeps the node filters of the link.
-Every board list reads one page of 25 rows. Load more reads the next page with its cursor.
-Each filter field of the tree schema (`filters`, see [schema](schema.md#filter-fields)) adds
-one drop-down to the filter bar. A choice is a part of the `data` node filter.
+The header drop-down Board view (Tree or Graph) changes the board view and keeps the node
+filters of the link. Every board list reads one page of 25 rows. Load more reads the next page
+with its cursor. Each filter field of the tree schema (`filters`, see
+[schema](schema.md#filter-fields)) adds one drop-down to the filter bar. A choice is a part of
+the `data` node filter.
 
 - Tree, `/?workspace=W`: the root collections, the cards and their children.
 - Graph, `/?workspace=W&view=graph`: one SVG of every present node in a live force layout.
   The graph reads the nodes with
   `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,links`.
-  - A dot has the colour of its status tone. Its radius shows its level: 12 for a root, 8.5,
-    6, and 4.5 for a node 3 or more levels down.
-  - A line joins a parent to its child. An arrow goes from a node to each node that
+  - A dot has the colour of its status tone. Its size shows its level: a root is the
+    largest. Two dots never overlap, and two shown labels never overlap.
+  - A line joins a parent to its child. A dashed arrow goes from a node to each node that
     `depends_on` it.
-  - The path of a node set is the set, every node below it, every node that they depend on
-    and every node that depends on them at any distance, and their parents up to the root.
-    Each node of a path shows its step: 1 for a node with no upstream node in the path.
-  - Without a filter every node shows, muted. A click on a dot lights its path, and the other
-    nodes fade to opacity 0.08. A card shows the node, its parent, its data fields, the start
-    of its body and the nodes one `depends_on` step up and down. A step picks its node.
-  - With a filter, a field choice, the Object root picker or a search, only the matches and
-    their path show. The layout runs on them alone and orders the steps from left to right.
+  - A graph of more than 120 nodes shows the top 3 levels first. Detail depth (the `depth`
+    node filter) shows the top 2 levels or all levels.
+  - A filter, a field choice, the Object root picker or a search keeps its subgraph: the
+    matches, the nodes below them and their `depends_on` nodes up and down. Every other
+    node hides.
+  - The flow of a clicked dot, or of a subgraph of at most 24 nodes, is lit: its
+    `depends_on` nodes up to 2 hops away, in flow layers with step numbers and a trail. The
+    other nodes fade to opacity 0.08. A card shows the node, its parent, its data fields, the
+    start of its body and the nodes one step up and down. Focus flow keeps only that flow,
+    and a click on the empty canvas resets it.
   - A drag of a dot pulls its linked dots. A drag from any other place pans. A wheel or a
     two-finger swipe pans, and a pinch (a wheel with Ctrl or Cmd, or a Safari gesture) zooms.
-    The camera fits the path after each pick or filter.
 
 ## Generated IDs and batches
 

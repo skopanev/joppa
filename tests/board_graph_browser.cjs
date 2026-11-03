@@ -12,66 +12,69 @@ test('board-graph-ac1 graph: each node is a dot of its tone and level with paren
     await world.build(f);
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     await f.page.locator('#tree .common-object[data-object-address="domain:pay"]').waitFor();
-    assert.equal(await f.page.locator('#tree-view-link').getAttribute('aria-current'), 'page');
-    await f.page.locator('#graph-link').click();
+    const view = f.page.getByLabel('Board view');
+    assert.equal(await view.inputValue(), 'tree');
+    await view.selectOption('graph');
     await f.page.locator('.graph-canvas[data-state=rest]').waitFor();
     assert.equal(new URL(f.page.url()).searchParams.get('view'), 'graph');
-    assert.equal(await f.page.locator('#graph-link').getAttribute('aria-current'), 'page');
-    // The segment of the shown view is filled with the heading colour.
-    const segment = await f.page.evaluate(() => {
-      const s = getComputedStyle(document.querySelector('#graph-link')), probe = document.createElement('span');
-      probe.style.color = 'var(--heading)';document.body.append(probe);const heading = getComputedStyle(probe).color;probe.remove();
-      return [s.backgroundColor === heading, s.textDecorationLine];
-    });
-    assert.deepEqual(segment, [true, 'none']);
-    // Each dot has the stored tone of its node, the colour of that tone and the radius of its level.
+    assert.equal(await view.inputValue(), 'graph');
+    // Each dot has the stored tone of its node, the colour of that tone and the size of its level.
     const list = await f.api('/objects?parent=*&limit=100&fields=signal');
     const tones = Object.fromEntries(list.items.map(item => [item.address, item.signal.tone]));
     const dots = await f.page.evaluate(() => [...document.querySelectorAll('.graph-node')].map(dot => {
       const probe = document.createElement('span');probe.style.color = 'var(--dot-' + dot.dataset.tone + ')';document.body.append(probe);
       const wanted = getComputedStyle(probe).color;probe.remove();
-      return {address: dot.dataset.address, tone: dot.dataset.tone, fill: getComputedStyle(dot).fill, wanted, r: dot.getAttribute('r'), opacity: getComputedStyle(dot).opacity};
+      return {address: dot.dataset.address, tone: dot.dataset.tone, fill: getComputedStyle(dot).fill, wanted, r: Number(dot.getAttribute('r')), opacity: getComputedStyle(dot).opacity};
     }));
     assert.equal(dots.length, 8);
+    const radius = Object.fromEntries(dots.map(d => [d.address.startsWith('test:') ? 'test:' : d.address, d.r]));
     for (const dot of dots) {
       assert.equal(dot.tone, tones[dot.address], dot.address + ' tone');
       assert.equal(dot.fill, dot.wanted, dot.address + ' colour');
-      assert.equal(dot.r, dot.address.startsWith('domain:') ? '12' : dot.address.startsWith('ac:') ? '8.5' : '6', dot.address + ' radius');
-      assert.equal(dot.opacity, '0.55', dot.address + ' is muted without a pick');
+      assert.equal(dot.opacity, '0.88', dot.address + ' without a pick');
+    }
+    for (const [a, b, ratio] of [['domain:pay', 'ac:a', 12 / 8.5], ['ac:a', 'test:', 8.5 / 6], ['domain:ship', 'domain:pay', 1]]) {
+      assert.ok(Math.abs(radius[a] / radius[b] - ratio) < 0.03, a + ' / ' + b + ': ' + JSON.stringify(radius));
     }
     assert.equal(tones['ac:a'], 'green');
     assert.equal(await f.page.locator('.graph-parent').count(), 6, 'one parent line for each node with a parent');
     const arrows = await f.page.evaluate(() => [...document.querySelectorAll('.graph-depends')]
-      .map(path => [path.dataset.from, path.dataset.to, path.getAttribute('marker-end'), getComputedStyle(path).opacity]));
-    assert.deepEqual(arrows.sort(), [['ac:a', 'ac:b', 'url(#graph-arrow)', '0.18'], ['ac:b', 'ac:c', 'url(#graph-arrow)', '0.18']]);
+      .map(path => [path.dataset.from, path.dataset.to, getComputedStyle(path).markerEnd.includes('graph-arrow')]));
+    assert.deepEqual(arrows.sort(), [['ac:a', 'ac:b', true], ['ac:b', 'ac:c', true]]);
     assert.deepEqual(await classes(f), {hidden: [], lit: [], faint: []});
-    const labels = await f.page.evaluate(() => [...document.querySelectorAll('.graph-label')].filter(l => getComputedStyle(l).display !== 'none').map(l => l.dataset.address).sort());
-    assert.deepEqual(labels, ['domain:pay', 'domain:ship'], 'without a pick only the roots are named');
+    // The roots are named first, and no two shown labels overlap.
+    const labels = await f.page.evaluate(() => [...document.querySelectorAll('.graph-label')].filter(l => getComputedStyle(l).display !== 'none')
+      .map(l => {const b = l.getBoundingClientRect();return {address: l.dataset.address, box: [b.left, b.top, b.right, b.bottom]};}));
+    for (const root of ['domain:pay', 'domain:ship']) assert.ok(labels.some(l => l.address === root), root + ' has a label');
+    for (const [i, a] of labels.entries()) for (const b of labels.slice(i + 1)) {
+      assert.ok(!(a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1]), a.address + ' overlaps ' + b.address);
+    }
     assert.ok(await inView(f, ALL), 'the camera shows every node');
     await f.page.setViewportSize({width: 390, height: 800});
     assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   } finally { await f.close(); }
 });
 
-test('board-graph-ac2 graph-pick: a click lights the path in steps, shows the card and fades the rest', async () => {
+test('board-graph-ac2 graph-pick: a click lights the flow in steps, shows the card and fades the rest', async () => {
   const f = await fixture(world.types);
   try {
     await world.build(f);
     await open(f, '');
     const dot = address => f.page.locator('.graph-node[data-address="' + address + '"]');
     await dot('ac:b').click();
-    const path = ['ac:a', 'ac:b', 'ac:c', 'domain:pay', 'domain:ship'];
-    await waitClasses(f, {hidden: [], lit: path, faint: ['ac:d', 'ac:e', 'test:']}, 'b: a upstream, c downstream and both roots');
+    const flow = ['ac:a', 'ac:b', 'ac:c'], rest = ['ac:d', 'ac:e', 'domain:pay', 'domain:ship', 'test:'];
+    await waitClasses(f, {hidden: [], lit: flow, faint: rest}, 'b: a upstream and c downstream');
     const look = await f.page.evaluate(() => ({
       steps: Object.fromEntries([...document.querySelectorAll('.graph-step.graph-step-shown')].map(s => [s.dataset.address, s.textContent])),
       trail: [...document.querySelectorAll('.graph-picked .graph-hop')].map(h => h.dataset.address),
       faint: getComputedStyle(document.querySelector('.graph-node[data-address="ac:d"]')).opacity,
-      r: document.querySelector('.graph-node[data-address="ac:b"]').getAttribute('r'),
+      grown: Number(document.querySelector('.graph-node[data-address="ac:b"]').getAttribute('r')) / Number(document.querySelector('.graph-node[data-address="ac:d"]').getAttribute('r')),
       arrow: getComputedStyle(document.querySelector('.graph-depends[data-to="ac:b"]')).strokeWidth}));
-    assert.deepEqual(look.steps, {'domain:pay': '1', 'domain:ship': '1', 'ac:a': '2', 'ac:b': '3', 'ac:c': '4'});
-    assert.deepEqual(look.trail, ['domain:pay', 'domain:ship', 'ac:a', 'ac:b', 'ac:c']);
-    assert.deepEqual([look.faint, look.r, look.arrow], ['0.08', '10', '2.4px']);
-    assert.ok(await inView(f, path), 'the camera shows the path');
+    assert.deepEqual(look.steps, {'ac:a': '1', 'ac:b': '2', 'ac:c': '3'});
+    assert.deepEqual(look.trail, flow);
+    assert.deepEqual([look.faint, look.arrow], ['0.08', '2.5px']);
+    assert.ok(Math.abs(look.grown - 10 / 8.5) < 0.03, String(look.grown));
+    assert.ok(await inView(f, flow), 'the camera shows the flow');
     // The card names the node, its parent, its data and its steps of one hop.
     const card = f.page.locator('.graph-card');
     await card.locator('.graph-card-facts dt', {hasText: 'owner'}).waitFor();
@@ -83,65 +86,75 @@ test('board-graph-ac2 graph-pick: a click lights the path in steps, shows the ca
     assert.equal(new URL(await card.locator('a.graph-open').getAttribute('href')).searchParams.get('object'), 'ac:b');
     const hops = title => card.locator('.graph-card-step', {hasText: title}).locator('.graph-hop').evaluateAll(h => h.map(x => x.dataset.address));
     assert.deepEqual([await hops('Depends on'), await hops('Needed by')], [['ac:a'], ['ac:c']]);
+    // Hide folds the details, and Details opens them again.
+    await card.getByRole('button', {name: 'Hide ▴'}).click();
+    assert.equal(await card.locator('.graph-card-details').isHidden(), true);
+    await card.getByRole('button', {name: 'Details ▾'}).click();
     // A step of the card picks its node. × clears the pick.
     await card.locator('.graph-card-step', {hasText: 'Needed by'}).locator('.graph-hop').click();
     await f.page.waitForFunction(() => document.querySelector('.graph-card .graph-card-title')?.textContent === 'Ship after the refund');
-    await waitClasses(f, {hidden: [], lit: path, faint: ['ac:d', 'ac:e', 'test:']}, 'c has the same path');
+    await waitClasses(f, {hidden: [], lit: flow, faint: rest}, 'c: b and a upstream');
     await card.locator('.graph-card-close').click();
     await waitClasses(f, {hidden: [], lit: [], faint: []}, 'the close button clears the pick');
     assert.equal(await card.isHidden(), true);
     await dot('ac:d').click();
-    await waitClasses(f, {hidden: [], lit: ['ac:d', 'domain:ship'], faint: ['ac:a', 'ac:b', 'ac:c', 'ac:e', 'domain:pay', 'test:']}, 'd has only its root');
-    await f.page.locator('.graph-picked .graph-hop[data-address="domain:ship"]').click();
-    await waitClasses(f, {hidden: [], lit: ['ac:a', 'ac:b', 'ac:c', 'ac:d', 'domain:pay', 'domain:ship'], faint: ['ac:e', 'test:']}, 'a trail step picks ship: its branch and the path of c');
+    await waitClasses(f, {hidden: [], lit: ['ac:d'], faint: ['ac:a', 'ac:b', 'ac:c', 'ac:e', 'domain:pay', 'domain:ship', 'test:']}, 'd has no flow');
+    // Focus flow keeps only the flow of the node. A click on the empty canvas resets the graph.
+    await card.getByRole('button', {name: 'Focus flow'}).click();
+    await waitClasses(f, {hidden: ['ac:a', 'ac:b', 'ac:c', 'ac:e', 'domain:pay', 'domain:ship', 'test:'], lit: ['ac:d'], faint: []}, 'focus on d');
     await f.page.locator('.graph-canvas').click({position: {x: 3, y: 3}});
-    await waitClasses(f, {hidden: [], lit: [], faint: []}, 'a click on the empty canvas clears the pick');
+    await waitClasses(f, {hidden: [], lit: [], faint: []}, 'a click on the empty canvas resets the graph');
   } finally { await f.close(); }
 });
 
-test('board-graph-ac3 graph-filters: a filter, a field, a root or a search keeps only its path', async () => {
+test('board-graph-ac3 graph-filters: a filter, a field, a root or a search keeps only its subgraph and flow', async () => {
   const f = await fixture(world.types);
   try {
     await world.build(f);
     await open(f, '&owner=maria');
-    const path = ['ac:a', 'ac:b', 'ac:c', 'domain:pay', 'domain:ship'];
+    const flow = ['ac:a', 'ac:b', 'ac:c', 'test:'];
     assert.equal(await f.page.getByLabel('Object owner').inputValue(), 'maria');
-    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'test:'], lit: path, faint: []}, 'owner maria: c and its path');
-    assert.equal(await f.page.evaluate(() => getComputedStyle(document.querySelector('.graph-node[data-address="ac:d"]')).display), 'none');
-    assert.ok(await inView(f, path), 'the camera shows the path');
-    const labels = await f.page.evaluate(() => [...document.querySelectorAll('.graph-label')].filter(l => getComputedStyle(l).display !== 'none').map(l => l.dataset.address).sort());
-    assert.deepEqual(labels, path, 'a filter names every node of its path');
-    assert.match(await f.page.locator('#tree-view-link').getAttribute('href'), /owner=maria/);
+    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'domain:pay', 'domain:ship'], lit: flow, faint: []}, 'owner maria: c, its depends_on nodes and the branch of a');
+    assert.equal(await f.page.evaluate(() => getComputedStyle(document.querySelector('.graph-node[data-address="domain:pay"]')).display), 'none');
+    assert.ok(await inView(f, flow), 'the camera shows the subgraph');
+    const labels = await f.page.evaluate(() => [...document.querySelectorAll('.graph-label')].filter(l => getComputedStyle(l).display !== 'none').map(l => l.dataset.address.startsWith('test:') ? 'test:' : l.dataset.address).sort());
+    assert.deepEqual(labels, flow, 'a small flow names every node');
     await f.page.getByLabel('Object status').selectOption('green');
     await waitClasses(f, {hidden: ALL, lit: [], faint: []}, 'owner maria and status green match nothing');
     assert.equal(await f.page.locator('.graph-status').textContent(), 'No node matches these filters.');
     await f.page.getByLabel('Object owner').selectOption('');
-    await waitClasses(f, {hidden: ['ac:d', 'ac:e'], lit: ['test:', ...path], faint: []}, 'status green: the test node, a and their path');
+    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'domain:pay', 'domain:ship'], lit: flow, faint: []}, 'status green: the test node and a, with b and c');
     await f.page.getByLabel('Object status').selectOption('');
     await waitClasses(f, {hidden: [], lit: [], faint: []}, 'no filter');
     // The schema filter field tags gives a drop-down of its values.
     const tags = f.page.getByLabel('Filter tags');
     assert.deepEqual(await tags.locator('option').allTextContents(), ['All tags', 'label', 'swap']);
     await tags.selectOption({label: 'swap'});
-    await waitClasses(f, {hidden: ['ac:d', 'ac:e'], lit: ['test:', ...path], faint: []}, 'tag swap: a and its path');
+    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'domain:pay', 'domain:ship'], lit: flow, faint: []}, 'tag swap');
     assert.equal(new URL(f.page.url()).searchParams.get('data'), '{"tags":["swap"]}');
     await tags.selectOption('');
-    // The root picker keeps the branch of one root and the path of its nodes.
-    assert.deepEqual(await f.page.getByLabel('Object root').locator('option').allTextContents(), ['All roots', 'Payments', 'Shipping']);
+    // The root picker lists the roots with children and their children with children.
+    assert.deepEqual(await f.page.getByLabel('Object root').locator('option').allTextContents(), ['All roots', 'Payments', '  ↳ Zebra card capture', 'Shipping']);
+    assert.deepEqual(await f.page.getByLabel('Detail depth').locator('option').allTextContents(), ['Top 3 levels', 'Top 2 levels', 'All levels']);
     await f.page.getByLabel('Object root').selectOption({label: 'Shipping'});
-    await waitClasses(f, {hidden: ['ac:e', 'test:'], lit: ['ac:a', 'ac:b', 'ac:c', 'ac:d', 'domain:pay', 'domain:ship'], faint: []}, 'root ship');
+    await waitClasses(f, {hidden: ['ac:e', 'domain:pay'], lit: ['ac:a', 'ac:b', 'ac:c', 'ac:d', 'domain:ship', 'test:'], faint: []}, 'root ship: its branch, b and a');
     assert.equal(new URL(f.page.url()).searchParams.get('parent'), 'domain:ship');
     await f.page.getByLabel('Object root').selectOption('');
     // The board search finds what joppa_search finds: a by the word Zebra.
     const found = (await f.mcp('joppa_search', {query: 'Zebra', limit: 50})).items.map(item => item.address.startsWith('test:') ? 'test:' : item.address);
     assert.ok(found.includes('ac:a') && found.every(a => a === 'ac:a' || a === 'test:'), JSON.stringify(found));
     await f.page.getByLabel('Search objects').fill('Zebra');
-    await waitClasses(f, {hidden: ['ac:d', 'ac:e'], lit: ['test:', ...path], faint: []}, 'search Zebra');
-    // A click inside a filter lights the path of that node inside the filter.
+    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'domain:pay', 'domain:ship'], lit: flow, faint: []}, 'search Zebra');
+    // A click inside a filter lights the flow of that node inside the filter.
     await f.page.locator('.graph-node[data-address="ac:c"]').click();
-    await waitClasses(f, {hidden: ['ac:d', 'ac:e'], lit: path, faint: ['test:']}, 'c inside the search');
+    await waitClasses(f, {hidden: ['ac:d', 'ac:e', 'domain:pay', 'domain:ship'], lit: ['ac:a', 'ac:b', 'ac:c'], faint: ['test:']}, 'c inside the search');
     await f.page.getByLabel('Search objects').fill('');
     await waitClasses(f, {hidden: [], lit: [], faint: []}, 'cleared search');
+    // The view drop-down keeps the node filters of the link.
+    await f.page.getByLabel('Object owner').selectOption('maria');
+    await f.page.getByLabel('Board view').selectOption('tree');
+    await f.page.waitForURL(url => !url.searchParams.has('view'));
+    assert.equal(new URL(f.page.url()).searchParams.get('owner'), 'maria');
   } finally { await f.close(); }
 });
 

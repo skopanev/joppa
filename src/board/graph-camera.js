@@ -5,13 +5,23 @@
 //   under reduced motion.
 const MIN_WIDTH=60,MAX_WIDTH=60000;
 export function graphCamera(canvas){
-  let view=[-500,-500,1000,1000],goal=null,frame=0;
+  let view=[-500,-500,1000,1000],goal=null,frame=0,box=null,boxAt=0;
   const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const apply=()=>canvas.setAttribute('viewBox',view.map(v=>Math.round(v*100)/100).join(' '));
-  // The world units for one screen pixel, from the screen matrix of the SVG.
-  const unit=()=>{const m=canvas.getScreenCTM();return m&&m.a?1/m.a:1;};
+  // The canvas box is read at most once in 500 ms. A scroll or a resize reads it again.
+  const rect=()=>{const now=performance.now();if(!box||now-boxAt>500){box=canvas.getBoundingClientRect();boxAt=now;}return box;};
+  for(const type of ['scroll','resize'])addEventListener(type,()=>{box=null;},{passive:true,capture:true});
+  new ResizeObserver(()=>{box=null;}).observe(canvas);
+  // The world units for one screen pixel. The SVG fits the whole view box into the canvas
+  // (xMidYMid meet), so the larger of the two ratios applies.
+  const unit=()=>{const b=rect();return b.width&&b.height?Math.max(view[2]/b.width,view[3]/b.height):1;};
+  const apply=()=>{
+    const u=unit();
+    canvas.setAttribute('viewBox',view.map(v=>Math.round(v*100)/100).join(' '));
+    canvas.style.setProperty('--u',u.toFixed(3));
+    camera.onView?.(u);
+  };
   const shape=([x,y,w,h])=>{
-    const box=canvas.getBoundingClientRect(),ratio=box.width&&box.height?box.width/box.height:1;
+    const b=rect(),ratio=b.width&&b.height?b.width/b.height:1;
     if(w/h>ratio){const height=w/ratio;return [x,y-(height-h)/2,w,height];}
     const width=h*ratio;return [x-(width-w)/2,y,width,h];
   };
@@ -24,8 +34,9 @@ export function graphCamera(canvas){
   const stop=()=>{goal=null;cancelAnimationFrame(frame);frame=0;};
   // The world point under the pointer.
   const point=event=>{
-    const m=canvas.getScreenCTM();if(!m)return [view[0]+view[2]/2,view[1]+view[3]/2];
-    const p=new DOMPoint(event.clientX,event.clientY).matrixTransform(m.inverse());return [p.x,p.y];
+    const b=rect();if(!b.width||!b.height)return [view[0]+view[2]/2,view[1]+view[3]/2];
+    const u=unit();
+    return [view[0]+view[2]/2+(event.clientX-b.left-b.width/2)*u,view[1]+view[3]/2+(event.clientY-b.top-b.height/2)*u];
   };
   const zoom=(event,k)=>{
     stop();const [x,y]=point(event),w=Math.min(MAX_WIDTH,Math.max(MIN_WIDTH,view[2]*k)),s=w/view[2];

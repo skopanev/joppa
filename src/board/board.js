@@ -22,13 +22,13 @@ export async function load() {
   state.data = next;
   state.data.objectTypes=next.object_types||{};
   applyStatuses(next.statuses);
-  // The view links: Tree and Graph switch the board view and keep the node filters of the
-  // link. Timeline opens the timeline page. A click reads the filters of that moment.
-  const selection=new URLSearchParams(location.search),view=selection.has('object')?'':selection.get('view')||'tree';
-  for(const [id,name] of [['tree-view-link','tree'],['graph-link','graph'],['timeline-link','timeline']]){
-    const link=$(id);link.href=viewHref(name);link.onclick=()=>{link.href=viewHref(name);};
-    if(name===view)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
-  }
+  // The view drop-down switches between Tree and Graph and keeps the node filters of the link.
+  // Timeline opens the timeline page. A change reads the filters of that moment.
+  const selection=new URLSearchParams(location.search),viewSelect=$('view-select');
+  viewSelect.value=selection.get('view')==='graph'?'graph':'tree';
+  viewSelect.onchange=()=>{location.href=viewHref(viewSelect.value);};
+  const timeline=$('timeline-link');timeline.href=viewHref('timeline');
+  if(selection.get('view')==='timeline')timeline.setAttribute('aria-current','page');else timeline.removeAttribute('aria-current');
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(state.ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(state.ws);
   await renderObjectTree();
