@@ -110,3 +110,36 @@ test('board-link-filters: a board link with node filters opens that list', async
     assert.equal(await f.page.locator('.link-filters').textContent(), 'kind = ac');
   } finally { await f.close(); }
 });
+
+test('board-filter-pages: a filter list and a search show 25 rows, and Load more adds the next 25', async () => {
+  const types = {
+    domain: {title: 'Domains', role: 'group', status: 'children', root: true, parents: []},
+    ac: {title: 'Criteria', role: 'ac', status: 'children', parents: ['domain']},
+    test: testType(['ac']),
+  };
+  const f = await fixture(types);
+  try {
+    for (let i = 0; i < 30; i++) await f.save('domain:r' + String(i).padStart(2, '0'), 'Region ' + i, null, 'alex');
+    const reads = [];
+    f.page.on('request', request => { const url = new URL(request.url()); if (/\/(objects|search)$/.test(url.pathname)) reads.push(url); });
+    const rows = () => f.page.locator('.object-filter-results .common-object, .object-filter-results a.search-result');
+    const more = f.page.locator('.object-filter-results button.filter-more');
+    for (const [query, path] of [['owner=alex', '/objects'], ['', '/search']]) {
+      reads.length = 0;
+      await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + (query ? '&' + query : ''));
+      if (!query) { await f.page.locator('#tree .common-object').first().waitFor(); reads.length = 0; await f.page.getByLabel('Search objects').fill('Region'); }
+      await f.page.waitForFunction(() => document.querySelectorAll('.object-filter-results .common-object, .object-filter-results a.search-result').length === 25);
+      await more.waitFor();
+      const first = reads.filter(url => url.pathname.endsWith(path));
+      assert.equal(first.length, 1, path + ' reads one page: ' + first.join(' '));
+      assert.equal(first[0].searchParams.get('limit'), '25');
+      await more.click();
+      await f.page.waitForFunction(() => document.querySelectorAll('.object-filter-results .common-object, .object-filter-results a.search-result').length === 30);
+      assert.equal(await rows().count(), 30);
+      assert.equal(await more.count(), 0, path + ': the last page offers no Load more');
+      const pages = reads.filter(url => url.pathname.endsWith(path));
+      assert.equal(pages.length, 2, path + ' reads two pages');
+      assert.ok(pages[1].searchParams.get('cursor'), path + ': the second read names the cursor');
+    }
+  } finally { await f.close(); }
+});

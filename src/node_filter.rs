@@ -10,7 +10,9 @@
 //! - `status` is the stored tone of the node: the rollup tone, else the signal tone.
 //! - `owner` is `data.owner` and `assignee` is `data.assignee`. Any node can have both.
 //! - `ready` is false when the node waits: for a dependency, or for the answer that its
-//!   readiness mark asks for (`assess` with `ready: false`). Every other node is ready.
+//!   readiness mark asks for (`assess` with `ready: false`). A node of a type with the status
+//!   rule `children` or `links` is ready only when every counted child or linking object is
+//!   ready. Every other node is ready.
 //! - `data` is a JSON object that `document.data` contains, as the JSONB operator `@>`.
 //!
 //! The same SQL clause serves every read, with the alias `o` for `joppa.objects`.

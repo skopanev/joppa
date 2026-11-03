@@ -28,6 +28,8 @@ mod tone_items;
 use tone_items::add_status_tones;
 #[path = "objects_projection.rs"]
 mod projection;
+#[path = "objects_ready_rollup.rs"]
+mod ready_rollup;
 pub use projection::ProjectionNotReady;
 use projection::apply_rollups;
 pub(super) use projection::{

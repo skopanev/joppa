@@ -4,7 +4,7 @@ import {E} from 'board/dom.js';
 import {historyIcon,propertiesIcon} from 'board/icons.js';
 import {notify,button} from 'board/feedback.js';
 import {copyButton} from 'board/clipboard.js';
-import {objectPart} from 'board/api.js';
+import {objectPart,PAGE} from 'board/api.js';
 import {stopBranchAnimation,animateBranchHeight,enableBranchMotion,resizeBranch} from 'board/motion.js';
 import {nodeTitle} from 'board/status.js';
 import {applyObjectColor,objectTitlePreview,objectTypeLabel,inputQueue} from 'board/object-types.js';
@@ -45,7 +45,7 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   // Fill the body with the document and its children. Both requests run at once.
   const fill=async()=>{
-    const generation=state.loadNumber,childParams={limit:'50',parent:item.address,depth:'1'};
+    const generation=state.loadNumber,childParams={limit:PAGE,parent:item.address,depth:'1'};
     const [detail,kids]=await Promise.all([loadedDetail||objectPart({address:item.address}),objectPart(childParams).catch(()=>null)]);
     if(generation!==state.loadNumber||!card.isConnected)return;
     body.replaceChildren();fillCommonObject(body,detail);

@@ -67,6 +67,20 @@ for each journal event, in journal order.
 
 The board shows the timeline at `/?workspace=W&view=timeline`, newest first.
 
+## Board views
+
+The header links Tree and Graph switch the board view and keep the node filters of the link.
+Every board list reads one page of 25 rows. Load more reads the next page with its cursor.
+
+- Tree, `/?workspace=W`: the root collections, the cards and their children.
+- Graph, `/?workspace=W&view=graph`: one SVG of every present node. A dot has the colour of
+  its status tone. A line joins a node to its parent, and an arrow goes from a node to each
+  node that it `depends_on`. The graph reads the nodes with
+  `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,links`.
+- In the graph, the filter bar and a click on a dot select the seed nodes. The seeds and their
+  full `depends_on` chain, upstream and downstream, stay lit. Every other dot, edge and label
+  has opacity 0.15. A click on the empty canvas clears the pick.
+
 ## Generated IDs and batches
 
 Omit `id` when you create an object, a comment or a file. The server makes an 8-character
@@ -100,8 +114,8 @@ The server command line takes explicit local IDs.
 ## Search
 
 `joppa_search` takes `workspace`, `query`, `limit` (1 to 50, default 10), `all_versions`,
-`all_workspaces` and the [node filters](read-contract.md#node-filters) of `joppa_objects`. `GET /api/workspaces/{workspace}/search` takes `q` and
-the same filters. See [search](search.md), also given by `joppa_help` with `section: "search"`.
+`all_workspaces` and the [node filters](read-contract.md#node-filters) of `joppa_objects`. `GET /api/workspaces/{workspace}/search` takes `q`,
+`cursor` and the same filters. See [search](search.md), also given by `joppa_help` with `section: "search"`.
 
 ## Browser authentication
 

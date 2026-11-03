@@ -11,6 +11,7 @@
 //! A node that waits is at least yellow: it waits for a dependency (`work_ready` false) or for
 //! the answer that its readiness mark asks for (state `waiting`).
 //! An archived node is purple and does not count. The rule tone sets the label too.
+//! The same counted children and links decide the readiness rollup (objects_ready_rollup.rs).
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,7 +33,7 @@ pub(super) async fn add_status_tones(
     workspace: &str,
     items: &mut [Value],
     types: &BTreeMap<String, objects::TreeType>,
-) -> Result<()> {
+) -> Result<Counted> {
     crate::probe::count(&crate::probe::ROLLUP);
     let rule = |kind: &str| rule_of(types, kind);
     let present: Vec<&Value> = items.iter().filter(|i| i["present"] != false).collect();
@@ -112,7 +113,19 @@ pub(super) async fn add_status_tones(
         item["signal"]["tone"] = json!(crate::status_colors::ARCHIVED_TONE);
         item["signal"]["label"] = json!("Archived");
     }
-    Ok(())
+    Ok(Counted {
+        children,
+        linked,
+        tones,
+    })
+}
+
+/// The children and the linking objects of each node, and the tone of each node. A node
+/// counts for its parent or its link target only when it has a tone.
+pub(super) struct Counted {
+    pub children: BTreeMap<String, Vec<String>>,
+    pub linked: BTreeMap<String, BTreeSet<String>>,
+    pub tones: BTreeMap<String, Option<&'static str>>,
 }
 
 /// The tone of one node, or None when a parent does not count it (rule none).
@@ -177,7 +190,7 @@ fn tone_of(
 }
 
 /// The status rule of a type; a type outside the schema counts as none.
-fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: &str) -> &'a str {
+pub(super) fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: &str) -> &'a str {
     types.get(kind).map_or("none", objects::status_rule)
 }
 

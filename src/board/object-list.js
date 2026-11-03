@@ -2,14 +2,14 @@
 import {state} from 'board/state.js';
 import {$,E} from 'board/dom.js';
 import {notify,button} from 'board/feedback.js';
-import {objectPart} from 'board/api.js';
+import {objectPart,PAGE} from 'board/api.js';
 import {applyObjectColor} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
 export async function appendObjectChildren(root,parent,kind,extra={}){
   const generation=state.loadNumber;
   // One level: the direct children of a parent, or the roots without a parent.
-  const params={limit:'50',...extra};if(parent)params.parent=parent;if(parent!=='*')params.depth='1';if(kind)params.kind=kind;
+  const params={limit:PAGE,...extra};if(parent)params.parent=parent;if(parent!=='*')params.depth='1';if(kind)params.kind=kind;
   const part=await objectPart(params);if(generation!==state.loadNumber||!root.isConnected)return;
   root.querySelector(':scope > .object-loading')?.remove();
   appendObjectPage(root,part,params,generation);

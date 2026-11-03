@@ -90,6 +90,12 @@ pub(super) async fn objects(
         Ok(filter) => filter,
         Err(e) => return result(Err(e)),
     };
+    let fields: Option<Vec<String>> = q.fields.as_deref().map(|f| {
+        f.split(',')
+            .filter(|k| !k.is_empty())
+            .map(str::to_owned)
+            .collect()
+    });
     result(
         store::read_objects(
             &app.pool,
@@ -104,19 +110,13 @@ pub(super) async fn objects(
                 cursor: q.cursor.as_deref(),
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
-                data: false,
+                data: fields
+                    .as_deref()
+                    .is_some_and(joppa::read_compact::needs_data),
             },
         )
         .await
-        .map(|reply| {
-            let fields: Option<Vec<String>> = q.fields.as_deref().map(|f| {
-                f.split(',')
-                    .filter(|k| !k.is_empty())
-                    .map(str::to_owned)
-                    .collect()
-            });
-            joppa::read_shapes::keep_item_fields(reply, fields.as_deref())
-        }),
+        .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
     )
 }
 #[derive(Deserialize)]

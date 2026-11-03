@@ -15,6 +15,8 @@ export async function api(path) {
   if (!r.ok) throw Error(j.error || JSON.stringify(j));
   return j;
 }
+// The page size of every board list. A list shows one page and Load more adds the next.
+export const PAGE='25';
 /* Common objects use the same cards for every configured type. */
 export async function objectPart(params){
   return api('workspaces/'+encodeURIComponent(state.ws)+'/objects?'+new URLSearchParams(params));

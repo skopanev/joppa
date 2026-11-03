@@ -74,6 +74,9 @@ or absent for the roots. The [node filters](#node-filters) narrow the list. Repl
 
 - `status` is the status tone that the last write stored in the row. One query reads it.
 - `fields` `["children"]` gives the number of present children of each item, also `0`.
+- `fields` `["links"]` gives the stored links of each item, for example
+  `[{"target": "ac:b", "relation": "depends_on", "blocking": true}]`. A link with a pinned
+  revision also gives `revision`. A read by address gives its detail links instead.
 - Items come in address order. `next_cursor` is the address of the last item; the next page
   starts after it, so a new object does not move the items of a later page.
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
@@ -103,7 +106,8 @@ Reply item: the address and each named path, also when its value is empty.
 ```
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
-`work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`.
+`work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`,
+`links`.
 
 Any other first part names a document field: `source_section.title` gives
 `data.source_section.title`. A document field is a field of the object roles (such as
@@ -136,7 +140,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: only `joppa_search` with `all_versions` reads them. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this member ID. Any node can have `data.assignee`. |
-| `ready` | `false`: nodes that wait for a dependency, or for the answer that their readiness mark asks for (`assess` with `ready: false`, state `waiting`). `true`: every other node. |
+| `ready` | `false`: nodes that wait for a dependency, or for the answer that their readiness mark asks for (`assess` with `ready: false`, state `waiting`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. |
 
 ```json

@@ -35,14 +35,14 @@ test('grouped-links-board: the card loads a link group when the reader opens it'
     assert.equal(reads.length, 0, 'a link was read before the group opened');
     const rows = group.locator('.object-links > a');
     await group.locator('summary').click();
-    await f.page.waitForFunction(() => document.querySelectorAll('details.link-group .object-links > a').length === 50);
-    for (const count of [100, 120]) {
+    await f.page.waitForFunction(() => document.querySelectorAll('details.link-group .object-links > a').length === 25);
+    for (const count of [50, 75, 100, 120]) {
       await group.locator('button.load-more').click();
       await f.page.waitForFunction(n => document.querySelectorAll('details.link-group .object-links > a').length === n, count);
     }
     assert.equal(await rows.count(), 120);
     assert.equal(await group.locator('button.load-more').count(), 0, 'the last page still offers Load more');
-    assert.equal(reads.length, 3);
+    assert.equal(reads.length, 5);
   } finally { await f.close(); }
 });
 

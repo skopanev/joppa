@@ -1,10 +1,9 @@
 // The incoming link groups of a card. The object read gives a count for each relation and
 // kind. A group reads its links when the reader opens it, and Load more reads the next page.
 import {E} from 'board/dom.js';
-import {objectPart} from 'board/api.js';
+import {objectPart,PAGE} from 'board/api.js';
 import {objectLink} from 'board/links.js';
 import {notify} from 'board/feedback.js';
-const PAGE='50';
 export function incomingGroups(detail,section){
   return (detail.link_groups||[]).filter(g=>g.direction==='incoming').map(g=>{
     const group=section('Linked from · '+g.relation+' · '+g.kind+' '+g.count,'object-relations link-group');

@@ -4,8 +4,9 @@
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
-/// The first path segments that a list item gives itself. `status` is the status tone.
-pub const LIST_FIELDS: [&str; 17] = [
+/// The first path segments that a list item gives itself. `status` is the status tone, and
+/// `links` gives the stored links of the item. A read by address gives its detail links.
+pub const LIST_FIELDS: [&str; 18] = [
     "address",
     "data",
     "kind",
@@ -23,6 +24,7 @@ pub const LIST_FIELDS: [&str; 17] = [
     "status",
     "process",
     "children",
+    "links",
 ];
 
 /// The keys of a detail read that a list item does not give.
@@ -72,7 +74,7 @@ pub fn head(field: &str) -> &str {
 pub fn needs_data(fields: &[String]) -> bool {
     fields.iter().any(|f| {
         let head = head(f);
-        head == "data" || !LIST_FIELDS.contains(&head)
+        head == "data" || head == "links" || !LIST_FIELDS.contains(&head)
     })
 }
 
@@ -109,8 +111,8 @@ pub fn value(item: &Value, detail: Option<&Value>, field: &str) -> Value {
     match detail {
         // `status` is the tone, as in a plain list item; `note_status` names the Inbox state.
         _ if field == "status" => item["signal"]["tone"].clone(),
-        _ if LIST_FIELDS.contains(&head) => path(item, field),
         Some(detail) if DETAIL_FIELDS.contains(&head) => path(detail, field),
+        _ if LIST_FIELDS.contains(&head) => path(item, field),
         _ => path(&item["data"], field),
     }
 }

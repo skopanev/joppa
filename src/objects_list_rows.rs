@@ -32,7 +32,8 @@ pub(super) async fn list_rows(
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,o.description,o.signal::text,o.present,o.inbox_status,o.process::text,
             CASE WHEN $10::boolean THEN (o.document->'data')::text END,o.total,
-            (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present)
+            (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
+            CASE WHEN $10::boolean THEN COALESCE(o.document->'links','[]'::jsonb)::text END
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         WHERE o.workspace=$1 AND o.present
             AND {filter}
@@ -81,6 +82,10 @@ pub(super) async fn list_rows(
             item["status"] = item["note_status"].clone();
         }
         item["children"] = json!(row.get::<_, i64>(17));
+        // A read with data also gives the stored links: {target, relation, blocking, revision?}.
+        if let Some(links) = row.get::<_, Option<String>>(18) {
+            item["links"] = serde_json::from_str::<Value>(&links)?;
+        }
     }
     // The decoration comes from the status projection of the last write.
     apply_rollups(&*conn, &workspace, &mut items).await?;

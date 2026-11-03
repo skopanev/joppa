@@ -179,7 +179,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
             json!({"address":"ac:a","fields":["nope"]}),
             "unknown field nope",
         ),
-        (json!({"fields":["links"]}), "unknown field links"),
+        (json!({"fields":["comments"]}), "unknown field comments"),
         (
             json!({"address":"ac:a","fields":["description"]}),
             "use body instead of description; read joppa_help",

@@ -8,8 +8,9 @@ import {clearBoard} from 'board/workspaces.js';
 import {inboxKinds} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {renderTimelinePage} from 'board/timeline.js';
+import {renderGraphPage} from 'board/graph.js';
 import {renderObjectPage} from 'board/object-page.js';
-import {commonObjectFilters} from 'board/filters.js';
+import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
 import {commonNotes} from 'board/notes.js';
 export async function load() {
   closeAccountMenu();
@@ -21,10 +22,22 @@ export async function load() {
   state.data = next;
   state.data.objectTypes=next.object_types||{};
   applyStatuses(next.statuses);
-  $('timeline-link').href='/?workspace='+encodeURIComponent(state.ws)+'&view=timeline';
+  // The view links: Tree and Graph switch the board view and keep the node filters of the
+  // link. Timeline opens the timeline page. A click reads the filters of that moment.
+  const selection=new URLSearchParams(location.search),view=selection.has('object')?'':selection.get('view')||'tree';
+  for(const [id,name] of [['tree-view-link','tree'],['graph-link','graph'],['timeline-link','timeline']]){
+    const link=$(id);link.href=viewHref(name);link.onclick=()=>{link.href=viewHref(name);};
+    if(name===view)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
+  }
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(state.ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(state.ws);
   await renderObjectTree();
+}
+function viewHref(name){
+  const now=new URLSearchParams(location.search),next=new URLSearchParams({workspace:state.ws});
+  if(name!=='tree')next.set('view',name);
+  if(name!=='timeline')for(const key of LINK_FILTERS)if(now.get(key))next.set(key,now.get(key));
+  return '/?'+next;
 }
 // The tree schema gives each status tone a light and a dark colour. The theme picks one.
 function applyStatuses(statuses){
@@ -46,6 +59,7 @@ async function renderObjectTree(){
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
   if(selection.get('view')==='timeline')return renderTimelinePage(root,generation);
+  if(selection.get('view')==='graph')return renderGraphPage(root,generation);
   if(state.data.launch.configured)root.append(E('p',state.data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(state.data.launch.blocker_count??state.data.launch.blockers?.length),'hint'));
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
   commonObjectFilters(root,contents);root.append(contents);
