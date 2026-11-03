@@ -1,9 +1,37 @@
 //! The event migrate_test_nodes: each test list becomes test nodes, see the module above.
 use super::{REASON, ROLE, RULE, node_id};
 use crate::model::Workspace;
-use crate::objects::{Object, ObjectRevision, contract_revision, schema, status_rule};
+use crate::objects::{Object, ObjectRevision, TreeType, contract_revision, schema, status_rule};
 use anyhow::{Context, Result, ensure};
 use serde_json::json;
+use std::collections::BTreeMap;
+
+/// Give a type map the test type under each criterion type, unless a type with role test
+/// exists, and give each criterion type the status children. Return the test type.
+pub fn convert_types(types: &mut BTreeMap<String, TreeType>) -> Result<String> {
+    let listing: Vec<String> = types
+        .iter()
+        .filter(|(_, t)| t.role == "ac" || status_rule(t) == "tests")
+        .map(|(kind, _)| kind.clone())
+        .collect();
+    let kind = match types.iter().find(|(_, t)| t.role == ROLE) {
+        Some((kind, _)) => kind.clone(),
+        None => {
+            let kind = ["test", "test_case", "test_node"]
+                .into_iter()
+                .find(|k| !types.contains_key(*k))
+                .context("no free name for the test type")?;
+            let t = json!({"title":"Tests","role":ROLE,"status":RULE,"parents":listing,
+                "badge":"TEST","title_preview_length":400});
+            types.insert(kind.into(), serde_json::from_value(t)?);
+            kind.to_owned()
+        }
+    };
+    for k in &listing {
+        types.get_mut(k).expect("listed type").status = Some("children".into());
+    }
+    Ok(kind)
+}
 
 /// Apply migrate_test_nodes once. The workspace owner is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
@@ -12,29 +40,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     }
     ensure!(actor == w.admin, "workspace owner required");
     let mut next = schema(w);
-    let listing: Vec<String> = next
-        .types
-        .iter()
-        .filter(|(_, t)| t.role == "ac" || status_rule(t) == "tests")
-        .map(|(kind, _)| kind.clone())
-        .collect();
-    let kind = match next.types.iter().find(|(_, t)| t.role == ROLE) {
-        Some((kind, _)) => kind.clone(),
-        None => {
-            let kind = ["test", "test_case", "test_node"]
-                .into_iter()
-                .find(|k| !next.types.contains_key(*k))
-                .context("no free name for the test type")?;
-            let t = json!({"title":"Tests","role":ROLE,"status":RULE,"parents":listing,
-                "badge":"TEST","title_preview_length":400});
-            next.types.insert(kind.into(), serde_json::from_value(t)?);
-            kind.to_owned()
-        }
-    };
-    for k in &listing {
-        let t = next.types.get_mut(k).expect("listed type");
-        t.status = Some("children".into());
-    }
+    let kind = convert_types(&mut next.types)?;
     next.revision += 1;
     next.actor = actor.into();
     next.at = at.into();

@@ -6,7 +6,7 @@ async function api(path){const response=await fetch('/api/'+path);const value=aw
 
 // The configuration lists repeat the schema in words: root types, parent rules, link
 // relations, priority levels and the status rule of each type. Nothing here is editable.
-const RULE_TEXT={tests:'Test results of its own list',children:'First status of its children',links:'First status of linking objects',none:'Process status'};
+const RULE_TEXT={own:'Result of its own test',children:'Highest tone of its children',links:'Highest tone of linking objects',none:'Process status'};
 function renderConfig(schema){
   const list=(id,values)=>document.querySelector('#'+id).replaceChildren(...values.map(text=>element('li',text)));
   const title=kind=>kind==='*'?'Any object type':schema.types[kind]?.title||kind;

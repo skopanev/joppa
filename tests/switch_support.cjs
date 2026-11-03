@@ -10,7 +10,7 @@ const types = {
   domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'DOM'},
   capability: {title: 'Capabilities', role: 'group', status:'children', parents: ['domain'], badge: 'CAP'},
   requirement: {title: 'Requirements', role: 'requirement', status:'children', parents: ['capability'], badge: 'REQ'},
-  ac: {title: 'Criteria', role: 'ac', status:'tests', parents: ['requirement'], badge: 'AC'},
+  ac: {title: 'Criteria', role: 'ac', status:'children', parents: ['requirement'], badge: 'AC'},
 };
 
 /// Build the release fixture and start it. The fixture prints its address, workspace and tokens.

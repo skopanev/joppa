@@ -219,7 +219,8 @@ impl Object {
     }
 }
 
-/// The built-in tree of a new workspace: each criterion names one consumer.
+/// The built-in tree of a new workspace, as the migrations leave it: each criterion names one
+/// consumer, and a test type sits under each criterion type.
 pub fn defaults() -> BTreeMap<String, TreeType> {
     let mut types = schema_migration_defaults();
     crate::consumer_migration::convert_types(&mut types);
@@ -233,5 +234,6 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
             t.root = true;
         }
     }
+    crate::test_nodes::convert_types(&mut types).expect("the built-in tree has a free test name");
     types
 }

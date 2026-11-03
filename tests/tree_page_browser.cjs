@@ -8,7 +8,7 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
   const types = {
     area: {title: 'Areas', role: 'group', status:'children', root: true, parents: []},
     rule: {title: 'Rules', role: 'requirement', status:'children', parents: ['area']},
-    check: {title: 'Checks', role: 'ac', status:'tests', parents: ['rule']},
+    check: {title: 'Checks', role: 'ac', status:'children', parents: ['rule']},
     work: {title: 'Work', role: 'task', parents: ['check'], status: 'links'},
     memo: {title: 'Memos', role: 'document', status:'none', root: true, parents: ['*']},
   };
@@ -23,13 +23,13 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
       edges: ['Areas → Rules', 'Rules → Checks', 'Workspace → Memos', 'Any object type → Memos', 'Workspace → Areas', 'Checks → Work'].sort(),
       relations: ['related', 'depends_on'],
       priorities: ['urgent', 'normal', 'later'],
-      'status-rules': ['Areas: First status of its children', 'Checks: Test results of its own list', 'Memos: Process status',
-        'Rules: First status of its children', 'Work: First status of linking objects'],
+      'status-rules': ['Areas: Highest tone of its children', 'Checks: Highest tone of its children', 'Memos: Process status',
+        'Rules: Highest tone of its children', 'Work: Highest tone of linking objects'],
     };
     const saved = (await f.api('/tree')).schema;
     assert.deepEqual(saved.priority_levels, expected.priorities);
     assert.deepEqual(saved.link_relations, expected.relations);
-    assert.deepEqual(saved.status_rules, {area: 'children', check: 'tests', memo: 'none', rule: 'children', work: 'links'});
+    assert.deepEqual(saved.status_rules, {area: 'children', check: 'children', memo: 'none', rule: 'children', work: 'links'});
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     await f.page.locator('#tree-schema-link').click();
     await f.page.waitForURL(url => url.pathname === '/tree');

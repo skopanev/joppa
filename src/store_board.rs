@@ -44,7 +44,8 @@ pub(super) async fn project_current(
     // The test type comes from migrate_test_nodes in every workspace; it does not make a tree custom.
     let mut compared = object_types.clone();
     compared.retain(|_, t| t.role != crate::test_nodes::ROLE);
-    let defaults = crate::objects::defaults();
+    let mut defaults = crate::objects::defaults();
+    defaults.retain(|_, t| t.role != crate::test_nodes::ROLE);
     let custom_tree = compared.len() != defaults.len()
         || compared.iter().any(|(kind, t)| {
             defaults.get(kind).is_none_or(|default| {

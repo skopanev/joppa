@@ -18,7 +18,7 @@ use serde_json::Value;
 
 #[path = "test_nodes_migration.rs"]
 mod migration;
-pub use migration::migrate;
+pub use migration::{convert_types, migrate};
 
 pub const ROLE: &str = "test";
 pub const RULE: &str = "own";
