@@ -63,7 +63,8 @@ summary:focus-visible:before{outline:none}
 .common-object>summary:focus-visible{outline:none}
 .common-object>summary:hover>.node-title{color:var(--heading)}
 label{display:block;font-size:.8em;color:var(--muted);margin:1em 0 .3em}
-input,textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
+input:not([type=checkbox]),textarea{width:100%;padding:.5em;border:1px solid var(--rule);background:transparent;border-radius:0}
+input[type=checkbox]{flex:none;margin:0;accent-color:var(--muted)}
 textarea{min-height:88px;resize:vertical}
 /* Height and size stay usable on touch screens and prevent iOS zoom. */
 select{appearance:none;-webkit-appearance:none;height:44px;min-height:44px;width:100%;min-width:0;

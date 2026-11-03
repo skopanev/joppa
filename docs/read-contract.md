@@ -151,7 +151,9 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 - Without `parent`, a filter reads every level. Without any filter, the list gives the roots.
 - HTTP takes `kind` and `status` comma-separated, `ready` as `true` or `false` and `data` as
   JSON text. A board link with these query keys, such as `/?workspace=w&assignee=user-1&ready=false`,
-  opens the board with that list.
+  opens the board with that list. The board pickers `owner`, `assignee`, `status` and `ready` show
+  the link values, and a picker change writes its value to the link. The board filters and the
+  board search read every level of the tree.
 - A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
   `status purple marks archived nodes; find them with joppa_search and all_versions`,
   `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.

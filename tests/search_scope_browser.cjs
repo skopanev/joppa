@@ -1,4 +1,5 @@
-// Chromium checks of the board search scope: each scope checkbox label stays on one line.
+// Chromium checks of the board search scope: each scope checkbox is visible, and its label
+// stays on one line.
 // With All versions, a click opens the revision that the search found, and with All
 // workspaces, a click opens a result of another workspace in that workspace. The fixture
 // provider does not answer, so the board search uses its full-text half.
@@ -60,7 +61,7 @@ test('search-all-workspaces-board: the board opens a result of another workspace
   } finally { await f.close(); }
 });
 
-test('search-scope-labels-one-line: each scope checkbox label stays on one line at every width', async () => {
+test('search-scope-labels-one-line: each scope checkbox is visible and its label stays on one line at every width', async () => {
   const f = await fixture(types);
   try {
     await f.save('requirement:billing', 'Billing rules');
@@ -73,9 +74,10 @@ test('search-scope-labels-one-line: each scope checkbox label stays on one line 
         const range = document.createRange();
         range.selectNodeContents(label.lastChild);
         const tops = new Set([...range.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top)));
-        return [label.textContent.trim(), tops.size];
+        const box = label.querySelector('input[type=checkbox]').getBoundingClientRect();
+        return [label.textContent.trim(), tops.size, box.width >= 12 && box.height >= 12];
       }));
-      assert.deepEqual(lines, [['All versions', 1], ['All workspaces', 1]], 'width ' + width);
+      assert.deepEqual(lines, [['All versions', 1, true], ['All workspaces', 1, true]], 'width ' + width);
     }
   } finally { await f.close(); }
 });

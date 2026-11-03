@@ -37,7 +37,6 @@ export function rootCollectionTabs(root){
       const active=panel.dataset.collectionKind===kind;panel.hidden=!active||Boolean(state.data.filterActive);
       const tab=nav.querySelector('[aria-controls="'+panel.id+'"]');tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
       if(active){
-        state.data.activeRootKind=kind;
         if(focus)tab.focus();
         if(state.data.filterActive)continue;
         panel.collectionLoad?.();
@@ -49,7 +48,6 @@ export function rootCollectionTabs(root){
         }
       }
     }
-    if(state.data.filterActive)state.data.filterUpdate?.();
   };
   for(const panel of panels){
     const kind=panel.dataset.collectionKind,type=state.data.objectTypes[kind]||{title:'History'};

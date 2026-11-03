@@ -59,7 +59,7 @@ function historyRow(item){
   const title=item.signal?.tone?nodeTitle(text,item.signal):E('span',text,'node-title');
   const badge=E('span',String(item.change||item.op||'change').toUpperCase(),'type-label type-badge');
   const at=E('span',item.at?eventDate(item.at):'','history-at note-state');
-  summary.append(title,badge,E('span',undefined,'count-slot'),at,E('span',open?'Open':'Processed','note-state'));
+  summary.append(title,badge,at,E('span',open?'Open':'Processed','note-state'));
   card.append(summary);
   const body=E('div',undefined,'object-body');
   if(item.reason)body.append(E('p',item.reason,'history-reason'));
