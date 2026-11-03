@@ -91,8 +91,9 @@ pub fn set_schema(
         ensure!(
             t.status
                 .as_deref()
-                .is_none_or(|rule| STATUS_RULES.contains(&rule)),
-            "a status rule is tests, children, links or none"
+                .is_none_or(|rule| STATUS_RULES.contains(&rule)
+                    || (rule == "tests" && !w.test_nodes_migrated)),
+            "a status rule is own, children, links or none"
         );
         ensure!(
             t.process_fields
@@ -203,7 +204,7 @@ pub fn set_schema(
         for (kind, t) in types {
             ensure!(
                 t.status.is_some(),
-                "type {kind} needs a status rule: tests, children, links or none"
+                "type {kind} needs a status rule: own, children, links or none"
             );
         }
     }

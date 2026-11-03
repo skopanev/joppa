@@ -172,7 +172,7 @@ async fn generic_tasks_queue_priority_claim_race_history_and_replay() -> Result<
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["ac"] =
-        json!({"title":"Criterion","role":"ac","status":"tests","root":false,"parents":["spec"]});
+        json!({"title":"Criterion","role":"ac","status":"children","root":false,"parents":["spec"]});
     store::execute_remote_input(&pool,&ws,"owner","generic-ac-schema",&json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"types":types,"reason":"Permit criteria under specifications"})).await?;
     let ac=store::execute_remote_input(&pool,&ws,"agent","standalone-ac",&json!({"op":"save_object","kind":"ac","id":"standalone","revision":0,"parent":"spec:root","data":{"title":"Standalone criterion","owner":"owner","body":"Criterion under a specification"},"reason":"Use the configured parent"})).await?;
     let ac_id = ac["system_ids"]["ac"]["standalone"].as_str().unwrap();

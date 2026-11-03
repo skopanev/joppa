@@ -105,8 +105,9 @@ pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()>
     Ok(())
 }
 
-/// The status rules of a type.
-pub const STATUS_RULES: [&str; 5] = ["tests", "own", "children", "links", "none"];
+/// The status rules of a type. The rule tests of a criterion type stays valid only for the
+/// replay of the events before migrate_test_nodes.
+pub const STATUS_RULES: [&str; 4] = ["own", "children", "links", "none"];
 
 /// The status rule of a type. A type without a rule has the rule unset: its nodes take
 /// the tone orange.

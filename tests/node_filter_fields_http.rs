@@ -129,6 +129,23 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
             ensure!(reply == Err(error.into()), "{tool} {args}: {reply:?}");
         }
     }
+    // An archived node is purple, and a search with all_versions finds it by that tone.
+    let z = w.object("rule:z").await?["revision"].clone();
+    let archive =
+        json!({"op":"archive_object","target":"rule:z","revision":z,"reason":"Out of scope"});
+    w.command(&w.owner, archive)
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let args = json!({"query":"fixture","all_versions":true,"status":"purple","limit":25});
+    let found = w
+        .mcp(&w.bot, "joppa_search", args)
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let mut archived = node_filter_world::sorted(&found["items"], |i| {
+        i["address"].as_str().map(str::to_owned)
+    });
+    archived.dedup();
+    ensure!(archived == ["rule:z"], "{found}");
     Ok(())
 }
 

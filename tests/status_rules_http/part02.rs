@@ -185,7 +185,13 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
         (
             "status",
             json!("parent"),
-            "a status rule is tests, children, links or none",
+            "a status rule is own, children, links or none",
+        ),
+        // The rule tests of the old test lists is valid only before migrate_test_nodes.
+        (
+            "status",
+            json!("tests"),
+            "a status rule is own, children, links or none",
         ),
         // One priority decides every rollup, so a type has no status order.
         (

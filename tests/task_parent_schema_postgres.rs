@@ -62,7 +62,7 @@ async fn workspace(pool: &deadpool_postgres::Pool, task_parents: Value) -> Resul
     write(pool, &ws, "owner", json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure Task parents","types":{
         "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
         "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["domain"]},
-        "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
         "task":{"title":"Tasks","role":"task","status":"none","parents":task_parents}
     }})).await?;
     write(pool, &ws, "bot", json!({"op":"save_object","kind":"domain","id":"d","revision":0,"parent":null,"data":{"title":"Domain D","owner":"owner"},"reason":"Create the domain"})).await?;

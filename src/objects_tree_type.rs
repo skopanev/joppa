@@ -42,8 +42,8 @@ pub struct TreeType {
     pub required_fields: BTreeMap<String, RequiredFieldRule>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
-    /// How a node of this type gets its tone: tests, children, links or none. Without a value the
-    /// role decides: the criterion role uses tests, group and requirement use children.
+    /// How a node of this type gets its tone: own, children, links or none. Without a value the
+    /// rule is unset and the node is orange; with status_required the type is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     /// The process fields that an object of this type shows: confirmed for a requirement or a

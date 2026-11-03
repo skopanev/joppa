@@ -25,7 +25,7 @@ const TYPES: &str = r#"{
     "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
     "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"]},
     "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"]},
-    "ac":{"title":"Criteria","role":"ac","status":"tests","parents":["requirement"]},
+    "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
     "signal":{"title":"Signals","role":"document","status":"none","root":true,"parents":[],"inbox":true}
 }"#;
 

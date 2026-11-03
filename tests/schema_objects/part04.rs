@@ -6,7 +6,7 @@ fn native_and_custom_verification_names_use_common_process_keys() {
     for (spec, criterion) in [("requirement", "ac"), ("contract", "check")] {
         let mut w = empty();
         let types = json!({spec:{"title":"Specification","role":"requirement","status":"children","root":true},
-            criterion:{"title":"Criterion","role":"ac","status":"tests","parents":[spec]}});
+            criterion:{"title":"Criterion","role":"ac","status":"children","parents":[spec]}});
         w.ok(
             "owner",
             json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,

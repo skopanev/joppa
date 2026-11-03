@@ -74,7 +74,7 @@ async fn planning_workspace(pool: &deadpool_postgres::Pool, actors: &[&str]) -> 
     let schema = store::tree_schema(pool, &workspace, "owner", None).await?;
     write(pool, &workspace, "owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure planning roles","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     write(pool, &workspace, "planner", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;

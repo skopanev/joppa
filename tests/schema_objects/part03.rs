@@ -6,7 +6,7 @@ fn criterion_edits_preserve_custom_specification_type_context() {
     let types = json!({
         "area":{"title":"Area","role":"group","status":"children","root":true,"parents":["area"]},
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["area"]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]}
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]}
     });
     w.ok("owner",json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":types,"reason":"Configure named roles"}));
     save(
@@ -64,7 +64,7 @@ fn verification_uses_roles_when_former_group_names_are_verification_types() {
         "owner",
         json!({"op":"set_tree_schema","revision":objects::schema(&w.state).revision,"types":{
         "consumer":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":["*"]},
-        "domain":{"title":"Criterion","role":"ac","status":"tests","parents":["*"]},
+        "domain":{"title":"Criterion","role":"ac","status":"children","parents":["*"]},
         "capability":{"title":"Work","role":"task","status":"none","parents":["*"]}
     },"reason":"Select workflows by roles"}),
     );

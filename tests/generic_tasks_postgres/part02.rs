@@ -76,7 +76,7 @@ async fn separate_claim_and_completion_writes_keep_a_dependency_pin_current() ->
     let schema = store::tree_schema(&pool, &ws, "owner", None).await?;
     write("owner", json!({"op":"set_tree_schema","revision":schema["schema"]["revision"],"reason":"Configure ready criteria","types":{
         "spec":{"title":"Specification","role":"requirement","status":"children","root":true,"parents":[]},
-        "criterion":{"title":"Criterion","role":"ac","status":"tests","parents":["spec"]},
+        "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
         "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
     }})).await?;
     write("agent", json!({"op":"save_object","kind":"spec","id":"one","revision":0,"parent":null,"data":{"title":"One rule","body":"Implement the agreed rule","owner":"owner"},"reason":"Set the rule"})).await?;
