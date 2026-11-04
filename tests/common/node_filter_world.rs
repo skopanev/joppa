@@ -72,7 +72,7 @@ pub fn sorted(items: &Value, address: impl Fn(&Value) -> Option<String>) -> Vec<
 }
 
 /// The HTTP query text of MCP filter arguments: a list joins with commas.
-fn query(args: &Value) -> Vec<(String, String)> {
+pub fn pairs(args: &Value) -> Vec<(String, String)> {
     let pairs = args.as_object().into_iter().flatten();
     pairs
         .map(|(k, v)| {
@@ -126,7 +126,7 @@ pub async fn kept(w: &record_world::World, filters: Value) -> Result<Vec<String>
         .mcp(&w.bot, "joppa_search", search_args)
         .await?
         .map_err(anyhow::Error::msg)?;
-    let pairs = query(&filters);
+    let pairs = pairs(&filters);
     let http_list = http(w, "objects", &pairs).await?;
     let mut search_pairs = pairs.clone();
     search_pairs.push(("q".into(), "fixture".into()));

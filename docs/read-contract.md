@@ -137,7 +137,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `parent` | Each descendant of the node, at any depth. `*`: every level. |
 | `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. `1`: the direct children, or the roots. |
 | `kind` | Nodes of one type or of a list of types. |
-| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: only `joppa_search` with `all_versions` reads them. |
+| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this member ID. Any node can have `data.assignee`. |
 | `ready` | `false`: nodes that wait for a dependency, or for the answer that their readiness mark asks for (`assess` with `ready: false`, state `waiting`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
@@ -149,13 +149,18 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 ```
 
 - Without `parent`, a filter reads every level. Without any filter, the list gives the roots.
+- A list read keeps only present nodes, unless `status` names `purple`. Then
+  `{"parent": "requirement:r", "status": "purple"}` gives the archived nodes below the requirement,
+  `["green", "purple"]` gives the green present nodes and the archived nodes, and each archived
+  item gives `present: false` when `fields` names it.
 - HTTP takes `kind` and `status` comma-separated, `ready` as `true` or `false` and `data` as
   JSON text. A board link with these query keys, such as `/?workspace=w&assignee=user-1&ready=false`,
   opens the board with that list. The board pickers `owner`, `assignee`, `status` and `ready` show
   the link values, and a picker change writes its value to the link. The board filters and the
   board search read every level of the tree.
 - A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
-  `status purple marks archived nodes; find them with joppa_search and all_versions`,
+  `status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions`
+  (a search without `all_versions`),
   `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.
 - Indexes serve `owner`, `assignee`, the tone and `data` (migrations 039, 045 and 046).
 - With `address` the filters are refused: `address cannot be combined with list filters`.

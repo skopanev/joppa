@@ -7,7 +7,8 @@
 //!   Without a parent address, `depth` counts from the top: `depth: 1` keeps the roots.
 //!   `parent: "*"` keeps every level.
 //! - `kind` and `status` take one value or a list.
-//! - `status` is the stored tone of the node: the rollup tone, else the signal tone.
+//! - `status` is the stored tone of the node: the rollup tone, else the signal tone. The tone
+//!   `purple` marks archived nodes: a list read with it also keeps the current archived nodes.
 //! - `owner` is `data.owner` and `assignee` is `data.assignee`. Any node can have both.
 //! - `ready` is false when the node waits: for a dependency, or for the answer that its
 //!   readiness mark asks for (`assess` with `ready: false`). A node of a type with the status
@@ -136,6 +137,13 @@ impl NodeFilter {
             || self.assignee.is_some()
             || self.ready.is_some()
             || self.data.is_some()
+    }
+
+    /// True when `status` names the tone of archived nodes: a list read then also keeps the
+    /// current archived nodes, and the walk below `parent` also passes archived nodes.
+    pub fn archived(&self) -> bool {
+        let tone = crate::status_colors::ARCHIVED_TONE;
+        self.statuses.iter().flatten().any(|s| s == tone)
     }
 
     /// The type of the read when it names exactly one.

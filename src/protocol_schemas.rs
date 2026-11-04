@@ -16,7 +16,7 @@ fn node_filters(mut schema: Value) -> Value {
         "depth": {"type":"integer","minimum":1,"maximum":100,
             "description":"levels below the parent, or below the top without a parent; 1 gives the direct children or the roots"},
         "kind": one_or_list("type name or a list of type names"),
-        "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green"),
+        "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green; purple keeps the archived nodes, and joppa_search needs all_versions for it"),
         "owner": text("member ID in data.owner"),
         "assignee": text("member ID: data.assignee"),
         "ready": {"type":"boolean","description":"false: the node waits for a dependency, a review or the answer to its assessment question; true: every other node"},

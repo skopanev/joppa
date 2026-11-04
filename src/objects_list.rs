@@ -99,9 +99,15 @@ pub(super) async fn read_list(
     };
     // Without a parent and without a filter, a list gives the roots. A related_to list reads
     // every level.
-    let bound =
-        crate::node_filter::bind(conn, &workspace, &scope.filter, related_to.is_none(), false)
-            .await?;
+    // A status list with the archived tone also keeps the current archived nodes.
+    let bound = crate::node_filter::bind(
+        conn,
+        &workspace,
+        &scope.filter,
+        related_to.is_none(),
+        scope.filter.archived(),
+    )
+    .await?;
     let (after_filter, order) = if inbox {
         (
             "((o.inbox_status='processed'),o.address)>($9::boolean,$2::text)".to_owned(),

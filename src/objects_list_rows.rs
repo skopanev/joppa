@@ -25,6 +25,8 @@ pub(super) async fn list_rows(
     } = plan;
     let filter = bound.clause_at([3, 4, 11, 12, 13, 14, 15, 16, 17]);
     let f = bound.params();
+    // A status list with the archived tone also keeps the current archived nodes.
+    let archived = scope.filter.archived();
     let query = format!(
         r#"
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.work_ready,
@@ -35,7 +37,7 @@ pub(super) async fn list_rows(
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
             CASE WHEN $10::boolean THEN COALESCE(o.document->'links','[]'::jsonb)::text END
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
-        WHERE o.workspace=$1 AND o.present
+        WHERE o.workspace=$1 AND (o.present OR $18)
             AND {filter}
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
@@ -66,6 +68,7 @@ pub(super) async fn list_rows(
                 f[6],
                 f[7],
                 f[8],
+                &archived,
             ],
         )
         .await?;

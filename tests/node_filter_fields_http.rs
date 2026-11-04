@@ -105,11 +105,6 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
             json!({"status":"blue"}),
             "unknown status blue; use red, purple, yellow, orange, grey, green",
         ),
-        // Only a read that includes archived nodes can find the tone of archived nodes.
-        (
-            json!({"status":"purple"}),
-            "status purple marks archived nodes; find them with joppa_search and all_versions",
-        ),
         (json!({"ready":"yes"}), "ready must be a boolean"),
         (
             json!({"kind":[]}),
@@ -128,6 +123,10 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
             ensure!(reply == Err(error.into()), "{tool} {args}: {reply:?}");
         }
     }
+    // A search of the present documents cannot find the tone of archived nodes.
+    let args = json!({"query":"fixture","status":"purple"});
+    let reply = w.mcp(&w.bot, "joppa_search", args).await?;
+    ensure!(reply == Err(ARCHIVED.into()), "{reply:?}");
     // An archived node is purple, and a search with all_versions finds it by that tone.
     let z = w.object("rule:z").await?["revision"].clone();
     let archive =
@@ -145,7 +144,53 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
     });
     archived.dedup();
     ensure!(archived == ["rule:z"], "{found}");
+    // The list reads keep the current archived nodes only for the archived tone, also below
+    // an archived parent: rule:z is under the archived rule:x.
+    let x = w.object("rule:x").await?["revision"].clone();
+    let archive =
+        json!({"op":"archive_object","target":"rule:x","revision":x,"reason":"Out of scope"});
+    w.command(&w.owner, archive)
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let present = listed(&w, under(json!({}))).await?;
+    ensure!(present == ["ac:a", "ac:b", test.as_str()], "{present:?}");
+    let purple = listed(&w, under(json!({"status":"purple"}))).await?;
+    ensure!(purple == ["rule:x", "rule:z"], "{purple:?}");
+    let mut both = [listed(&w, under(json!({"status":"green"}))).await?, purple].concat();
+    both.sort();
+    let mixed = listed(&w, under(json!({"status":["green","purple"]}))).await?;
+    ensure!(mixed == both && mixed.len() > 2, "{mixed:?}");
+    let args = json!({"parent":"ac:a","status":"purple","fields":["status","present"]});
+    let read = w
+        .mcp(&w.bot, "joppa_objects", args)
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let shown = json!([{"address":"rule:x","status":"purple","present":false},
+        {"address":"rule:z","status":"purple","present":false}]);
+    ensure!(read["items"] == shown && read["total"] == 2, "{read}");
     Ok(())
+}
+
+const ARCHIVED: &str = "status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions";
+
+/// The addresses of a list read, from joppa_objects and from GET /objects, which must agree.
+async fn listed(w: &record_world::World, filters: Value) -> Result<Vec<String>> {
+    let address = |i: &Value| i["address"].as_str().map(str::to_owned);
+    let list = w
+        .mcp(&w.bot, "joppa_objects", filters.clone())
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let pairs = node_filter_world::pairs(&filters);
+    let http = node_filter_world::http(w, "objects", &pairs).await?;
+    let both = [
+        node_filter_world::sorted(&list["items"], address),
+        node_filter_world::sorted(&http["items"], address),
+    ];
+    ensure!(
+        both[0] == both[1] && list["total"] == both[0].len(),
+        "{filters}: {both:?}"
+    );
+    Ok(both[0].clone())
 }
 
 // node-filters-ac3

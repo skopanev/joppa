@@ -12,6 +12,9 @@ pub struct Bound {
     filter: NodeFilter,
 }
 
+/// The refusal of the archived tone in a read that keeps only present nodes.
+pub const ARCHIVED_REFUSAL: &str = "status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions";
+
 /// Read the descendants of the parent, or the nodes within `depth` of the top. `roots` keeps
 /// only root nodes when no filter narrows the read. `archived` also walks below archived nodes.
 pub async fn bind(
@@ -21,11 +24,7 @@ pub async fn bind(
     roots: bool,
     archived: bool,
 ) -> Result<Bound> {
-    let tone = crate::status_colors::ARCHIVED_TONE;
-    anyhow::ensure!(
-        archived || !filter.statuses.iter().flatten().any(|s| s == tone),
-        "status {tone} marks archived nodes; find them with joppa_search and all_versions"
-    );
+    anyhow::ensure!(archived || !filter.archived(), ARCHIVED_REFUSAL);
     // The start of the walk: the parent, or the top of the workspace when only depth is set.
     let parent = match (filter.parent.as_deref(), filter.depth) {
         (Some("*") | None, None) => None,

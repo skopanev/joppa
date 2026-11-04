@@ -1,5 +1,6 @@
-//! The lean list of requirement:read-contract: the current objects that the node filters
-//! keep, or the roots without a filter, in address order. Each row gives only the address,
+//! The lean list of requirement:read-contract: the present objects that the node filters
+//! keep, or the roots without a filter, in address order. A `status` with the archived tone
+//! also keeps the current archived objects. Each row gives only the address,
 //! the title and the status tone, with no item ID, process or priority lookup. `total`
 //! counts every matching object. The reply gives the workspace and the journal position of
 //! its snapshot. The tone is the one that the last write stored in the row: the rollup
@@ -36,22 +37,26 @@ pub async fn compact_list(
         .await?;
     // The stored rollup belongs to the last write only when the projection is ready.
     crate::store::objects::projection::ensure_ready(&*conn, &workspace).await?;
-    let bound = crate::node_filter::bind(&*conn, &workspace, filter, true, false).await?;
+    // A status list with the archived tone also keeps the current archived nodes.
+    let bound =
+        crate::node_filter::bind(&*conn, &workspace, filter, true, filter.archived()).await?;
     let query = format!(
         "SELECT x.address,x.title,x.tone,x.total
         FROM (SELECT o.address,o.title,{tone} AS tone,count(*) OVER() AS total FROM joppa.objects o
-            WHERE o.workspace=$1 AND o.present AND {clause}) x
+            WHERE o.workspace=$1 AND (o.present OR $13) AND {clause}) x
         WHERE x.address>$11 ORDER BY x.address LIMIT $12",
         tone = crate::node_filter::TONE,
         clause = bound.clause(2),
     );
     let cursor = cursor.unwrap_or("");
     let limit = (limit + 1) as i64;
+    let archived = filter.archived();
     let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&workspace];
     params.extend(bound.params());
     params.extend([
         &cursor as &(dyn tokio_postgres::types::ToSql + Sync),
         &limit,
+        &archived,
     ]);
     let rows = conn.query(&query, &params).await?;
     let limit = (limit - 1) as usize;
