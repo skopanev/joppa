@@ -65,7 +65,8 @@ pub(crate) async fn write(
             super::remote::canonical_ids(&*tx, &mut value).await?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
-            let command: Command = serde_json::from_value(value)?;
+            let mut command: Command = serde_json::from_value(value)?;
+            crate::omitted_links::keep(&state, &mut command);
             if let Command::SetRemoteLinks { target, links, .. } = &command {
                 let source = crate::objects::resolve_address(&state, target).to_owned();
                 super::remote::check_links(&*tx, &workspace, actor, &source, links).await?;

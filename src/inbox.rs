@@ -113,7 +113,7 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
         revision: d.revision,
         parent: r.parent.clone(),
         data,
-        links,
+        links: Some(links),
         reason: d.reason.into(),
     });
     crate::objects::save(w, actor, &command, position, at)

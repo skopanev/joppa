@@ -14,7 +14,8 @@ The server checks the revision under the workspace write lock. A stale write fai
 Each write adds a revision with the actor, time, reason and schema revision.
 Retry identical input with the same `request_id` to get the same result.
 
-`data`, `parent` and `links` replace the current document fields.
+`data` and `parent` replace the current document fields. Sent `links` replace the current
+links. A save without `links` keeps them, and `links: []` removes every link.
 Read the document before you change them. Keep the fields that you do not change.
 A link to an archived or absent object is refused, unless the current revision already has it.
 Ordinary document fields can hold text, numbers, lists or maps.

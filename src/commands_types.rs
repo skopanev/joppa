@@ -89,8 +89,9 @@ pub struct SaveObjectOp {
     pub revision: u32,
     pub parent: Option<String>,
     pub data: serde_json::Value,
-    #[serde(default)]
-    pub links: Vec<crate::objects::ObjectLink>,
+    /// The new links. A live save without them keeps the current links (omitted_links).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<crate::objects::ObjectLink>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_checked: Option<String>,
     pub reason: String,

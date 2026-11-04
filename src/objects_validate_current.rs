@@ -19,7 +19,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         ..
     }) = cmd
     {
-        validate_wait_cycle(w, &address(kind, id), parent.as_deref(), links)?;
+        let links = links.clone().unwrap_or_default();
+        validate_wait_cycle(w, &address(kind, id), parent.as_deref(), &links)?;
     }
     match cmd {
         Command::MigrateNotes {}

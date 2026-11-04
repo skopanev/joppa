@@ -3,7 +3,7 @@ Use joppa_objects to find and read current objects. Read one historical revision
 Read joppa_help with op for the operation you need.
 Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.
 
-Read an object before you change it. Send its current revision. Preserve document fields, parent and links that you do not change.
+Read an object before you change it. Send its current revision. Preserve document fields and parent that you do not change. Omit links to keep them.
 Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.
 Answer the type question before saving. Send its exact text as question_checked.
 Use joppa_batch for related writes. Retry identical input with the same request_id after a lost response.

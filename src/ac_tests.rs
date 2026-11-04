@@ -157,7 +157,7 @@ fn set_field(
         revision: current.revision,
         parent: current.parent.clone(),
         data,
-        links: current.links.clone(),
+        links: Some(current.links.clone()),
         question_checked: None,
         reason: reason.into(),
     });

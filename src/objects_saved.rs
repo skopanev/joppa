@@ -99,6 +99,7 @@ pub(crate) fn saved(
         .as_ref()
         .map(|o| o.current().links.clone())
         .unwrap_or_default();
+    let links = &links.clone().unwrap_or_default(); // An older event without links gives none.
     validate_links(w, &key, links, &kept)?;
     let unchanged = old
         .as_ref()

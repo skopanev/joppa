@@ -207,7 +207,7 @@ pub(super) fn apply_set_note_status(
         revision: *revision,
         parent: r.parent.clone(),
         data,
-        links: r.links.clone(),
+        links: Some(r.links.clone()),
         reason: reason.clone(),
     });
     crate::objects::save(w, actor, &command, position, recorded_at)?;
