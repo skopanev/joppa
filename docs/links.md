@@ -19,7 +19,7 @@ each direction, relation and kind of the other object. The MCP read keeps only t
 counts. Read the links in pages with `joppa_objects`:
 
 ```json
-{"workspace": "product", "links_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note", "limit": 50}
+{"workspace": "product", "links_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note", "limit": 25}
 ```
 
 `direction`, `relation` and `kind` are optional filters. The reply gives `items` in the order

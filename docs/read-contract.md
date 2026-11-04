@@ -48,17 +48,17 @@ MCP reads have one shape. There is no `verbose` switch.
 
 Every MCP list reply is `{items, total, next_cursor}`. `total` counts every matching entry,
 also on later pages. Send `next_cursor` back as `cursor`; a missing `next_cursor` means the
-last page. A client that sends `limit: 100` gets at most 25 items and must follow `next_cursor`.
+last page. `limit` is 1 to 25 in every MCP list schema. Follow `next_cursor` for more.
 
 ## List mode: `joppa_objects` without `address`
 
 Request:
 
 ```json
-{"workspace": "w", "parent": "requirement:r", "limit": 100}
+{"workspace": "w", "parent": "requirement:r", "limit": 25}
 ```
 
-`limit` is capped at 25. `parent` is a node address (every descendant), `*` for every node,
+`parent` is a node address (every descendant), `*` for every node,
 or absent for the roots. The [node filters](#node-filters) narrow the list. Reply:
 
 ```json

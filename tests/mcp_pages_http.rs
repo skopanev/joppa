@@ -188,3 +188,43 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
     );
     Ok(())
 }
+
+// read-mcp-limit
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn every_mcp_list_schema_takes_a_limit_of_1_to_25() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let list = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
+    let url = format!("{}/mcp", w.root);
+    let reply: Value = w
+        .http
+        .post(url)
+        .bearer_auth(&w.bot)
+        .json(&list)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let tools = reply["result"]["tools"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for name in [
+        "joppa_objects",
+        "joppa_search",
+        "joppa_timeline",
+        "joppa_history",
+    ] {
+        let tool = tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .cloned()
+            .unwrap_or_default();
+        let limit = &tool["inputSchema"]["properties"]["limit"];
+        ensure!(
+            limit["minimum"] == 1 && limit["maximum"] == 25,
+            "{name}: {limit}"
+        );
+    }
+    Ok(())
+}
