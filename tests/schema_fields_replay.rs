@@ -41,3 +41,39 @@ fn an_older_schema_with_the_removed_fields_replays_and_a_live_write_refuses_it()
         "{shown}"
     );
 }
+
+// generic-nodes-ac6
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_stored_schema_revision_with_the_removed_fields_survives_a_reprojection()
+-> anyhow::Result<()> {
+    let pool = joppa::store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
+    joppa::store::migrate(&pool).await?;
+    let ws = format!("schema-fields-{}", uuid::Uuid::new_v4().simple());
+    let create = json!({"op":"workspace","title":"Schema fields"});
+    joppa::store::execute_input(&pool, &ws, "owner", "workspace", &create).await?;
+    // An older server stored the schema with both fields. The trigger keeps such rows, so the
+    // seed writes it in its own session without triggers.
+    let seed = "SET LOCAL session_replication_role = replica; \
+        UPDATE joppa.state_revisions SET value = jsonb_set(jsonb_set(value, '{types,ac,process_fields}', '[\"confirmed\"]'), \
+        '{types,ac,references,consumer,verification_subject}', 'false') \
+        WHERE workspace = '{ws}' AND section = 'tree_schema'";
+    let mut conn = pool.get().await?;
+    let tx = conn.transaction().await?;
+    tx.batch_execute(&seed.replace("{ws}", &ws)).await?;
+    tx.commit().await?;
+    let stored = "SELECT jsonb_agg(value ORDER BY revision)::text FROM joppa.state_revisions \
+        WHERE workspace = $1 AND section = 'tree_schema'";
+    let before: String = conn.query_one(stored, &[&ws]).await?.get(0);
+    assert!(before.contains("process_fields") && before.contains("verification_subject"));
+    conn.execute("DELETE FROM joppa.board_cache WHERE workspace = $1", &[&ws])
+        .await?;
+    joppa::store::migrate(&pool).await?;
+    joppa::store::backfill_board(&pool).await?;
+    let after: String = conn.query_one(stored, &[&ws]).await?.get(0);
+    assert_eq!(
+        after, before,
+        "a reprojection keeps each stored schema revision"
+    );
+    Ok(())
+}

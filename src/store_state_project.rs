@@ -57,8 +57,10 @@ pub(crate) async fn project(
             );
         }
     }
+    // A stored schema revision is history: a reprojection never rewrites it, also when the
+    // schema type no longer shows a removed field such as process_fields.
     if !revisions.is_empty() {
-        client.execute("INSERT INTO joppa.state_revisions(workspace,section,key,revision,value) SELECT $1,x.section,x.key,x.revision,x.value FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,revision integer,value jsonb) ON CONFLICT(workspace,section,key,revision) DO UPDATE SET value=EXCLUDED.value WHERE state_revisions.value IS DISTINCT FROM EXCLUDED.value", &[&workspace,&json!(revisions).to_string()]).await?;
+        client.execute("INSERT INTO joppa.state_revisions(workspace,section,key,revision,value) SELECT $1,x.section,x.key,x.revision,x.value FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,revision integer,value jsonb) ON CONFLICT(workspace,section,key,revision) DO UPDATE SET value=EXCLUDED.value WHERE state_revisions.value IS DISTINCT FROM EXCLUDED.value AND state_revisions.section<>'tree_schema'", &[&workspace,&json!(revisions).to_string()]).await?;
     }
     Ok(())
 }
