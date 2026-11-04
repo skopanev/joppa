@@ -193,3 +193,42 @@ async fn the_write_schema_names_data_owner_and_a_save_without_it_is_refused() ->
     );
     Ok(())
 }
+
+// agent-clarity-ac11
+#[tokio::test]
+async fn the_write_tools_name_the_note_id_form_and_the_scope_of_unbound() -> Result<()> {
+    let w = world(&[TEST]).await?;
+    let list = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
+    let url = format!("{}/mcp", w.root);
+    let reply: Value = w
+        .http
+        .post(url)
+        .bearer_auth(&w.bot)
+        .json(&list)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let text = |name: &str| {
+        let tools = reply["result"]["tools"].as_array();
+        let tool = tools.and_then(|t| t.iter().find(|t| t["name"] == name));
+        tool.map(|t| t["description"].as_str().unwrap_or_default().to_owned())
+            .unwrap_or_default()
+    };
+    let form = r#"A note id has 1 to 120 ASCII letters, digits, "-", "_" or ".""#;
+    for name in ["joppa_command", "joppa_batch"] {
+        ensure!(
+            text(name).contains(form),
+            "{name} does not name the note id form"
+        );
+    }
+    ensure!(
+        text("joppa_record_results")
+            .contains("unbound does not check under which criterion a test node stands"),
+        "joppa_record_results does not name the scope of unbound"
+    );
+    let note = json!({"op":"note","target":"ac:a","id":"a b","text":"Finding"});
+    let refused = w.command(&w.bot, note).await?;
+    ensure!(refused == Err("invalid id: a b".into()), "{refused:?}");
+    Ok(())
+}

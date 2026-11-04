@@ -23,7 +23,8 @@ Every test in the repository must have a present test node.
 
 - Never add or rename a test without its test node in the same change.
 - Archive the test node of a deleted test. Archive the test nodes of a criterion before the criterion.
-- `joppa_record_results` gives `unbound`: the test names of the record that have no present test node.
+- `joppa_record_results` gives `unbound`: the test names of the record that are the title of no
+  present test node in the workspace. `unbound` does not check under which criterion a node stands.
 - A full-run record must give `"unbound": []` before a merge.
 
 ## Records
