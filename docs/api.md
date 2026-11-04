@@ -35,10 +35,19 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 ## Readiness
 
 `assess {target, ready, reason}` sets the readiness mark of any present node.
-The process metadata of the node then gives `assessment`: `{state, reason, actor}`.
+The process metadata of the node then gives `assessment`: `{state, reason, actor, position}`.
 `state` is `ready` or `waiting`. The node filter `ready` is false for a waiting node.
 The mark changes no check evidence and no acceptance. A change that resets a criterion also
 removes its mark.
+
+`expected_position` is optional. Send the `position` of the mark that you read, or 0 when the
+node has no mark. When the current mark has another position, the write is refused with
+"stale assessment; read the object again". In `joppa_batch`, the refusal stops every operation
+of the batch:
+
+```json
+{"op": "assess", "target": "ac:a", "ready": true, "reason": "Retry passed", "expected_position": 812}
+```
 
 Live writes refuse the form with `req`, `revision` and `ac`:
 "assess with req, revision and ac was removed; use assess {target, ready, reason}".

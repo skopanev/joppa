@@ -20,9 +20,12 @@ async fn assess_marks_any_node_and_the_ready_filter_follows_the_mark() -> Result
             .map_err(anyhow::Error::msg)?;
     }
     let task = w.object("task:t").await?;
+    let mut assessment = task["process"]["assessment"].clone();
+    let position = assessment["position"].take();
     ensure!(
-        task["process"]["assessment"]
-            == json!({"state":"waiting","reason":"Which API version?","actor":"bot"}),
+        assessment
+            == json!({"state":"waiting","reason":"Which API version?","actor":"bot","position":null})
+            && position.as_u64() > Some(0),
         "{task}"
     );
     let filter = |ready: bool| json!({"kind":["task","requirement"],"assignee":null,"ready":ready});

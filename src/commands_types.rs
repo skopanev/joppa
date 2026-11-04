@@ -176,6 +176,10 @@ pub struct AssessNode {
     pub target: String,
     pub ready: bool,
     pub reason: String,
+    /// The position of the mark that the writer read, 0 for no mark. A newer mark refuses
+    /// the write, so a retry never replaces the mark of another member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_position: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

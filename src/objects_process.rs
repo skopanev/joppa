@@ -54,11 +54,12 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     p
 }
 
-/// The readiness mark of a node, as `assess` sets it: ready, or waiting with a reason.
+/// The readiness mark of a node, as `assess` sets it: ready, or waiting with a reason. Its
+/// position is the expected_position of the next assess.
 pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
     let a = w.signal_assessments.get(resolve_address(w, key))?;
     let state = if a.ready { "ready" } else { "waiting" };
-    Some(json!({"state": state, "reason": a.reason, "actor": a.actor}))
+    Some(json!({"state": state, "reason": a.reason, "actor": a.actor, "position": a.position}))
 }
 
 /// The process tone of a node. A status rule of its type decides the tone that a read shows.

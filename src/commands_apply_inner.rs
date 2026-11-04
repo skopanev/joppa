@@ -65,12 +65,20 @@ pub(crate) fn apply_inner(
             target,
             ready,
             reason,
-        }
-        | Command::Assess(AssessOp::Node(AssessNode {
+        } => apply_assess(w, actor, target, (*ready, reason), None, position)?,
+        Command::Assess(AssessOp::Node(AssessNode {
             target,
             ready,
             reason,
-        })) => apply_assess(w, actor, target, *ready, reason, position)?,
+            expected_position,
+        })) => apply_assess(
+            w,
+            actor,
+            target,
+            (*ready, reason),
+            *expected_position,
+            position,
+        )?,
         Command::SetPriority { target, priority } => apply_set_priority(w, target, priority),
         Command::SaveObject(crate::commands::SaveObjectOp { .. }) => {
             crate::objects::save(w, actor, command, position, recorded_at)?;

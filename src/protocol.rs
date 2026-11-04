@@ -90,7 +90,8 @@ fn authoring_command_schema() -> Value {
             "data":{"type":"object","description":"Document fields. data.title: one concise statement (max 128 chars). data.body: the text of every object type; data.description and data.contract are refused. Each other text value: concise text (max field_max_length of the type, default 1024 chars). Over 1 kb: prefer attach as a file. Put links in links and comments in note, never in these texts."},
             "title":{"description":"One concise statement (max 128 chars). Prefer English. Follow ASD-STE100 Issue 9."}, "body":text(), "text":text(),
             "reason":text(), "value":text(),
-            "ready":{"type":"boolean","description":"For assess: true when the node is ready for work, false when it waits; reason says for what."}
+            "ready":{"type":"boolean","description":"For assess: true when the node is ready for work, false when it waits; reason says for what."},
+            "expected_position":{"type":"integer","minimum":0,"description":"For assess, optional: the process.assessment.position that you read, 0 for no mark. A newer mark refuses the write: stale assessment; read the object again."}
         }
     })
 }

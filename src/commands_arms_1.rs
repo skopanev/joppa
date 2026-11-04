@@ -67,14 +67,17 @@ pub(super) fn apply_set_tree_schema(
     Ok(())
 }
 
+/// The refusal of an assess whose expected_position is not the position of the current mark.
+pub const STALE_ASSESSMENT: &str = "stale assessment; read the object again";
+
 /// Apply `assess` to a node, or replay the older `assess_signal`: the readiness mark of any
-/// present node.
+/// present node. With expected_position, the mark that the writer read must still be current.
 pub(super) fn apply_assess(
     w: &mut Workspace,
     actor: &str,
     target: &str,
-    ready: bool,
-    reason: &str,
+    (ready, reason): (bool, &str),
+    expected_position: Option<u64>,
     position: u64,
 ) -> Result<()> {
     nonempty(reason)?;
@@ -82,6 +85,11 @@ pub(super) fn apply_assess(
     ensure!(
         w.objects.get(&key).is_some_and(|o| o.current().present),
         "unknown object"
+    );
+    let current = w.signal_assessments.get(&key).map_or(0, |a| a.position);
+    ensure!(
+        expected_position.is_none_or(|expected| expected == current),
+        STALE_ASSESSMENT
     );
     w.signal_assessments.insert(
         key,

@@ -10,6 +10,7 @@ mod types;
 pub use types::*;
 #[path = "commands_arms_1.rs"]
 mod arms_1;
+pub use arms_1::STALE_ASSESSMENT;
 use arms_1::*;
 #[path = "commands_arms_2.rs"]
 mod arms_2;

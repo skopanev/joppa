@@ -13,7 +13,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "parent": "ac:a",
   "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
   "status": {"label": "Waits for an answer", "tone": "yellow"},
-  "process": {"assessment": {"state": "waiting", "reason": "Which currency?", "actor": "bot"}},
+  "process": {"assessment": {"state": "waiting", "reason": "Which currency?", "actor": "bot", "position": 41}},
   "comments": {
     "total": 30,
     "next_cursor": "25",
@@ -51,7 +51,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `acceptance`, and the `status` of an inbox type. `annotation_address` shows only when it
   differs from the address.
 - `assessment` is the readiness mark that `assess` sets: `state` (`ready` or `waiting`),
-  `reason` and `actor`. `verification` shows only the `pass` or `fail` of a finished run.
+  `reason`, `actor` and `position`, the journal position of the mark. Send it as
+  `expected_position` of the next `assess`. `verification` shows only the `pass` or `fail` of a finished run.
 - `process.status` of a Note shows only when it differs from `data.status`.
 - `work_ready` shows only when it is `false`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
