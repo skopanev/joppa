@@ -127,6 +127,10 @@ pub fn name(command: &Command) -> Option<&'static str> {
     })
 }
 
+/// The refusal of a type with a removed field. Every node shows its process facts, and a
+/// reference changes no Task scope.
+pub const SCHEMA_FIELDS: &str = "process_fields and verification_subject were removed; every node shows its process facts, and a reference changes no Task scope";
+
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
@@ -137,6 +141,21 @@ pub fn removed_field(command: &Command) -> Option<&'static str> {
             status_colors: Some(_),
             ..
         }) => Some("status_colors was removed; use statuses"),
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            types, put_types, ..
+        }) if types
+            .iter()
+            .chain(put_types)
+            .flat_map(|m| m.values())
+            .any(|t| {
+                t.process_fields.is_some()
+                    || t.references
+                        .values()
+                        .any(|r| r.verification_subject.is_some())
+            }) =>
+        {
+            Some(SCHEMA_FIELDS)
+        }
         // A test result field has no per-value board status: a test is a node with one tone.
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             test_results: Some(block),

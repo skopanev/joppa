@@ -45,7 +45,7 @@ async fn configured_references_drive_the_index_without_rewriting_history() -> Re
             title: "Affects".into(),
             required: true,
             multiple: true,
-            verification_subject: true,
+            verification_subject: None,
             allow_all: false,
         },
     )]

@@ -66,7 +66,11 @@ pub(crate) fn targets_of(
                 seen.insert(target.clone()),
                 "duplicate reference in {field}"
             );
-            targets.push((field.clone(), target, rule.verification_subject));
+            targets.push((
+                field.clone(),
+                target,
+                rule.verification_subject == Some(true),
+            ));
         }
     }
     Ok(targets)

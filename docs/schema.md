@@ -94,8 +94,6 @@ With `status_required: true`, `set_tree_schema` refuses a type without `status`.
 the nodes of such a type have the rule `unset` and the tone orange.
 The rule tone also sets the status label, for example "Children checks passed" or
 "Checks failed".
-`process_fields` lists `confirmed` for a requirement or a criterion and `acceptance` for a
-requirement.
 
 ## Filter fields
 
@@ -151,13 +149,15 @@ A result field has no `board` or `applies`: `set_tree_schema` refuses them with
 
 ```json
 {"references": {"affected": {"target": "spec", "title": "Affects", "required": true,
-  "multiple": true, "verification_subject": false}}}
+  "multiple": true}}}
 ```
 
 - `target` names a configured type, or `"*"` for any type. A wildcard needs full addresses.
 - `multiple: true` takes an array of addresses. `required: true` refuses a missing or empty value.
-- Duplicates and missing targets are refused. References change no parent and block nothing.
-- `verification_subject: true` adds the reference to the Task scope check and the subject filter.
+- Duplicates and missing targets are refused. References change no parent, no readiness and no tone.
+
+A type with `process_fields` or a reference with `verification_subject` is refused:
+`process_fields and verification_subject were removed; every node shows its process facts, and a reference changes no Task scope`.
 
 The default recipe defines `ac.consumer` (one consumer, required) and `task.projects`.
 `launch_blocker: true` on a type makes its `before_launch` entries launch conditions.

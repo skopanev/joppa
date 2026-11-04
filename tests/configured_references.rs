@@ -23,7 +23,7 @@ fn rule(target: &str, multiple: bool, required: bool) -> ReferenceRule {
         title: "Affects".into(),
         multiple,
         required,
-        verification_subject: false,
+        verification_subject: None,
         allow_all: false,
     }
 }

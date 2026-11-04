@@ -76,12 +76,12 @@ Always record the problem, then establish expected behavior.
 
 ```text
 Existing REQ found              -> link it.
-No REQ; behavior is undisputed  -> draft one, mark it unconfirmed, analyze work.
+No REQ; behavior is undisputed  -> draft one and analyze work.
 Expected behavior is disputed  -> request a decision; affected work waits.
 ```
 
-Retrospective wording is easy to tailor to a convenient fix. It needs the same
-owner confirmation as any other REQ. An incomplete tree must not prevent
+Retrospective wording is easy to tailor to a convenient fix. Its owner accepts it
+as any other REQ. An incomplete tree must not prevent
 a new Note. A new Note does not prove that the tree is complete.
 
 ## Readiness and results
@@ -101,8 +101,8 @@ acceptance are separate facts.
 | Ready for acceptance | All ACs passed on one subject; the owner must decide |
 | Accepted | The owner accepted that revision and its checked result |
 
-Silence is not approval. Confirm wording explicitly. Changed meaning requires
-confirmation again. A specialist's decision may be reused only when the REQ
+Silence is not approval. Only an owner acceptance approves a revision. A changed
+meaning needs a new revision and a new acceptance. A specialist's decision may be reused only when the REQ
 context and the relevant AC are unchanged; cite it in the new assessment.
 
 ## Acceptance

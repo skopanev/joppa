@@ -73,7 +73,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     title: "Used by".into(),
                     required: true,
                     multiple: true,
-                    verification_subject: false,
+                    verification_subject: None,
                     allow_all: false,
                 },
             );
@@ -86,7 +86,9 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     title: "Repository".into(),
                     required: false,
                     multiple: true,
-                    verification_subject: true,
+                    // The replayed Task saves before migrate_generic_nodes keep their projects
+                    // inside the verification subject.
+                    verification_subject: Some(true),
                     allow_all: false,
                 },
             );

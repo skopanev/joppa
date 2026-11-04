@@ -35,7 +35,7 @@ async fn a_new_workspace_starts_with_one_consumer_per_criterion() -> Result<()> 
     let types = &tree["schema"]["types"];
     ensure!(
         types["ac"]["references"]["consumer"]
-            == json!({"target":"consumer","title":"Used by","required":true,"multiple":false,"verification_subject":false}),
+            == json!({"target":"consumer","title":"Used by","required":true,"multiple":false}),
         "{types}"
     );
     ensure!(

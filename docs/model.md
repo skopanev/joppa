@@ -9,7 +9,7 @@ The model below describes the default tree and its verification roles.
 
 Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.
 Russian is permitted under the same rules. Preserve intake, verbatim user text, existing wording, history, and evidence.
-Read the [technical writing rules](writing.md). New REQ and AC wording needs owner confirmation.
+Read the [technical writing rules](writing.md). The REQ owner approves new REQ and AC wording with an acceptance.
 
 One workspace represents one product, even when several repositories deliver it.
 Use the question each level answers to decide where an item belongs.
@@ -157,8 +157,8 @@ requires. Never manufacture ACs to reach a target count.
 
 ## Creating and maintaining the tree
 
-Agents and people save domains and capabilities with `save_object`. A saved tree
-needs no confirmation. A saved REQ needs no confirmation either.
+Agents and people save domains, capabilities and REQs with `save_object`. Only an owner
+acceptance approves a REQ revision.
 
 Creation through MCP can omit local IDs: the server makes them and returns the
 resolved command. Keep IDs when you edit existing objects. Archived objects keep

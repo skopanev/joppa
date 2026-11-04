@@ -46,9 +46,9 @@ pub struct TreeType {
     /// rule is unset and the node is orange; with status_required the type is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// The process fields that an object of this type shows: confirmed for a requirement or a
-    /// criterion, acceptance for a requirement. A type without the list shows neither.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// The removed list of process fields. Only an older set_tree_schema in the journal has
+    /// it: the replay accepts it and nothing reads it. A live write refuses it, no read shows it.
+    #[serde(default, skip_serializing)]
     pub process_fields: Option<Vec<String>>,
 }
 
@@ -84,8 +84,10 @@ pub struct ReferenceRule {
     pub required: bool,
     #[serde(default)]
     pub multiple: bool,
-    #[serde(default)]
-    pub verification_subject: bool,
+    /// The removed subject flag. Only the replay of a Task save before migrate_generic_nodes
+    /// reads it; a live write refuses it, and no read shows it.
+    #[serde(default, skip_serializing)]
+    pub verification_subject: Option<bool>,
     /// The reference also takes the explicit value all: every object of the target type.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub allow_all: bool,

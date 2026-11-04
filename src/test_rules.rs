@@ -1,8 +1,7 @@
 //! The event migrate_test_rules and the test rules that a workspace uses.
 //!
 //! The event runs once in each workspace. It gives each type of the tree schema its status
-//! rule and its process fields by name, it moves each test list into the field tests of
-//! its document, and it writes the full block test_results with the rules that the
+//! rule by name, it moves each test list into the field tests of its document, and it writes the full block test_results with the rules that the
 //! workspace used before. After the event, the live code reads the rules only from the
 //! schema. LEGACY_TEST_RULES holds the rules of the journals before the event: a replay of
 //! an older event checks it against them, and the event writes them into the schema.
@@ -80,10 +79,9 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     }
     ensure!(actor == w.admin, "workspace owner required");
     let mut next = schema(w);
-    // Each type gets its status rule and its process fields by name.
-    for (kind, t) in next.types.iter_mut() {
+    // Each type gets its status rule by name.
+    for t in next.types.values_mut() {
         t.status = Some(role_status_rule(t).to_owned());
-        t.process_fields = Some(crate::objects::process_fields(w, kind));
     }
     // A block that an older journal saved keeps its status names and its own fields.
     let mut block = legacy();

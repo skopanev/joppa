@@ -136,39 +136,6 @@ pub(crate) const ROLES_SCHEMA_REASON: &str = "Use configured roles and flags for
 
 pub const TASK_GATE_SCHEMA_REASON: &str = "Record the default Task readiness gate";
 
-/// The workspace uses the built-in tree: every schema revision comes from a migration.
-pub(crate) fn builtin_tree(w: &Workspace) -> bool {
-    w.tree_schema.iter().all(|r| {
-        [
-            NOTES_SCHEMA_REASON,
-            TASK_GATE_SCHEMA_REASON,
-            REFERENCES_SCHEMA_REASON,
-            ROLES_SCHEMA_REASON,
-            crate::consumer_migration::REASON,
-        ]
-        .contains(&r.reason.as_str())
-    })
-}
-
-/// The process fields that objects of a type show. A saved schema lists them per type. The
-/// built-in tree, until the workspace saves its own schema, shows confirmed and acceptance on
-/// a requirement and confirmed on a criterion. The defaults stay out of `defaults()`, because
-/// an old schema migration event replays from those types.
-pub fn process_fields(w: &Workspace, kind: &str) -> Vec<String> {
-    let s = schema(w);
-    let Some(t) = s.types.get(kind) else {
-        return vec![];
-    };
-    if let Some(fields) = &t.process_fields {
-        return fields.clone();
-    }
-    match (builtin_tree(w), t.role.as_str()) {
-        (true, "requirement") => vec!["confirmed".into(), "acceptance".into()],
-        (true, "ac") => vec!["confirmed".into()],
-        _ => vec![],
-    }
-}
-
 /// The relations that a link between two objects can have.
 pub const LINK_RELATIONS: [&str; 2] = ["related", "depends_on"];
 

@@ -40,19 +40,13 @@ fn before() -> World {
 fn the_migration_writes_the_older_rules_and_the_rule_of_each_type() {
     let mut w = before();
     let old = joppa::objects::schema(&w.state);
-    let fields: Vec<_> = old
-        .types
-        .keys()
-        .map(|kind| joppa::objects::process_fields(&w.state, kind))
-        .collect();
     internal(&mut w, "migrate_test_rules").unwrap();
     let new = joppa::objects::schema(&w.state);
     assert_eq!(new.revision, old.revision + 1);
     assert_eq!(new.reason, joppa::test_rules::REASON);
-    for ((kind, t), fields) in new.types.iter().zip(fields) {
+    for (kind, t) in &new.types {
         let rule = joppa::objects::role_status_rule(&old.types[kind]);
         assert_eq!(t.status.as_deref(), Some(rule), "{kind}");
-        assert_eq!(t.process_fields.as_ref(), Some(&fields), "{kind}");
     }
     assert_eq!(new.test_results, Some(joppa::test_rules::legacy()));
     // The event runs once.

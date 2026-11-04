@@ -47,7 +47,7 @@ fn before() -> World {
             title: "For".into(),
             required: false,
             multiple: true,
-            verification_subject: false,
+            verification_subject: None,
             allow_all: false,
         },
     );

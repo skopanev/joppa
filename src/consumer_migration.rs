@@ -29,7 +29,7 @@ fn rule() -> ReferenceRule {
         title: "Used by".into(),
         required: true,
         multiple: false,
-        verification_subject: false,
+        verification_subject: None,
         allow_all: false,
     }
 }

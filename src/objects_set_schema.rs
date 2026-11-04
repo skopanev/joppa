@@ -97,15 +97,6 @@ pub fn set_schema(
             "a status rule is own, children, links or none"
         );
         ensure!(
-            t.process_fields
-                .as_ref()
-                .is_none_or(|fields| fields.iter().all(|f| {
-                    (f == "confirmed" && matches!(t.role.as_str(), "requirement" | "ac"))
-                        || (f == "acceptance" && t.role == "requirement")
-                })),
-            "process_fields allows confirmed for a requirement or a criterion and acceptance for a requirement"
-        );
-        ensure!(
             t.parent_gate
                 .as_deref()
                 .is_none_or(|g| ["ready", "verified", "completed"].contains(&g)),
