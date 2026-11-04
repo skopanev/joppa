@@ -46,3 +46,28 @@ async fn a_failure_beats_a_later_pass_on_the_same_commit() -> Result<()> {
     ensure!(s["status"] == "red", "{s}");
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn an_older_todo_on_the_same_commit_never_hides_a_newer_result() -> Result<()> {
+    // no-mixed-subjects-ac3: on commit C, X is todo twice, then pass.
+    let w = world(&[X]).await?;
+    let c = "c3c3c3c";
+    for duration in [1, 2] {
+        let todo = json!([{"test":X,"status":"todo","duration_ms":duration}]);
+        w.recorded(c, todo).await?;
+    }
+    let s = w.a_status(&w.bot).await?;
+    let x = test(&s, X);
+    ensure!(
+        x["status"] == "todo" && x["fields"]["duration_ms"] == 2,
+        "{s}"
+    );
+    w.recorded(c, json!([{"test":X,"status":"pass"}])).await?;
+    let s = w.a_status(&w.bot).await?;
+    ensure!(
+        test(&s, X)["status"] == "pass" && s["status"] == "green",
+        "{s}"
+    );
+    Ok(())
+}

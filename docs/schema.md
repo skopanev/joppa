@@ -131,7 +131,7 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
 - `statuses` gives the status names of `joppa_record_results`. Each name counts as `pass`, `fail`, `skip` or `todo`. The map needs a name for `pass` and for `fail`.
 - `fields` lists the fields of a result: `text` with `max_length`, `number`, `enum` with `values`, or `ref` with a `target` type.
 - `name` gives the form of a test name. `max_tests` limits the test nodes of one parent, and `max_results` limits one record.
-- `same_commit`: with `fail_wins`, a failure in any record of the newest commit decides the test. With `latest_wins`, only the newest record decides it.
+- `same_commit`: with `fail_wins`, a failure in any record of the newest commit decides the test. Else, and with `latest_wins`, only the newest record decides it.
 - `reset_on_change` is described in [what green means](green.md).
 - `green_if_all` and `red_if_any` give the outcomes that make a test node green or red.
 - `failure_field` names the text field that readers show as the failure message.

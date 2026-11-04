@@ -3,7 +3,8 @@
 //! Each listed test counts with its latest result. The deciding record for a test is
 //! the newest one that names the test. The block test_results of the tree schema gives
 //! the rules. With same_commit fail_wins, a failure in any record of the commit of that
-//! record beats a pass. With latest_wins, only the deciding record counts. A criterion is
+//! record decides. Else, and with latest_wins, only the deciding record counts: an older
+//! skip or todo never hides a newer result. The newest row gives the message and fields. A criterion is
 //! green when the outcome of every listed test is in green_if_all, and red when one is in
 //! red_if_any. It shows the oldest commit among its tests.
 //! A skip or todo counts only in a record. Older stored reports did not run those tests.
@@ -124,7 +125,9 @@ fn test_status(
             .cmp(&a.order)
             .then(b.received_us.cmp(&a.received_us))
     });
-    let Some(deciding) = ordered.into_iter().find(|r| ran(r)) else {
+    // The rank of a report: 0 is the newest.
+    let rank = |id: i64| ordered.iter().position(|r| r.id == id);
+    let Some(deciding) = ordered.iter().copied().find(|r| ran(r)) else {
         return TestStatus {
             address: address.into(),
             status: "not_run".into(),
@@ -142,16 +145,26 @@ fn test_status(
             _ => r.id == deciding.id,
         })
         .collect();
-    let rows: Vec<&TestResult> = results
+    // The rows of the test, the newest report first.
+    let mut rows: Vec<(i64, &TestResult)> = results
         .iter()
         .filter(|(id, r)| r.address == address && same_commit.iter().any(|report| report.id == *id))
-        .map(|(_, r)| r)
+        .map(|(id, r)| (*id, r))
         .collect();
-    let status = ["fail", "skipped", "todo"]
-        .into_iter()
-        .find(|s| rows.iter().any(|r| r.status == *s))
-        .unwrap_or("pass");
-    // The deciding row gives the message, the status name and the fields.
+    rows.sort_by_key(|(id, _)| rank(*id));
+    // A failure of any record of the commit decides. Else the worst case of the deciding
+    // record decides: an older skip or todo never hides a newer result.
+    let own = rows.iter().filter(|(id, _)| *id == deciding.id);
+    let status = if rows.iter().any(|(_, r)| r.status == "fail") {
+        "fail"
+    } else {
+        ["skipped", "todo"]
+            .into_iter()
+            .find(|s| own.clone().any(|(_, r)| r.status == *s))
+            .unwrap_or("pass")
+    };
+    let rows: Vec<&TestResult> = rows.into_iter().map(|(_, r)| r).collect();
+    // The newest row with the decided status gives the message, the status name and the fields.
     let row = rows.iter().find(|r| r.status == status);
     TestStatus {
         address: address.into(),

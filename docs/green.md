@@ -42,6 +42,7 @@ The newest result of the test after the last reset of its node decides:
 - Grey: no result, or a `skip` or `todo` result.
 
 With `same_commit: "fail_wins"`, a failure in any record of the newest commit decides the test.
+An older skip or todo of that commit never hides a newer result.
 A newer commit that passes the test clears an older failure.
 Time alone never changes a tone.
 
