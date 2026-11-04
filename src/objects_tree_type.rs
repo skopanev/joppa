@@ -234,6 +234,10 @@ pub fn defaults() -> BTreeMap<String, TreeType> {
     for t in types.values_mut() {
         t.status = Some(role_status_rule(t).to_owned());
         t.parent_decision = false;
+        // Only the replay of migrate_schema keeps the subject flag of the older Task saves.
+        for r in t.references.values_mut() {
+            r.verification_subject = None;
+        }
         if t.inbox == Some(true) {
             t.parents.clear();
             t.root = true;
