@@ -158,3 +158,38 @@ async fn fields_make_large_list_replies_small() -> Result<()> {
     }
     Ok(())
 }
+
+// agent-clarity-ac10
+#[tokio::test]
+async fn the_write_schema_names_data_owner_and_a_save_without_it_is_refused() -> Result<()> {
+    let w = world(&[TEST]).await?;
+    let list = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"});
+    let url = format!("{}/mcp", w.root);
+    let reply: Value = w
+        .http
+        .post(url)
+        .bearer_auth(&w.bot)
+        .json(&list)
+        .send()
+        .await?
+        .json()
+        .await?;
+    for name in ["joppa_command", "joppa_batch"] {
+        let tool = reply["result"]["tools"]
+            .as_array()
+            .and_then(|t| t.iter().find(|t| t["name"] == name));
+        let text = tool.map(Value::to_string).unwrap_or_default();
+        ensure!(
+            text.contains("data.owner: the member ID of a human owner, required on every save"),
+            "{name} does not name data.owner"
+        );
+    }
+    let save = json!({"op":"save_object","kind":"requirement","id":"nobody","revision":0,
+        "parent":null,"data":{"title":"No owner","body":"A rule"},"reason":"Create"});
+    let refused = w.command(&w.bot, save).await?;
+    ensure!(
+        refused == Err("missing text field owner".into()),
+        "{refused:?}"
+    );
+    Ok(())
+}
