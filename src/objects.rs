@@ -13,6 +13,9 @@ pub use process_facts::{assessment, process, requirement_summary, signal};
 #[path = "objects_tree_type.rs"]
 mod tree_type;
 pub use tree_type::*;
+#[path = "objects_reference_rule.rs"]
+mod reference_rule;
+pub use reference_rule::*;
 #[path = "objects_schema_migration_defaults.rs"]
 mod schema_migration_defaults;
 pub use schema_migration_defaults::*;

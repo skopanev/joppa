@@ -77,3 +77,42 @@ async fn a_stored_schema_revision_with_the_removed_fields_survives_a_reprojectio
     );
     Ok(())
 }
+
+// generic-nodes-ac6
+#[test]
+fn an_older_false_subject_flag_equals_no_flag_in_the_consumer_migration() {
+    let mut w = World::new();
+    for op in [
+        "migrate_notes",
+        "migrate_tasks",
+        "migrate_schema",
+        "migrate_documents",
+    ] {
+        let cmd: Command = serde_json::from_value(json!({ "op": op })).unwrap();
+        commands::apply_replay(&mut w.state, "owner", &cmd, w.position + 1, "now").unwrap();
+        w.position += 1;
+    }
+    // An older set_tree_schema already gave each criterion the one consumer, with the flag.
+    let schema = objects::schema(&w.state);
+    let mut types = serde_json::to_value(&schema.types).unwrap();
+    for (_, t) in types.as_object_mut().unwrap() {
+        if let Some(refs) = t.get_mut("references").and_then(|r| r.as_object_mut()) {
+            refs.retain(|_, r| r["target"] != "consumer");
+        }
+    }
+    types["ac"]["references"]["consumer"] = json!({"target":"consumer","title":"Used by",
+        "required":true,"multiple":false,"verification_subject":false});
+    let older: Command = serde_json::from_value(json!({"op":"set_tree_schema",
+        "revision":schema.revision,"types":types,"reason":"One consumer"}))
+    .unwrap();
+    commands::apply_replay(&mut w.state, "owner", &older, w.position + 1, "now").unwrap();
+    w.position += 1;
+    let saved = objects::schema(&w.state).revision;
+    let migrate: Command = serde_json::from_value(json!({"op":"migrate_consumers"})).unwrap();
+    commands::apply_replay(&mut w.state, "owner", &migrate, w.position + 1, "now").unwrap();
+    assert_eq!(
+        objects::schema(&w.state).revision,
+        saved,
+        "the migration finds the same consumer rule and adds no schema revision"
+    );
+}
