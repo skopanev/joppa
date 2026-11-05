@@ -3,26 +3,26 @@
 **A versioned product tree with connected tasks.**
 
 Each workspace defines its object types, parents, links, colors and order.
-The default recipe is Domain → Capability → Requirement → AC → Task.
-Tasks belong to the parents that the workspace schema permits.
+The default recipe is Domain → Capability → Requirement → AC / TAC → Task / Test.
+Tasks and test nodes belong to the parents that the workspace schema permits (`ac` or `tac`).
 One workspace is one product, even when several repositories deliver it.
 Repository references follow the workspace schema.
 
-People and agents formulate REQ and ACs together. The REQ owner confirms wording
-and accepts the checked result. Agents assess each AC: independent ready
+People and agents formulate REQ, ACs and TACs together. The REQ owner confirms wording
+and accepts the checked result. Agents assess each criterion: independent ready
 conditions can proceed while disputed ones wait for a named decision maker.
 An iOS condition means iOS; other clients are never added by assumption.
 
 ## What works
 
-- Workspaces, members, decision authorities, capabilities and owned REQs/ACs.
+- Workspaces, members, decision authorities, capabilities and owned REQs, ACs and TACs.
 - Incoming Notes with revisions, comments, attachments and links to affected objects.
   The default queue shows unprocessed Notes. Processed Notes stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
-- Each test is a node under its AC: `save_object` with kind `test`.
+- Each test is a node under its criterion (`ac` or `tac`): `save_object` with kind `test`.
   `joppa_record_results` records the outcomes of one commit.
-- No AC, no test: every test in the repository has a present test node. A
+- No criterion, no test: every test in the repository has a present test node. A
   full-run record must give `"unbound": []` before a merge.
 - Each type has a status rule: `own`, `children`, `links` or `none`. One rollup
   gives every level the highest tone of its children: red, orange, yellow, grey,

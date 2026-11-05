@@ -10,11 +10,13 @@ Call `joppa_tree` to read the workspace schema. Use `set_tree_schema` to replace
   "revision": 0,
   "reason": "Add release grouping",
   "types": {
-    "initiative": {"title": "Initiative", "role": "group", "root": true, "parents": []},
-    "requirement": {"title": "Requirement", "role": "requirement", "root": false, "parents": ["initiative"]},
-    "ac": {"title": "Acceptance criterion", "role": "ac", "root": false, "parents": ["requirement"]},
-    "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac"]},
-    "note": {"title": "Note", "role": "document", "root": true, "parents": [], "inbox": true}
+    "initiative": {"title": "Initiative", "role": "group", "root": true, "parents": [], "status": "children"},
+    "requirement": {"title": "Requirement", "role": "requirement", "root": false, "parents": ["initiative"], "status": "children"},
+    "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children"},
+    "tac": {"title": "Technical Criterion", "badge": "TAC", "role": "ac", "root": false, "parents": ["ac", "requirement"], "status": "children"},
+    "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac", "tac"], "status": "none"},
+    "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac", "tac"], "status": "own"},
+    "note": {"title": "Note", "role": "document", "root": true, "parents": [], "inbox": true, "status": "none"}
   }
 }
 ```

@@ -18,12 +18,13 @@ Use the question each level answers to decide where an item belongs.
 Domain                  Which business area is this, and who decides?
   Capability            What can the product do?
     Requirement (REQ)   What behavior do we commit to?
-      AC                What concrete condition makes that commitment acceptable?
-        Task            What work is needed to meet or verify this condition?
+      AC                What observable condition makes that commitment acceptable?
+        TAC             What checkable technical contract proves it in code (under AC or REQ)?
+          Task          What work is needed to meet or verify this condition?
 ```
 
-Tasks are work attached to ACs, not a fifth level of business classification.
-Tests implement checks of ACs. A Task does not prove an AC.
+Tasks are work attached to criteria (`AC` or `TAC`), not a separate level of business classification.
+Tests implement checks of `AC` and `TAC` nodes. A Task does not prove a criterion.
 
 ## Domain — where a decision belongs
 
@@ -103,14 +104,27 @@ promise against a database superuser; see [storage and trust](storage.md).
 The one exception is the deletion of a workspace by its owner. It removes every
 row of that workspace, its journal included.
 
-## AC — one acceptance condition
+## AC and TAC — observable conditions and technical contracts
 
-An AC states a concrete condition under which a requirement is acceptable.
-It describes **what must hold**; a test describes **how to check it**.
+An AC states an observable condition under which a requirement is acceptable.
+Choose the format that fits:
+
+1. `Given / When / Then` — for a state transition or action.
+2. Direct rule — for an invariant, limit or disclosure where `Given / When / Then` is unnatural.
+
+A TAC (`Technical Criterion`, `role: "ac"`, placed under an `ac` or directly under a `requirement`)
+states one checkable technical contract in code:
+
+1. Route, event or job + input → HTTP status code, payload or error code.
+2. Database or Redis table, key, TTL, threshold or invariant.
+
+Each TAC names one `consumer` and its implementation `projects`. Tests (`kind: "test"`) and Tasks
+(`kind: "task"`) can attach to either an `AC` or a `TAC`.
 
 ```text
 REQ  Amounts at or above the reporting threshold are reportable.
   AC  The threshold is 10,000.00 inclusive.
+    TAC  POST /transfers records reportable=true at or above 10,000.00 unrounded.
       Test  9,999.99 is not reportable.
       Test  10,000.00 is reportable.
       Test  10,000.01 is reportable.
@@ -120,10 +134,8 @@ REQ  Amounts at or above the reporting threshold are reportable.
       Test  All three fields are present after crediting.
 ```
 
-A REQ describes the whole commitment; an AC describes one condition for accepting
-it. Both are checkable statements. Their difference is scope, not whether a
-statement can be true. One boundary condition can need three tests: below,
-exactly at and above the boundary. That is one AC, not three.
+A REQ describes the whole commitment. An AC describes one observable condition for accepting
+it, and a TAC records the exact technical contract in code.
 
 ### AC scope
 
@@ -143,9 +155,10 @@ inventing new product commitments.
 | Which business area owns this decision? | Domain |
 | What can the product do? | Capability |
 | What behavior do we promise as a whole? | REQ |
-| What individual condition makes that promise acceptable? | AC |
-| What work implements or verifies the condition? | Task attached to ACs |
-| How is the condition checked? | Test or manual check |
+| What observable condition makes that promise acceptable? | AC |
+| What route, event, job, table or threshold contract proves it in code? | TAC (under AC or REQ) |
+| What work implements or verifies the condition? | Task attached to AC or TAC |
+| How is the condition checked? | Test node under AC or TAC |
 
 ## Size signals, not validation rules
 

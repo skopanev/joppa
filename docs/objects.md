@@ -21,14 +21,16 @@ A link to an archived or absent object is refused, unless the current revision a
 Ordinary document fields can hold text, numbers, lists or maps.
 
 All documents have a title and an owner. The text of every type is `data.body`: the rule of
-a REQ, the Given/When/Then of an AC and the contract of a Task. A save with `data.description`
+a REQ, the observable condition of an AC (`Given / When / Then` for a flow, or a direct rule for
+an invariant, limit or disclosure), the technical contract of a TAC (`Technical Criterion`,
+placed under an AC or a REQ) and the contract of a Task. A save with `data.description`
 or `data.contract` is refused: `use body instead of description; read joppa_help`.
-An AC and a Task can inherit the REQ owner. With `decision_required: true` the AC owner
+An AC, a TAC and a Task can inherit the REQ owner. With `decision_required: true` the criterion owner
 supplies its decision. A Task keeps its assignee separate from its owner.
 
-A save of a criterion gives its specification a new revision with the reason
-`Criterion <address> changed: <reason>`. A save of a criterion with another requirement as
-parent moves it. Process commands keep the document fields. Only test results make an AC green.
+A save of a criterion (`ac` or `tac`) gives its specification a new revision with the reason
+`Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.
+Process commands keep the document fields. Only test results make a criterion green.
 
 Each type can define a `question`. Read it from `joppa_tree`, or from `joppa_help` with
 `workspace` and `section: "tree"`. Check that the title and body answer the question before
@@ -78,9 +80,11 @@ A type with `inbox: true` holds incoming information. A missing `data.status` me
 
 ## Tests of a criterion
 
-A test is a node of a type with role `test` under its criterion. Save one node for each test
-with `save_object`: `{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}`.
-No AC, no test: every test in the repository has a present test node, and a full-run record of
+A test is a node of a type with role `test` under its criterion (`ac` or `tac`). Save one node
+for each test with `save_object`:
+`{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}` (or
+`"parent": "tac:x"`).
+No criterion, no test: every test in the repository has a present test node, and a full-run record of
 `joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
 for the tones and the rollup.
 
