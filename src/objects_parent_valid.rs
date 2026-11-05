@@ -51,38 +51,6 @@ impl std::error::Error for RequiredField {}
 /// The document fields that hold the title and the text of an object.
 pub(crate) const TEXT_FIELDS: [&str; 4] = ["title", "body", "description", "contract"];
 
-/// Validate current writes without applying new gates to journal replay.
-pub fn validate_authoring_questions(w: &Workspace, command: &Command, position: u64) -> Result<()> {
-    if matches!(
-        command,
-        Command::SaveObject(crate::commands::SaveObjectOp { .. })
-    ) {
-        return Ok(());
-    }
-    let types = schema(w).types;
-    for o in w
-        .objects
-        .values()
-        .filter(|o| o.current().present && o.current().position == position)
-    {
-        if types.get(&o.kind).is_none_or(|t| t.question.is_none()) {
-            continue;
-        }
-        let previous = o.revisions.iter().rev().find(|r| r.position < position);
-        // Inbox decisions skip this gate only when the title and description stay unchanged.
-        let changed = TEXT_FIELDS
-            .iter()
-            .any(|field| previous.and_then(|r| r.data.get(field)) != o.current().data.get(field));
-        if changed {
-            return Err(RequiredField(
-                "This type has a question. Use save_object with question_checked".into(),
-            )
-            .into());
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()> {
     for (field, rule) in &t.required_fields {
         let valid = match rule {

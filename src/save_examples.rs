@@ -58,11 +58,8 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
             })
         };
         // A new object omits id: the server makes one.
-        let mut example = json!({"op":"save_object","kind":kind,"revision":0,
+        let example = json!({"op":"save_object","kind":kind,"revision":0,
             "parent":parent,"data":data,"links":[{"target":"<kind:id>","relation":"related"}],"reason":"<why this change>"});
-        if let Some(question) = &t.question {
-            example["question_checked"] = json!(question);
-        }
         examples.insert(kind.clone(), example);
     }
     Value::Object(examples)

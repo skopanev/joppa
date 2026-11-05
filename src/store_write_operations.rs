@@ -63,6 +63,7 @@ pub(crate) async fn write(
             fields(&value)?;
             // The journal stores the immutable ID of another workspace, never a name.
             super::remote::canonical_ids(&*tx, &mut value).await?;
+            super::public_ids::canonical(&*tx, &workspace, &state, &mut value).await?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
             let mut command: Command = serde_json::from_value(value)?;
@@ -76,13 +77,6 @@ pub(crate) async fn write(
             {
                 let child = child.as_str().context("workspace is a workspace ID")?;
                 super::remote::check_child(&*tx, &workspace, actor, child).await?;
-            }
-            if let Command::SaveObject(crate::commands::SaveObjectOp { kind, question_checked, .. }) = &command {
-                let schema = crate::objects::schema(&state);
-                if let Some(question) = schema.types.get(kind).and_then(|t| t.question.as_ref())
-                    && question_checked.as_ref() != Some(question) {
-                    return Err(crate::objects::RequiredField(format!("Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked")).into());
-                }
             }
             if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
                 super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
@@ -118,7 +112,6 @@ pub(crate) async fn write(
                 let payload = serde_json::to_string(&command)?;
                 let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,$2,$3,$4,$5::text::jsonb FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace)]).await?.get(0);
                 commands::apply(&mut state, actor, &command, position, &recorded_at)?;
-                crate::objects::validate_authoring_questions(&state, &command, position)?;
                 crate::objects::validate_tree(&state)?;
                 events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
             }

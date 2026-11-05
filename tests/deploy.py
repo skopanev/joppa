@@ -167,6 +167,49 @@ sys.exit(1 if action == os.environ.get('HANDOVER_FAIL') else 0)
                 self.assertEqual(order.count('migrate'), 1)
                 self.assertEqual(order.count('restart joppa'), 1)
 
+    def test_installer_dumps_the_database_before_the_stop(self):
+        """[ac:9jjb6xjt] Keep a checked dump and a Spaces backup before the migration."""
+        installer = (SOURCE / 'server/install.sh').read_text()
+        start = installer.index('# Keep a dump of the database before each migration.')
+        end = installer.index('if systemctl is-active --quiet joppa; then', start)
+        events, state = self.root / 'dump-events', self.root / 'var-lib-joppa'
+        state.mkdir()
+        backup_env = self.root / 'backup.env'
+        for tool, body in (('runuser', 'print("DUMP", end="")'), ('pg_restore', ''), ('systemctl', '')):
+            executable = self.bin / tool
+            executable.write_text(f'''#!/usr/bin/env python3
+import os, sys
+action = '{tool} ' + ' '.join(sys.argv[1:])
+with open(os.environ['DUMP_EVENTS'], 'a') as stream: stream.write(action+'\\n')
+if os.environ.get('DUMP_FAIL') and os.environ['DUMP_FAIL'] in action: sys.exit(1)
+{body}
+''')
+            executable.chmod(0o755)
+        script = installer[start:end].replace('/var/lib/joppa', str(state))
+        script = script.replace('/etc/joppa/backup.env', str(backup_env))
+        dump = state / 'joppa.pre-deploy.dump'
+        for failure, configured in (('', True), ('', False), ('pg_dump', True), ('joppa-backup', True)):
+            with self.subTest(failure=failure, configured=configured):
+                events.write_text('')
+                dump.write_text('OLD')
+                backup_env.unlink(missing_ok=True)
+                if configured:
+                    backup_env.write_text('test-only-value')
+                result = subprocess.run(['bash', '-c', 'set -euo pipefail\numask 077\n'+script],
+                    env={**self.env, 'DUMP_EVENTS': str(events), 'DUMP_FAIL': failure},
+                    text=True, capture_output=True)
+                order = [line.split()[0] + ' ' + line.split()[1] for line in events.read_text().splitlines()]
+                self.assertEqual(sorted(p.name for p in state.iterdir()), ['joppa.pre-deploy.dump'])
+                if failure == 'pg_dump':
+                    self.assertEqual((result.returncode, dump.read_text(), order), (1, 'OLD', ['runuser -u']))
+                    continue
+                self.assertEqual(dump.read_text(), 'DUMP')
+                self.assertEqual(dump.stat().st_mode & 0o777, 0o600)
+                started = ['systemctl daemon-reload', 'systemctl start'] if configured else []
+                self.assertEqual(order, ['runuser -u', 'pg_restore --list'] + started)
+                self.assertEqual(result.returncode, 1 if failure else 0, result.stderr)
+                self.assertIn('pg_dump --format=custom joppa', events.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

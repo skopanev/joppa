@@ -151,12 +151,14 @@ fn parse_mark(args: &Value) -> Result<Mark> {
         mark.nodes.len() <= MARK_NODES_MAX,
         "a mark names at most 15 nodes"
     );
-    let unique: std::collections::BTreeSet<&String> = mark.nodes.iter().collect();
-    ensure!(
-        unique.len() == mark.nodes.len(),
-        "a mark names each node once"
-    );
+    once(&mark.nodes)?;
     Ok(mark)
+}
+
+fn once(nodes: &[String]) -> Result<()> {
+    let unique: std::collections::BTreeSet<&String> = nodes.iter().collect();
+    ensure!(unique.len() == nodes.len(), "a mark names each node once");
+    Ok(())
 }
 
 /// Mark one open entry processed. The server sets the actor and the time.
@@ -166,11 +168,14 @@ pub async fn mark_history(
     actor: &str,
     args: &Value,
 ) -> Result<Value> {
-    let mark = parse_mark(args)?;
+    let mut mark = parse_mark(args)?;
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let id = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &id, actor, false).await?;
+    // A public item ID names its node by its address, also next to that address.
+    mark.nodes = super::public_ids::node_addresses(&*tx, &id, &mark.nodes).await?;
+    once(&mark.nodes)?;
     tx.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
         &[&id],

@@ -65,6 +65,11 @@ Transferred dumps and staging files are removed after use. Interrupted network
 connections can leave a private remote staging directory; the script reports
 cleanup failures so it can be removed after the interrupted deployment ends.
 
+Before it stops the service, each deploy writes a checked custom-format dump to
+`/var/lib/joppa/joppa.pre-deploy.dump` (root, mode 0600) and replaces the dump of the
+last deploy. When `/etc/joppa/backup.env` exists, it also runs `joppa-backup.service` once.
+A failed dump or backup stops the deploy while the old version still runs.
+
 A failed application health check restores the previous binary when available;
 database migrations and configuration changes are not rolled back. The final
 check calls the public HTTPS health endpoint. This does not verify Google login
@@ -72,14 +77,15 @@ or establish Spaces retention: those require their own acceptance checks.
 
 When backup credentials are present, the daily timer is enabled for 03:30 UTC
 with up to 15 minutes of jitter. Run the backup service once and verify a Spaces
-download and restore. Local dumps exist only during the upload; history is kept
+download and restore. The daily backup keeps no local dump; history is kept
 in Spaces, whose lifecycle must be configured separately.
 
 ## Layout
 
 - `/opt/joppa/bin/joppa`: application executable, owned by root.
 - `/etc/joppa/`: private runtime configuration, root:joppa, directory mode 0750.
-- `/var/lib/joppa/`: runtime directory owned by the unprivileged service account.
+- `/var/lib/joppa/`: runtime directory owned by the unprivileged service account. It also
+  holds `joppa.pre-deploy.dump`, the dump of the last deploy, owned by root, mode 0600.
 - `/var/backups/joppa/`: temporary dump during upload and the backup lock,
   owned by postgres, directory mode 0700; no local backup archive.
 - Caddy owns public ports 80/443; the API and PostgreSQL listen on loopback only.

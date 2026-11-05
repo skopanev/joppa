@@ -5,8 +5,6 @@ mod record_world;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 
-const QUESTION: &str = "Which condition does the criterion check?";
-
 /// The owner and the revision reason of a current object.
 async fn saved(w: &record_world::World, address: &str) -> Result<(String, String)> {
     let row = w.pool.get().await?.query_one("SELECT document->'data'->>'owner', document->>'reason' FROM joppa.objects WHERE workspace=$1 AND address=$2", &[&w.ws, &address]).await?;
@@ -30,20 +28,8 @@ fn save(title: &str, extra: Value) -> Value {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_batch_default_completes_each_save_that_omits_the_field() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    let tree = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
-    let revision = tree.map_err(anyhow::Error::msg)?["schema"]["revision"].clone();
-    let ac = json!({"title":"Criteria","role":"ac","status":"children",
-        "parents":["requirement"],"question":QUESTION});
-    w.command(
-        &w.owner,
-        json!({"op":"set_tree_schema","revision":revision,
-        "put_types":{"ac":ac},"reason":"Ask a question"}),
-    )
-    .await?
-    .map_err(anyhow::Error::msg)?;
     let note = json!({"op":"note","target":"ac:a","id":"plain","text":"A comment"});
-    let defaults = json!({"reason":"Default reason","question_checked":QUESTION,
-        "data":{"owner":"alex"}});
+    let defaults = json!({"reason":"Default reason","data":{"owner":"alex"}});
     let operations = json!([
         {"ref":"one","command":save("One", json!({}))},
         {"ref":"two","command":save("Two", json!({"owner":"owner","reason":"Own reason"}))},
@@ -76,7 +62,7 @@ async fn a_batch_default_completes_each_save_that_omits_the_field() -> Result<()
     // The note takes no default field.
     let stored: Value = serde_json::from_str(&stored)?;
     ensure!(
-        ["reason", "question_checked", "data"]
+        ["reason", "data"]
             .iter()
             .all(|key| stored.get(key).is_none())
             && stored["text"] == note["text"],

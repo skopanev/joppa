@@ -180,12 +180,8 @@ pub async fn save_dependency(
     } else {
         format!("Remove the dependency on {target}")
     };
-    let mut command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
+    let command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
         "parent":document["parent"],"data":document["data"],"links":links,"reason":reason});
-    // Only a link changes, so the title and the description still answer the type question.
-    if let Some(question) = schema["schema"]["types"][kind]["question"].as_str() {
-        command["question_checked"] = json!(question);
-    }
     execute_remote_input(pool, workspace, actor, request_id, &command).await
 }
 

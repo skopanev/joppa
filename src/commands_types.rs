@@ -92,6 +92,7 @@ pub struct SaveObjectOp {
     /// The new links. A live save without them keeps the current links (omitted_links).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<crate::objects::ObjectLink>>,
+    /// An older journal and an older client send it. No write checks it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_checked: Option<String>,
     pub reason: String,

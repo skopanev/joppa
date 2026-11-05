@@ -66,7 +66,6 @@ A rule object requires literal markers in a text field:
 - Absent fields, nulls, blank text, empty lists and empty maps have no value. `0` and `false` are values.
 - The value of a marker rule must be text that contains every marker, with case sensitivity, in any order.
 - The marker list needs one marker or more. Markers and the error text must not be blank.
-- The server checks `question_checked` before the required fields.
 - A rule applies to each save after it. `set_tree_schema` refuses the rule when a present object lacks the value.
 - HTTP returns 422 when a rule fails. MCP returns the configured error.
 

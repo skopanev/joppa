@@ -102,7 +102,6 @@ async function fixture(records, configured = types, contextOptions = {}) {
     const [kind, id] = address.split(':');
     const value = {op: 'save_object', kind, id, revision, parent: record.parent || null,
       data: {title: record.title, owner: 'owner', body: record.body || 'Current source'}, reason: 'Define the browser fixture'};
-    if (configured[kind]?.question) value.question_checked = configured[kind].question;
     return useMcp ? mcp('joppa_command', {request_id: crypto.randomUUID(), command: value}) : command(value);
   };
   // Record one commit: each case is [name] for a pass or [name, message] for a failure.

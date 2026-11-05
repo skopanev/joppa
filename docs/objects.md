@@ -34,9 +34,8 @@ A save of a criterion (`ac` or `tac`) gives its specification a new revision wit
 Process commands keep the document fields. Only test results make a criterion green.
 
 Each type can define a `question`. Read it from `joppa_tree`, or from `joppa_help` with
-`workspace` and `section: "tree"`. Check that the title and body answer the question before
-you save. Send `question_checked` with the exact question text in `save_object`. The server
-refuses an absent or different value before it records the operation.
+`workspace` and `section: "tree"`. The title and body of an object answer the question of its
+type. A save does not send the question, and the server does not check the answer.
 
 The workspace schema gives the types, parents, required fields, status rules and test rules.
 See [the workspace schema](schema.md).

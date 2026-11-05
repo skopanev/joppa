@@ -143,15 +143,6 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             command["data"]["consumer"] = json!("customer");
         }
         let request_id = uuid::Uuid::new_v4().to_string();
-        if missing == "Given:" {
-            let question_error = format!(
-                "Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked"
-            );
-            text_rule_refusal(&w, bot, &request_id, command.clone(), &question_error).await?;
-            command["question_checked"] = json!("A different question");
-            text_rule_refusal(&w, bot, &request_id, command.clone(), &question_error).await?;
-        }
-        command["question_checked"] = json!(question);
         text_rule_refusal(&w, bot, &request_id, command.clone(), error).await?;
         command["data"]["body"] = json!(valid);
         let transport = if kind == "ac" { "http" } else { "mcp" };

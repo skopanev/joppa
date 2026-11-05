@@ -94,6 +94,25 @@ if [[ -f /opt/joppa/bin/joppa ]]; then
     cp -p /opt/joppa/bin/joppa /opt/joppa/bin/joppa.previous
 fi
 install -m 755 target/release/joppa /opt/joppa/bin/joppa.next
+# Keep a dump of the database before each migration. A failed dump stops the deploy while
+# the old service still runs. A new dump replaces the last one only after pg_restore reads it.
+pre_deploy=/var/lib/joppa/joppa.pre-deploy.dump
+partial=$(mktemp "$pre_deploy.XXXXXX")
+if ! runuser -u postgres -- pg_dump --format=custom joppa > "$partial" || \
+   ! pg_restore --list "$partial" >/dev/null; then
+    rm -f "$partial"
+    echo 'Pre-deploy database dump failed; the old version still runs.' >&2
+    exit 1
+fi
+chmod 600 "$partial"
+mv "$partial" "$pre_deploy"
+if [[ -f /etc/joppa/backup.env ]]; then
+    systemctl daemon-reload
+    if ! systemctl start joppa-backup.service; then
+        echo 'Pre-deploy Spaces backup failed; the old version still runs.' >&2
+        exit 1
+    fi
+fi
 if systemctl is-active --quiet joppa; then
     systemctl stop joppa
 fi

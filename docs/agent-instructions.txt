@@ -5,7 +5,8 @@ Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"})
 
 Read an object before you change it. Send its current revision. Preserve document fields and parent that you do not change. Omit links to keep them.
 Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.
-Answer the type question before saving. Send its exact text as question_checked.
+Write a title and body that answer the question of the type.
+A write takes a public item ID where it takes an address of the workspace. The journal stores the address.
 Use joppa_batch for related writes. Retry identical input with the same request_id after a lost response.
 Set data.workspace on a node to bind a child workspace; use set_remote_links for links across workspaces.
 

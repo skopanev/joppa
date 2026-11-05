@@ -177,25 +177,16 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
         generic_help.get("tree").is_none() && generic_help["sections"]["tree"].is_string(),
         "{generic_help}"
     );
-    for kind in ["observation", "record"] {
-        let request_id = uuid::Uuid::new_v4().to_string();
-        let mut command = json!({"op":"save_object","kind":kind,"id":"one","revision":0,"parent":null,"data":{"title":"Agent observation","owner":"owner","body":"An observed failure changes the contract."},"reason":"Record the observation"});
-        if kind == "observation" {
-            let error = format!(
-                "Check that the title and body answer: {question}. Rewrite them if they do not. Then resend with question_checked"
-            );
-            let conn = w.pool.get().await?;
-            let before: i64 = conn
-                .query_one(
-                    "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
-                    &[&w.ws],
-                )
-                .await?
-                .get(0);
-            for checked in [None, Some("A different question")] {
-                if let Some(checked) = checked {
-                    command["question_checked"] = json!(checked);
-                }
+    // A save needs no question_checked, and the server ignores a different text in it.
+    let checked = [None, Some("A different question")];
+    for (kind, checked) in [("observation", checked), ("record", [None, None])] {
+        for (revision, checked) in checked.into_iter().enumerate() {
+            let mut command = json!({"op":"save_object","kind":kind,"id":"one","revision":revision,"parent":null,"data":{"title":"Agent observation","owner":"owner","body":format!("An observed failure changes the contract {revision}.")},"reason":"Record the observation"});
+            if let Some(checked) = checked {
+                command["question_checked"] = json!(checked);
+            }
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let saved = if revision == 0 {
                 let response = w
                     .http
                     .post(format!("{}/api/workspaces/{}/commands", w.root, w.ws))
@@ -203,48 +194,25 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
                     .json(&json!({"request_id":request_id,"command":command}))
                     .send()
                     .await?;
-                ensure!(response.status().as_u16() == 422, "{}", response.status());
-                ensure!(
-                    response.json::<Value>().await?["error"] == error,
-                    "wrong question error"
-                );
-                let response = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.bot)
-                    .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_command","arguments":{"workspace":w.ws,"request_id":request_id,"command":command}}})).send().await?;
                 ensure!(response.status().is_success(), "{}", response.status());
-                let refused: Value = response.json().await?;
-                ensure!(
-                    refused["result"]["isError"] == true
-                        && refused["result"]["content"][0]["text"] == error,
-                    "{refused}"
-                );
-            }
-            let after: i64 = conn
-                .query_one(
-                    "SELECT COUNT(*) FROM joppa.events WHERE workspace=$1",
-                    &[&w.ws],
+                response.json::<Value>().await?
+            } else {
+                call(
+                    "joppa_command",
+                    json!({"workspace":w.ws,"request_id":request_id,"command":command}),
                 )
                 .await?
-                .get(0);
-            ensure!(before == after, "a refused question appended events");
-            let revisions: i64 = conn.query_one("SELECT COUNT(*) FROM joppa.object_revisions WHERE workspace=$1 AND address='observation:one'", &[&w.ws]).await?.get(0);
-            let receipts: i64 = conn.query_one("SELECT COUNT(*) FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&w.ws,&request_id]).await?.get(0);
-            ensure!(
-                revisions == 0 && receipts == 0,
-                "a refused question wrote revisions or a receipt"
-            );
-            command["question_checked"] = json!(question);
-        }
-        let saved = call(
-            "joppa_command",
-            json!({"workspace":w.ws,"request_id":request_id,"command":command}),
-        )
-        .await?;
-        ensure!(saved["object"]["revision"] == 1, "{saved}");
-        if kind == "observation" {
-            ensure!(saved["object"]["question"] == question, "{saved}");
-        } else {
-            ensure!(saved["object"].get("question").is_none(), "{saved}");
+            };
+            ensure!(saved["object"]["revision"] == revision + 1, "{saved}");
+            if kind == "observation" {
+                ensure!(saved["object"]["question"] == question, "{saved}");
+            } else {
+                ensure!(saved["object"].get("question").is_none(), "{saved}");
+            }
         }
     }
+    let conn = w.pool.get().await?;
+    let stored: i64 = conn.query_one("SELECT COUNT(*) FROM joppa.object_revisions WHERE workspace=$1 AND address IN ('observation:one','record:one')", &[&w.ws]).await?.get(0);
+    ensure!(stored == 4, "{stored} revisions");
     Ok(())
 }

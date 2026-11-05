@@ -52,6 +52,8 @@ mod head;
 pub(crate) use head::head;
 #[path = "store_history.rs"]
 mod history;
+#[path = "store_public_ids.rs"]
+pub(crate) mod public_ids;
 #[path = "store_references.rs"]
 mod references;
 pub use history::{HISTORY_LIMIT, mark_history, read_history};

@@ -134,8 +134,16 @@ reference fails the whole batch. Plain text is never a template.
 
 The reply has `results` in operation order, each with `position` and the resolved `command`.
 
-An optional `defaults` gives `save_object` fields, for example `reason`, `question_checked`
-and `data.owner`. Each `save_object` of the batch takes each default field that it omits.
+Each field of a write that names an object takes its address or its public item ID, such as
+`joppa-R-DP6KXM62`: `target`, `parent`, `duplicate_of`, `links[].target`, each reference
+field of `data` (one ID or a list) and the `id` of `save_object`, which must name an object
+of its `kind`. `joppa_history_mark` takes IDs in `nodes`. The links of `set_remote_links`
+name objects of other workspaces, so they need addresses. The server replaces each ID with the `kind:id`
+address before the validation, so the journal, the documents and the marks store addresses.
+An unknown ID is refused: `unknown object: <ID>`.
+
+An optional `defaults` gives `save_object` fields, for example `reason` and `data.owner`.
+Each `save_object` of the batch takes each default field that it omits.
 `data` merges by key, and a field of the command wins. Other operations stay as sent.
 `defaults` with `op`, `actor` or a `data` that is not an object is refused. The receipt
 stores the completed commands, so an identical retry gives the same reply.
