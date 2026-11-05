@@ -1,5 +1,6 @@
-//! requirement:precomputed-status-reads: the backfill at start rebuilds a stale status projection from
-//! the current rows and replays the journal only for stale board rows.
+//! requirement:precomputed-status-reads: the backfill at start replays the journal only for
+//! stale board rows, and the catch-up after the start rebuilds a stale status projection from
+//! the current rows.
 use anyhow::{Result, ensure};
 use joppa::{probe, store};
 use serde_json::{Value, json};
@@ -17,10 +18,10 @@ async fn statuses(
         .collect())
 }
 
-/// Run the backfill once: the number of journal replays and status rebuilds that it made.
-async fn backfill(pool: &deadpool_postgres::Pool) -> Result<(u64, u64)> {
+/// The journal replays and status rebuilds of one call.
+async fn counted(call: impl std::future::Future<Output = Result<usize>>) -> Result<(u64, u64)> {
     let (replays, rebuilds) = (probe::read(&probe::REPLAY), probe::read(&probe::REBUILD));
-    store::backfill_board(pool).await?;
+    call.await?;
     Ok((
         probe::read(&probe::REPLAY) - replays,
         probe::read(&probe::REBUILD) - rebuilds,
@@ -30,7 +31,7 @@ async fn backfill(pool: &deadpool_postgres::Pool) -> Result<(u64, u64)> {
 // ac:be6tvcf6
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_stale_status_projection_rebuilds_without_a_journal_replay() -> Result<()> {
+async fn a_stale_status_projection_catches_up_after_the_start_without_a_replay() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     store::migrate(&pool).await?;
     store::backfill_board(&pool).await?;
@@ -63,21 +64,29 @@ async fn a_stale_status_projection_rebuilds_without_a_journal_replay() -> Result
     )
     .await?;
     ensure!(
-        backfill(&pool).await? == (0, 1),
-        "a status rebuild replayed the journal"
+        counted(store::backfill_board(&pool)).await? == (0, 0),
+        "the start waited for the status projection"
+    );
+    ensure!(
+        counted(store::catch_up_statuses(&pool, false)).await? == (0, 1),
+        "the catch-up replayed the journal"
     );
     ensure!(
         statuses(&pool, &ws).await? == before,
         "the rebuild changed a status"
     );
     ensure!(
-        backfill(&pool).await? == (0, 0),
-        "a second start rebuilt again"
+        counted(store::catch_up_statuses(&pool, false)).await? == (0, 0),
+        "a second catch-up rebuilt again"
     );
-    // Stale board rows replay the journal once and give the same statuses.
+    // The daily run rebuilds each workspace from its rows and changes no status.
+    let (replays, rebuilds) = counted(store::catch_up_statuses(&pool, true)).await?;
+    ensure!(replays == 0 && rebuilds >= 1, "{replays} {rebuilds}");
+    ensure!(statuses(&pool, &ws).await? == before);
+    // Stale board rows replay the journal once at the start and give the same statuses.
     conn.execute("UPDATE joppa.board_cache SET first_view=first_view||'{\"projection_version\":\"0\"}'::jsonb WHERE workspace=$1", &[&ws]).await?;
     ensure!(
-        backfill(&pool).await? == (1, 1),
+        counted(store::backfill_board(&pool)).await? == (1, 1),
         "a board rebuild did not replay"
     );
     ensure!(statuses(&pool, &ws).await? == before);

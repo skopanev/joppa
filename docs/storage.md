@@ -53,8 +53,17 @@ The ID trigger uses this prefix without selecting journal events.
 Each operation sets the prefix, so creation follows a preceding rename inside the same batch.
 Commit and rollback clear the setting. Object registration also passes its known prefix directly.
 
-`backfill-board` rebuilds projections under a workspace lock. It commits all projections, including search, in one transaction.
-Deployment stops the application before it changes the projections.
+`backfill-board` replays the journal of a workspace whose board rows are stale, under its
+workspace lock, and commits all projections, including search, in one transaction. Only a
+change of the board projection version makes this step slow: deployment stops the
+application before it.
+
+The status projection (`test_status` and `rollup` of `joppa.objects`) never blocks the start.
+A write recomputes the nodes that it reaches: the changed nodes, each parent up to the top
+and the link targets that read them. A schema change, a cycle of reached nodes or a
+projection of an older version rebuilds the workspace in the write. After the start, a
+background task rebuilds each workspace whose status projection is stale, one workspace in
+each transaction, and then every workspace once a day. Reads give the stored rows meanwhile.
 
 ## PostgreSQL roles
 

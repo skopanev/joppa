@@ -1,6 +1,6 @@
 //! The status projection does the work on write: a read makes no status, rollup or wait
-//! computation, each write transaction makes exactly one rebuild, and a missing, stale or
-//! partial projection is an explicit error for every public reader, the Task queue included.
+//! computation, each write transaction makes exactly one partial projection, and a missing, stale or
+//! partial projection keeps every public reader on the stored rows until the catch-up.
 //! A list reads the stored decoration of its own rows only.
 use anyhow::{Result, ensure};
 use joppa::store;
@@ -17,7 +17,7 @@ use readers::*;
 
 #[tokio::test]
 #[ignore = "requires an isolated joppa_test_* PostgreSQL"]
-async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
+async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let database: String = pool
         .get()
@@ -52,20 +52,20 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     for result in reads(&pool).await {
         result?;
     }
-    let [status, rollup, waits, _, rebuild] = delta(before);
+    let [status, rollup, waits, _, rebuild, partial] = delta(before);
     ensure!(
-        (status, rollup, waits, rebuild) == (0, 0, 0, 0),
-        "reads computed status={status} rollup={rollup} waits={waits} rebuild={rebuild}"
+        (status, rollup, waits, rebuild, partial) == (0, 0, 0, 0, 0),
+        "reads computed status={status} rollup={rollup} waits={waits} rebuild={rebuild} partial={partial}"
     );
 
-    // A command, a record, a repeat receipt and a batch of three: one rebuild each.
+    // A command, a record, a repeat receipt and a batch of three: one partial projection each.
     let before = counts();
     let mark =
         json!({"op":"assess","target":"requirement:r2","ready":false,"reason":"Which scope?"});
     run(&pool, &mut n, mark).await?;
     ensure!(
-        delta(before)[4] == 1,
-        "a command rebuilds once: {:?}",
+        delta(before)[4..] == [0, 1],
+        "a command projects once and partially: {:?}",
         delta(before)
     );
     let before = counts();
@@ -82,8 +82,8 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     )
     .await?;
     ensure!(
-        delta(before)[4] == 1,
-        "a record rebuilds once: {:?}",
+        delta(before)[4..] == [0, 1],
+        "a record projects once and partially: {:?}",
         delta(before)
     );
     let before = counts();
@@ -100,8 +100,8 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     )
     .await?;
     ensure!(
-        delta(before)[4] == 1,
-        "a repeat receipt rebuilds once: {:?}",
+        delta(before)[4..] == [0, 1],
+        "a repeat receipt projects once and partially: {:?}",
         delta(before)
     );
     let operations: Vec<store::BatchOperation> = ["y2", "y3", "y4"]
@@ -111,27 +111,26 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
     let before = counts();
     store::execute_batch(&pool, ws(), "owner", "counters-batch", &operations).await?;
     ensure!(
-        delta(before)[4] == 1,
-        "a batch of three rebuilds once: {:?}",
+        delta(before)[4..] == [0, 1],
+        "a batch of three projects once and partially: {:?}",
         delta(before)
     );
 
-    // A missing, older-version or older-position projection is refused by every reader.
+    // A missing, older-version or older-position projection keeps every reader working on
+    // the stored rows, and the catch-up after the start rebuilds it once.
+    let stored = reads(&pool).await.into_iter().collect::<Result<Vec<_>>>()?;
     for broken in [
         Value::Null,
         json!({"version":0,"position":0}),
         json!({"version":1,"position":-1}),
     ] {
         set_projection(&pool, broken.clone()).await?;
-        for (index, result) in reads(&pool).await.into_iter().enumerate() {
-            let error = result
-                .err()
-                .ok_or_else(|| anyhow::anyhow!("reader {index} read a {broken} projection"))?;
-            ensure!(
-                error.is::<store::ProjectionNotReady>(),
-                "reader {index}: {error:#}"
-            );
-        }
+        let before = counts();
+        let kept = reads(&pool).await.into_iter().collect::<Result<Vec<_>>>()?;
+        ensure!(kept == stored, "a {broken} projection changed a read");
+        ensure!(delta(before) == [0; 6], "a read computed: {:?}", delta(before));
+        store::catch_up_statuses(&pool, false).await?;
+        ensure!(delta(before)[4] == 1, "the catch-up rebuilt {:?}", delta(before));
     }
     // The next write rebuilds the projection, and the readers work again.
     let mark = json!({"op":"assess","target":"requirement:r2","ready":true,"reason":"Known scope"});
@@ -153,7 +152,7 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
         "the domain list read the waits of the workspace"
     );
 
-    // A lost row in a valid projection is refused by every reader; backfill_board repairs it.
+    // A lost row reads without decoration; the catch-up stores it again.
     for column in ["test_status", "rollup"] {
         let lost = pool
             .get()
@@ -166,27 +165,15 @@ async fn reads_compute_nothing_and_each_write_rebuilds_once() -> Result<()> {
             )
             .await?;
         ensure!(lost == 1, "ac:a1 must exist");
-        for (index, result) in reads(&pool).await.into_iter().enumerate() {
-            let error = result.err().ok_or_else(|| {
-                anyhow::anyhow!("reader {index} read a projection without {column}")
-            })?;
-            ensure!(
-                error.is::<store::ProjectionNotReady>(),
-                "reader {index}: {error:#}"
-            );
+        for result in reads(&pool).await {
+            result?;
         }
-        store::backfill_board(&pool).await?;
+        store::catch_up_statuses(&pool, false).await?;
         let gaps: i64 = pool.get().await?.query_one(
             "SELECT count(*) FROM joppa.objects WHERE workspace=$1 AND (test_status IS NULL OR rollup IS NULL)",
             &[&ws()],
         ).await?.get(0);
-        ensure!(
-            gaps == 0,
-            "backfill left {gaps} rows without a stored value"
-        );
-        for result in reads(&pool).await {
-            result?;
-        }
+        ensure!(gaps == 0, "the catch-up left {gaps} rows without a stored value");
     }
     Ok(())
 }

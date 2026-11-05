@@ -235,4 +235,4 @@ async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
 
 #[path = "store_backfill.rs"]
 mod backfill;
-pub use backfill::backfill_board;
+pub use backfill::{backfill_board, catch_up_statuses, status_projection_loop};

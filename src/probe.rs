@@ -13,6 +13,8 @@ pub static WAITS: AtomicU64 = AtomicU64::new(0);
 pub static WAIT_READS: AtomicU64 = AtomicU64::new(0);
 /// Rebuilds of the status projection.
 pub static REBUILD: AtomicU64 = AtomicU64::new(0);
+/// Status projections of one write that recompute only the reached nodes.
+pub static DELTA: AtomicU64 = AtomicU64::new(0);
 /// Replays of a whole workspace journal.
 pub static REPLAY: AtomicU64 = AtomicU64::new(0);
 

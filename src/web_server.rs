@@ -24,6 +24,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     let oauth_origin = login.public_origin()?;
     // Search is always hybrid: without the provider key the server does not start.
     let embedder = joppa::embeddings::Embedder::from_env()?;
+    // The status projection of an older code version catches up after the start.
+    tokio::spawn(joppa::store::status_projection_loop(pool.clone()));
     tokio::spawn(joppa::store::search_indexer::run(
         pool.clone(),
         embedder.clone(),

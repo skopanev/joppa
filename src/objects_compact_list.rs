@@ -35,8 +35,6 @@ pub async fn compact_list(
             &[&workspace],
         )
         .await?;
-    // The stored rollup belongs to the last write only when the projection is ready.
-    crate::store::objects::projection::ensure_ready(&*conn, &workspace).await?;
     // A status list with the archived tone also keeps the current archived nodes.
     let bound =
         crate::node_filter::bind(&*conn, &workspace, filter, true, filter.archived()).await?;

@@ -30,7 +30,9 @@ use tone_items::add_status_tones;
 mod projection;
 #[path = "objects_ready_rollup.rs"]
 mod ready_rollup;
-pub use projection::ProjectionNotReady;
+#[path = "objects_projection_delta.rs"]
+mod delta;
+pub(super) use delta::update as update_status_projection;
 use projection::apply_rollups;
 pub(super) use projection::{
     STATUS_PROJECTION_VERSION, rebuild as rebuild_status_projection, stored_statuses,

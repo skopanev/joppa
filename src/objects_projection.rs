@@ -1,6 +1,7 @@
 //! The status projection. Every write stores the test status of every object and the row
-//! decoration of every tree node in joppa.objects, in its own transaction. A read uses the stored rows and
-//! computes nothing. A missing or stale projection is an explicit error, not an old status.
+//! decoration of every tree node in joppa.objects, in its own transaction. A read uses the
+//! stored rows and computes nothing. A stored row from an older code version stays readable
+//! until the background catch-up (store_backfill.rs) rebuilds it.
 use super::*;
 use std::collections::BTreeMap;
 
@@ -8,47 +9,10 @@ use std::collections::BTreeMap;
 /// of the decoration helpers must raise it.
 pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 9;
 
-/// A read found no projection, or one from an older journal position or code version.
-#[derive(Debug)]
-pub struct ProjectionNotReady;
-
-impl std::fmt::Display for ProjectionNotReady {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("criterion status projection is not ready")
-    }
-}
-
-impl std::error::Error for ProjectionNotReady {}
-
 /// The row fields that the decoration helpers set, at the top level and inside process.
 const FIELDS: [&str; 3] = ["work_ready", "waits_for", "child_counts"];
 const PROCESS_FIELDS: &[&str] = &["verification"];
 const SIGNAL_FIELDS: &[&str] = &["tone", "label"];
-
-/// Refuse a read unless the projection matches the board position and the code version,
-/// and every object of the workspace has a stored status and decoration.
-pub(in crate::store) async fn ensure_ready(
-    client: &impl GenericClient,
-    workspace: &str,
-) -> Result<()> {
-    let row = client
-        .query_opt(
-            "SELECT (first_view->'status_projection'->>'version')::int,(first_view->'status_projection'->>'position')::bigint,position,EXISTS(SELECT 1 FROM joppa.objects o WHERE o.workspace=$1 AND (o.test_status IS NULL OR o.rollup IS NULL)) FROM joppa.board_cache WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?;
-    match row {
-        Some(row)
-            if row.get::<_, Option<i32>>(0) == Some(STATUS_PROJECTION_VERSION)
-                && row.get::<_, Option<i64>>(1) == Some(row.get::<_, i64>(2))
-                // A row without a stored value is a partial projection.
-                && !row.get::<_, bool>(3) =>
-        {
-            Ok(())
-        }
-        _ => Err(ProjectionNotReady.into()),
-    }
-}
 
 /// Rebuild the projection of a workspace. The caller has written the objects and the board
 /// rows of `position` in the same transaction, under the workspace lock.
@@ -68,7 +32,7 @@ pub(in crate::store) async fn rebuild(
         .map(|(address, status)| json!({"address":address,"value":status}))
         .collect();
     store_column(client, workspace, "test_status", &rows).await?;
-    client.execute("UPDATE joppa.board_cache SET first_view=first_view||jsonb_build_object('status_projection',jsonb_build_object('version',$2::int,'position',$3::bigint)) WHERE workspace=$1", &[&workspace, &STATUS_PROJECTION_VERSION, &(position as i64)]).await?;
+    stamp(client, workspace, position).await?;
     // A new object has no rollup yet, and the helpers below pass the ready check. This
     // placeholder lives only inside this transaction: the last step stores every rollup.
     client
@@ -86,16 +50,7 @@ pub(in crate::store) async fn rebuild(
         )
         .await?
         .iter()
-        .map(|r| {
-            let parse = |i: usize| {
-                r.get::<_, Option<String>>(i)
-                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-            };
-            json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),
-                "signal":parse(2).unwrap_or_else(|| json!({})),"process":parse(3).unwrap_or(Value::Null),
-                "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5),
-                "present":r.get::<_,bool>(6)})
-        })
+        .map(base_row)
         .collect();
     let base = items.clone();
     let counted = add_status_tones(client, workspace, &mut items, &types).await?;
@@ -103,37 +58,79 @@ pub(in crate::store) async fn rebuild(
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts).await?;
     super::ready_rollup::roll_ready(&mut items, &counted, &types);
-    let patches: Vec<Value> = base
-        .iter()
-        .zip(&items)
-        .map(|(before, after)| {
-            let mut patch = serde_json::Map::new();
-            for field in FIELDS {
-                if before.get(field) != after.get(field) {
-                    patch.insert(field.into(), after[field].clone());
-                }
-            }
-            for (part, fields) in [("process", PROCESS_FIELDS), ("signal", SIGNAL_FIELDS)] {
-                let mut inner = serde_json::Map::new();
-                for field in fields {
-                    if before[part].get(field) != after[part].get(field) {
-                        inner.insert((*field).into(), after[part][field].clone());
-                    }
-                }
-                if !inner.is_empty() {
-                    patch.insert(part.into(), Value::Object(inner));
-                }
-            }
-            // An empty patch is stored as {}, so a NULL rollup always means a lost row.
-            json!({"address":after["address"],"value":patch})
-        })
-        .collect();
+    let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
     store_column(client, workspace, "rollup", &patches).await?;
     Ok(())
 }
 
-/// The present direct children of each node by type, in the order of the type index: how many
-/// have a tone and how many of them are green. A node without such a child gets no field.
+/// The stored rollup of one row: each decoration field that differs from the base row. An
+/// empty patch is stored as {}, so a NULL rollup always means a row that is not projected.
+pub(super) fn patch(before: &Value, after: &Value) -> Value {
+    let mut patch = serde_json::Map::new();
+    for field in FIELDS {
+        if before.get(field) != after.get(field) {
+            patch.insert(field.into(), after[field].clone());
+        }
+    }
+    for (part, fields) in [("process", PROCESS_FIELDS), ("signal", SIGNAL_FIELDS)] {
+        let mut inner = serde_json::Map::new();
+        for field in fields {
+            if before[part].get(field) != after[part].get(field) {
+                inner.insert((*field).into(), after[part][field].clone());
+            }
+        }
+        if !inner.is_empty() {
+            patch.insert(part.into(), Value::Object(inner));
+        }
+    }
+    json!({"address":after["address"],"value":patch})
+}
+
+/// Mark the status projection current at `position` with this code version.
+pub(super) async fn stamp(client: &impl GenericClient, workspace: &str, position: u64) -> Result<()> {
+    client.execute("UPDATE joppa.board_cache SET first_view=first_view||jsonb_build_object('status_projection',jsonb_build_object('version',$2::int,'position',$3::bigint)) WHERE workspace=$1", &[&workspace, &STATUS_PROJECTION_VERSION, &(position as i64)]).await?;
+    Ok(())
+}
+
+/// The base row of a projected object: the fields that the decoration helpers read, with the
+/// same values as a list row, from address, kind, signal, process, work_ready, parent, present.
+pub(super) fn base_row(r: &tokio_postgres::Row) -> Value {
+    let parse = |i: usize| {
+        r.get::<_, Option<String>>(i)
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+    };
+    json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),
+        "signal":parse(2).unwrap_or_else(|| json!({})),"process":parse(3).unwrap_or(Value::Null),
+        "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5),
+        "present":r.get::<_,bool>(6)})
+}
+
+/// The child counts of one node: for each type of its present children with a tone, in the
+/// order of the type index, how many there are and how many are green.
+pub(super) fn child_counts<'a>(
+    children: impl IntoIterator<Item = (&'a str, &'a str)>,
+    types: &BTreeMap<String, objects::TreeType>,
+) -> Option<Value> {
+    let mut by_kind = BTreeMap::<&str, (u64, u64)>::new();
+    for (child, tone) in children {
+        let Some((kind, _)) = child.split_once(':') else {
+            continue;
+        };
+        let count = by_kind.entry(kind).or_default();
+        count.0 += 1;
+        count.1 += u64::from(tone == "green");
+    }
+    let mut counts: Vec<_> = by_kind.into_iter().collect();
+    counts.sort_by_key(|(kind, _)| (types.get(*kind).and_then(|t| t.index), *kind));
+    (!counts.is_empty()).then(|| {
+        let counts = counts
+            .iter()
+            .map(|(kind, (total, passed))| json!({"kind":kind,"total":total,"passed":passed}));
+        json!(counts.collect::<Vec<_>>())
+    })
+}
+
+/// The child counts of every node of a full rebuild.
 fn add_child_counts(
     items: &mut [Value],
     counted: &super::tone_items::Counted,
@@ -143,24 +140,10 @@ fn add_child_counts(
         let Some(address) = item["address"].as_str() else {
             continue;
         };
-        let mut by_kind = BTreeMap::<&str, (u64, u64)>::new();
-        for child in counted.children.get(address).into_iter().flatten() {
-            let (Some(Some(tone)), Some((kind, _))) =
-                (counted.tones.get(child), child.split_once(':'))
-            else {
-                continue;
-            };
-            let count = by_kind.entry(kind).or_default();
-            count.0 += 1;
-            count.1 += u64::from(*tone == "green");
-        }
-        let mut counts: Vec<_> = by_kind.into_iter().collect();
-        counts.sort_by_key(|(kind, _)| (types.get(*kind).and_then(|t| t.index), *kind));
-        if !counts.is_empty() {
-            let counts = counts
-                .iter()
-                .map(|(kind, (total, passed))| json!({"kind":kind,"total":total,"passed":passed}));
-            item["child_counts"] = json!(counts.collect::<Vec<_>>());
+        let children = counted.children.get(address).into_iter().flatten();
+        let toned = children.filter_map(|c| Some((c.as_str(), (*counted.tones.get(c)?)?)));
+        if let Some(counts) = child_counts(toned, types) {
+            item["child_counts"] = counts;
         }
     }
 }
@@ -171,7 +154,6 @@ pub(in crate::store) async fn apply_rollups(
     workspace: &str,
     items: &mut [Value],
 ) -> Result<()> {
-    ensure_ready(client, workspace).await?;
     let addresses: Vec<String> = items
         .iter()
         .filter_map(|i| i["address"].as_str().map(String::from))
@@ -214,7 +196,6 @@ pub(in crate::store) async fn stored_statuses(
     workspace: &str,
     targets: &[String],
 ) -> Result<BTreeMap<String, Value>> {
-    ensure_ready(client, workspace).await?;
     client
         .query(
             "SELECT address,test_status::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
@@ -238,8 +219,19 @@ async fn store_column(
     Ok(())
 }
 
-/// A stored value. Every rebuild writes a value for every object, so NULL is a lost row.
+/// Store one value for each listed object in `column`; every other row keeps its value.
+pub(super) async fn store_rows(
+    client: &impl GenericClient,
+    workspace: &str,
+    column: &str,
+    rows: &[Value],
+) -> Result<()> {
+    client.execute(&format!("UPDATE joppa.objects o SET {column}=x.value FROM jsonb_to_recordset($2::text::jsonb) x(address text,value jsonb) WHERE o.workspace=$1 AND o.address=x.address AND o.{column} IS DISTINCT FROM x.value"), &[&workspace, &json!(rows).to_string()]).await?;
+    Ok(())
+}
+
+/// A stored value. A row that the status projection has not reached yet has none, and a
+/// read shows it without decoration until the background catch-up stores it.
 fn stored(text: Option<String>) -> Result<Value> {
-    let text = text.ok_or(ProjectionNotReady)?;
-    Ok(serde_json::from_str(&text)?)
+    text.map_or(Ok(json!({})), |text| Ok(serde_json::from_str(&text)?))
 }

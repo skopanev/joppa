@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The tones of a rollup, the winning tone first.
 pub const PRIORITY: [&str; 5] = ["red", "orange", "yellow", "grey", "green"];
 
-fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
+pub(super) fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
     let found: BTreeSet<&str> = tones.into_iter().collect();
     PRIORITY.into_iter().find(|t| found.contains(t))
 }
@@ -195,7 +195,7 @@ pub(super) fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: 
 }
 
 /// The label of a rule tone.
-fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
+pub(super) fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
     match (rule, tone) {
         (_, "yellow") if waits => "Waits for a dependency or an answer",
         ("own" | "tests", "green") => "Checks passed",

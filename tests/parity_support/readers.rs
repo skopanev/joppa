@@ -4,20 +4,21 @@ use super::*;
 use joppa::probe;
 
 /// STATUS, ROLLUP, WAITS, WAIT_READS and REBUILD.
-pub fn counts() -> [u64; 5] {
+pub fn counts() -> [u64; 6] {
     [
         &probe::STATUS,
         &probe::ROLLUP,
         &probe::WAITS,
         &probe::WAIT_READS,
         &probe::REBUILD,
+        &probe::DELTA,
     ]
     .map(probe::read)
 }
 
-pub fn delta(before: [u64; 5]) -> [u64; 5] {
+pub fn delta(before: [u64; 6]) -> [u64; 6] {
     let after = counts();
-    [0, 1, 2, 3, 4].map(|i| after[i] - before[i])
+    [0, 1, 2, 3, 4, 5].map(|i| after[i] - before[i])
 }
 
 /// Every reader that the board, the tests view and the agents use.

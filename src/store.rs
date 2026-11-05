@@ -21,7 +21,7 @@ pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
 pub use objects::{
-    ObjectScope, ProjectionNotReady, compact_list, item_workspace, link_page, read_objects,
+    ObjectScope, compact_list, item_workspace, link_page, read_objects,
     resolve_item_ids, tree_schema,
 };
 #[path = "store_grants.rs"]
@@ -62,7 +62,10 @@ pub use references::workspace_references;
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
 #[path = "store_setup.rs"]
 mod setup;
-pub use setup::{backfill_board, check_journal, migrate, migrate_notes, pool};
+pub use setup::{
+    backfill_board, catch_up_statuses, check_journal, migrate, migrate_notes, pool,
+    status_projection_loop,
+};
 #[path = "store_ensure_notes.rs"]
 mod migrations;
 use migrations::ensure_notes;

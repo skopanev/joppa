@@ -174,8 +174,6 @@ fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
     (
         if e.is::<store::AccessDenied>() {
             StatusCode::NOT_FOUND
-        } else if e.is::<store::ProjectionNotReady>() {
-            StatusCode::SERVICE_UNAVAILABLE
         } else if e.is::<joppa::commands::ClientField>() || e.is::<joppa::objects::RequiredField>()
         {
             StatusCode::UNPROCESSABLE_ENTITY
