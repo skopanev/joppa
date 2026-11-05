@@ -116,12 +116,11 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             for ac in &r.acs {
                 let ac_address = criterion_address(&ac.id);
                 let (ac_kind, ac_id) = ac_address.split_once(':').unwrap();
-                put(
-                    ac_kind,
-                    ac_id,
-                    Some(req_address.clone()),
-                    json!({"title":ac.text,(text):ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"decision_required":ac.decision(),"depends_on":ac.depends_on,"before_launch":ac.before_launch}),
-                );
+                let mut data = json!({"title":ac.text,(text):ac.description,"owner":ac.owner.as_ref().unwrap_or(&r.owner),"depends_on":ac.depends_on,"before_launch":ac.before_launch});
+                if !w.decision_required_migrated {
+                    data["decision_required"] = json!(ac.decision());
+                }
+                put(ac_kind, ac_id, Some(req_address.clone()), data);
             }
             for (tid, t) in &r.tasks {
                 let mut data = json!({"title":t.title,"owner":r.owner,(contract):t.contract,"projects":t.projects});

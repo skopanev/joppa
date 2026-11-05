@@ -82,7 +82,7 @@ async fn generated_ids_and_atomic_batches_survive_retries_failures_and_concurren
         {"ref":"area","command":{"op":"save_object","kind":"domain","revision":0,"parent":null,"data":{"title":"Second area","owner":"owner"},"reason":"Agreed scope"}},
         {"ref":"ability","command":{"op":"save_object","kind":"capability","revision":0,"parent":{"$ref":"area/address"},"data":{"title":"Keep paid access","owner":"owner"},"reason":"Agreed scope"}},
         {"ref":"requirement","command":{"op":"save_object","kind":"requirement","revision":0,"parent":{"$ref":"ability/address"},"data":{"title":"Paid access persists","body":"Only iOS","owner":"owner"},"reason":"Agreed scope"}},
-        {"ref":"criterion","command":{"op":"save_object","kind":"ac","revision":0,"parent":{"$ref":"requirement/address"},"data":{"title":"On iOS access survives sign-in","owner":"owner","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed scope"}},
+        {"ref":"criterion","command":{"op":"save_object","kind":"ac","revision":0,"parent":{"$ref":"requirement/address"},"data":{"title":"On iOS access survives sign-in","owner":"owner","consumer":"buyer","before_launch":false,"depends_on":[]},"reason":"Agreed scope"}},
         {"command":{"op":"note","target":{"$ref":"criterion/address"},"id":"review","text":"Please review"}}
     ]))?;
     let (a, b) = tokio::join!(

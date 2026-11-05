@@ -35,7 +35,7 @@ async fn seed(pool: &deadpool_postgres::Pool, ws: &str, extra: Vec<(&str, Value)
         json!({"op":"save_object","kind":"capability","id":"restrict","revision":0,"parent":"domain:security","data":{"title":"Restrict access","owner":"owner"},"reason":"Setup"}),
         json!({"op":"save_object","kind":"capability","id":"empty","revision":0,"parent":"domain:security","data":{"title":"Nothing below","owner":"owner"},"reason":"Setup"}),
         json!({"op":"save_object","kind":"requirement","id":"key","revision":0,"parent":"capability:restrict","data":{"title":"Key rights","body":"Scope","owner":"owner"},"reason":"Agreed"}),
-        json!({"op":"save_object","kind":"ac","id":"key-rights","revision":0,"parent":"requirement:key","data":{"title":"Only read and verify before launch","owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed"}),
+        json!({"op":"save_object","kind":"ac","id":"key-rights","revision":0,"parent":"requirement:key","data":{"title":"Only read and verify before launch","owner":"owner","consumer":"customer","before_launch":false,"depends_on":[]},"reason":"Agreed"}),
     ]
     .into_iter()
     .map(|op| ("owner", op))
@@ -132,7 +132,7 @@ impl World {
         for (ac, text) in criteria {
             self.command(json!({"op":"save_object","kind":"ac","id":ac,"revision":0,
                 "parent":format!("requirement:{id}"),"data":{"title":text,"owner":"owner","consumer":"customer",
-                "before_launch":false,"decision_required":false,"depends_on":[]},"reason":"Agreed"}))
+                "before_launch":false,"depends_on":[]},"reason":"Agreed"}))
                 .await?;
         }
         Ok(())

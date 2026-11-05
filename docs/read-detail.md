@@ -123,8 +123,8 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
   `docs/read-contract.md` names the list fields.
 - A detail key gives its value in the detail read: `links`, `comments`, `files`,
   `references`, `link_groups`, `remote_links`, `remote_review_required`,
-  `remote_links_revision`, `child_workspace`, `question` and
-  `annotations`. A key that the detail omits gives `null`.
+  `remote_links_revision`, `child_workspace`, `annotations` and
+  `result`. A key that the detail omits gives `null`.
 - Any other first part names a document field: `note` gives `data.note`. The rules of
   `docs/read-contract.md` refuse an unknown path and the old text fields `description` and
   `contract`.

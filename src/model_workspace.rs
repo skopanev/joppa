@@ -64,6 +64,9 @@ pub struct Workspace {
     /// The migrate_generic_nodes event ran: a Task is a node like any other.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub generic_nodes: bool,
+    /// The migrate_decision_required event ran: a node has no decision_required.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decision_required_migrated: bool,
     /// The reference prefix comes from the title, so a rename derives it again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefix_from_title: bool,
@@ -101,13 +104,8 @@ pub struct Workspace {
     pub requirements: BTreeMap<String, Requirement>,
     pub intake: BTreeMap<String, Intake>,
     pub questions: BTreeMap<String, Vec<String>>,
-    /// Пояснения, обсуждение и вложения — на ЛЮБОМ объекте, по его адресу.
-    ///
-    /// Ключ — адрес вида `domain:billing`, `capability:billing.invoice`,
-    /// `requirement:r-xxx`, `ac:r-xxx/2`, `intake:i-xxx`, `point:i-xxx/1`.
-    /// Отдельная карта, а не три поля в каждой структуре: иначе один и тот
-    /// же механизм пришлось бы написать шесть раз и он разошёлся бы
-    /// шестью способами.
+    /// The description, comments and attachments of each object, by its address, for example
+    /// `domain:billing` or `ac:r-xxx/2`.
     #[serde(default)]
     pub notes: BTreeMap<String, Notes>,
     /// Tests that prove each criterion, by criterion address, with their own history.

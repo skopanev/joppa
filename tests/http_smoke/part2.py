@@ -72,7 +72,7 @@ batch = {'workspace':mcp_ws,'request_id':'mcp-batch','operations':[
         'data':{'title':'Recovery preserves access','body':'Only iOS','owner':'owner'},'reason':'Agreed scope'}},
     {'command':{'op':'save_object','kind':'ac','revision':0,'parent':{'$ref':'req/address'},
         'data':{'title':'On iOS paid access is preserved','owner':'owner','consumer':'customer',
-            'before_launch':False,'decision_required':False,'depends_on':[]},'reason':'Agreed scope'}},
+            'before_launch':False,'depends_on':[]},'reason':'Agreed scope'}},
 ]}
 created = mcp('joppa_batch',batch)
 replay = mcp('joppa_batch',batch)

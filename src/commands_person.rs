@@ -141,11 +141,14 @@ pub fn apply_replay(
     w.replaying = false;
     result?;
     crate::objects::sync(w, actor, command, position, recorded_at);
-    // migrate_test_nodes and migrate_generic_nodes change no status of a criterion.
+    // migrate_test_nodes, migrate_generic_nodes and migrate_decision_required change no status
+    // of a criterion.
     if !epoch_reached(w, RESET_CHANGED, position)
         || matches!(
             command,
-            Command::MigrateTestNodes {} | Command::MigrateGenericNodes {}
+            Command::MigrateTestNodes {}
+                | Command::MigrateGenericNodes {}
+                | Command::MigrateDecisionRequired {}
         )
     {
         return Ok(());

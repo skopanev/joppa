@@ -25,8 +25,9 @@ a REQ, the observable condition of an AC (`Given / When / Then` for a flow, or a
 an invariant, limit or disclosure), the technical contract of a TAC (`Technical Criterion`,
 placed under an AC or a REQ) and the contract of a Task. A save with `data.description`
 or `data.contract` is refused: `use body instead of description; read joppa_help`.
-An AC, a TAC and a Task can inherit the REQ owner. With `decision_required: true` the criterion owner
-supplies its decision. A Task keeps its assignee separate from its owner.
+An AC, a TAC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
+its owner. An open question on a node is its readiness mark: `assess` with `ready: false` and
+the question as `reason`. A save with `data.decision_required` is refused.
 
 A save of a criterion (`ac` or `tac`) gives its specification a new revision with the reason
 `Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.

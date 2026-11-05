@@ -14,9 +14,9 @@ const COPIES: [&str; 8] = [
     "position",
 ];
 
-/// The keys of a revision read: the document of that revision, its open question and the
-/// current revision. Status, process, comments and link counts belong to the current object.
-const REVISION_KEYS: [&str; 8] = [
+/// The keys of a revision read: the document of that revision and the current revision.
+/// Status, process, comments and link counts belong to the current object.
+const REVISION_KEYS: [&str; 7] = [
     "address",
     "revision",
     "parent",
@@ -24,7 +24,6 @@ const REVISION_KEYS: [&str; 8] = [
     "links",
     "present",
     "current_revision",
-    "question",
 ];
 
 /// One detail link: the stored link and the title of its target, without the default relation

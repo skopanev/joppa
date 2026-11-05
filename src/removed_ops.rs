@@ -137,6 +137,24 @@ pub fn removed_field(command: &Command) -> Option<&'static str> {
         Command::Assess(crate::commands::AssessOp::Criterion(_)) => {
             Some("assess with req, revision and ac was removed; use assess {target, ready, reason}")
         }
+        Command::SaveObject(crate::commands::SaveObjectOp { data, .. })
+            if data.get(crate::decision_migration::FIELD).is_some() =>
+        {
+            Some(crate::decision_migration::REFUSAL)
+        }
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            types, put_types, ..
+        }) if types
+            .iter()
+            .chain(put_types)
+            .flat_map(|m| m.values())
+            .any(|t| {
+                t.required_fields
+                    .contains_key(crate::decision_migration::FIELD)
+            }) =>
+        {
+            Some(crate::decision_migration::REFUSAL)
+        }
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             status_colors: Some(_),
             ..

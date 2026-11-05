@@ -2,7 +2,7 @@
 
 /// The data of one criterion under requirement:key.
 fn criterion(title: &str) -> Value {
-    json!({"title":title,"owner":"owner","consumer":"customer","before_launch":false,"decision_required":false,"depends_on":[]})
+    json!({"title":title,"owner":"owner","consumer":"customer","before_launch":false,"depends_on":[]})
 }
 
 struct Server(Child);

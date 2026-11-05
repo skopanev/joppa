@@ -27,6 +27,7 @@ fn current() -> World {
         "migrate_body",
         "migrate_purpose",
         "migrate_generic_nodes",
+        "migrate_decision_required",
     ] {
         internal(&mut w, op);
     }

@@ -82,7 +82,7 @@ def save(kind, ident, parent, data, reason='Setup'):
     return ok({'op':'save_object','kind':kind,'id':ident,'revision':0,'parent':parent,'data':data,'reason':reason})
 def criterion(title, before_launch=False):
     return {'title':title,'owner':'owner','consumer':'customer','before_launch':before_launch,
-            'decision_required':False,'depends_on':[]}
+            'depends_on':[]}
 save('consumer','customer',None,{'title':'Customer','owner':'owner'})
 save('domain','security',None,{'title':'Доступ к данным','owner':'owner'})
 save('capability','restrict','domain:security',{'title':'Ограничивать доступ','owner':'owner'})

@@ -28,7 +28,7 @@ pub const LIST_FIELDS: [&str; 18] = [
 ];
 
 /// The keys of a detail read that a list item does not give.
-pub const DETAIL_FIELDS: [&str; 12] = [
+pub const DETAIL_FIELDS: [&str; 11] = [
     "links",
     "comments",
     "files",
@@ -38,14 +38,13 @@ pub const DETAIL_FIELDS: [&str; 12] = [
     "remote_review_required",
     "remote_links_revision",
     "child_workspace",
-    "question",
     "annotations",
     "result",
 ];
 
 /// The document fields of the object roles. The tree schema adds its references and
 /// required fields, and each key of a returned document counts too.
-pub const DOCUMENT_FIELDS: [&str; 17] = [
+pub const DOCUMENT_FIELDS: [&str; 16] = [
     "archived",
     "author",
     "answers",
@@ -53,7 +52,6 @@ pub const DOCUMENT_FIELDS: [&str; 17] = [
     "consumer",
     "consumers",
     "decision",
-    "decision_required",
     "depends_on",
     "note",
     "outcome",

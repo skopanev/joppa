@@ -29,6 +29,7 @@ fn current() -> World {
         "migrate_body",
         "migrate_purpose",
         "migrate_generic_nodes",
+        "migrate_decision_required",
     ] {
         internal(&mut w, op);
     }
@@ -141,7 +142,6 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
     let mut w = current();
     let mut ac = w.state.objects["ac:key"].current().data.clone();
     ac["owner"] = json!("legal");
-    ac["decision_required"] = json!(false);
     save(
         &mut w,
         "owner",
@@ -153,8 +153,8 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
     .unwrap();
     let data = &w.state.objects["ac:key"].current().data;
     assert_eq!(
-        (&data["owner"], &data["decision_required"]),
-        (&json!("legal"), &json!(false))
+        (&data["owner"], data.get("decision_required")),
+        (&json!("legal"), None)
     );
     // No decision: an agent assesses the criterion as ready without a linked decision.
     w.ok(

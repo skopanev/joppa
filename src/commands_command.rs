@@ -25,6 +25,8 @@ pub enum Command {
     MigrateTestNodes {},
     /// Internal migration event: a Task is a node like any other, see generic_nodes.
     MigrateGenericNodes {},
+    /// Internal migration event: a node has no decision_required, see decision_migration.
+    MigrateDecisionRequired {},
     SetTreeSchema(SetTreeSchemaOp),
     /// The older readiness mark of an inbox signal. Only journal replay reads it; see `assess`.
     AssessSignal {

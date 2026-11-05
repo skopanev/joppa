@@ -10,7 +10,7 @@ async fn save_criterion(
 ) -> Result<(bool, Value)> {
     let revision = w.get(&format!("address=ac:{id}")).await?["current_revision"].clone();
     let data = json!({"title":format!("Criterion {id}"),"owner":"owner","consumer":"customer",
-        "before_launch":false,"decision_required":false,"depends_on":depends_on});
+        "before_launch":false,"depends_on":depends_on});
     let command = json!({"op":"save_object","kind":"ac","id":id,"revision":revision,
         "parent":format!("requirement:{req}"),"data":data,"links":links,"reason":"Order the work"});
     send_as(w, &w.owner, &command).await

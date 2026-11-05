@@ -23,6 +23,7 @@ const NOT_PUBLIC: &[&str] = &[
     "migrate_purpose",
     "migrate_test_nodes",
     "migrate_generic_nodes",
+    "migrate_decision_required",
     "enroll_member",
     "enroll_service",
     "remove_workspace_references",

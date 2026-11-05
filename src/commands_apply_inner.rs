@@ -34,6 +34,9 @@ pub(crate) fn apply_inner(
         Command::MigrateGenericNodes {} => {
             crate::generic_nodes::migrate(w, actor, position, recorded_at)?;
         }
+        Command::MigrateDecisionRequired {} => {
+            crate::decision_migration::migrate(w, actor, position, recorded_at)?;
+        }
         Command::MigratePurpose {} => {
             crate::purpose_migration::migrate(w, actor, position, recorded_at)?;
         }

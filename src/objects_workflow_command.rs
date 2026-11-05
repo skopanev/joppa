@@ -134,7 +134,8 @@ pub(crate) fn workflow_command(
                 id: ac_key.clone(),
                 text: string(data, "title")?,
                 description: description()?,
-                decision_required: (owner.is_some() != decision).then_some(decision),
+                decision_required: (!w.decision_required_migrated && owner.is_some() != decision)
+                    .then_some(decision),
                 owner,
                 depends_on: list(data, "depends_on")?,
                 before_launch: data

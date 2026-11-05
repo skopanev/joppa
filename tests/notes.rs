@@ -142,7 +142,7 @@ async fn the_index_carries_roots_and_one_object_carries_annotations() -> anyhow:
     run(json!({"op":"save_object","kind":"capability","id":"invoice","revision":0,"parent":"domain:billing","data":{"title":"Invoices","owner":"prober"},"reason":"Setup"})).await?;
     run(json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,"parent":null,"data":{"title":"Buyer","owner":"prober"},"reason":"Setup"})).await?;
     run(json!({"op":"save_object","kind":"requirement","id":"r1","revision":0,"parent":"capability:invoice","data":{"title":"Invoice is delivered","body":"","owner":"prober"},"reason":"first"})).await?;
-    run(json!({"op":"save_object","kind":"ac","id":"pdf","revision":0,"parent":"requirement:r1","data":{"title":"A PDF is produced","owner":"prober","consumer":"buyer","before_launch":false,"decision_required":false,"depends_on":[]},"reason":"first"})).await?;
+    run(json!({"op":"save_object","kind":"ac","id":"pdf","revision":0,"parent":"requirement:r1","data":{"title":"A PDF is produced","owner":"prober","consumer":"buyer","before_launch":false,"depends_on":[]},"reason":"first"})).await?;
     run(json!({"op":"note","target":"domain:billing","id":"n1","text":"Who owns refunds?"}))
         .await?;
     run(json!({"op":"note","target":"domain:billing","id":"n2","text":"Not us."})).await?;

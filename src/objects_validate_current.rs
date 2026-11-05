@@ -35,7 +35,8 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         | Command::MigrateBody {}
         | Command::MigratePurpose {}
         | Command::MigrateTestNodes {}
-        | Command::MigrateGenericNodes {} => {
+        | Command::MigrateGenericNodes {}
+        | Command::MigrateDecisionRequired {} => {
             bail!("internal migration operation")
         }
         Command::Intake(crate::commands::IntakeOp { .. })
