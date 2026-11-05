@@ -80,6 +80,7 @@ pub struct Event {
     pub command: Command,
 }
 async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, Vec<Event>)> {
+    crate::probe::count(&crate::probe::REPLAY);
     let rows = client.query("SELECT position,actor,recorded_at::text,command::text FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await.context("run joppa migrate before using the journal")?;
     let mut state = Workspace::default();
     if !rows.is_empty() {

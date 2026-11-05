@@ -13,6 +13,8 @@ pub static WAITS: AtomicU64 = AtomicU64::new(0);
 pub static WAIT_READS: AtomicU64 = AtomicU64::new(0);
 /// Rebuilds of the status projection.
 pub static REBUILD: AtomicU64 = AtomicU64::new(0);
+/// Replays of a whole workspace journal.
+pub static REPLAY: AtomicU64 = AtomicU64::new(0);
 
 pub fn count(counter: &AtomicU64) {
     counter.fetch_add(1, Ordering::Relaxed);
