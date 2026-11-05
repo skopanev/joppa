@@ -168,15 +168,15 @@ fn a_criterion_change_keeps_sibling_readiness_and_an_identical_requirement_save_
 fn a_reset_never_moves_a_boundary_back_in_time() {
     let mut w = World::new();
     let boundary = |w: &World, ac: &str| w.state.criterion_boundaries[ac].clone();
-    objects::reset_criteria(&mut w.state, "domain:d", "2026-01-01T12:00:00Z").unwrap();
+    objects::reset_criteria(&mut w.state, "domain:d", "2026-01-01T12:00:00Z", 1).unwrap();
     // An older reset of an overlapping root keeps the later boundary.
-    objects::reset_criteria(&mut w.state, "requirement:r", "2026-01-01T11:00:00Z").unwrap();
+    objects::reset_criteria(&mut w.state, "requirement:r", "2026-01-01T11:00:00Z", 1).unwrap();
     // An equal time in another format keeps the stored one.
-    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01 12:00:00+00").unwrap();
+    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01 12:00:00+00", 1).unwrap();
     for ac in ["ac:ios", "ac:key"] {
         assert_eq!(boundary(&w, ac), "2026-01-01T12:00:00Z");
     }
-    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01T13:00:00Z").unwrap();
+    objects::reset_criteria(&mut w.state, "ac:ios", "2026-01-01T13:00:00Z", 1).unwrap();
     assert_eq!(boundary(&w, "ac:ios"), "2026-01-01T13:00:00Z");
     assert_eq!(boundary(&w, "ac:key"), "2026-01-01T12:00:00Z");
 }

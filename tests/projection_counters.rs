@@ -128,9 +128,17 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
         let before = counts();
         let kept = reads(&pool).await.into_iter().collect::<Result<Vec<_>>>()?;
         ensure!(kept == stored, "a {broken} projection changed a read");
-        ensure!(delta(before) == [0; 6], "a read computed: {:?}", delta(before));
+        ensure!(
+            delta(before) == [0; 6],
+            "a read computed: {:?}",
+            delta(before)
+        );
         store::catch_up_statuses(&pool, false).await?;
-        ensure!(delta(before)[4] == 1, "the catch-up rebuilt {:?}", delta(before));
+        ensure!(
+            delta(before)[4] == 1,
+            "the catch-up rebuilt {:?}",
+            delta(before)
+        );
     }
     // The next write rebuilds the projection, and the readers work again.
     let mark = json!({"op":"assess","target":"requirement:r2","ready":true,"reason":"Known scope"});
@@ -173,7 +181,10 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
             "SELECT count(*) FROM joppa.objects WHERE workspace=$1 AND (test_status IS NULL OR rollup IS NULL)",
             &[&ws()],
         ).await?.get(0);
-        ensure!(gaps == 0, "the catch-up left {gaps} rows without a stored value");
+        ensure!(
+            gaps == 0,
+            "the catch-up left {gaps} rows without a stored value"
+        );
     }
     Ok(())
 }

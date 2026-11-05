@@ -162,7 +162,7 @@ pub(super) fn apply_set_remote_links(
         },
     );
     if repinned {
-        crate::objects::reset_criteria(w, &key, recorded_at)?;
+        crate::objects::reset_criteria(w, &key, recorded_at, position)?;
     }
     Ok(())
 }

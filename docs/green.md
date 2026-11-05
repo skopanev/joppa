@@ -67,6 +67,7 @@ counting for the test nodes at and below it. Such a test is grey until a newer r
 - A new title, text, parent or non-blocking link of a node resets the test nodes at and below it.
 - An archive resets only the test nodes at and below the archived object.
 - A write of a Task or of an Inbox item and a blocking `depends_on` link reset nothing.
+- A change of a criterion or a test node removes its own readiness mark. Each node below keeps its mark.
 
 Old records stay in the history. They are facts about the old text.
 

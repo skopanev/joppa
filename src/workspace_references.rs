@@ -69,7 +69,7 @@ pub fn remove(
         );
         // A removed pin resets the criteria below the source, as set_remote_links does.
         if gone.iter().any(|link| link.revision.is_some()) && w.objects.contains_key(&source) {
-            crate::objects::reset_criteria(w, &source, at)?;
+            crate::objects::reset_criteria(w, &source, at, position)?;
         }
     }
     let schema_revision = crate::objects::schema(w).revision;
@@ -86,7 +86,7 @@ pub fn remove(
         next.reason = reason.to_owned();
         next.at = at.to_owned();
         object.revisions.push(next);
-        crate::objects::reset_criteria(w, &key, at)?;
+        crate::objects::reset_criteria(w, &key, at, position)?;
     }
     Ok(())
 }

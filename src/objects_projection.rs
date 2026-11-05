@@ -87,7 +87,11 @@ pub(super) fn patch(before: &Value, after: &Value) -> Value {
 }
 
 /// Mark the status projection current at `position` with this code version.
-pub(super) async fn stamp(client: &impl GenericClient, workspace: &str, position: u64) -> Result<()> {
+pub(super) async fn stamp(
+    client: &impl GenericClient,
+    workspace: &str,
+    position: u64,
+) -> Result<()> {
     client.execute("UPDATE joppa.board_cache SET first_view=first_view||jsonb_build_object('status_projection',jsonb_build_object('version',$2::int,'position',$3::bigint)) WHERE workspace=$1", &[&workspace, &STATUS_PROJECTION_VERSION, &(position as i64)]).await?;
     Ok(())
 }

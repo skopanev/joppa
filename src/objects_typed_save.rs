@@ -159,17 +159,20 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
         .map(|(key, _)| key.clone())
         .collect();
     for key in changed {
-        reset_criteria(w, &key, at)?;
+        reset_criteria(w, &key, at, position)?;
     }
     Ok(())
 }
 
 /// Reset each present criterion and test node at and below `root` after a change recorded at `at`.
-/// Reports received at or before `at` stop counting for it, and its readiness
-/// assessment is cleared. A later boundary replaces an earlier one.
-pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
+/// Reports received at or before `at` stop counting for it. A later boundary replaces an
+/// earlier one. Only `root` loses its readiness mark: a node below keeps its mark and its
+/// open question. Before the epoch of own_mark_reset, each reset node lost its mark.
+pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str, position: u64) -> Result<()> {
     let root = resolve_address(w, root).to_owned();
     let types = schema(w).types;
+    // The replay of reset_changed runs after the replaying flag is cleared: read the epoch.
+    let own_mark = commands::epoch_reached(w, commands::OWN_MARK_RESET, position);
     let criteria: Vec<String> = w
         .objects
         .iter()
@@ -183,20 +186,9 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
         .map(|(key, _)| key.clone())
         .collect();
     for key in criteria {
-        if let Some((req, r, ac)) = criterion_context(w, &key) {
-            let (req, number, id) = (req.to_owned(), r.number, ac.id.clone());
-            let r = commands::revision(w, &req, number, true)?;
-            let ac = r
-                .acs
-                .iter_mut()
-                .find(|a| a.id == id)
-                .context("unknown AC")?;
-            if ac.assessment.take().is_some() {
-                r.acceptance = None;
-            }
+        if !own_mark || key == root {
+            clear_mark(w, &key)?;
         }
-        // A changed criterion asks for a new readiness mark.
-        w.signal_assessments.remove(&key);
         // An earlier or equal time keeps the stored boundary.
         let later = w.criterion_boundaries.get(&key).is_some_and(|old| {
             use crate::ac_tests::Boundary;
@@ -209,5 +201,23 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
             w.criterion_boundaries.insert(key, at.into());
         }
     }
+    Ok(())
+}
+
+/// Remove the readiness mark of a changed node: a changed criterion asks for a new one.
+fn clear_mark(w: &mut Workspace, key: &str) -> Result<()> {
+    if let Some((req, r, ac)) = criterion_context(w, key) {
+        let (req, number, id) = (req.to_owned(), r.number, ac.id.clone());
+        let r = commands::revision(w, &req, number, true)?;
+        let ac = r
+            .acs
+            .iter_mut()
+            .find(|a| a.id == id)
+            .context("unknown AC")?;
+        if ac.assessment.take().is_some() {
+            r.acceptance = None;
+        }
+    }
+    w.signal_assessments.remove(key);
     Ok(())
 }

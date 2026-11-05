@@ -192,7 +192,7 @@ pub fn archive(
         false => parent,
     };
     match root {
-        Some(root) if !inbox => reset_criteria(w, &root, at),
+        Some(root) if !inbox => reset_criteria(w, &root, at, position),
         _ => Ok(()),
     }
 }

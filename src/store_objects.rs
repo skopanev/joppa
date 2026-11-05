@@ -26,12 +26,12 @@ use wait_items::add_waits;
 #[path = "objects_tones.rs"]
 mod tone_items;
 use tone_items::add_status_tones;
+#[path = "objects_projection_delta.rs"]
+mod delta;
 #[path = "objects_projection.rs"]
 mod projection;
 #[path = "objects_ready_rollup.rs"]
 mod ready_rollup;
-#[path = "objects_projection_delta.rs"]
-mod delta;
 pub(super) use delta::update as update_status_projection;
 use projection::apply_rollups;
 pub(super) use projection::{

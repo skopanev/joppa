@@ -107,7 +107,11 @@ pub const CRITERION_SAVE_REASON: &str = "criterion_save_reason";
 /// older archive keeps its reset at and below the parent in a replay.
 pub const ARCHIVE_OWN_RESET: &str = "archive_own_reset";
 
-pub const REPLAY_RULES: [&str; 7] = [
+/// From this rule on, a change removes the readiness mark of the changed node only. An older
+/// change keeps its removal of each mark at and below the node in a replay.
+pub const OWN_MARK_RESET: &str = "own_mark_reset";
+
+pub const REPLAY_RULES: [&str; 8] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
@@ -115,6 +119,7 @@ pub const REPLAY_RULES: [&str; 7] = [
     SINGLE_CRITERION_SAVE,
     CRITERION_SAVE_REASON,
     ARCHIVE_OWN_RESET,
+    OWN_MARK_RESET,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

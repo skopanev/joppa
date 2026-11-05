@@ -90,7 +90,13 @@ pub(super) async fn project_current(
     let updated = match (previous, selected) {
         (Some(previous), Some(dirty)) => {
             super::objects::update_status_projection(
-                client, workspace, state, previous, (before, position), &reports, dirty,
+                client,
+                workspace,
+                state,
+                previous,
+                (before, position),
+                &reports,
+                dirty,
             )
             .await?
         }
