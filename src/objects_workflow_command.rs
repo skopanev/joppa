@@ -127,9 +127,20 @@ pub(crate) fn workflow_command(
                 .map(|v| v.as_bool().context("decision_required must be boolean"))
                 .transpose()?
                 .unwrap_or(false);
-            // A criterion may have its own owner without a decision of that owner.
-            let owner = (decision || assigned != r.owner).then_some(assigned);
             let ac_key = process_key(w, kind, id, "ac");
+            // A criterion may have its own owner without a decision of that owner. After
+            // migrate_decision_required, an unchanged owner keeps its stored record, so the
+            // criterion keeps its readiness.
+            let stored = r.acs.iter().find(|a| a.id == ac_key).map(|a| &a.owner);
+            let owner = match stored {
+                Some(stored)
+                    if w.decision_required_migrated
+                        && stored.as_ref().unwrap_or(&r.owner) == &assigned =>
+                {
+                    stored.clone()
+                }
+                _ => (decision || assigned != r.owner).then_some(assigned),
+            };
             let ac = Ac {
                 id: ac_key.clone(),
                 text: string(data, "title")?,

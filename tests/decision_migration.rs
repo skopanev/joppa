@@ -65,6 +65,7 @@ fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
             "ready"
         );
     }
+    let records = serde_json::to_value(&w.state.requirements).unwrap();
     internal(&mut w, "migrate_decision_required");
     for (i, key) in keys.iter().enumerate() {
         let current = w.state.objects[*key].current();
@@ -77,11 +78,10 @@ fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
             "ready"
         );
     }
-    let r = w.state.requirements["r"].revisions.last().unwrap();
-    assert!(
-        r.acs.iter().all(|ac| ac.decision_required.is_none()),
-        "{:?}",
-        r.acs
+    // The stored criterion records stay: the trigger protect_state_revision guards them.
+    assert_eq!(
+        serde_json::to_value(&w.state.requirements).unwrap(),
+        records
     );
     // The event runs once.
     let once = serde_json::to_value(&w.state).unwrap();
@@ -115,5 +115,42 @@ fn a_live_write_refuses_the_flag_and_an_open_question_is_a_waiting_mark() {
     assert_eq!(
         (&mark["state"], &mark["reason"]),
         (&json!("waiting"), &json!(question))
+    );
+}
+
+// readiness-per-criterion-ac4
+#[test]
+fn a_save_after_the_migration_keeps_a_stored_owner_and_the_readiness() {
+    let mut w = before();
+    let save = |w: &World, data: serde_json::Value| {
+        let revision = w.state.objects["ac:ios"].current().revision;
+        json!({"op":"save_object","kind":"ac","id":"ios","revision":revision,
+            "parent":"requirement:r","data":data,"reason":"Name the decision"})
+    };
+    // Before the migration, a decision of the requirement owner stores that owner.
+    let mut data = w.state.objects["ac:ios"].current().data.clone();
+    (data["owner"], data[FIELD]) = (json!("owner"), json!(true));
+    w.ok("owner", save(&w, data));
+    let ready = json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"});
+    w.ok("agent", ready);
+    let stored = |w: &World| {
+        let r = w.state.requirements["r"].revisions.last().unwrap();
+        r.acs.iter().find(|a| a.id == "ios").unwrap().owner.clone()
+    };
+    assert_eq!(stored(&w).as_deref(), Some("owner"));
+    internal(&mut w, "migrate_decision_required");
+    // A save that changes no criterion record keeps the readiness.
+    w.ok(
+        "owner",
+        json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,
+        "parent":null,"data":{"title":"Buyer","owner":"owner"},"reason":"Add a consumer"}),
+    );
+    let mut data = w.state.objects["ac:ios"].current().data.clone();
+    data["consumer"] = json!("consumer:buyer");
+    w.ok("owner", save(&w, data));
+    assert_eq!(stored(&w).as_deref(), Some("owner"));
+    assert_eq!(
+        objects::assessment(&w.state, "ac:ios").unwrap()["state"],
+        "ready"
     );
 }

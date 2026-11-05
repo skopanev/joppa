@@ -1,7 +1,8 @@
 //! An open question on a node is its readiness mark: `assess` with `ready: false` and the
 //! question as reason. The event migrate_decision_required runs once in each workspace. It
 //! removes `data.decision_required` from each object in a new revision that keeps the contract
-//! revision, so pins, assessments and test results stay. A criterion record keeps no flag.
+//! revision, so pins, assessments and test results stay. A stored criterion record of a
+//! requirement is immutable, so it keeps its old flag, and no read gives that flag.
 use crate::commands::{Command, SaveObjectOp, SetTreeSchemaOp};
 use crate::model::Workspace;
 use crate::objects::{contract_of, schema};
@@ -55,17 +56,6 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         revision.reason = REASON.into();
         revision.at = at.into();
         o.revisions.push(revision);
-    }
-    // A criterion owner that equals the requirement owner is the inherited owner, as a save
-    // without the flag gives it.
-    for q in w.requirements.values_mut() {
-        let Some(r) = q.revisions.last_mut() else {
-            continue;
-        };
-        for ac in r.acs.iter_mut() {
-            ac.decision_required = None;
-            ac.owner = ac.owner.take().filter(|owner| *owner != r.owner);
-        }
     }
     w.decision_required_migrated = true;
     Ok(())
