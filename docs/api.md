@@ -133,6 +133,22 @@ reference fails the whole batch. Plain text is never a template.
 ```
 
 The reply has `results` in operation order, each with `position` and the resolved `command`.
+
+An optional `defaults` gives `save_object` fields, for example `reason`, `question_checked`
+and `data.owner`. Each `save_object` of the batch takes each default field that it omits.
+`data` merges by key, and a field of the command wins. Other operations stay as sent.
+`defaults` with `op`, `actor` or a `data` that is not an object is refused. The receipt
+stores the completed commands, so an identical retry gives the same reply.
+
+```json
+{"workspace": "product", "request_id": "tests-1",
+ "defaults": {"reason": "Bind the tests", "data": {"owner": "owner"}},
+ "operations": [
+  {"command": {"op": "save_object", "kind": "test", "revision": 0, "parent": "ac:x",
+    "data": {"title": "tests/a.rs > first"}}},
+  {"command": {"op": "save_object", "kind": "test", "revision": 0, "parent": "ac:x",
+    "data": {"title": "tests/a.rs > second"}}}]}
+```
 The server command line takes explicit local IDs.
 
 ## Search
