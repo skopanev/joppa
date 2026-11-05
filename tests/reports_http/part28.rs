@@ -54,7 +54,7 @@ async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
     let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
     p.change_a().await?;
-    p.reset(&before).await?;
+    p.reset(&before, &Value::Null).await?;
     p.write("owner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
     let readiness = p.assessment("criterion:a").await?;
     let s = p.ac_tests("criterion:a").await?;
@@ -78,7 +78,7 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
     );
     p.change_a().await?;
     // Control: the record from before the change does not count.
-    p.reset(&before).await?;
+    p.reset(&before, &Value::Null).await?;
     // Control: a record after the change that misses a listed test stays grey.
     p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = p.ac_tests("criterion:a").await?;
@@ -166,5 +166,5 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Resul
     // Control: the fixture detects a reset.
     let tests = p.ac_tests("criterion:a").await?;
     p.save_r("area:g", "R renamed", json!([])).await?;
-    p.reset(&tests).await
+    p.reset(&tests, &before["assessment"]).await
 }

@@ -106,11 +106,9 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
             s["status"] == "grey" && mcp == "grey" && addresses(&s) == addresses(&before[ac].0),
             "{ac} after the change: {s} {mcp}"
         );
+        // A change of R keeps the readiness marks of its criteria.
         let readiness = p.assessment(ac).await?;
-        ensure!(
-            readiness.is_null(),
-            "{ac} readiness: {readiness}"
-        );
+        ensure!(readiness == before[ac].1, "{ac} readiness: {readiness}");
     }
     let c = p.ac_tests("criterion:c").await?;
     let mcp = p

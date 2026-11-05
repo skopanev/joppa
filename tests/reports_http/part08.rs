@@ -8,11 +8,17 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     let p = branches(&w).await?;
     let tests = |ac: &'static str| store::test_status(&p.pool, &p.ws, "agent", ac);
     let object = |address: &str| p.get(format!("/objects?address={address}"));
-    let mut before = std::collections::BTreeMap::new();
+    let (mut before, mut marks) = (
+        std::collections::BTreeMap::new(),
+        std::collections::BTreeMap::new(),
+    );
     for (_, _, ac) in BRANCH_CRITERIA {
         let s = tests(ac).await?;
         ensure!(s["status"] == "green", "{ac} before the change: {s}");
         before.insert(ac, s);
+        let mark = object(ac).await?["process"]["assessment"].clone();
+        ensure!(mark["state"] == "ready", "{ac} before the change: {mark}");
+        marks.insert(ac, mark);
     }
     let tone = |address: &'static str| async move {
         Ok::<_, anyhow::Error>(object(address).await?["signal"]["tone"].clone())
@@ -37,8 +43,9 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
                 && s["tests_saved_by"] == old["tests_saved_by"],
             "{ac} after the change: {s}"
         );
+        // A change of G keeps the readiness marks below it.
         let readiness = object(ac).await?["process"]["assessment"].clone();
-        ensure!(readiness.is_null(), "{ac} readiness: {readiness}");
+        ensure!(readiness == marks[ac], "{ac} readiness: {readiness}");
     }
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))

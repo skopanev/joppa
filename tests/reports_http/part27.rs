@@ -36,18 +36,16 @@ impl Planning<'_> {
     async fn signal(&self) -> Result<()> {
         self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[{"target":"spec:r","relation":"related"}],"reason":"Record the signal"})).await
     }
-    /// A is grey with the test list of `before` and has no readiness assessment.
-    async fn reset(&self, before: &Value) -> Result<()> {
+    /// A is grey with the test list of `before` and has the readiness `mark`: null after a
+    /// change of A, and its earlier mark after a change of R.
+    async fn reset(&self, before: &Value, mark: &Value) -> Result<()> {
         let s = self.ac_tests("criterion:a").await?;
         ensure!(
             s["status"] == "grey" && addresses(&s) == addresses(before),
             "A after the change: {s}"
         );
         let readiness = self.assessment("criterion:a").await?;
-        ensure!(
-            readiness.is_null(),
-            "A readiness: {readiness}"
-        );
+        ensure!(readiness == *mark, "A readiness: {readiness}");
         Ok(())
     }
     /// A is still green with the test list of `before` and the readiness `assessment`.
@@ -71,9 +69,12 @@ impl Planning<'_> {
 async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
-    let before = p.ac_tests("criterion:a").await?;
+    let (before, mark) = (
+        p.ac_tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
     p.save_r("area:g", "R renamed", json!([])).await?;
-    p.reset(&before).await?;
+    p.reset(&before, &mark).await?;
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
@@ -86,7 +87,7 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
 // criterion ac:key-rights. Agent bot saves a new text of R. Revision 1 of R keeps the old text.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readiness() -> Result<()> {
+async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_keeps_its_readiness() -> Result<()> {
     let w = world().await?;
     let workspace = w.base.rsplit('/').next().unwrap().to_owned();
     // Bot reads joppa_objects over HTTP and MCP; both give the same reply.
@@ -149,9 +150,10 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
     );
     let status = w.status().await?;
     ensure!(status["status"] == "grey", "A after the save: {status}");
+    // A save of R keeps the readiness mark of A.
     let a = read("address=ac:key-rights", json!({"address":"ac:key-rights"})).await?;
     ensure!(
-        a["process"]["assessment"].is_null(),
+        a["process"]["assessment"]["state"] == "ready",
         "A after the save: {a}"
     );
     let old = read(
@@ -174,14 +176,17 @@ async fn an_agent_save_of_r_makes_a_new_revision_greys_a_and_resets_its_readines
 async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
-    let before = p.ac_tests("criterion:a").await?;
+    let (before, mark) = (
+        p.ac_tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
     p.save_r(
         "area:g",
         "R",
         json!([{"target":"area:h","relation":"related"}]),
     )
     .await?;
-    p.reset(&before).await
+    p.reset(&before, &mark).await
 }
 
 // check-list-frozen-ac3
@@ -190,9 +195,12 @@ async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
 async fn frozen_f3_a_move_of_r_makes_a_grey() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
-    let before = p.ac_tests("criterion:a").await?;
+    let (before, mark) = (
+        p.ac_tests("criterion:a").await?,
+        p.assessment("criterion:a").await?,
+    );
     p.save_r("area:h", "R", json!([])).await?;
-    p.reset(&before).await
+    p.reset(&before, &mark).await
 }
 
 // check-list-frozen-ac3
