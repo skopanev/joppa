@@ -107,7 +107,13 @@ Reply item: the address and each named path, also when its value is empty.
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
 `work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`,
-`links`.
+`child_counts`, `links`.
+
+`child_counts` comes from the status projection of the last write. It has one entry for each
+type of the present direct children that have a tone, in the order of the type index:
+`{"kind": "ac", "total": 6, "passed": 4}`, where `passed` counts the green children. A node
+without such a child has no `child_counts`. The board shows each entry in the row, such as
+`4 / 6 ACs`.
 
 Any other first part names a document field: `source_section.title` gives
 `data.source_section.title`. A document field is a field of the object roles (such as

@@ -40,15 +40,19 @@ export function enableBranchMotion(node){
     if(event.defaultPrevented||event.target.closest('button,a,input,label,select,textarea'))return;
     event.preventDefault();
     const opening=!node.open||node.classList.contains('branch-closing');
-    // A branch with lazy content loads while closed, then opens once to its full height.
+    // A branch with lazy content opens at once with its loading line, then grows to the
+    // height of its content. A failed load closes it again.
     if(opening&&!node.open&&node.branchPrepare&&!node.branchReady){
       if(node.classList.contains('is-loading'))return;
       node.classList.add('is-loading');
-      node.branchPrepare().then(()=>{
+      const from=node.getBoundingClientRect().height,ready=node.branchPrepare();
+      node.open=true;animateBranchHeight(node,from,node.getBoundingClientRect().height);
+      ready.then(()=>{
         node.classList.remove('is-loading');node.branchReady=true;
-        const start=node.getBoundingClientRect().height;node.open=true;
+        if(!node.open||node.classList.contains('branch-closing'))return;
+        const start=node.getBoundingClientRect().height;stopBranchAnimation(node);
         animateBranchHeight(node,start,node.getBoundingClientRect().height);revealBranch(node);
-      },()=>node.classList.remove('is-loading'));
+      },()=>{node.classList.remove('is-loading');stopBranchAnimation(node);node.open=false;});
       return;
     }
     const from=node.getBoundingClientRect().height;

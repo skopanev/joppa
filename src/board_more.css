@@ -61,6 +61,8 @@
 .waiting{--status-ink:var(--waiting)}.available{--status-ink:var(--available)}.progress{--status-ink:var(--progress)}
 .ready{--status-ink:var(--ready)}.pass{--status-ink:var(--pass)}.fail{--status-ink:var(--fail)}
 .node-title>.status-circle{vertical-align:middle}
+.common-object>summary>.verification-chip{flex:none;margin:0 .6em 0 0;font-size:.8rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.common-object>summary>.verification-chip.has-passes{color:var(--pass)}
 
 /* Notes and inputs. */
 .note-section{margin:2em 0 0;padding:0;border:0;background:none}

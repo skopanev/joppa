@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 8;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 9;
 
 /// A read found no projection, or one from an older journal position or code version.
 #[derive(Debug)]
@@ -21,7 +21,7 @@ impl std::fmt::Display for ProjectionNotReady {
 impl std::error::Error for ProjectionNotReady {}
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
-const FIELDS: [&str; 2] = ["work_ready", "waits_for"];
+const FIELDS: [&str; 3] = ["work_ready", "waits_for", "child_counts"];
 const PROCESS_FIELDS: &[&str] = &["verification"];
 const SIGNAL_FIELDS: &[&str] = &["tone", "label"];
 
@@ -99,6 +99,7 @@ pub(in crate::store) async fn rebuild(
         .collect();
     let base = items.clone();
     let counted = add_status_tones(client, workspace, &mut items, &types).await?;
+    add_child_counts(&mut items, &counted, &types);
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts).await?;
     super::ready_rollup::roll_ready(&mut items, &counted, &types);
@@ -129,6 +130,39 @@ pub(in crate::store) async fn rebuild(
         .collect();
     store_column(client, workspace, "rollup", &patches).await?;
     Ok(())
+}
+
+/// The present direct children of each node by type, in the order of the type index: how many
+/// have a tone and how many of them are green. A node without such a child gets no field.
+fn add_child_counts(
+    items: &mut [Value],
+    counted: &super::tone_items::Counted,
+    types: &BTreeMap<String, objects::TreeType>,
+) {
+    for item in items.iter_mut() {
+        let Some(address) = item["address"].as_str() else {
+            continue;
+        };
+        let mut by_kind = BTreeMap::<&str, (u64, u64)>::new();
+        for child in counted.children.get(address).into_iter().flatten() {
+            let (Some(Some(tone)), Some((kind, _))) =
+                (counted.tones.get(child), child.split_once(':'))
+            else {
+                continue;
+            };
+            let count = by_kind.entry(kind).or_default();
+            count.0 += 1;
+            count.1 += u64::from(*tone == "green");
+        }
+        let mut counts: Vec<_> = by_kind.into_iter().collect();
+        counts.sort_by_key(|(kind, _)| (types.get(*kind).and_then(|t| t.index), *kind));
+        if !counts.is_empty() {
+            let counts = counts
+                .iter()
+                .map(|(kind, (total, passed))| json!({"kind":kind,"total":total,"passed":passed}));
+            item["child_counts"] = json!(counts.collect::<Vec<_>>());
+        }
+    }
 }
 
 /// Set the stored decoration on each row, as the helpers set it at the last write.

@@ -77,27 +77,59 @@ impl Bound {
     }
 
     /// The SQL clause on the alias `o`, with these numbers for the 9 parameters of `params`.
+    /// The text has only the conditions of the filters that are set, and an unset filter
+    /// keeps only a test of its null parameter. So a generic plan of the text also reads the
+    /// descendants by the primary key, and no `IS NULL OR` hides an index.
     pub fn clause_at(&self, numbers: [usize; 9]) -> String {
-        let p = numbers.map(|n| format!("${n}"));
-        format!(
-            "({w}::text IS NULL OR (o.workspace={w} AND o.address=ANY({d}::text[])))
-            AND (NOT {r}::boolean OR o.parent IS NULL)
-            AND ({k}::text[] IS NULL OR o.kind=ANY({k}))
-            AND ({s}::text[] IS NULL OR {TONE}=ANY({s}))
-            AND ({ow}::text IS NULL OR o.owner={ow})
-            AND ({a}::text IS NULL OR {ASSIGNEE}={a})
-            AND ({rd}::boolean IS NULL OR {READY}={rd})
-            AND ({data}::text IS NULL OR o.document->'data' @> {data}::text::jsonb)",
-            w = p[0],
-            d = p[1],
-            r = p[2],
-            k = p[3],
-            s = p[4],
-            ow = p[5],
-            a = p[6],
-            rd = p[7],
-            data = p[8],
-        )
+        let [w, d, r, k, s, ow, a, rd, data] = numbers.map(|n| format!("${n}"));
+        let f = &self.filter;
+        let set = [
+            (
+                self.descendants.is_some(),
+                format!("o.workspace={w} AND o.address=ANY({d}::text[])"),
+                format!("{w}::text IS NULL AND {d}::text[] IS NULL"),
+            ),
+            (
+                self.roots,
+                format!("{r}::boolean AND o.parent IS NULL"),
+                format!("NOT {r}::boolean"),
+            ),
+            (
+                f.kinds.is_some(),
+                format!("o.kind=ANY({k}::text[])"),
+                format!("{k}::text[] IS NULL"),
+            ),
+            (
+                f.statuses.is_some(),
+                format!("{TONE}=ANY({s}::text[])"),
+                format!("{s}::text[] IS NULL"),
+            ),
+            (
+                f.owner.is_some(),
+                format!("o.owner={ow}::text"),
+                format!("{ow}::text IS NULL"),
+            ),
+            (
+                f.assignee.is_some(),
+                format!("{ASSIGNEE}={a}::text"),
+                format!("{a}::text IS NULL"),
+            ),
+            (
+                f.ready.is_some(),
+                format!("{READY}={rd}::boolean"),
+                format!("{rd}::boolean IS NULL"),
+            ),
+            (
+                f.data.is_some(),
+                format!("o.document->'data' @> {data}::text::jsonb"),
+                format!("{data}::text IS NULL"),
+            ),
+        ];
+        let parts: Vec<String> = set
+            .into_iter()
+            .map(|(on, when, unset)| format!("({})", if on { when } else { unset }))
+            .collect();
+        parts.join(" AND ")
     }
 
     /// The 9 parameters of the clause, in its order.

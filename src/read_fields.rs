@@ -6,7 +6,7 @@ use serde_json::{Map, Value, json};
 
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `links` gives the stored links of the item. A read by address gives its detail links.
-pub const LIST_FIELDS: [&str; 18] = [
+pub const LIST_FIELDS: [&str; 19] = [
     "address",
     "data",
     "kind",
@@ -24,6 +24,7 @@ pub const LIST_FIELDS: [&str; 18] = [
     "status",
     "process",
     "children",
+    "child_counts",
     "links",
 ];
 

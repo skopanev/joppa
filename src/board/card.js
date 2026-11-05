@@ -25,7 +25,7 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const deps=item.waits_for?.count||1;
   const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
   if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
-  summary.append(title,objectTypeLabel(item.kind),...waits);
+  summary.append(title,objectTypeLabel(item.kind),...waits,...childCounts(item));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);
@@ -52,9 +52,21 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
     const children=E('div',undefined,'object-children');body.insertBefore(children,body.querySelector(':scope > .object-secondary'));
     if(!detail.historical){if(kids)appendObjectPage(children,kids,childParams,generation);else await appendObjectChildren(children,item.address);}
   };
-  card.branchPrepare=async()=>{if(loaded)return;loaded=true;try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
+  // The loading line shows at once; the card opens before its two reads end.
+  card.branchPrepare=async()=>{if(loaded)return;loaded=true;body.replaceChildren(E('p','Loading object…','object-loading hint'));try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
   card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
+}
+// The direct children of each type, such as "4 / 6 REQs": the green ones of the counted ones.
+function childCounts(item){
+  return (item.child_counts||[]).map(({kind,total,passed})=>{
+    const type=state.data.objectTypes?.[kind],name=type?.badge||type?.title||kind;
+    const unit=total===1||/s$/i.test(name)?name:name+'s';
+    const chip=E('span',(passed?passed+' / ':'')+total+' '+unit,'verification-chip');
+    chip.dataset.kind=kind;chip.classList.toggle('has-passes',passed===total);
+    chip.setAttribute('aria-label',passed+' of '+total+' '+unit+' passed');
+    return chip;
+  });
 }
 function syncObjectTitles(root=document){
   for(const title of root.querySelectorAll('.object-full-title')){
