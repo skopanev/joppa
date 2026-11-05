@@ -15,6 +15,28 @@ pub struct Bound {
 /// The refusal of the archived tone in a read that keeps only present nodes.
 pub const ARCHIVED_REFUSAL: &str = "status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions";
 
+/// The descendants of $2, or the top nodes when $2 is null, within depth $3; $4 also walks
+/// below archived nodes. A child names its parent by its address or by an old alias of it.
+/// Each step joins the parent key by the index on objects(workspace, parent), so a step does
+/// not compare each node with each parent.
+pub const SUBTREE: &str = "WITH RECURSIVE node(address) AS (
+        SELECT COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2)
+    ), sub(address,depth) AS (
+        SELECT c.address,1 FROM joppa.objects c
+            WHERE $2::text IS NULL AND c.workspace=$1 AND c.parent IS NULL AND (c.present OR $4)
+        UNION
+        SELECT c.address,1 FROM node n
+            LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.target=n.address
+            CROSS JOIN LATERAL (VALUES (n.address),(a.address)) k(key)
+            JOIN joppa.objects c ON c.workspace=$1 AND c.parent=k.key AND (c.present OR $4)
+        UNION
+        SELECT c.address,s.depth+1 FROM sub s
+            LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.target=s.address
+            CROSS JOIN LATERAL (VALUES (s.address),(a.address)) k(key)
+            JOIN joppa.objects c ON c.workspace=$1 AND c.parent=k.key AND (c.present OR $4)
+            WHERE $3::int IS NULL OR s.depth<$3
+    ) SELECT DISTINCT address FROM sub";
+
 /// Read the descendants of the parent, or the nodes within `depth` of the top. `roots` keeps
 /// only root nodes when no filter narrows the read. `archived` also walks below archived nodes.
 pub async fn bind(
@@ -35,20 +57,7 @@ pub async fn bind(
         None => None,
         Some(parent) => {
             let rows = client
-                .query(
-                    "WITH RECURSIVE node(address) AS (
-                        SELECT COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2)
-                    ), sub(address,depth) AS (
-                        SELECT c.address,1 FROM joppa.objects c WHERE c.workspace=$1 AND (c.present OR $4)
-                            AND ($2::text IS NULL AND c.parent IS NULL OR c.parent IN (SELECT address FROM node
-                                UNION SELECT a.address FROM joppa.object_aliases a JOIN node n ON a.workspace=$1 AND a.target=n.address))
-                        UNION
-                        SELECT c.address,s.depth+1 FROM sub s JOIN joppa.objects c ON c.workspace=$1 AND (c.present OR $4)
-                            AND (c.parent=s.address OR c.parent IN (SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=s.address))
-                        WHERE $3::int IS NULL OR s.depth<$3
-                    ) SELECT DISTINCT address FROM sub",
-                    &[&workspace, &parent, &filter.depth, &archived],
-                )
+                .query(SUBTREE, &[&workspace, &parent, &filter.depth, &archived])
                 .await?;
             Some(rows.iter().map(|row| row.get(0)).collect())
         }

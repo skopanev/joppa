@@ -23,7 +23,7 @@ use serde_json::{Map, Value};
 
 #[path = "node_filter_sql.rs"]
 mod sql;
-pub use sql::{ASSIGNEE, Bound, READY, TONE, bind};
+pub use sql::{ASSIGNEE, Bound, READY, SUBTREE, TONE, bind};
 
 /// The node filters of one read.
 #[derive(Clone, Debug, Default, PartialEq)]

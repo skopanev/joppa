@@ -150,6 +150,27 @@ async fn a_text_with_a_known_hash_reuses_its_vector_without_a_request() -> Resul
     Ok(())
 }
 
+// ac:t21pvi43
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL with pgvector"]
+async fn the_vector_copy_reads_only_waiting_rows_and_sorts_no_vectors() -> Result<()> {
+    let _serial = SERIAL.lock().await;
+    let pool = db().await?;
+    let conn = pool.get().await?;
+    for sql in search_indexer::REUSE {
+        let plan: Vec<String> = conn
+            .query(&format!("EXPLAIN {sql}"), &[&joppa::embeddings::PROFILE])
+            .await?
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        let plan = plan.join("\n");
+        ensure!(!plan.contains("Sort") && !plan.contains("Unique"), "{plan}");
+        ensure!(plan.contains("embedding IS NULL"), "{plan}");
+    }
+    Ok(())
+}
+
 // indexer-batch-16
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL with pgvector"]

@@ -96,10 +96,24 @@ struct Row {
     hash: String,
 }
 
-const REUSE: [&str; 2] = [
-    "UPDATE joppa.search_documents t SET embedding=s.embedding,embedding_profile=s.embedding_profile FROM (SELECT DISTINCT ON (content_hash) content_hash,embedding,embedding_profile FROM (SELECT content_hash,embedding,embedding_profile FROM joppa.search_documents WHERE embedding IS NOT NULL AND embedding_profile=$1 UNION ALL SELECT content_hash,embedding,embedding_profile FROM joppa.search_revisions WHERE embedding IS NOT NULL AND embedding_profile=$1) v ORDER BY content_hash) s WHERE t.content_hash=s.content_hash AND (t.embedding IS NULL OR t.embedding_profile IS DISTINCT FROM $1)",
-    "UPDATE joppa.search_revisions t SET embedding=s.embedding,embedding_profile=s.embedding_profile FROM (SELECT DISTINCT ON (content_hash) content_hash,embedding,embedding_profile FROM (SELECT content_hash,embedding,embedding_profile FROM joppa.search_documents WHERE embedding IS NOT NULL AND embedding_profile=$1 UNION ALL SELECT content_hash,embedding,embedding_profile FROM joppa.search_revisions WHERE embedding IS NOT NULL AND embedding_profile=$1) v ORDER BY content_hash) s WHERE t.content_hash=s.content_hash AND (t.embedding IS NULL OR t.embedding_profile IS DISTINCT FROM $1)",
-];
+/// Copy a known vector by the content_hash index to each row without one; no vector sort.
+macro_rules! reuse {
+    ($table:literal) => {
+        concat!(
+            "UPDATE joppa.", $table, " t SET embedding=s.embedding,embedding_profile=$1 ",
+            "FROM (SELECT p.ctid AS row_id,(SELECT v.embedding FROM (",
+            "(SELECT d.embedding FROM joppa.search_documents d WHERE d.content_hash=p.content_hash ",
+            "AND d.embedding IS NOT NULL AND d.embedding_profile=$1 LIMIT 1) UNION ALL ",
+            "(SELECT r.embedding FROM joppa.search_revisions r WHERE r.content_hash=p.content_hash ",
+            "AND r.embedding IS NOT NULL AND r.embedding_profile=$1 LIMIT 1)) v LIMIT 1) AS embedding ",
+            "FROM joppa.", $table, " p WHERE p.embedding IS NULL OR p.embedding_profile IS DISTINCT FROM $1) s ",
+            "WHERE t.ctid=s.row_id AND s.embedding IS NOT NULL"
+        )
+    };
+}
+
+/// The statements that copy a known vector, one for each search table.
+pub const REUSE: [&str; 2] = [reuse!("search_documents"), reuse!("search_revisions")];
 
 async fn pending(pool: &Pool) -> Result<Vec<Row>> {
     let conn = pool.get().await?;
