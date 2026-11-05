@@ -2,6 +2,7 @@
 //! question as reason. The event migrate_decision_required runs once in each workspace. It
 //! removes `data.decision_required` from each object in a new revision that keeps the contract
 //! revision, so pins, assessments and test results stay. A criterion record keeps no flag.
+use crate::commands::{Command, SaveObjectOp, SetTreeSchemaOp};
 use crate::model::Workspace;
 use crate::objects::{contract_of, schema};
 use anyhow::{Result, ensure};
@@ -13,6 +14,24 @@ pub const REASON: &str = "An open question is a readiness mark";
 
 /// The refusal of the removed field in a live save or in a type rule.
 pub const REFUSAL: &str = "decision_required was removed; ask an open question with assess {target, ready: false, reason}";
+
+/// After the migration, a live save and a type rule have no decision_required. The replay
+/// still reads the older saves.
+pub fn check(w: &Workspace, command: &Command) -> Result<()> {
+    let used = match command {
+        Command::SaveObject(SaveObjectOp { data, .. }) => data.get(FIELD).is_some(),
+        Command::SetTreeSchema(SetTreeSchemaOp {
+            types, put_types, ..
+        }) => types
+            .iter()
+            .chain(put_types)
+            .flat_map(|m| m.values())
+            .any(|t| t.required_fields.contains_key(FIELD)),
+        _ => false,
+    };
+    ensure!(!(w.decision_required_migrated && used), REFUSAL);
+    Ok(())
+}
 
 /// Apply migrate_decision_required once. The workspace owner is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
