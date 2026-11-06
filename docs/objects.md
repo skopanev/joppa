@@ -27,7 +27,7 @@ placed under an AC or a REQ) and the contract of a Task. A save with `data.descr
 or `data.contract` is refused: `use body instead of description; read joppa_help`.
 An AC, a TAC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
 its owner. An open question on a node is its readiness mark: `assess` with `ready: false` and
-the question as `reason`. A new title, text, parent or link of a criterion or a test node
+the question as `reason`. Any new parent, link or data value of a criterion or a test node
 removes its own mark. A save of its parent or of a node above keeps the mark and the question.
 A save with `data.decision_required` is refused.
 

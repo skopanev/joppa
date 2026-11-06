@@ -37,7 +37,7 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 `assess {target, ready, reason}` sets the readiness mark of any present node.
 The process metadata of the node then gives `assessment`: `{state, reason, actor, position}`.
 `state` is `ready` or `waiting`. The node filter `ready` is false for a waiting node.
-The mark changes no check evidence and no acceptance. A new title, text, parent or link of a
+The mark changes no check evidence and no acceptance. Any new parent, link or data value of a
 criterion or a test node removes its own mark. A change of a node above it keeps the mark.
 
 `expected_position` is optional. Send the `position` of the mark that you read, or 0 when the

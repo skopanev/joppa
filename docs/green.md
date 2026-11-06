@@ -64,9 +64,11 @@ order red, orange, yellow, grey, green.
 With `reset_on_change`, a change of a node or of a node above it makes the earlier records stop
 counting for the test nodes at and below it. Such a test is grey until a newer record arrives.
 
-- A new title, text, parent or non-blocking link of a node resets the test nodes at and below it.
+- Any new parent, link or data value of a node resets the test nodes at and below it. This holds
+  for each node type and each link, a blocking `depends_on` link and a new pin included.
+- A revision with the same parent, links and data resets nothing. An example is the
+  specification revision that a criterion save gives.
 - An archive resets only the test nodes at and below the archived object.
-- A write of a Task or of an Inbox item and a blocking `depends_on` link reset nothing.
 - A change of a criterion or a test node removes its own readiness mark. Each node below keeps its mark.
 
 Old records stay in the history. They are facts about the old text.

@@ -3,7 +3,7 @@
 // dependencies-before-priority-ac7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() -> Result<()> {
+async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_frees_work() -> Result<()> {
     let w = world().await?;
     let p = ordering(&w, "cap:d", &["criterion:a1"]).await?;
     p.bind(&w.token, "criterion:b1", &[A]).await?;
@@ -21,9 +21,10 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
     ensure!(readiness[0] == "ready", "{readiness}");
     let before = p.saved().await?["position"].as_i64().unwrap();
 
-    // P adds a blocking link from B to A without a revision.
+    // P adds a blocking link from B to A without a revision. The new link of B resets B1
+    // below it, and B1 keeps its readiness mark.
     p.link("spec:b", ordering_link("spec:a")).await?;
-    ensure!(p.status("criterion:b1").await?["status"] == "green");
+    ensure!(p.status("criterion:b1").await?["status"] == "grey");
     ensure!(p.readiness("criterion:b1").await? == readiness);
     let b = p.read("spec:b").await?;
     let stored = &b["document"]["links"][0];
@@ -50,7 +51,13 @@ async fn ac7_an_ordering_link_greys_nothing_and_an_archived_target_frees_work() 
             && events[0]["command"]["links"][0].get("revision").is_none(),
         "{events:?}"
     );
-    // The timeline reader is absent from this checkout, so its HTTP and MCP check is pending.
+    // A new record after the link makes B1 green again.
+    p.record(
+        "c1c1c1c",
+        outcomes(&[("opens", "pass"), ("refuses", "pass")]),
+    )
+    .await?;
+    ensure!(p.status("criterion:b1").await?["status"] == "green");
 
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(waits_for(&b1, "spec:a"), "{b1}");

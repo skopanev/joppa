@@ -124,6 +124,8 @@ pub(crate) fn typed_save(
 pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
     let types = schema(w).types;
     let migrated = w.test_rules_migrated;
+    // The replay of reset_changed runs after the replaying flag is cleared: read the epoch.
+    let any = commands::epoch_reached(w, commands::ANY_CHANGE_RESET, position);
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
@@ -136,8 +138,9 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
         .iter()
         .filter(|(_, o)| {
             o.current().position == position
-                && types.get(&o.kind).is_some_and(|t| t.role != "task")
-                && !input_type(w, &o.kind)
+                && (any
+                    || types.get(&o.kind).is_some_and(|t| t.role != "task")
+                        && !input_type(w, &o.kind))
         })
         .filter(|(_, o)| {
             let current = o.current();
@@ -146,7 +149,12 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
                 .rev()
                 .find(|r| r.position < position)
                 .is_some_and(|before| {
-                    before.parent != current.parent
+                    // From the epoch on, any new parent, link or data value resets. A revision
+                    // that changes none of them, such as a specification revision, does not.
+                    (any && (before.parent != current.parent
+                        || before.links != current.links
+                        || before.data != current.data))
+                        || before.parent != current.parent
                         || content(&before.links) != content(&current.links)
                         || !crate::body_migration::same_text(w, &before.data, &current.data)
                         // A new test list resets the criterion. The migration moves a list

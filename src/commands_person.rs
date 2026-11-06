@@ -111,7 +111,12 @@ pub const ARCHIVE_OWN_RESET: &str = "archive_own_reset";
 /// change keeps its removal of each mark at and below the node in a replay.
 pub const OWN_MARK_RESET: &str = "own_mark_reset";
 
-pub const REPLAY_RULES: [&str; 8] = [
+/// From this rule on, any new parent, link or data value of a node resets the criteria at and
+/// below it. An older revision resets them only for a new parent, link, text or test list in
+/// a replay.
+pub const ANY_CHANGE_RESET: &str = "any_change_reset";
+
+pub const REPLAY_RULES: [&str; 9] = [
     RESET_CHANGED,
     KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
@@ -120,6 +125,7 @@ pub const REPLAY_RULES: [&str; 8] = [
     CRITERION_SAVE_REASON,
     ARCHIVE_OWN_RESET,
     OWN_MARK_RESET,
+    ANY_CHANGE_RESET,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.
