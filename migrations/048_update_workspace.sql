@@ -1,5 +1,6 @@
 -- update_workspace replaces rename_workspace. A new reference_prefix of either one keeps the
--- "-<type>-<code>" end of each ID under the new prefix. Old journals keep rename_workspace.
+-- "-<type>-<code>" end of each ID under the new prefix, and the administrative register_item
+-- reads it. Old journals keep rename_workspace.
 CREATE OR REPLACE FUNCTION joppa.register_event_item() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE ac jsonb; item record; prefix text; alias_id text;
 BEGIN
@@ -35,4 +36,14 @@ BEGIN
         END LOOP;
     END IF;
     RETURN NEW;
+END $$;
+
+-- The administrative form without a prefix reads the newest prefix of either command.
+CREATE OR REPLACE FUNCTION joppa.register_item(w text, k text, local_key text)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE prefix text;
+BEGIN
+    SELECT command->>'reference_prefix' INTO prefix FROM joppa.events WHERE workspace=w
+        AND command->>'op' IN ('rename_workspace','update_workspace') AND command->>'reference_prefix' IS NOT NULL ORDER BY position DESC LIMIT 1;
+    PERFORM joppa.register_item(w,k,local_key,coalesce(prefix,w));
 END $$;
