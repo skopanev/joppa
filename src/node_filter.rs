@@ -2,10 +2,9 @@
 //! HTTP routes. The filters are `parent` with `depth`, `kind`, `status`, `owner`,
 //! `assignee`, `ready` and `data`. All filters must match.
 //!
-//! - `parent` names a node: the read keeps each descendant of it at any depth. `depth: N`
-//!   keeps the descendants at most N levels below it; `depth: 1` keeps the direct children.
-//!   Without a parent address, `depth` counts from the top: `depth: 1` keeps the roots.
-//!   `parent: "*"` keeps every level.
+//! - `parent` names a node: the read keeps its direct children. `depth: N` keeps the
+//!   descendants at most N levels below it, up to 100. Without a parent address, `depth`
+//!   counts from the top: `depth: 1` keeps the roots. `parent: "*"` keeps every level.
 //! - `kind` and `status` take one value or a list.
 //! - `status` is the stored tone of the node: the rollup tone, else the signal tone. The tone
 //!   `purple` marks archived nodes: a list read with it also keeps the current archived nodes.
@@ -64,6 +63,8 @@ impl NodeFilter {
                     .context("depth must be an integer from 1 to 100")? as i32,
             ),
         };
+        // A parent address reads its direct children unless depth asks for more levels.
+        let depth = depth.or_else(|| parent.as_deref().filter(|p| *p != "*").map(|_| 1));
         let statuses = list(a, "status")?;
         for tone in statuses.iter().flatten() {
             ensure!(

@@ -58,8 +58,8 @@ Request:
 {"workspace": "w", "parent": "requirement:r", "limit": 25}
 ```
 
-`parent` is a node address (every descendant), `*` for every node,
-or absent for the roots. The [node filters](#node-filters) narrow the list. Reply:
+`parent` is a node address (its direct children; `depth` up to 100 reads deeper), `*` for
+every node, or absent for the roots. The [node filters](#node-filters) narrow the list. Reply:
 
 ```json
 {
@@ -140,8 +140,8 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 
 | Filter | Keeps |
 | --- | --- |
-| `parent` | Each descendant of the node, at any depth. `*`: every level. |
-| `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. `1`: the direct children, or the roots. |
+| `parent` | The direct children of the node. `*`: every level. |
+| `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. With a parent address, the default is 1. `100` reads the whole subtree. |
 | `kind` | Nodes of one type or of a list of types. |
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |

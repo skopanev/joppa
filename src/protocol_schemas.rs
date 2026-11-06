@@ -12,9 +12,9 @@ fn node_filters(mut schema: Value) -> Value {
     let one_or_list =
         |d: &str| json!({"type":["string","array"],"items":{"type":"string"},"description":d});
     let filters = json!({
-        "parent": text("node address or public item ID: every descendant at any depth; * for every level"),
+        "parent": text("node address or public item ID: its direct children; * for every level"),
         "depth": {"type":"integer","minimum":1,"maximum":100,
-            "description":"levels below the parent, or below the top without a parent; 1 gives the direct children or the roots"},
+            "description":"levels below the parent (default 1; 100 reads the whole subtree), or below the top without a parent"},
         "kind": one_or_list("type name or a list of type names"),
         "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green; purple keeps the archived nodes, and joppa_search needs all_versions for it"),
         "owner": text("member ID in data.owner"),

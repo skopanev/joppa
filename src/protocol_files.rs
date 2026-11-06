@@ -11,13 +11,13 @@ pub fn tools() -> [Value; 2] {
     [
         super::tool(
             "joppa_attach",
-            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64 (standard base64). The server puts the bytes in the Spaces folder of the workspace under their SHA-256 hash, checks the stored size and appends the attach operation. content_type defaults to application/octet-stream. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
+            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64. content_type defaults to application/octet-stream. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
             json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"request_id":text()}),
             json!(["workspace", "target", "filename"]),
         ),
         super::tool(
             "joppa_attachments",
-            "List the files of an object, newest first: id, name, content_type, size, hash, actor, created_at and a download url, valid 15 minutes. A detached file is not listed. With removed: true, the list also gives the files detached in the last 14 days, after the current files, newest detach first, each with removed: true and removed_at. Download such a file, or attach it again.",
+            "List the files of an object, newest first: id, name, content_type, size, hash, actor, created_at and a download url, valid 15 minutes. removed: true also lists the files detached in the last 14 days, with removed: true and removed_at.",
             json!({"workspace":text(),"target":text(),"removed":{"type":"boolean"}}),
             json!(["workspace", "target"]),
         ),

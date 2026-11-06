@@ -11,12 +11,13 @@ use serde_json::{Value, json};
 // node-filters-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn parent_gives_the_whole_subtree_and_depth_limits_it() -> Result<()> {
+async fn parent_gives_the_direct_children_and_depth_reads_deeper() -> Result<()> {
     let w = record_world::world(&[]).await?;
     seed(&w).await?;
     for (filters, expected) in [
+        (json!({"parent":"requirement:r"}), vec!["ac:a", "ac:b"]),
         (
-            json!({"parent":"requirement:r"}),
+            json!({"parent":"requirement:r","depth":100}),
             vec!["ac:a", "ac:b", "rule:x", "rule:z"],
         ),
         (
@@ -27,7 +28,7 @@ async fn parent_gives_the_whole_subtree_and_depth_limits_it() -> Result<()> {
             json!({"parent":"requirement:r","depth":2}),
             vec!["ac:a", "ac:b", "rule:x"],
         ),
-        (json!({"parent":"ac:a"}), vec!["rule:x", "rule:z"]),
+        (json!({"parent":"ac:a"}), vec!["rule:x"]),
         (json!({"parent":"rule:z"}), vec![]),
         // Without a parent address, depth counts from the top: 2 levels hold r, a and b.
         (

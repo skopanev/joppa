@@ -22,7 +22,8 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
     )
     .await?;
     let under = |extra: Value| {
-        let mut filters = json!({"parent":"requirement:r"});
+        // depth 100 reads the whole subtree of r.
+        let mut filters = json!({"parent":"requirement:r","depth":100});
         for (k, v) in extra.as_object().into_iter().flatten() {
             filters[k] = v.clone();
         }
@@ -160,7 +161,7 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
     both.sort();
     let mixed = listed(&w, under(json!({"status":["green","purple"]}))).await?;
     ensure!(mixed == both && mixed.len() > 2, "{mixed:?}");
-    let args = json!({"parent":"ac:a","status":"purple","fields":["status","present"]});
+    let args = json!({"parent":"ac:a","depth":2,"status":"purple","fields":["status","present"]});
     let read = w
         .mcp(&w.bot, "joppa_objects", args)
         .await?
