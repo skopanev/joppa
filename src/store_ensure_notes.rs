@@ -54,6 +54,8 @@ pub(super) async fn ensure_notes(
         let actor = state.admin.clone();
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
+        // A server migration has no alias, also after a replay that ends with one.
+        state.alias = None;
         commands::apply_replay(state, &actor, &command, position, &recorded_at)?;
         // The new test nodes get their public item IDs, as a saved object does.
         if matches!(command, Command::MigrateTestNodes {}) {

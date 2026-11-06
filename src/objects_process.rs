@@ -59,7 +59,9 @@ pub fn process(w: &Workspace, key: &str) -> Value {
 pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
     let a = w.signal_assessments.get(resolve_address(w, key))?;
     let state = if a.ready { "ready" } else { "waiting" };
-    Some(json!({"state": state, "reason": a.reason, "actor": a.actor, "position": a.position}))
+    Some(
+        json!({"state": state, "reason": a.reason, "actor": a.actor, "alias": a.alias, "position": a.position}),
+    )
 }
 
 /// The process tone of a node. A status rule of its type decides the tone that a read shows.

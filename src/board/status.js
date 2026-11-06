@@ -16,7 +16,7 @@ export function statusCircle(signal,number){
 // The readiness mark of a node, as assess sets it: ready, or waiting with a reason.
 export function assessmentHint(a){
   if(!a)return '';
-  if(a.state==='waiting')return '\nWaits: '+a.reason+'\nMarked by: '+personLabel(a.actor);
+  if(a.state==='waiting')return '\nWaits: '+a.reason+'\nMarked by: '+personLabel(a.actor,a.alias);
   return '\nReadiness: Ready';
 }
 export function nodeTitle(text,signal){

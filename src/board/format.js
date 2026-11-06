@@ -7,8 +7,9 @@ export function displayPersonName(value){
   if(!/^[\p{L}]+(?:[._][\p{L}]+)+$/u.test(local))return local;
   return local.split(/[._]/).map(part=>part[0].toLocaleUpperCase()+part.slice(1)).join(' ');
 }
-export function personLabel(actor){
-  return displayPersonName(state.data.member_labels?.[actor]||actor);
+// The name of a member, and the alias of the agent that wrote under the account: "Alex · p1".
+export function personLabel(actor,alias){
+  return displayPersonName(state.data.member_labels?.[actor]||actor)+(alias?' · '+alias:'');
 }
 export function eventDate(value){
   const date=new Date(value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00'));

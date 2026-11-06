@@ -147,6 +147,7 @@ pub(crate) fn sync_with(
                 data: data.clone(),
                 links,
                 actor: actor.into(),
+                alias: w.alias.clone(),
                 at: at.into(),
                 position,
                 reason: spec_reason

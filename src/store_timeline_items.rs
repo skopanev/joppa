@@ -3,7 +3,7 @@
 use super::*;
 
 /// Build one item for each row. Each row holds position, recorded_at::text, actor and
-/// command::text in its first four columns.
+/// command::text in its first four columns, and the alias in the column alias.
 pub(super) async fn items(
     conn: &impl GenericClient,
     workspace: &str,
@@ -71,6 +71,7 @@ pub(super) async fn items(
             "position": position,
             "at": row.get::<_, String>(1),
             "actor": actor,
+            "alias": row.try_get::<_, Option<String>>("alias").ok().flatten(),
             "op": command["op"],
             "address": addresses[i],
             "kind": null,

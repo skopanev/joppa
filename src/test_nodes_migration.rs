@@ -88,6 +88,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
                 data: json!({"title": name, "owner": owner}),
                 links: vec![],
                 actor: actor.into(),
+                alias: w.alias.clone(),
                 at: at.into(),
                 position,
                 reason: REASON.into(),

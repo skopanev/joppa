@@ -1,6 +1,7 @@
 pub mod ac_tests;
 pub mod acceptance;
 pub mod access;
+pub mod actor_alias;
 pub mod batch_defaults;
 pub mod body_migration;
 pub mod checks;

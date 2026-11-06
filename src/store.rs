@@ -84,7 +84,7 @@ pub struct Event {
 }
 async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, Vec<Event>)> {
     crate::probe::count(&crate::probe::REPLAY);
-    let rows = client.query("SELECT position,actor,recorded_at::text,command::text FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await.context("run joppa migrate before using the journal")?;
+    let rows = client.query("SELECT position,actor,recorded_at::text,command::text,alias FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await.context("run joppa migrate before using the journal")?;
     let mut state = Workspace::default();
     if !rows.is_empty() {
         state.replay_epochs = replay_epochs(client, workspace).await?;
@@ -94,6 +94,7 @@ async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace
         let position = row.get::<_, i64>(0) as u64;
         let actor: String = row.get(1);
         let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
+        state.alias = row.get(4);
         commands::apply_replay(&mut state, &actor, &command, position, row.get(2))
             .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
         events.push(Event {

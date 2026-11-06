@@ -37,11 +37,11 @@ pub(super) async fn read_one(
         );
         // The revision headers: number, time, actor and reason, without the bodies.
         let revisions: Vec<Value> = conn
-            .query("SELECT revision,document->>'at',document->>'actor',document->>'reason' FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 ORDER BY revision", &[&workspace, &key])
+            .query("SELECT revision,document->>'at',document->>'actor',document->>'reason',document->>'alias' FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 ORDER BY revision", &[&workspace, &key])
             .await?
             .iter()
             .map(|r| json!({"revision": r.get::<_, i32>(0), "at": r.get::<_, Option<String>>(1),
-                "actor": r.get::<_, Option<String>>(2), "reason": r.get::<_, Option<String>>(3)}))
+                "actor": r.get::<_, Option<String>>(2), "alias": r.get::<_, Option<String>>(4), "reason": r.get::<_, Option<String>>(3)}))
             .collect();
         return Ok(
             json!({"workspace":public,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"current_revision":current,"position":position,"revisions":revisions}),

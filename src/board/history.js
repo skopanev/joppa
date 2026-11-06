@@ -63,7 +63,7 @@ function historyRow(item){
   card.append(summary);
   const body=E('div',undefined,'object-body');
   if(item.reason)body.append(E('p',item.reason,'history-reason'));
-  body.append(E('p',(item.actor||'')+(item.at?' · '+eventDate(item.at):''),'history-actor hint'));
+  body.append(E('p',(item.actor||'')+(item.alias?' · '+item.alias:'')+(item.at?' · '+eventDate(item.at):''),'history-actor hint'));
   if(item.address){
     const link=E('a',item.address+(item.revision?' · revision '+item.revision:''));
     link.href='/?workspace='+encodeURIComponent(state.ws)+'&object='+encodeURIComponent(item.address)+(item.revision?'&revision='+item.revision:'');
@@ -71,7 +71,7 @@ function historyRow(item){
   }
   if(item.processed){
     const mark=E('div',undefined,'history-mark');
-    mark.append(E('p','Processed by '+item.processed.actor+(item.processed.at?' · '+eventDate(item.processed.at):''),'hint'));
+    mark.append(E('p','Processed by '+item.processed.actor+(item.processed.alias?' · '+item.processed.alias:'')+(item.processed.at?' · '+eventDate(item.processed.at):''),'hint'));
     if(item.processed.reason)mark.append(E('p',item.processed.reason));
     if(item.processed.nodes?.length){
       const nodes=E('p',undefined,'history-nodes');

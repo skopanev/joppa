@@ -99,6 +99,7 @@ pub(super) fn apply_note(
         id.clone(),
         Note {
             actor: actor.into(),
+            alias: w.alias.clone(),
             at: recorded_at.to_string(),
             text: text.clone(),
             reply_to: reply_to.clone(),
@@ -184,6 +185,7 @@ pub(super) fn apply_attach(
             size: *size,
             hash: hash.clone(),
             actor: actor.into(),
+            alias: w.alias.clone(),
             at: recorded_at.to_string(),
             removed: false,
             removed_at: None,

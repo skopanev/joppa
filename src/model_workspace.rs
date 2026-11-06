@@ -10,6 +10,9 @@ pub struct Workspace {
     pub replaying: bool,
     #[serde(skip)]
     pub claim_time_ms: Option<i64>,
+    /// The alias of the event that apply applies now (src/actor_alias.rs).
+    #[serde(skip)]
+    pub alias: Option<String>,
     /// The first journal position of each replay rule (joppa.replay_epochs). A replay
     /// gives older events the meaning that they had when they were written.
     #[serde(skip)]
@@ -121,49 +124,6 @@ pub struct Workspace {
     /// The links of each object to objects of other workspaces, by source address.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub remote_links: BTreeMap<String, crate::remote_links::RemoteLinks>,
-}
-
-/// Всё, что человек навесил на объект сверх его собственных полей.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct Notes {
-    /// Пояснение к объекту. Для домена, капабилити и AC описание живёт в
-    /// самом объекте — оно версионируется вместе с ним; сюда попадает
-    /// описание тех объектов, у которых своего поля нет.
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub comments: BTreeMap<String, Note>,
-    #[serde(default)]
-    pub attachments: BTreeMap<String, Attachment>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Note {
-    pub actor: String,
-    /// Время записи в журнал, а не присланное клиентом.
-    pub at: String,
-    pub text: String,
-    #[serde(default)]
-    pub reply_to: Option<String>,
-    #[serde(default)]
-    pub withdrawn: bool,
-}
-
-/// Вложение: здесь только про файл, самого файла здесь нет.
-///
-/// Байты лежат в Spaces под workspaces/<воркспейс>/<отпечаток> — см. src/spaces.rs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Attachment {
-    pub name: String,
-    pub content_type: String,
-    pub size: u64,
-    pub hash: String,
-    pub actor: String,
-    pub at: String,
-    #[serde(default)]
-    pub removed: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub removed_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

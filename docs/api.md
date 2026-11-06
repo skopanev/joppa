@@ -201,6 +201,18 @@ Notifications get 202 without a body. GET gets 405: the server needs no SSE stre
 For a client with a hosted callback that only shows the code, the consent page shows a Copy
 code button. The code stays bound to the callback, the client and the PKCE verifier.
 
+## Agent alias
+
+Several agents of one person share the OAuth session of that person. Each MCP tool takes the
+argument `alias`, such as `p1`. The header `X-Joppa-Alias` gives the alias of every call of a
+session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` or `.`.
+
+- The alias changes no access: the actor of the session keeps every right.
+- The journal stores it with each event (`joppa.events.alias`), and a History mark stores it too.
+- The timeline, History, the revision headers, comments, files and readiness marks give
+  `alias` next to `actor`. A rebuild from the journal keeps every alias.
+- The board shows the account and the alias, for example `alex · p1`.
+
 ## Workspace names
 
 `update_workspace {title?, workspace_id?, reference_prefix?, hidden?, reason?}` changes each

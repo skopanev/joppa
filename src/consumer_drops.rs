@@ -114,6 +114,7 @@ pub fn apply(w: &mut Workspace, actor: &str, at: &str) -> Result<()> {
             COMMENT.into(),
             Note {
                 actor: actor.into(),
+                alias: w.alias.clone(),
                 at: at.into(),
                 text: text(&kept, &list),
                 reply_to: None,

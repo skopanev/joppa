@@ -180,6 +180,9 @@ pub struct ObjectRevision {
     pub data: Value,
     pub links: Vec<ObjectLink>,
     pub actor: String,
+    /// The alias of the event that saved the revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
     pub at: String,
     pub position: u64,
     pub reason: String,

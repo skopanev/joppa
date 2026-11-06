@@ -22,6 +22,7 @@ pub async fn handle(
     access: store::Access,
     msg: &Value,
     embedder: Option<&joppa::embeddings::Embedder>,
+    session_alias: Option<&str>,
 ) -> Option<Value> {
     let id = msg.get("id")?;
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
@@ -53,14 +54,24 @@ pub async fn handle(
             // A read-only grant sees only the tools that it can call.
             .filter(|t| access != store::Access::Read || t["name"].as_str().is_some_and(|n| READ_TOOLS.contains(&n)))
             .cloned().collect::<Vec<_>>()})),
-        "tools/call" => call(pool, actor, access, msg, embedder)
-            .await
-            .and_then(|v| {
-                let (name, args) = (&msg["params"]["name"], &msg["params"]["arguments"]);
-                let v = joppa::mcp_lean::lean(name.as_str().unwrap_or(""), args, v);
-                let text = joppa::mcp_lean::text(&v)?;
-                Ok(json!({"content":[{"type":"text","text":text}]}))
-            }),
+        "tools/call" => {
+            // The alias leaves the arguments and names the agent of each write.
+            let mut msg = msg.clone();
+            let args = msg.pointer_mut("/params/arguments");
+            match args.map_or(Ok(None), |a| joppa::actor_alias::take(a, session_alias)) {
+                Err(e) => Err(e),
+                Ok(alias) => {
+                    let work = call(pool, actor, access, &msg, embedder);
+                    joppa::actor_alias::scope(alias, work).await
+                }
+            }
+        }
+        .and_then(|v| {
+            let (name, args) = (&msg["params"]["name"], &msg["params"]["arguments"]);
+            let v = joppa::mcp_lean::lean(name.as_str().unwrap_or(""), args, v);
+            let text = joppa::mcp_lean::text(&v)?;
+            Ok(json!({"content":[{"type":"text","text":text}]}))
+        }),
         _ => {
             return Some(
                 json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"unknown method"}}),
@@ -74,7 +85,10 @@ pub async fn handle(
         }
     })
 }
-pub(crate) fn tool(name: &str, description: &str, properties: Value, required: Value) -> Value {
+/// One tool. Every tool takes `alias`: the name of the agent that writes under the account of
+/// the session.
+pub(crate) fn tool(name: &str, description: &str, mut properties: Value, required: Value) -> Value {
+    properties["alias"] = json!({"type":"string","description":"Optional: the name of the agent that writes under this account, such as p1. History, the timeline, revisions, comments and files show it next to the actor. It changes no access. The header X-Joppa-Alias sets it for a session; this argument wins."});
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 fn authoring_command_schema() -> Value {

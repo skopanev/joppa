@@ -24,3 +24,4 @@ Use the configured test_results rules. Preserve failures and evidence. Record hu
 
 Prefer English for new technical text. Preserve existing text and quotations in their original language. Apply the writing rules below.
 Keep code reviews, diffs and execution logs in Git or the agent bus. Use the MCP client's existing OAuth login.
+When several agents share one account, send your agent name as alias on each tool call, for example "alias": "p1". The journal keeps it next to the account.

@@ -71,6 +71,9 @@ pub struct SignalAssessment {
     pub ready: bool,
     pub reason: String,
     pub actor: String,
+    /// The alias of the event that set the mark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
     pub position: u64,
 }
 

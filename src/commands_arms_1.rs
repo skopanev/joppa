@@ -97,6 +97,7 @@ pub(super) fn apply_assess(
             ready,
             reason: reason.into(),
             actor: actor.into(),
+            alias: w.alias.clone(),
             position,
         },
     );

@@ -30,7 +30,7 @@ function timelineRow(item){
   const target=item.address&&item.revision?E('a',undefined,'timeline-row'):E('div',undefined,'timeline-row');
   if(target.tagName==='A'){target.href=objectURL(item.address,item.revision);target.dataset.linkAddress=item.address;}
   const time=E('time',eventDate(item.at),'timeline-time');time.dateTime=item.at;
-  target.append(time,E('span',personLabel(item.actor),'timeline-actor'),E('span',objectTitlePreview(title,kind),'timeline-object'),E('span',item.change,'timeline-change'));
+  target.append(time,E('span',personLabel(item.actor,item.alias),'timeline-actor'),E('span',objectTitlePreview(title,kind),'timeline-object'),E('span',item.change,'timeline-change'));
   target.title=[item.change,title,item.reason].filter(Boolean).join(' · ');
   row.append(target);return row;
 }

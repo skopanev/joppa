@@ -73,7 +73,18 @@ async fn endpoint(
     if message["jsonrpc"] != "2.0" || !message["method"].is_string() || !message.is_object() {
         return (StatusCode::BAD_REQUEST,Json(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid request"}}))).into_response();
     }
-    match crate::protocol::handle(&app.pool, &actor, access, &message, app.embedder.as_ref()).await
+    let alias = headers
+        .get(joppa::actor_alias::HEADER)
+        .and_then(|v| v.to_str().ok());
+    match crate::protocol::handle(
+        &app.pool,
+        &actor,
+        access,
+        &message,
+        app.embedder.as_ref(),
+        alias,
+    )
+    .await
     {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),

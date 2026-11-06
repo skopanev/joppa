@@ -66,9 +66,9 @@ pub async fn read_timeline(
     let rows = conn
         .query(
             if newest {
-                "SELECT position,recorded_at::text,actor,command::text FROM joppa.events WHERE workspace=$1 AND position>$2 AND position<=$3 ORDER BY position DESC LIMIT $4"
+                "SELECT position,recorded_at::text,actor,command::text,alias FROM joppa.events WHERE workspace=$1 AND position>$2 AND position<=$3 ORDER BY position DESC LIMIT $4"
             } else {
-                "SELECT position,recorded_at::text,actor,command::text FROM joppa.events WHERE workspace=$1 AND position>$2 AND position<=$3 ORDER BY position LIMIT $4"
+                "SELECT position,recorded_at::text,actor,command::text,alias FROM joppa.events WHERE workspace=$1 AND position>$2 AND position<=$3 ORDER BY position LIMIT $4"
             },
             &[&workspace, &low, &high, &(scope.limit as i64 + 1)],
         )
@@ -111,17 +111,19 @@ pub(super) async fn record_report(
     )
     .await?;
     let (mut state, base_position) = state_rows::current(tx, workspace).await?;
+    state.alias = crate::actor_alias::current();
     let previous = state.clone();
     let position = base_position + 1;
     let recorded_at: String = tx
         .query_one(
-            "INSERT INTO joppa.events(workspace,position,request_id,actor,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text",
+            "INSERT INTO joppa.events(workspace,position,request_id,actor,command,alias) VALUES($1,$2,$3,$4,$5::text::jsonb,$6) RETURNING recorded_at::text",
             &[
                 &workspace,
                 &(position as i64),
                 &format!("report-{}", uuid::Uuid::new_v4()),
                 &actor,
                 &serde_json::to_string(&command)?,
+                &state.alias,
             ],
         )
         .await?

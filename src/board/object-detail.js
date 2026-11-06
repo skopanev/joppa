@@ -73,7 +73,7 @@ export function fillCommonObject(body,detail){
   const comments=Object.values(annotations.comments||{}).filter(comment=>!comment.withdrawn);
   if(comments.length){
     const group=objectSection(comments.length+' '+(comments.length===1?'comment':'comments'),'object-comments');
-    for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor)+' · '+when(comment.at),'note-meta'),markdownBlock(comment.text,'note-text'));group.append(row);}
+    for(const comment of comments){const row=E('article',undefined,'note');row.append(E('p',personLabel(comment.actor,comment.alias)+' · '+when(comment.at),'note-meta'),markdownBlock(comment.text,'note-text'));group.append(row);}
     secondary.append(group);
   }
   const files=historical?[]:Array.isArray(detail.files)?detail.files.map(file=>[file.id,file]):Object.entries(annotations.attachments||{}).filter(([,file])=>!file.removed);if(files.length){const group=objectSection('Files '+files.length,'object-files');group.append(attachmentList(files));secondary.append(group);}
@@ -104,7 +104,7 @@ function attachmentList(attachments){
     link.target='_blank';link.rel='noopener';
     const icon=E('span',undefined,'file-icon');icon.append(svgIcon(FILE_ICON,22));
     const info=E('span',undefined,'file-info');
-    info.append(E('span',a.name,'file-name'),E('span',[fileSize(a.size),personLabel(a.actor),when(a.at)].filter(Boolean).join(' · '),'file-meta'));
+    info.append(E('span',a.name,'file-name'),E('span',[fileSize(a.size),personLabel(a.actor,a.alias),when(a.at)].filter(Boolean).join(' · '),'file-meta'));
     link.append(icon,info,svgIcon('M7 17 17 7 M7 7h10v10',16));
     li.append(link);list.append(li);
   }

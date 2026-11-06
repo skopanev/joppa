@@ -60,7 +60,7 @@ pub async fn read_history(
         .await?;
     let (public, position) = super::head(&*conn, &id).await?;
     let rows = conn.query(
-        "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND ($3 OR m.position IS NULL) ORDER BY e.position LIMIT $4",
+        "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND ($3 OR m.position IS NULL) ORDER BY e.position LIMIT $4",
         &[&id, &after, &all, &(limit + 1)],
     ).await?;
     let next_item: Option<i64> = conn.query_one(
@@ -104,6 +104,7 @@ pub async fn read_history(
                 item["status"] = json!("processed");
                 item["processed"] = json!({
                     "actor": by,
+                    "alias": row.get::<_, Option<String>>(9),
                     "at": row.get::<_, Option<String>>(5),
                     "reason": row.get::<_, Option<String>>(6),
                     "nodes": serde_json::from_str::<Value>(&row.get::<_, Option<String>>(7).unwrap_or_else(|| "[]".into()))?,
@@ -201,16 +202,17 @@ pub async fn mark_history(
         "every node must be an object of the workspace"
     );
     let nodes = serde_json::to_string(&mark.nodes)?;
+    let alias = crate::actor_alias::current();
     let row = tx.query_opt(
-        "INSERT INTO joppa.history_marks(workspace,position,actor,reason,nodes) VALUES($1,$2,$3,$4,$5::text::jsonb) ON CONFLICT (workspace,position) DO NOTHING RETURNING marked_at::text",
-        &[&id, &mark.position, &actor, &mark.reason, &nodes],
+        "INSERT INTO joppa.history_marks(workspace,position,actor,reason,nodes,alias) VALUES($1,$2,$3,$4,$5::text::jsonb,$6) ON CONFLICT (workspace,position) DO NOTHING RETURNING marked_at::text",
+        &[&id, &mark.position, &actor, &mark.reason, &nodes, &alias],
     ).await?;
     let Some(row) = row else {
         return Err(commands::ClientField("the entry is already processed").into());
     };
     tx.commit().await?;
     Ok(
-        json!({"position": mark.position, "status": "processed", "actor": actor, "at": row.get::<_, String>(0), "reason": mark.reason, "nodes": mark.nodes}),
+        json!({"position": mark.position, "status": "processed", "actor": actor, "alias": alias, "at": row.get::<_, String>(0), "reason": mark.reason, "nodes": mark.nodes}),
     )
 }
 

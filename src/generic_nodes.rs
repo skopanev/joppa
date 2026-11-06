@@ -68,6 +68,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
                     ready,
                     reason,
                     actor,
+                    alias: None,
                     position,
                 },
             ))

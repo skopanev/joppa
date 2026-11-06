@@ -1,4 +1,4 @@
-//! Part of `objects`: `saved` and the items after it, moved from objects.rs unchanged.
+//! Part of `objects`: the new document revision of save_object.
 use super::*;
 
 pub(crate) fn saved(
@@ -200,28 +200,7 @@ pub(crate) fn saved(
     } else {
         data.clone()
     };
-    // A new signal is unprocessed until someone decides on it.
-    if input_type(w, kind) && saved_data["status"].is_null() {
-        saved_data["status"] = json!("unprocessed");
-    }
-    if input_type(w, kind)
-        && let Some(old) = &old
-    {
-        let source = |value: &Value| {
-            let mut value = value.clone();
-            if let Some(fields) = value.as_object_mut() {
-                fields.remove("status");
-                fields.remove("owner");
-                // A decision is a record about the signal, not a change of the signal.
-                fields.remove("decision");
-            }
-            value
-        };
-        if saved_data["status"] == "processed" && source(&old.current().data) != source(&saved_data)
-        {
-            saved_data["status"] = json!("unprocessed");
-        }
-    }
+    input_status(w, kind, old.as_ref(), &mut saved_data);
     if w.body_migrated {
         crate::body_migration::to_body(&mut saved_data);
     }
@@ -238,6 +217,7 @@ pub(crate) fn saved(
         data: saved_data,
         links: links.clone(),
         actor: actor.into(),
+        alias: w.alias.clone(),
         at: at.into(),
         position,
         reason: reason.clone(),
