@@ -60,7 +60,7 @@ pub(in crate::store) async fn rebuild(
     super::ready_rollup::roll_ready(&mut items, &counted, &types);
     let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
     store_column(client, workspace, "rollup", &patches).await?;
-    Ok(())
+    super::dimensions::project(client, workspace, state).await
 }
 
 /// The stored rollup of one row: each decoration field that differs from the base row. An
@@ -213,7 +213,7 @@ pub(in crate::store) async fn stored_statuses(
 
 /// Store one value per object in `column`, and clear it on every other object of the
 /// workspace. Only rows whose value changes are written.
-async fn store_column(
+pub(super) async fn store_column(
     client: &impl GenericClient,
     workspace: &str,
     column: &str,

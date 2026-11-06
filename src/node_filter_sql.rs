@@ -10,6 +10,11 @@ pub struct Bound {
     descendants: Option<Vec<String>>,
     roots: bool,
     filter: NodeFilter,
+    /// The data parameter: the data filter, or with a dimension value the envelope
+    /// {data, combination, key} (filter_dimensions.rs).
+    data: Option<String>,
+    /// The stored key of the combination that the data filter names.
+    pub combination: Option<String>,
 }
 
 /// The refusal of the archived tone in a read that keeps only present nodes.
@@ -62,12 +67,51 @@ pub async fn bind(
             Some(rows.iter().map(|row| row.get(0)).collect())
         }
     };
+    let (data, combination) = dimension_data(client, workspace, filter.data.as_deref()).await?;
     Ok(Bound {
         workspace: workspace.to_owned(),
         descendants,
         roots: roots && filter.parent.is_none() && !filter.narrows(),
         filter: filter.clone(),
+        data,
+        combination,
     })
+}
+
+/// The data parameter and the combination key of a data filter. The dimension fields of the
+/// workspace leave the containment filter and name the combination.
+async fn dimension_data(
+    client: &impl GenericClient,
+    workspace: &str,
+    data: Option<&str>,
+) -> Result<(Option<String>, Option<String>)> {
+    let Some(text) = data else {
+        return Ok((None, None));
+    };
+    let sql = "SELECT COALESCE(first_view->'dimensions','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1";
+    let row = client.query_opt(sql, &[&workspace]).await?;
+    let stored: serde_json::Value = match row {
+        Some(row) => serde_json::from_str(row.get(0))?,
+        None => serde_json::Value::Null,
+    };
+    let fields: Vec<String> = stored
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d["field"].as_str().map(String::from))
+        .collect();
+    let filter: serde_json::Value = serde_json::from_str(text)?;
+    let (combination, rest) = crate::filter_dimensions::split(&filter, &fields);
+    if combination.is_empty() {
+        return Ok((Some(text.to_owned()), None));
+    }
+    let key = crate::filter_dimensions::key(&combination);
+    let mut envelope = serde_json::json!({"combination":combination,"key":key});
+    // An empty rest leaves the key out, so the clause reads it as SQL NULL.
+    if rest.as_object().is_some_and(|m| !m.is_empty()) {
+        envelope["data"] = rest;
+    }
+    Ok((Some(envelope.to_string()), Some(key)))
 }
 
 impl Bound {
@@ -101,7 +145,12 @@ impl Bound {
             ),
             (
                 f.statuses.is_some(),
-                format!("{TONE}=ANY({s}::text[])"),
+                match self.combination {
+                    Some(_) => format!(
+                        "COALESCE(o.dim_tones->>({data}::text::jsonb->>'key'),{TONE})=ANY({s}::text[])"
+                    ),
+                    None => format!("{TONE}=ANY({s}::text[])"),
+                },
                 format!("{s}::text[] IS NULL"),
             ),
             (
@@ -120,8 +169,14 @@ impl Bound {
                 format!("{rd}::boolean IS NULL"),
             ),
             (
-                f.data.is_some(),
-                format!("o.document->'data' @> {data}::text::jsonb"),
+                self.data.is_some(),
+                match self.combination {
+                    // A node applies unless it or an ancestor names other values of a dimension.
+                    Some(_) => format!(
+                        "({data}::text::jsonb->'data' IS NULL OR o.document->'data' @> ({data}::text::jsonb->'data')) AND NOT EXISTS (SELECT 1 FROM jsonb_each_text({data}::text::jsonb->'combination') c WHERE o.dims ? c.key AND NOT (o.dims->c.key) ? c.value)"
+                    ),
+                    None => format!("o.document->'data' @> {data}::text::jsonb"),
+                },
                 format!("{data}::text IS NULL"),
             ),
         ];
@@ -147,7 +202,7 @@ impl Bound {
             &self.filter.owner,
             &self.filter.assignee,
             &self.filter.ready,
-            &self.filter.data,
+            &self.data,
         ]
     }
 

@@ -153,6 +153,8 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       await page.locator('#identity').filter({hasText: /\S/}).waitFor();
       await page.locator('#identity').click();
       const items = page.locator('.account-options > *');
+      // The menu opens after the click: read its items once they show.
+      await items.last().waitFor();
       assert.deepEqual(await items.allInnerTexts(), ['Settings', 'Sign out']);
       for (const item of await items.all()) assert.ok(inside(await item.boundingBox(), width, height));
       await items.first().click();

@@ -75,6 +75,11 @@ pub async fn compact_list(
             item
         })
         .collect();
+    // A dimension value of the data filter gives each item its tone for that combination.
+    if let Some(key) = &bound.combination {
+        let set: fn(&mut Value, &str) = |item, tone| item["status"] = json!(tone);
+        super::dimensions::read_tones(&*conn, &workspace, key, &mut items, set).await?;
+    }
     let mut reply = json!({"workspace": head.get::<_, String>(1), "position": head.get::<_, i64>(0), "total": total});
     if rows.len() > limit {
         reply["next_cursor"] = items.last().map_or(Value::Null, |i| i["address"].clone());

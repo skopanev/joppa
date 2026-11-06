@@ -37,40 +37,11 @@ pub(super) async fn add_status_tones(
     crate::probe::count(&crate::probe::ROLLUP);
     let rule = |kind: &str| rule_of(types, kind);
     let present: Vec<&Value> = items.iter().filter(|i| i["present"] != false).collect();
-    let kinds: BTreeMap<String, String> = present
-        .iter()
-        .filter_map(|i| Some((i["address"].as_str()?.into(), i["kind"].as_str()?.into())))
-        .collect();
-    // An old address of a renamed node still names it as a parent or a link target.
-    let aliases: BTreeMap<String, String> = client
-        .query(
-            "SELECT address,target FROM joppa.object_aliases WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|r| (r.get(0), r.get(1)))
-        .collect();
-    let resolve = |a: &str| aliases.get(a).cloned().unwrap_or_else(|| a.to_owned());
-    let mut children = BTreeMap::<String, Vec<String>>::new();
-    for i in &present {
-        if let (Some(a), Some(p)) = (i["address"].as_str(), i["parent"].as_str()) {
-            children.entry(resolve(p)).or_default().push(a.to_owned());
-        }
-    }
-    let mut linked = BTreeMap::<String, BTreeSet<String>>::new();
-    for r in client
-        .query(
-            "SELECT source,target FROM joppa.object_links WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-    {
-        let (source, target): (String, String) = (r.get(0), r.get(1));
-        if kinds.contains_key(&source) {
-            linked.entry(resolve(&target)).or_default().insert(source);
-        }
-    }
+    let Graph {
+        kinds,
+        children,
+        linked,
+    } = graph(client, workspace, &present).await?;
     let tested: Vec<String> = kinds
         .iter()
         .filter(|(_, k)| matches!(rule(k), "own" | "tests"))
@@ -120,6 +91,60 @@ pub(super) async fn add_status_tones(
     })
 }
 
+/// The present nodes with their kinds, the children and the linking objects of each node.
+pub(super) struct Graph {
+    pub kinds: BTreeMap<String, String>,
+    pub children: BTreeMap<String, Vec<String>>,
+    pub linked: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// The graph of the present items. An old address of a renamed node still names it as a
+/// parent or a link target.
+pub(super) async fn graph(
+    client: &impl GenericClient,
+    workspace: &str,
+    present: &[&Value],
+) -> Result<Graph> {
+    let kinds: BTreeMap<String, String> = present
+        .iter()
+        .filter_map(|i| Some((i["address"].as_str()?.into(), i["kind"].as_str()?.into())))
+        .collect();
+    let aliases: BTreeMap<String, String> = client
+        .query(
+            "SELECT address,target FROM joppa.object_aliases WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?
+        .iter()
+        .map(|r| (r.get(0), r.get(1)))
+        .collect();
+    let resolve = |a: &str| aliases.get(a).cloned().unwrap_or_else(|| a.to_owned());
+    let mut children = BTreeMap::<String, Vec<String>>::new();
+    for i in present {
+        if let (Some(a), Some(p)) = (i["address"].as_str(), i["parent"].as_str()) {
+            children.entry(resolve(p)).or_default().push(a.to_owned());
+        }
+    }
+    let mut linked = BTreeMap::<String, BTreeSet<String>>::new();
+    for r in client
+        .query(
+            "SELECT source,target FROM joppa.object_links WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?
+    {
+        let (source, target): (String, String) = (r.get(0), r.get(1));
+        if kinds.contains_key(&source) {
+            linked.entry(resolve(&target)).or_default().insert(source);
+        }
+    }
+    Ok(Graph {
+        kinds,
+        children,
+        linked,
+    })
+}
+
 /// The children and the linking objects of each node, and the tone of each node. A node
 /// counts for its parent or its link target only when it has a tone.
 pub(super) struct Counted {
@@ -130,7 +155,7 @@ pub(super) struct Counted {
 
 /// The tone of one node, or None when a parent does not count it (rule none).
 #[allow(clippy::too_many_arguments)]
-fn tone_of(
+pub(super) fn tone_of(
     address: &str,
     kinds: &BTreeMap<String, String>,
     types: &BTreeMap<String, objects::TreeType>,

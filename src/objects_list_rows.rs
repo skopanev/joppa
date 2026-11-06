@@ -97,6 +97,11 @@ pub(super) async fn list_rows(
     }
     // The decoration comes from the status projection of the last write.
     apply_rollups(&*conn, &workspace, &mut items).await?;
+    // A dimension value of the data filter gives each row its tone for that combination.
+    if let Some(key) = &bound.combination {
+        let set: fn(&mut Value, &str) = |item, tone| item["signal"]["tone"] = json!(tone);
+        super::dimensions::read_tones(&*conn, &workspace, key, &mut items, set).await?;
+    }
     let next = more.then(|| {
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();

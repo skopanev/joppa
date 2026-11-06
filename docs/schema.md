@@ -109,6 +109,25 @@ for an element of a list field. A choice filters with the `data` node filter:
 `{"before_launch": true}` for a boolean. `/tree` lists the
 fields under Filter fields.
 
+## Filter dimensions
+
+A filter field is a dimension when a field of `test_results.fields` has the same name and the
+type `enum` or `ref`, for example `env` with the values `dev` and `prod`.
+
+- The values of a dimension are the enum values, or the addresses of the present objects of
+  the ref target type. The board offers each value in the drop-down of the field.
+- A node applies to the values of its own `data.<field>`, a text or a list of texts. Without
+  the field, it applies to the values of its nearest ancestor with the field, else to every
+  value. A test node inherits the values of its criterion.
+- A result without the field counts for every value. A result with another value does not count.
+- A data filter with a dimension value, such as `{"env": "dev"}`, keeps the nodes that apply to
+  that value. Each node shows the tone of the results that count for it, and a node counts only
+  the children and the linking objects that apply. The `status` filter reads that tone too.
+- Each write stores the tone of each node for each combination of values, at most 64
+  combinations; the combinations of fewer dimensions come first. A read computes nothing.
+- The board read gives `dimensions`: `[{"field": "env", "values": ["dev", "prod"]}]`.
+- The child counts of a row stay the counts of all results.
+
 ## Test rules
 
 The schema holds every test rule in the block `test_results`. A new workspace gets this block:

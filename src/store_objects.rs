@@ -28,6 +28,8 @@ mod tone_items;
 use tone_items::add_status_tones;
 #[path = "objects_projection_delta.rs"]
 mod delta;
+#[path = "objects_dimensions.rs"]
+mod dimensions;
 #[path = "objects_projection.rs"]
 mod projection;
 #[path = "objects_ready_rollup.rs"]

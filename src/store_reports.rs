@@ -41,11 +41,21 @@ pub(super) async fn state_criterion_statuses(
     state: &crate::model::Workspace,
     targets: &[String],
 ) -> Result<std::collections::BTreeMap<String, Value>> {
+    let criteria = criteria_of(state, targets);
+    let rules = crate::test_rules::rules(state)?;
+    statuses_for_criteria(client, workspace, criteria, &rules).await
+}
+
+/// The test list and the boundary of each target that has an object.
+pub(super) fn criteria_of(
+    state: &crate::model::Workspace,
+    targets: &[String],
+) -> Vec<(String, Option<Listed>, Boundary)> {
     // The test names of each parent come from one pass over the test nodes.
     let names = state
         .test_nodes_migrated
         .then(|| crate::test_nodes::nodes_by_parent(state));
-    let criteria = targets
+    targets
         .iter()
         .filter_map(|target| {
             state.objects.get(target)?;
@@ -57,9 +67,7 @@ pub(super) async fn state_criterion_statuses(
             };
             Some((target.clone(), tests, boundary))
         })
-        .collect();
-    let rules = crate::test_rules::rules(state)?;
-    statuses_for_criteria(client, workspace, criteria, &rules).await
+        .collect()
 }
 
 async fn statuses_for_criteria(
@@ -72,6 +80,16 @@ async fn statuses_for_criteria(
     if criteria.is_empty() {
         return Ok(Default::default());
     }
+    let (reports, results) = results_of(client, workspace, &criteria).await?;
+    compute(criteria, &reports, &results, rules)
+}
+
+/// The reports of the workspace and the results of the tests of `criteria`.
+pub(super) async fn results_of(
+    client: &impl GenericClient,
+    workspace: &str,
+    criteria: &[(String, Option<Listed>, Boundary)],
+) -> Result<(Vec<Report>, Vec<(i64, TestResult)>)> {
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
         .filter_map(|(_, saved, _)| saved.as_ref())
@@ -84,11 +102,21 @@ async fn statuses_for_criteria(
     let results: Vec<(i64,TestResult)> = client
         .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message,t.status_name,t.fields::text FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
         .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4),status_name:r.get(5),fields:r.get::<_,Option<String>>(6).and_then(|f| serde_json::from_str(&f).ok()) })).collect();
+    Ok((reports, results))
+}
+
+/// The status of each criterion from loaded reports and results.
+pub(super) fn compute(
+    criteria: Vec<(String, Option<Listed>, Boundary)>,
+    reports: &[Report],
+    results: &[(i64, TestResult)],
+    rules: &crate::result_shape::ResultShape,
+) -> Result<std::collections::BTreeMap<String, Value>> {
     // Each criterion reads only the results of its own tests. The grouping keeps every row,
     // duplicates included, and preserves the input order for each address (the query has no
     // ORDER BY), so a status costs its own results and not every result of the workspace.
     let mut by_test: std::collections::BTreeMap<&str, Vec<(i64, TestResult)>> = Default::default();
-    for (id, result) in &results {
+    for (id, result) in results {
         by_test
             .entry(result.address.as_str())
             .or_default()
@@ -115,16 +143,14 @@ async fn statuses_for_criteria(
                             std::slice::from_ref(test),
                             false,
                             *b,
-                            &reports,
+                            reports,
                             &own,
                             rules,
                         )
                     })
                     .collect(),
             ),
-            None => {
-                crate::ac_tests::criterion_status(tests, draft, boundary, &reports, &own, rules)
-            }
+            None => crate::ac_tests::criterion_status(tests, draft, boundary, reports, &own, rules),
         };
         let mut status = serde_json::to_value(status)?;
         status["address"] = json!(address);

@@ -14,6 +14,7 @@ pub mod digest_hex;
 pub mod embeddings;
 pub mod embeddings_limit;
 pub mod field_limit;
+pub mod filter_dimensions;
 pub mod filter_fields;
 pub mod generic_nodes;
 pub mod inbox;
