@@ -120,3 +120,30 @@ fn an_older_criterion_save_in_a_replay_keeps_the_copied_specification_reason() {
     commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();
     assert_eq!(spec_reason(&w, "ac:ios"), "Clarify the criterion");
 }
+
+// ac:29ximlsr
+#[test]
+fn a_criterion_save_keeps_the_contract_revision_of_its_specification() {
+    let mut w = migrated();
+    let spec = w.state.objects["ac:ios"].current().parent.clone().unwrap();
+    let (before, contract) = (
+        revision(&w, &spec),
+        joppa::objects::contract_revision(&w.state.objects[&spec]),
+    );
+    edit(
+        &mut w,
+        "ac:ios",
+        "Given a paid user on iOS, then access stays.",
+    )
+    .unwrap();
+    assert_eq!(
+        revision(&w, &spec),
+        before + 1,
+        "the specification gets a revision"
+    );
+    assert_eq!(
+        joppa::objects::contract_revision(&w.state.objects[&spec]),
+        contract,
+        "a pin of the specification stays current"
+    );
+}

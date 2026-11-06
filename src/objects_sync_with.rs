@@ -140,8 +140,16 @@ pub(crate) fn sync_with(
                 .map(|v| v.links.clone())
                 .unwrap_or_default();
             let spec = forced_req.is_some_and(|req| key == &requirement_address(req));
+            let revision = obj.revisions.last().map_or(1, |r| r.revision + 1);
+            // A revision that only a child save forces keeps the contract of the document, so
+            // a pin of it stays current.
+            let contract = obj
+                .revisions
+                .last()
+                .filter(|v| v.data == data && v.parent == parent && v.present)
+                .map(|v| [revision, contract_of(v)]);
             obj.revisions.push(ObjectRevision {
-                revision: obj.revisions.last().map_or(1, |r| r.revision + 1),
+                revision,
                 schema_revision,
                 parent,
                 data: data.clone(),
@@ -154,7 +162,7 @@ pub(crate) fn sync_with(
                     .filter(|_| spec)
                     .map_or_else(|| reason.clone(), str::to_owned),
                 present: true,
-                contract: None,
+                contract,
             });
         }
     }
