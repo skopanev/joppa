@@ -38,6 +38,7 @@ pub mod removed_ops;
 pub mod result_check;
 pub mod result_shape;
 pub mod save_examples;
+pub mod save_merge;
 pub mod schema_nodes;
 pub mod sessions;
 pub mod spaces;

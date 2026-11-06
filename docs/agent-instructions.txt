@@ -3,7 +3,7 @@ Use joppa_objects to find and read current objects. Read one historical revision
 Read joppa_help with op for the operation you need.
 Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.
 
-Read an object before you change it. Send its current revision. Preserve document fields and parent that you do not change. Omit links to keep them.
+Read an object before you change it. Send its current revision. On an update, send only the data fields that change: data merges by key, and null removes a field. Omit parent and links to keep them. Send clean: true to replace data whole.
 Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.
 Write a title and body that answer the question of the type.
 A write takes a public item ID where it takes an address of the workspace. The journal stores the address.
