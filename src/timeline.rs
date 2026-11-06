@@ -61,6 +61,7 @@ const CHANGES: &[(&str, &[&str])] = &[
         &[
             "workspace",
             "rename_workspace",
+            "update_workspace",
             "delete_workspace",
             "remove_workspace_references",
         ],

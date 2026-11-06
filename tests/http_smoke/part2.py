@@ -202,7 +202,7 @@ assert copied['exact_id'] is True and copied['address']=='measure:same'
 subprocess.run([BIN,'migrate'],env=env,check=True,stdout=subprocess.DEVNULL)
 assert system_ids()==refs
 before=request('/api/workspaces/'+ws)[1]
-ok({'op':'rename_workspace','title':'Review workspace','reason':'Name clarified'})
+ok({'op':'update_workspace','title':'Review workspace','reason':'Name clarified'})
 after=request('/api/workspaces/'+ws)[1]
 assert after['workspace']==before['workspace']
 # The rename and the prefix that the server derives from the new title: two events.

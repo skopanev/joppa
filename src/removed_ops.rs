@@ -45,6 +45,7 @@ pub const NAMES: &[&str] = &[
     "review_task",
     "retire_task",
     "comment",
+    "rename_workspace",
 ];
 
 /// The refusal of the removed read parameter `work_filter`.
@@ -71,6 +72,7 @@ pub fn refusal(name: &str) -> String {
         | "claim_next_task" | "heartbeat_task" | "release_task" => "save_object with data.assignee",
         "complete_task" | "retire_task" => "archive_object",
         "comment" => "note",
+        "rename_workspace" => "update_workspace",
         _ => "save_object",
     };
     format!("{name} was removed; use {replacement}")
@@ -123,6 +125,7 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::ReviewTask(crate::commands::ReviewTaskOp { .. }) => "review_task",
         Command::RetireTask { .. } => "retire_task",
         Command::Comment(crate::commands::CommentOp { .. }) => "comment",
+        Command::RenameWorkspace(crate::commands::RenameWorkspaceOp { .. }) => "rename_workspace",
         _ => return None,
     })
 }

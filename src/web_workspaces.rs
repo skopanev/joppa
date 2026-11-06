@@ -24,7 +24,7 @@ pub(super) async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) 
 }
 pub(super) async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    result(store::list(&app.pool, &actor).await)
+    result(store::list(&app.pool, &actor).await.map(store::visible))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,11 +118,10 @@ pub(super) async fn rename_workspace(
     }
     let actor = authenticate_write(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
-    let command = Command::RenameWorkspace(joppa::commands::RenameWorkspaceOp {
-        workspace_id: None,
-        title: body.title.clone(),
-        reason: "Renamed in Settings".into(),
-        reference_prefix: None,
+    let command = Command::UpdateWorkspace(joppa::commands::UpdateWorkspaceOp {
+        title: Some(body.title.clone()),
+        reason: Some("Renamed in Settings".into()),
+        ..Default::default()
     });
     let request_id = uuid::Uuid::new_v4().to_string();
     result(

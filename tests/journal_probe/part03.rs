@@ -26,7 +26,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
         let prefix = format!("prefix-{}", uuid::Uuid::new_v4().simple());
         let rename = store::BatchOperation {
             reference: None,
-            command: json!({"op":"rename_workspace","title":"Renamed product","reference_prefix":prefix,"reason":"Check batch order"}),
+            command: json!({"op":"update_workspace","title":"Renamed product","reference_prefix":prefix,"reason":"Check batch order"}),
         };
         let create = store::BatchOperation {
             reference: None,
@@ -39,7 +39,7 @@ async fn current_prefix_follows_batch_order_and_does_not_leave_the_transaction()
         };
         let second_prefix = format!("second-{}", uuid::Uuid::new_v4().simple());
         operations.extend([
-            store::BatchOperation { reference: None, command: json!({"op":"rename_workspace","title":"Renamed twice","reference_prefix":second_prefix,"reason":"Check the second batch rename"}) },
+            store::BatchOperation { reference: None, command: json!({"op":"update_workspace","title":"Renamed twice","reference_prefix":second_prefix,"reason":"Check the second batch rename"}) },
             store::BatchOperation { reference: None, command: json!({"op":"save_object","kind":"domain","id":"second","revision":0,"parent":null,"data":{"title":"Second domain","owner":"owner"},"reason":"Setup"}) },
         ]);
         let foreign = format!("foreign-{}", uuid::Uuid::new_v4().simple());

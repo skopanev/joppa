@@ -37,11 +37,10 @@ pub(super) async fn ensure_notes(
         ),
         (
             prefix.is_some(),
-            Command::RenameWorkspace(crate::commands::RenameWorkspaceOp {
-                workspace_id: None,
-                title: state.title.clone(),
-                reason: workspace_prefix::REASON.into(),
+            Command::UpdateWorkspace(crate::commands::UpdateWorkspaceOp {
+                reason: Some(workspace_prefix::REASON.into()),
                 reference_prefix: prefix.clone(),
+                ..Default::default()
             }),
         ),
     ] {

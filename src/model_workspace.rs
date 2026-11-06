@@ -91,6 +91,9 @@ pub struct Workspace {
     /// The priority value of each node that has one. It is not a change of the node.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub priorities: BTreeMap<String, String>,
+    /// The owner hid the workspace from the web lists.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
     /// The journal position of the owner's deletion. A deleted workspace has no members.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<u64>,

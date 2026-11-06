@@ -51,9 +51,9 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
             &w,
             &help,
             None,
-            json!({"op":"rename_workspace","title":"Spec over HTTP again","reason":"Rename"}),
+            json!({"op":"update_workspace","title":"Spec over HTTP again","reason":"Rename"}),
             &w.owner,
-            "workspace owner renames the workspace",
+            "workspace owner updates the workspace",
         )
         .await?,
     );

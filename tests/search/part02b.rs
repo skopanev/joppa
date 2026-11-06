@@ -116,7 +116,7 @@ async fn hybrid_search_after_the_index_reads(
             .is_empty()
     );
     let new = format!("renamed-{}", uuid::Uuid::new_v4().simple());
-    store::execute_input(pool,ws,"owner","rename",&json!({"op":"rename_workspace","workspace_id":new,"reference_prefix":new,"title":"Renamed","reason":"Owner requested"})).await?;
+    store::execute_input(pool,ws,"owner","rename",&json!({"op":"update_workspace","workspace_id":new,"reference_prefix":new,"title":"Renamed","reason":"Owner requested"})).await?;
     let found = store::search::find(
         pool,
         "agent",

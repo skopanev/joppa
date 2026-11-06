@@ -22,7 +22,7 @@ async fn renamed_prefix_preserves_every_old_reference_and_history() -> Result<()
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     let prefix = format!("renamed-{}", uuid::Uuid::new_v4().simple());
     let command = serde_json::from_value(
-        json!({"op":"rename_workspace","title":"Current product","reason":"Owner renamed product","reference_prefix":prefix}),
+        json!({"op":"update_workspace","title":"Current product","reason":"Owner renamed product","reference_prefix":prefix}),
     )?;
     assert!(
         store::execute(&pool, &ws, "agent", "rename", &command)
@@ -115,7 +115,7 @@ async fn canonical_workspace_rename_preserves_aliases_history_and_isolation() ->
     }
     let before = store::read(&pool, &old, &owner, &store::Scope::full()).await?;
     let rename = serde_json::from_value(
-        json!({"op":"rename_workspace","title":"Current product","reason":"Owner changed product ID","workspace_id":new}),
+        json!({"op":"update_workspace","title":"Current product","reason":"Owner changed product ID","workspace_id":new}),
     )?;
     assert!(
         store::execute(&pool, &old, "outsider", "rename", &rename)

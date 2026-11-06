@@ -26,7 +26,7 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
     w.ok(
         &w.owner,
         &w.c,
-        json!({"op":"rename_workspace","workspace_id":alias,"title":"Backend","reason":"New name"}),
+        json!({"op":"update_workspace","workspace_id":alias,"title":"Backend","reason":"New name"}),
     )
     .await?;
     w.ok(

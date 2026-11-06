@@ -163,9 +163,8 @@ pub(crate) fn apply_inner(
             w.members.clear();
             w.deleted_at = Some(position);
         }
-        Command::RenameWorkspace(crate::commands::RenameWorkspaceOp { .. }) => {
-            apply_rename_workspace(w, actor, command)?
-        }
+        Command::RenameWorkspace(op) => apply_update_workspace(w, actor, &op.into())?,
+        Command::UpdateWorkspace(op) => apply_update_workspace(w, actor, op)?,
         Command::ReorderTree {
             kind,
             parent,

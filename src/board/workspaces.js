@@ -21,10 +21,21 @@ export async function list() {
     $('workspaces').append(o);
   }
   const requested=new URLSearchParams(location.search).get('workspace');
+  // The list leaves out a hidden workspace, but its direct link opens it. The drop-down then
+  // shows it for this page only.
   if(requested&&!list.some(w=>w.id===requested)){
-    state.ws='';state.data=null;$('workspaces').value='';
-    const link=E('a','Back to board','text-button');const url=new URL(location.href);url.search='';url.hash='';link.href=url.href;
-    $('tree').replaceChildren(E('p','This workspace is not available to your account.','empty-state'),link);return;
+    state.ws=requested;
+    try{await load();}catch{
+      state.ws='';state.data=null;$('workspaces').value='';
+      const link=E('a','Back to board','text-button');const url=new URL(location.href);url.search='';url.hash='';link.href=url.href;
+      $('tree').replaceChildren(E('p','This workspace is not available to your account.','empty-state'),link);return;
+    }
+    const id=state.data?.workspace||requested;
+    if(!list.length)$('workspaces').replaceChildren();
+    if(!list.some(w=>w.id===id)){const o=E('option',state.data?.state?.title||id);o.value=id;$('workspaces').append(o);}
+    $('workspaces').disabled=$('workspaces').options.length<=1;
+    $('workspaces').value=state.ws=id;
+    return;
   }
   if (!list.some(w => w.id === state.ws)) state.ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = state.ws;

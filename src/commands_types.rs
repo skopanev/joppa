@@ -110,7 +110,8 @@ pub struct SetAcTestsOp {
     pub reason: String,
 }
 
-/// The fields of `RenameWorkspace`.
+/// The fields of `RenameWorkspace`, which only old journals hold. Live writes send
+/// `update_workspace`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenameWorkspaceOp {
@@ -120,6 +121,36 @@ pub struct RenameWorkspaceOp {
     pub reason: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_prefix: Option<String>,
+}
+
+/// The fields of `UpdateWorkspace`. The command changes each field that it sends, and needs
+/// one field at least.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateWorkspaceOp {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_prefix: Option<String>,
+    /// A hidden workspace leaves the web lists. MCP and a direct board link still read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl From<&RenameWorkspaceOp> for UpdateWorkspaceOp {
+    fn from(op: &RenameWorkspaceOp) -> Self {
+        UpdateWorkspaceOp {
+            title: Some(op.title.clone()),
+            workspace_id: op.workspace_id.clone(),
+            reference_prefix: op.reference_prefix.clone(),
+            hidden: None,
+            reason: Some(op.reason.clone()),
+        }
+    }
 }
 
 /// The fields of `RecordReport`.

@@ -87,7 +87,7 @@ async fn create_and_rename_set_a_slug_prefix_and_old_ids_still_resolve() -> Resu
     );
     write(&pool, &second, json!({"op":"save_object","kind":"domain","id":"d","revision":0,"parent":null,"data":{"title":"Billing","owner":"owner"},"reason":"Prefix test"})).await?;
     let old = item(&pool, &second, "d", &numbered).await?;
-    write(&pool, &second, json!({"op":"rename_workspace","title":format!("Billing Ops {tag}"),"reason":"New team name"})).await?;
+    write(&pool, &second, json!({"op":"update_workspace","title":format!("Billing Ops {tag}"),"reason":"New team name"})).await?;
     let renamed = format!("billing-ops-{tag}");
     ensure!(
         prefix(&pool, &second).await?.as_deref() == Some(renamed.as_str()),

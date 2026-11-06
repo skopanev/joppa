@@ -105,7 +105,7 @@ pub(crate) async fn write(
                     super::start_replay_epochs(&*tx, &workspace).await?;
                     reserve_name(&*tx, &workspace, &workspace).await?;
                 }
-                if let Command::RenameWorkspace(crate::commands::RenameWorkspaceOp { workspace_id: Some(name), .. }) = &command {
+                if let Command::UpdateWorkspace(crate::commands::UpdateWorkspaceOp { workspace_id: Some(name), .. }) = &command {
                     reserve_name(&*tx, name, &workspace).await?;
                 }
                 let event_request = if batch { format!("batch-{batch_id}-{index}") } else { request_id.to_owned() };

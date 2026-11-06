@@ -78,6 +78,7 @@ pub enum Command {
         title: String,
     },
     RenameWorkspace(RenameWorkspaceOp),
+    UpdateWorkspace(UpdateWorkspaceOp),
     /// The owner removes a member. The owner cannot remove themself.
     RemoveMember {
         id: String,

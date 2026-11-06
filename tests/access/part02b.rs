@@ -65,7 +65,7 @@ async fn denial_domain_move_and_rename_keep_the_boundary(
     // Both old policy names and canonical names retain the same access boundary.
     let canonical = format!("canonical-{id}");
     let rename = serde_json::from_value(
-        json!({"op":"rename_workspace","title":"Current product","workspace_id":canonical,"reason":"Rename product ID"}),
+        json!({"op":"update_workspace","title":"Current product","workspace_id":canonical,"reason":"Rename product ID"}),
     )?;
     store::execute(pool, alpha, "admin", "rename", &rename).await?;
     assert_eq!(

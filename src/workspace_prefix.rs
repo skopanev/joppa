@@ -1,7 +1,7 @@
 //! Item IDs start with a slug of the workspace title, such as billing-team-R-0A1B2C3D4E.
-//! The server derives the prefix on create and on each rename. An explicit reference_prefix
-//! of rename_workspace stays until the next rename without one. The event is an ordinary
-//! rename_workspace with the derived prefix, so the database trigger keeps every older item
+//! The server derives the prefix on create and on each new title. An explicit reference_prefix
+//! of update_workspace stays: the server derives no prefix after it. The event is an ordinary
+//! update_workspace with the derived prefix, so the database trigger keeps every older item
 //! ID as an alias of its object.
 use super::*;
 

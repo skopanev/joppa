@@ -180,7 +180,7 @@ pub use read_scope::{Scope, read};
 
 #[path = "store_items.rs"]
 mod items;
-pub use items::{gate, list};
+pub use items::{gate, list, visible};
 
 #[path = "search.rs"]
 pub mod search;

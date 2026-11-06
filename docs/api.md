@@ -21,7 +21,7 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 - Schema and order: `set_tree_schema`, `reorder_tree`.
 - Criteria and tests: `save_object` with a test node, `accept_commit`, `assess`.
 - Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
-- Workspace (owner): `rename_workspace`, `delete_workspace`, `member`, `remove_member`.
+- Workspace (owner): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
 
 HTTP and MCP refuse every other operation. The server command line also creates a workspace
 with `workspace {title}`. `joppa_record_results` records test outcomes. It is a tool, not an operation.
@@ -203,7 +203,16 @@ code button. The code stays bound to the callback, the client and the PKCE verif
 
 ## Workspace names
 
-`rename_workspace {title, reason, reference_prefix?, workspace_id?}` keeps all history.
+`update_workspace {title?, workspace_id?, reference_prefix?, hidden?, reason?}` changes each
+field that it sends and keeps all history. It needs one of `title`, `workspace_id`,
+`reference_prefix` and `hidden`. `rename_workspace` was removed: a write of it is refused with
+`rename_workspace was removed; use update_workspace`.
 A new `workspace_id` becomes the public ID in lists and reads. Old names stay aliases with
 the same access, and no other workspace can take them. A new `reference_prefix` changes the
 prefix of new public IDs. Old IDs stay valid.
+
+`hidden: true` hides the workspace from the web lists: `GET /api/workspaces`, the board
+drop-down and Settings (`GET /api/access`). A direct board link `/?workspace=<id>` still opens
+it, and the drop-down then shows it for that page only. `joppa_list` and the server command
+line list it with `"hidden": true`. Every MCP read and write works on it as before.
+`hidden: false` shows it again.
