@@ -110,7 +110,8 @@ the `data` node filter.
 Omit `id` when you create an object, a comment or a file. The server makes an 8-character
 `[a-z0-9]` ID and returns the resolved `command`. An omitted field means a new identity.
 Null or an empty string is not an ID. Keep the IDs of existing objects when you edit them.
-Parents, members, owners and assignees must name existing objects or people.
+Parents, members and owners must name existing objects or people. `data.assignee` takes a
+member ID or an agent alias, such as `lane3`.
 
 A successful request stores its input and result in an immutable receipt. Retry exactly the
 same input with the same `request_id` to get the same IDs. Different input or another actor

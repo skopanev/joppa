@@ -16,7 +16,7 @@ Use a short title. Put context, conditions and evidence in body. Use clean Markd
 Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace structural links.
 
 Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.
-A Task is a node like any other: data.assignee names the person, assess marks it ready or waiting, and archive_object ends it. Put the Git commit of finished work in data.commit. Test results prove a criterion. A finished Task does not prove criterion acceptance.
+A Task is a node like any other: data.assignee names the person or the agent alias, such as lane3, assess marks it ready or waiting, and archive_object ends it. Put the Git commit of finished work in data.commit. Test results prove a criterion. A finished Task does not prove criterion acceptance.
 No criterion, no test. A test is a node: save_object with kind test under its criterion (ac or tac), data.title = the test name. Every test in the repository must have a present test node.
 Never add or rename a test without its test node in the same change. Archive the test node of a deleted test, and the test nodes of a criterion before the criterion.
 joppa_record_results gives "unbound": the test names of the record that have no present test node. A full-run record must give "unbound": [] before a merge.

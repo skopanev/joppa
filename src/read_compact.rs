@@ -29,8 +29,8 @@ pub(crate) fn status(item: &Value) -> Option<Value> {
     (!out.is_empty()).then_some(Value::Object(out))
 }
 
-/// One list item: address, title and the status tone. With `fields`, the address and each named
-/// path, also when the value is empty.
+/// One list item: address, title, the status tone and the assignee when the node has one. With
+/// `fields`, the address and each named path, also when the value is empty.
 pub fn list_item(item: &Value, fields: Option<&[String]>) -> Value {
     let mut out = Map::new();
     out.insert("address".into(), item["address"].clone());
@@ -47,6 +47,10 @@ pub fn list_item(item: &Value, fields: Option<&[String]>) -> Value {
             // The tone alone keeps 10 items under 1 KB; the detail read gives the label.
             if let Some(tone) = item["signal"]["tone"].as_str().filter(|t| !t.is_empty()) {
                 out.insert("status".into(), json!(tone));
+            }
+            // Who holds the work shows in the list, so a lane needs no detail read.
+            if let Some(assignee) = item["assignee"].as_str() {
+                out.insert("assignee".into(), json!(assignee));
             }
             if item["present"] == false {
                 out.insert("present".into(), json!(false));

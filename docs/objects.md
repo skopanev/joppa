@@ -98,7 +98,8 @@ Create a Task with `save_object` and a type whose role is `task`. The `body` is 
 A Task has no purpose: `save_object` refuses `data.purpose` with
 `a Task has no purpose; read joppa_help`. A member who can write can change any Task.
 
-- `data.assignee` names the member ID that does the work.
+- `data.assignee` names the member ID or the agent alias that does the work, such as `lane3`.
+  A list item of `joppa_objects` and a board row show it.
 - `data.commit` gives the Git sha of the finished work.
 - `assess` sets the readiness of the Task. `archive_object` ends it.
 - Read Tasks with the node filters of `joppa_objects`, for example `{"kind":"task","assignee":"alex","ready":true}`.

@@ -19,8 +19,9 @@ export function commonObjectFilters(root,contents,apply){
   const query=new URLSearchParams(location.search);const linked=Object.fromEntries(LINK_FILTERS.map(k=>[k,query.get(k)]).filter(([,v])=>v));
   const picker=(name,label,options)=>{const select=E('select');select.name=name;select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
   // A person of a link who is not a member, for example a former member, gets an option too.
-  const people=(name,label,all)=>{const ids=Object.keys(state.data.state.members);if(linked[name]&&!ids.includes(linked[name]))ids.push(linked[name]);return picker(name,label,[['',all],...ids.map(id=>[id,personLabel(id)])]);};
-  const owner=people('owner','Object owner','All owners'),assignee=people('assignee','Object assignee','All assignees');
+  // The assignee picker also offers each present assignee that is not a member, such as an agent alias.
+  const people=(name,label,all,extra=[])=>{const ids=Object.keys(state.data.state.members);for(const id of [...extra,linked[name]])if(id&&!ids.includes(id))ids.push(id);return picker(name,label,[['',all],...ids.map(id=>[id,personLabel(id)])]);};
+  const owner=people('owner','Object owner','All owners'),assignee=people('assignee','Object assignee','All assignees',state.data.assignees||[]);
   const status=picker('status','Object status',[['','All statuses']]);const markStatus=statusFilter(status);
   const ready=picker('ready','Object readiness',[['','All readiness'],['true','Ready'],['false','Not ready']]);
   const pickers=[owner,assignee,status,ready];

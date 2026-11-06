@@ -1,5 +1,5 @@
 //! A live save_object of an existing object merges its data into the current data: a sent
-//! field replaces its value, a null field leaves, and every other field stays. An omitted
+//! field replaces its value, a null removes a stored field, and every other field stays. An omitted
 //! parent keeps the current parent. `clean: true` replaces the data with the sent data. The
 //! server writes the result into the command before the journal stores it, so an event
 //! always names its whole data and parent.
@@ -48,8 +48,10 @@ pub fn merge(w: &Workspace, value: &mut Value, clean: bool) -> Result<()> {
         return Ok(());
     };
     let mut data = stored.clone();
+    // A null removes a stored field. A null of an absent field stays, so the checks of the save
+    // read it as sent.
     for (field, sent) in sent {
-        if sent.is_null() {
+        if sent.is_null() && data.contains_key(field) {
             data.remove(field);
         } else {
             data.insert(field.clone(), sent.clone());

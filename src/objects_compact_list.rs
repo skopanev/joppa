@@ -39,8 +39,8 @@ pub async fn compact_list(
     let bound =
         crate::node_filter::bind(&*conn, &workspace, filter, true, filter.archived()).await?;
     let query = format!(
-        "SELECT x.address,x.title,x.tone,x.total
-        FROM (SELECT o.address,o.title,{tone} AS tone,count(*) OVER() AS total FROM joppa.objects o
+        "SELECT x.address,x.title,x.tone,x.total,x.assignee
+        FROM (SELECT o.address,o.title,{tone} AS tone,count(*) OVER() AS total,o.document->'data'->>'assignee' AS assignee FROM joppa.objects o
             WHERE o.workspace=$1 AND (o.present OR $13) AND {clause}) x
         WHERE x.address>$11 ORDER BY x.address LIMIT $12",
         tone = crate::node_filter::TONE,
@@ -67,6 +67,10 @@ pub async fn compact_list(
                 json!({"address": r.get::<_, String>(0), "title": r.get::<_, String>(1)});
             if let Some(tone) = r.get::<_, Option<String>>(2).filter(|t| !t.is_empty()) {
                 item["status"] = json!(tone);
+            }
+            // Who holds the work, so a lane needs no detail read.
+            if let Some(assignee) = r.get::<_, Option<String>>(4).filter(|a| !a.is_empty()) {
+                item["assignee"] = json!(assignee);
             }
             item
         })

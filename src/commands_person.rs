@@ -60,7 +60,7 @@ pub fn apply(
     crate::objects::validate_current(w, command)?;
     apply_inner(w, actor, command, position, recorded_at)?;
     crate::objects::sync(w, actor, command, position, recorded_at);
-    crate::objects::reset_changed(w, position, recorded_at)
+    crate::objects::reset_changed(w, command, position, recorded_at)
 }
 
 /// A live save_object that changes nothing succeeds without a revision or journal event.
@@ -165,5 +165,5 @@ pub fn apply_replay(
     {
         return Ok(());
     }
-    crate::objects::reset_changed(w, position, recorded_at)
+    crate::objects::reset_changed(w, command, position, recorded_at)
 }

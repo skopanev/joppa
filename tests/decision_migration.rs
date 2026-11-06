@@ -120,7 +120,7 @@ fn a_live_write_refuses_the_flag_and_an_open_question_is_a_waiting_mark() {
 
 // readiness-per-criterion-ac4
 #[test]
-fn a_save_after_the_migration_keeps_a_stored_owner_and_the_readiness() {
+fn a_save_after_the_migration_keeps_the_stored_owner_and_a_change_removes_the_mark() {
     let mut w = before();
     let save = |w: &World, data: serde_json::Value| {
         let revision = w.state.objects["ac:ios"].current().revision;
@@ -139,7 +139,8 @@ fn a_save_after_the_migration_keeps_a_stored_owner_and_the_readiness() {
     };
     assert_eq!(stored(&w).as_deref(), Some("owner"));
     internal(&mut w, "migrate_decision_required");
-    // A save that changes no criterion record keeps the readiness.
+    // A save of another object keeps the mark. A new data value of the criterion removes its
+    // own mark and keeps the stored owner.
     w.ok(
         "owner",
         json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,
@@ -147,10 +148,11 @@ fn a_save_after_the_migration_keeps_a_stored_owner_and_the_readiness() {
     );
     let mut data = w.state.objects["ac:ios"].current().data.clone();
     data["consumer"] = json!("consumer:buyer");
-    w.ok("owner", save(&w, data));
-    assert_eq!(stored(&w).as_deref(), Some("owner"));
     assert_eq!(
         objects::assessment(&w.state, "ac:ios").unwrap()["state"],
         "ready"
     );
+    w.ok("owner", save(&w, data));
+    assert_eq!(stored(&w).as_deref(), Some("owner"));
+    assert!(objects::assessment(&w.state, "ac:ios").is_none());
 }

@@ -18,7 +18,7 @@ fn node_filters(mut schema: Value) -> Value {
         "kind": one_or_list("type name or a list of type names"),
         "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green; purple keeps the archived nodes, and joppa_search needs all_versions for it"),
         "owner": text("member ID in data.owner"),
-        "assignee": text("member ID: data.assignee"),
+        "assignee": text("data.assignee: a member ID or an agent alias, such as lane3"),
         "ready": {"type":"boolean","description":"false: the node waits for a dependency, a review or the answer to its assessment question; true: every other node"},
         "data": {"type":"object",
             "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}"},

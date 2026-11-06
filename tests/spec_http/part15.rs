@@ -195,7 +195,10 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
             );
         }
     }
-    let error = w.refused(json!({"op":"save_object","kind":"note","id":"original","revision":2,"parent":null,"data":original["document"]["data"],"reason":"Try to remove the required source"})).await?;
+    // An update merges its data, so a null removes the stored source.
+    let mut removed = original["document"]["data"].clone();
+    removed["source"] = Value::Null;
+    let error = w.refused(json!({"op":"save_object","kind":"note","id":"original","revision":2,"parent":null,"data":removed,"reason":"Try to remove the required source"})).await?;
     ensure!(error.contains("a signal needs a source"), "{error}");
     let original_after = w.get("address=note:original").await?;
     ensure!(

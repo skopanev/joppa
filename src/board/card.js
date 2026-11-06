@@ -11,6 +11,7 @@ import {applyObjectColor,objectTitlePreview,objectTypeLabel,inputQueue} from 'bo
 import {appendObjectChildren,appendObjectPage} from 'board/object-list.js';
 import {fillCommonObject} from 'board/object-detail.js';
 import {showObjectRevisions} from 'board/revisions.js';
+import {personLabel} from 'board/format.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
@@ -25,7 +26,10 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   const deps=item.waits_for?.count||1;
   const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
   if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
-  summary.append(title,objectTypeLabel(item.kind),...waits,...childCounts(item));
+  // Who holds the work, a member or an agent alias, shows on the row.
+  const holder=item.assignee?[E('span',personLabel(item.assignee),'assignee-chip')]:[];
+  if(holder.length)holder[0].title='Assignee';
+  summary.append(title,objectTypeLabel(item.kind),...holder,...waits,...childCounts(item));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);

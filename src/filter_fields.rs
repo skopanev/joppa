@@ -71,6 +71,23 @@ pub fn values(state: &Workspace, fields: &[String]) -> Value {
     json!(entries)
 }
 
+/// The present values of data.assignee, a member ID or an agent alias, in text order and at
+/// most MAX_VALUES. The board assignee picker offers them next to the members.
+pub fn assignees(state: &Workspace) -> Vec<String> {
+    let found: BTreeSet<&str> = state
+        .objects
+        .values()
+        .map(|o| o.current())
+        .filter(|r| r.present)
+        .filter_map(|r| r.data["assignee"].as_str().filter(|a| !a.is_empty()))
+        .collect();
+    found
+        .into_iter()
+        .take(MAX_VALUES)
+        .map(str::to_owned)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

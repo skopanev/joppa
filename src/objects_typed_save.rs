@@ -118,14 +118,24 @@ pub(crate) fn typed_save(
     Ok(())
 }
 
-/// Reset the criteria below each object whose revision at `position` changed its title,
-/// text, links or parent. Task and inbox revisions reset nothing. A blocking dependency
-/// only orders work, so a change of those links alone resets nothing.
-pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
+/// Reset the criteria below each object whose revision at `position` changed it. From the epoch
+/// of any_change_reset, the object that `command` saves or links resets on any new parent,
+/// link or data value. Every other revision, such as a revision that a save gives to another
+/// object, resets only on a new title, text, non-blocking link or parent, and a Task or an
+/// inbox revision resets nothing.
+pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &str) -> Result<()> {
     let types = schema(w).types;
     let migrated = w.test_rules_migrated;
     // The replay of reset_changed runs after the replaying flag is cleared: read the epoch.
-    let any = commands::epoch_reached(w, commands::ANY_CHANGE_RESET, position);
+    let edited = match command {
+        Command::SaveObject(crate::commands::SaveObjectOp { kind, id, .. }) => {
+            Some(resolve_address(w, &address(kind, id)).to_owned())
+        }
+        Command::SetRemoteLinks { target, .. } => Some(resolve_address(w, target).to_owned()),
+        _ => None,
+    }
+    .filter(|_| commands::epoch_reached(w, commands::ANY_CHANGE_RESET, position));
+    let any = |key: &str| edited.as_deref() == Some(key);
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
@@ -136,13 +146,13 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
     let changed: Vec<String> = w
         .objects
         .iter()
-        .filter(|(_, o)| {
+        .filter(|(key, o)| {
             o.current().position == position
-                && (any
+                && (any(key)
                     || types.get(&o.kind).is_some_and(|t| t.role != "task")
                         && !input_type(w, &o.kind))
         })
-        .filter(|(_, o)| {
+        .filter(|(key, o)| {
             let current = o.current();
             o.revisions
                 .iter()
@@ -151,7 +161,7 @@ pub fn reset_changed(w: &mut Workspace, position: u64, at: &str) -> Result<()> {
                 .is_some_and(|before| {
                     // From the epoch on, any new parent, link or data value resets. A revision
                     // that changes none of them, such as a specification revision, does not.
-                    (any && (before.parent != current.parent
+                    (any(key) && (before.parent != current.parent
                         || before.links != current.links
                         || before.data != current.data))
                         || before.parent != current.parent

@@ -25,7 +25,7 @@ requires a new decision. Platforms come from the agreed AC and context; see
 
 Each Task has one parent permitted by the workspace schema and a technical contract.
 The default recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
-`data.assignee` names the member who does the Task. Triage can create Tasks without an assignee.
+`data.assignee` names the member or the agent alias that does the Task. Triage can create Tasks without an assignee.
 A Task waits for its dependencies and for its readiness mark, the same as any other node.
 `data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
