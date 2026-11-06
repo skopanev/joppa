@@ -31,7 +31,7 @@ async fn revision(w: &World) -> Result<Value> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_schema_names_the_filter_fields_and_the_board_gives_their_values() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    let set = json!({"op":"set_tree_schema","revision":revision(&w).await?,"filters":["tags","priority"],"reason":"Offer two filters"});
+    let set = json!({"op":"set_tree_schema","revision":revision(&w).await?,"filters":["tags","priority","urgent"],"reason":"Offer three filters"});
     ok(&w, &w.owner, set).await?;
     let node = |id: &str, extra: Value| {
         let mut data = json!({"title":id,"owner":"owner","body":"A rule"});
@@ -43,24 +43,47 @@ async fn the_schema_names_the_filter_fields_and_the_board_gives_their_values() -
     ok(
         &w,
         &w.bot,
-        node("s", json!({"tags":["swap","fx"],"priority":"p0"})),
+        node(
+            "s",
+            json!({"tags":["swap","fx"],"priority":"p0","urgent":true}),
+        ),
     )
     .await?;
-    ok(&w, &w.bot, node("t", json!({"tags":["swap"]}))).await?;
+    ok(
+        &w,
+        &w.bot,
+        node("t", json!({"tags":["swap"],"urgent":false})),
+    )
+    .await?;
     ok(&w, &w.bot, node("old", json!({"tags":["gone"]}))).await?;
     let archive =
         json!({"op":"archive_object","target":"requirement:old","revision":1,"reason":"Old"});
     ok(&w, &w.bot, archive).await?;
     let wanted = json!([
         {"field":"tags","values":[{"value":"fx","list":true},{"value":"swap","list":true}]},
-        {"field":"priority","values":[{"value":"p0","list":false}]}
+        {"field":"priority","values":[{"value":"p0","list":false}]},
+        {"field":"urgent","values":[{"value":false,"list":false},{"value":true,"list":false}]}
     ]);
     let read = board(&w).await?;
     ensure!(read["filters"] == wanted, "{}", read["filters"]);
+    // A boolean choice filters with the data node filter.
+    let urgent = w
+        .mcp(
+            &w.bot,
+            "joppa_objects",
+            json!({"data":{"urgent":true},"parent":"*"}),
+        )
+        .await?;
+    let urgent = urgent.map_err(anyhow::Error::msg)?;
+    ensure!(
+        urgent["items"].as_array().map(Vec::len) == Some(1)
+            && urgent["items"][0]["address"] == "requirement:s",
+        "{urgent}"
+    );
     let tree = w.mcp(&w.bot, "joppa_tree", json!({})).await?;
     let tree = tree.map_err(anyhow::Error::msg)?;
     ensure!(
-        tree["schema"]["filters"] == json!(["tags", "priority"]),
+        tree["schema"]["filters"] == json!(["tags", "priority", "urgent"]),
         "{tree}"
     );
     // A choice filters with the data node filter.

@@ -102,9 +102,11 @@ The rule tone also sets the status label, for example "Children checks passed" o
 `["tags", "priority"]`. A name is a lowercase letter, then up to 31 lowercase letters, digits or
 `_`. `title` and `body` are refused. A change without `filters` keeps the list.
 The board read (`GET /api/workspaces/{w}/board`) gives `filters`: for each field, its present
-values in text order, at most 200: `[{"field": "tags", "values": [{"value": "swap", "list": true}]}]`.
-`list` is true for an element of a list field. A choice filters with the `data` node filter:
-`{"tags": ["swap"]}` for a list element, `{"priority": "p0"}` for a string. `/tree` lists the
+values, at most 200: `[{"field": "tags", "values": [{"value": "swap", "list": true}]}]`.
+A boolean field gives `false` and `true` first, then the texts in text order. `list` is true
+for an element of a list field. A choice filters with the `data` node filter:
+`{"tags": ["swap"]}` for a list element, `{"priority": "p0"}` for a string and
+`{"before_launch": true}` for a boolean. `/tree` lists the
 fields under Filter fields.
 
 ## Test rules

@@ -35,7 +35,8 @@ fn name(field: &str) -> bool {
 }
 
 /// The present values of each filter field: `[{field, values: [{value, list}]}]`. `list` is
-/// true for an element of a list field. The values are in text order, at most MAX_VALUES.
+/// true for an element of a list field. A boolean field gives false and true first, then the
+/// texts in text order, at most MAX_VALUES in all.
 pub fn values(state: &Workspace, fields: &[String]) -> Value {
     let present: Vec<&Value> = state
         .objects
@@ -46,9 +47,12 @@ pub fn values(state: &Workspace, fields: &[String]) -> Value {
     let entries: Vec<Value> = fields
         .iter()
         .map(|field| {
-            let mut found = BTreeSet::new();
+            let (mut found, mut flags) = (BTreeSet::new(), BTreeSet::new());
             for data in &present {
                 match &data[field] {
+                    Value::Bool(flag) => {
+                        flags.insert(*flag);
+                    }
                     Value::String(text) => {
                         found.insert((text.clone(), false));
                     }
@@ -60,11 +64,13 @@ pub fn values(state: &Workspace, fields: &[String]) -> Value {
                     _ => {}
                 }
             }
-            let values: Vec<Value> = found
+            let flags = flags
                 .into_iter()
-                .take(MAX_VALUES)
-                .map(|(value, list)| json!({"value":value,"list":list}))
-                .collect();
+                .map(|flag| json!({"value":flag,"list":false}));
+            let texts = found
+                .into_iter()
+                .map(|(value, list)| json!({"value":value,"list":list}));
+            let values: Vec<Value> = flags.chain(texts).take(MAX_VALUES).collect();
             json!({"field":field,"values":values})
         })
         .collect();
