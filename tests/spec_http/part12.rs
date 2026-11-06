@@ -188,14 +188,13 @@ async fn the_children_api_returns_one_level_only() -> Result<()> {
         w.requirement(&req, "wide", &format!("Rule {i}"), "Scope", &[(&format!("{req}-a"), "First check"), (&format!("{req}-b"), "Second check")]).await?;
         expected.insert(format!("requirement:{req}"));
     }
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
     let reply = w
         .http
         .get(format!(
             "{}/api/workspaces/{}/objects?limit=50&parent=capability:wide&depth=1",
             w.root, w.ws
         ))
-        .bearer_auth(grant["token"].as_str().unwrap())
+        .bearer_auth(&w.bot)
         .send()
         .await?;
     ensure!(reply.status() == 200, "bot list: {}", reply.text().await?);

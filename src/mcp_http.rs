@@ -7,11 +7,8 @@ pub(super) fn routes() -> Router<App> {
     let limit = axum::extract::DefaultBodyLimit::max(joppa::spaces::REQUEST_MAX);
     Router::new().route("/mcp", post(endpoint).layer(limit).get(get_endpoint))
 }
-/// The actor and its access grant. Service credentials and OAuth identities write.
-async fn identity(
-    app: &App,
-    headers: &HeaderMap,
-) -> std::result::Result<(String, store::Access), Response> {
+/// The actor of a call: an OAuth identity or a private service credential.
+async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String, Response> {
     if headers.contains_key(header::ORIGIN) {
         let origin = headers.get(header::ORIGIN).and_then(|s| s.to_str().ok());
         if origin != app.oauth_origin.as_deref() {
@@ -31,7 +28,7 @@ async fn identity(
     };
     if token.starts_with("jpa_") {
         return match oauth::actor(app, token).await {
-            Ok(Some(a)) => Ok((a, store::Access::Write)),
+            Ok(Some(a)) => Ok(a),
             Ok(None) => Err(oauth::challenge(app)),
             Err(_) => Err((
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -41,19 +38,10 @@ async fn identity(
         };
     }
     // Private service credentials remain available to unattended integrations.
-    if let Some(actor) = app.identities.get(token) {
-        return Ok((actor.clone(), store::Access::Write));
-    }
-    // Agent tokens that the workspace owner created; a revoked one is refused.
-    match store::token_actor(&app.pool, token).await {
-        Ok(Some(grant)) => Ok((grant.agent, grant.access)),
-        Ok(None) => Err(oauth::challenge(app)),
-        Err(e) => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": e.to_string()})),
-        )
-            .into_response()),
-    }
+    app.identities
+        .get(token)
+        .cloned()
+        .ok_or_else(|| oauth::challenge(app))
 }
 async fn get_endpoint(State(app): State<App>, headers: HeaderMap) -> Response {
     if let Err(e) = identity(&app, &headers).await {
@@ -66,7 +54,7 @@ async fn endpoint(
     headers: HeaderMap,
     Json(message): Json<Value>,
 ) -> Response {
-    let (actor, access) = match identity(&app, &headers).await {
+    let actor = match identity(&app, &headers).await {
         Ok(a) => a,
         Err(e) => return e,
     };
@@ -76,16 +64,7 @@ async fn endpoint(
     let alias = headers
         .get(joppa::actor_alias::HEADER)
         .and_then(|v| v.to_str().ok());
-    match crate::protocol::handle(
-        &app.pool,
-        &actor,
-        access,
-        &message,
-        app.embedder.as_ref(),
-        alias,
-    )
-    .await
-    {
+    match crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref(), alias).await {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),
     }

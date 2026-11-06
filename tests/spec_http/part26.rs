@@ -5,22 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_bot_criterion_title_over_128_characters_is_refused() -> Result<()> {
     let w = world().await?;
-    let reply = w
-        .http
-        .post(format!("{}/api/workspaces/{}/agent-tokens", w.root, w.ws))
-        .bearer_auth(&w.owner)
-        .json(&json!({"agent":"bot","access":"write"}))
-        .send()
-        .await?;
-    ensure!(reply.status().is_success(), "{}", reply.text().await?);
-    let created: Value = reply.json().await?;
-    ensure!(created["access"] == "write", "{created}");
-    let token = created["token"].as_str().unwrap().to_owned();
-    let grant = store::token_actor(&w.pool, &token).await?.unwrap();
-    ensure!(
-        grant.agent == "bot" && grant.workspace == w.ws && grant.access == store::Access::Write,
-        "{grant:?}"
-    );
+    let token = w.bot.clone();
     let read = |address: &'static str| {
         let (w, token) = (&w, &token);
         async move {

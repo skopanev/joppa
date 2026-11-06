@@ -48,7 +48,6 @@ for name, arguments in [
         'params':{'name':name,'arguments':arguments}}, owner_token)[1]['result']
     assert denied['isError'] and 'server CLI' in denied['content'][0]['text']
 assert 'should-not-exist' not in request('/api/workspaces/'+mcp_ws)[1]['index']['members']
-assert request(f'/api/workspaces/{mcp_ws}/agent-tokens', {'agent': 'agent'})[0] == 200
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'consumer',
     'command':{'op':'save_object','kind':'consumer','id':'customer','revision':0,'parent':None,
         'data':{'title':'Customer','owner':'owner'},'reason':'Setup'}},owner_token)

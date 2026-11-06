@@ -139,17 +139,12 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
         attach(&w, &w.outsider, outsider.clone()).await?.is_err(),
         "a non-member attached"
     );
-    let token =
-        joppa::store::create_agent_token(&w.pool, &w.ws, "owner", "file-reader", Some("read"))
-            .await?;
-    let reader = token["token"].as_str().context("token")?;
-    refused(attach(&w, reader, outsider).await?, "read")?;
     ensure!(
         !fake.any(&joppa::digest_hex::sha256_hex(&secret)),
         "a refused attach stored the file"
     );
     let read = ok(w
-        .mcp(reader, "joppa_attachments", json!({"target":"ac:a"}))
+        .mcp(&w.alex, "joppa_attachments", json!({"target":"ac:a"}))
         .await?)?;
     ensure!(read["files"].as_array().map_or(0, Vec::len) == 2, "{read}");
     // A detached file stays in Spaces for 14 days, then expires when no active attachment keeps its hash.

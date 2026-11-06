@@ -44,33 +44,19 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 {"mcp":{"joppa":{"type":"remote","url":"https://YOUR_JOPPA_DOMAIN/mcp","enabled":true}}}
 ```
 
-## Connect an agent with a token
+## Several agents under one account
 
-An agent that runs without a browser uses an agent token instead of OAuth.
+Agents of one person share the OAuth session of that person. Each agent sends its name as
+`alias` on each tool call, for example `"alias": "p1"`, or once for the session with the
+header `X-Joppa-Alias: p1`. The journal, the timeline, History and the board show it next
+to the account, for example `alex · p1`. The alias changes no access.
 
-1. The workspace owner opens **Settings** in the name menu, selects the workspace and issues a token for the agent.
-   Select read access for an agent that only reads, for example a planner.
-2. Copy the token once. Joppa does not show it again.
-3. Keep the token in a file or an environment variable with access for the agent only. Never put it in a repository.
-4. Send it as `Authorization: Bearer <token>` to the same endpoint.
-
-Claude Code:
+Claude Code, for one agent:
 
 ```sh
-claude mcp add --transport http --scope user joppa https://YOUR_JOPPA_DOMAIN/mcp \
-  --header "Authorization: Bearer $JOPPA_TOKEN"
+claude mcp add --transport http --scope project joppa https://YOUR_JOPPA_DOMAIN/mcp \
+  --header "X-Joppa-Alias: p1"
 ```
-
-Codex, in `config.toml`:
-
-```toml
-[mcp_servers.joppa]
-url = "https://YOUR_JOPPA_DOMAIN/mcp"
-bearer_token_env_var = "JOPPA_TOKEN"
-```
-
-A read token gets the error `read-only token` on every write. The owner revokes a token in **Settings**; the next call
-with it gets HTTP 401 `token revoked`.
 
 ## Tools
 
@@ -99,12 +85,12 @@ most 50 MiB and attaches it in one call. `joppa_attachments` lists the files of 
 ## Scripts
 
 For Bash scripts, [client/joppa](../client/joppa) calls the same MCP endpoint.
-It needs Python 3 and a private service bearer for an enrolled agent member;
+It needs Python 3 and a private service credential of the server for an enrolled agent member;
 the server's administrative executable is not installed on the client machine.
 
 ```sh
 export JOPPA_MCP_URL=https://YOUR_JOPPA_DOMAIN/mcp
-export JOPPA_TOKEN_FILE=/private/path/to/agent-token
+export JOPPA_TOKEN_FILE=/private/path/to/service-token
 export JOPPA_WORKSPACE=product
 python3 client/joppa search "paid access" --kind requirement
 python3 client/joppa command product "$REQUEST_ID" < operation.json

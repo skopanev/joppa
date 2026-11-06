@@ -93,22 +93,6 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
   } finally { await f.close(); }
 });
 
-// settings-in-name-menu-ac3
-test('settings-in-name-menu-ac3: Settings shows no agent token controls and reads no token list', async () => {
-  const f = await fixture({'domain:d': {title: 'Existing domain'}});
-  try {
-    const created = await f.page.context().request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Owned space'}});
-    assert.equal(created.status(), 200);
-    const requests = [];
-    f.page.on('request', r => requests.push(r.url()));
-    assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
-    await f.page.locator('#workspace-select option').first().waitFor({state: 'attached'});
-    assert.equal(await f.page.locator('#agent-tokens, #agent-token-list, #issue-token').count(), 0);
-    assert.equal(await f.page.getByText(/token/i).count(), 0);
-    assert.ok(!requests.some(url => url.includes('/agent-tokens')));
-  } finally { await f.close(); }
-});
-
 // board-opens-top-level-ac1
 test('board-opens-top-level-ac1: a reload of the board shows only the top level', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}, 'capability:c': {title: 'Capability', parent: 'domain:d'}});

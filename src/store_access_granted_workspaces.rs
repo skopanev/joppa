@@ -73,7 +73,7 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     {
         return Err(commands::ClientField("a valid email is required").into());
     }
-    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let workspace = owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     conn.execute(
         "INSERT INTO joppa.email_grants(workspace,email,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -99,7 +99,7 @@ pub async fn grant_domain(
     {
         return Err(commands::ClientField("a valid email domain is required").into());
     }
-    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let workspace = owner_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     conn.execute(
         "INSERT INTO joppa.domain_grants(workspace,domain,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -122,7 +122,7 @@ pub async fn list_domain_grants(pool: &Pool, actor: &str) -> Result<Value> {
 /// The owner removes an email grant. A missing grant changes nothing.
 pub async fn revoke_email(pool: &Pool, workspace: &str, actor: &str, email: &str) -> Result<Value> {
     let email = email.trim().to_ascii_lowercase();
-    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let workspace = owner_of(pool, workspace, actor).await?;
     let removed = pool
         .get()
         .await?
@@ -142,7 +142,7 @@ pub async fn revoke_domain(
     domain: &str,
 ) -> Result<Value> {
     let domain = domain.trim().to_ascii_lowercase();
-    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let workspace = owner_of(pool, workspace, actor).await?;
     let removed = pool
         .get()
         .await?
@@ -157,7 +157,7 @@ pub async fn revoke_domain(
 /// The owner removes a member and the email grant of that member's Google account, so
 /// the member loses access at the next request. A domain grant still admits its domain.
 pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) -> Result<Value> {
-    let workspace = super::grants::owner_of(pool, workspace, actor).await?;
+    let workspace = owner_of(pool, workspace, actor).await?;
     ensure!(id != actor, "workspace owner cannot be removed");
     // The grant goes first: a failed journal write then leaves a member without a grant,
     // never a removed member whose grant admits them again.
@@ -230,4 +230,14 @@ pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
         })
         .collect();
     Ok(json!({"items": items}))
+}
+
+/// The workspace of `actor` when the actor owns it; the error names the owner rule.
+pub(super) async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
+    let conn = pool.get().await?;
+    let workspace = resolve_workspace(&**conn, workspace).await?;
+    let (state, _) = state_rows::current(&**conn, &workspace).await?;
+    ensure!(state.deleted_at.is_none(), "Workspace not found");
+    ensure!(state.admin == actor, "workspace owner required");
+    Ok(workspace)
 }

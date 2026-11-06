@@ -28,8 +28,7 @@ async fn a_requirement_without_criteria_reads_as_no_criteria_over_mcp() -> Resul
             .ok_or_else(|| anyhow::anyhow!("{address} is not listed: {list}"))
     }
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["spec"] = types["requirement"].clone();

@@ -36,92 +36,24 @@ async fn no_store(
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     response
 }
-/// A read grant never changes state. Every API request other than GET or HEAD,
-/// to a known route or not, is refused before the route reads or validates the body.
-/// Other credentials pass; the route checks them as before.
-async fn refuse_read_writes(
-    State(app): State<App>,
-    request: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    use axum::{http::Method, response::IntoResponse};
-    let write = !matches!(*request.method(), Method::GET | Method::HEAD);
-    if write && request.uri().path().starts_with("/api/") {
-        let token = request
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "));
-        if let Some(token) = token
-            && !app.identities.contains_key(token)
-            && let Ok(Some(grant)) = store::token_actor(&app.pool, token).await
-            && let Err(refusal) = refuse_read_grant(grant.access)
-        {
-            return refusal.into_response();
-        }
-    }
-    next.run(request).await
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
     request_id: String,
     command: Value,
 }
+/// The actor of a request: a private service credential or a browser session. The browser
+/// write restriction is require_write_credential.
 async fn authenticate(
     app: &App,
     headers: &HeaderMap,
 ) -> std::result::Result<String, (StatusCode, Json<Value>)> {
-    authenticate_grant(app, headers)
-        .await
-        .map(|(actor, _)| actor)
-}
-/// Routes that change state call this. refuse_read_writes already refuses a read grant on
-/// /api/ writes; this is the second guard.
-async fn authenticate_write(
-    app: &App,
-    headers: &HeaderMap,
-) -> std::result::Result<String, (StatusCode, Json<Value>)> {
-    let (actor, access) = authenticate_grant(app, headers).await?;
-    refuse_read_grant(access)?;
-    Ok(actor)
-}
-fn refuse_read_grant(access: store::Access) -> std::result::Result<(), (StatusCode, Json<Value>)> {
-    if access == store::Access::Read {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": store::READ_ONLY_REFUSAL})),
-        ));
-    }
-    Ok(())
-}
-/// The actor and its access grant. Service credentials and browser sessions write;
-/// the browser write restriction is require_write_credential.
-async fn authenticate_grant(
-    app: &App,
-    headers: &HeaderMap,
-) -> std::result::Result<(String, store::Access), (StatusCode, Json<Value>)> {
     let actor = if headers.contains_key(header::AUTHORIZATION) {
         let token = headers
             .get(header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "));
-        match token {
-            Some(t) => match app.identities.get(t) {
-                Some(actor) => Some((actor.clone(), store::Access::Write)),
-                None => match store::token_actor(&app.pool, t).await {
-                    Ok(grant) => grant.map(|g| (g.agent, g.access)),
-                    Err(e) => {
-                        return Err((
-                            StatusCode::UNAUTHORIZED,
-                            Json(json!({"error": e.to_string()})),
-                        ));
-                    }
-                },
-            },
-            None => None,
-        }
+        token.and_then(|t| app.identities.get(t)).cloned()
     } else if let Some(token) = web_auth::cookie(headers, "joppa_session") {
         let session = sessions::actor(&app.pool, token).await.map_err(|_| {
             (
@@ -148,7 +80,7 @@ async fn authenticate_grant(
                     )
                 })?;
         }
-        session.map(|(actor, _)| (actor, store::Access::Write))
+        session.map(|(actor, _)| actor)
     } else {
         None
     };
@@ -183,14 +115,7 @@ fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
         Json(json!({"error":format!("{e:#}")})),
     )
 }
-/// Cookie sessions pass the shared origin check; bearer calls carry no ambient credential.
-fn check_session_origin(headers: &HeaderMap) -> std::result::Result<(), (StatusCode, Json<Value>)> {
-    if headers.contains_key(header::AUTHORIZATION) {
-        return Ok(());
-    }
-    web_auth::check_origin(headers).map_err(auth_error)
-}
-/// Browser sessions can read product data; writes require agent/service credentials.
+/// Browser sessions can read product data; writes require service credentials.
 fn require_write_credential(
     headers: &HeaderMap,
 ) -> std::result::Result<(), (StatusCode, Json<Value>)> {
@@ -215,9 +140,6 @@ use reads::*;
 #[path = "web_search.rs"]
 mod search_route;
 use search_route::*;
-#[path = "web_reports.rs"]
-mod reports;
-use reports::*;
 #[path = "web_commands.rs"]
 mod commands;
 use commands::*;

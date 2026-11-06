@@ -42,7 +42,7 @@ pub(super) async fn create_workspace(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to create a workspace"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let workspace = uuid::Uuid::new_v4().to_string();
     let command = Command::Workspace {
@@ -70,7 +70,7 @@ pub(super) async fn grant_email(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to grant access"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     result(store::grant_email(&app.pool, &body.workspace, &actor, &body.email).await)
 }
@@ -93,7 +93,7 @@ pub(super) async fn grant_domain(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to grant access"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     result(store::grant_domain(&app.pool, &body.workspace, &actor, &body.domain).await)
 }
@@ -116,7 +116,7 @@ pub(super) async fn rename_workspace(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to rename a workspace"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let command = Command::UpdateWorkspace(joppa::commands::UpdateWorkspaceOp {
         title: Some(body.title.clone()),
@@ -148,7 +148,7 @@ pub(super) async fn delete_workspace(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to delete a workspace"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let command = Command::DeleteWorkspace {
         reason: "Deleted in Settings".into(),
@@ -180,7 +180,7 @@ pub(super) async fn remove_access(
     if headers.contains_key(header::AUTHORIZATION) {
         return Err(auth_error("Sign in with the browser to remove access"));
     }
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let ws = &body.workspace;
     result(match (&body.member, &body.email, &body.domain) {

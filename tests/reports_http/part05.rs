@@ -8,11 +8,8 @@ async fn a_listed_test_without_a_result_is_not_run_and_grey() -> Result<()> {
     let w = world().await?;
     w.record("c1c1c1c", outcomes(&[("opens", "pass")])).await?;
     let s = w.status().await?;
-    // An agent token reads the same grey tone.
-    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
-    ensure!(code == 200, "{code} {created}");
-    let bot = created["token"].as_str().unwrap();
-    ensure!(tone_at(&w.http, &w.base, bot, "ac:key-rights").await? == "grey");
+    // The agent reads the same grey tone.
+    ensure!(tone_at(&w.http, &w.base, &w.token, "ac:key-rights").await? == "grey");
     let test = |address: &str| {
         s["tests"]
             .as_array()

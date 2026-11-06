@@ -5,7 +5,7 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 
 ## Requests
 
-- MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or an agent token.
+- MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or a private service credential of the server. An agent names itself with `alias`.
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
 - Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `timeline`, `history`, `tree` and `dependencies` under it.
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
@@ -180,7 +180,7 @@ A command request without an Authorization header gets 403, also with a session 
 The browser never stores bearer tokens. A missing Google configuration fails closed.
 
 The board is read-only for content. The Settings page needs a browser session for its writes:
-it creates a workspace, renames or deletes it, grants access and issues agent tokens.
+it creates a workspace, renames or deletes it and grants access.
 
 ## MCP authentication
 

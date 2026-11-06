@@ -14,12 +14,7 @@ async fn a_criterion_save_cannot_set_a_test_result() -> Result<()> {
     };
     let s = w.status().await?;
     ensure!(x_status(&s) == Some(json!("not_run")), "{s}");
-    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
-    ensure!(
-        code == 200 && created["token"].as_str().is_some_and(|t| !t.is_empty()),
-        "{code} {created}"
-    );
-    let bot = created["token"].as_str().unwrap().to_owned();
+    let bot = w.token.clone();
     let save = |data: Value, criterion: Value| {
         let command = json!({"op":"save_object","kind":"ac","id":"key-rights","revision":criterion["current_revision"],"parent":criterion["document"]["parent"],"data":data,"links":criterion["document"]["links"],"reason":"Save the criterion"});
         post(

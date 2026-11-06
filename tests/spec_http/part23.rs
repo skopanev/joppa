@@ -16,26 +16,8 @@ async fn mcp_call(w: &World, token: &str, name: &str, arguments: Value) -> Resul
     Ok(reply["result"].clone())
 }
 
-/// Counts of everything a write can change: journal events, tokens, files and reports.
-async fn stored_counts(w: &World) -> Result<Vec<i64>> {
-    let conn = w.pool.get().await?;
-    let row = conn
-        .query_one(
-            "SELECT (SELECT count(*) FROM joppa.events WHERE workspace=$1),
-                    (SELECT count(*) FROM joppa.agent_tokens),
-                    (SELECT count(*) FROM joppa.agent_token_revocations),
-                    (SELECT count(*) FROM joppa.test_reports),
-                    (SELECT count(*) FROM joppa.command_receipts)",
-            &[&w.ws],
-        )
-        .await?;
-    let mut counts: Vec<i64> = (0..5).map(|i| row.get(i)).collect();
-    counts.push(fake_spaces::start().keys().len() as i64);
-    Ok(counts)
-}
-
 /// Committed rows that a write can change, each in a stable order: the workspace journal and
-/// its position, current state with members, receipts, tokens, reports and all stored files.
+/// its position, current state with members, receipts, reports and all stored files.
 async fn saved_rows(w: &World) -> Result<Value> {
     let conn = w.pool.get().await?;
     let mut saved = json!({});
@@ -49,7 +31,6 @@ async fn saved_rows(w: &World) -> Result<Value> {
         "state_revisions",
         "board_cache",
         "command_receipts",
-        "agent_tokens",
         "test_reports",
     ] {
         let rows: String = conn
@@ -64,20 +45,13 @@ async fn saved_rows(w: &World) -> Result<Value> {
     let row = conn
         .query_one(
             "SELECT (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)),'[]')::text
-                       FROM joppa.agent_token_revocations r JOIN joppa.agent_tokens t ON t.id=r.token_id WHERE t.workspace=$1),
-                    (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)),'[]')::text
                        FROM joppa.test_results r JOIN joppa.test_reports t ON t.id=r.report_id WHERE t.workspace=$1),
                     (SELECT COALESCE(max(position),0) FROM joppa.events WHERE workspace=$1)",
             &[&w.ws],
         )
         .await?;
-    for (i, name) in ["agent_token_revocations", "test_results"]
-        .into_iter()
-        .enumerate()
-    {
-        saved[name] = serde_json::from_str(row.get(i))?;
-    }
-    saved["position"] = json!(row.get::<_, i64>(2));
+    saved["test_results"] = serde_json::from_str(row.get(0))?;
+    saved["position"] = json!(row.get::<_, i64>(1));
     saved["files"] = json!(fake_spaces::start().keys());
     Ok(saved)
 }

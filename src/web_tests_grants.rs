@@ -107,7 +107,7 @@ async fn a_signed_in_person_reads_a_newly_granted_workspace_after_the_next_page_
     assert_eq!(ready["actor"], alex.as_str());
     let alex_cookie = session(&headers);
     assert_eq!(scalar(&app, MEMBER_OF, &[&w, &alex]).await, 0);
-    // S grants W. Token requests for alex and for an agent enroll nobody.
+    // S grants W. A token request of alex enrolls nobody.
     plain(add_email(&app, &sam_cookie, &w, "alex@example.com").await).unwrap();
     let granted = members_and_grants(&app, &w, &sam_cookie).await;
     assert_eq!(granted.0, json!({sam.clone():"human"}));
@@ -119,11 +119,6 @@ async fn a_signed_in_person_reads_a_newly_granted_workspace_after_the_next_page_
     assert_eq!(listed(&app, bearer.clone()).await, vec![home.clone()]);
     let refused = plain(read(State(app.clone()), Path(w.clone()), bearer).await);
     assert_eq!(refused.unwrap_err().0, StatusCode::NOT_FOUND);
-    let agent = store::create_agent_token(pool, &control, &sam, &format!("bot-{id}"), None).await?;
-    let mut bearer = HeaderMap::new();
-    let token = agent["token"].as_str().unwrap();
-    bearer.insert(header::AUTHORIZATION, format!("Bearer {token}").parse()?);
-    assert_eq!(listed(&app, bearer).await, vec![control.clone()]);
     assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, granted);
     // Alex reloads twice with the same session; only the first reload enrolls.
     let events = "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND actor='joppa-access' AND request_id=$2";

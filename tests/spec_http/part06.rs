@@ -5,8 +5,7 @@
 async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
     // done-is-not-green-ac2
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     types["job"] = types["task"].clone();
@@ -114,8 +113,7 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
 async fn an_agent_cannot_supply_the_actor_of_a_write() -> Result<()> {
     // no-shared-credentials-ac1
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let error = "actor comes from the identity, not the request";
     let command = json!({"op":"save_object","kind":"note","id":"identity-guard","revision":0,"parent":null,"data":{"title":"Identity guard","owner":"owner","body":"Business context","actor":"business actor","source":{"actor":"skopanev"}},"reason":"Keep the authenticated author"});
     let request_id = uuid::Uuid::new_v4().to_string();

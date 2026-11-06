@@ -154,8 +154,7 @@ async fn a_signal_keeps_its_channel_author_and_time() -> Result<()> {
 async fn a_granted_agent_write_records_its_own_journal_identity() -> Result<()> {
     // agent-acts-within-grant-ac1
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let request_id = uuid::Uuid::new_v4().to_string();
     let command = json!({"op":"save_object","kind":"note","id":"agent-author","revision":0,"parent":null,"data":{"title":"The granted agent writes as itself","owner":"owner","body":"The owner and author have separate meanings","source":{"actor":"business source"}},"reason":"Record the authenticated agent author"});
     let response = w

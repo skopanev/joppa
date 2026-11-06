@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 #[path = "fake_spaces.rs"]
 pub mod fake_spaces;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -32,7 +32,7 @@ pub async fn write(
 }
 
 /// A workspace with rows in every kind of table: journal, projections, receipts, grants,
-/// tokens, test reports and an attachment. `shared` is attached in it too.
+/// test reports and an attachment. `shared` is attached in it too.
 pub async fn workspace(
     pool: &deadpool_postgres::Pool,
     prefix: &str,
@@ -99,8 +99,6 @@ pub async fn workspace(
     }
     store::grant_email(pool, &ws, "owner", "lena@example.org").await?;
     store::grant_domain(pool, &ws, "owner", "example.net").await?;
-    let token = store::create_agent_token(pool, &ws, "owner", "helper", None).await?;
-    store::revoke_agent_token(pool, &ws, "owner", token["id"].as_i64().context("id")?).await?;
     store::record_results(
         pool,
         &ws,
@@ -133,10 +131,6 @@ pub async fn rows(pool: &deadpool_postgres::Pool, ws: &str) -> Result<BTreeMap<S
         (
             "test_report_receipts",
             "SELECT count(*) FROM joppa.test_report_receipts r JOIN joppa.test_reports p ON p.id=r.report_id WHERE p.workspace=$1",
-        ),
-        (
-            "agent_token_revocations",
-            "SELECT count(*) FROM joppa.agent_token_revocations r JOIN joppa.agent_tokens t ON t.id=r.token_id WHERE t.workspace=$1",
         ),
     ] {
         out.insert(name.into(), conn.query_one(sql, &[&ws]).await?.get(0));

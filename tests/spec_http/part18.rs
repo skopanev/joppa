@@ -5,8 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let empty = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     ensure!(
         empty["items"].as_array().is_some_and(Vec::is_empty),
@@ -27,8 +26,7 @@ async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_note_linked_to_any_object_also_appears_in_the_inbox() -> Result<()> {
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     // A note has no parent: it links to the object that it informs.
     w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":null,"data":{"title":"Under","owner":"owner","body":"About keys"},"links":[{"target":"requirement:key","relation":"related"}],"reason":"Save"}))
         .await?;

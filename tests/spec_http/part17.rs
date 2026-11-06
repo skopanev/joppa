@@ -52,14 +52,8 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
         "{error}"
     );
 
-    // links-in-workspace-ac1: the bot holds a write grant for workspace A only.
-    let grant = store::create_agent_token(&a.pool, &a.ws, "owner", "bot", Some("write")).await?;
-    let bot = grant["token"].as_str().unwrap();
-    let stored = store::token_actor(&a.pool, bot).await?.unwrap();
-    ensure!(
-        stored.agent == "bot" && stored.workspace == a.ws && stored.access == store::Access::Write,
-        "{stored:?}"
-    );
+    // links-in-workspace-ac1: the bot writes in workspace A.
+    let bot = a.bot.as_str();
     a.note("also-a", 0, "Also A", "lives in A", json!([]))
         .await?;
     let link = |revision: u32, target: &'static str| {

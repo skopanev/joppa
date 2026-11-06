@@ -112,14 +112,6 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/timeline", get(timeline))
         .route("/api/workspaces/{workspace}/history", get(history))
         .route("/api/workspaces/{workspace}/tree", get(tree_schema))
-        .route(
-            "/api/workspaces/{workspace}/agent-tokens",
-            get(list_agent_tokens).post(create_agent_token),
-        )
-        .route(
-            "/api/workspaces/{workspace}/agent-tokens/{id}/revoke",
-            post(revoke_agent_token),
-        )
         .route("/api/workspaces/{workspace}/commands", post(command))
         .route("/api/workspaces/{workspace}/order", post(reorder))
         .route("/api/workspaces/{workspace}/dependencies", post(dependency))
@@ -131,11 +123,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             )),
         )
         .route("/api/workspaces/{workspace}/blobs/{hash}", get(download))
-        .with_state(state.clone())
-        .layer(axum::middleware::from_fn_with_state(
-            state,
-            refuse_read_writes,
-        ))
+        .with_state(state)
         .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     eprintln!("joppa: http://{host}:{port}");

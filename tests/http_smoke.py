@@ -33,14 +33,19 @@ for workspace, actor, title in [
     (other_ws, 'other-owner', 'Private second workspace'),
     (mcp_ws, 'owner', 'MCP authoring checks'),
 ]:
-    subprocess.run(
-        [BIN, 'command', workspace, 'server-create'],
-        env={**env, 'JOPPA_ACTOR': actor},
-        input=json.dumps({'op': 'workspace', 'title': title}),
-        text=True,
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
+    # The server CLI creates the workspace and enrolls the service credential of the agent.
+    for request_id, command in [('server-create', {'op': 'workspace', 'title': title}),
+                                ('server-enroll', {'op': 'enroll_service', 'id': 'agent', 'role': 'agent'})]:
+        if command['op'] == 'enroll_service' and workspace == other_ws:
+            continue
+        subprocess.run(
+            [BIN, 'command', workspace, request_id],
+            env={**env, 'JOPPA_ACTOR': actor},
+            input=json.dumps(command),
+            text=True,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 with socket.socket() as s:
     s.bind(('127.0.0.1', 0))
     port = s.getsockname()[1]

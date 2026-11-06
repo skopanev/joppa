@@ -130,7 +130,6 @@ async function fixture(records, configured = types, contextOptions = {}) {
     try { await context.close(); await live.stop(); } finally { assert.deepEqual(errors, []); }
   };
   try {
-    await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, true);
     const schema = await api('/tree');
     // Only the workspace owner sets the tree schema, archives and restores.

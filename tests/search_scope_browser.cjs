@@ -40,14 +40,11 @@ test('search-all-workspaces-board: the board opens a result of another workspace
   const f = await fixture(types);
   try {
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
-    // alex creates the second workspace in the browser and issues an agent token there.
+    // alex creates the second workspace in the browser and writes in it with a service token.
     const second = await f.page.evaluate(async () => (await fetch('/api/workspaces', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: 'Second board'})})).json());
-    const issued = await f.page.evaluate(async id => (await fetch('/api/workspaces/' + id + '/agent-tokens', {method: 'POST',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({agent: 'helper'})})).json(), second.id);
-    assert.ok(issued.token, JSON.stringify(issued));
     const saved = await fetch(f.live.root + '/api/workspaces/' + second.id + '/commands', {method: 'POST',
-      headers: {'Authorization': 'Bearer ' + issued.token, 'Content-Type': 'application/json'},
+      headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
       body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'domain', id: 'keys', revision: 0,
         parent: null, data: {title: 'Passkey sign in', owner: 'alex'}, reason: 'Define the browser fixture'}})});
     assert.equal(saved.status, 200, await saved.text());

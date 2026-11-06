@@ -98,7 +98,6 @@ async function workspaces(live, browser, records) {
     const tree = await api(token, workspace, '/tree');
     await command(token, workspace, {op: 'set_tree_schema', revision: tree.current_revision, types, reason: 'Configure the switch tree'});
   };
-  await api(live.owner, live.ws, '/agent-tokens', {agent: 'bot'});
   await command(live.owner, live.ws, {op: 'member', id: 'alex', role: 'human'});
   // Only the workspace owner sets the tree schema.
   await configure(live.owner, live.ws);

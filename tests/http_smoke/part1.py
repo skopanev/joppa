@@ -73,9 +73,8 @@ with urllib.request.urlopen(base+'/auth/google/callback?state=forged&error=%3Csc
 
 status, body = command({'op': 'workspace', 'title': 'Forbidden remote create'})
 assert status == 409 and 'server CLI' in body
-# The member command takes only people; an agent enrolls through its token.
+# The member command takes only people; the server CLI enrolls an agent.
 assert command({'op': 'member', 'id': 'agent', 'role': 'agent'})[0] == 409
-assert request(f'/api/workspaces/{ws}/agent-tokens', {'agent': 'agent'})[0] == 200
 ok({'op':'member','id':'legal','role':'human'})
 ok({'op':'member','id':'reviewer','role':'human'})
 def save(kind, ident, parent, data, reason='Setup'):

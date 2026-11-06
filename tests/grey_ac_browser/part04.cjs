@@ -20,12 +20,10 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
     const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'W1 ' + crypto.randomUUID()}});
     assert.equal(created.status(), 200);
     const {id: owned, title: w1} = await created.json();
-    for (const [suffix, body] of [['/commands', {request_id: crypto.randomUUID(), command: {op: 'member', id: f.live.maria, role: 'human'}}],
-      ['/agent-tokens', {agent: 'planner-bot'}]]) {
-      const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + suffix, {method: 'POST',
-        headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-      assert.equal(added.status, 200, await added.text());
-    }
+    const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(owned) + '/commands', {method: 'POST',
+      headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
+      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', id: f.live.maria, role: 'human'}})});
+    assert.equal(added.status, 200, await added.text());
     // A person with an email grant is not yet a member of W1. Maria is a member and also has an email grant.
     for (const email of ['pending@example.com', f.live.maria_email]) {
       const granted = await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root}, data: {workspace: owned, email}});
@@ -47,7 +45,7 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       // The page reads two lists, no single workspace and no name of the person.
       assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
       await select.selectOption(owned);
-      // One list holds the members, then the emails that have not signed in. The agent member is not on the page.
+      // One list holds the members, then the emails that have not signed in.
       // Maria has a Google identity, so her row shows "name <email>", and her email grant has no second row.
       const members = f.page.getByRole('list', {name: 'People with access', exact: true});
       assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(),
@@ -56,7 +54,6 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       assert.deepEqual(await members.locator('li').evaluateAll(rows => rows.map(r => !!r.querySelector('button.remove'))), [false, true, true]);
       assert.equal(await f.page.locator('#owner-panel ul').count(), 1);
       const panel = f.page.locator('#workspace-panel');
-      assert.ok(!(await panel.innerText()).includes('planner-bot'));
       for (const item of [select, members, ...await members.locator('li').all()]) {
         assert.ok(inside(await item.boundingBox(), width));
       }

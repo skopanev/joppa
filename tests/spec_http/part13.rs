@@ -5,8 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn rename_and_move_keep_the_address_and_the_item_id() -> Result<()> {
     let w = world().await?;
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", Some("write")).await?;
-    let bot = grant["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let read = || async {
         let reply = w
             .http
@@ -55,8 +54,7 @@ async fn rename_and_move_keep_the_address_and_the_item_id() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_move_under_a_domain_is_refused_and_changes_nothing() -> Result<()> {
     let w = world().await?;
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", Some("write")).await?;
-    let bot = grant["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let read = || async {
         let reply = w
             .http

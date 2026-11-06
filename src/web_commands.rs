@@ -8,7 +8,7 @@ pub(super) async fn command(
     Json(request): Json<Value>,
 ) -> ApiResult {
     require_write_credential(&headers)?;
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     if let Err(error) = joppa::commands::reject_actor_field(&request)
         .and_then(|()| joppa::commands::reject_actor_field(&request["command"]))
     {
@@ -54,7 +54,7 @@ pub(super) async fn reorder(
     Json(request): Json<OrderRequest>,
 ) -> ApiResult {
     require_write_credential(&headers)?;
-    let actor = authenticate_write(&app, &headers).await?;
+    let actor = authenticate(&app, &headers).await?;
     // Legacy integration endpoint; browser sessions cannot reorder the tree.
     web_auth::check_origin(&headers).map_err(auth_error)?;
     let command = Command::ReorderTree {

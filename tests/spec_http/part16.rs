@@ -130,8 +130,7 @@ async fn configured_description_without_marker_is_refused(missing: &str) -> Resu
             && archived["document"]["data"]["body"] == "Original text",
         "The rule changed archived data: {archived}"
     );
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = grant["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     for kind in ["ac", "observation"] {
         let parent = if kind == "ac" {
             json!("requirement:key")

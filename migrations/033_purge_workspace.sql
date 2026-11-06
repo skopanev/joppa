@@ -22,7 +22,6 @@ BEGIN
     PERFORM set_config('joppa.purge_workspace', target, true);
     DELETE FROM joppa.test_results WHERE report_id IN (SELECT id FROM joppa.test_reports WHERE workspace = target);
     DELETE FROM joppa.test_report_receipts WHERE report_id IN (SELECT id FROM joppa.test_reports WHERE workspace = target);
-    DELETE FROM joppa.agent_token_revocations WHERE token_id IN (SELECT id FROM joppa.agent_tokens WHERE workspace = target);
     -- Every table with a workspace column, also a table that a later migration adds.
     FOR table_name IN
         SELECT c.table_name FROM information_schema.columns c

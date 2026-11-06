@@ -78,13 +78,11 @@ fn failing_refuses() -> Value {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
-    // old-results-history-ac1: agent bot reads A with its own token.
+    // old-results-history-ac1: the agent reads A with its own token.
     let w = world().await?;
     w.record("c1c1c1c", failing_refuses()).await?;
-    let (code, created) = post(&w, &w.owner, "/agent-tokens", json!({"agent":"bot"})).await?;
-    ensure!(code == 200, "{code} {created}");
-    let bot = created["token"].as_str().unwrap();
-    // The bot reads the tone of each test node over HTTP, and the status names commit and message.
+    let bot = w.token.as_str();
+    // The agent reads the tone of each test node over HTTP, and the status names commit and message.
     let mut tones: Vec<(Value, Value)> = test_nodes(&w.http, &w.base, bot, "ac:key-rights")
         .await?
         .iter()
@@ -95,7 +93,7 @@ async fn each_test_shows_its_status_commit_and_message() -> Result<()> {
         tones == [(json!(A), json!("green")), (json!(B), json!("red"))],
         "{tones:?}"
     );
-    let s = store::test_status(&w.pool, w.root_ws().1, "bot", "ac:key-rights").await?;
+    let s = store::test_status(&w.pool, w.root_ws().1, "agent", "ac:key-rights").await?;
     ensure!(
         test_of(&s, A)["status"] == "pass"
             && test_of(&s, A)["commit"] == "c1c1c1c"

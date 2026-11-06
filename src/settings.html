@@ -105,8 +105,8 @@ try{
 </main>
 <script>
 // The page reads two lists: the workspaces of the session and the owned workspaces with their
-// people and grants. It reads no single workspace. People show by name and email; agents,
-// member IDs and agent tokens stay off this page.
+// people and grants. It reads no single workspace. People show by name and email; agents and
+// member IDs stay off this page.
 const $=id=>document.getElementById(id);
 const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
 // A long request disables its button and shows a spinner in it until the answer comes.

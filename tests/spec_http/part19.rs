@@ -5,8 +5,7 @@
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> Result<()> {
     let w = world().await?;
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let inbox = async || -> Result<(bool, Value)> {
         let list = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
         let listed = list["items"]

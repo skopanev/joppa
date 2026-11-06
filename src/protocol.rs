@@ -19,7 +19,6 @@ const AUTHORING_TEXT: &str = "Concise text (max field_max_length of the type, de
 pub async fn handle(
     pool: &Pool,
     actor: &str,
-    access: store::Access,
     msg: &Value,
     embedder: Option<&joppa::embeddings::Embedder>,
     session_alias: Option<&str>,
@@ -51,8 +50,6 @@ pub async fn handle(
             tool("joppa_batch", "Append up to 100 operations atomically. Each new or changed value in object data holds at most the field_max_length of its type (default 1024 characters); split a longer text into child objects or attach a file with joppa_attach. Over 1 kb: prefer attach as a file. Link objects only with the links array of save_object or schema reference fields, never with lists in object text. Add findings, progress and supplements only as comments: {\"op\":\"note\",\"target\":\"kind:id\",\"id\":\"<unique>\",\"text\":\"...\"}; never rewrite or extend object text for them. A note id has 1 to 120 ASCII letters, digits, \"-\", \"_\" or \".\". Optional ref labels let later commands refer to generated IDs with {\"$ref\":\"label/id\"}, and to a saved object with {\"$ref\":\"label/address\"}, for example as the parent. Optional defaults gives save_object fields, for example reason and data.owner: each save_object of the batch takes each default field that it omits, data merges by key, and a field of the command wins. Read joppa_help for schemas and ASD-STE100 writing rules. Prefer English for new technical text. Retry identical input with the same request_id.", json!({"workspace":{"type":"string"},"request_id":{"type":"string"},"defaults":{"type":"object","description":"save_object fields for each save_object of the batch that omits them, for example {\"reason\":\"...\",\"data\":{\"owner\":\"...\"}}. No op."},"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"ref":{"type":"string"},"command":authoring_command_schema()},"required":["command"],"additionalProperties":false}}}), json!(["workspace","request_id","operations"])),
             tool("joppa_help", "Get operation shapes and writing rules. Read before authoring commands. Without section or op, the reply gives a short table of contents: sections, ops and hint. Supply section (operations, writing, objects, search, tree, examples) to read one section, or op to read the shape of one operation. The sections tree and examples need workspace: tree gives the types with their questions. The title and body of an object answer the question of its type. Over 1 kb: prefer attach as a file. The reply gives this advice as field_hint.", json!({"workspace":{"type":"string"},"section":{"type":"string","enum":["operations","writing","objects","search","tree","examples"],"description":"One section of the help."},"op":{"type":"string","description":"One operation name: the reply gives its required fields and callers."}}), json!([]))
         ]).as_array().into_iter().flatten().chain(files::tools().iter())
-            // A read-only grant sees only the tools that it can call.
-            .filter(|t| access != store::Access::Read || t["name"].as_str().is_some_and(|n| READ_TOOLS.contains(&n)))
             .cloned().collect::<Vec<_>>()})),
         "tools/call" => {
             // The alias leaves the arguments and names the agent of each write.
@@ -61,7 +58,7 @@ pub async fn handle(
             match args.map_or(Ok(None), |a| joppa::actor_alias::take(a, session_alias)) {
                 Err(e) => Err(e),
                 Ok(alias) => {
-                    let work = call(pool, actor, access, &msg, embedder);
+                    let work = call(pool, actor, &msg, embedder);
                     joppa::actor_alias::scope(alias, work).await
                 }
             }
@@ -109,31 +106,15 @@ fn authoring_command_schema() -> Value {
         }
     })
 }
-/// The only tools a read grant may call. Any other tool, known or not, is refused.
-const READ_TOOLS: &[&str] = &[
-    "joppa_list",
-    "joppa_search",
-    "joppa_tree",
-    "joppa_objects",
-    "joppa_timeline",
-    "joppa_history",
-    "joppa_help",
-    "joppa_attachments",
-];
 async fn call(
     pool: &Pool,
     actor: &str,
-    access: store::Access,
     msg: &Value,
     embedder: Option<&joppa::embeddings::Embedder>,
 ) -> anyhow::Result<Value> {
     let a = &msg["params"]["arguments"];
     let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
     let name = msg["params"]["name"].as_str().unwrap_or("");
-    // Refused before any store call.
-    if access == store::Access::Read && !READ_TOOLS.contains(&name) {
-        anyhow::bail!(store::READ_ONLY_REFUSAL);
-    }
     // requirement:read-contract: the compact read shape.
     if name == "joppa_objects" {
         return reads::compact(pool, actor, name, a).await;

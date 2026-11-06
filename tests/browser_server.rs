@@ -56,6 +56,8 @@ async fn serve() -> Result<()> {
         &json!({"op":"workspace","title":"Browser checks"}),
     )
     .await?;
+    // The service token of the agent bot writes in the fixture workspace.
+    store::enroll_service(&pool, &ws, "owner", "bot", "agent").await?;
     let cookie = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),

@@ -24,12 +24,6 @@ pub use objects::{
     ObjectScope, compact_list, item_workspace, link_page, read_objects, resolve_item_ids,
     tree_schema,
 };
-#[path = "store_grants.rs"]
-mod grants;
-pub use grants::{
-    Access, READ_ONLY_REFUSAL, TokenGrant, create_agent_token, list_agent_tokens,
-    revoke_agent_token, token_actor,
-};
 #[path = "store_record_results.rs"]
 mod record_results;
 #[path = "store_reports.rs"]

@@ -69,8 +69,6 @@ async function fixture(types, statuses) {
     finally { assert.deepEqual(pageErrors, []); }
   };
   try {
-    // An agent enrolls through its token; the member command takes only people.
-    await api('/agent-tokens', {agent: 'bot'}, live.owner);
     await command({op: 'member', id: 'alex', role: 'human'}, live.owner);
     const tree = await api('/tree');
     // Only the workspace owner sets the tree schema.

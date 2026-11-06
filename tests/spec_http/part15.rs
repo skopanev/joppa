@@ -24,8 +24,7 @@ async fn an_agent_without_membership_cannot_read_a_workspace_over_mcp() -> Resul
         )
         .await?;
     }
-    let token = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = token["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     let read = |workspace: String| {
         let w = &w;
         async move {
@@ -113,8 +112,7 @@ async fn configured_required_source_refuses_an_agent_write_without_a_source() ->
         history["document"] == original["document"],
         "The source rule changed a historical revision: {history}"
     );
-    let grant = store::create_agent_token(&w.pool, &w.ws, "owner", "bot", None).await?;
-    let bot = grant["token"].as_str().unwrap();
+    let bot = w.bot.as_str();
     for kind in ["note", "feedback"] {
         for transport in ["http", "mcp"] {
             let id = format!("{kind}-{transport}");
