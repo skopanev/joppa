@@ -40,8 +40,12 @@ pub(super) async fn read_one(
             .query("SELECT revision,document->>'at',document->>'actor',document->>'reason',document->>'alias' FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 ORDER BY revision", &[&workspace, &key])
             .await?
             .iter()
-            .map(|r| json!({"revision": r.get::<_, i32>(0), "at": r.get::<_, Option<String>>(1),
-                "actor": r.get::<_, Option<String>>(2), "alias": r.get::<_, Option<String>>(4), "reason": r.get::<_, Option<String>>(3)}))
+            .map(|r| {
+                let mut header = json!({"revision": r.get::<_, i32>(0), "at": r.get::<_, Option<String>>(1),
+                    "actor": r.get::<_, Option<String>>(2), "reason": r.get::<_, Option<String>>(3)});
+                crate::actor_alias::put(&mut header, r.get::<_, Option<&str>>(4));
+                header
+            })
             .collect();
         return Ok(
             json!({"workspace":public,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"current_revision":current,"position":position,"revisions":revisions}),

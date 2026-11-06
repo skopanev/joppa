@@ -71,13 +71,14 @@ pub(super) async fn items(
             "position": position,
             "at": row.get::<_, String>(1),
             "actor": actor,
-            "alias": row.try_get::<_, Option<String>>("alias").ok().flatten(),
             "op": command["op"],
             "address": addresses[i],
             "kind": null,
             "title": null,
             "revision": null,
         });
+        let alias = row.try_get::<_, Option<&str>>("alias").ok().flatten();
+        crate::actor_alias::put(&mut item, alias);
         if command["op"] == "record_report" {
             let commit = command["commit"].as_str().unwrap_or_default();
             item["title"] = json!(format!("Test results {}", &commit[..commit.len().min(12)]));

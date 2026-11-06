@@ -133,7 +133,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         .as_array()
         .cloned()
         .unwrap_or_default();
-    for (name, count) in [("joppa_objects", 21), ("joppa_search", 14)] {
+    for (name, count) in [("joppa_objects", 22), ("joppa_search", 15)] {
         let tool = all.iter().find(|t| t["name"] == name);
         let properties = tool.map(|t| &t["inputSchema"]["properties"]);
         let described = properties.and_then(Value::as_object).is_some_and(|p| {

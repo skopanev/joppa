@@ -104,11 +104,11 @@ pub async fn read_history(
                 item["status"] = json!("processed");
                 item["processed"] = json!({
                     "actor": by,
-                    "alias": row.get::<_, Option<String>>(9),
                     "at": row.get::<_, Option<String>>(5),
                     "reason": row.get::<_, Option<String>>(6),
                     "nodes": serde_json::from_str::<Value>(&row.get::<_, Option<String>>(7).unwrap_or_else(|| "[]".into()))?,
                 });
+                crate::actor_alias::put(&mut item["processed"], row.get(9));
             }
             None => item["status"] = json!("open"),
         }
@@ -211,9 +211,11 @@ pub async fn mark_history(
         return Err(commands::ClientField("the entry is already processed").into());
     };
     tx.commit().await?;
-    Ok(
-        json!({"position": mark.position, "status": "processed", "actor": actor, "alias": alias, "at": row.get::<_, String>(0), "reason": mark.reason, "nodes": mark.nodes}),
-    )
+    Ok({
+        let mut reply = json!({"position": mark.position, "status": "processed", "actor": actor, "at": row.get::<_, String>(0), "reason": mark.reason, "nodes": mark.nodes});
+        crate::actor_alias::put(&mut reply, alias.as_deref());
+        reply
+    })
 }
 
 #[cfg(test)]

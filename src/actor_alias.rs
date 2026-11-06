@@ -51,6 +51,14 @@ pub async fn scope<F: std::future::Future>(alias: Option<String>, work: F) -> F:
     ALIAS.scope(alias, work).await
 }
 
+/// Give `item` the key alias only when the write has one, so a read without an alias keeps
+/// its earlier shape.
+pub fn put(item: &mut Value, alias: Option<&str>) {
+    if let Some(alias) = alias {
+        item["alias"] = Value::from(alias);
+    }
+}
+
 /// The alias of the current call, or None outside a call or without an alias.
 pub fn current() -> Option<String> {
     ALIAS.try_with(Clone::clone).ok().flatten()

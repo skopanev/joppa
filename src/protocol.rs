@@ -85,7 +85,7 @@ pub async fn handle(
 /// One tool. Every tool takes `alias`: the name of the agent that writes under the account of
 /// the session.
 pub(crate) fn tool(name: &str, description: &str, mut properties: Value, required: Value) -> Value {
-    properties["alias"] = json!({"type":"string","description":"Optional: the name of the agent that writes under this account, such as p1. History, the timeline, revisions, comments and files show it next to the actor. It changes no access. The header X-Joppa-Alias sets it for a session; this argument wins."});
+    properties["alias"] = json!({"type":"string","description":"Optional. Your agent name under this account, such as p1. The journal shows it next to the actor."});
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 fn authoring_command_schema() -> Value {
