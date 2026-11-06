@@ -70,6 +70,12 @@ pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()>
             return Err(RequiredField(rule.error().to_owned()).into());
         }
     }
+    for (field, rule) in &t.fields {
+        let value = data.get(field).unwrap_or(&Value::Null);
+        if let Some(refusal) = crate::field_types::refusal(field, rule, value) {
+            return Err(RequiredField(refusal).into());
+        }
+    }
     Ok(())
 }
 

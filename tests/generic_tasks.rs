@@ -51,6 +51,7 @@ fn configured() -> World {
                 index: None,
                 references: Default::default(),
                 required_fields: Default::default(),
+                fields: Default::default(),
                 parent_decision: false,
                 status: None,
                 process_fields: None,

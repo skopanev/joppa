@@ -150,6 +150,7 @@ async fn replay_concurrency_ids_and_schema_after_setup(
             index: None,
             references: Default::default(),
             required_fields: Default::default(),
+            fields: Default::default(),
             parent_decision: false,
             status: Some("none".into()),
             process_fields: None,

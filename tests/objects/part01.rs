@@ -68,6 +68,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
             index: None,
             references: Default::default(),
             required_fields: Default::default(),
+            fields: Default::default(),
             parent_decision: false,
             status: None,
             process_fields: None,

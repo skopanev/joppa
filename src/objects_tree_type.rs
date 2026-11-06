@@ -40,6 +40,9 @@ pub struct TreeType {
     pub references: BTreeMap<String, ReferenceRule>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub required_fields: BTreeMap<String, RequiredFieldRule>,
+    /// The type of each typed data field (field_types.rs).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, crate::field_types::FieldType>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub parent_decision: bool,
     /// How a node of this type gets its tone: own, children, links or none. Without a value the

@@ -61,6 +61,9 @@ pub fn set_schema(
     for (kind, t) in types {
         commands::identifier(kind)?;
         commands::nonempty(&t.title)?;
+        for (field, rule) in &t.fields {
+            crate::field_types::validate_rule(field, rule)?;
+        }
         ensure!(
             t.color.as_deref().is_none_or(|color| color.len() == 7
                 && color.starts_with('#')

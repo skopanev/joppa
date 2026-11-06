@@ -69,6 +69,23 @@ A rule object requires literal markers in a text field:
 - A rule applies to each save after it. `set_tree_schema` refuses the rule when a present object lacks the value.
 - HTTP returns 422 when a rule fails. MCP returns the configured error.
 
+## Field types
+
+Set `fields` on a type to give a data field its type:
+
+```json
+{"fields": {"env": {"type": "enum", "values": ["dev", "prod"]}, "urgent": {"type": "boolean"},
+  "size": {"type": "number"}, "tags": {"type": "list"}, "note": {"type": "text"}}}
+```
+
+- A type is `text`, `number`, `boolean`, `enum` or `list`. An enum needs `values`. A list may
+  name `values` that limit its elements. Another type has no values.
+- A name is a lowercase letter, then up to 31 lowercase letters, digits or `_`; not title or body.
+- A save refuses a value of another type: `env is one of dev, prod`, `urgent is true or false`,
+  `size is a number`, `tags is a list of texts`, `note is a text`. A null or an absent field has no value.
+- `set_tree_schema` refuses a rule that a present object breaks.
+- The board drop-down of a typed enum field in `filters` offers each of its values.
+
 ## Presentation
 
 - `color: "#RRGGBB"` colours the type on the board and in the schema diagram.

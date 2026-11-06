@@ -74,6 +74,9 @@ pub(super) async fn project_current(
     let dimensions = crate::filter_dimensions::dimensions(state);
     let filters =
         crate::filter_fields::values(state, current.filters.as_deref().unwrap_or_default());
+    // A typed enum field and a dimension offer each of their values.
+    let filters =
+        crate::filter_dimensions::with_values(filters, &crate::field_types::enum_values(state));
     let filters = crate::filter_dimensions::with_values(filters, &dimensions);
     let first_view = json!({"filters":filters,"dimensions":crate::filter_dimensions::listed(&dimensions),"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"hidden":state.hidden,"assignees":crate::filter_fields::assignees(state),"members":&state.members,
         "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
