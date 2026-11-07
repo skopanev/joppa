@@ -7,5 +7,15 @@
         Strict-Transport-Security "max-age=31536000"
         -Server
     }
-    reverse_proxy 127.0.0.1:6212
+    # A restart of up to 30 seconds holds each request until the service answers.
+    reverse_proxy 127.0.0.1:6212 {
+        lb_try_duration 30s
+        lb_try_interval 1s
+    }
+    # A longer stop, such as a deploy migration, gives a JSON-RPC answer to retry.
+    handle_errors 502 503 504 {
+        header Retry-After 30
+        header Content-Type application/json
+        respond `{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"Maintenance. Try in 30 seconds."}}` 503
+    }
 }

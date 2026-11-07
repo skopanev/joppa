@@ -77,9 +77,25 @@ class PlatformConfig(unittest.TestCase):
             "X-Frame-Options DENY",
             'Strict-Transport-Security "max-age=31536000"',
             "-Server",
-            "reverse_proxy 127.0.0.1:6212",
+            "reverse_proxy 127.0.0.1:6212 {",
         ):
             self.assertIn(line, lines)
+
+    def test_caddy_holds_a_restart_and_answers_a_longer_stop_with_a_retry(self):
+        text = read("Caddyfile")
+        lines = [line.strip() for line in text.splitlines()]
+        start = lines.index("reverse_proxy 127.0.0.1:6212 {")
+        self.assertEqual(lines[start + 1:start + 4], ["lb_try_duration 30s", "lb_try_interval 1s", "}"])
+        start = lines.index("handle_errors 502 503 504 {")
+        self.assertEqual(lines[start + 1:start + 3],
+                         ["header Retry-After 30", "header Content-Type application/json"])
+        respond = lines[start + 3]
+        self.assertTrue(respond.startswith("respond `") and respond.endswith("` 503"), respond)
+        body = json.loads(respond[len("respond `"):-len("` 503")])
+        self.assertEqual(body["jsonrpc"], "2.0")
+        self.assertIsNone(body["id"])
+        self.assertEqual(body["error"]["code"], -32000)
+        self.assertEqual(body["error"]["message"], "Maintenance. Try in 30 seconds.")
 
     def test_service_runs_serve_on_loopback_with_memory_and_task_limits(self):
         values = unit("joppa.service")
