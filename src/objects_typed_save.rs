@@ -4,8 +4,7 @@ use super::*;
 /// Apply the typed command of a saved document, or keep the document as an override.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn typed_save(
-    w: &Workspace,
-    candidate: &mut Workspace,
+    w: &mut Workspace,
     actor: &str,
     command: &Command,
     position: u64,
@@ -27,22 +26,24 @@ pub(crate) fn typed_save(
     let parent = &parent
         .as_deref()
         .map(|key| resolve_address(w, key).to_owned());
+    let criterion = schema(w).types[kind].role == "ac";
     if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
-        candidate.document_overrides.remove(key);
         // A criterion that moves to another requirement leaves the old one first.
-        if let Some(out) = criterion_move_out(w, kind, id, &cmd, reason)? {
-            commands::apply_inner(candidate, actor, &out, position, at)?;
+        let out = criterion_move_out(w, kind, id, &cmd, reason)?;
+        w.document_overrides.remove(key);
+        if let Some(out) = out {
+            commands::apply_inner(w, actor, &out, position, at)?;
         }
-        commands::apply_inner(candidate, actor, &cmd, position, at)?;
+        commands::apply_inner(w, actor, &cmd, position, at)?;
         // A criterion save changes only that criterion: its siblings keep their revisions.
-        let siblings = schema(w).types[kind].role != "ac"
-            || !commands::rule_applies(candidate, commands::SINGLE_CRITERION_SAVE, position);
+        let siblings =
+            !criterion || !commands::rule_applies(w, commands::SINGLE_CRITERION_SAVE, position);
         // The specification revision names the criterion save that made it.
-        let spec_reason = (schema(w).types[kind].role == "ac"
-            && commands::rule_applies(candidate, commands::CRITERION_SAVE_REASON, position))
+        let spec_reason = (criterion
+            && commands::rule_applies(w, commands::CRITERION_SAVE_REASON, position))
         .then(|| format!("Criterion {key} changed: {reason}"));
         sync_with(
-            candidate,
+            w,
             actor,
             &cmd,
             position,
@@ -51,7 +52,7 @@ pub(crate) fn typed_save(
             spec_reason.as_deref(),
         );
     } else {
-        candidate.document_overrides.insert(key.to_owned());
+        w.document_overrides.insert(key.to_owned());
         let owner = string(data, "owner")?;
         commands::human(w, &owner)?;
         if ["project", "intake", "point"].contains(&kind.as_str()) && !w.schema_migrated {
@@ -72,12 +73,10 @@ pub(crate) fn typed_save(
                         string(data, "title")? == *id,
                         "project title is its stable identifier"
                     );
-                    candidate
-                        .projects
-                        .insert(id.clone(), string(data, "repository")?);
+                    w.projects.insert(id.clone(), string(data, "repository")?);
                 }
                 "intake" => {
-                    let i = candidate.intake.get_mut(id).context("unknown intake")?;
+                    let i = w.intake.get_mut(id).context("unknown intake")?;
                     ensure!(
                         data["author"] == i.author && data["title"] == *id,
                         "source author and id cannot change"
@@ -87,7 +86,7 @@ pub(crate) fn typed_save(
                 }
                 "point" => {
                     let (source, point) = id.split_once('/').context("invalid source point")?;
-                    let p = candidate
+                    let p = w
                         .intake
                         .get_mut(source)
                         .and_then(|i| i.points.get_mut(point))
@@ -106,7 +105,7 @@ pub(crate) fn typed_save(
                 }
                 _ => unreachable!(),
             }
-            sync(candidate, actor, command, position, at);
+            sync(w, actor, command, position, at);
         }
     }
     Ok(())

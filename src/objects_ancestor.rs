@@ -25,21 +25,42 @@ pub fn save(
     position: u64,
     at: &str,
 ) -> Result<()> {
+    let old = saved_current(w, command);
+    // A replay stops at any refused event, so it writes into the state without a copy.
+    if w.replaying {
+        if save_into(w, actor, command, position, at, false)? {
+            mark_contract(old.as_ref(), w, command);
+        }
+        return Ok(());
+    }
     if let Some(mut candidate) = saved(w, actor, command, position, at, false)? {
-        mark_contract(w, &mut candidate, command);
+        mark_contract(old.as_ref(), &mut candidate, command);
         *w = candidate;
     }
     Ok(())
 }
 
+/// The current revision of the object that a save_object names, before the save.
+fn saved_current(w: &Workspace, command: &Command) -> Option<ObjectRevision> {
+    let Command::SaveObject(crate::commands::SaveObjectOp { kind, id, .. }) = command else {
+        return None;
+    };
+    let key = address(kind, id);
+    Some(w.objects.get(resolve_address(w, &key))?.current().clone())
+}
+
 /// A new revision that changes only the test list keeps the contract revision of the
 /// revision before it.
-pub(crate) fn mark_contract(w: &Workspace, candidate: &mut Workspace, command: &Command) {
+pub(crate) fn mark_contract(
+    old: Option<&ObjectRevision>,
+    candidate: &mut Workspace,
+    command: &Command,
+) {
     let Command::SaveObject(crate::commands::SaveObjectOp { kind, id, .. }) = command else {
         return;
     };
     let key = address(kind, id);
-    let Some(old) = w.objects.get(resolve_address(w, &key)).map(Object::current) else {
+    let Some(old) = old else {
         return;
     };
     let target = resolve_address(candidate, &key).to_owned();

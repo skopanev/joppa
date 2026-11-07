@@ -1,6 +1,7 @@
 //! Part of `objects`: the new document revision of save_object.
 use super::*;
 
+/// The workspace after save_object, or None when the save changes nothing.
 pub(crate) fn saved(
     w: &Workspace,
     actor: &str,
@@ -9,6 +10,30 @@ pub(crate) fn saved(
     at: &str,
     accept_unchanged: bool,
 ) -> Result<Option<Workspace>> {
+    crate::probe::count(&crate::probe::SAVE_COPY);
+    let mut candidate = w.clone();
+    let changed = save_into(
+        &mut candidate,
+        actor,
+        command,
+        position,
+        at,
+        accept_unchanged,
+    )?;
+    Ok(changed.then_some(candidate))
+}
+
+/// Write the new revision of save_object into `w`; false when it changes nothing. A refused or
+/// unchanged save can leave work in `w`, so a caller that keeps `w` passes a copy. After its
+/// first write the save reads only the schema, the flags and the members, which it keeps.
+pub(crate) fn save_into(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    at: &str,
+    accept_unchanged: bool,
+) -> Result<bool> {
     let Command::SaveObject(crate::commands::SaveObjectOp {
         id,
         kind,
@@ -111,12 +136,11 @@ pub(crate) fn saved(
                 r.data == *saved && r.parent == *parent && r.links == *links
             })
     };
-    let mut candidate = w.clone();
     // Before migrate_generic_nodes a save of a Task also writes its Task record.
     let generic_task = schema(w).types[kind].role == "task" && w.tasks_migrated && !w.generic_nodes;
     let task_data = if generic_task {
         Some(crate::tasks::save(
-            &mut candidate,
+            w,
             actor,
             &key,
             data,
@@ -140,32 +164,28 @@ pub(crate) fn saved(
             without(&o.current().data) == without(data) && o.current().parent == *parent
         });
     if (!unchanged && !tests_only || schema(w).types[kind].role == "requirement") && !generic_task {
-        typed_save(w, &mut candidate, actor, command, position, at, &key, &old)?;
+        typed_save(w, actor, command, position, at, &key, &old)?;
     }
     let schema_revision = schema(w).revision;
-    let projected = candidate
+    let projected = w
         .objects
         .get(&key)
         .map(|o| o.current().data.clone())
         .unwrap_or_else(|| data.clone());
     // A custom parent changes grouping. The legacy semantic ancestor remains explicit.
-    let mut object = candidate
-        .objects
-        .get(&key)
-        .cloned()
-        .unwrap_or_else(|| Object {
-            id: id.clone(),
-            kind: kind.clone(),
-            revisions: vec![],
-            parent_override: false,
-        });
+    let mut object = w.objects.get(&key).cloned().unwrap_or_else(|| Object {
+        id: id.clone(),
+        kind: kind.clone(),
+        revisions: vec![],
+        parent_override: false,
+    });
     object.revisions = old
         .as_ref()
         .map(|o| o.revisions.clone())
         .unwrap_or_default();
     let mut saved_data = if let Some(data) = task_data {
         data
-    } else if !candidate.document_overrides.contains(&key)
+    } else if !w.document_overrides.contains(&key)
         && (w.documents_migrated
             && matches!(schema(w).types[kind].role.as_str(), "requirement" | "ac")
             || !w.documents_migrated && legacy_defaults().contains_key(kind) && kind != "note")
@@ -205,9 +225,9 @@ pub(crate) fn saved(
         crate::body_migration::to_body(&mut saved_data);
     }
     if same(&saved_data) {
-        return Ok(None);
+        return Ok(false);
     }
-    object.parent_override = document_rows(&candidate)
+    object.parent_override = document_rows(w)
         .get(&key)
         .is_none_or(|(_, p, _)| p != parent);
     object.revisions.push(ObjectRevision {
@@ -224,7 +244,7 @@ pub(crate) fn saved(
         present: true,
         contract: None,
     });
-    candidate.objects.insert(key.clone(), object);
-    validate_links(&candidate, &key, links, &kept)?;
-    Ok(Some(candidate))
+    w.objects.insert(key.clone(), object);
+    validate_links(w, &key, links, &kept)?;
+    Ok(true)
 }

@@ -17,6 +17,8 @@ pub static REBUILD: AtomicU64 = AtomicU64::new(0);
 pub static DELTA: AtomicU64 = AtomicU64::new(0);
 /// Replays of a whole workspace journal.
 pub static REPLAY: AtomicU64 = AtomicU64::new(0);
+/// Copies of the whole workspace that a save_object makes.
+pub static SAVE_COPY: AtomicU64 = AtomicU64::new(0);
 
 pub fn count(counter: &AtomicU64) {
     counter.fetch_add(1, Ordering::Relaxed);
