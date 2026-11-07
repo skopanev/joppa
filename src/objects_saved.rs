@@ -227,9 +227,7 @@ pub(crate) fn save_into(
     if same(&saved_data) {
         return Ok(false);
     }
-    object.parent_override = document_rows(w)
-        .get(&key)
-        .is_none_or(|(_, p, _)| p != parent);
+    object.parent_override = document_parent(w, &key).is_none_or(|p| &p != parent);
     object.revisions.push(ObjectRevision {
         revision: revision + 1,
         schema_revision,

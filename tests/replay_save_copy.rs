@@ -1,5 +1,6 @@
-//! A replay writes each save_object into the workspace without a copy of it, and it gives
-//! the same workspace as the live writes of the same events.
+//! A replay writes each save_object into the workspace without a copy of it, and it gives the
+//! same workspace as the live writes of the same events. It skips the document sync of an
+//! event that changes no document.
 mod common;
 
 use common::*;
@@ -70,4 +71,40 @@ fn a_replay_saves_without_a_copy_and_gives_the_workspace_of_the_live_writes() {
         serde_json::to_value(&live.state.objects).unwrap(),
         "the replay gives the objects of the live writes"
     );
+}
+
+// ac:db4wfihl
+#[test]
+fn a_replay_skips_the_sync_only_of_events_that_change_no_document() {
+    let mut w = migrated();
+    let events = [
+        (
+            "agent",
+            json!({"op":"note","target":"ac:ios","id":"n1","text":"Seen"}),
+        ),
+        ("owner", json!({"op":"member","id":"lena","role":"human"})),
+        (
+            "agent",
+            json!({"op":"assess","target":"ac:key","ready":false,"reason":"Waits"}),
+        ),
+        ("owner", json!({"op":"update_workspace","hidden":true})),
+        (
+            "owner",
+            json!({"op":"remove_member","id":"lena","reason":"Left the team"}),
+        ),
+    ];
+    for (actor, event) in events {
+        let cmd: Command = serde_json::from_value(event).unwrap();
+        let at = "2026-01-01T00:00:00Z";
+        commands::apply_replay(&mut w.state, actor, &cmd, w.position + 1, at).unwrap();
+        w.position += 1;
+        // The skipped sync of the event would change no object.
+        let mut synced = w.state.clone();
+        joppa::objects::sync(&mut synced, actor, &cmd, w.position, at);
+        assert_eq!(
+            serde_json::to_value(&synced.objects).unwrap(),
+            serde_json::to_value(&w.state.objects).unwrap(),
+            "{cmd:?}"
+        );
+    }
 }

@@ -157,6 +157,65 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
     rows
 }
 
+/// The parent of `key` in the document ledger (`document_rows`), or None when the ledger has
+/// no row for it. A save reads only this parent, so it builds no other row.
+pub(crate) fn document_parent(w: &Workspace, key: &str) -> Option<Option<String>> {
+    let mut found = None;
+    let mut check = |kind: &str, id: &str, parent: Option<String>| {
+        if address(kind, id) == key {
+            found = Some(parent);
+        }
+    };
+    for id in w.domains.keys() {
+        check("domain", id, None);
+    }
+    for (id, c) in &w.capabilities {
+        check(
+            "capability",
+            id,
+            c.domain.as_deref().map(|d| address("domain", d)),
+        );
+    }
+    for id in w.consumers.keys() {
+        check("consumer", id, None);
+    }
+    for id in w.projects.keys() {
+        check("project", id, None);
+    }
+    for (id, q) in &w.requirements {
+        let Some(r) = q.revisions.last() else {
+            continue;
+        };
+        let req = requirement_address(id);
+        let (kind, rid) = req.split_once(':').unwrap();
+        check(
+            kind,
+            rid,
+            q.capability.as_deref().map(|c| address("capability", c)),
+        );
+        for ac in &r.acs {
+            let ac_address = criterion_address(&ac.id);
+            let (kind, aid) = ac_address.split_once(':').unwrap();
+            check(kind, aid, Some(req.clone()));
+        }
+        for (tid, t) in &r.tasks {
+            let parent = match t.acs.as_slice() {
+                [ac] => criterion_address(ac),
+                _ => req.clone(),
+            };
+            check("task", &format!("{id}/{tid}"), Some(parent));
+        }
+    }
+    for (id, i) in &w.intake {
+        check("intake", id, None);
+        for pid in i.points.keys() {
+            check("point", &format!("{id}/{pid}"), Some(address("intake", id)));
+        }
+    }
+    debug_assert_eq!(found, document_rows(w).get(key).map(|(_, p, _)| p.clone()));
+    found
+}
+
 /// Replay old commands into the same document ledger. Process evidence stays in its original revision.
 pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at: &str) {
     sync_with(w, actor, command, position, at, true, None);

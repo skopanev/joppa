@@ -137,6 +137,28 @@ pub fn rule_applies(w: &Workspace, rule: &str, position: u64) -> bool {
     !w.replaying || epoch_reached(w, rule, position)
 }
 
+/// The events that change only annotations, files, records, acceptances, priorities, members
+/// or workspace settings, or nothing.
+fn writes_no_document(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::RecordReport(_)
+            | Command::Note { .. }
+            | Command::WithdrawNote { .. }
+            | Command::Attach(_)
+            | Command::Detach { .. }
+            | Command::Assess(_)
+            | Command::AssessSignal { .. }
+            | Command::AcceptCommit { .. }
+            | Command::SetPriority { .. }
+            | Command::Member { .. }
+            | Command::EnrollService { .. }
+            | Command::RemoveMember { .. }
+            | Command::UpdateWorkspace(_)
+            | Command::RenameWorkspace(_)
+    )
+}
+
 pub fn apply_replay(
     w: &mut Workspace,
     actor: &str,
@@ -149,6 +171,11 @@ pub fn apply_replay(
     let result = apply_inner(w, actor, command, position, recorded_at);
     w.replaying = false;
     result?;
+    // An event that writes no document source and no object revision leaves the document
+    // ledger and the criteria as the sync of the event before left them.
+    if writes_no_document(command) {
+        return Ok(());
+    }
     crate::objects::sync(w, actor, command, position, recorded_at);
     // migrate_test_nodes, migrate_generic_nodes and migrate_decision_required change no status
     // of a criterion.
