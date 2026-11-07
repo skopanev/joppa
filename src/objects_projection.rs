@@ -60,6 +60,7 @@ pub(in crate::store) async fn rebuild(
     super::ready_rollup::roll_ready(&mut items, &counted, &types);
     let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
     store_column(client, workspace, "rollup", &patches).await?;
+    super::computed::rebuild(client, workspace, state).await?;
     super::dimensions::project(client, workspace, state).await
 }
 

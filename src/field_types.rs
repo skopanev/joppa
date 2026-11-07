@@ -1,7 +1,8 @@
 //! The data field types of a tree type: `fields` in set_tree_schema, such as
 //! {"env": {"type": "enum", "values": ["dev", "prod"]}}. A save refuses a value of another
 //! type, and set_tree_schema refuses a rule that a present object breaks. A field that the
-//! rules do not name takes any value.
+//! rules do not name takes any value. With `from` other than own the server computes the value
+//! (computed_fields.rs), and a save refuses a sent value of it.
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -17,9 +18,23 @@ pub struct FieldType {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
+    /// The source of the value: own (the default), children, links or parent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
 }
 
-/// Refuse a rule with an unknown type, an enum without values, or values on another type.
+/// The sources of a field value.
+pub const SOURCES: [&str; 4] = ["own", "children", "links", "parent"];
+
+impl FieldType {
+    /// The source of the value: own when the rule names none.
+    pub fn source(&self) -> &str {
+        self.from.as_deref().unwrap_or("own")
+    }
+}
+
+/// Refuse a rule with an unknown type, an enum without values, values on another type, an
+/// unknown source, or children or links on a field that is not an enum.
 pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
     let name = field.chars().next().is_some_and(|c| c.is_ascii_lowercase())
         && field.len() <= 32
@@ -46,6 +61,14 @@ pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
             "{field}: only an enum or a list field has values"
         ),
     }
+    ensure!(
+        SOURCES.contains(&rule.source()),
+        "{field}: from is own, children, links or parent"
+    );
+    ensure!(
+        !matches!(rule.source(), "children" | "links") || rule.kind == "enum",
+        "{field}: only an enum field takes its value from children or links"
+    );
     Ok(())
 }
 

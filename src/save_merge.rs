@@ -22,11 +22,24 @@ pub fn take_clean(value: &mut Value) -> Result<bool> {
     }
 }
 
-/// Complete the input `value` of one save_object from the current object.
+/// Complete the input `value` of one save_object from the current object. A sent value of a
+/// computed field is refused, and the stored data keeps no computed field (computed_fields.rs).
 pub fn merge(w: &Workspace, value: &mut Value, clean: bool) -> Result<()> {
     if value["op"] != "save_object" {
         return Ok(());
     }
+    let Some(kind) = value["kind"].as_str().map(String::from) else {
+        return Ok(());
+    };
+    crate::computed_fields::guard(w, &kind, &value["data"])?;
+    merge_data(w, value, clean)?;
+    if let Some(data) = value.get_mut("data") {
+        crate::computed_fields::strip(w, &kind, data);
+    }
+    Ok(())
+}
+
+fn merge_data(w: &Workspace, value: &mut Value, clean: bool) -> Result<()> {
     let (Some(kind), Some(id)) = (value["kind"].as_str(), value["id"].as_str()) else {
         return Ok(());
     };

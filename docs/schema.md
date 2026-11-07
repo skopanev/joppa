@@ -86,6 +86,31 @@ Set `fields` on a type to give a data field its type:
 - `set_tree_schema` refuses a rule that a present object breaks.
 - The board drop-down of a typed enum field in `filters` offers each of its values.
 
+## Computed fields
+
+`from` sets the source of the value of a typed field. The default is `own`: the node stores it.
+
+```json
+{"task": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"]}}},
+ "bug": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"], "from": "links"}}},
+ "ac": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"], "from": "children"}}}}
+```
+
+- `children`: the value of the present children that comes first in `values`.
+- `links`: the own value of the present nodes that link to the node or that it links to, the
+  one that comes first in `values`. Any number of links counts.
+- `parent`: the value of the nearest ancestor that has one.
+- Only an enum field takes `children` or `links`. A value that `values` does not name counts not.
+- `links` reads only own values, and `children` skips the children of the `parent` rule. So the
+  values have no cycle.
+- Each write that changes a node, its parent, its children or its links recomputes the values
+  that it reaches, and the server stores them. A read gives them in `data`, and the `data`
+  filter of `joppa_objects` matches them.
+- A save that sends a value of a computed field is refused:
+  `stage is computed from links and cannot be set on bug`. A save without it keeps working.
+- A rule change to a computed source keeps the stored values of the old rule, and a read no
+  longer gives them.
+
 ## Presentation
 
 - `color: "#RRGGBB"` colours the type on the board and in the schema diagram.

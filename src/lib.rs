@@ -6,6 +6,7 @@ pub mod batch_defaults;
 pub mod body_migration;
 pub mod checks;
 pub mod commands;
+pub mod computed_fields;
 pub mod consumer_drops;
 pub mod consumer_migration;
 pub mod decision_migration;

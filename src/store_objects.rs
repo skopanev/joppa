@@ -26,6 +26,8 @@ use wait_items::add_waits;
 #[path = "objects_tones.rs"]
 mod tone_items;
 use tone_items::add_status_tones;
+#[path = "objects_computed.rs"]
+mod computed;
 #[path = "objects_projection_delta.rs"]
 mod delta;
 #[path = "objects_dimensions.rs"]

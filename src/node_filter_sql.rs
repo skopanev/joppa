@@ -10,11 +10,13 @@ pub struct Bound {
     descendants: Option<Vec<String>>,
     roots: bool,
     filter: NodeFilter,
-    /// The data parameter: the data filter, or with a dimension value the envelope
-    /// {data, combination, key} (filter_dimensions.rs).
+    /// The data parameter: the data filter, or with a dimension value or a computed field the
+    /// envelope {data, computed, combination, key} (filter_dimensions.rs, computed_fields.rs).
     data: Option<String>,
     /// The stored key of the combination that the data filter names.
     pub combination: Option<String>,
+    /// True when `data` is the envelope.
+    envelope: bool,
 }
 
 /// The refusal of the archived tone in a read that keeps only present nodes.
@@ -67,7 +69,8 @@ pub async fn bind(
             Some(rows.iter().map(|row| row.get(0)).collect())
         }
     };
-    let (data, combination) = dimension_data(client, workspace, filter.data.as_deref()).await?;
+    let (data, combination, envelope) =
+        dimension_data(client, workspace, filter.data.as_deref()).await?;
     Ok(Bound {
         workspace: workspace.to_owned(),
         descendants,
@@ -75,24 +78,29 @@ pub async fn bind(
         filter: filter.clone(),
         data,
         combination,
+        envelope,
     })
 }
 
-/// The data parameter and the combination key of a data filter. The dimension fields of the
-/// workspace leave the containment filter and name the combination.
+/// The data parameter, the combination key of a data filter, and true for an envelope. The
+/// dimension fields of the workspace leave the containment filter and name the combination.
+/// The computed fields leave it too: they match the data with the computed values.
 async fn dimension_data(
     client: &impl GenericClient,
     workspace: &str,
     data: Option<&str>,
-) -> Result<(Option<String>, Option<String>)> {
+) -> Result<(Option<String>, Option<String>, bool)> {
     let Some(text) = data else {
-        return Ok((None, None));
+        return Ok((None, None, false));
     };
-    let sql = "SELECT COALESCE(first_view->'dimensions','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1";
+    let sql = "SELECT COALESCE(first_view->'dimensions','[]'::jsonb)::text,COALESCE(first_view->'computed_fields','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1";
     let row = client.query_opt(sql, &[&workspace]).await?;
-    let stored: serde_json::Value = match row {
-        Some(row) => serde_json::from_str(row.get(0))?,
-        None => serde_json::Value::Null,
+    let (stored, computed): (serde_json::Value, Vec<String>) = match row {
+        Some(row) => (
+            serde_json::from_str(row.get(0))?,
+            serde_json::from_str(row.get(1))?,
+        ),
+        None => (serde_json::Value::Null, vec![]),
     };
     let fields: Vec<String> = stored
         .as_array()
@@ -101,17 +109,26 @@ async fn dimension_data(
         .filter_map(|d| d["field"].as_str().map(String::from))
         .collect();
     let filter: serde_json::Value = serde_json::from_str(text)?;
-    let (combination, rest) = crate::filter_dimensions::split(&filter, &fields);
-    if combination.is_empty() {
-        return Ok((Some(text.to_owned()), None));
+    let (combination, mut rest) = crate::filter_dimensions::split(&filter, &fields);
+    let mut part = serde_json::Map::new();
+    for field in &computed {
+        if let Some(value) = rest.as_object_mut().and_then(|m| m.remove(field)) {
+            part.insert(field.clone(), value);
+        }
     }
-    let key = crate::filter_dimensions::key(&combination);
+    if combination.is_empty() && part.is_empty() {
+        return Ok((Some(text.to_owned()), None, false));
+    }
+    let key = (!combination.is_empty()).then(|| crate::filter_dimensions::key(&combination));
     let mut envelope = serde_json::json!({"combination":combination,"key":key});
-    // An empty rest leaves the key out, so the clause reads it as SQL NULL.
+    // An empty part leaves its key out, so the clause reads it as SQL NULL.
     if rest.as_object().is_some_and(|m| !m.is_empty()) {
         envelope["data"] = rest;
     }
-    Ok((Some(envelope.to_string()), Some(key)))
+    if !part.is_empty() {
+        envelope["computed"] = serde_json::Value::Object(part);
+    }
+    Ok((Some(envelope.to_string()), key, true))
 }
 
 impl Bound {
@@ -170,12 +187,13 @@ impl Bound {
             ),
             (
                 self.data.is_some(),
-                match self.combination {
+                match self.envelope {
                     // A node applies unless it or an ancestor names other values of a dimension.
-                    Some(_) => format!(
-                        "({data}::text::jsonb->'data' IS NULL OR o.document->'data' @> ({data}::text::jsonb->'data')) AND NOT EXISTS (SELECT 1 FROM jsonb_each_text({data}::text::jsonb->'combination') c WHERE o.dims ? c.key AND NOT (o.dims->c.key) ? c.value)"
+                    true => format!(
+                        "({data}::text::jsonb->'data' IS NULL OR o.document->'data' @> ({data}::text::jsonb->'data')) AND ({data}::text::jsonb->'computed' IS NULL OR {computed} @> ({data}::text::jsonb->'computed')) AND NOT EXISTS (SELECT 1 FROM jsonb_each_text({data}::text::jsonb->'combination') c WHERE o.dims ? c.key AND NOT (o.dims->c.key) ? c.value)",
+                        computed = crate::computed_fields::DATA_SQL
                     ),
-                    None => format!("o.document->'data' @> {data}::text::jsonb"),
+                    false => format!("o.document->'data' @> {data}::text::jsonb"),
                 },
                 format!("{data}::text IS NULL"),
             ),

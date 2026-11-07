@@ -70,7 +70,8 @@ pub(crate) fn validate_required_fields(t: &TreeType, data: &Value) -> Result<()>
             return Err(RequiredField(rule.error().to_owned()).into());
         }
     }
-    for (field, rule) in &t.fields {
+    // A computed field keeps no own value: its stored value from before the rule stays unread.
+    for (field, rule) in t.fields.iter().filter(|(_, r)| r.source() == "own") {
         let value = data.get(field).unwrap_or(&Value::Null);
         if let Some(refusal) = crate::field_types::refusal(field, rule, value) {
             return Err(RequiredField(refusal).into());

@@ -33,7 +33,7 @@ pub(super) async fn list_rows(
             (SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind)
                 AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$6),
             o.document_at,o.description,o.signal::text,o.present,o.inbox_status,o.process::text,
-            CASE WHEN $10::boolean THEN (o.document->'data')::text END,o.total,
+            CASE WHEN $10::boolean THEN {data}::text END,o.total,
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
             CASE WHEN $10::boolean THEN COALESCE(o.document->'links','[]'::jsonb)::text END,
             o.document->'data'->>'assignee'
@@ -46,7 +46,8 @@ pub(super) async fn list_rows(
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
         ORDER BY {order} LIMIT $5
-    "#
+    "#,
+        data = crate::computed_fields::DATA_SQL
     );
     let rows = conn
         .query(
