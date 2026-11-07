@@ -125,28 +125,23 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         "../migrations/043_no_purpose_no_ac_owners.sql"
     ))
     .await?;
-    tx.batch_execute(include_str!("../migrations/044_archive_reset.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/045_node_filter_indexes.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/046_generic_nodes.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/047_own_mark_reset.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/048_update_workspace.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/049_actor_alias.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/050_no_agent_tokens.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/051_any_change_reset.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/052_filter_dimensions.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/053_computed_fields.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/054_no_readiness_marks.sql"))
-        .await?;
+    // The later migrations run in their number order.
+    for sql in [
+        include_str!("../migrations/044_archive_reset.sql"),
+        include_str!("../migrations/045_node_filter_indexes.sql"),
+        include_str!("../migrations/046_generic_nodes.sql"),
+        include_str!("../migrations/047_own_mark_reset.sql"),
+        include_str!("../migrations/048_update_workspace.sql"),
+        include_str!("../migrations/049_actor_alias.sql"),
+        include_str!("../migrations/050_no_agent_tokens.sql"),
+        include_str!("../migrations/051_any_change_reset.sql"),
+        include_str!("../migrations/052_filter_dimensions.sql"),
+        include_str!("../migrations/053_computed_fields.sql"),
+        include_str!("../migrations/054_no_readiness_marks.sql"),
+        include_str!("../migrations/055_computed_index.sql"),
+    ] {
+        tx.batch_execute(sql).await?;
+    }
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;

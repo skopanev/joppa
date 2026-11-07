@@ -18,6 +18,24 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The data of a read: the stored data without the computed fields, then their values.
 pub const DATA_SQL: &str = "(((o.document->'data')-ARRAY(SELECT jsonb_object_keys(o.computed)))||jsonb_strip_nulls(COALESCE(o.computed,'{}'::jsonb)))";
 
+/// The clause of the computed fields of the data filter envelope `data`, a SQL parameter.
+/// Each field matches the stored values or the data, so both GIN indexes find the
+/// candidates. The data with the computed values then decides exactly.
+pub fn filter_clause(data: &str, count: usize) -> String {
+    if count == 0 {
+        return String::new();
+    }
+    let each = (0..count).map(|i| {
+        format!("(o.computed @> ({data}::text::jsonb->'each'->{i}) OR o.document->'data' @> ({data}::text::jsonb->'each'->{i}))")
+    });
+    let each: Vec<String> = each.collect();
+    format!(
+        " AND {} AND {} @> ({data}::text::jsonb->'computed')",
+        each.join(" AND "),
+        DATA_SQL
+    )
+}
+
 /// The rules of the computed fields: for each field, the types that compute it.
 pub fn rules(types: &BTreeMap<String, TreeType>) -> BTreeMap<String, BTreeMap<String, FieldType>> {
     let mut out: BTreeMap<String, BTreeMap<String, FieldType>> = BTreeMap::new();

@@ -3,6 +3,8 @@ use super::NodeFilter;
 use anyhow::Result;
 use tokio_postgres::GenericClient;
 use tokio_postgres::types::ToSql;
+#[path = "node_filter_envelope.rs"]
+mod envelope;
 
 /// The filters with the descendants of the parent read from the database.
 pub struct Bound {
@@ -17,6 +19,8 @@ pub struct Bound {
     pub combination: Option<String>,
     /// True when `data` is the envelope.
     envelope: bool,
+    /// The number of computed fields that the data filter names.
+    computed: usize,
 }
 
 /// The refusal of the archived tone in a read that keeps only present nodes.
@@ -69,8 +73,12 @@ pub async fn bind(
             Some(rows.iter().map(|row| row.get(0)).collect())
         }
     };
-    let (data, combination, envelope) =
-        dimension_data(client, workspace, filter.data.as_deref()).await?;
+    let envelope::Data {
+        text: data,
+        key: combination,
+        envelope,
+        computed,
+    } = envelope::data(client, workspace, filter.data.as_deref()).await?;
     Ok(Bound {
         workspace: workspace.to_owned(),
         descendants,
@@ -79,56 +87,8 @@ pub async fn bind(
         data,
         combination,
         envelope,
+        computed,
     })
-}
-
-/// The data parameter, the combination key of a data filter, and true for an envelope. The
-/// dimension fields of the workspace leave the containment filter and name the combination.
-/// The computed fields leave it too: they match the data with the computed values.
-async fn dimension_data(
-    client: &impl GenericClient,
-    workspace: &str,
-    data: Option<&str>,
-) -> Result<(Option<String>, Option<String>, bool)> {
-    let Some(text) = data else {
-        return Ok((None, None, false));
-    };
-    let sql = "SELECT COALESCE(first_view->'dimensions','[]'::jsonb)::text,COALESCE(first_view->'computed_fields','[]'::jsonb)::text FROM joppa.board_cache WHERE workspace=$1";
-    let row = client.query_opt(sql, &[&workspace]).await?;
-    let (stored, computed): (serde_json::Value, Vec<String>) = match row {
-        Some(row) => (
-            serde_json::from_str(row.get(0))?,
-            serde_json::from_str(row.get(1))?,
-        ),
-        None => (serde_json::Value::Null, vec![]),
-    };
-    let fields: Vec<String> = stored
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|d| d["field"].as_str().map(String::from))
-        .collect();
-    let filter: serde_json::Value = serde_json::from_str(text)?;
-    let (combination, mut rest) = crate::filter_dimensions::split(&filter, &fields);
-    let mut part = serde_json::Map::new();
-    for field in &computed {
-        if let Some(value) = rest.as_object_mut().and_then(|m| m.remove(field)) {
-            part.insert(field.clone(), value);
-        }
-    }
-    if combination.is_empty() && part.is_empty() {
-        return Ok((Some(text.to_owned()), None, false));
-    }
-    let key = (!combination.is_empty()).then(|| crate::filter_dimensions::key(&combination));
-    let mut envelope = serde_json::json!({"combination":combination,"key":key});
-    // An empty part leaves its key out, so the clause reads it as SQL NULL.
-    if rest.as_object().is_some_and(|m| !m.is_empty()) {
-        envelope["data"] = rest;
-    }
-    if !part.is_empty() {
-        envelope["computed"] = serde_json::Value::Object(part);
-    }
-    Ok((Some(envelope.to_string()), key, true))
 }
 
 impl Bound {
@@ -190,8 +150,8 @@ impl Bound {
                 match self.envelope {
                     // A node applies unless it or an ancestor names other values of a dimension.
                     true => format!(
-                        "({data}::text::jsonb->'data' IS NULL OR o.document->'data' @> ({data}::text::jsonb->'data')) AND ({data}::text::jsonb->'computed' IS NULL OR {computed} @> ({data}::text::jsonb->'computed')) AND NOT EXISTS (SELECT 1 FROM jsonb_each_text({data}::text::jsonb->'combination') c WHERE o.dims ? c.key AND NOT (o.dims->c.key) ? c.value)",
-                        computed = crate::computed_fields::DATA_SQL
+                        "({data}::text::jsonb->'data' IS NULL OR o.document->'data' @> ({data}::text::jsonb->'data')){} AND NOT EXISTS (SELECT 1 FROM jsonb_each_text({data}::text::jsonb->'combination') c WHERE o.dims ? c.key AND NOT (o.dims->c.key) ? c.value)",
+                        crate::computed_fields::filter_clause(&data, self.computed)
                     ),
                     false => format!("o.document->'data' @> {data}::text::jsonb"),
                 },

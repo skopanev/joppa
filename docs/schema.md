@@ -105,7 +105,7 @@ Set `fields` on a type to give a data field its type:
   values have no cycle.
 - Each write that changes a node, its parent, its children or its links recomputes the values
   that it reaches, and the server stores them. A read gives them in `data`, and the `data`
-  filter of `joppa_objects` matches them.
+  filter of `joppa_objects` matches them. A GIN index of the stored values finds the nodes.
 - A save that sends a value of a computed field is refused:
   `stage is computed from links and cannot be set on bug`. A save without it keeps working.
 - A rule change to a computed source keeps the stored values of the old rule, and a read no

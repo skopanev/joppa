@@ -181,4 +181,28 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     await unchanged('cookie commands');
   } finally { await f.close(); }
 });
+
+// Alex points at the status dot of the row of A, once at each width.
+test('status-hint-on-hover: a hover on a status dot shows its status label', async t => {
+  const f = await fixture(criterionRecords);
+  try {
+    const detail = await f.api('/objects?address=' + encodeURIComponent('ac:A'), undefined, f.live.alex);
+    // Each width is its own subtest, so the output names both runs.
+    for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('status-hint-on-hover: ' + viewport.width + ' px', async () => {
+      await f.page.setViewportSize(viewport);
+      const card = await f.open('requirement:r');
+      const row = card.locator('.common-object[data-object-address="ac:A"] > summary');
+      await row.waitFor();
+      const dot = row.locator('.status-circle');
+      assert.equal(await dot.isVisible(), true, JSON.stringify(viewport));
+      await dot.hover();
+      const hint = f.page.locator('.status-hint');
+      await hint.waitFor();
+      const text = await hint.innerText();
+      assert.ok(text.startsWith('Status: ' + detail.signal.label), JSON.stringify([viewport, text]));
+      assert.equal(await dot.getAttribute('aria-label'), await dot.getAttribute('data-hint'));
+      assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
+    });
+  } finally { await f.close(); }
+});
 };
