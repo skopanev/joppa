@@ -128,7 +128,7 @@ pub fn set(
     if !crate::commands::rule_applies(w, crate::commands::LIST_SAVE_RESET, position) {
         return Ok(());
     }
-    crate::objects::reset_criteria(w, &address, at, position)
+    crate::objects::reset_criteria(w, &address, at)
 }
 
 /// Save the field tests of the current document as an ordinary revision. The save checks
@@ -149,7 +149,7 @@ fn set_field(
     // A save of the same list keeps the document and resets the criterion, as every list
     // save did before.
     if data == current.data {
-        return crate::objects::reset_criteria(w, address, at, position);
+        return crate::objects::reset_criteria(w, address, at);
     }
     let command = crate::commands::Command::SaveObject(crate::commands::SaveObjectOp {
         id: o.id.clone(),

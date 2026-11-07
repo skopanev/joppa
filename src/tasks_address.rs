@@ -68,16 +68,6 @@ pub fn review_required(w: &Workspace, key: &str, t: &Task) -> bool {
                 .is_some_and(|old| old != &context(w, key)))
 }
 
-pub fn readiness_blocker(w: &Workspace, key: &str) -> Option<Value> {
-    let o = w.objects.get(key)?;
-    let schema = objects::schema(w);
-    let t = schema.types.get(&o.kind)?;
-    if t.parent_gate.as_deref() != Some("ready") {
-        return None;
-    }
-    objects::readiness_blocker(w, o.current().parent.as_deref()?, true)
-}
-
 /// The REQ above a Task, found through its configured parents.
 pub(crate) fn requirement(w: &Workspace, key: &str) -> Option<String> {
     let types = objects::schema(w).types;

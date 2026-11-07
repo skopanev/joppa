@@ -77,11 +77,7 @@ pub(crate) async fn hydrate_revision(
     let Some(q) = state.requirements.get_mut(req) else {
         return Ok(());
     };
-    let requested = command["assessment"]["decision"]
-        .as_str()
-        .and_then(|id| q.comments.get(id))
-        .map(|c| c.revision as i32)
-        .or_else(|| command["revision"].as_u64().map(|n| n as i32));
+    let requested = command["revision"].as_u64().map(|n| n as i32);
     let carry_history = command["carry_tasks"] == true && !state.tasks_migrated;
     let withdraw = command["op"] == "withdraw_decision";
     if carry_history

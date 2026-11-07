@@ -88,9 +88,6 @@ pub struct Workspace {
     pub reference_prefix: Option<String>,
     pub admin: String,
     pub members: BTreeMap<String, String>,
-    /// The readiness of each signal of an inbox type, marked by a member.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub signal_assessments: BTreeMap<String, SignalAssessment>,
     /// The priority value of each node that has one. It is not a change of the node.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub priorities: BTreeMap<String, String>,

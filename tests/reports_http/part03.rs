@@ -48,14 +48,6 @@ impl Planning<'_> {
         self.write("owner", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"links":links,"reason":"Set the contract"})).await?;
         Ok(())
     }
-    /// Save each readiness mark of the criteria of `req`.
-    async fn assess(&self, _req: &str, assessments: &[(&str, Value)]) -> Result<()> {
-        for (ac, a) in assessments {
-            let mark = json!({"op":"assess","target":ac,"ready":a["ready"],"reason":a["reason"]});
-            self.write("owner", mark).await?;
-        }
-        Ok(())
-    }
     /// Committed rows of the workspace: documents, revisions, links, process data,
     /// planning claims, receipts and the journal, each in a stable order.
     async fn saved(&self) -> Result<Value> {

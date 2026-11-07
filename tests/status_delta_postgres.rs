@@ -131,14 +131,6 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
         ),
     )
     .await?;
-    step(
-        pool,
-        ws,
-        "a waiting mark",
-        false,
-        write(json!({"op":"assess","target":"ac:b","ready":false,"reason":"Which limit applies?"})),
-    )
-    .await?;
     let move_a = json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r2",
         "data":{"title":"a","owner":"owner","body":"The rule"},"links":[{"target":"area:x","relation":"related"}],"reason":"Move"});
     step(pool, ws, "move and link", false, write(move_a)).await?;

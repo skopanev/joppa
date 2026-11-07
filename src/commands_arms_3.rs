@@ -130,21 +130,5 @@ pub(super) fn apply_withdraw_decision(
         "only author may withdraw their active decision"
     );
     c.withdrawn = true;
-    for r in &mut q.revisions {
-        for a in &mut r.acs {
-            if a.assessment
-                .as_ref()
-                .is_some_and(|s| s.decision.as_ref() == Some(comment))
-            {
-                a.assessment = Some(Assessment {
-                    ready: false,
-                    reason: reason.clone(),
-                    owner: Some(actor.into()),
-                    decision: Some(comment.clone()),
-                });
-                r.acceptance = None;
-            }
-        }
-    }
     Ok(())
 }

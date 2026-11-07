@@ -82,13 +82,24 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
         .await?
         .map_err(anyhow::Error::msg)?;
     ensure!(tone(&w, "ac:b").await? == "purple" && tone(&w, "requirement:r").await? == "green");
-    // A node that waits for an answer is yellow, and yellow beats green above it.
-    let question =
-        json!({"op":"assess","target":"ac:a","ready":false,"reason":"Q1: Which limit applies?"});
-    w.command(&w.bot, question)
-        .await?
-        .map_err(anyhow::Error::msg)?;
-    ensure!(tone(&w, "ac:a").await? == "yellow" && tone(&w, "requirement:r").await? == "yellow");
+    // A node that waits for a dependency is yellow, and yellow beats green above it. The
+    // target ac:c is under its own root requirement:q, so it does not count for R.
+    let a = w.object("ac:a").await?;
+    for command in [
+        json!({"op":"save_object","kind":"requirement","id":"q","revision":0,"parent":null,
+            "data":{"title":"Q","owner":"owner","body":"The second rule"},"reason":"Create"}),
+        json!({"op":"save_object","kind":"ac","id":"c","revision":0,"parent":"requirement:q",
+            "data":{"title":"C","owner":"owner"},"reason":"Create"}),
+        json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],
+            "parent":"requirement:r","data":a["data"],"reason":"Order after C",
+            "links":[{"target":"ac:c","relation":"depends_on","blocking":true}]}),
+    ] {
+        w.command(&w.bot, command)
+            .await?
+            .map_err(anyhow::Error::msg)?;
+    }
+    let pair = (tone(&w, "ac:a").await?, tone(&w, "requirement:r").await?);
+    ensure!(pair == ("yellow".into(), "yellow".into()), "{pair:?}");
     // A failure beats every other tone.
     w.recorded(&"b".repeat(40), json!([{"test":ONE,"status":"fail"}]))
         .await?;

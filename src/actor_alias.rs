@@ -1,7 +1,7 @@
 //! The alias of an actor: the name of the agent that writes under the account of a person,
 //! such as p1 or runner. It changes no access: the actor of the session keeps every right.
-//! The journal stores it with each event, and each revision, comment, file and readiness mark
-//! of the event keeps it. An MCP call names it with the argument `alias`, or the session with
+//! The journal stores it with each event, and each revision, comment and file of the event
+//! keeps it. An MCP call names it with the argument `alias`, or the session with
 //! the header X-Joppa-Alias; the argument wins.
 use anyhow::{Result, ensure};
 use serde_json::Value;

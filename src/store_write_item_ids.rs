@@ -89,14 +89,6 @@ pub(crate) fn fields(value: &Value) -> Result<()> {
             anyhow::bail!("missing field `{field}`: {refusal}");
         }
     }
-    // The live assess names a node; a missing field gets its name, as other operations do.
-    if value["op"] == "assess" && value.get("req").is_none() {
-        for field in ["target", "ready", "reason"] {
-            if value.get(field).is_none_or(Value::is_null) {
-                anyhow::bail!("missing field `{field}`: assess needs target, ready and reason");
-            }
-        }
-    }
     serde_json::from_value::<Command>(value.clone())?;
     Ok(())
 }

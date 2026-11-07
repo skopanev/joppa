@@ -19,9 +19,9 @@ fn node_filters(mut schema: Value) -> Value {
         "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green; purple keeps the archived nodes, and joppa_search needs all_versions for it"),
         "owner": text("member ID in data.owner"),
         "assignee": text("data.assignee: a member ID or an agent alias, such as lane3"),
-        "ready": {"type":"boolean","description":"false: the node waits for a dependency, a review or the answer to its assessment question; true: every other node"},
+        "ready": {"type":"boolean","description":"false: the node waits for a blocking depends_on target that is not green or that changed its revision (waits_for); true: every other node"},
         "data": {"type":"object",
-            "description":"JSONB containment filter on document.data, e.g. {\"tags\":[\"kyc\"]}"},
+            "description":"JSONB containment filter on data, also on the computed fields, e.g. {\"tags\":[\"kyc\"]} or {\"stage\":\"done\"}"},
     });
     for (name, value) in filters.as_object().unwrap() {
         schema[name] = value.clone();

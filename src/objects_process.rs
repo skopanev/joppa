@@ -8,7 +8,6 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
     for ac in &r.acs {
         let key = criterion_address(&ac.id);
         if !w.objects.is_empty() && !work_ready(w, &key) {
-            summary["acs"][&ac.id]["ready"] = json!(false);
             summary["acs"][&ac.id]["verification"] = json!("n/a");
             blocked = true;
         }
@@ -29,8 +28,7 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
 }
 
 /// The process facts of a node, the same for every type: the verdict of its checks, its
-/// readiness mark, its acceptance, the address of its comments and the status of an inbox
-/// signal.
+/// acceptance, the address of its comments and the status of an inbox signal.
 pub fn process(w: &Workspace, key: &str) -> Value {
     let key = resolve_address(w, key);
     let Some(o) = w.objects.get(key) else {
@@ -44,25 +42,11 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     if verdict != "unverified" {
         p["verification"] = json!(verdict);
     }
-    if let Some(a) = assessment(w, key) {
-        p["assessment"] = a;
-    }
     let acceptance = crate::acceptance::current(w, key);
     if !acceptance.is_null() {
         p["acceptance"] = acceptance;
     }
     p
-}
-
-/// The readiness mark of a node, as `assess` sets it: ready, or waiting with a reason. Its
-/// position is the expected_position of the next assess.
-pub fn assessment(w: &Workspace, key: &str) -> Option<Value> {
-    let a = w.signal_assessments.get(resolve_address(w, key))?;
-    let state = if a.ready { "ready" } else { "waiting" };
-    let mut mark =
-        json!({"state": state, "reason": a.reason, "actor": a.actor, "position": a.position});
-    crate::actor_alias::put(&mut mark, a.alias.as_deref());
-    Some(mark)
 }
 
 /// The process tone of a node. A status rule of its type decides the tone that a read shows.
@@ -75,8 +59,6 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
         ("grey", "Archived")
     } else if !work_ready(w, key) {
         ("yellow", "Dependency is not ready")
-    } else if p["assessment"]["state"] == "waiting" {
-        ("yellow", "Waits for an answer")
     } else if p["status"] == "processed" {
         ("grey", "Input processed")
     } else if p["status"] == "unprocessed" {
@@ -88,9 +70,5 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
             _ => ("grey", "Current document"),
         }
     };
-    let mut signal = json!({"tone":tone,"label":label,"at":o.current().at});
-    if p["assessment"].is_object() {
-        signal["assessment"] = p["assessment"].clone();
-    }
-    signal
+    json!({"tone":tone,"label":label,"at":o.current().at})
 }

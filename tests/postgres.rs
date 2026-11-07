@@ -77,7 +77,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
             &other,
             "outsider",
             "foreign",
-            json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"})
+            json!({"op":"note","target":"ac:ios","id":"foreign","text":"Known scope"})
         )
         .await
         .is_err()
@@ -126,11 +126,6 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         json!({"op":"confirm","req":"r","revision":2}),
     )
     .await?;
-    for ac in ["ios", "key"] {
-        let mut v = assess(ac, true);
-        v["revision"] = json!(2);
-        execute(&pool, &ws, "agent", ac, v).await?;
-    }
     let mut conn = pool.get().await?;
     assert_eq!(
         conn.query_one("SELECT count(*) FROM public.legacy_probe", &[])

@@ -159,9 +159,7 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
         process.get("annotation_address").is_none()
             && process.get("criterion").is_none()
             && compact["parent"] == "requirement:r"
-            && process.get("req").is_none()
-            && process["assessment"].get("criterion").is_none()
-            && process["assessment"].get("req").is_none(),
+            && process.get("req").is_none(),
         "{process}"
     );
     for key in ["remote_links", "remote_review_required"] {

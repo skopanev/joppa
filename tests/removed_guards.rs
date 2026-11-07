@@ -14,7 +14,7 @@ fn internal(w: &mut World, op: &str) {
 /// A current workspace: every migration ran, and both criteria are ready.
 fn current() -> World {
     let mut w = World::new();
-    w.ready();
+    w.confirm();
     for op in [
         "migrate_notes",
         "migrate_tasks",

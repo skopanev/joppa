@@ -163,21 +163,3 @@ pub fn criterion_context<'a>(
         .find(|ac| criterion_address(&ac.id) == key)?;
     Some((req, revision, ac))
 }
-
-/// Read the assessment from the current configured verification context.
-/// The older assessment of a criterion in its requirement revision. Only the replay of the
-/// older checks reads it.
-pub fn criterion_assessment(w: &Workspace, key: &str) -> Option<Value> {
-    let (req, r, ac) = criterion_context(w, key)?;
-    let state = match ac.assessment.as_ref() {
-        None => "unassessed",
-        Some(a) if a.ready => "ready",
-        Some(_) => "waiting",
-    };
-    Some(
-        json!({"state":state,"req":req,"revision":r.number,"criterion":ac.id,
-        "reason":ac.assessment.as_ref().map(|a| &a.reason),
-        "recipient":ac.assessment.as_ref().and_then(|a| a.owner.as_ref()),
-        "decision":ac.assessment.as_ref().and_then(|a| a.decision.as_ref())}),
-    )
-}

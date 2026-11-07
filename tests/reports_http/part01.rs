@@ -168,22 +168,6 @@ fn outcomes(cases: &[(&str, &str)]) -> Value {
     record_http::cases("tests/auth/login.test.ts > login", cases)
 }
 
-async fn ready_for_planning(w: &World) -> Result<Value> {
-    for command in [
-        json!({"op":"assess","target":"ac:key-rights","ready":true,"reason":"Known work scope"}),
-    ] {
-        let (code, reply) = post(
-            w,
-            &w.owner,
-            "/commands",
-            json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":command}),
-        )
-        .await?;
-        ensure!(code == 200, "{code} {reply}");
-    }
-    planning_criterion(w).await
-}
-
 async fn planning_criterion(w: &World) -> Result<Value> {
     Ok(w.http
         .get(format!("{}/objects?address=ac:key-rights", w.base))

@@ -16,7 +16,7 @@ fn internal(w: &mut World, op: &str) {
 /// A current workspace: every migration ran, and both criteria are ready.
 fn current() -> World {
     let mut w = World::new();
-    w.ready();
+    w.confirm();
     for op in [
         "migrate_notes",
         "migrate_tasks",
@@ -155,15 +155,6 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
     assert_eq!(
         (&data["owner"], data.get("decision_required")),
         (&json!("legal"), None)
-    );
-    // No decision: an agent assesses the criterion as ready without a linked decision.
-    w.ok(
-        "agent",
-        json!({"op":"assess","target":"ac:key","ready":true,"reason":"Known scope"}),
-    );
-    assert_eq!(
-        objects::assessment(&w.state, "ac:key").unwrap()["state"],
-        "ready"
     );
     // A new required field does not refuse the stored objects; the next save needs it.
     let s = objects::schema(&w.state);

@@ -77,10 +77,7 @@ pub fn task_verdict(w: &Workspace, key: &str) -> &'static str {
     let Some(task) = crate::tasks::task(w, key) else {
         return "unverified";
     };
-    if task.retired.is_some()
-        || crate::tasks::review_required(w, key, task)
-        || crate::tasks::readiness_blocker(w, key).is_some()
-    {
+    if task.retired.is_some() || crate::tasks::review_required(w, key, task) {
         return "unverified";
     }
     // Work under a signal has no criterion to verify.
@@ -143,7 +140,7 @@ pub fn task_verdict(w: &Workspace, key: &str) -> &'static str {
 }
 
 pub fn verdict(r: &Revision, run: &Run, ac: &str) -> &'static str {
-    if !r.confirmed || !ready(r, ac) || !run.discovery_complete || run.finished.is_none() {
+    if !r.confirmed || !run.discovery_complete || run.finished.is_none() {
         return "n/a";
     }
     if r.issues
@@ -182,7 +179,16 @@ pub fn summary(r: &Revision) -> Value {
         })
         .max_by_key(|(_, candidate)| candidate.started)
         .map(|(id, _)| id);
-    let statuses: BTreeMap<_, _> = r.acs.iter().map(|a| (a.id.clone(), json!({"ready": ready(r, &a.id), "verification": run.map_or("n/a", |(_, run)| verdict(r, run, &a.id))}))).collect();
+    let statuses: BTreeMap<_, _> = r
+        .acs
+        .iter()
+        .map(|a| {
+            (
+                a.id.clone(),
+                json!({"verification": run.map_or("n/a", |(_, run)| verdict(r, run, &a.id))}),
+            )
+        })
+        .collect();
     let green = !r.acs.is_empty()
         && run.is_some_and(|(_, run)| r.acs.iter().all(|a| verdict(r, run, &a.id) == "pass"));
     let coverage_reviewed = r.coverage_change.is_empty()

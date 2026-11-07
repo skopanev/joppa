@@ -30,6 +30,7 @@ pub const NAMES: &[&str] = &[
     "confirm",
     "decide_note",
     "set_ac_tests",
+    "assess",
     "assess_signal",
     "set_priority",
     "claim_planning",
@@ -66,7 +67,9 @@ pub fn refusal(name: &str) -> String {
         }
         "set_note_status" | "decide_note" => "archive_object",
         "confirm" => "save_object; a saved requirement needs no confirmation",
-        "assess_signal" | "block_task" | "unblock_task" => "assess",
+        "assess" | "assess_signal" | "block_task" | "unblock_task" => {
+            "save_object with a typed field such as data.stage (fields in set_tree_schema)"
+        }
         "set_priority" => "save_object with data.priority",
         "claim_planning" | "finish_planning" | "release_planning" | "claim_task"
         | "claim_next_task" | "heartbeat_task" | "release_task" => "save_object with data.assignee",
@@ -111,6 +114,7 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::Confirm { .. } => "confirm",
         Command::DecideNote(crate::commands::DecideNoteOp { .. }) => "decide_note",
         Command::SetAcTests(crate::commands::SetAcTestsOp { .. }) => "set_ac_tests",
+        Command::Assess(_) => "assess",
         Command::AssessSignal { .. } => "assess_signal",
         Command::SetPriority { .. } => "set_priority",
         Command::ClaimPlanning { .. } => "claim_planning",
@@ -134,11 +138,22 @@ pub fn name(command: &Command) -> Option<&'static str> {
 /// reference changes no Task scope.
 pub const SCHEMA_FIELDS: &str = "process_fields and verification_subject were removed; every node shows its process facts, and a reference changes no Task scope";
 
+/// The refusal of the removed readiness gate of a type.
+pub const PARENT_GATE: &str =
+    "parent_gate was removed; a typed field such as stage gives the state of a node";
+
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
-        Command::Assess(crate::commands::AssessOp::Criterion(_)) => {
-            Some("assess with req, revision and ac was removed; use assess {target, ready, reason}")
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            types, put_types, ..
+        }) if types
+            .iter()
+            .chain(put_types)
+            .flat_map(|m| m.values())
+            .any(|t| t.parent_gate.is_some()) =>
+        {
+            Some(PARENT_GATE)
         }
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             status_colors: Some(_),

@@ -11,14 +11,14 @@ owner responsible for its meaning and acceptance.
 | Business, executive, compliance or legal specialist | Define rules and scope within their authority; record decisions in the REQ card |
 | Tester or support | Report problems; identify what was checked and the observed result |
 | Developer | Implement work and resolve technical questions |
-| Agent | Help formulate REQ/ACs, assess readiness, organize work and run checks; ask for missing decisions |
+| Agent | Help formulate REQ/ACs, organize work, run checks and ask for missing decisions |
 
 Technical analysis is work, usually performed by an agent. A Note author does
 not need to understand code, identify a build or estimate implementation. A
 relevant deadline can be recorded without becoming an implementation estimate.
 
-The agent assesses every AC when analyzing or revising a requirement. Missing
-policy becomes a concrete question addressed to a person. Link an existing
+The agent analyzes every AC when it analyzes or changes a requirement. For missing
+policy, the agent asks a named person a specific question. Link an existing
 applicable decision rather than repeatedly asking for it. A material change
 requires a new decision. Platforms come from the agreed AC and context; see
 [AC scope](model.md#ac-scope).
@@ -26,7 +26,7 @@ requires a new decision. Platforms come from the agreed AC and context; see
 Each Task has one parent permitted by the workspace schema and a technical contract.
 The default recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
 `data.assignee` names the member or the agent alias that does the Task. Triage can create Tasks without an assignee.
-A Task waits for its dependencies and for its readiness mark, the same as any other node.
+A Task waits for its blocking dependencies, the same as any other node.
 `data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
 A Task records work evidence. It never supplies a passing criterion check.
@@ -37,9 +37,9 @@ Found a gap? Comment in the REQ card. The owner answers there and, when needed,
 updates REQ and ACs. History records the author, time and content of each saved
 operation, with the reason in the discussion. No separate suggestions process.
 
-A comment does not automatically stop work. If an answer is necessary to
-implement or check an AC, mark that AC as waiting with the specific question and
-recipient. Its dependents wait too; independent ready ACs may proceed.
+A comment does not stop work. When work on an AC needs a decision, ask the
+specific question with `note` and name the person who decides. A typed field,
+such as `stage`, gives the state of the AC. Independent ACs can continue.
 
 An OAuth-connected assistant acts as the signed-in user. That credential does
 not itself authorize a business decision. Confirm wording, accept results,
@@ -63,7 +63,7 @@ A later change to that Note then asks the agent to review the requirement.
 1. **Policy request:** clarify amounts, lists and scope; formulate a REQ; have
    the authority approve the wording; analyze and implement it.
 2. **Idea requiring a decision:** ask the responsible person first. Do not create
-   implementation work for a disputed AC before the decision. Independent ready
+   implementation work for a disputed AC before the decision. Independent
    ACs can proceed. Conditions of the decision, including review dates when
    relevant, belong in the REQ and ACs.
 3. **Support problem:** link an existing REQ. A confirmed defect invalidates the
@@ -84,11 +84,7 @@ Retrospective wording is easy to tailor to a convenient fix. Its owner accepts i
 as any other REQ. An incomplete tree must not prevent
 a new Note. A new Note does not prove that the tree is complete.
 
-## Readiness and results
-
-“Ready for work” means the condition is sufficiently specified and no known
-blocking question remains. “Waiting for a decision” identifies a specific
-question and person. An unready AC remains part of the requirement.
+## Results
 
 Each REQ revision has its own state. Work availability, check results and owner
 acceptance are separate facts.
@@ -96,14 +92,13 @@ acceptance are separate facts.
 | Summary | Meaning |
 |---|---|
 | Awaiting analysis | No ACs have been specified |
-| N of M ACs ready for work | Those ACs can proceed; others await answers or dependencies |
 | N of M ACs verified | Checks support those conditions |
 | Ready for acceptance | All ACs passed on one subject; the owner must decide |
 | Accepted | The owner accepted that revision and its checked result |
 
 Silence is not approval. Only an owner acceptance approves a revision. A changed
 meaning needs a new revision and a new acceptance. A specialist's decision may be reused only when the REQ
-context and the relevant AC are unchanged; cite it in the new assessment.
+context and the relevant AC are unchanged. Cite it in the new analysis.
 
 ## Acceptance
 

@@ -9,7 +9,7 @@ One workspace is one product, even when several repositories deliver it.
 Repository references follow the workspace schema.
 
 People and agents formulate REQ, ACs and TACs together. The REQ owner confirms wording
-and accepts the checked result. Agents assess each criterion: independent ready
+and accepts the checked result. Agents analyze each criterion. Independent
 conditions can proceed while disputed ones wait for a named decision maker.
 An iOS condition means iOS; other clients are never added by assumption.
 

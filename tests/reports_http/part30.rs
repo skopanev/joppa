@@ -58,11 +58,6 @@ impl Planning<'_> {
             "parent":document["parent"],"data":document["data"],"links":links,"reason":"Order the work"}))
             .await
     }
-    /// The readiness mark of a criterion: its state and its reason.
-    async fn readiness(&self, ac: &str) -> Result<Value> {
-        let a = &self.read(ac).await?["process"]["assessment"];
-        Ok(json!([a["state"], a["reason"]]))
-    }
 }
 
 /// A waiting criterion reads work_ready=false and names `target` with the reason.
@@ -89,10 +84,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     );
     // Controls: A1 is ready and grey.
     let a1 = p.object_both("criterion:a1").await?;
-    ensure!(
-        a1["process"]["assessment"]["state"] == "ready" && a1["work_ready"] == true,
-        "{a1}"
-    );
+    ensure!(a1["work_ready"] == true, "{a1}");
     ensure!(p.status("criterion:a1").await?["status"] == "grey");
     let listed = p.ready_work().await?;
     ensure!(
@@ -100,10 +92,7 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
         "{listed:?}"
     );
     let b1 = p.object_both("criterion:b1").await?;
-    ensure!(
-        b1["process"]["assessment"]["state"] == "ready" && waits_for(&b1, "spec:a"),
-        "{b1}"
-    );
+    ensure!(waits_for(&b1, "spec:a"), "{b1}");
 
     // A record passes every listed test of A1.
     p.bind(&w.token, "criterion:a1", &[A]).await?;

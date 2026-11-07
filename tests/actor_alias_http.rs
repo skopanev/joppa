@@ -87,8 +87,7 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
     with_header(&w, "p2", "joppa_command", both)
         .await?
         .map_err(anyhow::Error::msg)?;
-    let mark = json!({"op":"assess","target":"ac:b","ready":false,"reason":"Which limit?"});
-    aliased(&w, "joppa_command", write(mark), "p4").await?;
+    aliased(&w, "joppa_command", write(save("b", 2, "B three")), "p4").await?;
     let results =
         json!({"commit":"a".repeat(40),"results":[{"test":"tests/x.rs > t","status":"pass"}]});
     aliased(&w, "joppa_record_results", results, "runner").await?;
@@ -105,9 +104,8 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
         comment["alias"] == "p2" && comment["actor"] == "owner",
         "comment {b}"
     );
-    ensure!(b["process"]["assessment"]["alias"] == "p4", "mark {b}");
     ensure!(
-        revisions(&w, "ac:b").await? == [json!("p1"), json!("p3")],
+        revisions(&w, "ac:b").await? == [json!("p1"), json!("p3"), json!("p4")],
         "revisions"
     );
     let timeline = w
@@ -154,16 +152,8 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
         .await?;
     joppa::store::backfill_board(&w.pool).await?;
     ensure!(
-        revisions(&w, "ac:b").await? == [json!("p1"), json!("p3")],
+        revisions(&w, "ac:b").await? == [json!("p1"), json!("p3"), json!("p4")],
         "revisions after a rebuild"
-    );
-    let b = w
-        .mcp(&w.owner, "joppa_objects", json!({"address":"ac:b"}))
-        .await?
-        .map_err(anyhow::Error::msg)?;
-    ensure!(
-        b["process"]["assessment"]["alias"] == "p4",
-        "mark after a rebuild {b}"
     );
     Ok(())
 }

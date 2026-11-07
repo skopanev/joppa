@@ -2,12 +2,7 @@
 use super::*;
 
 /// Apply `revise`.
-pub(super) fn apply_revise(
-    w: &mut Workspace,
-    actor: &str,
-    command: &Command,
-    position: u64,
-) -> Result<()> {
+pub(super) fn apply_revise(w: &mut Workspace, actor: &str, command: &Command) -> Result<()> {
     let Command::Revise(crate::commands::ReviseOp {
         req,
         expected_revision,
@@ -65,7 +60,6 @@ pub(super) fn apply_revise(
             );
         }
     }
-    let keep_assessments = rule_applies(w, KEEP_ASSESSMENTS, position);
     let r = w
         .requirements
         .entry(req.clone())
@@ -114,29 +108,7 @@ pub(super) fn apply_revise(
             }
         }
     }
-    let mut acs: Vec<Ac> = acs
-        .iter()
-        .cloned()
-        .map(|mut ac| {
-            ac.assessment = None;
-            ac
-        })
-        .collect();
-    // readiness-resets-ac1: a new revision resets readiness. When it changes some
-    // criteria, the others keep theirs; reset_changed clears the changed branches.
-    let previous = r
-        .revisions
-        .last()
-        .map(|old| old.acs.as_slice())
-        .unwrap_or_default();
-    if keep_assessments
-        && (previous.len() != acs.len()
-            || acs
-                .iter()
-                .any(|ac| !previous.iter().any(|old| same_criterion(old, ac))))
-    {
-        carry_assessments(previous, &mut acs);
-    }
+    let acs: Vec<Ac> = acs.to_vec();
     r.revisions.push(Revision {
         number: expected_revision + 1,
         capability: capability.clone(),

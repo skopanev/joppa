@@ -28,7 +28,8 @@ pub enum Command {
     /// Internal migration event: a node has no decision_required, see decision_migration.
     MigrateDecisionRequired {},
     SetTreeSchema(SetTreeSchemaOp),
-    /// The older readiness mark of an inbox signal. Only journal replay reads it; see `assess`.
+    /// The removed readiness mark of an inbox signal. An older journal holds it, and its
+    /// replay has no effect.
     AssessSignal {
         target: String,
         ready: bool,

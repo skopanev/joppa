@@ -10,7 +10,6 @@ async fn an_agent_cannot_set_task_verification_by_hand() -> Result<()> {
     let mut types = schema["schema"]["types"].clone();
     types["job"] = types["task"].clone();
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Check verification with a configured task type"})).await?;
-    w.command_as(bot, json!({"op":"assess","target":"ac:key-rights","ready":true,"reason":"The contract is clear"})).await?;
     let conn = w.pool.get().await?;
     for kind in ["task", "job"] {
         w.command(json!({"op":"save_object","kind":kind,"id":"report-only","revision":0,"parent":"ac:key-rights","data":{"title":"Implement the report contract","owner":"owner","body":"Implement the key rights and record checks","projects":[]},"reason":"Create work for the verification guard"})).await?;

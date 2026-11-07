@@ -3,13 +3,10 @@
 // check-list-frozen-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn frozen_f6_an_archived_red_sibling_keeps_a_green_and_ready() -> Result<()> {
+async fn frozen_f6_an_archived_red_sibling_keeps_a_green() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
-    let (before, assessment) = (
-        p.ac_tests("criterion:a").await?,
-        p.assessment("criterion:a").await?,
-    );
+    let before = p.ac_tests("criterion:a").await?;
     // R shows the red tone of B before the archive.
     let r = p.get("/objects?address=spec:r".into()).await?;
     ensure!(r["signal"]["tone"] == "red", "{r}");
@@ -18,7 +15,7 @@ async fn frozen_f6_an_archived_red_sibling_keeps_a_green_and_ready() -> Result<(
     let revision = p.revision("criterion:b").await?;
     p.post_command(&w.owner, json!({"op":"archive_object","target":"criterion:b","revision":revision,"reason":"Drop the red criterion"})).await?;
     // An archive resets only the criteria at and below the archived object.
-    p.kept(&before, &assessment).await?;
+    p.kept(&before).await?;
     let r = p
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
@@ -34,35 +31,13 @@ async fn frozen_f6_control_an_archived_inbox_signal_keeps_a_green() -> Result<()
     let w = world().await?;
     let p = frozen(&w).await?;
     p.signal().await?;
-    let (before, assessment) = (
-        p.ac_tests("criterion:a").await?,
-        p.assessment("criterion:a").await?,
-    );
+    let before = p.ac_tests("criterion:a").await?;
     p.post_command(
         &w.owner,
         json!({"op":"archive_object","target":"signal:s","revision":1,"reason":"Drop the signal"}),
     )
     .await?;
-    p.kept(&before, &assessment).await
-}
-
-// check-list-frozen-ac3
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn frozen_f7_a_pm_marks_grey_a_ready_and_a_stays_grey() -> Result<()> {
-    let w = world().await?;
-    let p = frozen(&w).await?;
-    let before = p.ac_tests("criterion:a").await?;
-    p.change_a().await?;
-    p.reset(&before, &Value::Null).await?;
-    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
-    let readiness = p.assessment("criterion:a").await?;
-    let s = p.ac_tests("criterion:a").await?;
-    ensure!(
-        readiness["state"] == "ready" && s["status"] == "grey",
-        "{readiness} {s}"
-    );
-    Ok(())
+    p.kept(&before).await
 }
 
 // check-list-frozen-ac3
@@ -72,13 +47,10 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
     let w = world().await?;
     let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
-    let b = (
-        p.ac_tests("criterion:b").await?,
-        p.assessment("criterion:b").await?,
-    );
+    let b = p.ac_tests("criterion:b").await?;
     p.change_a().await?;
     // Control: the record from before the change does not count.
-    p.reset(&before, &Value::Null).await?;
+    p.reset(&before).await?;
     // Control: a record after the change that misses a listed test stays grey.
     p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = p.ac_tests("criterion:a").await?;
@@ -90,19 +62,8 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
     ensure!(mcp["status"]["tone"] == "green", "MCP joppa_objects: {mcp}");
-    let after = (
-        p.ac_tests("criterion:b").await?,
-        p.assessment("criterion:b").await?,
-    );
-    // The new text of A makes a new revision of R, so B keeps its assessment at that revision.
-    let unpinned = |mut assessment: Value| {
-        assessment.as_object_mut().map(|a| a.remove("revision"));
-        assessment
-    };
-    ensure!(
-        after.0["status"] == b.0["status"] && unpinned(after.1.clone()) == unpinned(b.1.clone()),
-        "sibling B changed: {after:?}"
-    );
+    let after = p.ac_tests("criterion:b").await?;
+    ensure!(after["status"] == b["status"], "sibling B changed: {after}");
     Ok(())
 }
 
@@ -112,20 +73,17 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
 async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
-    let (before, assessment) = (
-        p.ac_tests("criterion:a").await?,
-        p.assessment("criterion:a").await?,
-    );
+    let before = p.ac_tests("criterion:a").await?;
     p.signal().await?;
-    p.kept(&before, &assessment).await
+    p.kept(&before).await
 }
 
 // signal-becomes-spec-ac3
 // Member alex archives one signal under R over HTTP and one over MCP. A and R keep
-// their status, readiness and tone. Control: a new title of R makes A grey.
+// their status and tone. Control: a new title of R makes A grey.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Result<()> {
+async fn a_member_archive_of_a_signal_under_r_keeps_a_green() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
     p.write("owner", json!({"op":"member","id":"alex","role":"human"}))
@@ -134,23 +92,16 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Resul
         p.post_command(&w.owner, json!({"op":"save_object","kind":"signal","id":id,"revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[{"target":"spec:r","relation":"related"}],"reason":"Record the signal"})).await?;
     }
     let state = async || -> Result<Value> {
-        let a = p
-            .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
-            .await?;
         let r = p
             .mcp_read("joppa_objects", json!({"address":"spec:r"}))
             .await?;
         Ok(json!({
             "status": p.ac_tests("criterion:a").await?["status"],
-            "assessment": a["process"]["assessment"],
             "tone": r["status"]["tone"],
         }))
     };
     let before = state().await?;
-    ensure!(
-        before["status"] == "green" && before["assessment"]["state"] == "ready",
-        "A must start green and ready: {before}"
-    );
+    ensure!(before["status"] == "green", "A must start green: {before}");
     for (mcp, signal) in [(false, "signal:http-n"), (true, "signal:mcp-n")] {
         let archive =
             json!({"op":"archive_object","target":signal,"revision":1,"reason":"Needs no work"});
@@ -166,5 +117,5 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green_and_ready() -> Resul
     // Control: the fixture detects a reset.
     let tests = p.ac_tests("criterion:a").await?;
     p.save_r("area:g", "R renamed", json!([])).await?;
-    p.reset(&tests, &before["assessment"]).await
+    p.reset(&tests).await
 }

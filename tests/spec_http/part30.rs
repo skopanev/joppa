@@ -3,9 +3,6 @@
 /// REQ key holds task:t1; REQ other holds task:t2 under other-rights and a second AC other-audit.
 async fn tasks_under_two_requirements(w: &World) -> Result<()> {
     w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review"), ("other-audit", "Record each write")]).await?;
-    for ac in ["key-rights", "other-rights", "other-audit"] {
-        w.assess_ready(ac).await?;
-    }
     ready_task(w, "t1", "key-rights").await?;
     ready_task(w, "t2", "other-rights").await?;
     Ok(())

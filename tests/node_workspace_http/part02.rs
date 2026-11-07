@@ -110,7 +110,6 @@ impl World {
             ),
         )
         .await?;
-        self.ok(owner, p, json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
         self.ok(
             owner,
             c,
@@ -172,7 +171,7 @@ impl World {
             .unwrap_or(0);
         self.command(token, ws, json!({"op":"set_remote_links","target":target,"revision":current,"links":links,"reason":"Link to another workspace"})).await
     }
-    /// A depends on the current revision of API with a blocking link, and A is ready again.
+    /// A depends on the current revision of API with a blocking link.
     async fn block_a_on_api(&self) -> Result<()> {
         let pin = self.revision(&self.c, "requirement:api").await?;
         self.set_links(
@@ -183,7 +182,6 @@ impl World {
         )
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-        self.ok(&self.owner, &self.p, json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
         Ok(())
     }
     fn waiting(&self) -> String {

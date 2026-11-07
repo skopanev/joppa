@@ -4,9 +4,9 @@
 //!   one keeps its own readiness: a criterion without tests can be ready for work.
 //! - Every other rule: the node keeps its own readiness.
 //!
-//! A node is ready when it waits for no dependency (`work_ready`) and its readiness mark does
-//! not wait for an answer. A rollup node stores `work_ready` false when the rollup is not
-//! ready, so the `ready` filter (node_filter_sql::READY) agrees with the rollup.
+//! A node is ready when it waits for no dependency (`work_ready`). A rollup node stores
+//! `work_ready` false when the rollup is not ready, so the `ready` filter
+//! (node_filter_sql::READY) agrees with the rollup.
 use super::tone_items::{Counted, rule_of, waits};
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};

@@ -193,13 +193,12 @@ pub struct ReviewTaskOp {
     pub reason: String,
 }
 
-/// The fields of `assess`: a member marks a node ready for work, or waiting with a reason.
+/// The removed `assess` of an older journal: the readiness mark of a node, or the older one of
+/// a criterion in a requirement revision. Its replay has no effect.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AssessOp {
     Node(AssessNode),
-    /// The older assessment of a criterion in a requirement revision. Only journal replay
-    /// reads it.
     Criterion(AssessCriterion),
 }
 
@@ -221,5 +220,6 @@ pub struct AssessCriterion {
     pub req: String,
     pub revision: u32,
     pub ac: String,
-    pub assessment: Assessment,
+    #[serde(skip_serializing)]
+    pub assessment: crate::model::Removed,
 }

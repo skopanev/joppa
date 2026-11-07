@@ -12,8 +12,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "revision": 3,
   "parent": "ac:a",
   "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
-  "status": {"label": "Waits for an answer", "tone": "yellow"},
-  "process": {"assessment": {"state": "waiting", "reason": "Which currency?", "actor": "bot", "position": 41}},
+  "status": {"label": "Waits for a dependency", "tone": "yellow"},
+  "work_ready": false,
   "comments": {
     "total": 30,
     "next_cursor": "25",
@@ -47,12 +47,10 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - An object without comments has no `comments` key. An object without outgoing links has no
   `links` key.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
-- `process` is the same for every type: `annotation_address`, `verification`, `assessment`,
+- `process` is the same for every type: `annotation_address`, `verification`,
   `acceptance`, and the `status` of an inbox type. `annotation_address` shows only when it
   differs from the address.
-- `assessment` is the readiness mark that `assess` sets: `state` (`ready` or `waiting`),
-  `reason`, `actor` and `position`, the journal position of the mark. Send it as
-  `expected_position` of the next `assess`. `verification` shows only the `pass` or `fail` of a finished run.
+- `verification` shows only the `pass` or `fail` of a finished run.
 - `process.status` of a Note shows only when it differs from `data.status`.
 - `work_ready` shows only when it is `false`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read

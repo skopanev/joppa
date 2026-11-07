@@ -36,7 +36,6 @@ async fn configured_references_drive_the_index_without_rewriting_history() -> Re
     let schema = store::tree_schema(&pool, &ws, "agent", None).await?;
     let mut types = objects::defaults();
     types.get_mut("task").unwrap().parents = vec!["domain".into()];
-    types.get_mut("task").unwrap().parent_gate = None;
     types.get_mut("task").unwrap().parent_decision = false;
     types.get_mut("task").unwrap().references = [(
         "affected".into(),

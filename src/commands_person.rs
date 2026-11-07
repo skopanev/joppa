@@ -87,8 +87,6 @@ pub fn unchanged_save(
 /// applies to every live write, and in a replay from its epoch in the workspace on.
 pub const RESET_CHANGED: &str = "reset_changed";
 
-pub const KEEP_ASSESSMENTS: &str = "keep_assessments";
-
 pub const LIST_SAVE_RESET: &str = "list_save_reset";
 
 /// From this rule on, the member command accepts only people. Agents and runners enroll
@@ -107,24 +105,18 @@ pub const CRITERION_SAVE_REASON: &str = "criterion_save_reason";
 /// older archive keeps its reset at and below the parent in a replay.
 pub const ARCHIVE_OWN_RESET: &str = "archive_own_reset";
 
-/// From this rule on, a change removes the readiness mark of the changed node only. An older
-/// change keeps its removal of each mark at and below the node in a replay.
-pub const OWN_MARK_RESET: &str = "own_mark_reset";
-
 /// From this rule on, any new parent, link or data value of a node resets the criteria at and
 /// below it. An older revision resets them only for a new parent, link, text or test list in
 /// a replay.
 pub const ANY_CHANGE_RESET: &str = "any_change_reset";
 
-pub const REPLAY_RULES: [&str; 9] = [
+pub const REPLAY_RULES: [&str; 7] = [
     RESET_CHANGED,
-    KEEP_ASSESSMENTS,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
     SINGLE_CRITERION_SAVE,
     CRITERION_SAVE_REASON,
     ARCHIVE_OWN_RESET,
-    OWN_MARK_RESET,
     ANY_CHANGE_RESET,
 ];
 

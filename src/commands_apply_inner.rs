@@ -64,24 +64,8 @@ pub(crate) fn apply_inner(
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp { .. }) => {
             apply_set_tree_schema(w, actor, command, position, recorded_at)?
         }
-        Command::AssessSignal {
-            target,
-            ready,
-            reason,
-        } => apply_assess(w, actor, target, (*ready, reason), None, position)?,
-        Command::Assess(AssessOp::Node(AssessNode {
-            target,
-            ready,
-            reason,
-            expected_position,
-        })) => apply_assess(
-            w,
-            actor,
-            target,
-            (*ready, reason),
-            *expected_position,
-            position,
-        )?,
+        // The readiness marks were removed: an older mark has no effect.
+        Command::AssessSignal { .. } | Command::Assess(_) => {}
         Command::SetPriority { target, priority } => apply_set_priority(w, target, priority),
         Command::SaveObject(crate::commands::SaveObjectOp { .. }) => {
             crate::objects::save(w, actor, command, position, recorded_at)?;
@@ -210,9 +194,7 @@ pub(crate) fn apply_inner(
             ensure!(!w.projects.contains_key(id), "project exists");
             w.projects.insert(id.clone(), repository.clone());
         }
-        Command::Revise(crate::commands::ReviseOp { .. }) => {
-            apply_revise(w, actor, command, position)?
-        }
+        Command::Revise(crate::commands::ReviseOp { .. }) => apply_revise(w, actor, command)?,
         Command::LinkSource(crate::commands::LinkSourceOp { .. }) => {
             apply_link_source(w, actor, command, recorded_at)?
         }
@@ -230,7 +212,6 @@ pub(crate) fn apply_inner(
         Command::Comment(crate::commands::CommentOp { .. }) => {
             apply_comment(w, actor, command, recorded_at)?
         }
-        Command::Assess(AssessOp::Criterion(op)) => apply_assess_criterion(w, op)?,
         Command::Workspace { .. } => unreachable!(),
         _ => checks::apply(w, actor, command, position, recorded_at)?,
     }

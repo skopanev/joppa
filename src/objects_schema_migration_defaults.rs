@@ -45,7 +45,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                 badge: None,
                 title_preview_length: None,
                 field_max_length: None,
-                parent_gate: (kind == "task").then(|| "ready".into()),
+                parent_gate: (kind == "task").then_some(crate::model::Removed),
                 launch_blocker: (kind == "ac").then_some(true),
                 inbox: (kind == "note").then_some(true),
                 title: title.into(),

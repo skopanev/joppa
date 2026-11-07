@@ -27,7 +27,7 @@ storage identity and old links survive. Both names resolve through the same
 access checks. A name cannot be reassigned to another workspace.
 
 A revision fixes the REQ wording, owner and entire AC set. No write edits an old
-revision. Assessments, checks, acceptance and discussion name the revision number. Evidence author and time come from authentication and the
+revision. Checks, acceptance and discussion name the revision number. Evidence author and time come from authentication and the
 server event, not caller-supplied labels. `intake.author` attributes the source
 message; the authenticated writer remains separately visible in history.
 

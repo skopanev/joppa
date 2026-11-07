@@ -1,56 +1,46 @@
-// Part 3 of tests/criterion_reset_postgres.rs, included there, so the test names stay unchanged.
+// Part 3 of tests/criterion_reset_postgres.rs: any change of a node resets its criteria.
 
-/// The snapshot with the readiness mark of criterion C.
-async fn marks(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
-    let mut marks = snapshot(pool, ws).await?;
-    marks["criterion:c"] = read(pool, ws, "criterion:c").await?["process"]["assessment"].clone();
-    Ok(marks)
+/// Set the epoch of any_change_reset, replay the journal and give the status of A and D.
+async fn replay_from(pool: &deadpool_postgres::Pool, ws: &str, epoch: i64) -> Result<(Value, Value)> {
+    let sql = "UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='any_change_reset'";
+    pool.get().await?.execute(sql, &[&ws, &epoch]).await?;
+    let replayed = replay(pool, ws).await?;
+    Ok((replayed["criterion:a"]["status"]["status"].clone(), replayed["criterion:d"]["status"]["status"].clone()))
 }
 
-// ac:kp5dhbh7
+/// The current revision of `address`.
+async fn revision(pool: &deadpool_postgres::Pool, ws: &str, address: &str) -> Result<Value> {
+    Ok(read(pool, ws, address).await?["current_revision"].clone())
+}
+
+// ac:lkcs7om2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_parent_change_keeps_the_readiness_marks_below_it() -> Result<()> {
+async fn a_new_data_value_or_link_resets_the_criteria_below_and_a_sibling_save_does_not() -> Result<()> {
     let pool = pool().await?;
     let ws = branches(&pool).await?;
-    // Criterion C under R waits for an answer.
-    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"c","revision":0,"parent":"spec:r","data":{"title":"c","owner":"owner"},"reason":"Create the criterion"})).await?;
-    write(&pool, &ws, "planner", json!({"op":"assess","target":"criterion:c","ready":false,"reason":"Which limit applies?"})).await?;
-    // The owner changes the text of R: the tests below stop counting, the marks stay.
-    let r = read(&pool, &ws, "spec:r").await?["current_revision"].clone();
-    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":"r","revision":r,"parent":"area:g","data":{"title":"r","body":"Implement the sharper rule","owner":"owner"},"reason":"Sharper rule"})).await?;
-    let live = marks(&pool, &ws).await?;
-    ensure!(
-        live["criterion:a"]["status"]["status"] == "grey"
-            && live["criterion:a"]["assessment"]["state"] == "ready"
-            && live["criterion:c"]["state"] == "waiting"
-            && live["criterion:c"]["reason"] == "Which limit applies?"
-            && live["criterion:d"]["assessment"]["state"] == "ready",
-        "after the spec change: {live}"
-    );
-    // The owner changes the text of A: only A loses its mark.
-    change_a(&pool, &ws).await?;
-    let live = marks(&pool, &ws).await?;
-    ensure!(
-        live["criterion:a"]["assessment"].is_null()
-            && live["criterion:c"]["state"] == "waiting"
-            && live["criterion:d"]["assessment"]["state"] == "ready",
-        "after the criterion change: {live}"
-    );
-    replay(&pool, &ws).await?;
-    let replayed = marks(&pool, &ws).await?;
-    ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
-    // A change before the epoch of own_mark_reset keeps its old meaning in a replay: the
-    // change of R removes every mark below R.
+    let green = |a: &str, d: &str| (json!(a), json!(d));
+    // Only data.env of A changes: A turns grey, D stays green.
+    let a = revision(&pool, &ws, "criterion:a").await?;
+    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a,"parent":"spec:r","data":{"title":"a","owner":"owner","env":"dev"},"reason":"Name the environment"})).await?;
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "grey", "env change");
+    ensure!(status(&pool, &ws, "criterion:d").await?["status"] == "green", "D after the env change");
+    // Before its epoch, the same change kept A green in a replay. From its epoch, it resets A.
     let after = events(&pool, &ws).await? + 1;
-    pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='own_mark_reset'", &[&ws, &after]).await?;
-    replay(&pool, &ws).await?;
-    let old = marks(&pool, &ws).await?;
-    ensure!(
-        old["criterion:a"]["assessment"].is_null()
-            && old["criterion:c"].is_null()
-            && old["criterion:d"]["assessment"]["state"] == "ready",
-        "{old}"
-    );
+    ensure!(replay_from(&pool, &ws, after).await? == green("green", "green"), "replay before the epoch");
+    ensure!(replay_from(&pool, &ws, 1).await? == green("grey", "green"), "replay from the epoch");
+    upload_c1(&pool, &ws).await?;
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "green", "a new record");
+    // A new link of spec R resets A below it.
+    let r = revision(&pool, &ws, "spec:r").await?;
+    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":"r","revision":r,"parent":"area:g","data":{"title":"r","body":"Implement the rule","owner":"owner"},"links":[{"target":"spec:rh","relation":"related"}],"reason":"Relate the rules"})).await?;
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "grey", "link change");
+    upload_c1(&pool, &ws).await?;
+    // A new sibling C under R gives R a new revision with the same parent, links and data:
+    // A stays green.
+    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"c","revision":0,"parent":"spec:r","data":{"title":"c","owner":"owner"},"reason":"Create the criterion"})).await?;
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "green", "sibling save");
+    let live = snapshot(&pool, &ws).await?;
+    ensure!(replay(&pool, &ws).await? == live, "replay");
     Ok(())
 }

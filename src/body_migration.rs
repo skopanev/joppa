@@ -1,6 +1,6 @@
 //! The text of every object type is `data.body`. The event migrate_body runs once in each
 //! workspace. It moves `data.description` and `data.contract` into `data.body` in a new
-//! revision that keeps the contract revision, so pins, assessments and test results stay.
+//! revision that keeps the contract revision, so pins and test results stay.
 //! It also renames these required fields of the tree schema and gives the typed records
 //! the same text, so a later replay step derives the same documents.
 use crate::model::Workspace;

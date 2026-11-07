@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 9;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 10;
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
 const FIELDS: [&str; 3] = ["work_ready", "waits_for", "child_counts"];
@@ -53,10 +53,11 @@ pub(in crate::store) async fn rebuild(
         .map(base_row)
         .collect();
     let base = items.clone();
-    let counted = add_status_tones(client, workspace, &mut items, &types).await?;
-    add_child_counts(&mut items, &counted, &types);
+    // A node that waits for a dependency is at least yellow: the waits come first.
     let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     add_waits(client, workspace, &mut items, &waits, &counts).await?;
+    let counted = add_status_tones(client, workspace, &mut items, &types).await?;
+    add_child_counts(&mut items, &counted, &types);
     super::ready_rollup::roll_ready(&mut items, &counted, &types);
     let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
     store_column(client, workspace, "rollup", &patches).await?;

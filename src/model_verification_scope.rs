@@ -40,8 +40,9 @@ pub struct Ac {
     pub owner: Option<String>,
     #[serde(default)]
     pub before_launch: bool,
-    #[serde(default)]
-    pub assessment: Option<Assessment>,
+    /// The removed readiness mark of an older journal.
+    #[serde(default, skip_serializing)]
+    pub assessment: Option<Removed>,
     /// The removed decision flag. Only the replay of a save before migrate_decision_required
     /// sets it, when it differs from the older rule that an own owner decides the criterion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,26 +56,16 @@ impl Ac {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Assessment {
-    pub ready: bool,
-    pub reason: String,
-    #[serde(alias = "recipient")]
-    pub owner: Option<String>,
-    pub decision: Option<String>,
-}
+/// A removed field that an older journal still names. A read accepts any value of it and
+/// keeps only its presence, and a write never stores it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Removed;
 
-/// A member's readiness mark of a signal: Tasks under it are claimable only when ready.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SignalAssessment {
-    pub ready: bool,
-    pub reason: String,
-    pub actor: String,
-    /// The alias of the event that set the mark.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub alias: Option<String>,
-    pub position: u64,
+impl<'de> Deserialize<'de> for Removed {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(d)?;
+        Ok(Removed)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

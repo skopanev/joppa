@@ -72,16 +72,3 @@ pub(super) fn apply_comment(
     );
     Ok(())
 }
-
-/// Replay the older `assess` of a criterion in a requirement revision.
-pub(super) fn apply_assess_criterion(w: &mut Workspace, op: &AssessCriterion) -> Result<()> {
-    let r = revision(w, &op.req, op.revision, true)?;
-    let ac = r
-        .acs
-        .iter_mut()
-        .find(|a| a.id == op.ac)
-        .context("unknown AC")?;
-    ac.assessment = Some(op.assessment.clone());
-    r.acceptance = None;
-    Ok(())
-}

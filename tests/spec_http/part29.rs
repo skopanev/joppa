@@ -26,7 +26,6 @@ async fn journal_position(w: &World) -> Result<i64> {
 async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     // edit-makes-revision-ac3
     let w = world().await?;
-    w.command_as(&w.bot, json!({"op":"assess","target":"ac:key-rights","ready":true,"reason":"The contract is clear"})).await?;
     let t = ready_task(&w, "t", "key-rights").await?;
     let title = "Implement the specified work";
     let save = |revision: u32, title: &str, extra: Value| {

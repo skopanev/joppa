@@ -50,12 +50,6 @@ pub(crate) fn validate_claim(
             ac.owner.as_ref().unwrap_or(&r.owner) == actor,
             "designated AC owner must claim the decision task"
         );
-        ensure!(
-            ac.depends_on.iter().all(|id| ready(r, id)),
-            "dependent AC is not ready"
-        );
-    } else {
-        ensure!(ready(r, &ac.id), "AC is not ready for work");
     }
     Ok(())
 }

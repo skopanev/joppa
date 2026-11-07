@@ -28,10 +28,7 @@ an invariant, limit or disclosure), the technical contract of a TAC (`Technical 
 placed under an AC or a REQ) and the contract of a Task. A save with `data.description`
 or `data.contract` is refused: `use body instead of description; read joppa_help`.
 An AC, a TAC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
-its owner. An open question on a node is its readiness mark: `assess` with `ready: false` and
-the question as `reason`. Any new parent, link or data value of a criterion or a test node
-removes its own mark. A save of its parent or of a node above keeps the mark and the question.
-A save with `data.decision_required` is refused.
+its owner. A save with `data.decision_required` is refused. Ask an open question with `note`.
 
 A save of a criterion (`ac` or `tac`) gives its specification a new revision with the reason
 `Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.
@@ -101,7 +98,7 @@ A Task has no purpose: `save_object` refuses `data.purpose` with
 - `data.assignee` names the member ID or the agent alias that does the work, such as `lane3`.
   A list item of `joppa_objects` and a board row show it.
 - `data.commit` gives the Git sha of the finished work.
-- `assess` sets the readiness of the Task. `archive_object` ends it.
+- A typed field of the schema, such as `data.stage`, gives the state of the Task. `archive_object` ends the Task.
 - Read Tasks with the node filters of `joppa_objects`, for example `{"kind":"task","assignee":"alex","ready":true}`.
 
 ## Archive and restore

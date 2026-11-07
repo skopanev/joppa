@@ -38,8 +38,7 @@ async fn a_failed_boundary_write_rejects_the_group_change() -> Result<()> {
     let after = snapshot(&pool, &ws).await?;
     ensure!(after == before, "after: {after}\nbefore: {before}");
     ensure!(
-        after["criterion:a"]["status"]["status"] == "green"
-            && after["criterion:a"]["assessment"]["state"] == "ready",
+        after["criterion:a"]["status"]["status"] == "green",
         "{after}"
     );
     Ok(())
@@ -134,8 +133,7 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     let b = status(&pool, &ws, "criterion:b").await?;
     ensure!(b["status"] == "red", "{b}");
     // Fixture 5: the planner renames a test node of A. B2 passed on C2, before the change,
-    // so that pass no longer counts. The change resets the test node, not the criterion:
-    // A keeps its assessment.
+    // so that pass no longer counts.
     let renamed = rename_b_of_a(&pool, &ws).await?;
     let node = renamed["object"]["address"]
         .as_str()
@@ -145,7 +143,6 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     let live = snapshot(&pool, &ws).await?;
     ensure!(
         live["criterion:a"]["status"]["status"] == "grey"
-            && live["criterion:a"]["assessment"]["state"] == "ready"
             && live["criterion:d"]["status"]["status"] == "green",
         "{live}"
     );
@@ -153,8 +150,7 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
         replay(&pool, &ws).await? == live,
         "replay after the test-node change"
     );
-    // A turns green and ready again; fixture 6: the owner archives B.
-    write(&pool, &ws, "planner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
+    // A turns green again. Fixture 6: the owner archives B.
     upload_full(&pool, &ws, "c3c3c3c").await?;
     ensure!(
         status(&pool, &ws, "criterion:a").await?["status"] == "green",
@@ -169,21 +165,18 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     let live = snapshot(&pool, &ws).await?;
     ensure!(
         live["criterion:a"]["status"]["status"] == "green"
-            && live["criterion:a"]["assessment"]["state"] == "ready"
             && live["criterion:d"]["status"]["status"] == "green",
         "{live}"
     );
     let replayed = replay(&pool, &ws).await?;
     ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
-    // An archive before the epochs of archive_own_reset and own_mark_reset keeps its old
-    // meaning in a replay:
-    // it resets the criteria at and below the parent, so A is grey and has no readiness mark.
+    // An archive before the epoch of archive_own_reset keeps its old meaning in a replay:
+    // it resets the criteria at and below the parent, so A is grey.
     let after = events(&pool, &ws).await? + 1;
-    pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule IN ('archive_own_reset','own_mark_reset')", &[&ws, &after]).await?;
+    pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='archive_own_reset'", &[&ws, &after]).await?;
     let old = replay(&pool, &ws).await?;
     ensure!(
         old["criterion:a"]["status"]["status"] == "grey"
-            && old["criterion:a"]["assessment"].is_null()
             && old["criterion:d"]["status"]["status"] == "green",
         "{old}"
     );
@@ -215,8 +208,7 @@ async fn a_failed_reset_rejects_the_test_node_change() -> Result<()> {
     let after = snapshot(&pool, &ws).await?;
     ensure!(after == before, "after: {after}\nbefore: {before}");
     ensure!(
-        after["criterion:a"]["status"]["status"] == "green"
-            && after["criterion:a"]["assessment"]["state"] == "ready",
+        after["criterion:a"]["status"]["status"] == "green",
         "{after}"
     );
     Ok(())

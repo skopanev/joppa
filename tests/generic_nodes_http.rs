@@ -1,5 +1,5 @@
 //! requirement:generic-nodes over a real server: every node takes the same fields and
-//! operations. A Task is a node: data.assignee, assess, archive_object and the node filters.
+//! operations. A Task is a node: data.assignee, depends_on, archive_object and the node filters.
 #[path = "common/generic_world.rs"]
 mod generic_world;
 use anyhow::{Result, ensure};
@@ -9,61 +9,47 @@ use serde_json::json;
 // generic-nodes-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn assess_marks_any_node_and_the_ready_filter_follows_the_mark() -> Result<()> {
+async fn the_ready_filter_follows_a_dependency_wait() -> Result<()> {
     let w = world(&[]).await?;
     let data = json!({"title":"Call the API","owner":"owner","body":"Call it","assignee":"alex"});
-    save(&w, "task", "t", "ac:a", data, json!([])).await?;
-    let mark = |target: &str, ready: bool, reason: &str| json!({"op":"assess","target":target,"ready":ready,"reason":reason});
-    for target in ["task:t", "requirement:r"] {
-        w.command(&w.bot, mark(target, false, "Which API version?"))
-            .await?
-            .map_err(anyhow::Error::msg)?;
-    }
+    // The task waits for the grey criterion ac:a.
+    let link = json!([{"target":"ac:a","relation":"depends_on","blocking":true}]);
+    save(&w, "task", "t", "requirement:r", data.clone(), link).await?;
     let task = w.object("task:t").await?;
-    let mut assessment = task["process"]["assessment"].clone();
-    let position = assessment["position"].take();
-    ensure!(
-        assessment
-            == json!({"state":"waiting","reason":"Which API version?","actor":"bot","position":null})
-            && position.as_u64() > Some(0),
-        "{task}"
-    );
+    let mark = task["process"].get("assessment");
+    ensure!(task["work_ready"] == false && mark.is_none(), "{task}");
     let filter = |ready: bool| json!({"kind":["task","requirement"],"assignee":null,"ready":ready});
-    ensure!(
-        listed(&w, filter(false)).await? == ["requirement:r", "task:t"],
-        "both wait"
-    );
+    // The task has the rule none, so requirement:r does not count it and stays ready.
+    let waiting = listed(&w, filter(false)).await?;
+    ensure!(waiting == ["task:t"], "{waiting:?}");
+    let ready = listed(&w, filter(true)).await?;
+    ensure!(ready == ["requirement:r"], "{ready:?}");
     let alex = json!({"kind":"task","assignee":"alex","ready":false});
     ensure!(
         listed(&w, alex).await? == ["task:t"],
         "alex holds the waiting task"
     );
-    w.command(&w.bot, mark("task:t", true, "Version 2"))
-        .await?
-        .map_err(anyhow::Error::msg)?;
+    // Without the link, the task is ready again.
+    let save = json!({"op":"save_object","kind":"task","id":"t","revision":task["revision"],
+        "parent":"requirement:r","data":data,"links":[],"reason":"No order"});
+    w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
     ensure!(
-        listed(&w, filter(true)).await? == ["task:t"],
+        listed(&w, filter(true)).await? == ["requirement:r", "task:t"],
         "the task is ready again"
     );
-    ensure!(
-        w.object("task:t").await?["process"]["assessment"]["state"] == "ready",
-        "ready"
-    );
-    // The older form of a criterion assessment and an unknown node are refused.
+    // The readiness mark operation is refused, in the current and in the older form.
+    let text = "assess was removed; use save_object with a typed field such as data.stage (fields in set_tree_schema)";
+    let mark = json!({"op":"assess","target":"task:t","ready":true,"reason":"Known"});
     let older = json!({"op":"assess","req":"r","revision":1,"ac":"a",
         "assessment":{"ready":true,"reason":"Known","owner":null,"decision":null}});
-    ensure!(
-        w.command(&w.bot, older).await?
-            == Err(
-                "assess with req, revision and ac was removed; use assess {target, ready, reason}"
-                    .into()
-            ),
-        "the older form is refused"
-    );
-    let unknown = w.command(&w.bot, mark("task:none", true, "Known")).await?;
-    ensure!(unknown == Err("unknown object".into()), "{unknown:?}");
+    for command in [mark, older] {
+        let reply = w.command(&w.bot, command).await?;
+        ensure!(reply == Err(text.into()), "{reply:?}");
+    }
     Ok(())
 }
+
+const STAGE: &str = "save_object with a typed field such as data.stage (fields in set_tree_schema)";
 
 // generic-nodes-ac2
 #[tokio::test]
@@ -77,8 +63,9 @@ async fn the_task_operations_and_reads_are_refused_with_their_replacement() -> R
         ("claim_next_task", "save_object with data.assignee"),
         ("release_task", "save_object with data.assignee"),
         ("claim_planning", "save_object with data.assignee"),
-        ("block_task", "assess"),
-        ("assess_signal", "assess"),
+        ("block_task", STAGE),
+        ("unblock_task", STAGE),
+        ("assess_signal", STAGE),
         ("complete_task", "archive_object"),
         ("retire_task", "archive_object"),
         ("set_priority", "save_object with data.priority"),

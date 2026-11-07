@@ -70,7 +70,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         && t.parents == vec!["ac"]
         && t.parent_gate.is_none()
     {
-        t.parent_gate = Some("ready".into());
+        t.parent_gate = Some(crate::model::Removed);
         objects::set_schema(
             &mut candidate,
             actor,

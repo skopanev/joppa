@@ -40,6 +40,36 @@ async fn each_removed_operation_is_refused_live_and_names_its_replacement() -> R
             "HTTP {op}: {status} {text}"
         );
     }
+    // An old readiness mark with all its fields names the typed field that replaces it.
+    let mark = json!({"op":"assess","target":"ac:x","ready":true,"reason":"Clear",
+        "expected_position":1});
+    let refused = w.command(&w.bot, mark).await?;
+    ensure!(
+        refused.as_ref().err().is_some_and(|e| e.contains(
+            "assess was removed; use save_object with a typed field such as data.stage (fields in set_tree_schema)"
+        )),
+        "assess: {refused:?}"
+    );
+    // The command schema has no field of the readiness mark.
+    let tools: Value = w
+        .http
+        .post(format!("{}/mcp", w.root))
+        .bearer_auth(&w.bot)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let command = tools["result"]["tools"]
+        .as_array()
+        .and_then(|t| t.iter().find(|t| t["name"] == "joppa_command"))
+        .map(|t| &t["inputSchema"]["properties"]["command"]["properties"]);
+    ensure!(
+        command.is_some_and(|p| p.is_object()
+            && p.get("ready").is_none()
+            && p.get("expected_position").is_none()),
+        "{tools}"
+    );
     // A batch with one removed operation changes nothing.
     let batch = w
         .mcp(

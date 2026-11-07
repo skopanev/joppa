@@ -1,7 +1,6 @@
-//! An open question on a node is its readiness mark: `assess` with `ready: false` and the
-//! question as reason. The event migrate_decision_required runs once in each workspace. It
-//! removes `data.decision_required` from each object in a new revision that keeps the contract
-//! revision, so pins, assessments and test results stay. A stored criterion record of a
+//! The event migrate_decision_required runs once in each workspace. It removes
+//! `data.decision_required` from each object in a new revision that keeps the contract
+//! revision, so pins and test results stay. A stored criterion record of a
 //! requirement is immutable, so it keeps its old flag, and no read gives that flag.
 use crate::commands::{Command, SaveObjectOp, SetTreeSchemaOp};
 use crate::model::Workspace;
@@ -11,10 +10,11 @@ use anyhow::{Result, ensure};
 /// The removed document field.
 pub const FIELD: &str = "decision_required";
 
+/// The reason of each migration revision. The replay writes the same text, so it stays.
 pub const REASON: &str = "An open question is a readiness mark";
 
 /// The refusal of the removed field in a live save or in a type rule.
-pub const REFUSAL: &str = "decision_required was removed; ask an open question with assess {target, ready: false, reason}";
+pub const REFUSAL: &str = "decision_required was removed; ask an open question with note";
 
 /// After the migration, a live save and a type rule have no decision_required. The replay
 /// still reads the older saves.

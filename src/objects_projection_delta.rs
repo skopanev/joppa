@@ -96,7 +96,8 @@ pub(in crate::store) async fn update(
             }
         }
     }
-    let rows = Rows::read(client, workspace, &nodes).await?;
+    let mut rows = Rows::read(client, workspace, &nodes).await?;
+    rows.mark_waiting(&waiting);
     let Ok(patches) = rows
         .patches(client, workspace, &types, &nodes, &waiting, &counts)
         .await?

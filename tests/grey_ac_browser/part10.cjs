@@ -82,15 +82,15 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     'signal:n': {title: 'Signal N'},
   }, configured);
   try {
-    // The five changes of ac1: bot saves R, P moves R, archives N, marks A ready, bot records test results.
+    // The five changes of ac1: bot saves R, P moves R, archives N, comments on A, bot records test results.
     await f.save('requirement:R', {title: 'Requirement R', parent: 'capability:c1'});
     await f.command({op: 'save_object', kind: 'requirement', id: 'R', revision: 1, parent: 'capability:c2',
       data: {title: 'Requirement R', owner: 'owner', body: 'Current source'}, reason: 'Move R to the second capability'}, true);
     await f.command({op: 'archive_object', target: 'signal:n', revision: 1, reason: 'Signal N is handled'}, true);
-    await f.command({op: 'assess', target: 'ac:A', ready: true, reason: 'The scope of A is known'}, true);
+    await f.command({op: 'note', target: 'ac:A', id: 'scope-a', text: 'The scope of A is known'}, true);
     await f.record('0123abc', [['one']]);
     const newest = (await f.api('/timeline?order=newest&limit=5')).items;
-    assert.deepEqual(newest.map(item => item.change), ['results', 'readiness', 'archive', 'move', 'save']);
+    assert.deepEqual(newest.map(item => item.change), ['results', 'comment', 'archive', 'move', 'save']);
     const move = newest[3];
     assert.deepEqual([move.address, move.revision, newest[4].address, newest[4].revision], ['requirement:R', 2, 'requirement:R', 1]);
     for (const viewport of [{width: 1280, height: 900}, {width: 390, height: 844}]) {

@@ -35,7 +35,6 @@ fn custom_task_references_use_the_schema_without_consumers_or_projects() {
     let mut types = objects::schema(&w.state).types;
     let task = types.get_mut("task").unwrap();
     task.parents = vec!["domain".into()];
-    task.parent_gate = None;
     task.parent_decision = false;
     task.references = [("affected".into(), rule("domain", true, true))].into();
     set_schema(&mut w, types);

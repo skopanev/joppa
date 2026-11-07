@@ -83,8 +83,7 @@ pub(in crate::store) async fn project(
         if let Some(previous) = previous {
             signal["at"] = if events.is_empty()
                 || (previous["signal"]["tone"] == signal["tone"]
-                    && previous["signal"]["label"] == signal["label"]
-                    && previous["signal"]["assessment"] == signal["assessment"])
+                    && previous["signal"]["label"] == signal["label"])
             {
                 previous["signal"]["at"].clone()
             } else {

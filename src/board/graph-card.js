@@ -32,11 +32,11 @@ export function nodeCard(card,graph,nodes,address,pick,onFocus){
   const body=E('p',undefined,'graph-card-body hint');
   details.append(facts,body,steps(graph,nodes,address,pick));
   card.append(head,details);
-  // The detail read gives the readiness, the data fields and the body.
+  // The detail read gives the dependency wait, the data fields and the body.
   objectPart({address}).then(detail=>{
     if(generation!==state.loadNumber||card.dataset.address!==address||!card.isConnected)return;
-    const data=detail.document?.data||{},mark=detail.process?.assessment;
-    if(detail.work_ready===false||mark?.state==='waiting')fact('Readiness',mark?.state==='waiting'?'Waits: '+mark.reason:'Waits for '+(detail.waits_for?.title||'a dependency'));
+    const data=detail.document?.data||{};
+    if(detail.work_ready===false)fact('Readiness','Waits for '+(detail.waits_for?.title||'a dependency'));
     for(const [key,value] of Object.entries(data)){
       if(['title','body'].includes(key))continue;
       fact(key,key==='owner'||key==='assignee'?personLabel(value):short(Array.isArray(value)?value.join(', '):typeof value==='object'?JSON.stringify(value):String(value),VALUE));

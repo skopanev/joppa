@@ -8,8 +8,7 @@
 //! - `none`: the process tone stays, and a parent does not count the node.
 //! - A type without a rule is orange.
 //!
-//! A node that waits is at least yellow: it waits for a dependency (`work_ready` false) or for
-//! the answer that its readiness mark asks for (state `waiting`).
+//! A node that waits for a dependency (`work_ready` false) is at least yellow.
 //! An archived node is purple and does not count. The rule tone sets the label too.
 //! The same counted children and links decide the readiness rollup (objects_ready_rollup.rs).
 use super::*;
@@ -23,9 +22,10 @@ pub(super) fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'
     PRIORITY.into_iter().find(|t| found.contains(t))
 }
 
-/// True when the node waits for a dependency or for the answer that its mark asks for.
+/// True when the node waits for a dependency: a row with its waits, or a base row that the
+/// status delta marks `waiting`.
 pub(super) fn waits(item: &Value) -> bool {
-    item["work_ready"] == false || item["process"]["assessment"]["state"] == "waiting"
+    item["work_ready"] == false || item["waiting"] == true
 }
 
 pub(super) async fn add_status_tones(
@@ -222,7 +222,7 @@ pub(super) fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: 
 /// The label of a rule tone.
 pub(super) fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
     match (rule, tone) {
-        (_, "yellow") if waits => "Waits for a dependency or an answer",
+        (_, "yellow") if waits => "Waits for a dependency",
         ("own" | "tests", "green") => "Checks passed",
         ("own" | "tests", "red") => "Checks failed",
         ("own" | "tests", _) => "Awaits checks",

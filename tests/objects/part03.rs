@@ -180,7 +180,7 @@ fn launch_configuration_counts_blockers_and_can_disable_the_preset() {
     let mut w = World::new();
     let baseline = objects::launch_summary(&w.state);
     assert_eq!(baseline["blocker_count"], 1);
-    w.ready();
+    w.confirm();
     // Only an accept_commit acceptance on a green record makes the launch ready.
     assert_eq!(objects::launch_summary(&w.state)["ready"], false);
     let mut types = objects::defaults();

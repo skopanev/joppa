@@ -19,7 +19,7 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 
 - Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
 - Schema and order: `set_tree_schema`, `reorder_tree`.
-- Criteria and tests: `save_object` with a test node, `accept_commit`, `assess`.
+- Criteria and tests: `save_object` with a test node, `accept_commit`.
 - Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
 - Workspace (owner): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
 
@@ -32,25 +32,11 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 - `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from an owner with a bearer token.
 - `delete_workspace {reason}` removes every row of the workspace. Read `GET /api/workspaces/{workspace}/references` first: each workspace whose remote links or child bindings name it loses them, and the result lists them in `removed_references`.
 
-## Readiness
+## Work state
 
-`assess {target, ready, reason}` sets the readiness mark of any present node.
-The process metadata of the node then gives `assessment`: `{state, reason, actor, position}`.
-`state` is `ready` or `waiting`. The node filter `ready` is false for a waiting node.
-The mark changes no check evidence and no acceptance. Any new parent, link or data value of a
-criterion or a test node removes its own mark. A change of a node above it keeps the mark.
-
-`expected_position` is optional. Send the `position` of the mark that you read, or 0 when the
-node has no mark. When the current mark has another position, the write is refused with
-"stale assessment; read the object again". In `joppa_batch`, the refusal stops every operation
-of the batch:
-
-```json
-{"op": "assess", "target": "ac:a", "ready": true, "reason": "Retry passed", "expected_position": 812}
-```
-
-Live writes refuse the form with `req`, `revision` and `ac`:
-"assess with req, revision and ac was removed; use assess {target, ready, reason}".
+The state of a node is a typed field, such as `stage`. Set it with `save_object`.
+A parent can compute it with `from: children` or `from: links`.
+See [computed fields](schema.md#computed-fields).
 
 ## Tasks
 
@@ -58,7 +44,7 @@ A Task is a node like any other. See [objects](objects.md#tasks).
 
 Live writes refuse the operations `claim_task`, `claim_next_task`, `heartbeat_task`, `release_task`,
 `block_task`, `unblock_task`, `complete_task`, `review_task`, `retire_task`, `claim_planning`,
-`finish_planning`, `release_planning`, `set_priority`, `assess_signal` and `comment`.
+`finish_planning`, `release_planning`, `set_priority`, `assess`, `assess_signal` and `comment`.
 The refusal is "<op> was removed; use <replacement>". The replacement of `comment` is `note`.
 
 ## Workspace timeline
@@ -210,7 +196,7 @@ session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` o
 
 - The alias changes no access: the actor of the session keeps every right.
 - The journal stores it with each event (`joppa.events.alias`), and a History mark stores it too.
-- The timeline, History, the revision headers, comments, files and readiness marks give
+- The timeline, History, the revision headers, comments and files give
   `alias` next to `actor`. A rebuild from the journal keeps every alias.
 - The board shows the account and the alias, for example `alex · p1`.
 

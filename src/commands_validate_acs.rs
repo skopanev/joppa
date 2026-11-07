@@ -7,10 +7,6 @@ pub(crate) fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
         verification_identifier(w, &ac.id, "ac")?;
         nonempty(&ac.text)?;
         ensure!(ids.insert(&ac.id), "duplicate AC id");
-        ensure!(
-            ac.assessment.is_none(),
-            "assess each AC after saving its revision"
-        );
         if let Some(d) = &ac.owner {
             human(w, d)?;
         }
@@ -52,32 +48,6 @@ pub(crate) fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
         visit(w, &a.id, acs, &mut BTreeSet::new(), &mut done)?;
     }
     Ok(())
-}
-
-/// The revision kept the criterion record, apart from its assessment.
-pub(crate) fn same_criterion(old: &Ac, new: &Ac) -> bool {
-    old.id == new.id
-        && old.text == new.text
-        && old.description == new.description
-        && old.depends_on == new.depends_on
-        && old.owner == new.owner
-        && old.before_launch == new.before_launch
-}
-
-/// Each criterion that `previous` holds unchanged keeps its assessment.
-pub(crate) fn carry_assessments(previous: &[Ac], acs: &mut [Ac]) {
-    for ac in acs {
-        if let Some(old) = previous.iter().find(|old| same_criterion(old, ac)) {
-            ac.assessment = old.assessment.clone();
-        }
-    }
-}
-
-pub fn ready(r: &Revision, id: &str) -> bool {
-    let Some(ac) = r.acs.iter().find(|a| a.id == id) else {
-        return false;
-    };
-    ac.assessment.as_ref().is_some_and(|a| a.ready) && ac.depends_on.iter().all(|d| ready(r, d))
 }
 
 pub fn unknown() -> Result<()> {

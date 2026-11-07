@@ -100,16 +100,6 @@ pub fn set_schema(
             "a status rule is own, children, links or none"
         );
         ensure!(
-            t.parent_gate
-                .as_deref()
-                .is_none_or(|g| ["ready", "verified", "completed"].contains(&g)),
-            "unknown parent gate"
-        );
-        ensure!(
-            t.parent_gate.is_none() || t.role == "task",
-            "parent gates apply to Task roles"
-        );
-        ensure!(
             ["group", "document", "requirement", "ac", "task", "test"].contains(&t.role.as_str()),
             "unknown semantic role"
         );

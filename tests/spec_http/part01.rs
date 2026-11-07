@@ -137,11 +137,6 @@ impl World {
         }
         Ok(())
     }
-    /// Bot marks criterion `ac` ready at the current revision of its requirement.
-    async fn assess_ready(&self, ac: &str) -> Result<Value> {
-        let mark = json!({"op":"assess","target":format!("ac:{ac}"),"ready":true,"reason":"The contract is clear"});
-        self.command_as(&self.bot, mark).await
-    }
     async fn command(&self, command: Value) -> Result<Value> {
         self.command_as(&self.owner, command).await
     }

@@ -46,9 +46,6 @@ pub(super) fn apply_task(
     ensure!(!acs.is_empty(), "task needs at least one AC");
     for ac in acs {
         ensure!(r.acs.iter().any(|a| &a.id == ac), "unknown AC");
-        if assignee.is_some() && purpose != "decision" {
-            ensure!(ready(r, ac), "AC awaits decision or dependent AC");
-        }
     }
     r.tasks.insert(
         id.clone(),

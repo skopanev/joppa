@@ -12,22 +12,6 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
 }
 
 #[test]
-fn an_agent_records_readiness_per_criterion_with_a_reason() {
-    // readiness-per-criterion-ac1
-    let mut w = World::new();
-    w.ok(
-        "agent",
-        json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"}),
-    );
-    let ios = joppa::objects::assessment(&w.state, "ac:ios").unwrap();
-    assert_eq!(
-        (&ios["state"], &ios["reason"], &ios["actor"]),
-        (&json!("ready"), &json!("Known scope"), &json!("agent"))
-    );
-    assert!(joppa::objects::assessment(&w.state, "ac:key").is_none());
-}
-
-#[test]
 fn a_member_who_is_not_the_owner_cannot_accept() {
     // who-may-accept-ac1
     let mut w = World::new();

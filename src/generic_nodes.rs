@@ -4,9 +4,8 @@
 //! - The commit of a completed Task becomes `data.commit`.
 //! - A done or retired Task is archived with the reason of its end.
 //! - The priority of a node becomes `data.priority`.
-//! - The assessment of a criterion becomes the readiness mark of its node, as `assess` sets it.
 //! - The Task records, the planning claims and the priorities leave the state.
-use crate::model::{SignalAssessment, Workspace};
+use crate::model::Workspace;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -48,34 +47,6 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             .or_default()
             .data
             .insert("priority", priority.clone());
-    }
-    let marks: Vec<(String, SignalAssessment)> = w
-        .objects
-        .keys()
-        .filter_map(|key| {
-            let a = crate::objects::criterion_context(w, key)?
-                .2
-                .assessment
-                .as_ref()?;
-            let reason = match &a.owner {
-                Some(recipient) if !a.ready => format!("{} (asks {recipient})", a.reason),
-                _ => a.reason.clone(),
-            };
-            let (actor, ready) = (actor.to_owned(), a.ready);
-            Some((
-                key.clone(),
-                SignalAssessment {
-                    ready,
-                    reason,
-                    actor,
-                    alias: None,
-                    position,
-                },
-            ))
-        })
-        .collect();
-    for (key, mark) in marks {
-        w.signal_assessments.entry(key).or_insert(mark);
     }
     let schema_revision = crate::objects::schema(w).revision;
     for (key, change) in changes {

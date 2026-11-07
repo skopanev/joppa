@@ -44,7 +44,6 @@ async fn a_criterion_that_depends_on_a_task_waits_until_the_task_is_done() -> Re
     let link = json!([{"target":"task:t1","relation":"depends_on","blocking":true}]);
     let saved = save_criterion(&w, "other-audit", "other", json!([]), link).await?;
     ensure!(saved.0, "{}", saved.1);
-    w.assess_ready("other-audit").await?;
     ready_task(&w, "t4", "other-audit").await?;
     ensure!(waits(&w, "task:t4").await?.as_deref() == Some("task:t1"), "t4 waits");
     finish(&w, "task:t1").await?;

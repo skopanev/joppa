@@ -1,5 +1,5 @@
 //! migrate_body moves the old text fields of every type into body once. Its revisions keep
-//! the contract revision, the assessments and the test boundaries, and later writes name
+//! the contract revision and the test boundaries, and later writes name
 //! the text body only.
 mod common;
 use common::*;
@@ -34,17 +34,6 @@ fn save(w: &mut World, key: &str, parent: &str, data: Value) -> anyhow::Result<(
     )
 }
 
-fn assess_all(w: &mut World) {
-    let number = w.state.requirements["r"].revisions.last().unwrap().number;
-    for ac in ["ios", "key"] {
-        w.ok(
-            "agent",
-            json!({"op":"assess","req":"r","revision":number,"ac":ac,
-            "assessment":{"ready":true,"reason":"Known scope"}}),
-        );
-    }
-}
-
 const GWT: &str =
     "Given: a buyer.\nWhen: the app restarts.\nThen: access stays.\nEvidence: a test.";
 
@@ -72,7 +61,6 @@ fn before() -> World {
     let task = json!({"title":"Implement access","owner":"owner","contract":"Keep the paid access",
         "purpose":"implementation","projects":[]});
     save(&mut w, "task:t1", "ac:ios", task).unwrap();
-    assess_all(&mut w);
     // A required description rule of the AC type becomes a required body rule.
     let s = objects::schema(&w.state);
     let mut types = serde_json::to_value(&s.types).unwrap();
@@ -87,7 +75,7 @@ fn before() -> World {
 
 // body-text-ac1
 #[test]
-fn the_migration_moves_each_old_text_into_body_and_keeps_pins_assessments_and_tests() {
+fn the_migration_moves_each_old_text_into_body_and_keeps_pins_and_tests() {
     let mut w = before();
     let contract = |w: &World, key: &str| objects::contract_revision(&w.state.objects[key]);
     let (ac, task) = (contract(&w, "ac:ios"), contract(&w, "task:t1"));
@@ -106,13 +94,6 @@ fn the_migration_moves_each_old_text_into_body_and_keeps_pins_assessments_and_te
         w.state.task_process["task:t1"].contract,
         "Keep the paid access"
     );
-    for ac in ["ac:ios", "ac:key"] {
-        assert_eq!(
-            objects::criterion_assessment(&w.state, ac).unwrap()["state"],
-            "ready",
-            "{ac}"
-        );
-    }
     assert_eq!(w.state.criterion_boundaries, boundaries);
     let rules = &objects::schema(&w.state).types["ac"].required_fields;
     assert!(rules.contains_key("body") && !rules.contains_key("description"));

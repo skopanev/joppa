@@ -1,9 +1,8 @@
-//! migrate_generic_nodes moves the Task records, the priorities and the criterion
-//! assessments of an old journal into the nodes once. Live writes then refuse the Task
+//! migrate_generic_nodes moves the Task records and the priorities of an old journal into
+//! the nodes once. Live writes then refuse the Task
 //! operations.
 mod common;
 use common::*;
-use joppa::objects;
 use serde_json::{Value, json};
 
 /// Apply an internal migration event, as the journal replay does.
@@ -29,12 +28,11 @@ fn revision(w: &World, key: &str) -> u32 {
     w.state.objects[key].current().revision
 }
 
-/// An old journal: four Tasks under a criterion, a claim, a completion, a retirement, a
-/// priority and a criterion that waits for an answer of legal.
+/// An old journal: four Tasks under a criterion, a claim, a completion, a retirement and a
+/// priority.
 fn old_journal() -> World {
     let mut w = World::new();
-    w.ready();
-    w.ok("agent", assess("key", false));
+    w.confirm();
     for op in [
         "migrate_notes",
         "migrate_tasks",
@@ -81,7 +79,7 @@ fn old_journal() -> World {
 
 // generic-nodes-ac5
 #[test]
-fn migrate_generic_nodes_moves_the_task_records_priorities_and_marks_into_the_nodes() {
+fn migrate_generic_nodes_moves_the_task_records_and_priorities_into_the_nodes() {
     let mut w = old_journal();
     let boundaries = w.state.criterion_boundaries.clone();
     internal(&mut w, "migrate_generic_nodes");
@@ -101,18 +99,6 @@ fn migrate_generic_nodes_moves_the_task_records_priorities_and_marks_into_the_no
     assert_eq!(data(&w, "task:open")["priority"], "p0");
     assert!(data(&w, "task:open").get("assignee").is_none());
     assert!(w.state.task_process.is_empty() && w.state.priorities.is_empty());
-    assert_eq!(
-        objects::assessment(&w.state, "ac:ios").unwrap()["state"],
-        "ready"
-    );
-    let key = objects::assessment(&w.state, "ac:key").unwrap();
-    assert_eq!(
-        (key["state"].as_str(), key["reason"].as_str()),
-        (
-            Some("waiting"),
-            Some("Which exact permissions? (asks legal)")
-        )
-    );
     // The event resets no criterion, and a second run changes nothing.
     assert_eq!(w.state.criterion_boundaries, boundaries);
     let once = serde_json::to_value(&w.state).unwrap();

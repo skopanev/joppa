@@ -3,13 +3,11 @@
 // dependencies-before-priority-ac7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_frees_work() -> Result<()> {
+async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_frees_work()
+-> Result<()> {
     let w = world().await?;
     let p = ordering(&w, "cap:d", &["criterion:a1"]).await?;
     p.bind(&w.token, "criterion:b1", &[A]).await?;
-    // check-list-frozen-ac3: the list save clears readiness, so B1 is assessed after it.
-    let ready = json!({"ready":true,"reason":"Known scope"});
-    p.assess("spec:b", &[("criterion:b1", ready)]).await?;
     p.record(
         "c1c1c1c",
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
@@ -17,15 +15,12 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
     .await?;
     ensure!(p.status("criterion:b1").await?["status"] == "green");
     ensure!(p.status("criterion:a1").await?["status"] == "grey");
-    let readiness = p.readiness("criterion:b1").await?;
-    ensure!(readiness[0] == "ready", "{readiness}");
     let before = p.saved().await?["position"].as_i64().unwrap();
 
     // P adds a blocking link from B to A without a revision. The new link of B resets B1
-    // below it, and B1 keeps its readiness mark.
+    // below it.
     p.link("spec:b", ordering_link("spec:a")).await?;
     ensure!(p.status("criterion:b1").await?["status"] == "grey");
-    ensure!(p.readiness("criterion:b1").await? == readiness);
     let b = p.read("spec:b").await?;
     let stored = &b["document"]["links"][0];
     ensure!(

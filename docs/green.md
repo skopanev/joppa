@@ -55,8 +55,7 @@ order red, orange, yellow, grey, green.
 
 - A node with no counted child or link is orange: a criterion without a test node is orange.
 - A child with `status: "none"`, for example a Task, does not count.
-- A node that waits is at least yellow: it waits for a dependency or for the answer to its
-  question (`assess` with `ready: false`).
+- A node that waits for a blocking dependency is at least yellow.
 - An archived node is purple and does not count.
 
 ## Changes
@@ -69,7 +68,6 @@ counting for the test nodes at and below it. Such a test is grey until a newer r
 - A revision with the same parent, links and data resets nothing. An example is the
   specification revision that a criterion save gives.
 - An archive resets only the test nodes at and below the archived object.
-- A change of a criterion or a test node removes its own readiness mark. Each node below keeps its mark.
 
 Old records stay in the history. They are facts about the old text.
 

@@ -97,8 +97,7 @@ fn a_detail_gives_each_fact_once() {
         "link_groups":[{"direction":"outgoing","relation":"related","kind":"ac","count":1},
             {"direction":"incoming","relation":"related","kind":"task","count":2}],
         "annotations":{"comments":{},"attachments":{}},
-        "process":{"annotation_address":"ac:a",
-            "assessment":{"state":"ready","reason":"Clear","actor":"bot"}},
+        "process":{"annotation_address":"ac:a","verification":"pass"},
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
     // One links list: a related link has no pin, and a pin shows the current revision.
     assert_eq!(
@@ -111,7 +110,7 @@ fn a_detail_gives_each_fact_once() {
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
             "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
             // The annotation address repeats the address.
-            "process":{"assessment":{"state":"ready","reason":"Clear","actor":"bot"}}})
+            "process":{"verification":"pass"}})
     );
     // A read by an alias names the address that the alias resolves to.
     assert_eq!(

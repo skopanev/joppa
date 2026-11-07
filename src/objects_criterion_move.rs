@@ -1,6 +1,6 @@
 //! A criterion may move to another requirement. The move first gives the old requirement a
 //! revision without the criterion, so each criterion belongs to one requirement revision and
-//! the replayed documents name one parent. The other criteria keep their readiness.
+//! the replayed documents name one parent.
 use super::*;
 
 /// The revision of the old requirement without the criterion that `cmd` moves to another one.
@@ -10,7 +10,7 @@ pub(crate) fn criterion_move_out(
     id: &str,
     cmd: &Command,
     reason: &str,
-) -> Result<Option<(String, Command)>> {
+) -> Result<Option<Command>> {
     let Command::Revise(crate::commands::ReviseOp { req: to, .. }) = cmd else {
         return Ok(None);
     };
@@ -22,7 +22,7 @@ pub(crate) fn criterion_move_out(
         return Ok(None);
     }
     let (from, ac_id) = (from.to_owned(), ac.id.clone());
-    let mut acs = fresh_acs(r);
+    let mut acs = r.acs.clone();
     acs.retain(|a| a.id != ac_id);
     let mut data = w.objects[&requirement_address(&from)]
         .current()
@@ -35,5 +35,5 @@ pub(crate) fn criterion_move_out(
         .then(|| w.requirements[&from].capability.clone())
         .flatten();
     let out = revise(&from, r, capability, &data, reason, acs)?;
-    Ok(Some((from, out)))
+    Ok(Some(out))
 }

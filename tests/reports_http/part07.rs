@@ -1,8 +1,7 @@
 // Part 7 of tests/reports_http.rs, included there, so the test names stay unchanged.
 
 /// G holds R with criterion A and child group G2 with criterion A2. Sibling group H
-/// holds criterion D. Each criterion lists A and B, one record passes both,
-/// and each criterion is assessed ready.
+/// holds criterion D. Each criterion lists A and B, and one record passes both.
 async fn branches(w: &World) -> Result<Planning<'_>> {
     let p = Planning {
         w,
@@ -64,13 +63,6 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    for (spec, _, criterion) in BRANCH_CRITERIA {
-        p.assess(
-            spec,
-            &[(criterion, json!({"ready":true,"reason":"Known scope"}))],
-        )
-        .await?;
-    }
     Ok(p)
 }
 

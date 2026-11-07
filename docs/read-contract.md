@@ -96,13 +96,13 @@ Request:
 
 ```json
 {"workspace": "w", "kind": "ac", "parent": "*",
- "fields": ["revision", "work_ready", "process.assessment"]}
+ "fields": ["revision", "work_ready", "process.verification"]}
 ```
 
 Reply item: the address and each named path, also when its value is empty.
 
 ```json
-{"address": "ac:a", "revision": 3, "work_ready": true, "process.assessment": null}
+{"address": "ac:a", "revision": 3, "work_ready": true, "process.verification": null}
 ```
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
@@ -146,7 +146,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. |
-| `ready` | `false`: nodes that wait for a dependency, or for the answer that their readiness mark asks for (`assess` with `ready: false`, state `waiting`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
+| `ready` | `false`: nodes that wait for a blocking `depends_on` target that is not green or whose contract revision changed (`waits_for`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
 
 ```json

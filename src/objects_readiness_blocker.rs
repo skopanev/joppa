@@ -1,49 +1,5 @@
-//! Part of `objects`: `readiness_blocker` and the items after it, moved from objects.rs unchanged.
+//! Part of `objects`: the launch conditions, the input types and the verification verdict.
 use super::*;
-
-/// Return the first assessment that prevents readiness, with a cycle guard. A dependency
-/// names a criterion of the same requirement or of any other requirement.
-pub fn readiness_blocker(w: &Workspace, key: &str, include_self: bool) -> Option<Value> {
-    fn dependency<'a>(
-        w: &'a Workspace,
-        r: &'a Revision,
-        id: &str,
-    ) -> Option<(&'a Revision, &'a Ac)> {
-        let key = criterion_address(id);
-        match r.acs.iter().find(|a| criterion_address(&a.id) == key) {
-            Some(ac) => Some((r, ac)),
-            None => criterion_context(w, &key).map(|(_, r, ac)| (r, ac)),
-        }
-    }
-    fn visit<'a>(
-        w: &'a Workspace,
-        r: &'a Revision,
-        ac: &'a Ac,
-        seen: &mut BTreeSet<&'a str>,
-    ) -> Option<&'a Ac> {
-        if !seen.insert(&ac.id) {
-            return None;
-        }
-        if !ac.assessment.as_ref().is_some_and(|a| a.ready) {
-            return Some(ac);
-        }
-        ac.depends_on.iter().find_map(|id| {
-            let (r, ac) = dependency(w, r, id)?;
-            visit(w, r, ac, seen)
-        })
-    }
-    let (_, r, ac) = criterion_context(w, key)?;
-    let mut seen = BTreeSet::new();
-    let blocker = if include_self {
-        visit(w, r, ac, &mut seen)
-    } else {
-        ac.depends_on.iter().find_map(|id| {
-            let (r, ac) = dependency(w, r, id)?;
-            visit(w, r, ac, &mut seen)
-        })
-    }?;
-    criterion_assessment(w, &criterion_address(&blocker.id))
-}
 
 pub fn launch_objects(w: &Workspace) -> Vec<&str> {
     let configured = schema(w);
@@ -192,7 +148,7 @@ pub fn archive(
         false => parent,
     };
     match root {
-        Some(root) if !inbox => reset_criteria(w, &root, at, position),
+        Some(root) if !inbox => reset_criteria(w, &root, at),
         _ => Ok(()),
     }
 }

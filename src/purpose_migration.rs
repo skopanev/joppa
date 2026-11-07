@@ -1,6 +1,6 @@
 //! A Task has no purpose. The event migrate_purpose runs once in each workspace. It removes
-//! `data.purpose` from each Task in a new revision that keeps the contract revision, so pins,
-//! assessments and test results stay. A purpose of more than one word joins the Task text when
+//! `data.purpose` from each Task in a new revision that keeps the contract revision, so pins
+//! and test results stay. A purpose of more than one word joins the Task text when
 //! the text does not contain it. A one-word purpose was a label and adds nothing. A Task type
 //! also loses `parent_decision`, the rule of the removed decision Tasks.
 use crate::model::Workspace;

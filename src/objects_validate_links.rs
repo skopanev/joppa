@@ -131,31 +131,6 @@ pub(crate) fn local(parent: Option<&str>, kind: &str) -> Result<String> {
         .with_context(|| format!("parent must be {kind}:id"))
 }
 
-pub(crate) fn fresh_acs(r: &Revision) -> Vec<Ac> {
-    r.acs
-        .iter()
-        .cloned()
-        .map(|mut a| {
-            a.assessment = None;
-            a
-        })
-        .collect()
-}
-
-/// The adapter writes a whole requirement revision, which starts without assessments.
-/// Each criterion whose record did not change keeps its readiness; `reset_changed`
-/// clears the criteria below a changed title, text, link or parent.
-pub(crate) fn keep_assessments(w: &mut Workspace, req: &str) {
-    let Some([.., previous, current]) = w
-        .requirements
-        .get_mut(req)
-        .map(|q| q.revisions.as_mut_slice())
-    else {
-        return;
-    };
-    commands::carry_assessments(&previous.acs, &mut current.acs);
-}
-
 pub(crate) fn revise(
     req: &str,
     r: &Revision,

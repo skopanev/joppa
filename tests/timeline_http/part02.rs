@@ -49,7 +49,8 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     )
     .await?;
     w.command("pat", json!({"op":"archive_object","target":"signal:n","revision":1,"reason":"Signal N is handled"})).await?;
-    w.command("pat", json!({"op":"assess","target":"ac:a","ready":true,"reason":"The scope of A is known"})).await?;
+    w.command("pat", json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:q",
+        "data":{"title":"Title of ac:a","owner":"pat","body":"The known scope of A"},"reason":"The scope of A is known"})).await?;
     let report = w.record("runner", "0123456789abcdef0123").await?;
     Ok((p, report["record"].as_i64().unwrap_or_default()))
 }
@@ -86,7 +87,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
     }
     let column = |field: &str| items.iter().map(|i| i[field].clone()).collect::<Vec<_>>();
     ensure!(
-        column("change") == ["save", "move", "archive", "readiness", "results"],
+        column("change") == ["save", "move", "archive", "save", "results"],
         "{http}"
     );
     ensure!(

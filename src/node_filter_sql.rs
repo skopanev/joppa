@@ -236,6 +236,5 @@ static NONE: Option<String> = None;
 pub const TONE: &str = "COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone')";
 /// The assignee of a node: the document field `assignee`.
 pub const ASSIGNEE: &str = "(o.document->'data'->>'assignee')";
-/// A node is ready unless it waits: for a dependency (`work_ready` false) or for the answer
-/// that its readiness mark asks for (state `waiting`).
-pub const READY: &str = "(COALESCE((o.rollup->>'work_ready')::boolean,o.work_ready) AND COALESCE(o.process->'assessment'->>'state','')<>'waiting')";
+/// A node is ready unless it waits for a dependency (`work_ready` false).
+pub const READY: &str = "COALESCE((o.rollup->>'work_ready')::boolean,o.work_ready)";

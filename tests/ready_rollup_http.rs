@@ -64,9 +64,12 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
         ready(&w, true).await? == all(&test[0]),
         "every node is ready"
     );
-    // B waits for an answer: its parent R and the consumer U that B links to wait too.
-    let mark = |ready: bool| json!({"op":"assess","target":"ac:b","ready":ready,"reason":"Which card types?"});
-    ok(&w, mark(false)).await?;
+    // B waits for the grey criterion A: its parent R and the consumer U that B links to wait
+    // too.
+    let wait = json!({"op":"save_object","kind":"ac","id":"b","revision":1,"parent":"requirement:r",
+        "data":node("B"),"links":[{"target":"consumer:u","relation":"related"},
+        {"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Order"});
+    ok(&w, wait).await?;
     ensure!(
         ready(&w, false).await? == ["ac:b", "consumer:u", "requirement:r"],
         "{:?}",
@@ -74,7 +77,7 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
     );
     let r = w.object("requirement:r").await?;
     ensure!(r["work_ready"] == false, "{r}");
-    // C waits for the grey criterion A: Q waits too, until a pass makes A green.
+    // C waits for A too: Q waits too, until a pass makes A green.
     let link = json!({"op":"save_object","kind":"ac","id":"c","revision":1,"parent":"requirement:q",
         "data":{"title":"C","owner":"owner"},"links":[{"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Order"});
     ok(&w, link).await?;
@@ -92,7 +95,6 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
     );
     w.recorded("c0ffee6", json!([{"test":TEST,"status":"pass"}]))
         .await?;
-    ok(&w, mark(true)).await?;
     ensure!(
         ready(&w, false).await?.is_empty(),
         "every node is ready again"

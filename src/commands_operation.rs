@@ -59,7 +59,6 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("detach", &["target", "id", "reason"], MEMBER),
-    op("assess", &["target", "ready", "reason"], MEMBER),
 ];
 
 pub fn operation(name: &str) -> Option<&'static Operation> {

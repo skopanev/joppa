@@ -13,8 +13,6 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
     };
     let mut steps: Vec<(&'static str, Value)> = vec![
         ("confirm", json!({"op":"confirm","req":"r","revision":1})),
-        ("assess ios", assess("ios", true)),
-        ("assess key", assess("key", true)),
     ];
     // Three linked inputs: a note has no parent, so each input links to the one above it.
     let nesting = vec![

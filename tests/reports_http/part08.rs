@@ -8,23 +8,16 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     let p = branches(&w).await?;
     let tests = |ac: &'static str| store::test_status(&p.pool, &p.ws, "agent", ac);
     let object = |address: &str| p.get(format!("/objects?address={address}"));
-    let (mut before, mut marks) = (
-        std::collections::BTreeMap::new(),
-        std::collections::BTreeMap::new(),
-    );
+    let mut before = std::collections::BTreeMap::new();
     for (_, _, ac) in BRANCH_CRITERIA {
         let s = tests(ac).await?;
         ensure!(s["status"] == "green", "{ac} before the change: {s}");
         before.insert(ac, s);
-        let mark = object(ac).await?["process"]["assessment"].clone();
-        ensure!(mark["state"] == "ready", "{ac} before the change: {mark}");
-        marks.insert(ac, mark);
     }
     let tone = |address: &'static str| async move {
         Ok::<_, anyhow::Error>(object(address).await?["signal"]["tone"].clone())
     };
     ensure!(tone("area:g").await? == "green" && tone("area:h").await? == "green");
-    let d_readiness = object("criterion:d").await?["process"]["assessment"].clone();
 
     // Owner S changes only the text of G.
     p.owner_save(
@@ -43,9 +36,6 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
                 && s["tests_saved_by"] == old["tests_saved_by"],
             "{ac} after the change: {s}"
         );
-        // A change of G keeps the readiness marks below it.
-        let readiness = object(ac).await?["process"]["assessment"].clone();
-        ensure!(readiness == marks[ac], "{ac} readiness: {readiness}");
     }
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
@@ -53,10 +43,6 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     ensure!(mcp["status"]["tone"] == "grey", "MCP joppa_objects: {mcp}");
     let d = tests("criterion:d").await?;
     ensure!(d["status"] == "green", "{d}");
-    ensure!(
-        object("criterion:d").await?["process"]["assessment"] == d_readiness,
-        "the readiness of D changed"
-    );
     let g = p
         .mcp_read("joppa_objects", json!({"address":"area:g"}))
         .await?;
@@ -78,16 +64,10 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     .await?;
     let s = tests("criterion:a").await?;
     ensure!(s["status"] == "green", "after a record: {s}");
-    ensure!(
-        tests("criterion:d").await?["status"] == "green"
-            && object("criterion:d").await?["process"]["assessment"] == d_readiness,
-        "D changed"
-    );
+    ensure!(tests("criterion:d").await?["status"] == "green", "D changed");
 
-    // An identical revision of G stores no boundary; only a readiness write changes A.
-    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":true,"reason":"Known scope"})).await?;
+    // An identical revision of G stores no boundary and keeps A green.
     let boundaries = p.boundaries().await?;
-    let readiness = object("criterion:a").await?["process"]["assessment"].clone();
     p.owner_save(
         "area:g",
         None,
@@ -99,17 +79,8 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
         "an identical revision stored a boundary"
     );
     ensure!(
-        tests("criterion:a").await?["status"] == "green"
-            && object("criterion:a").await?["process"]["assessment"] == readiness,
+        tests("criterion:a").await?["status"] == "green",
         "an identical revision changed A"
-    );
-    p.write("owner", json!({"op":"assess","target":"criterion:a","ready":false,"reason":"Which scope?"})).await?;
-    let a = object("criterion:a").await?;
-    ensure!(
-        a["process"]["assessment"]["state"] == "waiting"
-            && tests("criterion:a").await?["status"] == "green"
-            && p.boundaries().await? == boundaries,
-        "{a}"
     );
     Ok(())
 }

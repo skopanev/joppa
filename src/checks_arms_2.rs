@@ -57,8 +57,6 @@ pub(super) fn apply_complete_task(w: &mut Workspace, actor: &str, cmd: &Command)
                 "designated specialist must decide"
             );
         }
-    } else {
-        ensure!(task.acs.iter().all(|a| ready(r, a)), "AC no longer ready");
     }
     r.tasks.get_mut(id).unwrap().done = Some(evidence.clone());
     Ok(())

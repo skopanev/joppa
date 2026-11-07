@@ -96,7 +96,7 @@ pub(crate) fn workflow_command(
             let req_key = process_key(w, kind, id, "requirement");
             if let Some(q) = w.requirements.get(&req_key) {
                 let r = q.revisions.last().unwrap();
-                revise(&req_key, r, capability, data, reason, fresh_acs(r))?
+                revise(&req_key, r, capability, data, reason, r.acs.clone())?
             } else {
                 Command::Revise(crate::commands::ReviseOp {
                     req: req_key,
@@ -156,7 +156,7 @@ pub(crate) fn workflow_command(
                     .unwrap_or(false),
                 assessment: None,
             };
-            let mut acs = fresh_acs(r);
+            let mut acs = r.acs.clone();
             if let Some(old) = acs.iter_mut().find(|a| a.id == ac_key) {
                 *old = ac;
             } else {

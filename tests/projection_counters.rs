@@ -60,9 +60,12 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
 
     // A command, a record, a repeat receipt and a batch of three: one partial projection each.
     let before = counts();
-    let mark =
-        json!({"op":"assess","target":"requirement:r2","ready":false,"reason":"Which scope?"});
-    run(&pool, &mut n, mark).await?;
+    run(
+        &pool,
+        &mut n,
+        edit_r2(&pool, "Rule two, first edit.").await?,
+    )
+    .await?;
     ensure!(
         delta(before)[4..] == [0, 1],
         "a command projects once and partially: {:?}",
@@ -141,8 +144,12 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
         );
     }
     // The next write rebuilds the projection, and the readers work again.
-    let mark = json!({"op":"assess","target":"requirement:r2","ready":true,"reason":"Known scope"});
-    run(&pool, &mut n, mark).await?;
+    run(
+        &pool,
+        &mut n,
+        edit_r2(&pool, "Rule two, second edit.").await?,
+    )
+    .await?;
     for result in reads(&pool).await {
         result?;
     }
@@ -187,4 +194,14 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// A save of requirement:r2 with a new body at its current revision.
+async fn edit_r2(pool: &deadpool_postgres::Pool, body: &str) -> Result<Value> {
+    let revision = revision(pool, "requirement:r2").await?;
+    Ok(
+        json!({"op":"save_object","kind":"requirement","id":"r2","revision":revision,
+        "parent":"capability:c","data":{"title":"Second","owner":"owner","body":body,
+        "consumers":["user"]},"reason":"Edit the rule"}),
+    )
 }

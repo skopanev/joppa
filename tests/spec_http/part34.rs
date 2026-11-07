@@ -9,7 +9,6 @@ async fn a_corrupted_criterion_row_and_a_stale_projection_recover_after_the_star
     let w = world().await?;
     let node = "ac:key-rights";
     bind_tests(&w, &w.bot, node, &["checks.rs > key rights"]).await?;
-    w.command_as(&w.bot, json!({"op":"assess","target":node,"ready":true,"reason":"The contract is clear"})).await?;
     let passed = json!([{"test":"checks.rs > key rights","status":"pass"}]);
     record_http::recorded(&w.http, &w.root, &w.ws, &w.bot, "c4c4c4c", passed).await?;
     let passed = |object: &Value| object["signal"]["tone"] == "green";

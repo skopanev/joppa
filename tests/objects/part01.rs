@@ -123,7 +123,6 @@ fn schema_supports_custom_grouping_without_a_capability() {
         "owner",
         json!({"op":"confirm","req":"custom","revision":revision}),
     );
-    w.ok("agent",json!({"op":"assess","target":"ac:custom-ac","ready":true,"reason":"Contract is clear"}));
     joppa::tasks::migrate(&mut w.state, "owner", w.position + 1, "now").unwrap();
     save(
         &mut w,
@@ -177,7 +176,7 @@ fn ordinary_cycles_are_allowed_and_blocking_cycles_are_rejected() {
 #[test]
 fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
     let mut w = World::new();
-    w.ready();
+    w.confirm();
     w.legacy("agent",json!({"op":"task","req":"r","revision":1,"id":"t","title":"Implement access","acs":["ios"],"projects":["app"],"purpose":"implementation","contract":"Change the access screen"}));
     save(
         &mut w,
@@ -194,8 +193,6 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
         ac.clone(),
         vec![link("note:n", Some(1), false)],
     );
-    // check-list-frozen-ac2: the link change resets readiness, so assess it again.
-    w.ok("agent", assess("ios", true));
     save(
         &mut w,
         "note:n",

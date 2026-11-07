@@ -67,7 +67,7 @@ fn bind(criterion: &str, test: &str) -> Value {
 }
 
 /// G holds spec R with criterion A; sibling group H holds spec RH with criterion D.
-/// Both have test nodes for A and B, one record passes both, and both are assessed ready.
+/// Both have test nodes for A and B, and one record passes both.
 async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
     let ws = format!("reset-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -107,9 +107,6 @@ async fn branches(pool: &deadpool_postgres::Pool) -> Result<String> {
         }
     }
     upload_c1(pool, &ws).await?;
-    for criterion in ["criterion:a", "criterion:d"] {
-        write(pool, &ws, "planner", json!({"op":"assess","target":criterion,"ready":true,"reason":"Known scope"})).await?;
-    }
     for ac in ["criterion:a", "criterion:d"] {
         ensure!(
             status(pool, &ws, ac).await?["status"] == "green",
@@ -149,11 +146,11 @@ async fn c1_receipts(pool: &deadpool_postgres::Pool, ws: &str) -> Result<(i64, i
     Ok((row.get(0), row.get(1)))
 }
 
-/// The state that replay must reproduce: statuses, readiness and stored boundaries.
+/// The state that replay must reproduce: statuses and stored boundaries.
 async fn snapshot(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     let mut snapshot = json!({});
     for ac in ["criterion:a", "criterion:d"] {
-        snapshot[ac] = json!({"status":status(pool, ws, ac).await?,"assessment":read(pool, ws, ac).await?["process"]["assessment"]});
+        snapshot[ac] = json!({"status":status(pool, ws, ac).await?});
     }
     let boundaries: String = pool.get().await?.query_one("SELECT COALESCE(jsonb_object_agg(key,value),'{}')::text FROM joppa.state_entries WHERE workspace=$1 AND section='criterion_boundaries'", &[&ws]).await?.get(0);
     snapshot["boundaries"] = serde_json::from_str(&boundaries)?;

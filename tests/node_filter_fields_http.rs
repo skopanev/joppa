@@ -86,21 +86,25 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"status":tones}))).await? == all,
         "{tones:?}"
     );
-    // Every node is ready until it waits. A question on ac:a makes only ac:a wait.
+    // Every node is ready until it waits. A blocking link from rule:z to the grey ac:b makes
+    // only rule:z wait.
     ensure!(
         kept(&w, under(json!({"ready":true}))).await? == all,
         "all ready"
     );
-    let question =
-        json!({"op":"assess","target":"ac:a","ready":false,"reason":"Q1: Which limit applies?"});
-    w.command(&w.bot, question)
-        .await?
-        .map_err(anyhow::Error::msg)?;
+    let z = w.object("rule:z").await?;
+    let wait = json!({"op":"save_object","kind":"rule","id":"z","revision":z["revision"],
+        "parent":"rule:x","data":z["data"],"reason":"Order after ac:b",
+        "links":[{"target":"ac:b","relation":"depends_on","blocking":true}]});
+    w.command(&w.bot, wait).await?.map_err(anyhow::Error::msg)?;
     let ready = kept(&w, under(json!({"ready":true}))).await?;
     let waiting = kept(&w, under(json!({"ready":false}))).await?;
     let mut both = [ready.clone(), waiting.clone()].concat();
     both.sort();
-    ensure!(both == all && waiting == ["ac:a"], "{ready:?} {waiting:?}");
+    ensure!(
+        both == all && waiting == ["rule:z"],
+        "{ready:?} {waiting:?}"
+    );
     for (args, error) in [
         (
             json!({"status":"blue"}),

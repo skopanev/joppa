@@ -4,8 +4,7 @@
 const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
 
 /// check-list-frozen-ac3: area G holds R with criterion A and red sibling B; area H is
-/// another parent. A lists A and B, B lists a failing check, both are assessed ready,
-/// and one record makes A green.
+/// another parent. A lists A and B, B lists a failing check, and one record makes A green.
 async fn frozen(w: &World) -> Result<Planning<'_>> {
     let p = Planning {
         w,
@@ -60,12 +59,6 @@ async fn frozen(w: &World) -> Result<Planning<'_>> {
         .await?;
         p.bind(&w.token, ac, &tests).await?;
     }
-    let ready = json!({"ready":true,"reason":"Known scope"});
-    p.assess(
-        "spec:r",
-        &[("criterion:a", ready.clone()), ("criterion:b", ready)],
-    )
-    .await?;
     p.record("c1c1c1c", frozen_run()).await?;
     let (a, b) = (
         p.ac_tests("criterion:a").await?,

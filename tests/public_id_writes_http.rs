@@ -61,13 +61,13 @@ async fn a_write_takes_a_public_item_id_and_the_journal_stores_the_address() -> 
     let batch = json!({"request_id":"item-ids-1","operations":operations});
     let reply = w.mcp(&w.bot, "joppa_batch", batch).await?;
     reply.map_err(anyhow::Error::msg)?;
-    let assess = json!({"op":"assess","target":a,"ready":true,"reason":"Known scope"});
-    w.command(&w.owner, assess)
+    let second = json!({"op":"note","target":a,"id":"by-owner","text":"A second comment"});
+    w.command(&w.owner, second)
         .await?
         .map_err(anyhow::Error::msg)?;
     let commands = stored(&w, before).await?;
     ensure!(commands.len() == 4, "{commands:?}");
-    let (new, note, edit, mark) = (&commands[0], &commands[1], &commands[2], &commands[3]);
+    let (new, note, edit, second) = (&commands[0], &commands[1], &commands[2], &commands[3]);
     ensure!(
         new["parent"] == "requirement:r"
             && new["data"]["applies_to"] == json!(["requirement:other"])
@@ -79,7 +79,7 @@ async fn a_write_takes_a_public_item_id_and_the_journal_stores_the_address() -> 
         edit["id"] == "a" && edit["parent"] == "requirement:r",
         "{edit}"
     );
-    ensure!(mark["target"] == "ac:a", "{mark}");
+    ensure!(second["target"] == "ac:a", "{second}");
     ensure!(w.object("ac:a").await?["data"]["title"] == "A renamed");
     let journal = serde_json::to_string(&commands)?;
     ensure!(

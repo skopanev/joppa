@@ -73,11 +73,8 @@ impl World {
     pub fn summary(&self, n: usize) -> Value {
         joppa::checks::summary(&self.state.requirements["r"].revisions[n - 1])
     }
-    pub fn ready(&mut self) {
+    pub fn confirm(&mut self) {
         self.ok("owner", json!({"op":"confirm","req":"r","revision":1}));
-        for ac in ["ios", "key"] {
-            self.ok("agent", assess(ac, true));
-        }
     }
     pub fn run(&mut self, id: &str, outcome: &str) {
         self.ok("runner", plan(id));
@@ -95,13 +92,11 @@ impl World {
         );
     }
 }
-/// An operation that live writes refuse and old journals still hold, also the older
-/// `assess` of a criterion in its requirement revision.
+/// An operation that live writes refuse and old journals still hold.
 pub fn is_removed(value: &Value) -> bool {
     value["op"]
         .as_str()
         .is_some_and(|op| joppa::removed_ops::NAMES.contains(&op))
-        || value["op"] == "assess" && value.get("req").is_some()
 }
 pub fn setup() -> Vec<Value> {
     vec![
@@ -120,9 +115,6 @@ pub fn setup() -> Vec<Value> {
 }
 pub fn revision(expected: u32) -> Value {
     json!({"op":"revise","req":"r","expected_revision":expected,"capability":"c","consumers":["customer"],"title":"Paid access persists","body":"Only iOS is in scope","owner":"owner","reason":"Agreed wording","acs":[{"id":"ios","text":"On iOS paid access survives login"},{"id":"key","text":"Before production key has exactly read and verify permissions","before_launch":true}]})
-}
-pub fn assess(ac: &str, ready: bool) -> Value {
-    json!({"op":"assess","req":"r","revision":1,"ac":ac,"assessment":{"ready":ready,"reason":if ready {"Known scope"} else {"Which exact permissions?"},"recipient":if ready {None} else {Some("legal")},"decision":null}})
 }
 pub fn plan(run: &str) -> Value {
     json!({"op":"plan","req":"r","revision":1,"run":run,"subject":{"app":"sha-a","backend":"sha-b","infra":"config-v1","environment":"staging"},"scope":"iOS access and provider settings","discovery_complete":true,"checks":[{"id":"[ios] paid access","ac":"ios","method":"automated","expected":["access retained"]},{"id":"key-permissions","ac":"key","method":"manual","expected":["read","verify"]}]})

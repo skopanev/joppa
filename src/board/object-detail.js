@@ -4,7 +4,6 @@ import {E} from 'board/dom.js';
 import {FILE_ICON,svgIcon} from 'board/icons.js';
 import {button} from 'board/feedback.js';
 import {enableBranchMotion} from 'board/motion.js';
-import {assessmentHint} from 'board/status.js';
 import {personLabel,when,fileSize} from 'board/format.js';
 import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
@@ -29,8 +28,6 @@ export function fillCommonObject(body,detail){
   if(full)fields.append(full);
   const verification=detail.process?.verification&&({pass:'Passed',fail:'Failed',unverified:'Unverified'}[detail.process.verification]||detail.process.verification);
   if(verification)fields.append(E('p','Verification: '+verification,'node-meta'));
-  const assessment=detail.process?.assessment;
-  if(!historical&&assessment)fields.append(E('p',assessmentHint(assessment).trim(),'node-meta'));
   const remote=historical?null:workspaceLinksSection(detail);
   if(remote)body.append(remote);
   // The text of every object type is body.

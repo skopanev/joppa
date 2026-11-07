@@ -67,43 +67,6 @@ pub(super) fn apply_set_tree_schema(
     Ok(())
 }
 
-/// The refusal of an assess whose expected_position is not the position of the current mark.
-pub const STALE_ASSESSMENT: &str = "stale assessment; read the object again";
-
-/// Apply `assess` to a node, or replay the older `assess_signal`: the readiness mark of any
-/// present node. With expected_position, the mark that the writer read must still be current.
-pub(super) fn apply_assess(
-    w: &mut Workspace,
-    actor: &str,
-    target: &str,
-    (ready, reason): (bool, &str),
-    expected_position: Option<u64>,
-    position: u64,
-) -> Result<()> {
-    nonempty(reason)?;
-    let key = crate::objects::resolve_address(w, target).to_owned();
-    ensure!(
-        w.objects.get(&key).is_some_and(|o| o.current().present),
-        "unknown object"
-    );
-    let current = w.signal_assessments.get(&key).map_or(0, |a| a.position);
-    ensure!(
-        expected_position.is_none_or(|expected| expected == current),
-        STALE_ASSESSMENT
-    );
-    w.signal_assessments.insert(
-        key,
-        crate::model::SignalAssessment {
-            ready,
-            reason: reason.into(),
-            actor: actor.into(),
-            alias: w.alias.clone(),
-            position,
-        },
-    );
-    Ok(())
-}
-
 /// Replay the older `set_priority`.
 pub(super) fn apply_set_priority(w: &mut Workspace, target: &str, priority: &str) {
     let key = crate::objects::resolve_address(w, target).to_owned();
@@ -163,7 +126,7 @@ pub(super) fn apply_set_remote_links(
         },
     );
     if repinned {
-        crate::objects::reset_criteria(w, &key, recorded_at, position)?;
+        crate::objects::reset_criteria(w, &key, recorded_at)?;
     }
     Ok(())
 }

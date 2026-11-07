@@ -102,10 +102,6 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
     ensure!(
-        read["process"]["assessment"].is_null(),
-        "a new pin resets the criteria below: {read}"
-    );
-    ensure!(
         read["remote_links_revision"] == 1 && read["remote_review_required"] == false,
         "{read}"
     );

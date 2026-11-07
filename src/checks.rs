@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Command, identifier, nonempty, ready, revision},
+    commands::{Command, identifier, nonempty, revision},
     model::*,
 };
 use anyhow::{Result, ensure};

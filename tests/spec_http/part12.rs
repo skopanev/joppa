@@ -104,15 +104,17 @@ async fn archived_tasks_do_not_block_archiving_a_criterion() -> Result<()> {
     for mcp in [false, true] {
         let w = world().await?;
         w.requirement("arch", "restrict", "Archive rule", "Scope", &[("arch-a", "Criterion A"), ("arch-b", "Criterion B"), ("arch-c", "Criterion C")]).await?;
-        w.command_as(&w.bot, json!({"op":"assess","target":"ac:arch-a","ready":true,"reason":"The contract is clear"})).await?;
         let done = ready_task(&w, "a-done", "arch-a").await?;
         let dropped = ready_task(&w, "a-retired", "arch-a").await?;
         for (task, reason) in [(&done, "Implemented the contract"), (&dropped, "The owner no longer needs this work")] {
             w.command(json!({"op":"archive_object","target":task,"revision":1,"reason":reason})).await?;
         }
         ready_task(&w, "b-open", "arch-b").await?;
-        let waiting = ready_task(&w, "c-waiting", "arch-c").await?;
-        w.command(json!({"op":"assess","target":waiting,"ready":false,"reason":"Verification failed on abc123"})).await?;
+        // The task waits for a criterion that is not green.
+        let mut waiting = ready_task_command("c-waiting", "arch-c");
+        waiting["links"] =
+            json!([{"target":"ac:key-rights","relation":"depends_on","blocking":true}]);
+        w.command(waiting).await?;
         let tasks_before = [
             w.get(&format!("address={done}")).await?,
             w.get(&format!("address={dropped}")).await?,

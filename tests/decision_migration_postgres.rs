@@ -25,7 +25,6 @@ async fn the_start_migration_keeps_each_stored_criterion_record() -> Result<()> 
             "before_launch":true,"owner":"legal","decision_required":false}
     ]);
     journal.push(json!({"op":"confirm","req":"r","revision":1}));
-    journal.extend(["ios", "key"].map(|ac| assess(ac, true)));
     let conn = pool.get().await?;
     conn.execute("INSERT INTO joppa.workspaces(id) VALUES($1)", &[&ws])
         .await?;

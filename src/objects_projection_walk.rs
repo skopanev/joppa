@@ -4,6 +4,16 @@
 use super::*;
 
 impl Rows {
+    /// Mark each base row that waits for a dependency, so its tone is at least yellow. The
+    /// mark is not a stored field: the patch of the row leaves it out.
+    pub(super) fn mark_waiting(&mut self, waiting: &BTreeMap<String, String>) {
+        for (address, base) in &mut self.base {
+            if waiting.contains_key(address) {
+                base["waiting"] = json!(true);
+            }
+        }
+    }
+
     /// The counted nodes below a node of the `children` or `links` rule.
     fn below(&self, address: &str, rule: &str) -> Vec<String> {
         match rule {

@@ -4,8 +4,9 @@ use crate::objects::{RequiredFieldRule, TreeType};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-/// The data fields of every example: the title, the text and the owner. Reference and
-/// required fields of the type follow.
+/// The data fields of every example: the title, the text and the owner. Reference, required
+/// and own typed fields of the type follow. A computed typed field is left out: a save
+/// refuses it.
 const DATA_FIELDS: [&str; 3] = ["title", "body", "owner"];
 
 fn placeholder(field: &str, limit: usize) -> Value {
@@ -13,6 +14,17 @@ fn placeholder(field: &str, limit: usize) -> Value {
         "title" => json!("<one concise statement (max 128 chars)>"),
         "owner" => json!("<member id>"),
         _ => json!(format!("<concise text (max {limit} chars)>")),
+    }
+}
+
+/// The placeholder of an own typed field.
+fn typed(rule: &crate::field_types::FieldType) -> Value {
+    match rule.kind.as_str() {
+        "enum" => json!(format!("<one of {}>", rule.values.join(", "))),
+        "boolean" => json!("<true or false>"),
+        "number" => json!("<number>"),
+        "list" => json!(["<text>"]),
+        _ => json!("<text>"),
     }
 }
 
@@ -36,6 +48,9 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
                 RequiredFieldRule::Presence(_) => json!("<value>"),
             };
             data.insert(field.clone(), value);
+        }
+        for (field, rule) in t.fields.iter().filter(|(_, r)| r.source() == "own") {
+            data.insert(field.clone(), typed(rule));
         }
         for (field, rule) in &t.references {
             let target = format!("<{}:id>", rule.target);

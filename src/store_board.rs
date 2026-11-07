@@ -49,19 +49,13 @@ pub(super) async fn project_current(
     let custom_tree = compared.len() != defaults.len()
         || compared.iter().any(|(kind, t)| {
             defaults.get(kind).is_none_or(|default| {
-                (
-                    t.role.as_str(),
-                    &t.parents,
-                    t.root,
-                    &t.parent_gate,
-                    &t.references,
-                ) != (
-                    default.role.as_str(),
-                    &default.parents,
-                    default.root,
-                    &default.parent_gate,
-                    &default.references,
-                )
+                (t.role.as_str(), &t.parents, t.root, &t.references)
+                    != (
+                        default.role.as_str(),
+                        &default.parents,
+                        default.root,
+                        &default.references,
+                    )
             })
         });
     let mut counts = BTreeMap::<&str, usize>::new();

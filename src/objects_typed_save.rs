@@ -30,16 +30,10 @@ pub(crate) fn typed_save(
     if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
         candidate.document_overrides.remove(key);
         // A criterion that moves to another requirement leaves the old one first.
-        if let Some((from, out)) = criterion_move_out(w, kind, id, &cmd, reason)? {
+        if let Some(out) = criterion_move_out(w, kind, id, &cmd, reason)? {
             commands::apply_inner(candidate, actor, &out, position, at)?;
-            keep_assessments(candidate, &from);
         }
         commands::apply_inner(candidate, actor, &cmd, position, at)?;
-        if let Command::Revise(crate::commands::ReviseOp { req, .. }) = &cmd
-            && commands::rule_applies(candidate, commands::KEEP_ASSESSMENTS, position)
-        {
-            keep_assessments(candidate, req);
-        }
         // A criterion save changes only that criterion: its siblings keep their revisions.
         let siblings = schema(w).types[kind].role != "ac"
             || !commands::rule_applies(candidate, commands::SINGLE_CRITERION_SAVE, position);
@@ -177,20 +171,17 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
         .map(|(key, _)| key.clone())
         .collect();
     for key in changed {
-        reset_criteria(w, &key, at, position)?;
+        reset_criteria(w, &key, at)?;
     }
     Ok(())
 }
 
 /// Reset each present criterion and test node at and below `root` after a change recorded at `at`.
 /// Reports received at or before `at` stop counting for it. A later boundary replaces an
-/// earlier one. Only `root` loses its readiness mark: a node below keeps its mark and its
-/// open question. Before the epoch of own_mark_reset, each reset node lost its mark.
-pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str, position: u64) -> Result<()> {
+/// earlier one.
+pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
     let root = resolve_address(w, root).to_owned();
     let types = schema(w).types;
-    // The replay of reset_changed runs after the replaying flag is cleared: read the epoch.
-    let own_mark = commands::epoch_reached(w, commands::OWN_MARK_RESET, position);
     let criteria: Vec<String> = w
         .objects
         .iter()
@@ -204,9 +195,6 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str, position: u64) ->
         .map(|(key, _)| key.clone())
         .collect();
     for key in criteria {
-        if !own_mark || key == root {
-            clear_mark(w, &key)?;
-        }
         // An earlier or equal time keeps the stored boundary.
         let later = w.criterion_boundaries.get(&key).is_some_and(|old| {
             use crate::ac_tests::Boundary;
@@ -219,23 +207,5 @@ pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str, position: u64) ->
             w.criterion_boundaries.insert(key, at.into());
         }
     }
-    Ok(())
-}
-
-/// Remove the readiness mark of a changed node: a changed criterion asks for a new one.
-fn clear_mark(w: &mut Workspace, key: &str) -> Result<()> {
-    if let Some((req, r, ac)) = criterion_context(w, key) {
-        let (req, number, id) = (req.to_owned(), r.number, ac.id.clone());
-        let r = commands::revision(w, &req, number, true)?;
-        let ac = r
-            .acs
-            .iter_mut()
-            .find(|a| a.id == id)
-            .context("unknown AC")?;
-        if ac.assessment.take().is_some() {
-            r.acceptance = None;
-        }
-    }
-    w.signal_assessments.remove(key);
     Ok(())
 }

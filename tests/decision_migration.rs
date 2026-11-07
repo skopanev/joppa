@@ -1,6 +1,5 @@
-//! requirement:readiness-per-criterion: an open question on a node is its readiness mark.
 //! migrate_decision_required removes data.decision_required once. Its revisions keep the
-//! contract revision and the marks, and a live write refuses the field.
+//! contract revision, and a live write refuses the field.
 mod common;
 use common::*;
 use joppa::decision_migration::{FIELD, REFUSAL};
@@ -24,7 +23,7 @@ fn internal(w: &mut World, op: &str) {
 /// A workspace before the event: migrate_documents gave each criterion the flag.
 fn before() -> World {
     let mut w = World::new();
-    w.ready();
+    w.confirm();
     for op in [
         "migrate_notes",
         "migrate_tasks",
@@ -46,7 +45,7 @@ fn before() -> World {
 
 // readiness-per-criterion-ac4
 #[test]
-fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
+fn the_migration_removes_the_flag_once_and_keeps_contracts() {
     let mut w = before();
     let keys = ["ac:ios", "ac:key"];
     let contract = |w: &World, key: &str| objects::contract_revision(&w.state.objects[key]);
@@ -60,10 +59,6 @@ fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
             w.state.objects[key].current().data.get(FIELD).is_some(),
             "{key}"
         );
-        assert_eq!(
-            objects::assessment(&w.state, key).unwrap()["state"],
-            "ready"
-        );
     }
     let records = serde_json::to_value(&w.state.requirements).unwrap();
     internal(&mut w, "migrate_decision_required");
@@ -73,10 +68,6 @@ fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
         assert_eq!(current.revision, revisions[i] + 1);
         assert_eq!(current.reason, joppa::decision_migration::REASON);
         assert_eq!(contract(&w, key), pins[i], "{key}");
-        assert_eq!(
-            objects::assessment(&w.state, key).unwrap()["state"],
-            "ready"
-        );
     }
     // The stored criterion records stay: the trigger protect_state_revision guards them.
     assert_eq!(
@@ -91,7 +82,7 @@ fn the_migration_removes_the_flag_once_and_keeps_contracts_and_marks() {
 
 // readiness-per-criterion-ac4
 #[test]
-fn a_live_write_refuses_the_flag_and_an_open_question_is_a_waiting_mark() {
+fn a_live_write_and_a_type_rule_refuse_the_flag() {
     let mut w = before();
     internal(&mut w, "migrate_decision_required");
     let mut ac = w.state.objects["ac:key"].current().data.clone();
@@ -106,21 +97,11 @@ fn a_live_write_refuses_the_flag_and_an_open_question_is_a_waiting_mark() {
     let put = json!({"op":"set_tree_schema","revision":schema.revision,
         "put_types":{"ac":rule},"reason":"Require the flag"});
     assert_eq!(w.apply("owner", put).unwrap_err().to_string(), REFUSAL);
-    let question = "OPEN QUESTION: Which limit applies?";
-    w.ok(
-        "agent",
-        json!({"op":"assess","target":"ac:key","ready":false,"reason":question}),
-    );
-    let mark = objects::assessment(&w.state, "ac:key").unwrap();
-    assert_eq!(
-        (&mark["state"], &mark["reason"]),
-        (&json!("waiting"), &json!(question))
-    );
 }
 
 // readiness-per-criterion-ac4
 #[test]
-fn a_save_after_the_migration_keeps_the_stored_owner_and_a_change_removes_the_mark() {
+fn a_save_after_the_migration_keeps_the_stored_owner() {
     let mut w = before();
     let save = |w: &World, data: serde_json::Value| {
         let revision = w.state.objects["ac:ios"].current().revision;
@@ -131,16 +112,13 @@ fn a_save_after_the_migration_keeps_the_stored_owner_and_a_change_removes_the_ma
     let mut data = w.state.objects["ac:ios"].current().data.clone();
     (data["owner"], data[FIELD]) = (json!("owner"), json!(true));
     w.ok("owner", save(&w, data));
-    let ready = json!({"op":"assess","target":"ac:ios","ready":true,"reason":"Known scope"});
-    w.ok("agent", ready);
     let stored = |w: &World| {
         let r = w.state.requirements["r"].revisions.last().unwrap();
         r.acs.iter().find(|a| a.id == "ios").unwrap().owner.clone()
     };
     assert_eq!(stored(&w).as_deref(), Some("owner"));
     internal(&mut w, "migrate_decision_required");
-    // A save of another object keeps the mark. A new data value of the criterion removes its
-    // own mark and keeps the stored owner.
+    // A new data value of the criterion keeps the stored owner.
     w.ok(
         "owner",
         json!({"op":"save_object","kind":"consumer","id":"buyer","revision":0,
@@ -148,11 +126,6 @@ fn a_save_after_the_migration_keeps_the_stored_owner_and_a_change_removes_the_ma
     );
     let mut data = w.state.objects["ac:ios"].current().data.clone();
     data["consumer"] = json!("consumer:buyer");
-    assert_eq!(
-        objects::assessment(&w.state, "ac:ios").unwrap()["state"],
-        "ready"
-    );
     w.ok("owner", save(&w, data));
     assert_eq!(stored(&w).as_deref(), Some("owner"));
-    assert!(objects::assessment(&w.state, "ac:ios").is_none());
 }

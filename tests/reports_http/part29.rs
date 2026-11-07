@@ -63,16 +63,6 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         .await?;
         p.bind(&w.token, ac, &[test]).await?;
     }
-    let ready = json!({"ready":true,"reason":"Known scope"});
-    p.assess(
-        "spec:r",
-        &[
-            ("criterion:a", ready.clone()),
-            ("criterion:b", ready.clone()),
-        ],
-    )
-    .await?;
-    p.assess("spec:r2", &[("criterion:c", ready)]).await?;
     p.record(
         "c1c1c1c",
         outcomes(&[("opens", "pass"), ("refuses", "pass"), ("rejects", "pass")]),
@@ -83,12 +73,11 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         let s = p.ac_tests(ac).await?;
         let mcp =
             p.mcp_read("joppa_objects", json!({"address":ac})).await?["status"]["tone"].clone();
-        let readiness = p.assessment(ac).await?;
         ensure!(
-            s["status"] == "green" && mcp == "green" && readiness["state"] == "ready",
-            "{ac} before the change: {s} {mcp} {readiness}"
+            s["status"] == "green" && mcp == "green",
+            "{ac} before the change: {s} {mcp}"
         );
-        before.insert(ac, (s, readiness));
+        before.insert(ac, s);
     }
 
     // Owner S changes only the text of R through the ordinary save.
@@ -103,12 +92,9 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         let mcp =
             p.mcp_read("joppa_objects", json!({"address":ac})).await?["status"]["tone"].clone();
         ensure!(
-            s["status"] == "grey" && mcp == "grey" && addresses(&s) == addresses(&before[ac].0),
+            s["status"] == "grey" && mcp == "grey" && addresses(&s) == addresses(&before[ac]),
             "{ac} after the change: {s} {mcp}"
         );
-        // A change of R keeps the readiness marks of its criteria.
-        let readiness = p.assessment(ac).await?;
-        ensure!(readiness == before[ac].1, "{ac} readiness: {readiness}");
     }
     let c = p.ac_tests("criterion:c").await?;
     let mcp = p
@@ -117,10 +103,6 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
     ensure!(
         c["status"] == "green" && mcp["status"]["tone"] == "green",
         "C after the change: {c} {mcp}"
-    );
-    ensure!(
-        p.assessment("criterion:c").await? == before["criterion:c"].1,
-        "the readiness of C changed"
     );
     let r = p
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
@@ -135,7 +117,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
 
 /// dependencies-before-priority: capability C holds specification B with criterion B1.
 /// Specification A sits under `a_parent` with `a_criteria`; capability D exists for AC7.
-/// Each criterion is assessed ready and has no test report yet, so each one is grey.
+/// Each criterion has no test report yet, so each one is grey.
 async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Result<Planning<'a>> {
     let p = Planning {
         w,
@@ -161,7 +143,7 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
         "spec":{"title":"Specification","role":"requirement","status":"children","parents":["cap"]},
         "criterion":{"title":"Criterion","role":"ac","status":"children","parents":["spec"]},
         "test":{"title":"Tests","role":"test","status":"own","parents":["criterion"],"title_preview_length":400},
-        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"],"parent_gate":"ready"}
+        "work":{"title":"Work","role":"task","status":"none","parents":["criterion"]}
     }})).await?;
     for (key, parent) in [
         ("cap:c", None),
@@ -190,10 +172,6 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
         )
         .await?;
     }
-    let ready = json!({"ready":true,"reason":"Known scope"});
-    let a: Vec<(&str, Value)> = a_criteria.iter().map(|key| (*key, ready.clone())).collect();
-    p.assess("spec:a", &a).await?;
-    p.assess("spec:b", &[("criterion:b1", ready)]).await?;
     Ok(p)
 }
 
