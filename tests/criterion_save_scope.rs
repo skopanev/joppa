@@ -147,3 +147,29 @@ fn a_criterion_save_keeps_the_contract_revision_of_its_specification() {
         "a pin of the specification stays current"
     );
 }
+
+// ac:29ximlsr
+#[test]
+fn an_older_criterion_save_in_a_replay_starts_a_new_contract_of_its_specification() {
+    let mut w = migrated();
+    // The journal reached this rule after the save, so the replay keeps the old effect.
+    w.state
+        .replay_epochs
+        .insert(commands::FORCED_KEEPS_CONTRACT.into(), w.position + 100);
+    let spec = w.state.objects["ac:ios"].current().parent.clone().unwrap();
+    let before = revision(&w, &spec);
+    let current = w.state.objects["ac:ios"].current().clone();
+    let mut data = current.data.clone();
+    data["body"] = json!("Given a paid user on iOS, then access stays.");
+    let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
+        "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
+        "reason":"Clarify the criterion"}))
+    .unwrap();
+    commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();
+    assert_eq!(revision(&w, &spec), before + 1);
+    assert_eq!(
+        joppa::objects::contract_revision(&w.state.objects[&spec]),
+        before + 1,
+        "the older save starts a new contract revision"
+    );
+}

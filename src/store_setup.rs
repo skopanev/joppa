@@ -139,6 +139,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/053_computed_fields.sql"),
         include_str!("../migrations/054_no_readiness_marks.sql"),
         include_str!("../migrations/055_computed_index.sql"),
+        include_str!("../migrations/056_forced_keeps_contract.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

@@ -110,7 +110,11 @@ pub const ARCHIVE_OWN_RESET: &str = "archive_own_reset";
 /// a replay.
 pub const ANY_CHANGE_RESET: &str = "any_change_reset";
 
-pub const REPLAY_RULES: [&str; 7] = [
+/// From this rule on, a revision that only a child save forces keeps the contract revision of
+/// the document. An older one starts a new contract revision in a replay.
+pub const FORCED_KEEPS_CONTRACT: &str = "forced_keeps_contract";
+
+pub const REPLAY_RULES: [&str; 8] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -118,6 +122,7 @@ pub const REPLAY_RULES: [&str; 7] = [
     CRITERION_SAVE_REASON,
     ARCHIVE_OWN_RESET,
     ANY_CHANGE_RESET,
+    FORCED_KEEPS_CONTRACT,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

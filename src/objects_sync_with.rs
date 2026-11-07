@@ -14,6 +14,8 @@ pub(crate) fn sync_with(
     spec_reason: Option<&str>,
 ) {
     let rows = document_rows(w);
+    let rule = crate::commands::FORCED_KEEPS_CONTRACT;
+    let keeps_contract = crate::commands::epoch_reached(w, rule, position);
     let reason = serde_json::to_value(command)
         .ok()
         .and_then(|v| v["reason"].as_str().map(str::to_owned))
@@ -142,11 +144,12 @@ pub(crate) fn sync_with(
             let spec = forced_req.is_some_and(|req| key == &requirement_address(req));
             let revision = obj.revisions.last().map_or(1, |r| r.revision + 1);
             // A revision that only a child save forces keeps the contract of the document, so
-            // a pin of it stays current.
+            // a pin of it stays current. An older one in a replay starts a new contract.
             let contract = obj
                 .revisions
                 .last()
                 .filter(|v| v.data == data && v.parent == parent && v.present)
+                .filter(|_| keeps_contract)
                 .map(|v| [revision, contract_of(v)]);
             obj.revisions.push(ObjectRevision {
                 revision,
