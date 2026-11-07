@@ -1,6 +1,7 @@
 """The server platform as the repository defines it: the host stack, PostgreSQL, Caddy,
 systemd, the backup, the install checks and the build. No network and no server."""
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -172,6 +173,27 @@ class PlatformConfig(unittest.TestCase):
         # projections migrate before the service starts again.
         self.assertLess(text.index("systemctl stop joppa"), text.index("mv /opt/joppa/bin/joppa.next"))
         self.assertLess(text.index("/opt/joppa/bin/joppa migrate"), text.index("systemctl restart joppa\nhealthy"))
+
+    def test_install_gives_each_source_file_a_time_after_the_last_build(self):
+        text = read("install.sh")
+        line = next(l for l in text.splitlines() if l.startswith("find /opt/joppa/src "))
+        self.assertLess(text.index("rsync -a"), text.index(line))
+        self.assertLess(text.index(line), text.index("cargo build --release"))
+        with tempfile.TemporaryDirectory() as root:
+            src = pathlib.Path(root, "opt/joppa/src")
+            files = {name: src / name for name in ("src/lib.rs", "Cargo.toml", "target/release/joppa")}
+            for path in files.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x")
+            commit, build = 1_000_000_000, 1_000_000_600
+            for name, path in files.items():
+                stamp = build if name.startswith("target/") else commit
+                os.utime(path, (stamp, stamp))
+            subprocess.run(["bash", "-c", line.replace("/opt/joppa/src", str(src))], check=True)
+            binary = files["target/release/joppa"].stat().st_mtime
+            self.assertEqual(binary, build)
+            for name in ("src/lib.rs", "Cargo.toml"):
+                self.assertGreater(files[name].stat().st_mtime, binary, name)
 
     def test_the_binary_is_rust_2024_axum_0_8_with_embedded_markdown_libraries(self):
         cargo = (SOURCE / "Cargo.toml").read_text()

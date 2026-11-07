@@ -40,6 +40,9 @@ if [[ ! -x /root/.cargo/bin/cargo || ! -f /usr/share/postgresql/16/extension/vec
     bash "$source_dir/server/provision.sh"
 fi
 rsync -a --delete --exclude target/ "$source_dir/" /opt/joppa/src/
+# git archive gives each file the time of its commit. That time can come before the last
+# build, and then cargo keeps the old binary. A new time makes cargo compile this source.
+find /opt/joppa/src -path /opt/joppa/src/target -prune -o -type f -exec touch {} +
 cd /opt/joppa/src
 /root/.cargo/bin/cargo build --release --locked -j 1
 install -m 644 server/postgres-2gb.conf /etc/postgresql/16/main/conf.d/joppa.conf
