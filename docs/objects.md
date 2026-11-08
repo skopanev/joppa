@@ -2,7 +2,7 @@
 
 ## Common documents
 
-Every object has an address such as `domain:billing`, `ac:payment` or `note:source`.
+Every object has an address such as `domain:billing`, `ac:payment` or `source:refunds`.
 The type prefix keeps the local IDs of two types apart. Permanent public IDs stay valid.
 
 1. Read the object with `joppa_objects`.
@@ -24,13 +24,12 @@ Ordinary document fields can hold text, numbers, lists or maps.
 
 All documents have a title and an owner. The text of every type is `data.body`: the rule of
 a REQ, the observable condition of an AC (`Given / When / Then` for a flow, or a direct rule for
-an invariant, limit or disclosure), the technical contract of a TAC (`Technical Criterion`,
-placed under an AC or a REQ) and the contract of a Task. A save with `data.description`
+an invariant, limit or disclosure) and the contract of a Task. A save with `data.description`
 or `data.contract` is refused: `use body instead of description; read joppa_help`.
-An AC, a TAC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
+An AC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
 its owner. A save with `data.decision_required` is refused. Ask an open question with `note`.
 
-A save of a criterion (`ac` or `tac`) gives its specification a new revision with the reason
+A save of a criterion (a type with role `ac`) gives its specification a new revision with the reason
 `Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.
 Process commands keep the document fields. Only test results make a criterion green.
 
@@ -60,37 +59,95 @@ One `joppa_batch` can save an object and add its comments atomically.
 In text, write a reference as [Title](kind:id). A Markdown link does not replace a structural link.
 See [links and other workspaces](links.md) for relations, dependencies and remote links.
 
-## Notes
+## Inbox items and Sources
 
-Save new incoming information as `kind: "note"` with `parent: null`. Link it with `related`
-to each object that it informs. The server refuses a Note with a parent.
+Keep three items apart:
+
+1. An Inbox item is a raw incoming signal before analysis. Its type has `inbox: true`.
+2. A Source is an owner decision, a specification or an external standard with a fixed version.
+3. A comment (`op: "note"`) is a discussion inside a card. It creates no document.
+
+Save a signal as an Inbox item with `parent: null`. The server refuses an Inbox item with a parent.
+Keep the original text and language of the signal. A missing `data.status` means `unprocessed`.
 
 ```json
-{"op": "save_object", "kind": "note", "revision": 0, "parent": null,
+{"op": "save_object", "kind": "inbox", "revision": 0, "parent": null,
  "data": {"title": "Customer feedback", "owner": "owner", "body": "Original source text"},
  "links": [{"target": "domain:billing", "relation": "related"}], "reason": "Record customer feedback"}
 ```
 
-Keep the source text in its original language. A corrected Note gets a new revision.
-The `note` operation adds a comment. It does not create a Note document.
-Link a REQ to a Note with `depends_on` and the Note revision. A later Note change then asks
-for a review of the requirement.
+Analyze the Inbox item, then do these steps:
 
-A type with `inbox: true` holds incoming information. A missing `data.status` means
-`unprocessed`. When the agent has processed the Note, archive it with `archive_object`.
+1. Save the lasting content as a Source and as REQ and AC nodes.
+2. Link the Inbox item with `related` to the new nodes.
+3. Archive the Inbox item with `archive_object`.
+
+A Source keeps the verbatim text and names its version. A Source can have a parent Source,
+for example a section of a specification. A changed Source gets a new revision.
+Each AC names its Sources in `data.sources`, a list of addresses: `"sources": ["source:refunds"]`.
+When the schema makes `sources` required, the server refuses an AC without a Source.
+Set `sources` only on the AC. Do not copy them to the REQ.
 
 ## Tests of a criterion
 
-A test is a node of a type with role `test` under its criterion (`ac` or `tac`). Save one node
+A test is a node of a type with role `test` under its criterion. Save one node
 for each test with `save_object`:
-`{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}` (or
-`"parent": "tac:x"`).
+`{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}`.
 No criterion, no test: every test in the repository has a present test node, and a full-run record of
 `joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
 for the tones and the rollup.
 
+## Before implementation
+
+Score each REQ and AC with the 11111 checklist before implementation.
+Prepare first:
+
+- Read the full node and its parent.
+- Read the full verbatim text of all cited and applicable sections in every linked Source,
+  on the node or its ancestors. Never read only a summary.
+- Inspect the existing mechanisms, schemas and contracts of the target system in the codebase and the Tech root.
+
+Score five rules, in the order G A U M V. Each rule is 1 or 0.
+
+1. Grounded (G). 1: every condition, value, limit, timing and branch of the node appears
+   explicitly in the linked Source text. Code and tests are never a valid Source on their own.
+   To record an existing baseline schema or interface, link an explicit baseline decision as Source.
+   Each new entity, field, state or endpoint needs a new Source.
+   0: no Source is linked, the Source text was not read, or the node adds an assumption, number
+   or structure that the Source does not have. On 0: STRIP the text without a Source, or ask for the missing Source.
+2. Atomic (A). 1: one indivisible behavioral rule, or one cohesive entity or endpoint schema.
+   The fields of one schema stay in one node. Split independent conditions, limits and state
+   transitions that can pass or fail separately. 0: two or more independent conditions,
+   outcomes or checks. On 0: SPLIT into the listed atomic nodes.
+3. Unambiguous (U). 1: the node and the Source allow one interpretation and one implementation
+   path. Every term, boundary and starting point has a definition. 0: two or more valid readings,
+   a missing reference point, or several implementation choices. On 0: ASK_OPTIONS, one closed
+   question for the person who decides, with concrete options, the simplest first.
+4. Minimal (M). 1: the node specifies the behavior or structure of the target software itself,
+   not manual human or governance actions, unless the Source explicitly mandates automation.
+   Also, the removal of any entity, state, attribute or constraint, or its replacement with an
+   existing mechanism, would violate the Source. 0: the node pushes a manual human duty into
+   software, or adds entities, tables, states, fields or mechanisms when existing mechanisms
+   satisfy the Source. On 0: STRIP, or ASK_OPTIONS between the existing mechanism and a new one.
+5. Verifiable (V). 1: concrete inputs or triggers and an observable outcome, or an exact schema
+   contract, that a finite deterministic automated test proves Pass or Fail. 0: subjective,
+   dependent on an unconfirmed external rule, or not deterministic. On 0: REWRITE and name
+   the missing trigger or outcome.
+
+The verdict gives the bits G A U M V. APPROVE only 11111, and tie the verdict to the exact
+revisions of the node, its Sources and its `depends_on` targets. Else, HOLD and give
+STRIP, SPLIT, ASK_OPTIONS or REWRITE with the exact fix for each 0.
+The verdict does not replace the owner acceptance.
+
+After 11111, apply the Reuse gate before you create a Task. Search the codebase and the
+Tech root for ready shared types, packages, libraries, helpers, modules and contracts.
+Use the code graph index, such as `search_graph`, `search_code` and `SIMILAR_TO`, when it is
+connected. Reuse what exists. Do not write a duplicate.
+
 ## Tasks
 
+Create a Task only under an AC, directly before you implement that AC. Do not create Tasks
+in advance while the tree is filled or agreed: the tree changes too fast.
 Create a Task with `save_object` and a type whose role is `task`. The `body` is the contract.
 A Task has no purpose: `save_object` refuses `data.purpose` with
 `a Task has no purpose; read joppa_help`. A member who can write can change any Task.

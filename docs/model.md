@@ -3,9 +3,9 @@
 Each workspace defines its own tree schema.
 All objects have common document revisions, comments, attachments and links.
 Read [Objects and workspace trees](objects.md) for the current contract.
-The model below describes the default tree and its verification roles.
+The model below describes the recommended tree and its verification roles.
 
-# Four levels of the product tree
+# The recommended tree
 
 Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.
 Russian is permitted under the same rules. Preserve intake, verbatim user text, existing wording, history, and evidence.
@@ -19,12 +19,21 @@ Domain                  Which business area is this, and who decides?
   Capability            What can the product do?
     Requirement (REQ)   What behavior do we commit to?
       AC                What observable condition makes that commitment acceptable?
-        TAC             What checkable technical contract proves it in code (under AC or REQ)?
-          Task          What work is needed to meet or verify this condition?
+        Test            Which test proves the condition?
+        Task            What work implements the condition? (created on demand)
+Tech                    Which shared technical area does this root own?
+  Requirement (REQ)     Which technical contract do we commit to?
+    AC                  What exact contract makes that commitment acceptable?
+      Test, Task        The same as under a product AC.
+Inbox (RAW)             What did the source report, and who sent it?
+Source (SRC)            Which decision, specification or standard grounds the rules, at which version?
 ```
 
-Tasks are work attached to criteria (`AC` or `TAC`), not a separate level of business classification.
-Tests implement checks of `AC` and `TAC` nodes. A Task does not prove a criterion.
+Product rules use the vertical Domain → Capability → REQ → AC → Test.
+Technical contracts use the vertical Tech → REQ → AC → Test. One vertical applies everywhere:
+REQ → AC → Test, and a Task under the AC.
+Tasks are work attached to an AC, not a level of business classification.
+Tests implement checks of AC nodes. A Task does not prove a criterion.
 
 ## Domain — where a decision belongs
 
@@ -54,6 +63,13 @@ Complete “We can …”. If the result describes a product ability, it is a ca
 A capability groups commitments about an ability. It has no independent truth
 or delivery verdict; its progress is derived from its requirements.
 
+## Tech — shared technical contracts
+
+`tech` is one root type for the technical contracts of database, API, transport, security and
+infrastructure. Its root nodes are areas, for example API, Database, Integrations, Platform,
+Security and Infra. Each area holds REQ, AC and Test nodes, the same as a capability.
+Link work across areas and capabilities with `depends_on`.
+
 ## Requirement — a product commitment
 
 A requirement states behavior you can ask “Is this true now?” about.
@@ -71,8 +87,9 @@ into separate commitments when they can be accepted independently.
 ### The REQ card
 
 Each REQ has one owner who answers for its meaning and accepts its result.
-Each AC names exactly one consumer from the workspace consumer list, in its field
-`consumer`. A consumer is a role, a group or an application that receives the promised
+Each AC names its Sources in its field `sources`. The REQ gets no copy of them.
+When the schema defines `ac.consumer`, each AC names exactly one consumer from the
+workspace consumer list, in its field `consumer`. A consumer is a role, a group or an application that receives the promised
 behavior, not necessarily a workspace member. A green AC therefore closes one consumer
 without doubt. A REQ and every level above it name no consumer. If two consumers need
 the same behavior, write one AC for each consumer.
@@ -90,7 +107,6 @@ A change of a node resets the criteria at and below it: they are grey until a
 newer test record arrives. Comments do not create revisions. See the
 [process](process.md) and [what green means](green.md).
 A move to another capability keeps the REQ ID and adds a revision with a reason.
-Link a source as a Note with `depends_on` and the Note revision.
 
 ### Immutable history — WORM
 
@@ -104,7 +120,7 @@ promise against a database superuser; see [storage and trust](storage.md).
 The one exception is the deletion of a workspace by its owner. It removes every
 row of that workspace, its journal included.
 
-## AC and TAC — observable conditions and technical contracts
+## AC — observable conditions
 
 An AC states an observable condition under which a requirement is acceptable.
 Choose the format that fits:
@@ -112,19 +128,14 @@ Choose the format that fits:
 1. `Given / When / Then` — for a state transition or action.
 2. Direct rule — for an invariant, limit or disclosure where `Given / When / Then` is unnatural.
 
-A TAC (`Technical Criterion`, `role: "ac"`, placed under an `ac` or directly under a `requirement`)
-states one checkable technical contract in code:
-
-1. Route, event or job + input → HTTP status code, payload or error code.
-2. Database or Redis table, key, TTL, threshold or invariant.
-
-Each TAC names one `consumer` and its implementation `projects`. Tests (`kind: "test"`) and Tasks
-(`kind: "task"`) can attach to either an `AC` or a `TAC`.
+Under a Tech root, an AC states one exact technical contract, for example a route and input
+with its HTTP status and payload, or a table, key, TTL or threshold.
+Each AC links the Sources that ground it. Tests (`kind: "test"`) and Tasks (`kind: "task"`)
+attach to an AC.
 
 ```text
 REQ  Amounts at or above the reporting threshold are reportable.
   AC  The threshold is 10,000.00 inclusive.
-    TAC  POST /transfers records reportable=true at or above 10,000.00 unrounded.
       Test  9,999.99 is not reportable.
       Test  10,000.00 is reportable.
       Test  10,000.01 is reportable.
@@ -134,8 +145,15 @@ REQ  Amounts at or above the reporting threshold are reportable.
       Test  All three fields are present after crediting.
 ```
 
-A REQ describes the whole commitment. An AC describes one observable condition for accepting
-it, and a TAC records the exact technical contract in code.
+A REQ describes the whole commitment. An AC describes one observable condition for accepting it.
+
+## Sources and the Inbox
+
+An Inbox item (badge RAW) is a raw incoming signal before analysis. A Source (badge SRC) is an
+owner decision, a specification or an external standard with a fixed version. A comment
+(`op: "note"`) is a discussion inside a card. Do not mix these three items.
+After analysis, the agent puts the lasting content into a Source and into REQ and AC nodes.
+Then the agent archives the Inbox item. See [Inbox items and Sources](objects.md#inbox-items-and-sources).
 
 ### AC scope
 
@@ -154,11 +172,13 @@ inventing new product commitments.
 |---|---|
 | Which business area owns this decision? | Domain |
 | What can the product do? | Capability |
+| Which shared technical area owns this contract? | Tech root, such as API or Database |
 | What behavior do we promise as a whole? | REQ |
 | What observable condition makes that promise acceptable? | AC |
-| What route, event, job, table or threshold contract proves it in code? | TAC (under AC or REQ) |
-| What work implements or verifies the condition? | Task attached to AC or TAC |
-| How is the condition checked? | Test node under AC or TAC |
+| Which decision, specification or standard grounds the AC? | Source, in `sources` of the AC |
+| What raw signal arrived, before analysis? | Inbox item |
+| What work implements the condition? | Task under the AC, created directly before implementation |
+| How is the condition checked? | Test node under the AC |
 
 ## Size signals, not validation rules
 
@@ -170,8 +190,9 @@ requires. Never manufacture ACs to reach a target count.
 
 ## Creating and maintaining the tree
 
-Agents and people save domains, capabilities and REQs with `save_object`. Only an owner
-acceptance approves a REQ revision.
+Agents and people save domains, Tech roots, capabilities, REQs and ACs with `save_object`.
+Only an owner acceptance approves a REQ revision. Do not create Tasks while the tree is
+filled or agreed. Create a Task directly before the implementation of its AC.
 
 Creation through MCP can omit local IDs: the server makes them and returns the
 resolved command. Keep IDs when you edit existing objects. Archived objects keep

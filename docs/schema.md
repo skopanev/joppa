@@ -2,21 +2,35 @@
 
 ## Types and parents
 
-Call `joppa_tree` to read the workspace schema. Use `set_tree_schema` to replace it:
+Call `joppa_tree` to read the workspace schema. Use `set_tree_schema` to replace it.
+The recommended recipe below has two verticals and two document types. The owner can change it.
+
+- Product rules: `domain` → `capability` → `requirement` → `ac` → `test`.
+- Technical contracts: `tech` → `requirement` → `ac` → `test`. The roots of `tech` are areas
+  such as API, Database, Integrations, Platform, Security and Infra.
+- `task` under `ac`. Create a Task directly before the implementation of its AC.
+- `inbox`: a raw incoming signal before analysis. `source`: an owner decision, a specification
+  or an external standard with a fixed version. Each AC names its Sources in `sources`.
 
 ```json
 {
   "op": "set_tree_schema",
   "revision": 0,
-  "reason": "Add release grouping",
+  "reason": "Apply the recommended tree",
   "types": {
-    "initiative": {"title": "Initiative", "role": "group", "root": true, "parents": [], "status": "children"},
-    "requirement": {"title": "Requirement", "role": "requirement", "root": false, "parents": ["initiative"], "status": "children"},
-    "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children"},
-    "tac": {"title": "Technical Criterion", "badge": "TAC", "role": "ac", "root": false, "parents": ["ac", "requirement"], "status": "children"},
-    "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac", "tac"], "status": "none"},
-    "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac", "tac"], "status": "own"},
-    "note": {"title": "Note", "role": "document", "root": true, "parents": [], "inbox": true, "status": "none"}
+    "domain": {"title": "Domain", "badge": "DOM", "role": "group", "root": true, "parents": [], "status": "children"},
+    "capability": {"title": "Capability", "badge": "CAP", "role": "group", "root": false, "parents": ["domain"], "status": "children"},
+    "tech": {"title": "Tech", "badge": "TECH", "role": "group", "root": true, "status": "children", "parents": [], "color": "#3f7f8c", "title_size": 17,
+      "question": "Which shared technical area (API, Database, Integrations, Platform, Security, Infra) does this root own?"},
+    "requirement": {"title": "Requirement", "badge": "REQ", "role": "requirement", "root": false, "parents": ["capability", "tech"], "status": "children"},
+    "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children",
+      "references": {"sources": {"target": "source", "title": "Sources", "required": true, "multiple": true}}},
+    "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac"], "status": "own"},
+    "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac"], "status": "none"},
+    "inbox": {"title": "Inbox", "badge": "RAW", "role": "document", "root": true, "inbox": true, "status": "none", "parents": [], "field_max_length": 4096, "color": "#7664aa",
+      "question": "What did the source report, and who sent it?"},
+    "source": {"title": "Source", "badge": "SRC", "role": "document", "root": true, "status": "none", "parents": ["source"], "field_max_length": 4096, "color": "#8a6d3b",
+      "question": "Which owner decision, specification or external standard grounds these rules, and at which version?"}
   }
 }
 ```
@@ -45,7 +59,8 @@ The role of a type gives its workflow. The type name does not.
 - `group`, `document` and `task`: ordinary nodes.
 
 `root: true` permits an object without a parent. `parents: ["*"]` permits any parent type.
-A type with `inbox: true` has `parents: []`. The server refuses parent cycles.
+A type with `inbox: true` has `parents: []`. Its name can differ from `inbox`.
+The server refuses parent cycles.
 An object has one parent, or no parent when its type permits a root.
 Each document revision records its schema revision.
 
@@ -223,6 +238,7 @@ A result field has no `board` or `applies`: `set_tree_schema` refuses them with
 A type with `process_fields` or a reference with `verification_subject` is refused:
 `process_fields and verification_subject were removed; every node shows its process facts, and a reference changes no Task scope`.
 
-The default recipe defines `ac.consumer` (one consumer, required) and `task.projects`.
+The recommended recipe defines `ac.sources` (one or more Sources, required). A workspace can add
+other references, for example `ac.consumer` (one consumer, required) or `task.projects`.
 `launch_blocker: true` on a type makes its `before_launch` entries launch conditions.
 Check evidence and owner acceptance must cover each such entry.

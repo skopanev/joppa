@@ -3,24 +3,25 @@
 **A versioned product tree with connected tasks.**
 
 Each workspace defines its object types, parents, links, colors and order.
-The default recipe is Domain → Capability → Requirement → AC / TAC → Task / Test.
-Tasks and test nodes belong to the parents that the workspace schema permits (`ac` or `tac`).
+The recommended recipe is Domain → Capability → Requirement → AC → Test, and Tech → Requirement → AC → Test.
+Tasks and test nodes belong to the parents that the workspace schema permits (`ac`).
+Inbox items hold raw incoming signals. Sources ground every AC.
 One workspace is one product, even when several repositories deliver it.
 Repository references follow the workspace schema.
 
-People and agents formulate REQ, ACs and TACs together. The REQ owner confirms wording
+People and agents formulate REQ and ACs together. The REQ owner confirms wording
 and accepts the checked result. Agents analyze each criterion. Independent
 conditions can proceed while disputed ones wait for a named decision maker.
 An iOS condition means iOS; other clients are never added by assumption.
 
 ## What works
 
-- Workspaces, members, decision authorities, capabilities and owned REQs, ACs and TACs.
-- Incoming Notes with revisions, comments, attachments and links to affected objects.
-  The default queue shows unprocessed Notes. Processed Notes stay available.
+- Workspaces, members, decision authorities, capabilities and owned REQs and ACs.
+- Inbox items with revisions, comments, attachments and links to affected objects.
+  The default queue shows unprocessed Inbox items. Processed items stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
-- Each test is a node under its criterion (`ac` or `tac`): `save_object` with kind `test`.
+- Each test is a node under its criterion (`ac`): `save_object` with kind `test`.
   `joppa_record_results` records the outcomes of one commit.
 - No criterion, no test: every test in the repository has a present test node. A
   full-run record must give `"unbound": []` before a merge.
@@ -130,8 +131,8 @@ remain separate annotations.
 
 The board is read-only for content. Agents change documents, links and schema through MCP.
 The **Settings** page creates workspaces, grants access and issues agent tokens.
-Types with `inbox: true` supply a Note queue. It shows unprocessed Notes first.
-The **All** checkbox includes processed Notes. Related Notes stay visible
+Types with `inbox: true` supply an Inbox queue. It shows unprocessed items first.
+The **All** checkbox includes processed items. Related Inbox items stay visible
 under the objects they affect. Processing keeps the source document.
 
 If port 6212 is occupied, use another local port such as 6213. Public access

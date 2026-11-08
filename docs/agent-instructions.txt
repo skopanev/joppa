@@ -11,14 +11,20 @@ A write takes a public item ID where it takes an address of the workspace. The j
 Use joppa_batch for related writes. Retry identical input with the same request_id after a lost response.
 Set data.workspace on a node to bind a child workspace; use set_remote_links for links across workspaces.
 
-Create incoming source information as a Note with parent:null. Use structural links to connect it to the objects it informs.
-Preserve original source text and language. Record decisions and product inputs in Notes. Keep comments for discussion.
+Save a raw incoming signal as an Inbox item: the type with inbox: true, parent:null. Preserve its original text and language.
+After analysis, put the lasting content into a Source and into REQ and AC nodes, and link them. Then archive the Inbox item with archive_object.
+A Source records an owner decision, a specification or an external standard at a fixed version. When the schema defines ac.sources, set data.sources on every AC. Do not copy sources to the REQ.
+Keep comments (op note) for discussion. A comment is not an Inbox item and not a Source.
 Use a short title. Put context, conditions and evidence in body. Use clean Markdown in authored text.
 Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace structural links.
 
+Read open work with joppa_history open=true. Mark each processed entry with joppa_history_mark.
+Before implementation, score each REQ and AC with the 11111 checklist: Grounded, Atomic, Unambiguous, Minimal, Verifiable. Implement only a node that scores 11111. Read joppa_help section objects for the rules.
+After 11111, apply the Reuse gate: search the codebase and the Tech root for shared types, packages, libraries, helpers, modules and contracts. Use the code graph index (search_graph, search_code, SIMILAR_TO) when it is connected. Reuse what exists. Do not write duplicates.
+Create a Task only under an AC, directly before you implement that AC. Never create Tasks in advance while the tree changes.
 Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.
 A Task is a node like any other: data.assignee names the person or the agent alias, such as lane3, a typed field such as data.stage gives its state, and archive_object ends it. Put the Git commit of finished work in data.commit. Test results prove a criterion. A finished Task does not prove criterion acceptance.
-No criterion, no test. A test is a node: save_object with kind test under its criterion (ac or tac), data.title = the test name. Every test in the repository must have a present test node.
+No criterion, no test. A test is a node: save_object with kind test under its AC, data.title = the test name. Every test in the repository must have a present test node.
 Never add or rename a test without its test node in the same change. Archive the test node of a deleted test, and the test nodes of a criterion before the criterion.
 joppa_record_results gives "unbound": the test names of the record that have no present test node. A full-run record must give "unbound": [] before a merge.
 Use the configured test_results rules. Preserve failures and evidence. Record human decisions only with explicit human instruction.

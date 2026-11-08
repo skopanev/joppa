@@ -13,8 +13,8 @@ owner responsible for its meaning and acceptance.
 | Developer | Implement work and resolve technical questions |
 | Agent | Help formulate REQ/ACs, organize work, run checks and ask for missing decisions |
 
-Technical analysis is work, usually performed by an agent. A Note author does
-not need to understand code, identify a build or estimate implementation. A
+Technical analysis is work, usually performed by an agent. The author of an Inbox item
+does not need to understand code, identify a build or estimate implementation. A
 relevant deadline can be recorded without becoming an implementation estimate.
 
 The agent analyzes every AC when it analyzes or changes a requirement. For missing
@@ -24,8 +24,8 @@ requires a new decision. Platforms come from the agreed AC and context; see
 [AC scope](model.md#ac-scope).
 
 Each Task has one parent permitted by the workspace schema and a technical contract.
-The default recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
-`data.assignee` names the member or the agent alias that does the Task. Triage can create Tasks without an assignee.
+The recommended recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
+`data.assignee` names the member or the agent alias that does the Task.
 A Task waits for its blocking dependencies, the same as any other node.
 `data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
@@ -46,17 +46,37 @@ not itself authorize a business decision. Confirm wording, accept results,
 record specialist decisions or submit manual evidence only on explicit user
 instruction. Unattended automation uses a separate agent or runner identity.
 
-## Incoming Notes
+## Inbox items and Sources
 
-Save new incoming information as a Note. Keep the original text, language and whitespace.
-Notes use the same revisions, comments, attachments and links as other objects.
+Save each raw incoming signal as an Inbox item. Keep the original text, language and whitespace.
+Inbox items use the same revisions, comments, attachments and links as other objects.
 Ask for facts needed to formulate or verify the affected requirement.
-Missing facts can prevent work. They do not prevent someone from recording a Note.
+Missing facts can prevent work. They do not prevent someone from recording an Inbox item.
 
-A message can produce several Notes. Link them to the original Note.
-Record the result and its reason in the Note. Link the affected objects.
-When a REQ depends on a Note's wording, link its specific revision with `depends_on`.
-A later change to that Note then asks the agent to review the requirement.
+After analysis, put the lasting content into a Source and into REQ and AC nodes.
+Link the Inbox item to them, then archive it with `archive_object`.
+A Source is an owner decision, a specification or an external standard with a fixed version.
+Each AC names its Sources. A comment (`op: "note"`) is discussion, not a Source.
+
+## Reading the work
+
+The History of a workspace lists every recorded change. The agent reads the open entries with
+`joppa_history` and `open: true`, or the newest entries with `order` and `after`.
+After the work, the agent marks each entry with `joppa_history_mark`.
+
+## Before implementation
+
+Each REQ and AC passes three gates before code changes:
+
+1. **11111.** The agent scores the node against five rules: Grounded, Atomic, Unambiguous,
+   Minimal and Verifiable. Only a node with all five bits at 1 goes to implementation.
+   Each 0 gets a fix: STRIP, SPLIT, ASK_OPTIONS or REWRITE.
+2. **Reuse.** The agent searches the codebase and the Tech root for ready shared types,
+   packages, libraries, helpers, modules and contracts. It reuses them and writes no duplicates.
+3. **Task on demand.** The agent creates the Task under the AC directly before implementation.
+   The agent does not create Tasks while the tree is filled or agreed: the tree changes too fast.
+
+See [before implementation](objects.md#before-implementation) for the full rules.
 
 ## Three routes
 
@@ -82,7 +102,7 @@ Expected behavior is disputed  -> request a decision; affected work waits.
 
 Retrospective wording is easy to tailor to a convenient fix. Its owner accepts it
 as any other REQ. An incomplete tree must not prevent
-a new Note. A new Note does not prove that the tree is complete.
+a new Inbox item. A new Inbox item does not prove that the tree is complete.
 
 ## Results
 
@@ -137,5 +157,5 @@ Manual work needs explicit expected and observed evidence.
 
 A title has at most `title_max_length` characters of its type, default 128.
 Each other value has at most `field_max_length` characters, default 1024.
-Keep detailed sources in linked Notes or attached files, not in the body.
+Keep detailed source text in linked Sources or attached files, not in the body.
 Empty REQ and AC wording is refused.

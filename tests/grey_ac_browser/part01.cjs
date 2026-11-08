@@ -54,7 +54,7 @@ test('suggested-method: the guide reads custom workspace levels and questions', 
     assert.equal(await f.page.locator('#default-tree').isVisible(), true);
     assert.equal(await f.page.locator('#workspace-levels').isVisible(), false);
     assert.equal(await f.page.locator('#level-intro').innerText(),
-      'Suggested default tree: Domain → Capability → REQ → AC. Each workspace schema sets its own levels and the question each level answers.');
+      'Suggested default tree: Domain → Capability → REQ → AC → Test, and Tech → REQ → AC → Test. Each workspace schema sets its own levels and the question each level answers.');
     assert.equal(f.requests.length, 0);
     const response = await f.page.goto(f.live.root + '/guide?workspace=missing');
     assert.equal(response.status(), 200);

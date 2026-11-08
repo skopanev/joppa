@@ -188,7 +188,6 @@ and every red test with `{"workspace": "w", "kind": "test", "status": "red"}`. T
 ## Other read tools
 
 Read Tasks with the node filters, for example `{"kind":"task","assignee":"alex","ready":true}`.
-A call of `joppa_timeline` is refused with `joppa_timeline was removed; use joppa_history, for example {"order":"newest","after":0}`.
 A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_objects with kind task, for example {"kind":"task","assignee":"alex","ready":true}`.
 
 `joppa_history` and `joppa_search` lose the empty keys, `item_id` and the echo of the
