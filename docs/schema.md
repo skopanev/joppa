@@ -9,6 +9,11 @@ The recommended recipe below has two verticals and two document types. The owner
 - Technical contracts: `tech` → `requirement` → `ac` → `test`. The roots of `tech` are areas
   such as API, Database, Integrations, Platform, Security and Infra.
 - `task` under `ac`. Create a Task directly before the implementation of its AC.
+- `test`: one scenario that proves its AC. The title states the scenario in business language,
+  with concrete numbers and no code. `body` gives the inputs and the expected outcome. `case` is
+  `nominal` (the normal working path), `boundary` (the edges of limits) or `off_nominal` (errors
+  and safe refusals). `command` is the exact isolated command that runs this one test. Leave it
+  empty only for a manual check, which attaches its evidence with `joppa_attach`.
 - `inbox`: a raw incoming signal before analysis. `source`: an owner decision, a specification
   or an external standard with a fixed version. Each AC names its Sources in `sources`.
 
@@ -25,7 +30,10 @@ The recommended recipe below has two verticals and two document types. The owner
     "requirement": {"title": "Requirement", "badge": "REQ", "role": "requirement", "root": false, "parents": ["capability", "tech"], "status": "children"},
     "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children",
       "references": {"sources": {"target": "source", "title": "Sources", "required": true, "multiple": true}}},
-    "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac"], "status": "own"},
+    "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac"], "status": "own", "title_max_length": 400,
+      "fields": {"case": {"type": "enum", "values": ["nominal", "boundary", "off_nominal"]}, "command": {"type": "text"}},
+      "required_fields": {"body": "a test node needs body: the inputs and the expected outcome"},
+      "question": "Which scenario, in business language and with concrete numbers, proves this criterion?"},
     "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac"], "status": "none"},
     "inbox": {"title": "Inbox", "badge": "RAW", "role": "document", "root": true, "inbox": true, "status": "none", "parents": [], "field_max_length": 4096, "color": "#7664aa",
       "question": "What did the source report, and who sent it?"},
@@ -131,7 +139,7 @@ Set `fields` on a type to give a data field its type:
 - `color: "#RRGGBB"` colours the type on the board and in the schema diagram.
 - `title_size` is an integer from 12 to 48 pixels. The default is 15.
 - `badge` is a label of 1 to 8 characters without spaces. The default is the initials of the title.
-- `title_max_length` is from 1 to 400 characters, default 128. A test name can have 400 characters. A longer new title is refused. Put the context in `body`.
+- `title_max_length` is from 1 to 400 characters, default 128. A longer new title is refused. Put the context in `body`.
 - `field_max_length` limits each other data value, default 1024 characters.
 - `index` is a nonnegative integer. Smaller values come first in the root tabs and the diagram.
 
@@ -196,7 +204,6 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
     {"name": "message", "title": "Failure message", "type": "text", "max_length": 8192},
     {"name": "duration_ms", "title": "Duration in milliseconds", "type": "number"}
   ],
-  "name": {"separator": " > ", "min_parts": 2, "file_extension": true, "max_length": 400},
   "max_tests": 200,
   "max_results": 1000,
   "same_commit": "fail_wins",
@@ -209,7 +216,7 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
 
 - `statuses` gives the status names of `joppa_record_results`. Each name counts as `pass`, `fail`, `skip` or `todo`. The map needs a name for `pass` and for `fail`.
 - `fields` lists the fields of a result: `text` with `max_length`, `number`, `enum` with `values`, or `ref` with a `target` type.
-- `name` gives the form of a test name. `max_tests` limits the test nodes of one parent, and `max_results` limits one record.
+- `max_tests` limits the test nodes of one parent, and `max_results` limits one record.
 - `same_commit`: with `fail_wins`, a failure in any record of the newest commit decides the test. Else, and with `latest_wins`, only the newest record decides it.
 - `reset_on_change` is described in [what green means](green.md).
 - `green_if_all` and `red_if_any` give the outcomes that make a test node green or red.
@@ -218,6 +225,9 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
 The names `test`, `status`, `commit`, `actor` and `at` belong to the record. A field cannot use them.
 The server refuses an unknown status name, an unknown field, a missing required field and a
 value of the wrong type. A `set_tree_schema` with `test_results` sends every rule.
+
+No rule checks the title of a test node. A `set_tree_schema` with `test_results.name` is refused:
+`test_results.name was removed; the title of a test node states the scenario in business language, and a record names the test by test:<id>`.
 
 A result field has no `board` or `applies`: `set_tree_schema` refuses them with
 `board and applies were removed from result fields; filter test nodes by status`.

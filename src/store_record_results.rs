@@ -6,8 +6,9 @@
 //! latest record of a test decides it. A record names only the tests it ran: an
 //! omitted test gets no result, and a skip or todo in a record is never a pass.
 //! The block test_results of the tree schema gives the status names, the fields of a
-//! result and the largest record, see result_shape. The reply names in unbound the tests
-//! of the record that no present criterion lists: each test must have a criterion.
+//! result and the largest record, see result_shape. Each result is stored under the address
+//! of each of its test nodes, see record_bind. The reply names in unbound the tests of the
+//! record that have no present test node.
 use super::*;
 use crate::ac_tests::TestResult;
 use crate::result_shape::ResultShape;
@@ -122,20 +123,9 @@ pub async fn record_results(
         }
     }
     let (commit, results) = parse(args, &shape, &refs)?;
-    // The tests of the record that have no present test node. A full run must give none.
-    let names: Vec<&str> = results.iter().map(|r| r.address.as_str()).collect();
-    let unbound: Vec<String> = tx
-        .query(
-            "WITH s AS (SELECT value FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1),
-                k AS (SELECT t.key FROM s,jsonb_each(s.value->'types') t WHERE t.value->>'role'='test')
-            SELECT DISTINCT n FROM unnest($2::text[]) n WHERE NOT EXISTS (SELECT 1 FROM joppa.objects o
-                WHERE o.workspace=$1 AND o.present AND o.kind IN (SELECT key FROM k) AND o.title=n) ORDER BY n",
-            &[&workspace, &names],
-        )
-        .await?
-        .iter()
-        .map(|row| row.get(0))
-        .collect();
+    // Each result binds to its test node. A name with no present test node is unbound.
+    let count = results.len();
+    let (results, unbound) = super::record_bind::bind(&*tx, &workspace, results).await?;
     let body = serde_json::to_string(&results)?;
     let hash = crate::digest_hex::sha256_hex(format!("record\n{commit}\n{body}").as_bytes());
     let event = |report: i64, repeat: bool| {
@@ -143,7 +133,7 @@ pub async fn record_results(
             report,
             commit: commit.clone(),
             branch: "record".into(),
-            tests: results.len() as u64,
+            tests: count as u64,
             repeat,
         })
     };
@@ -164,7 +154,7 @@ pub async fn record_results(
             super::record_report::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
         return Ok(
-            json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position, "unbound": unbound}),
+            json!({"record": id, "commit": commit, "tests": count, "replayed": true, "actor": actor, "position": position, "unbound": unbound}),
         );
     };
     let id: i64 = row.get(0);
@@ -176,7 +166,7 @@ pub async fn record_results(
         super::record_report::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
     Ok(
-        json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position, "unbound": unbound}),
+        json!({"record": id, "commit": commit, "tests": count, "replayed": false, "actor": actor, "position": position, "unbound": unbound}),
     )
 }
 

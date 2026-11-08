@@ -241,7 +241,7 @@ async fn a_schema_change_without_a_shape_keeps_it_and_a_bad_shape_is_refused() -
         .unwrap_err()
         .to_string();
     ensure!(
-        error.contains("test_results needs every rule; missing: fields, name"),
+        error.contains("test_results needs every rule; missing: fields"),
         "{error}"
     );
     Ok(())

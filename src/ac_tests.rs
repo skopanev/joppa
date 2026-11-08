@@ -107,7 +107,6 @@ pub fn set(
     );
     let mut seen = BTreeSet::new();
     for test in tests {
-        crate::test_rules::validate_address(&rules, test)?;
         ensure!(seen.insert(test), "test \"{test}\" is listed twice");
     }
     let text_hash = hash_of(
@@ -186,7 +185,6 @@ pub fn validate_field(w: &Workspace, kind: &str, data: &serde_json::Value) -> Re
     let mut seen = BTreeSet::new();
     for test in tests {
         let test = test.as_str().context("tests is a list of test names")?;
-        crate::test_rules::validate_address(&rules, test)?;
         ensure!(seen.insert(test), "test \"{test}\" is listed twice");
     }
     Ok(())

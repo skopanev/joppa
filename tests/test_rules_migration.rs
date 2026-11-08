@@ -83,7 +83,7 @@ fn after_the_migration_a_schema_change_sends_every_rule() {
         "test_results":{"statuses":{"ok":"pass","bad":"fail"}}});
     let error = w.apply("owner", partial).unwrap_err().to_string();
     assert!(
-        error.contains("test_results needs every rule; missing: fields, name"),
+        error.contains("test_results needs every rule; missing: fields"),
         "{error}"
     );
     let mut block = serde_json::to_value(joppa::test_rules::legacy()).unwrap();

@@ -11,7 +11,7 @@ owner responsible for its meaning.
 | Business, executive, compliance or legal specialist | Define rules and scope within their authority; record decisions in the REQ card |
 | Tester or support | Report problems; identify what was checked and the observed result |
 | Developer | Implement work and resolve technical questions |
-| Writer agent | Talk with the owner, write the Source, REQ, AC and Test nodes, and ask for missing decisions |
+| Writer agent | Talk with the owner, write the Source, REQ and AC nodes, and ask for missing decisions |
 | Reviewer agent | Score each REQ and AC that another agent wrote: 11111 and Reuse |
 
 Technical analysis is work, usually performed by an agent. The author of an Inbox item
@@ -75,26 +75,53 @@ Each REQ and AC passes three gates before code changes:
    types, packages, libraries, helpers, modules and contracts. It uses the code graph index
    (codebase-memory, CBM) when it is connected. The Writer agent reuses them and writes no
    duplicates.
-3. **Task on demand.** The Writer agent creates the Task under the AC directly before
-   implementation. It does not create Tasks while the tree is filled or agreed: the tree
-   changes too fast.
+3. **Task on demand.** The coding agent creates the Tasks under the AC directly before
+   implementation. One AC can have one Task or more. Do not create Tasks while the tree is
+   filled or agreed: the tree changes too fast.
 
 See [before implementation](objects.md#before-implementation) for the full rules.
 
 ## The feedback loop
 
-Two agents with different aliases do the work. The agent that writes a node never scores it.
+Agents with different aliases do the work. The agent that writes a node never scores it.
 
 1. The owner gives a decision in the chat. The Writer agent records it as a Source.
-2. The Writer agent writes the REQ, the AC and the Test nodes from the Source.
-3. The independent Reviewer agent checks 11111 and Reuse (R).
+2. The Writer agent writes the REQ and the AC from the Source.
+3. The independent Reviewer agent checks 11111 and Reuse (R). No test of the AC exists yet.
 4. On a HOLD, the Writer agent does not invent an answer. A HOLD comes from a gap in the
    Source, a fork, or a conflict with an existing mechanism. The Writer agent asks the owner
    one closed question in the chat. Then it updates the Source and the AC.
 5. The Reviewer agent checks 11111 and R again.
-6. After a pass, the Writer agent opens the Task on demand. The work ends with green Test nodes.
+6. After a pass, two independent agents work on the AC at the same time:
+   - One agent writes the code for the AC with its Tasks. One AC can have one Task or more.
+   - Another agent writes the acceptance Test nodes of the AC as a black box, from the AC and
+     its Sources. The coder cannot fit the code to tests that it did not see.
+7. The work ends when all Test nodes of the AC are green at the same time.
 
 This is a process rule for agents. The server does not check the roles of the aliases.
+
+## Test nodes
+
+Each test node states one scenario. Write it so that a person without code can read it:
+
+- `title`: the scenario in business language, with concrete numbers and no code.
+- `body`: the inputs and the expected outcome.
+- `case`: `nominal` for the normal working path, `boundary` for the edges of the limits, or
+  `off_nominal` for errors and safe refusals.
+- `command`: the exact isolated command that runs this one test. Leave it empty only for a
+  manual check, and attach its evidence with `joppa_attach`.
+
+Check each test node with the Test-5 checklist:
+
+1. Business language and concrete numbers. No code in the title.
+2. One test, one diagnosis.
+3. The normal path, the boundaries and a safe failure.
+4. The real system. No mocks of the logic under test.
+5. A fast, isolated command.
+
+All tests under one AC together cover 100% of its conditions. The AC is green only when all of
+them are green at the same time. A record names each test by `test:<id>`, which binds that one
+test node. A title binds every present test node with that title.
 
 ## Three routes
 

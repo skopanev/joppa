@@ -118,6 +118,10 @@ pub struct Workspace {
     /// Reports received at or before it do not count for the criterion.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub criterion_boundaries: BTreeMap<String, String>,
+    /// The earlier titles of each renamed test node, from the epoch of rename_keeps_results on.
+    /// A result that an older record stored by one of these titles still counts for the node.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub former_test_titles: BTreeMap<String, Vec<String>>,
     /// The links of each object to objects of other workspaces, by source address.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub remote_links: BTreeMap<String, crate::remote_links::RemoteLinks>,

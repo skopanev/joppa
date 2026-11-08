@@ -1,6 +1,7 @@
 //! A test is a node of the tree. Its type has the role `test` and the status rule `own`: the
-//! latest result of the test whose name is the title of the node decides its tone. One node
-//! names one test; a test that proves two criteria has one node under each.
+//! latest result that a record stored under the address of the node decides its tone. The
+//! title states the scenario in business language. A test that proves two criteria has one
+//! node under each.
 //!
 //! The event migrate_test_nodes runs once in each workspace:
 //! - The schema gets the type `test` (role test, status own) under each type with role ac or
@@ -77,9 +78,10 @@ pub fn node_id(parent: &str, name: &str) -> String {
     crate::digest_hex::sha256_hex(format!("{parent}\n{name}"))[..12].to_owned()
 }
 
-/// After the event, a document has no test list. The title of a test node is a test name that
-/// the name rule of the schema accepts, it is unique among the test nodes of its parent, and a
-/// parent has at most `max_tests` test nodes.
+/// After the event, a document has no test list. A test node has a title, and a parent has at
+/// most `max_tests` test nodes. No rule checks the form of the title: it states the scenario in
+/// business language. Two test nodes can have the same title, also under one parent: a record
+/// then names each of them by its address, see store_record_bind.
 pub fn check_save(
     w: &Workspace,
     kind: &str,
@@ -96,11 +98,10 @@ pub fn check_save(
         return Ok(());
     }
     let rules = crate::test_rules::rules(w)?;
-    let name = data["title"]
+    data["title"]
         .as_str()
         .context("a test node needs a title")?;
-    crate::test_rules::validate_address(&rules, name)?;
-    let siblings: Vec<&str> = w
+    let siblings = w
         .objects
         .iter()
         .filter(|(address, o)| {
@@ -114,11 +115,9 @@ pub fn check_save(
                     .map(|p| crate::objects::resolve_address(w, p))
                     == parent
         })
-        .filter_map(|(_, o)| o.current().data["title"].as_str())
-        .collect();
-    ensure!(!siblings.contains(&name), "test \"{name}\" is listed twice");
+        .count();
     ensure!(
-        siblings.len() < rules.max_tests,
+        siblings < rules.max_tests,
         "a criterion lists at most {} tests",
         rules.max_tests
     );
@@ -170,4 +169,43 @@ pub fn saved_since(w: &Workspace, parent: &str, actor: &str, position: u64) -> b
                 .iter()
                 .any(|r| r.actor == actor && r.position > position)
     })
+}
+
+/// The data of a node without its title when `quiet`, else the data as it is.
+pub fn untitled(data: &Value, quiet: bool) -> std::borrow::Cow<'_, Value> {
+    match data {
+        Value::Object(map) if quiet && map.contains_key("title") => {
+            let mut map = map.clone();
+            map.remove("title");
+            std::borrow::Cow::Owned(Value::Object(map))
+        }
+        _ => std::borrow::Cow::Borrowed(data),
+    }
+}
+
+/// Keep the earlier title of each test node that the revision at `position` renames. A result
+/// that an older record stored by that title still counts for the node.
+pub fn keep_former_titles(
+    w: &mut Workspace,
+    types: &std::collections::BTreeMap<String, crate::objects::TreeType>,
+    position: u64,
+) {
+    let renamed: Vec<(String, String)> = w
+        .objects
+        .iter()
+        .filter(|(_, o)| {
+            o.current().position == position && types.get(&o.kind).is_some_and(|t| t.role == ROLE)
+        })
+        .filter_map(|(key, o)| {
+            let before = o.revisions.iter().rev().find(|r| r.position < position)?;
+            let old = before.data["title"].as_str()?;
+            (o.current().data["title"].as_str() != Some(old)).then(|| (key.clone(), old.into()))
+        })
+        .collect();
+    for (key, old) in renamed {
+        let titles = w.former_test_titles.entry(key).or_default();
+        if !titles.contains(&old) {
+            titles.push(old);
+        }
+    }
 }

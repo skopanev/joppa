@@ -1,6 +1,6 @@
 //! The test rules of the tree schema: the check of a block and of one result.
 use joppa::result_shape::{ResultShape, validate};
-use joppa::test_rules::{legacy, validate_address};
+use joppa::test_rules::legacy;
 use serde_json::{Map, Value, json};
 
 /// Check one result with no objects for ref fields.
@@ -53,13 +53,16 @@ fn the_older_rules_are_a_valid_block_with_the_four_outcomes() {
         checked.fields.unwrap()["message"].as_str().unwrap().len(),
         8 * 1024
     );
-    validate_address(&rules, "tests/login.rs > email").unwrap();
-    let error = validate_address(&rules, "login > email")
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.contains("a test address needs file > name at least"),
-        "{error}"
+    // The block has no name rule. An older block with one still reads, and no read shows it.
+    let mut older = serde_json::to_value(&rules).unwrap();
+    assert!(older.get("name").is_none(), "{older}");
+    older["name"] =
+        json!({"separator": " > ", "min_parts": 2, "file_extension": true, "max_length": 400});
+    let read: ResultShape = serde_json::from_value(older).unwrap();
+    assert!(read.name.is_some());
+    assert_eq!(
+        serde_json::to_value(&read).unwrap(),
+        serde_json::to_value(&rules).unwrap()
     );
 }
 
@@ -128,11 +131,6 @@ fn a_block_with_a_bad_rule_or_field_is_refused() {
             "statuses",
             json!({"ok": "pass", "bad": "red"}),
             "must count as pass, fail, skip or todo",
-        ),
-        (
-            "name",
-            json!({"separator": "", "min_parts": 2, "file_extension": true, "max_length": 400}),
-            "test_results.name needs a separator",
         ),
         (
             "max_tests",

@@ -154,6 +154,9 @@ pub const PARENT_GATE: &str =
 /// The refusal of the removed launch flag of a type.
 pub const LAUNCH_BLOCKER: &str = "launch_blocker was removed; manual acceptance is gone: record the owner decision as a Source and prove it with tests";
 
+/// The refusal of the removed name rule of the test results.
+pub const TEST_NAME: &str = "test_results.name was removed; the title of a test node states the scenario in business language, and a record names the test by test:<id>";
+
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
@@ -196,6 +199,10 @@ pub fn removed_field(command: &Command) -> Option<&'static str> {
         {
             Some(SCHEMA_FIELDS)
         }
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            test_results: Some(block),
+            ..
+        }) if block.get("name").is_some() => Some(TEST_NAME),
         // A test result field has no per-value board status: a test is a node with one tone.
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             test_results: Some(block),

@@ -129,6 +129,17 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
     }
     .filter(|_| commands::epoch_reached(w, commands::ANY_CHANGE_RESET, position));
     let any = |key: &str| edited.as_deref() == Some(key);
+    // From the epoch of rename_keeps_results, a new title of a test node changes no test.
+    let renames = commands::epoch_reached(w, commands::RENAME_KEEPS_RESULTS, position);
+    if renames {
+        crate::test_nodes::keep_former_titles(w, &types, position);
+    }
+    let quiet = |kind: &str| {
+        renames
+            && types
+                .get(kind)
+                .is_some_and(|t| t.role == crate::test_nodes::ROLE)
+    };
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
@@ -147,19 +158,25 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
         })
         .filter(|(key, o)| {
             let current = o.current();
+            let untitled = crate::test_nodes::untitled;
             o.revisions
                 .iter()
                 .rev()
                 .find(|r| r.position < position)
                 .is_some_and(|before| {
+                    let quiet = quiet(&o.kind);
+                    let (data, old) = (
+                        untitled(&current.data, quiet),
+                        untitled(&before.data, quiet),
+                    );
                     // From the epoch on, any new parent, link or data value resets. A revision
                     // that changes none of them, such as a specification revision, does not.
                     (any(key) && (before.parent != current.parent
                         || before.links != current.links
-                        || before.data != current.data))
+                        || old != data))
                         || before.parent != current.parent
                         || content(&before.links) != content(&current.links)
-                        || !crate::body_migration::same_text(w, &before.data, &current.data)
+                        || !crate::body_migration::same_text(w, &old, &data)
                         // A new test list resets the criterion. The migration moves a list
                         // into the document and changes no status.
                         || (migrated

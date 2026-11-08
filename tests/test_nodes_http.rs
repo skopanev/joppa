@@ -124,10 +124,6 @@ async fn each_old_test_path_is_refused_and_names_its_replacement() -> Result<()>
             json!({"op":"set_ac_tests","target":"ac:a","tests":[ONE],"reason":"List"}),
             "set_ac_tests was removed; use save_object with kind test",
         ),
-        (
-            json!({"op":"save_object","kind":"test","revision":0,"parent":"ac:a","data":{"title":"no file","owner":"owner"},"reason":"Bind"}),
-            "a test address needs file > name at least",
-        ),
     ] {
         let reply = w.command(&w.bot, command.clone()).await?;
         ensure!(
@@ -135,6 +131,15 @@ async fn each_old_test_path_is_refused_and_names_its_replacement() -> Result<()>
             "{command}: {reply:?}"
         );
     }
+    // No name rule is left: a title without a file saves.
+    let saved = w
+        .command(
+            &w.bot,
+            json!({"op":"save_object","kind":"test","revision":0,"parent":"ac:a",
+        "data":{"title":"no file","owner":"owner"},"reason":"Bind"}),
+        )
+        .await?;
+    ensure!(saved.is_ok(), "{saved:?}");
     let tool = w.mcp(&w.bot, "joppa_tests", json!({"ac":"ac:a"})).await?;
     ensure!(
         tool.as_ref().err().is_some_and(

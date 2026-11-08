@@ -12,6 +12,21 @@ pub struct Listed {
     pub draft: bool,
     /// After migrate_test_nodes, the reset boundary of the node of each test, in list order.
     pub boundaries: Option<Vec<Boundary>>,
+    /// The stored names whose results count for each test, in list order. A record stores the
+    /// address of a test node. An older record stored the title, so the current title and each
+    /// earlier title of the node count too. A test list names each test by its stored name.
+    pub keys: Vec<Vec<String>>,
+}
+
+/// The stored names whose results count for the test node at `address` with `title`.
+fn node_keys(w: &Workspace, address: &str, title: &str) -> Vec<String> {
+    let mut keys = vec![address.to_owned(), title.to_owned()];
+    for old in w.former_test_titles.get(address).into_iter().flatten() {
+        if !keys.contains(old) {
+            keys.push(old.clone());
+        }
+    }
+    keys
 }
 
 /// The test list of a node after migrate_test_nodes, with the test nodes of each parent: a test
@@ -39,6 +54,7 @@ pub fn listed_node(
         actor: current.actor.clone(),
         draft: false,
         boundaries: Some(nodes.iter().map(|(a, _)| boundary(a)).collect()),
+        keys: nodes.iter().map(|(a, t)| node_keys(w, a, t)).collect(),
     })
 }
 
@@ -70,6 +86,7 @@ pub fn listed(w: &Workspace, address: &str) -> Option<Listed> {
             None => return None,
         };
         return Some(Listed {
+            keys: tests.iter().map(|t| vec![t.clone()]).collect(),
             tests,
             revision: current.revision,
             actor: current.actor.clone(),
@@ -80,6 +97,7 @@ pub fn listed(w: &Workspace, address: &str) -> Option<Listed> {
     let list = w.ac_tests.get(address).and_then(AcTests::current)?;
     let legacy = crate::test_rules::legacy_draft_fields();
     Some(Listed {
+        keys: list.tests.iter().map(|t| vec![t.clone()]).collect(),
         tests: list.tests.clone(),
         revision: list.revision,
         actor: list.actor.clone(),

@@ -47,12 +47,12 @@ async fn the_owner_saves_a_test_list_by_address() -> Result<()> {
     Ok(())
 }
 
+// ac:vtr2e65t
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_owner_cannot_save_a_test_address_without_a_file() -> Result<()> {
-    // checks-listed-first-ac2: skopanev (the owner token) saves "login > ok" with no file.
+async fn the_owner_saves_a_test_title_without_a_file() -> Result<()> {
+    // No name rule checks a title: the owner token saves "login > ok" with no file.
     let w = world().await?;
-    let before = w.status().await?;
     let command = json!({"op":"save_object","kind":"test","revision":0,"parent":"ac:key-rights","data":{"title":"login > ok","owner":"owner"},"reason":"Link the test"});
     let (code, reply) = post(
         &w,
@@ -61,12 +61,7 @@ async fn the_owner_cannot_save_a_test_address_without_a_file() -> Result<()> {
         json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": command}),
     )
     .await?;
-    ensure!(
-        code == 409 && reply["error"] == "a test address needs file > name at least",
-        "{code} {reply}"
-    );
-    let after = w.status().await?;
-    ensure!(after == before, "{before} {after}");
+    ensure!(code == 200, "{code} {reply}");
     Ok(())
 }
 

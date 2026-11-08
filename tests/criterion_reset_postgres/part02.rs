@@ -71,19 +71,16 @@ async fn events(pool: &deadpool_postgres::Pool, ws: &str) -> Result<i64> {
         .get(0))
 }
 
-/// The new name of the second test of A after the test-node change.
-const B2: &str = "tests/auth/login.test.ts > login > refuses twice";
-
 /// The test of red criterion B.
 const REJECTS: &str = "tests/auth/login.test.ts > login > rejects";
 
-/// A record that passes A, B and B2 and fails the test of red criterion B.
+/// A record that passes A and B and fails the test of red criterion B.
 async fn upload_full(pool: &deadpool_postgres::Pool, ws: &str, commit: &str) -> Result<Value> {
     store::record_results(
         pool,
         ws,
         "planner",
-        &json!({"commit":commit,"results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"},{"test":B2,"status":"pass"},{"test":REJECTS,"status":"fail","message":"boom"}]}),
+        &json!({"commit":commit,"results":[{"test":A,"status":"pass"},{"test":B,"status":"pass"},{"test":REJECTS,"status":"fail","message":"boom"}]}),
     )
     .await
 }
@@ -112,12 +109,13 @@ async fn test_node(
         .with_context(|| format!("the test node of {test}: {tests}"))
 }
 
-/// The planner renames the test node of B under criterion A to B2.
-async fn rename_b_of_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
+/// The planner gives the test node of B under criterion A a new body. A new title alone
+/// resets nothing, so the change is a new data value.
+async fn change_b_of_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     let b = test_node(pool, ws, "criterion:a", B).await?;
     let address = b["address"].as_str().context("address")?;
     let (_, id) = address.split_once(':').context("address")?;
-    write(pool, ws, "planner", json!({"op":"save_object","kind":"test","id":id,"revision":b["revision"],"parent":"criterion:a","data":{"title":B2,"owner":"owner"},"reason":"Rename the test"})).await
+    write(pool, ws, "planner", json!({"op":"save_object","kind":"test","id":id,"revision":b["revision"],"parent":"criterion:a","data":{"title":B,"owner":"owner","body":"Refuse a second sign-in"},"reason":"Change the test"})).await
 }
 
 // check-list-frozen-ac3
@@ -132,14 +130,14 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     upload_full(&pool, &ws, "c2c2c2c").await?;
     let b = status(&pool, &ws, "criterion:b").await?;
     ensure!(b["status"] == "red", "{b}");
-    // Fixture 5: the planner renames a test node of A. B2 passed on C2, before the change,
+    // Fixture 5: the planner changes a test node of A. It passed on C2, before the change,
     // so that pass no longer counts.
-    let renamed = rename_b_of_a(&pool, &ws).await?;
-    let node = renamed["object"]["address"]
+    let changed = change_b_of_a(&pool, &ws).await?;
+    let node = changed["object"]["address"]
         .as_str()
-        .context("the renamed node")?;
+        .context("the changed node")?;
     let node = status(&pool, &ws, node).await?;
-    ensure!(node["status"] == "grey", "the renamed node: {node}");
+    ensure!(node["status"] == "grey", "the changed node: {node}");
     let live = snapshot(&pool, &ws).await?;
     ensure!(
         live["criterion:a"]["status"]["status"] == "grey"
@@ -194,7 +192,7 @@ async fn a_failed_reset_rejects_the_test_node_change() -> Result<()> {
     let conn = pool.get().await?;
     conn.batch_execute("CREATE OR REPLACE FUNCTION joppa.test_list_reset_fails() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'list reset failed'; END $$;").await?;
     conn.batch_execute(&format!("CREATE TRIGGER test_list_reset_fails BEFORE INSERT OR UPDATE ON joppa.state_entries FOR EACH ROW WHEN (NEW.workspace='{ws}' AND NEW.section='criterion_boundaries') EXECUTE FUNCTION joppa.test_list_reset_fails()")).await?;
-    let result = rename_b_of_a(&pool, &ws).await;
+    let result = change_b_of_a(&pool, &ws).await;
     conn.batch_execute("DROP TRIGGER test_list_reset_fails ON joppa.state_entries")
         .await?;
     ensure!(

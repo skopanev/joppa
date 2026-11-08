@@ -38,9 +38,9 @@ pub(in crate::store) async fn update(
     }
     crate::probe::count(&crate::probe::DELTA);
     let types = crate::objects::schema(state).types;
-    // A record of results changes the test nodes that it names.
+    // A record of results changes the test nodes whose addresses it stores.
     for report in reports {
-        for row in client.query("SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.title IN (SELECT address FROM joppa.test_results WHERE report_id=$2)", &[&workspace, report]).await? {
+        for row in client.query("SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.address IN (SELECT address FROM joppa.test_results WHERE report_id=$2)", &[&workspace, report]).await? {
             dirty.insert(row.get(0));
         }
     }

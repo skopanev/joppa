@@ -7,7 +7,7 @@
 //! an older event checks it against them, and the event writes them into the schema.
 use crate::model::Workspace;
 use crate::objects::{role_status_rule, schema};
-use crate::result_shape::{NameRule, ResultField, ResultShape};
+use crate::result_shape::{ResultField, ResultShape};
 use anyhow::{Context, Result, ensure};
 
 pub const REASON: &str = "Write the test rules and the status rule of each type into the schema";
@@ -41,12 +41,7 @@ pub fn legacy() -> ResultShape {
                 applies: None,
             },
         ],
-        name: NameRule {
-            separator: " > ".into(),
-            min_parts: 2,
-            file_extension: true,
-            max_length: 400,
-        },
+        name: None,
         max_tests: 200,
         max_results: 1000,
         same_commit: "fail_wins".into(),
@@ -152,33 +147,6 @@ pub fn parse_block(w: &Workspace, raw: &serde_json::Value) -> Result<ResultShape
         crate::result_shape::validate(&shape)?;
     }
     Ok(shape)
-}
-
-/// Refuse a test name that does not have the form of the name rule.
-pub fn validate_address(rules: &ResultShape, address: &str) -> Result<()> {
-    let rule = &rules.name;
-    let parts: Vec<&str> = address.split(rule.separator.as_str()).collect();
-    let file = parts[0].rsplit('/').next().unwrap_or_default();
-    let ok = parts.len() >= rule.min_parts
-        && parts.iter().all(|part| !part.trim().is_empty())
-        && (!rule.file_extension || (file.contains('.') && !file.starts_with('.')))
-        && address.chars().count() <= rule.max_length
-        && !address.chars().any(char::is_control);
-    if rule.file_extension && rule.min_parts == 2 {
-        ensure!(
-            ok,
-            "a test address needs file{}name at least",
-            rule.separator
-        );
-    }
-    ensure!(
-        ok,
-        "a test address needs {} parts joined by \"{}\" and at most {} characters",
-        rule.min_parts,
-        rule.separator,
-        rule.max_length
-    );
-    Ok(())
 }
 
 /// The outcome name of a stored test status: skipped is the outcome skip.

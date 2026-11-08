@@ -92,10 +92,13 @@ Set `sources` only on the AC. Do not copy them to the REQ.
 
 A test is a node of a type with role `test` under its criterion. Save one node
 for each test with `save_object`:
-`{"kind": "test", "parent": "ac:x", "data": {"title": "<test name>", "owner": "..."}}`.
+`{"kind": "test", "parent": "ac:x", "data": {"title": "<the scenario in business language>", "owner": "..."}}`.
+The title states the scenario with concrete numbers and no code. The schema gives the other
+fields, such as `body`, `case` and `command`. A record names the test by `test:<id>`, which binds
+that one test node. A title binds every present test node with that title.
 No criterion, no test: every test in the repository has a present test node, and a full-run record of
 `joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
-for the tones and the rollup.
+for the fields, the Test-5 checklist, the tones and the rollup.
 
 ## Before implementation
 
@@ -146,6 +149,13 @@ the exact revisions of the node, its Sources and its `depends_on` targets. Else,
 STRIP, SPLIT, ASK_OPTIONS or REWRITE with the exact fix for each 0. On a HOLD, the Writer agent
 asks the owner one closed question in the chat, updates the Source and the AC, and the Reviewer
 agent scores again. The server does not check these roles.
+
+The Reviewer agent scores the AC before any test of it exists. After APPROVE, two independent
+agents work on the same AC:
+
+- One agent writes the code for the AC with its Tasks. One AC can have one Task or more.
+- Another agent writes the acceptance Test nodes of the AC as a black box, from the AC and its
+  Sources. The coder does not see these tests first, so it cannot fit the code to them.
 
 ## Tasks
 

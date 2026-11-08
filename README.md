@@ -22,7 +22,8 @@ An iOS condition means iOS; other clients are never added by assumption.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
 - Each test is a node under its criterion (`ac`): `save_object` with kind `test`.
-  `joppa_record_results` records the outcomes of one commit.
+  Its title states the scenario in business language.
+  `joppa_record_results` records the outcomes of one commit by `test:<id>`.
 - No criterion, no test: every test in the repository has a present test node. A
   full-run record must give `"unbound": []` before a merge.
 - Each type has a status rule: `own`, `children`, `links` or `none`. One rollup
@@ -152,11 +153,17 @@ See [connect MCP](docs/connect.md) for other clients, agent tokens, the tool lis
 ## Automated checks
 
 Save one test node under the criterion for each test: `save_object` with kind
-`test` and the test name as `data.title`. Send each run with `joppa_record_results`:
-the commit and one result for each test. The workspace schema gives the status
-names and the rules that make a criterion green or red. Bind every new or renamed
-test to its AC in the same change. See [what green means](docs/green.md) and
-[the workspace schema](docs/schema.md).
+`test`. The title states the scenario in business language, with concrete numbers
+and no code. The body gives the inputs and the expected outcome. `case` is
+`nominal`, `boundary` or `off_nominal`, and `command` is the exact isolated command
+that runs this one test. All tests under one AC together cover 100% of its
+conditions, and the AC is green only when all of them are green at the same time.
+
+Send each run with `joppa_record_results`: the commit and one result for each test.
+Name each test by `test:<id>`, which binds that one test node. A title binds every
+present test node with that title. The workspace schema gives the status names and the rules that make a
+criterion green or red. Bind every new or renamed test to its AC in the same change.
+See [what green means](docs/green.md) and [the workspace schema](docs/schema.md).
 
 ## Storage
 
@@ -202,7 +209,8 @@ CI runs PostgreSQL 16 with pgvector and the HTTP, OAuth, session, search and acc
 
 ## Current boundaries
 
-The working cycle is decide → formulate → score (11111 and Reuse) → implement → check.
+The working cycle is decide → formulate → score (11111 and Reuse) → implement and write
+the acceptance Test nodes as a black box, in two independent agents → check.
 Repository-specific CI integration and business-data migration need product
 onboarding and owner review. There is no background task executor, automatic
 legal-policy interpretation or proof that an AC set is complete.

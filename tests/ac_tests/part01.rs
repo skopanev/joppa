@@ -165,8 +165,9 @@ fn names(w: &World, ac: &str) -> Vec<String> {
     names.get(ac).cloned().unwrap_or_default()
 }
 
+// ac:vtr2e65t
 #[test]
-fn a_test_node_save_never_revises_the_requirement_and_refuses_bad_names() {
+fn a_test_node_save_never_revises_the_requirement_and_takes_a_business_title() {
     let mut w = migrated();
     let ac = joppa::objects::criterion_address("ios");
     let req_revision = w.state.requirements["r"].revisions.len();
@@ -179,18 +180,18 @@ fn a_test_node_save_never_revises_the_requirement_and_refuses_bad_names() {
         req_revision,
         "a test save never makes a requirement revision"
     );
-    // checks-listed-first-ac2: the agent and the owner save names without a file.
-    for (actor, name) in [
-        ("agent", "login ok"),
-        ("agent", "login > ok"),
-        ("owner", "login > ok"),
+    // No name rule checks a title: the agent and the owner save business titles.
+    for (actor, id, name) in [
+        ("agent", "refund", "A refund over the limit is refused"),
+        ("agent", "login", "login ok"),
+        ("owner", "plain", "login > ok"),
     ] {
-        let e = w.apply(actor, bind(&ac, "bad", name)).unwrap_err();
-        assert!(
-            e.to_string()
-                .contains("a test address needs file > name at least"),
-            "{e}"
-        );
+        w.ok(actor, bind(&ac, id, name));
+    }
+    assert_eq!(names(&w, &ac).len(), 5);
+    for id in ["refund", "login", "plain"] {
+        w.ok("owner", json!({"op":"archive_object","target":format!("test:{id}"),
+            "revision":1,"reason":"Keep two tests"}));
     }
     // A test list is refused: in a document and as the removed operation.
     let e = w

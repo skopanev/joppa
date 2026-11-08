@@ -89,7 +89,7 @@ pub(super) async fn results_of(
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
         .filter_map(|(_, saved, _)| saved.as_ref())
-        .flat_map(|current| current.tests.iter().cloned())
+        .flat_map(|current| current.keys.iter().flatten().cloned())
         .collect();
     let reports: Vec<Report> = client
         .query("SELECT r.id,r.commit_sha,r.commit_order,(extract(epoch FROM r.received_at)*1000000)::bigint,(extract(epoch FROM greatest(r.received_at,(SELECT max(c.received_at) FROM joppa.test_report_receipts c WHERE c.report_id=r.id)))*1000000)::bigint,r.recorded FROM joppa.test_reports r WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty", &[&workspace])
@@ -127,14 +127,30 @@ pub(super) fn compute(
             .iter()
             .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
             .collect();
-        // After migrate_test_nodes, each test counts from the reset of its own node.
+        // After migrate_test_nodes, each test counts from the reset of its own node. The rows of
+        // each stored name of the node count under the name of the test.
+        let keys = current.map(|r| r.keys.as_slice()).unwrap_or_default();
         let status = match current.and_then(|r| r.boundaries.as_ref()) {
             Some(boundaries) => crate::test_nodes::combine(
                 tests
                     .iter()
                     .zip(boundaries)
-                    .map(|(test, b)| {
-                        let own = by_test.get(test.as_str()).cloned().unwrap_or_default();
+                    .zip(keys)
+                    .map(|((test, b), keys)| {
+                        let own: Vec<(i64, TestResult)> = keys
+                            .iter()
+                            .flat_map(|key| by_test.get(key.as_str()).into_iter().flatten())
+                            .map(|(id, row)| {
+                                let address = test.clone();
+                                (
+                                    *id,
+                                    TestResult {
+                                        address,
+                                        ..row.clone()
+                                    },
+                                )
+                            })
+                            .collect();
                         crate::ac_tests::criterion_status(
                             std::slice::from_ref(test),
                             false,

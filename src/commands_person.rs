@@ -143,7 +143,12 @@ pub const ANY_CHANGE_RESET: &str = "any_change_reset";
 /// the document. An older one starts a new contract revision in a replay.
 pub const FORCED_KEEPS_CONTRACT: &str = "forced_keeps_contract";
 
-pub const REPLAY_RULES: [&str; 8] = [
+/// From this rule on, a new title of a test node resets nothing, and the node keeps its earlier
+/// title for the results that an older record stored by title. An older rename resets the
+/// node in a replay.
+pub const RENAME_KEEPS_RESULTS: &str = "rename_keeps_results";
+
+pub const REPLAY_RULES: [&str; 9] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -152,6 +157,7 @@ pub const REPLAY_RULES: [&str; 8] = [
     ARCHIVE_OWN_RESET,
     ANY_CHANGE_RESET,
     FORCED_KEEPS_CONTRACT,
+    RENAME_KEEPS_RESULTS,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

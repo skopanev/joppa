@@ -34,6 +34,8 @@ pub use reports::test_status;
 mod head;
 #[path = "store_history_items.rs"]
 mod history_items;
+#[path = "store_record_bind.rs"]
+mod record_bind;
 #[path = "store_record_report.rs"]
 mod record_report;
 #[path = "store_remote.rs"]

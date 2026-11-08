@@ -116,28 +116,20 @@ async fn the_reset_rule_comes_from_the_schema() -> Result<()> {
 // test-rules-in-schema-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_name_and_limit_rules_come_from_the_schema() -> Result<()> {
+async fn the_limit_rules_come_from_the_schema() -> Result<()> {
     let pool = pool().await?;
-    let ws = fixture(&pool, json!({"name":{"separator":"::","min_parts":2,"file_extension":false,"max_length":20},"max_tests":1,"max_results":1})).await?;
-    bind(&pool, &ws, json!(["login::email"])).await?;
-    for (tests, error) in [
-        (
-            json!(["tests/a.rs > b"]),
-            "a test address needs 2 parts joined by \"::\"",
-        ),
-        (
-            json!(["login::email::with::a::very::long::name"]),
-            "at most 20 characters",
-        ),
-        // login::email is the one test node of A, so a second node is over the limit.
-        (json!(["a::b", "c::d"]), "a criterion lists at most 1 tests"),
-    ] {
-        let message = match bind(&pool, &ws, tests.clone()).await {
-            Ok(()) => anyhow::bail!("{tests}: saved, expected {error:?}"),
-            Err(e) => e.to_string(),
-        };
-        ensure!(message.contains(error), "{tests}: {message}");
-    }
+    let ws = fixture(&pool, json!({"max_tests":1,"max_results":1})).await?;
+    // No name rule checks a title: a business title saves.
+    bind(&pool, &ws, json!(["A refund over the limit is refused"])).await?;
+    // The one test node of A fills the limit, so a second node is over it.
+    let message = match bind(&pool, &ws, json!(["a::b"])).await {
+        Ok(()) => anyhow::bail!("saved a second test node, expected the limit"),
+        Err(e) => e.to_string(),
+    };
+    ensure!(
+        message.contains("a criterion lists at most 1 tests"),
+        "{message}"
+    );
     let error = store::record_results(
         &pool,
         &ws,

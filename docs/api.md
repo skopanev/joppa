@@ -151,9 +151,11 @@ stores the completed commands, so an identical retry gives the same reply.
  "defaults": {"reason": "Bind the tests", "data": {"owner": "owner"}},
  "operations": [
   {"command": {"op": "save_object", "kind": "test", "revision": 0, "parent": "ac:x",
-    "data": {"title": "tests/a.rs > first"}}},
+    "data": {"title": "A refund of 40 EUR at the limit is paid", "case": "boundary",
+     "body": "Inputs: a limit of 40 EUR and a refund of 40 EUR. Expected: the refund is paid."}}},
   {"command": {"op": "save_object", "kind": "test", "revision": 0, "parent": "ac:x",
-    "data": {"title": "tests/a.rs > second"}}}]}
+    "data": {"title": "A refund of 50 EUR over the limit is refused", "case": "off_nominal",
+     "body": "Inputs: a limit of 40 EUR and a refund of 50 EUR. Expected: the refund is refused."}}}]}
 ```
 The server command line takes explicit local IDs.
 

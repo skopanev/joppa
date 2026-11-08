@@ -1,8 +1,8 @@
 //! The test rules of a workspace: the block `test_results` of the tree schema.
 //!
 //! The block holds every rule of tests and results. It gives the status names of a
-//! result and the outcome that each name counts as, the fields of a result, the form of a
-//! test name, the limits, and the rules that make a criterion green, red or grey. The
+//! result and the outcome that each name counts as, the fields of a result, the limits,
+//! and the rules that make a criterion green, red or grey. The
 //! live code reads only this block. The event migrate_test_rules writes the block into
 //! each workspace, see test_rules. The fields test, status and commit are the frame of a
 //! record, and pass, fail, skip and todo are the outcomes that the rules use.
@@ -19,7 +19,7 @@ const SAME_COMMIT: [&str; 2] = ["fail_wins", "latest_wins"];
 pub(crate) const MAX_FIELDS: usize = 20;
 const MAX_STATUSES: usize = 20;
 pub(crate) const MAX_VALUES: usize = 50;
-/// The largest limit that the schema can set for a text field or a test name.
+/// The largest limit that the schema can set for a text field.
 pub(crate) const MAX_TEXT: usize = 64 * 1024;
 
 /// A missing key reads as empty only in a block that an older journal saved. The event
@@ -31,8 +31,10 @@ pub struct ResultShape {
     pub statuses: BTreeMap<String, String>,
     /// The fields of a result, in the order that readers show them.
     pub fields: Vec<ResultField>,
-    /// The form of a test name.
-    pub name: NameRule,
+    /// The removed form of a test name. An older schema revision still has it: a read keeps
+    /// only its presence, and a live set_tree_schema that sends it is refused.
+    #[serde(skip_serializing)]
+    pub name: Option<crate::model::Removed>,
     /// The largest number of tests in the list of one criterion.
     pub max_tests: usize,
     /// The largest number of results in one record.
@@ -48,19 +50,6 @@ pub struct ResultShape {
     pub red_if_any: Vec<String>,
     /// The text field that readers show as the message of a failure.
     pub failure_field: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-pub struct NameRule {
-    /// The text between the parts of a name, such as the file and the test.
-    pub separator: String,
-    /// The smallest number of parts.
-    pub min_parts: usize,
-    /// The first part is a file name with an extension, such as tests/login.rs.
-    pub file_extension: bool,
-    /// The largest number of characters.
-    pub max_length: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,10 +83,9 @@ pub struct ResultField {
 }
 
 /// The keys that a block in set_tree_schema must have.
-pub const KEYS: [&str; 10] = [
+pub const KEYS: [&str; 9] = [
     "statuses",
     "fields",
-    "name",
     "max_tests",
     "max_results",
     "same_commit",
@@ -129,7 +117,7 @@ fn outcomes_ok(list: &[String]) -> bool {
             .all(|o| OUTCOMES.contains(&o.as_str()) && seen.insert(o))
 }
 
-/// Refuse a block with a bad status name, field, name rule, limit or criterion rule.
+/// Refuse a block with a bad status name, field, limit or criterion rule.
 pub fn validate(shape: &ResultShape) -> Result<()> {
     let statuses = &shape.statuses;
     ensure!(
@@ -153,13 +141,6 @@ pub fn validate(shape: &ResultShape) -> Result<()> {
             "test_results.statuses needs a name that counts as {needed}"
         );
     }
-    let name = &shape.name;
-    ensure!(
-        text_ok(&name.separator)
-            && (1..=10).contains(&name.min_parts)
-            && (1..=MAX_TEXT).contains(&name.max_length),
-        "test_results.name needs a separator, min_parts from 1 to 10 and max_length from 1 to {MAX_TEXT}"
-    );
     ensure!(
         (1..=1000).contains(&shape.max_tests) && (1..=1000).contains(&shape.max_results),
         "test_results.max_tests and max_results are from 1 to 1000"

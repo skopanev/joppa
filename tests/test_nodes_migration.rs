@@ -86,8 +86,8 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
     let count = w.state.objects.len();
     internal(&mut w, "migrate_test_nodes").unwrap();
     assert_eq!(w.state.objects.len(), count);
-    // After it a list is refused, a node title must be a test name, and a parent names each
-    // test once.
+    // After it a list is refused. A title has no name rule, and two test nodes of one parent
+    // can have one title: a record names each of them by its address.
     let twice = joppa::test_nodes::check_save(
         &w.state,
         "test",
@@ -95,10 +95,7 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
         Some("ac:ios"),
         &json!({"title":names[0]}),
     );
-    assert_eq!(
-        twice.unwrap_err().to_string(),
-        format!("test \"{}\" is listed twice", names[0])
-    );
+    assert!(twice.is_ok(), "{twice:?}");
     let refused = joppa::test_nodes::check_save(
         &w.state,
         "ac",
@@ -113,18 +110,13 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
             "test",
             "test:new",
             Some("ac:ios"),
-            &json!({"title":"no file"})
-        )
-        .is_err()
-    );
-    assert!(
-        joppa::test_nodes::check_save(
-            &w.state,
-            "test",
-            "test:new",
-            Some("ac:ios"),
-            &json!({"title":"tests/a.rs > three"})
+            &json!({"title":"A refund over the limit is refused"})
         )
         .is_ok()
+    );
+    assert!(
+        joppa::test_nodes::check_save(&w.state, "test", "test:new", Some("ac:ios"), &json!({}))
+            .is_err(),
+        "a test node needs a title"
     );
 }
