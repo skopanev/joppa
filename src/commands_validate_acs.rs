@@ -4,7 +4,15 @@ use super::*;
 pub(crate) fn validate_acs(w: &Workspace, acs: &[Ac]) -> Result<()> {
     let mut ids = BTreeSet::new();
     for ac in acs {
-        verification_identifier(w, &ac.id, "ac")?;
+        // An archived criterion stays in each later revision as history, and its type can
+        // leave the schema. Only a live criterion needs a type with the ac role.
+        let archived = w
+            .objects
+            .get(&crate::objects::criterion_address(&ac.id))
+            .is_some_and(|o| !o.current().present);
+        if !archived {
+            verification_identifier(w, &ac.id, "ac")?;
+        }
         nonempty(&ac.text)?;
         ensure!(ids.insert(&ac.id), "duplicate AC id");
         if let Some(d) = &ac.owner {
