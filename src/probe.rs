@@ -23,6 +23,10 @@ pub static SAVE_COPY: AtomicU64 = AtomicU64::new(0);
 pub static SYNC: AtomicU64 = AtomicU64::new(0);
 /// Objects and requirements that a write serializes to compare or store their current rows.
 pub static ROWS: AtomicU64 = AtomicU64::new(0);
+/// Reads of the current rows of a workspace (`state_rows::current`).
+pub static STATE_LOADS: AtomicU64 = AtomicU64::new(0);
+/// Writes that start from the state that the last write of this process kept in memory.
+pub static STATE_REUSES: AtomicU64 = AtomicU64::new(0);
 
 pub fn count(counter: &AtomicU64) {
     counter.fetch_add(1, Ordering::Relaxed);
@@ -33,7 +37,7 @@ pub fn read(counter: &AtomicU64) -> u64 {
 }
 
 /// Each counter with its name, for a test that prints the counts of one request.
-pub static COUNTERS: [(&str, &AtomicU64); 10] = [
+pub static COUNTERS: [(&str, &AtomicU64); 12] = [
     ("status", &STATUS),
     ("rollup", &ROLLUP),
     ("waits", &WAITS),
@@ -44,4 +48,6 @@ pub static COUNTERS: [(&str, &AtomicU64); 10] = [
     ("save_copy", &SAVE_COPY),
     ("sync", &SYNC),
     ("rows", &ROWS),
+    ("state_loads", &STATE_LOADS),
+    ("state_reuses", &STATE_REUSES),
 ];

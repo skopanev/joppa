@@ -28,9 +28,9 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/joppa
-MemoryHigh=384M
-MemoryMax=512M
-TasksMax=128
+MemoryHigh=2G
+MemoryMax=3G
+TasksMax=512
 LimitNOFILE=8192
 
 [Install]

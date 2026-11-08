@@ -29,10 +29,13 @@ pub(crate) async fn current(
     let mut unloaded = std::collections::BTreeSet::new();
     // An object row becomes its object at once, without a JSON value of the whole workspace.
     let mut objects = std::collections::BTreeMap::new();
-    for row in client.query("SELECT s.section,s.key,(CASE WHEN s.section='objects' AND b.first_view->'object_types'->s.kind->>'inbox'='true' AND b.first_view->'object_types'->s.kind->>'role' IN ('group','document') THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,(s.section='objects' AND b.first_view->'object_types'->s.kind->>'inbox'='true' AND b.first_view->'object_types'->s.kind->>'role' IN ('group','document')) FROM joppa.state_entries s JOIN joppa.board_cache b ON b.workspace=s.workspace WHERE s.workspace=$1 ORDER BY s.section,s.key", &[&workspace]).await? {
+    crate::probe::count(&crate::probe::STATE_LOADS);
+    // The compact inbox types come from the board row once, not once for each row, and the
+    // rows need no order: each one goes into a map.
+    for row in client.query("WITH compact AS MATERIALIZED (SELECT t.key AS kind FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') t WHERE b.workspace=$1 AND t.value->>'inbox'='true' AND t.value->>'role' IN ('group','document')) SELECT s.section,s.key,(CASE WHEN c.kind IS NOT NULL THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,c.kind IS NOT NULL FROM joppa.state_entries s LEFT JOIN compact c ON s.section='objects' AND c.kind=s.kind WHERE s.workspace=$1", &[&workspace]).await? {
         let section: String = row.get(0);
         let key: String = row.get(1);
-        if row.get::<_, Option<bool>>(3) == Some(true) {
+        if row.get::<_, bool>(3) {
             unloaded.insert(key.clone());
         }
         if section == "objects" {

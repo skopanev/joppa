@@ -49,22 +49,22 @@ class PlatformConfig(unittest.TestCase):
         self.assertIn("fallocate -l 2G /swapfile-joppa", text)
         self.assertIn("sh /tmp/joppa-rustup.sh -y --profile minimal", text)
 
-    def test_postgres_uses_the_2_gb_budget_on_loopback(self):
+    def test_postgres_uses_the_8_gb_budget_on_loopback(self):
         settings = {}
-        for line in read("postgres-2gb.conf").splitlines():
+        for line in read("postgres-8gb.conf").splitlines():
             if line.strip() and not line.startswith("#"):
                 key, value = (part.strip() for part in line.split("=", 1))
                 settings[key] = value
         self.assertEqual(settings, {
             "listen_addresses": "'127.0.0.1'",
-            "max_connections": "30",
-            "shared_buffers": "'256MB'",
-            "effective_cache_size": "'768MB'",
-            "work_mem": "'4MB'",
-            "maintenance_work_mem": "'64MB'",
-            "autovacuum_work_mem": "'32MB'",
-            "max_parallel_workers_per_gather": "0",
-            "max_parallel_maintenance_workers": "0",
+            "max_connections": "100",
+            "shared_buffers": "'2GB'",
+            "effective_cache_size": "'6GB'",
+            "work_mem": "'16MB'",
+            "maintenance_work_mem": "'512MB'",
+            "autovacuum_work_mem": "'128MB'",
+            "max_parallel_workers_per_gather": "2",
+            "max_parallel_maintenance_workers": "2",
         })
 
     def test_caddy_serves_https_and_forwards_to_port_6212(self):
@@ -107,9 +107,9 @@ class PlatformConfig(unittest.TestCase):
             "EnvironmentFile": ["/etc/joppa/runtime.env", "-/etc/joppa/storage.env", "-/etc/joppa/search.env"],
             "Restart": ["on-failure"],
             "RestartSec": ["3"],
-            "MemoryHigh": ["384M"],
-            "MemoryMax": ["512M"],
-            "TasksMax": ["128"],
+            "MemoryHigh": ["2G"],
+            "MemoryMax": ["3G"],
+            "TasksMax": ["512"],
             "LimitNOFILE": ["8192"],
             "NoNewPrivileges": ["true"],
             "ProtectSystem": ["strict"],
@@ -177,7 +177,7 @@ class PlatformConfig(unittest.TestCase):
     def test_install_keeps_the_previous_binary_and_checks_health(self):
         text = read("install.sh")
         self.assertIn("cp -p /opt/joppa/bin/joppa /opt/joppa/bin/joppa.previous", text)
-        self.assertIn("cargo build --release --locked -j 1", text)
+        self.assertIn("cargo build --release --locked -j 2", text)
         self.assertIn("/opt/joppa/bin/joppa migrate", text)
         self.assertIn("/opt/joppa/bin/joppa backfill-board", text)
         self.assertIn("for attempt in {1..15}; do", text)

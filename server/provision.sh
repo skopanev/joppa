@@ -27,7 +27,8 @@ install -d -m 750 -o root -g joppa /etc/joppa
 install -d -m 755 /opt/joppa/bin /opt/joppa/server /opt/joppa/src
 install -d -m 750 -o joppa -g joppa /var/lib/joppa
 install -d -m 700 -o postgres -g postgres /var/backups/joppa
-# One build job and a small swap area avoid starving PostgreSQL during release builds.
+# A small swap area keeps release builds from starving PostgreSQL. The build of install.sh
+# uses 2 jobs, so 2 CPUs and the memory stay for the running services.
 if ! swapon --show=NAME --noheadings | grep -q . && [[ ! -e /swapfile-joppa ]]; then
     fallocate -l 2G /swapfile-joppa
     chmod 600 /swapfile-joppa

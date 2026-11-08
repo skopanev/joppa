@@ -89,10 +89,14 @@ pub async fn record_results(
     actor: &str,
     args: &Value,
 ) -> Result<Value> {
+    let name = workspace;
+    // The writers of one workspace wait here, so they hold at most 1 connection.
+    let _turn = super::writer::turn(name).await;
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &workspace, actor, false).await?;
+    super::writer::resolved(name, &workspace);
     tx.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
         &[&workspace],
@@ -150,9 +154,12 @@ pub async fn record_results(
             &[&id],
         )
         .await?;
-        let position =
+        let (position, kept) =
             super::record_report::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
+        if let Some(kept) = kept {
+            kept.keep();
+        }
         return Ok(
             json!({"record": id, "commit": commit, "tests": count, "replayed": true, "actor": actor, "position": position, "unbound": unbound}),
         );
@@ -162,9 +169,12 @@ pub async fn record_results(
         "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message,status_name,fields) SELECT $1,x.address,x.status,x.duration_ms,x.message,x.status_name,x.fields FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text,status_name text,fields jsonb)",
         &[&id, &body],
     ).await?;
-    let position =
+    let (position, kept) =
         super::record_report::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
+    if let Some(kept) = kept {
+        kept.keep();
+    }
     Ok(
         json!({"record": id, "commit": commit, "tests": count, "replayed": false, "actor": actor, "position": position, "unbound": unbound}),
     )

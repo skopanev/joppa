@@ -20,6 +20,9 @@ pub(crate) async fn write(
         admit(operations, batch)?;
     }
     let input = json!({"batch":batch, "operations":operations});
+    let name = workspace;
+    // The writers of one workspace wait here, so they hold at most 1 connection.
+    let _turn = super::writer::turn(name).await;
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
@@ -31,6 +34,7 @@ pub(crate) async fn write(
         access::check(&*tx, &workspace, actor, false).await?;
     }
     ensure!(actor != "joppa-access", "internal enrollment operation");
+    super::writer::resolved(name, &workspace);
     if let Some(reply) = receipts::replayed(
         &*tx, &workspace, actor, request_id, operations, batch, &input,
     )
@@ -38,7 +42,7 @@ pub(crate) async fn write(
     {
         return Ok(reply);
     }
-    let (mut state, base_position) = state_rows::current(&*tx, &workspace).await?;
+    let (mut state, base_position) = super::state_cache::take(&*tx, &workspace).await?;
     let mut previous = state.clone();
     let mut events = Vec::new();
     let mut refs = BTreeMap::new();
@@ -172,7 +176,16 @@ pub(crate) async fn write(
         tx.execute("SELECT joppa.purge_workspace($1)", &[&workspace])
             .await?;
     }
+    // A deleted workspace keeps no state in memory.
+    let kept = if purged {
+        None
+    } else {
+        super::state_cache::settle(&*tx, &workspace, state).await?
+    };
     tx.commit().await?;
+    if let Some(kept) = kept {
+        kept.keep();
+    }
     if purged {
         super::remove_folder(&workspace).await;
     }

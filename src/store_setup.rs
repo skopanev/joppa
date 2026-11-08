@@ -4,6 +4,8 @@ use super::*;
 pub fn pool(url: &str) -> Result<Pool> {
     let mut cfg = deadpool_postgres::Config::new();
     cfg.url = Some(url.to_string());
+    // The writers of a workspace wait before they take a connection (store_writer.rs).
+    cfg.pool = Some(deadpool_postgres::PoolConfig::new(32));
     Ok(cfg.create_pool(
         Some(deadpool_postgres::Runtime::Tokio1),
         tokio_postgres::NoTls,
@@ -39,94 +41,47 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     // Migrations rebuild projections from the journal as it is (see migration 037).
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
-    tx.batch_execute(include_str!("../migrations/001_journal.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/002_item_ids.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/003_reference_prefix.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/004_cli_credentials.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/005_mcp_oauth.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/006_workspace_aliases.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/007_command_receipts.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/008_search.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/010_consumers.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/011_board_cache.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/012_objects.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/013_object_aliases.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/014_identity_names.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/015_current_state.sql"))
-        .await?;
-    tx.batch_execute(include_str!(
-        "../migrations/016_current_item_references.sql"
-    ))
-    .await?;
-    tx.batch_execute(include_str!("../migrations/017_test_reports.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/019_inbox_order.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/022_email_grants.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/023_test_report_receipts.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/024_domain_grants.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/025_session_hd.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/026_replay_epochs.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/027_status_projection.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/028_recorded_results.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/029_history_marks.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/030_human_members_epoch.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/031_owner_writes_epoch.sql"))
-        .await?;
-    tx.batch_execute(include_str!(
-        "../migrations/032_single_criterion_save_epoch.sql"
-    ))
-    .await?;
-    tx.batch_execute(include_str!("../migrations/033_purge_workspace.sql"))
-        .await?;
-    tx.batch_execute(include_str!(
-        "../migrations/034_criterion_save_reason_epoch.sql"
-    ))
-    .await?;
-    tx.batch_execute(include_str!("../migrations/035_test_result_fields.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/036_hybrid_search.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/037_field_length_limit.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/038_file_storage.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/039_objects_data_gin.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/040_short_item_ids.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/041_item_alias_ends.sql"))
-        .await?;
-    tx.batch_execute(include_str!("../migrations/042_short_item_id_codes.sql"))
-        .await?;
-    tx.batch_execute(include_str!(
-        "../migrations/043_no_purpose_no_ac_owners.sql"
-    ))
-    .await?;
-    // The later migrations run in their number order.
+    // The migrations run in their number order.
     for sql in [
+        include_str!("../migrations/001_journal.sql"),
+        include_str!("../migrations/002_item_ids.sql"),
+        include_str!("../migrations/003_reference_prefix.sql"),
+        include_str!("../migrations/004_cli_credentials.sql"),
+        include_str!("../migrations/005_mcp_oauth.sql"),
+        include_str!("../migrations/006_workspace_aliases.sql"),
+        include_str!("../migrations/007_command_receipts.sql"),
+        include_str!("../migrations/008_search.sql"),
+        include_str!("../migrations/010_consumers.sql"),
+        include_str!("../migrations/011_board_cache.sql"),
+        include_str!("../migrations/012_objects.sql"),
+        include_str!("../migrations/013_object_aliases.sql"),
+        include_str!("../migrations/014_identity_names.sql"),
+        include_str!("../migrations/015_current_state.sql"),
+        include_str!("../migrations/016_current_item_references.sql"),
+        include_str!("../migrations/017_test_reports.sql"),
+        include_str!("../migrations/019_inbox_order.sql"),
+        include_str!("../migrations/022_email_grants.sql"),
+        include_str!("../migrations/023_test_report_receipts.sql"),
+        include_str!("../migrations/024_domain_grants.sql"),
+        include_str!("../migrations/025_session_hd.sql"),
+        include_str!("../migrations/026_replay_epochs.sql"),
+        include_str!("../migrations/027_status_projection.sql"),
+        include_str!("../migrations/028_recorded_results.sql"),
+        include_str!("../migrations/029_history_marks.sql"),
+        include_str!("../migrations/030_human_members_epoch.sql"),
+        include_str!("../migrations/031_owner_writes_epoch.sql"),
+        include_str!("../migrations/032_single_criterion_save_epoch.sql"),
+        include_str!("../migrations/033_purge_workspace.sql"),
+        include_str!("../migrations/034_criterion_save_reason_epoch.sql"),
+        include_str!("../migrations/035_test_result_fields.sql"),
+        include_str!("../migrations/036_hybrid_search.sql"),
+        include_str!("../migrations/037_field_length_limit.sql"),
+        include_str!("../migrations/038_file_storage.sql"),
+        include_str!("../migrations/039_objects_data_gin.sql"),
+        include_str!("../migrations/040_short_item_ids.sql"),
+        include_str!("../migrations/041_item_alias_ends.sql"),
+        include_str!("../migrations/042_short_item_id_codes.sql"),
+        include_str!("../migrations/043_no_purpose_no_ac_owners.sql"),
         include_str!("../migrations/044_archive_reset.sql"),
         include_str!("../migrations/045_node_filter_indexes.sql"),
         include_str!("../migrations/046_generic_nodes.sql"),
@@ -142,6 +97,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/056_forced_keeps_contract.sql"),
         include_str!("../migrations/057_no_launch_summary.sql"),
         include_str!("../migrations/058_test_node_records.sql"),
+        include_str!("../migrations/059_search_and_reference_indexes.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

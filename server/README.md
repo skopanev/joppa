@@ -1,6 +1,6 @@
 # Single-server deployment
 
-Target: Ubuntu 24.04 LTS, one shared vCPU, 2 GB RAM. PostgreSQL 16 stores the
+Target: Ubuntu 24.04 LTS, 4 vCPU, 8 GB RAM. PostgreSQL 16 stores the
 journal, pgvector embeddings and full-text search. DeepInfra performs embedding
 inference. Joppa has its own Google OAuth client and invited account list.
 
@@ -97,9 +97,12 @@ Apply migrations as the database owner and grant the runtime role only schema
 USAGE, table SELECT/INSERT and sequence USAGE/SELECT. Only the two rebuildable
 search cache tables additionally permit UPDATE/DELETE. WORM triggers remain intact.
 
-The `postgres-2gb.conf` settings are an initial budget, not a measured capacity.
-Compile release binaries with one build job, preferably outside the production
-runtime. Service limits reserve memory for the database and OS.
+The `postgres-8gb.conf` settings are an initial budget, not a measured capacity.
+`max_connections = 100` leaves room for the 32 connections of the server pool,
+the CLI, backups and administration. Compile release binaries with 2 build
+jobs (`-j 2`): PostgreSQL and joppa still run during the build. The service
+limits (`MemoryHigh=2G`, `MemoryMax=3G`) hold the workspace states that the
+server keeps in memory and reserve the rest for the database and OS.
 
 ## HTTPS and authentication
 

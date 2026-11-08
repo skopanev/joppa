@@ -44,8 +44,8 @@ rsync -a --delete --exclude target/ "$source_dir/" /opt/joppa/src/
 # build, and then cargo keeps the old binary. A new time makes cargo compile this source.
 find /opt/joppa/src -path /opt/joppa/src/target -prune -o -type f -exec touch {} +
 cd /opt/joppa/src
-/root/.cargo/bin/cargo build --release --locked -j 1
-install -m 644 server/postgres-2gb.conf /etc/postgresql/16/main/conf.d/joppa.conf
+/root/.cargo/bin/cargo build --release --locked -j 2
+install -m 644 server/postgres-8gb.conf /etc/postgresql/16/main/conf.d/joppa.conf
 systemctl enable --now postgresql
 systemctl reload postgresql
 if [[ $(runuser -u postgres -- psql -X -Atqc 'SELECT count(*) FROM pg_settings WHERE pending_restart') != 0 ]]; then

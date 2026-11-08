@@ -158,10 +158,14 @@ async fn reserve_name(client: &impl GenericClient, name: &str, workspace: &str) 
     );
     Ok(())
 }
+#[path = "store_state_cache.rs"]
+mod state_cache;
 #[path = "store_state.rs"]
 mod state_rows;
 #[path = "store_write.rs"]
 mod write;
+#[path = "store_writer.rs"]
+mod writer;
 pub use write::{
     BatchOperation, check_fields, enroll_service, execute, execute_batch, execute_input,
     execute_remote_batch, execute_remote_input, save_dependency,

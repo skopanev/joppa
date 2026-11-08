@@ -7,8 +7,9 @@ use crate::workspace_references::{ACTOR, sources};
 async fn referencing(client: &impl GenericClient, workspace: &str) -> Result<Vec<String>> {
     Ok(client
         .query(
-            "SELECT e.workspace FROM joppa.state_entries e CROSS JOIN LATERAL jsonb_array_elements(e.value->'links') l WHERE e.section='remote_links' AND l->>'workspace'=$1 AND e.workspace<>$1
-             UNION SELECT o.workspace FROM joppa.objects o WHERE o.present AND o.document->'data'->>'workspace'=$1 AND o.workspace<>$1
+            // Each containment test reads a GIN index; the exact test after it keeps the result.
+            "SELECT e.workspace FROM joppa.state_entries e CROSS JOIN LATERAL jsonb_array_elements(e.value->'links') l WHERE e.section='remote_links' AND e.value @> jsonb_build_object('links',jsonb_build_array(jsonb_build_object('workspace',$1::text))) AND l->>'workspace'=$1 AND e.workspace<>$1
+             UNION SELECT o.workspace FROM joppa.objects o WHERE o.present AND (o.document->'data') @> jsonb_build_object('workspace',$1::text) AND o.document->'data'->>'workspace'=$1 AND o.workspace<>$1
              ORDER BY 1",
             &[&workspace],
         )
@@ -39,8 +40,13 @@ pub async fn workspace_references(pool: &Pool, workspace: &str, actor: &str) -> 
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    let (state, _) = state_rows::current(&**conn, &workspace).await?;
-    ensure!(actor == state.admin, "workspace owner required");
+    // The owner is in the meta row: the check loads no current state of the workspace.
+    let sql = "SELECT value->>'admin' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key=''";
+    let admin: Option<String> = conn
+        .query_opt(sql, &[&workspace])
+        .await?
+        .and_then(|r| r.get(0));
+    ensure!(admin.as_deref() == Some(actor), "workspace owner required");
     Ok(json!({"id": workspace, "workspaces": list(&**conn, &workspace).await?}))
 }
 

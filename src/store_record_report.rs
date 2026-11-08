@@ -3,19 +3,20 @@
 use super::*;
 
 /// Append the record_report event of one accepted record. The caller holds the
-/// transaction; a failed append rolls back the record.
+/// transaction; a failed append rolls back the record. The caller keeps the returned state
+/// after its commit.
 pub(super) async fn record_report(
     tx: &impl GenericClient,
     workspace: &str,
     actor: &str,
     command: Command,
-) -> Result<u64> {
+) -> Result<(u64, Option<state_cache::Kept>)> {
     tx.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
         &[&workspace],
     )
     .await?;
-    let (mut state, base_position) = state_rows::current(tx, workspace).await?;
+    let (mut state, base_position) = state_cache::take(tx, workspace).await?;
     state.alias = crate::actor_alias::current();
     let previous = state.clone();
     let position = base_position + 1;
@@ -44,5 +45,5 @@ pub(super) async fn record_report(
     search::project(tx, workspace, &state, position, selected.as_ref()).await?;
     let at = (events.as_slice(), position);
     board::project_selected(tx, workspace, &state, at, Some(&previous), selected).await?;
-    Ok(position)
+    Ok((position, state_cache::settle(tx, workspace, state).await?))
 }

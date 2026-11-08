@@ -30,19 +30,30 @@ fn params<'a>(
     all
 }
 
-/// The number of indexed and of embedded rows that the filters keep.
+/// The number of indexed and of embedded rows that the filters keep. Without all_versions
+/// the statement has no branch on the revisions.
 pub(super) async fn counts(
     tx: &Transaction<'_>,
     scope: &[String],
     all_versions: bool,
     bound: &Bound,
 ) -> Result<(i64, i64)> {
-    let (d, r) = (keep("d", 4, bound, 5), keep("r", 4, bound, 5));
-    let row = tx.query_one(&format!("SELECT (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d})
-        + CASE WHEN $3 THEN (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND NOT {COVERED}) ELSE 0 END,
-        (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d} AND embedding IS NOT NULL AND embedding_profile=$2)
-        + CASE WHEN $3 THEN (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND embedding IS NOT NULL AND embedding_profile=$2 AND NOT {COVERED}) ELSE 0 END"),
-        &params(vec![&scope, &PROFILE, &all_versions], &bound.narrows(), bound)).await?;
+    let (d, r) = (keep("d", 3, bound, 4), keep("r", 3, bound, 4));
+    let (indexed, embedded) = if all_versions {
+        (
+            format!(
+                "+ (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND NOT {COVERED})"
+            ),
+            format!(
+                "+ (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND embedding IS NOT NULL AND embedding_profile=$2 AND NOT {COVERED})"
+            ),
+        )
+    } else {
+        Default::default()
+    };
+    let row = tx.query_one(&format!("SELECT (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d}) {indexed},
+        (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d} AND embedding IS NOT NULL AND embedding_profile=$2) {embedded}"),
+        &params(vec![&scope, &PROFILE], &bound.narrows(), bound)).await?;
     Ok((row.get(0), row.get(1)))
 }
 
@@ -55,13 +66,18 @@ pub(super) async fn words(
     all_versions: bool,
     bound: &Bound,
 ) -> Result<Vec<Row>> {
-    let (d, r) = (keep("d", 4, bound, 5), keep("r", 4, bound, 5));
+    let (d, r) = (keep("d", 3, bound, 4), keep("r", 3, bound, 4));
+    let revisions = if all_versions {
+        format!("UNION ALL
+      SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,ts_rank_cd(r.terms,q.terms) FROM joppa.search_revisions r,q
+      WHERE r.workspace=ANY($1) AND {r} AND r.terms @@ q.terms AND NOT {COVERED}")
+    } else {
+        String::new()
+    };
     Ok(tx.query(&format!("WITH q AS (SELECT websearch_to_tsquery('simple',$2) || websearch_to_tsquery('english',$2) || websearch_to_tsquery('russian',$2) AS terms), matches AS (
       SELECT d.workspace,d.kind,d.local_id,-1 AS rev,false AS exact,false AS item,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
       WHERE d.workspace=ANY($1) AND {d} AND d.terms @@ q.terms
-      UNION ALL
-      SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,ts_rank_cd(r.terms,q.terms) FROM joppa.search_revisions r,q
-      WHERE $3 AND r.workspace=ANY($1) AND {r} AND r.terms @@ q.terms AND NOT {COVERED}
+      {revisions}
       UNION ALL
       SELECT d.workspace,d.kind,d.local_id,-1,true,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
       ON d.workspace=i.workspace AND d.kind=COALESCE(split_part(a.target,':',1),i.kind) AND d.local_id=COALESCE(split_part(a.target,':',2),i.local_id)
@@ -73,11 +89,15 @@ pub(super) async fn words(
           OR ($2 ~ '^[a-z0-9]{{8}}$' AND (d.local_id=$2 OR d.kind||':'||d.local_id IN (SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND split_part(address,':',2)=$2)))))
       SELECT workspace,kind,local_id,rev,bool_or(exact),bool_or(item) FROM matches GROUP BY workspace,kind,local_id,rev
       ORDER BY bool_or(exact) DESC,max(rank) DESC,workspace,kind,local_id,rev"),
-      &params(vec![&scope, &query, &all_versions], &bound.narrows(), bound)).await?)
+      &params(vec![&scope, &query], &bound.narrows(), bound)).await?)
 }
 
-/// The 100 nearest vectors by cosine distance, nearest first. The workspace filter comes
-/// before the exact ranking, and each indexed row has a distance.
+/// The 100 nearest vectors by cosine distance, nearest first. The current documents can come
+/// from the HNSW index (`search_documents_embedding_hnsw`): its iterative scan continues in
+/// distance order until enough rows pass the workspace and node filters, up to 1,000,000 index
+/// rows. The inner list holds 200 rows, so the outer sort reads each group of equal distance
+/// at row 100 whole and orders it by key. Without all_versions the statement has no branch on
+/// the revisions, which have no vector index.
 pub(super) async fn nearest(
     tx: &Transaction<'_>,
     scope: &[String],
@@ -85,13 +105,23 @@ pub(super) async fn nearest(
     all_versions: bool,
     bound: &Bound,
 ) -> Result<Vec<Row>> {
-    let (d, r) = (keep("d", 5, bound, 6), keep("r", 5, bound, 6));
-    Ok(tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
-        SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $3::text::vector AS distance FROM joppa.search_documents d
-        WHERE d.workspace=ANY($1) AND {d} AND d.embedding IS NOT NULL AND d.embedding_profile=$2
-        UNION ALL
+    let (d, r) = (keep("d", 4, bound, 5), keep("r", 4, bound, 5));
+    let revisions = if all_versions {
+        format!("UNION ALL
         SELECT r.workspace,r.kind,r.local_id,r.revision,r.embedding <=> $3::text::vector FROM joppa.search_revisions r
-        WHERE $4 AND r.workspace=ANY($1) AND {r} AND r.embedding IS NOT NULL AND r.embedding_profile=$2 AND NOT {COVERED}
+        WHERE r.workspace=ANY($1) AND {r} AND r.embedding IS NOT NULL AND r.embedding_profile=$2 AND NOT {COVERED}")
+    } else {
+        String::new()
+    };
+    tx.batch_execute(
+        "SET LOCAL hnsw.ef_search = 100; SET LOCAL hnsw.iterative_scan = strict_order; SET LOCAL hnsw.max_scan_tuples = 1000000",
+    )
+    .await?;
+    Ok(tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
+        (SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $3::text::vector AS distance FROM joppa.search_documents d
+        WHERE d.workspace=ANY($1) AND {d} AND d.embedding IS NOT NULL AND d.embedding_profile=$2
+        ORDER BY d.embedding <=> $3::text::vector LIMIT 200)
+        {revisions}
       ) c ORDER BY distance,workspace,kind,local_id,rev LIMIT 100"),
-      &params(vec![&scope, &PROFILE, &vector, &all_versions], &bound.narrows(), bound)).await?)
+      &params(vec![&scope, &PROFILE, &vector], &bound.narrows(), bound)).await?)
 }
