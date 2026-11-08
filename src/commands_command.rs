@@ -63,6 +63,8 @@ pub enum Command {
     SetAcTests(SetAcTestsOp),
     /// Decide an Inbox signal: changed_spec, needs_information, rejected or duplicate.
     DecideNote(DecideNoteOp),
+    /// The removed acceptance on a commit. An older journal holds it, and its replay has no
+    /// effect.
     AcceptCommit {
         target: String,
         revision: u32,

@@ -1,5 +1,6 @@
 // Part 1 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
 
+// ac:gate-checks-subject
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> anyhow::Result<()> {
@@ -54,7 +55,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     );
     let snapshot = "SELECT jsonb_build_array(b.xmin::text,b.first_view->>'projection_version',(SELECT jsonb_agg(jsonb_build_array(o.address,o.xmin::text) ORDER BY o.address) FROM joppa.objects o WHERE o.workspace=b.workspace))::text FROM joppa.board_cache b WHERE b.workspace=$1";
     let before: String = conn.query_one(snapshot, &[&ws]).await?.get(0);
-    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "21");
+    assert_eq!(serde_json::from_str::<Value>(&before)?[1], "22");
     store::backfill_board(&pool).await?;
     assert_eq!(
         conn.query_one(snapshot, &[&ws]).await?.get::<_, String>(0),

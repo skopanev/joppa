@@ -41,10 +41,3 @@ pub(super) async fn replayed(
 }
     Ok(None)
 }
-
-/// An acceptance reads the workspaces of blocking remote links.
-pub(super) fn locks_remote(operations: &[BatchOperation]) -> bool {
-    operations
-        .iter()
-        .any(|o| o.command["op"].as_str() == Some("accept_commit"))
-}

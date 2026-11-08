@@ -44,7 +44,7 @@ group have no current document.
 Each object revision also has a search row: its title and the fields of that
 revision. A search with `all_versions` reads these rows. A revision that the current
 document already covers is not a second result. A redaction rewrites the revision
-row. Search results are references, never acceptance evidence.
+row. Search results are references, never test evidence.
 
 Each document keeps at most 60,000 content characters. The embedding input is the
 first 8,000 characters of the title, a line break and the content. The full source

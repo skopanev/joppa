@@ -23,14 +23,7 @@ pub(crate) async fn write(
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
-    // An acceptance reads the workspaces of blocking remote links, so it locks them with its
-    // own workspace in sorted ID order. A record of results there waits for it, or comes first.
-    let remote_locked = if receipts::locks_remote(operations) {
-        super::remote::blocking_closure(&*tx, &workspace).await?
-    } else {
-        Default::default()
-    };
-    super::remote::lock_sorted(&*tx, &workspace, &remote_locked).await?;
+    super::remote::lock(&*tx, &workspace).await?;
     // A new workspace has no access-rule entry yet. Only the trusted CLI path
     // may create it; public HTTP/MCP writes always go through access::check.
     let cli_create = allow_workspace_create && operations[0].command["op"] == "workspace";
@@ -79,14 +72,6 @@ pub(crate) async fn write(
             {
                 let child = child.as_str().context("workspace is a workspace ID")?;
                 super::remote::check_child(&*tx, &workspace, actor, child).await?;
-            }
-            if let Command::AcceptCommit { target, commit: Some(commit), .. } = &command {
-                super::reports::check_acceptance(&*tx, &workspace, &state, target, commit).await?;
-                // An acceptance needs every blocking remote target of the node, its ancestors
-                // and the nodes below it ready now.
-                if let Some(target) = super::waits::remote_gate(&*tx, actor, &state, target, true, &remote_locked).await? {
-                    anyhow::bail!("{}", crate::dependencies::reason(&target));
-                }
             }
             // Only server code enrolls an agent or a runner; HTTP and MCP writes refuse it.
             ensure!(

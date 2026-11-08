@@ -37,9 +37,6 @@ pub(super) async fn project_current(
             client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value) SELECT $1,'summaries',x.key,x.value FROM jsonb_to_recordset($2::text::jsonb) x(key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value WHERE state_entries.value IS DISTINCT FROM EXCLUDED.value", &[&workspace,&json!(rows).to_string()]).await?;
         }
     }
-    let launch = crate::objects::launch_summary(state);
-    let configured = &launch["configured"];
-    let blocker_count = &launch["blocker_count"];
     let object_types = crate::objects::schema(state).types;
     // The test type comes from migrate_test_nodes in every workspace; it does not make a tree custom.
     let mut compared = object_types.clone();
@@ -73,10 +70,10 @@ pub(super) async fn project_current(
         crate::filter_dimensions::with_values(filters, &crate::field_types::enum_values(state));
     let filters = crate::filter_dimensions::with_values(filters, &dimensions);
     let first_view = json!({"filters":filters,"dimensions":crate::filter_dimensions::listed(&dimensions),"computed_fields":crate::computed_fields::rules(&crate::objects::schema(state).types).keys().collect::<Vec<_>>(),"projection_version":BOARD_PROJECTION_VERSION,"readiness_metadata_version":READINESS_METADATA_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"hidden":state.hidden,"assignees":crate::filter_fields::assignees(state),"members":&state.members,
-        "launch":{"ready":launch["ready"],"configured":configured,"blocker_count":blocker_count},"workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
+        "workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
-    client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,launch,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb,$7::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,launch=EXCLUDED.launch,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'status_projection' THEN jsonb_build_object('status_projection',board_cache.first_view->'status_projection') ELSE '{}'::jsonb END",
-        &[&workspace,&(position as i64),&super::state_rows::metadata(state)?,&"{}",&"{}",&launch.to_string(),&first_view.to_string()]).await?;
+    client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'status_projection' THEN jsonb_build_object('status_projection',board_cache.first_view->'status_projection') ELSE '{}'::jsonb END",
+        &[&workspace,&(position as i64),&super::state_rows::metadata(state)?,&"{}",&"{}",&first_view.to_string()]).await?;
     // A write recomputes only the nodes that it reaches; a schema change rebuilds all.
     let reports: Vec<i64> = events
         .iter()
@@ -147,7 +144,7 @@ pub async fn board_read(pool: &Pool, workspace: &str, actor: &str) -> Result<Val
     Ok(
         json!({"workspace":first["workspace_id"],"position":row.get::<_,i64>(0),"lazy":true,
                 "state":{"title":first["title"],"members":members},
-                "member_labels":labels,"launch":first["launch"],
+                "member_labels":labels,
                 "object_types":first["object_types"],"statuses":labelled(&first["statuses"]),"archived_tone":crate::status_colors::ARCHIVED_TONE,"counts":first["counts"],"custom_tree":first["custom_tree"],"filters":first["filters"],"dimensions":first["dimensions"],"assignees":first["assignees"]}),
     )
 }

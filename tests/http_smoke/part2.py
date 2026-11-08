@@ -122,9 +122,11 @@ save('ac','auto-ac','requirement:auto',criterion('Command exits successfully'))
 auto_revision = 2
 status, refused = command({'op':'plan','req':'requirement:auto','revision':auto_revision,'run':'refused'})
 assert status >= 400 and 'plan was removed; use joppa_record_results' in str(refused), (status, refused)
-# [launch-gate] Without an acceptance on a commit the gate refuses.
+# [launch-gate] A command refuses an acceptance and names the replacement. The CLI has no gate.
+status, refused = command({'op':'accept_commit','target':'requirement:auto','revision':auto_revision,'commit':'code-sha-v1'})
+assert status >= 400 and 'manual acceptance is gone' in str(refused), (status, refused)
 gate = subprocess.run([BIN, 'gate', ws, 'code-sha-v1'], env=env, text=True, capture_output=True)
-assert gate.returncode != 0 and 'no acceptance on a commit' in gate.stderr, gate.stderr
+assert gate.returncode != 0 and 'read WORKSPACE | list' in gate.stderr, gate.stderr
 save('task','agent-task','ac:auto-ac',{'title':'Implement command','owner':'owner','projects':[],
     'body':'Implement command and attach merged build evidence'},'Plan the work')
 # The portal keeps older revisions after a wording change.

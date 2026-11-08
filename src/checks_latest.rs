@@ -195,12 +195,7 @@ pub fn summary(r: &Revision) -> Value {
         || r.coverage_review
             .as_ref()
             .is_some_and(|review| review.changes == r.coverage_change);
-    let accepted = green
-        && coverage_reviewed
-        && r.acceptance
-            .as_ref()
-            .is_some_and(|a| run.is_some_and(|(id, _)| id == &a.run));
-    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "pending_run": pending_run, "ready_for_acceptance": green && coverage_reviewed, "accepted": accepted,
+    json!({"revision": r.number, "acs": statuses, "run": run.map(|(id, _)| id), "pending_run": pending_run, "verified": green && coverage_reviewed,
         "coverage_change": r.coverage_change, "coverage_reviewed": coverage_reviewed})
 }
 

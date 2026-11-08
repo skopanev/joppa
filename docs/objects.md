@@ -99,15 +99,16 @@ for the tones and the rollup.
 
 ## Before implementation
 
-Score each REQ and AC with the 11111 checklist before implementation.
-Prepare first:
+Score each REQ and AC with the 11111 checklist and the Reuse gate before implementation.
+An independent Reviewer agent with another alias scores the node. The agent that wrote the
+node never scores it. Prepare first:
 
 - Read the full node and its parent.
 - Read the full verbatim text of all cited and applicable sections in every linked Source,
   on the node or its ancestors. Never read only a summary.
 - Inspect the existing mechanisms, schemas and contracts of the target system in the codebase and the Tech root.
 
-Score five rules, in the order G A U M V. Each rule is 1 or 0.
+Score five rules, in the order G A U M V, then apply gate 6, Reuse. Each rule is 1 or 0.
 
 1. Grounded (G). 1: every condition, value, limit, timing and branch of the node appears
    explicitly in the linked Source text. Code and tests are never a valid Source on their own.
@@ -134,15 +135,17 @@ Score five rules, in the order G A U M V. Each rule is 1 or 0.
    dependent on an unconfirmed external rule, or not deterministic. On 0: REWRITE and name
    the missing trigger or outcome.
 
-The verdict gives the bits G A U M V. APPROVE only 11111, and tie the verdict to the exact
-revisions of the node, its Sources and its `depends_on` targets. Else, HOLD and give
-STRIP, SPLIT, ASK_OPTIONS or REWRITE with the exact fix for each 0.
-The verdict does not replace the owner acceptance.
+6. Reuse (R). 1: the node and its implementation plan use the ready shared types, packages,
+   libraries, helpers, modules and contracts of the codebase and the Tech root. 0: the plan
+   duplicates an existing mechanism, or the search was not done. Search with the code graph
+   index (codebase-memory, CBM: `search_graph`, `search_code` and `SIMILAR_TO`) when it is
+   connected. On 0: ASK_OPTIONS between the existing mechanism and a new one, or REWRITE.
 
-After 11111, apply the Reuse gate before you create a Task. Search the codebase and the
-Tech root for ready shared types, packages, libraries, helpers, modules and contracts.
-Use the code graph index, such as `search_graph`, `search_code` and `SIMILAR_TO`, when it is
-connected. Reuse what exists. Do not write a duplicate.
+The verdict gives the bits G A U M V and R. APPROVE only 11111 with R, and tie the verdict to
+the exact revisions of the node, its Sources and its `depends_on` targets. Else, HOLD and give
+STRIP, SPLIT, ASK_OPTIONS or REWRITE with the exact fix for each 0. On a HOLD, the Writer agent
+asks the owner one closed question in the chat, updates the Source and the AC, and the Reviewer
+agent scores again. The server does not check these roles.
 
 ## Tasks
 

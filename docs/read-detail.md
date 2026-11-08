@@ -47,8 +47,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - An object without comments has no `comments` key. An object without outgoing links has no
   `links` key.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
-- `process` is the same for every type: `annotation_address`, `verification`,
-  `acceptance`, and the `status` of an inbox type. `annotation_address` shows only when it
+- `process` is the same for every type: `annotation_address`, `verification` and the `status`
+  of an inbox type. `annotation_address` shows only when it
   differs from the address.
 - `verification` shows only the `pass` or `fail` of a finished run.
 - `process.status` of a Note shows only when it differs from `data.status`.

@@ -46,7 +46,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                 title_preview_length: None,
                 field_max_length: None,
                 parent_gate: (kind == "task").then_some(crate::model::Removed),
-                launch_blocker: (kind == "ac").then_some(true),
+                launch_blocker: (kind == "ac").then_some(crate::model::Removed),
                 inbox: (kind == "note").then_some(true),
                 title: title.into(),
                 role: role.into(),
@@ -214,7 +214,7 @@ pub fn migrate_documents(w: &mut Workspace, actor: &str, position: u64, at: &str
     let mut configured = schema(w);
     for (kind, t) in &mut configured.types {
         t.inbox = Some(t.inbox.unwrap_or(kind == "note"));
-        t.launch_blocker = Some(t.launch_blocker.unwrap_or(kind == "ac"));
+        t.launch_blocker = Some(crate::model::Removed);
     }
     configured.revision += 1;
     configured.actor = actor.into();

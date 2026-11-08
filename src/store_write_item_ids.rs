@@ -82,13 +82,7 @@ pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
 }
 
 /// Field validation of one command after generated fields, before state checks.
-/// Historical events keep their serde defaults; current writes must send these fields.
 pub(crate) fn fields(value: &Value) -> Result<()> {
-    for (op, field, refusal) in [("accept_commit", "commit", "acceptance needs a commit")] {
-        if value["op"] == op && value.get(field).is_none_or(Value::is_null) {
-            anyhow::bail!("missing field `{field}`: {refusal}");
-        }
-    }
     serde_json::from_value::<Command>(value.clone())?;
     Ok(())
 }

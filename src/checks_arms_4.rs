@@ -124,45 +124,6 @@ pub(super) fn apply_finish(
     Ok(())
 }
 
-/// Apply `accept`.
-pub(super) fn apply_accept(
-    w: &mut Workspace,
-    actor: &str,
-    cmd: &Command,
-    position: u64,
-) -> Result<()> {
-    let Command::Accept(crate::commands::AcceptOp {
-        req,
-        revision: n,
-        run,
-    }) = cmd
-    else {
-        unreachable!()
-    };
-    crate::commands::person(w, actor)?;
-    let r = revision(w, req, *n, true)?;
-    ensure!(r.owner == actor, "only REQ owner accepts");
-    ensure!(
-        r.coverage_change.is_empty()
-            || r.coverage_review
-                .as_ref()
-                .is_some_and(|review| review.changes == r.coverage_change),
-        "REQ owner must review checks removed or changed since the prior revision"
-    );
-    let (id, last) = latest(r).ok_or_else(|| anyhow::anyhow!("no completed run"))?;
-    ensure!(id == run, "cannot select an older run");
-    ensure!(
-        !r.acs.is_empty() && r.acs.iter().all(|a| verdict(r, last, &a.id) == "pass"),
-        "all ACs must be verified on the same subject"
-    );
-    r.acceptance = Some(Acceptance {
-        run: run.clone(),
-        actor: actor.into(),
-        at: position,
-    });
-    Ok(())
-}
-
 /// Apply `issue`.
 pub(super) fn apply_issue(
     w: &mut Workspace,
@@ -198,7 +159,6 @@ pub(super) fn apply_issue(
             resolved: None,
         },
     );
-    r.acceptance = None;
     Ok(())
 }
 

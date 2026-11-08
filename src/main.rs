@@ -50,14 +50,6 @@ async fn main() -> Result<()> {
                 store::execute(&pool, workspace, &actor, request_id, &command).await?
             );
         }
-        Some("gate") => {
-            let (Some(workspace), Some(commit)) = (args.get(1), args.get(2)) else {
-                bail!("gate WORKSPACE COMMIT");
-            };
-            let card = store::read(&pool, workspace, &actor()?, &store::Scope::full()).await?;
-            let count = store::gate(&card, commit)?;
-            println!("{count} launch conditions accepted on commit {commit}");
-        }
         Some("read") => {
             let workspace = args
                 .get(1)
@@ -69,7 +61,7 @@ async fn main() -> Result<()> {
         }
         Some("list") => println!("{}", store::list(&pool, &actor()?).await?),
         _ => bail!(
-            "commands: check-journal | migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE COMMIT | list"
+            "commands: check-journal | migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | list"
         ),
     }
     Ok(())

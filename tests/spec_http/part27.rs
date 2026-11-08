@@ -1,5 +1,6 @@
 // Part 27 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
+// ac:acceptance-needs-green
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<()> {
@@ -14,6 +15,7 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
         "finish",
         "accept",
         "revoke",
+        "accept_commit",
         "issue",
         "resolve",
         "review_coverage",

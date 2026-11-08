@@ -9,8 +9,8 @@ Inbox items hold raw incoming signals. Sources ground every AC.
 One workspace is one product, even when several repositories deliver it.
 Repository references follow the workspace schema.
 
-People and agents formulate REQ and ACs together. The REQ owner confirms wording
-and accepts the checked result. Agents analyze each criterion. Independent
+People and agents formulate REQ and ACs together. The REQ owner gives decisions,
+and the agent records them as Sources. Green Test nodes prove each criterion. Independent
 conditions can proceed while disputed ones wait for a named decision maker.
 An iOS condition means iOS; other clients are never added by assumption.
 
@@ -29,7 +29,7 @@ An iOS condition means iOS; other clients are never added by assumption.
   gives every level the highest tone of its children: red, orange, yellow, grey,
   green. A criterion without a test node is orange.
 - Tasks under configured object parents, manual work and decision tasks. A Task is not
-  a verified AC. Owner acceptance stays separate. Records append;
+  a verified AC. There is no manual acceptance. Records append;
   history is never rewritten.
 
 MCP supports generated creation IDs, atomic batches and English methodology
@@ -196,13 +196,13 @@ The build wrapper clears only its private `target` directory when the `Cargo.loc
 It logs shared lock waiting in seconds. Browser-only commands do not clear compiled artifacts.
 
 Integration tests require an isolated database whose name starts with
-`joppa_test`. They exercise concurrent changes/results/acceptance, workspace
+`joppa_test`. They exercise concurrent changes and results, workspace
 isolation, retries, migration repeatability and WORM.
 CI runs PostgreSQL 16 with pgvector and the HTTP, OAuth, session, search and access checks too.
 
 ## Current boundaries
 
-The working cycle is formulate → decide → implement → check → accept.
+The working cycle is decide → formulate → score (11111 and Reuse) → implement → check.
 Repository-specific CI integration and business-data migration need product
 onboarding and owner review. There is no background task executor, automatic
 legal-policy interpretation or proof that an AC set is complete.

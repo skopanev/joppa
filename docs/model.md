@@ -9,7 +9,7 @@ The model below describes the recommended tree and its verification roles.
 
 Write new technical text in English according to ASD-STE100, Issue 9. At least 80% of sentences in each text must comply.
 Russian is permitted under the same rules. Preserve intake, verbatim user text, existing wording, history, and evidence.
-Read the [technical writing rules](writing.md). The REQ owner approves new REQ and AC wording with an acceptance.
+Read the [technical writing rules](writing.md). The REQ owner gives decisions in the chat, and the agent records them as Sources.
 
 One workspace represents one product, even when several repositories deliver it.
 Use the question each level answers to decide where an item belongs.
@@ -86,7 +86,7 @@ into separate commitments when they can be accepted independently.
 
 ### The REQ card
 
-Each REQ has one owner who answers for its meaning and accepts its result.
+Each REQ has one owner who answers for its meaning.
 Each AC names its Sources in its field `sources`. The REQ gets no copy of them.
 When the schema defines `ac.consumer`, each AC names exactly one consumer from the
 workspace consumer list, in its field `consumer`. A consumer is a role, a group or an application that receives the promised
@@ -97,7 +97,7 @@ People and agents formulate REQ and ACs together. Agents help make conditions
 clear and testable; authorized people decide business policy and scope.
 
 The card contains wording, ACs, discussion and revision history. Anyone finding
-a gap leaves a comment there. The owner accepts, clarifies or rejects the
+a gap leaves a comment there. The owner agrees with, clarifies or rejects the
 suggestion with a reason, obtaining a specialist decision where needed. There
 is no separate proposal entity or approval workflow to maintain.
 
@@ -191,7 +191,7 @@ requires. Never manufacture ACs to reach a target count.
 ## Creating and maintaining the tree
 
 Agents and people save domains, Tech roots, capabilities, REQs and ACs with `save_object`.
-Only an owner acceptance approves a REQ revision. Do not create Tasks while the tree is
+An owner decision, recorded as a Source, grounds a REQ revision. Do not create Tasks while the tree is
 filled or agreed. Create a Task directly before the implementation of its AC.
 
 Creation through MCP can omit local IDs: the server makes them and returns the

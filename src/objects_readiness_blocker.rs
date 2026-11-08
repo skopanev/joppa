@@ -1,47 +1,5 @@
-//! Part of `objects`: the launch conditions, the input types and the verification verdict.
+//! Part of `objects`: the input types and the verification verdict.
 use super::*;
-
-pub fn launch_objects(w: &Workspace) -> Vec<&str> {
-    let configured = schema(w);
-    w.objects
-        .iter()
-        .filter(|(_, o)| {
-            o.current().present
-                && configured.types.get(&o.kind).is_some_and(|t| {
-                    t.launch_blocker
-                        .unwrap_or(!w.documents_migrated && o.kind == "ac")
-                })
-                && o.current().data["before_launch"] == true
-        })
-        .map(|(key, _)| key.as_str())
-        .collect()
-}
-
-pub fn launch_summary(w: &Workspace) -> Value {
-    let selected = launch_objects(w);
-    let blockers: Vec<Value> = selected
-        .iter()
-        .filter_map(|key| {
-            let context = verification_context(w, key);
-            // A legacy check-run acceptance or an acceptance on a commit settles the condition.
-            if context.is_some_and(|(req, r)| requirement_summary(w, req, r)["accepted"] == true)
-                || crate::launch_gate::accepted_commit(w, key).is_some()
-            {
-                return None;
-            }
-            let mut item = json!({"address":key});
-            if let Some((req, r)) = context {
-                item["req"] = json!(req);
-                item["revision"] = json!(r.number);
-                if let Some((_, _, ac)) = criterion_context(w, key) {
-                    item["ac"] = json!(ac.id);
-                }
-            }
-            Some(item)
-        })
-        .collect();
-    json!({"configured":!selected.is_empty(),"ready":!selected.is_empty()&&blockers.is_empty(),"blocker_count":blockers.len(),"blockers":blockers,"meaning":"Configured launch conditions require owner acceptance of current check evidence."})
-}
 
 pub fn input_type(w: &Workspace, kind: &str) -> bool {
     schema(w)
@@ -74,7 +32,7 @@ pub fn verification(w: &Workspace, key: &str) -> &'static str {
         && let Some((req, r)) = verification_context(w, key)
     {
         let summary = requirement_summary(w, req, r);
-        if summary["ready_for_acceptance"] == true {
+        if summary["verified"] == true {
             return "pass";
         }
         if summary["acs"]

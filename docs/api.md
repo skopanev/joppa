@@ -19,7 +19,7 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 
 - Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
 - Schema and order: `set_tree_schema`, `reorder_tree`.
-- Criteria and tests: `save_object` with a test node, `accept_commit`.
+- Criteria and tests: `save_object` with a test node.
 - Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
 - Workspace (owner): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
 
@@ -31,6 +31,13 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 - `detach {target, id, reason}` keeps the file readable for 14 days. Then the periodic reconcile deletes it, unless an active attachment of the workspace names its hash. `joppa_attachments {workspace, target, removed: true}` also lists the files detached in the last 14 days, with `removed: true`, `removed_at` and a download `url`.
 - `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from an owner with a bearer token.
 - `delete_workspace {reason}` removes every row of the workspace. Read `GET /api/workspaces/{workspace}/references` first: each workspace whose remote links or child bindings name it loses them, and the result lists them in `removed_references`.
+
+## No manual acceptance
+
+There is no manual acceptance. Record the owner decision as a Source. Green Test nodes prove
+the criteria. MCP, `POST /commands` and the server command line refuse `accept`, `revoke` and
+`accept_commit`:
+`<op> was removed; manual acceptance is gone: record the owner decision as a Source and prove it with tests`.
 
 ## Work state
 

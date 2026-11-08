@@ -1,5 +1,4 @@
 pub mod ac_tests;
-pub mod acceptance;
 pub mod access;
 pub mod actor_alias;
 pub mod batch_defaults;
@@ -22,7 +21,6 @@ pub mod generic_nodes;
 pub mod history_entry;
 pub mod inbox;
 mod intake;
-pub mod launch_gate;
 pub mod mcp_lean;
 pub mod mcp_shapes;
 pub mod model;

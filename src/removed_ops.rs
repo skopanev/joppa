@@ -22,6 +22,7 @@ pub const NAMES: &[&str] = &[
     "finish",
     "accept",
     "revoke",
+    "accept_commit",
     "issue",
     "resolve",
     "review_coverage",
@@ -49,18 +50,25 @@ pub const NAMES: &[&str] = &[
     "rename_workspace",
 ];
 
+/// The reason of the removed acceptance operations and fields: the owner decision is a Source,
+/// and green Test nodes prove it.
+pub const NO_ACCEPTANCE: &str =
+    "manual acceptance is gone: record the owner decision as a Source and prove it with tests";
+
 /// The refusal of the removed read parameter `work_filter`.
 pub const WORK_FILTER: &str =
     "work_filter was removed; use the node filters, for example kind and ready";
 
 /// The refusal of a removed operation: it names the replacement.
 pub fn refusal(name: &str) -> String {
+    if matches!(name, "accept" | "revoke" | "accept_commit") {
+        return format!("{name} was removed; {NO_ACCEPTANCE}");
+    }
     let replacement = match name {
         "set_domain_archived" => "archive_object or restore_object",
         "confirm_tree" => "save_object; a saved tree needs no confirmation",
         "link_source" => "save_object with a Note and its links",
         "plan" | "result" | "finish" => "joppa_record_results",
-        "accept" | "revoke" => "accept_commit",
         "issue" | "resolve" => "note",
         "review_coverage" | "define_verification_scope" | "set_ac_tests" => {
             "save_object with kind test"
@@ -104,6 +112,7 @@ pub fn name(command: &Command) -> Option<&'static str> {
         Command::Finish(crate::commands::FinishOp { .. }) => "finish",
         Command::Accept(crate::commands::AcceptOp { .. }) => "accept",
         Command::Revoke(crate::commands::RevokeOp { .. }) => "revoke",
+        Command::AcceptCommit { .. } => "accept_commit",
         Command::Issue(crate::commands::IssueOp { .. }) => "issue",
         Command::Resolve(crate::commands::ResolveOp { .. }) => "resolve",
         Command::ReviewCoverage(crate::commands::ReviewCoverageOp { .. }) => "review_coverage",
@@ -142,6 +151,9 @@ pub const SCHEMA_FIELDS: &str = "process_fields and verification_subject were re
 pub const PARENT_GATE: &str =
     "parent_gate was removed; a typed field such as stage gives the state of a node";
 
+/// The refusal of the removed launch flag of a type.
+pub const LAUNCH_BLOCKER: &str = "launch_blocker was removed; manual acceptance is gone: record the owner decision as a Source and prove it with tests";
+
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
@@ -154,6 +166,16 @@ pub fn removed_field(command: &Command) -> Option<&'static str> {
             .any(|t| t.parent_gate.is_some()) =>
         {
             Some(PARENT_GATE)
+        }
+        Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
+            types, put_types, ..
+        }) if types
+            .iter()
+            .chain(put_types)
+            .flat_map(|m| m.values())
+            .any(|t| t.launch_blocker.is_some()) =>
+        {
+            Some(LAUNCH_BLOCKER)
         }
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             status_colors: Some(_),

@@ -167,56 +167,9 @@ pub(super) async fn stored_links(
     })
 }
 
-/// The workspaces that blocking remote links of this workspace name, from its stored state.
-pub(super) async fn blocking_workspaces(
-    client: &impl GenericClient,
-    workspace: &str,
-) -> Result<BTreeSet<String>> {
-    Ok(client
-        .query(
-            "SELECT DISTINCT l->>'workspace' FROM joppa.state_entries e CROSS JOIN LATERAL jsonb_array_elements(e.value->'links') l WHERE e.workspace=$1 AND e.section='remote_links' AND (l->>'blocking')::boolean",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|r| r.get(0))
-        .collect())
-}
-
-/// Every workspace that a chain of blocking remote links can reach from this workspace. A
-/// gated write locks all of them, so a record anywhere in the chain waits or comes first.
-pub(super) async fn blocking_closure(
-    client: &impl GenericClient,
-    workspace: &str,
-) -> Result<BTreeSet<String>> {
-    let mut found = BTreeSet::new();
-    let mut queue = VecDeque::from([workspace.to_owned()]);
-    while let Some(ws) = queue.pop_front() {
-        for next in blocking_workspaces(client, &ws).await? {
-            if next != workspace && found.insert(next.clone()) {
-                ensure!(
-                    found.len() <= 64,
-                    "a chain of remote links reaches more than 64 workspaces"
-                );
-                queue.push_back(next);
-            }
-        }
-    }
-    Ok(found)
-}
-
-/// Lock this workspace and the given ones in sorted ID order, so no two writes wait for
-/// each other.
-pub(super) async fn lock_sorted(
-    client: &impl GenericClient,
-    own: &str,
-    others: &BTreeSet<String>,
-) -> Result<()> {
-    let mut all = others.clone();
-    all.insert(own.to_owned());
-    for id in &all {
-        client.execute(WORKSPACE_LOCK, &[id]).await?;
-    }
+/// Lock this workspace for the write.
+pub(super) async fn lock(client: &impl GenericClient, own: &str) -> Result<()> {
+    client.execute(WORKSPACE_LOCK, &[&own]).await?;
     Ok(())
 }
 

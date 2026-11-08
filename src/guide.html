@@ -18,9 +18,9 @@
 <h1>How it works</h1>
 <p>This is a suggested method. A tree connects product commitments, work and evidence. Choose the levels and questions that fit your workspace.</p>
 <div class="milestones" aria-label="Three separate milestones">
+<article class="milestone"><strong>Owner decided</strong><p>The owner gives a decision in the chat. The agent records it as a Source.</p></article>
 <article class="milestone"><strong>Work done</strong><p>A Task records what was changed.</p></article>
 <article class="milestone"><strong>Tests passed</strong><p>Every test of a criterion passes in its latest record.</p></article>
-<article class="milestone"><strong>Owner accepted</strong><p>The owner accepts the requirement and its green criteria.</p></article>
 </div>
 <nav class="guide-nav" aria-label="Guide sections"><a href="#workspaces">Workspaces</a><a href="#tree-levels">The tree</a><a href="#sources">Inbox and sources</a><a href="#agent-work">Working with agents</a><a href="#before-implementation">Before implementation</a><a href="#evidence">Evidence</a><a href="#worked-example">A complete example</a><a href="#revisions">Revisions &amp; setbacks</a></nav>
 <section id="workspaces"><h2>One workspace per product</h2>
@@ -46,7 +46,7 @@
 </div>
 <p>Open an object to read its linked work. The workspace schema selects the permitted task parents.</p>
 
-<p>The workspace schema defines the tree. One vertical applies everywhere: REQ → AC → Test, and a Task under the AC. Each type has a status rule: own, children, links or none. Owner acceptance is tracked separately.</p><p>Status circles show the current status. Each test is a node under its criterion. A test node is green when the latest record of its test passes, red when it fails, and grey when it has no record after the change. A criterion, a group or a requirement takes the highest tone of its children: red, orange, yellow, grey, green. A criterion without a test node is orange. A node that waits for a dependency is yellow. A node with the links rule takes its status from the objects that link to it. The workspace schema sets the list of status tones and their colours. An empty branch cannot be green. Task completion does not make a criterion green.</p></section>
+<p>The workspace schema defines the tree. One vertical applies everywhere: REQ → AC → Test, and a Task under the AC. Each type has a status rule: own, children, links or none. There is no manual acceptance: green Test nodes prove the criteria.</p><p>Status circles show the current status. Each test is a node under its criterion. A test node is green when the latest record of its test passes, red when it fails, and grey when it has no record after the change. A criterion, a group or a requirement takes the highest tone of its children: red, orange, yellow, grey, green. A criterion without a test node is orange. A node that waits for a dependency is yellow. A node with the links rule takes its status from the objects that link to it. The workspace schema sets the list of status tones and their colours. An empty branch cannot be green. Task completion does not make a criterion green.</p></section>
 <section id="sources"><h2>Inbox, sources and comments</h2>
 <p>Keep three items apart:</p>
 <ol class="gates">
@@ -65,16 +65,24 @@
 <p>Write requirements and tests together. Assign an owner who answers questions and reviews changes. Record decisions as Sources through MCP.</p>
 <p>Give the state of work in a typed field of the schema, such as stage. Ask a named person for missing information. Independent work can proceed while other work waits for a decision.</p></section>
 <section id="before-implementation"><h2>Before implementation</h2>
-<p>The agent reads the full node, its parent and the verbatim text of every linked Source. It also reads the existing mechanisms in the codebase and the Tech root. Then it scores each REQ and AC with the 11111 checklist:</p>
+<p>The Reviewer agent reads the full node, its parent and the verbatim text of every linked Source. It also reads the existing mechanisms in the codebase and the Tech root. Then it scores each REQ and AC with the 11111 checklist and gate 6, Reuse:</p>
 <ol class="gates">
 <li><strong>G, Grounded.</strong> Every condition, value, limit and branch appears in the Source text. Code and tests alone are not a Source. On 0: strip the text, or ask for the Source.</li>
 <li><strong>A, Atomic.</strong> One rule, or one cohesive schema. On 0: split the node.</li>
 <li><strong>U, Unambiguous.</strong> One reading and one implementation path. On 0: ask one closed question with concrete options.</li>
 <li><strong>M, Minimal.</strong> The node specifies the software, not manual duties, and adds nothing that an existing mechanism covers. On 0: strip, or ask.</li>
 <li><strong>V, Verifiable.</strong> A finite deterministic automated test proves Pass or Fail. On 0: rewrite and name the missing trigger or outcome.</li>
+<li><strong>R, Reuse.</strong> The node and its plan use the ready shared types, packages, libraries, helpers, modules and Tech contracts of the codebase. Search with the code graph index (codebase-memory, CBM) where it is connected. On 0: reuse what exists, or ask the owner to choose.</li>
 </ol>
-<p>Only a node that scores 11111 goes to implementation. The score is tied to the revisions of the node, its Sources and its dependencies. It does not replace the owner acceptance.</p>
-<p><strong>Reuse.</strong> Before the agent creates a Task, it searches the codebase for ready shared types, packages, libraries, helpers, modules and Tech contracts. A code graph index helps, where it is connected. The agent reuses what exists and writes no duplicate. Then it creates the Task under the AC.</p></section>
+<p>Only a node that scores 11111 and R goes to implementation. The score is tied to the revisions of the node, its Sources and its dependencies.</p>
+<p><strong>Two agents, one loop.</strong> The agent that writes a node never scores it. This is a process rule for agents.</p>
+<ol class="gates">
+<li><strong>Writer.</strong> The Writer agent talks with the owner in the chat. It records each decision as a Source and writes the REQ, the AC and the Test nodes.</li>
+<li><strong>Reviewer.</strong> An independent Reviewer agent with another alias checks 11111 and R.</li>
+<li><strong>HOLD.</strong> A gap in the Source, a fork or a conflict with an existing mechanism gives a HOLD. The Writer does not invent an answer. It asks the owner one closed question in the chat and updates the Source and the AC. The Reviewer checks 11111 and R again.</li>
+<li><strong>Pass.</strong> The Writer opens the Task on demand. The work ends with green Test nodes.</li>
+</ol>
+</section>
 <section id="evidence"><h2>What test results prove</h2>
 <p>A criterion lists the tests that prove it, by file and name. A member records the test results of each commit with joppa_record_results. Only these records decide the status. A completed Task alone proves nothing.</p>
 <p>Each test node needs a recorded result. A failed test makes the criterion red. A test without a result keeps it grey. One criterion can have several test nodes. A test that proves several criteria has one node under each.</p>
@@ -90,11 +98,11 @@
 <section id="worked-example"><h2>A suggested path from a requirement to a release</h2>
 <p>The example below follows one requirement. The agreed scope is iOS. Android and web require their own scope decision.</p>
 <ol class="journey">
-<li><h3>Agree on the behavior</h3><p><strong>REQ:</strong> A customer with an active subscription keeps paid access after signing in again. <strong>AC:</strong> On iOS, paid features are available after sign-in for that customer.</p><p>The owner decision is a Source, and the criterion names it. The owner confirms the requirement. The agent scores the criterion 11111 and finds reusable code. Then it creates two Tasks: the backend returns the subscription entitlement, and the iOS app refreshes access after sign-in.</p></li>
+<li><h3>Agree on the behavior</h3><p><strong>REQ:</strong> A customer with an active subscription keeps paid access after signing in again. <strong>AC:</strong> On iOS, paid features are available after sign-in for that customer.</p><p>The owner decision is a Source, and the criterion names it. The Reviewer agent scores the criterion 11111 and R and finds reusable code. Then it creates two Tasks: the backend returns the subscription entitlement, and the iOS app refreshes access after sign-in.</p></li>
 <li><h3>List the tests, then run them</h3><p>The agent saves the test list of the criterion. Both Tasks can be complete while the criterion is still grey: it waits for the recorded results.</p></li>
 <li><h3>Keep the failure and fix the cause</h3><p><span class="outcome fail">Failed</span> The backend reports an active subscription, but the app shows the purchase screen. The failed result stays in history.</p><p>The agent fixes the app. The agent runs every test again and records the results.</p></li>
-<li><h3>Verify, then ask the owner to accept</h3><p><span class="outcome pass">Passed</span> Every listed test passes in its latest record. The requirement is ready for acceptance. Agent confidence, Task completion and silence cannot take the place of this decision.</p></li>
-<li><h3>Check the next release on its own commit</h3><p>A later commit changes the backend. The agent runs the same tests again and records the results. A test that fails makes the criterion red again.</p><p>Before launch, compare the release commit with the commit of the test results. The <span class="brand-word">joppa<span>.</span></span> status shows only what the reports prove.</p></li>
+<li><h3>Verify with green Test nodes</h3><p><span class="outcome pass">Passed</span> Every listed test passes in its latest record. The criterion is green. Agent confidence, Task completion and silence cannot take the place of the recorded results.</p></li>
+<li><h3>Check the next release on its own commit</h3><p>A later commit changes the backend. The agent runs the same tests again and records the results. A test that fails makes the criterion red again.</p><p>Before a release, compare the release commit with the commit of the test results. The <span class="brand-word">joppa<span>.</span></span> status shows only what the reports prove.</p></li>
 </ol>
 </section>
 <section id="revisions"><h2>Changed wording needs fresh evidence</h2>
@@ -109,7 +117,7 @@
 <tr><th scope="row">The owner finds a defect</th><td>The owner records the reason. The agent adds a test that fails on the defect, then fixes it. Changed expected behavior needs new wording.</td></tr>
 <tr><th scope="row">Requirements or policy conflict</th><td>The agent records the specific question and the person who decides. The affected criterion waits. Independent criteria can continue.</td></tr>
 </tbody></table></div>
-<p>History keeps wording, reports and decisions with their authors and times. Acceptance records what the owner considered sufficient. It does not prove that every possible condition is known.</p>
+<p>History keeps wording, reports and decisions with their authors and times. Green tests do not prove that every possible condition is known.</p>
 </section>
 <a class="return-link" href="/">← Back to your workspace</a>
 <script>

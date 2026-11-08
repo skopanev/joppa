@@ -90,14 +90,11 @@ async fn link_state(
 /// Whether a blocking target is ready for the actor: every criterion at and below it is
 /// green, no node there waits for a local dependency, and each remote dependency that
 /// applies there is readable, present, at its pinned revision and ready too.
-/// A write passes the workspaces that it locked; a read passes None. A write that reaches
-/// a workspace outside its locks fails closed and asks for a retry.
 async fn target_ready(
     client: &impl GenericClient,
     actor: &str,
     workspace: &str,
     address: &str,
-    locked: Option<&BTreeSet<String>>,
 ) -> Result<bool> {
     let mut queue = VecDeque::from([(workspace.to_owned(), address.to_owned())]);
     let mut seen = BTreeSet::new();
@@ -117,10 +114,6 @@ async fn target_ready(
             .into_iter()
             .filter(|l| l.blocking)
         {
-            ensure!(
-                locked.is_none_or(|l| l.contains(&link.workspace)),
-                "the remote links changed during this write; send it again"
-            );
             match link_state(client, actor, &link).await? {
                 (_, Some(next)) => queue.push_back((link.workspace, next)),
                 (_, None) => return Ok(false),
@@ -135,12 +128,10 @@ pub(crate) async fn link_status(
     client: &impl GenericClient,
     actor: &str,
     link: &RemoteLink,
-    locked: Option<&BTreeSet<String>>,
 ) -> Result<Value> {
     let (mut status, target) = link_state(client, actor, link).await?;
     if let Some(address) = target {
-        status["satisfied"] =
-            json!(target_ready(client, actor, &link.workspace, &address, locked).await?);
+        status["satisfied"] = json!(target_ready(client, actor, &link.workspace, &address).await?);
     }
     Ok(status)
 }
@@ -161,7 +152,7 @@ pub(crate) async fn decorate(
     let mut review = false;
     for link in &stored.links {
         let mut item = json!(link);
-        item["status"] = link_status(client, actor, link, None).await?;
+        item["status"] = link_status(client, actor, link).await?;
         review |= item["status"]["review_required"] == true;
         out.push(item);
     }

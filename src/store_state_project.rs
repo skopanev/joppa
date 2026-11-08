@@ -101,11 +101,11 @@ pub(crate) async fn read_requirement(
     scope: &Scope,
 ) -> Result<Value> {
     let address = crate::objects::requirement_address(requested);
-    let row = client.query_opt("SELECT s.key,s.value::text,b.position,COALESCE(b.state->>'workspace_id',b.workspace),COALESCE(b.state->>'reference_prefix',b.workspace),(SELECT value::text FROM joppa.state_entries WHERE workspace=s.workspace AND section='summaries' AND key=s.key),b.launch::text FROM joppa.state_entries s JOIN joppa.board_cache b ON b.workspace=s.workspace WHERE s.workspace=$1 AND s.section='requirements' AND s.key IN ($2,$3) ORDER BY (s.key=$2) DESC LIMIT 1", &[&workspace,&requested,&address]).await?.with_context(|| format!("unknown requirement {requested}"))?;
+    let row = client.query_opt("SELECT s.key,s.value::text,b.position,COALESCE(b.state->>'workspace_id',b.workspace),COALESCE(b.state->>'reference_prefix',b.workspace),(SELECT value::text FROM joppa.state_entries WHERE workspace=s.workspace AND section='summaries' AND key=s.key) FROM joppa.state_entries s JOIN joppa.board_cache b ON b.workspace=s.workspace WHERE s.workspace=$1 AND s.section='requirements' AND s.key IN ($2,$3) ORDER BY (s.key=$2) DESC LIMIT 1", &[&workspace,&requested,&address]).await?.with_context(|| format!("unknown requirement {requested}"))?;
     let req: String = row.get(0);
     let q: crate::model::Requirement = serde_json::from_str(row.get(1))?;
     let current = q.revisions.last().context("requirement has no revisions")?;
-    let mut out = json!({"workspace":row.get::<_,String>(3),"position":row.get::<_,i64>(2),"launch":serde_json::from_str::<Value>(row.get(6))?,"requirement":{"id":req,"capability":q.capability,"revision_count":current.number,"current_revision":current.number}});
+    let mut out = json!({"workspace":row.get::<_,String>(3),"position":row.get::<_,i64>(2),"requirement":{"id":req,"capability":q.capability,"revision_count":current.number,"current_revision":current.number}});
     if scope.history && scope.revision.is_none() {
         return Ok(out);
     }

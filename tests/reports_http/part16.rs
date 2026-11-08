@@ -32,5 +32,3 @@ async fn mcp_read(w: &World, token: &str, tool: &str, arguments: Value) -> Resul
     read_result(tool, &mcp(w, token, tool, arguments).await?)
 }
 
-/// The refusal of an acceptance without passing records on the commit.
-const NEEDS: &str = "acceptance needs records on the commit where every test below passes";

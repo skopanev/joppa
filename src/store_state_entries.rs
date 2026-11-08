@@ -74,11 +74,6 @@ pub(crate) fn affected(
             }
         }
     }
-    for (key, acceptances) in &state.acceptances {
-        if previous.acceptances.get(key) != Some(acceptances) {
-            changed.insert(key.clone());
-        }
-    }
     for (key, t) in &state.task_process {
         if Some(serde_json::to_value(t)?)
             != previous

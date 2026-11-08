@@ -68,17 +68,6 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
                 .all(|t| !t.contains_key("intake") && !t.contains_key("point")),
             "incoming source types are removed; use Note"
         ),
-        Command::Accept(crate::commands::AcceptOp { req, .. }) => {
-            let r = w
-                .requirements
-                .get(req)
-                .and_then(|q| q.revisions.last())
-                .context("unknown REQ")?;
-            ensure!(
-                requirement_summary(w, req, r)["ready_for_acceptance"] == true,
-                "REQ has unverified ACs or an unmet dependency"
-            );
-        }
         Command::SetDomainArchived(crate::commands::SetDomainArchivedOp { id, .. }) => ensure!(
             !w.archived_objects.contains(&address("domain", id)),
             "restore the archived object before editing it"

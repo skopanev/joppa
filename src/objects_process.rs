@@ -21,14 +21,13 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
         });
     }
     if blocked || !w.objects.is_empty() && !work_ready(w, &requirement_address(req)) {
-        summary["ready_for_acceptance"] = json!(false);
-        summary["accepted"] = json!(false);
+        summary["verified"] = json!(false);
     }
     summary
 }
 
-/// The process facts of a node, the same for every type: the verdict of its checks, its
-/// acceptance, the address of its comments and the status of an inbox signal.
+/// The process facts of a node, the same for every type: the verdict of its checks,
+/// the address of its comments and the status of an inbox signal.
 pub fn process(w: &Workspace, key: &str) -> Value {
     let key = resolve_address(w, key);
     let Some(o) = w.objects.get(key) else {
@@ -41,10 +40,6 @@ pub fn process(w: &Workspace, key: &str) -> Value {
     let verdict = verification(w, key);
     if verdict != "unverified" {
         p["verification"] = json!(verdict);
-    }
-    let acceptance = crate::acceptance::current(w, key);
-    if !acceptance.is_null() {
-        p["acceptance"] = acceptance;
     }
     p
 }

@@ -27,9 +27,6 @@ pub struct Workspace {
     pub object_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub objects: BTreeMap<String, crate::objects::Object>,
-    /// Requirement acceptances per object, each on one revision and one commit.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub acceptances: BTreeMap<String, Vec<crate::acceptance::Acceptance>>,
     /// Owner redactions per object. The fragment itself stays only in the journal.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub redactions: BTreeMap<String, Vec<crate::redact::Redaction>>,
@@ -181,7 +178,9 @@ pub struct Revision {
     pub tasks: BTreeMap<String, Task>,
     pub runs: BTreeMap<String, Run>,
     pub issues: BTreeMap<String, Issue>,
-    pub acceptance: Option<Acceptance>,
+    /// The removed acceptance of an older journal: a read accepts it, and no write stores it.
+    #[serde(default, skip_serializing)]
+    pub acceptance: Option<Removed>,
     #[serde(default)]
     pub coverage_policy: bool,
     #[serde(default)]

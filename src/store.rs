@@ -65,7 +65,7 @@ use migrations::ensure_notes;
 
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "21";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "22";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]
@@ -174,7 +174,7 @@ pub use read_scope::{Scope, read};
 
 #[path = "store_items.rs"]
 mod items;
-pub use items::{gate, list, visible};
+pub use items::{list, visible};
 
 #[path = "search.rs"]
 pub mod search;

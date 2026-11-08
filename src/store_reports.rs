@@ -2,10 +2,6 @@
 use super::*;
 use crate::ac_tests::{Boundary, Listed, Report, TestResult, listed};
 
-#[path = "reports_acceptance.rs"]
-mod acceptance;
-pub use acceptance::check_acceptance;
-
 /// The stored test status of one node: a test node, or a node with test nodes below it.
 pub async fn test_status(pool: &Pool, workspace: &str, actor: &str, target: &str) -> Result<Value> {
     let conn = pool.get().await?;

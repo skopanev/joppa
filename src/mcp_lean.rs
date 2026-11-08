@@ -114,7 +114,7 @@ fn tree(reply: &mut Value, args: &Value) {
     );
     if let Some(types) = schema.get_mut("types").and_then(Value::as_object_mut) {
         for kind in types.values_mut() {
-            drop_value(kind, &["inbox", "launch_blocker", "root"], &json!(false));
+            drop_value(kind, &["inbox", "root"], &json!(false));
         }
     }
 }

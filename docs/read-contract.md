@@ -230,8 +230,8 @@ files, newest detach first, each with `removed: true` and `removed_at`.
 
 The tree gives `schema` with its `revision`; send it with `set_tree_schema`. There is no
 `current_revision`, no write header (`actor`, `at`, `position`, `reason`) and no
-`status_rules` copy: each type names its `status`. A type gives `inbox`, `root` and
-`launch_blocker` only when they are `true`. `workspace_key` shows only when the request named
+`status_rules` copy: each type names its `status`. A type gives `inbox` and `root` only when
+they are `true`. `workspace_key` shows only when the request named
 an alias of the workspace. `joppa_help` with a workspace and `section: "tree"` gives the same tree.
 
 ## Titles and texts

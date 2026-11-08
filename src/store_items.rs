@@ -1,4 +1,4 @@
-//! The workspace list and the launch gate.
+//! The workspace list.
 use super::*;
 
 /// The workspaces that the actor can read. A hidden one gives `"hidden": true`: MCP and the
@@ -33,11 +33,4 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
 pub fn visible(list: Value) -> Value {
     let items = list.as_array().into_iter().flatten();
     json!(items.filter(|w| w["hidden"] != true).collect::<Vec<_>>())
-}
-
-/// The release caller supplies the exact commit. An acceptance on another commit never
-/// authorizes this build.
-pub fn gate(card: &Value, commit: &str) -> Result<usize> {
-    let state: Workspace = serde_json::from_value(card["state"].clone())?;
-    crate::launch_gate::check(&state, commit)
 }

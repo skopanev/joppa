@@ -119,19 +119,8 @@ pub(crate) fn apply_inner(
             };
             crate::inbox::decide(w, actor, &decision, position, recorded_at)?;
         }
-        Command::AcceptCommit {
-            target,
-            revision,
-            commit,
-        } => crate::acceptance::accept(
-            w,
-            actor,
-            target,
-            *revision,
-            commit.as_deref(),
-            position,
-            recorded_at,
-        )?,
+        // A stored acceptance on a commit replays without effect: manual acceptance is gone.
+        Command::AcceptCommit { .. } => {}
         Command::RedactObject {
             target,
             fragment,

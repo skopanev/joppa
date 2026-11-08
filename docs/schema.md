@@ -54,7 +54,7 @@ current tree invalid. A member of the workspace configures the schema. The `/tre
 
 The role of a type gives its workflow. The type name does not.
 
-- `requirement`: specification revisions and owner acceptance.
+- `requirement`: specification revisions.
 - `ac`: a criterion in its nearest ancestor specification.
 - `group`, `document` and `task`: ordinary nodes.
 
@@ -163,7 +163,7 @@ values, at most 200: `[{"field": "tags", "values": [{"value": "swap", "list": tr
 A boolean field gives `false` and `true` first, then the texts in text order. `list` is true
 for an element of a list field. A choice filters with the `data` node filter:
 `{"tags": ["swap"]}` for a list element, `{"priority": "p0"}` for a string and
-`{"before_launch": true}` for a boolean. `/tree` lists the
+`{"mobile": true}` for a boolean. `/tree` lists the
 fields under Filter fields.
 
 ## Filter dimensions
@@ -240,5 +240,3 @@ A type with `process_fields` or a reference with `verification_subject` is refus
 
 The recommended recipe defines `ac.sources` (one or more Sources, required). A workspace can add
 other references, for example `ac.consumer` (one consumer, required) or `task.projects`.
-`launch_blocker: true` on a type makes its `before_launch` entries launch conditions.
-Check evidence and owner acceptance must cover each such entry.

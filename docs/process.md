@@ -3,15 +3,16 @@
 ## Who does what
 
 People and agents formulate REQ and ACs together. Every requirement has one
-owner responsible for its meaning and acceptance.
+owner responsible for its meaning.
 
 | Participant | Responsibility |
 |---|---|
-| REQ owner | Clarify wording, handle comments, obtain decisions and accept the result |
+| REQ owner | Clarify wording, handle comments and give decisions in the chat |
 | Business, executive, compliance or legal specialist | Define rules and scope within their authority; record decisions in the REQ card |
 | Tester or support | Report problems; identify what was checked and the observed result |
 | Developer | Implement work and resolve technical questions |
-| Agent | Help formulate REQ/ACs, organize work, run checks and ask for missing decisions |
+| Writer agent | Talk with the owner, write the Source, REQ, AC and Test nodes, and ask for missing decisions |
+| Reviewer agent | Score each REQ and AC that another agent wrote: 11111 and Reuse |
 
 Technical analysis is work, usually performed by an agent. The author of an Inbox item
 does not need to understand code, identify a build or estimate implementation. A
@@ -42,8 +43,8 @@ specific question with `note` and name the person who decides. A typed field,
 such as `stage`, gives the state of the AC. Independent ACs can continue.
 
 An OAuth-connected assistant acts as the signed-in user. That credential does
-not itself authorize a business decision. Confirm wording, accept results,
-record specialist decisions or submit manual evidence only on explicit user
+not itself authorize a business decision. Confirm wording, record owner and
+specialist decisions or submit manual evidence only on explicit user
 instruction. Unattended automation uses a separate agent or runner identity.
 
 ## Inbox items and Sources
@@ -68,15 +69,32 @@ After the work, the agent marks each entry with `joppa_history_mark`.
 
 Each REQ and AC passes three gates before code changes:
 
-1. **11111.** The agent scores the node against five rules: Grounded, Atomic, Unambiguous,
-   Minimal and Verifiable. Only a node with all five bits at 1 goes to implementation.
-   Each 0 gets a fix: STRIP, SPLIT, ASK_OPTIONS or REWRITE.
-2. **Reuse.** The agent searches the codebase and the Tech root for ready shared types,
-   packages, libraries, helpers, modules and contracts. It reuses them and writes no duplicates.
-3. **Task on demand.** The agent creates the Task under the AC directly before implementation.
-   The agent does not create Tasks while the tree is filled or agreed: the tree changes too fast.
+1. **11111.** The Reviewer agent scores the node against five rules: Grounded, Atomic,
+   Unambiguous, Minimal and Verifiable. Each 0 gets a fix: STRIP, SPLIT, ASK_OPTIONS or REWRITE.
+2. **Reuse (R).** The Reviewer agent searches the codebase and the Tech root for ready shared
+   types, packages, libraries, helpers, modules and contracts. It uses the code graph index
+   (codebase-memory, CBM) when it is connected. The Writer agent reuses them and writes no
+   duplicates.
+3. **Task on demand.** The Writer agent creates the Task under the AC directly before
+   implementation. It does not create Tasks while the tree is filled or agreed: the tree
+   changes too fast.
 
 See [before implementation](objects.md#before-implementation) for the full rules.
+
+## The feedback loop
+
+Two agents with different aliases do the work. The agent that writes a node never scores it.
+
+1. The owner gives a decision in the chat. The Writer agent records it as a Source.
+2. The Writer agent writes the REQ, the AC and the Test nodes from the Source.
+3. The independent Reviewer agent checks 11111 and Reuse (R).
+4. On a HOLD, the Writer agent does not invent an answer. A HOLD comes from a gap in the
+   Source, a fork, or a conflict with an existing mechanism. The Writer agent asks the owner
+   one closed question in the chat. Then it updates the Source and the AC.
+5. The Reviewer agent checks 11111 and R again.
+6. After a pass, the Writer agent opens the Task on demand. The work ends with green Test nodes.
+
+This is a process rule for agents. The server does not check the roles of the aliases.
 
 ## Three routes
 
@@ -86,9 +104,9 @@ See [before implementation](objects.md#before-implementation) for the full rules
    implementation work for a disputed AC before the decision. Independent
    ACs can proceed. Conditions of the decision, including review dates when
    relevant, belong in the REQ and ACs.
-3. **Support problem:** link an existing REQ. A confirmed defect invalidates the
-   affected result; resolution and a fresh successful run restore eligibility
-   for acceptance. A bug does not automatically create another requirement.
+3. **Support problem:** link an existing REQ. A confirmed defect gets a test that fails on
+   it. A fresh successful run makes the criterion green again. A bug does not automatically
+   create another requirement.
 
 ### When there is no suitable requirement
 
@@ -100,47 +118,39 @@ No REQ; behavior is undisputed  -> draft one and analyze work.
 Expected behavior is disputed  -> request a decision; affected work waits.
 ```
 
-Retrospective wording is easy to tailor to a convenient fix. Its owner accepts it
+Retrospective wording is easy to tailor to a convenient fix. Ground it in a Source
 as any other REQ. An incomplete tree must not prevent
 a new Inbox item. A new Inbox item does not prove that the tree is complete.
 
 ## Results
 
-Each REQ revision has its own state. Work availability, check results and owner
-acceptance are separate facts.
+Each REQ revision has its own state. Work availability and test results are separate facts.
 
 | Summary | Meaning |
 |---|---|
 | Awaiting analysis | No ACs have been specified |
-| N of M ACs verified | Checks support those conditions |
-| Ready for acceptance | All ACs passed on one subject; the owner must decide |
-| Accepted | The owner accepted that revision and its checked result |
+| N of M ACs green | Test records after the last change prove those conditions |
+| Green | Every AC is green |
 
-Silence is not approval. Only an owner acceptance approves a revision. A changed
-meaning needs a new revision and a new acceptance. A specialist's decision may be reused only when the REQ
-context and the relevant AC are unchanged. Cite it in the new analysis.
+Silence is not approval. The owner decision is a Source, and green Test nodes prove the
+criteria. There is no manual acceptance. A specialist's decision may be reused only when the
+REQ context and the relevant AC are unchanged. Cite it in the new analysis.
 
-## Acceptance
+## Changes
 
-After checks, the REQ owner accepts the result or comments in the card. The
-record identifies the author, time, revision and run. Acceptance never replaces
-a missing or failing check.
+Saving any REQ or AC wording change creates a new revision. Its ACs are grey until a newer
+test record arrives. Even a small edit needs fresh results. Earlier revisions keep their
+records.
 
-Saving any REQ or AC wording change creates a new revision. Its ACs are grey
-until a newer test record arrives, and it has no acceptance. Even a small edit
-needs fresh results. Earlier revisions keep their checks and acceptance.
-
-The agent compares code and tests with the new revision, changes them where
-needed and reruns every AC's checks. Reuse suitable implementation and tests,
-not their old results. The owner then accepts the new revision.
+The agent compares code and tests with the new revision, changes them where needed and
+reruns every AC's checks. Reuse suitable implementation and tests, not their old results.
 
 Corrections and withdrawn decisions append linked records. They never rewrite
 history; see [WORM](model.md#immutable-history--worm).
 
-People and agents can both miss a condition. Acceptance records what the owner
-considered sufficient then; it does not prove completeness. Discuss later gaps
-in the same card. Changed wording requires a new revision, fresh checks and
-fresh acceptance. Historical facts remain intact.
+People and agents can both miss a condition. Green tests do not prove that the criteria are
+complete. Discuss later gaps in the same card. Changed wording requires a new revision, an
+updated Source and fresh checks. Historical facts remain intact.
 
 ## Repositories and tasks
 

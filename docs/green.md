@@ -71,20 +71,14 @@ counting for the test nodes at and below it. Such a test is grey until a newer r
 
 Old records stay in the history. They are facts about the old text.
 
-## Acceptance
+## No manual acceptance
 
-`accept_commit {target, revision, commit}` records that a person accepts a node at one commit.
-Only the `data.owner` of the node accepts. An agent cannot accept a node.
-
-- The commit needs a record for every present test node at and below the node.
-- Every recorded case of these tests has an outcome in `green_if_all`.
-- With `reset_on_change`, only the records after the last reset of each test node count.
-
-Else the server refuses: `acceptance needs records on the commit where every test below passes`.
-A Task does not make a criterion green.
+There is no manual acceptance of a node. The owner gives a decision in the chat, and the agent
+records it as a Source. Green Test nodes prove the criteria. A Task does not make a criterion
+green.
 
 ## Limits
 
 A passing test can check the wrong thing or contain an empty assertion.
 A record cannot show that a test is sufficient. A person must review the tests.
-The criterion set can omit a significant condition. Acceptance does not prove that the set is complete.
+The criterion set can omit a significant condition. Green tests do not prove that the set is complete.

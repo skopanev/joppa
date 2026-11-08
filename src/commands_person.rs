@@ -137,7 +137,7 @@ pub fn rule_applies(w: &Workspace, rule: &str, position: u64) -> bool {
     !w.replaying || epoch_reached(w, rule, position)
 }
 
-/// The events that change only annotations, files, records, acceptances, priorities, members
+/// The events that change only annotations, files, records, priorities, members
 /// or workspace settings, or nothing.
 fn writes_no_document(command: &Command) -> bool {
     matches!(

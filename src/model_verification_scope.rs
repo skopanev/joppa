@@ -192,13 +192,6 @@ pub struct Issue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Acceptance {
-    pub run: String,
-    pub actor: String,
-    pub at: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Intake {
     pub said: String,
     pub author: String,

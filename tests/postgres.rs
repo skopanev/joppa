@@ -16,6 +16,7 @@ async fn execute(
     }
     store::execute(pool, ws, actor, id, &serde_json::from_value::<Command>(v)?).await
 }
+// ac:gate-checks-subject
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL (database name must start with joppa_test)"]
 async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> anyhow::Result<()> {
@@ -40,7 +41,8 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
     );
     common::seed(&pool, &ws, "owner", common::setup()).await?;
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
-    assert_eq!(before["launch"]["ready"], false);
+    // A read gives no launch summary: there is no launch gate.
+    assert!(before.get("launch").is_none(), "{before}");
     assert!(
         store::read(&pool, &ws, "outsider", &store::Scope::full())
             .await

@@ -113,7 +113,7 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         drop(client);
         let roots = read_objects(pool, workspace, actor, &ObjectScope::default()).await?;
         return Ok(
-            json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"owner":owner,"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"launch":first["launch"],"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
+            json!({"workspace":roots["workspace"],"position":roots["position"],"index":{"members":first["members"],"owner":owner,"types":first["object_types"],"objects":roots["items"],"next_cursor":roots["next_cursor"]},"reading":"Read an object and its children with joppa_objects. Read configured verification evidence with req or a copied item_id. Request revision=N for one older revision."}),
         );
     }
     if !scope.full {
@@ -161,13 +161,11 @@ pub async fn read(pool: &Pool, workspace: &str, actor: &str, scope: &Scope) -> R
         system_ids[&kind][&local] = json!(id);
     }
     let summaries = summaries(&state);
-    let launch = crate::objects::launch_summary(&state);
     let mut out = json!({
         "workspace": state.workspace_id.as_deref().unwrap_or(workspace),
         "system_ids": system_ids,
         "consumers": state.consumers,
         "position": events.len(),
-        "launch": launch,
     });
 
     if scope.full {

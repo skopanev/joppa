@@ -11,14 +11,16 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
     assert!(e.to_string().contains(error), "{command}: {e}");
 }
 
+// ac:acceptance-needs-green
 #[test]
-fn a_member_who_is_not_the_owner_cannot_accept() {
-    // who-may-accept-ac1
+fn a_live_acceptance_is_refused_with_the_replacement() {
     let mut w = World::new();
-    refused(
-        &mut w,
-        "legal",
+    for command in [
         json!({"op":"accept_commit","target":"requirement:r","revision":1,"commit":"c1c1c1c"}),
-        "only the owner of the node accepts",
-    );
+        json!({"op":"accept","req":"r","revision":1,"run":"run-1"}),
+    ] {
+        let op = command["op"].as_str().unwrap().to_owned();
+        refused(&mut w, "owner", command, &joppa::removed_ops::refusal(&op));
+    }
+    assert!(joppa::removed_ops::refusal("accept_commit").contains("as a Source"));
 }

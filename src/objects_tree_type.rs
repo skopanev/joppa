@@ -18,8 +18,10 @@ pub struct TreeType {
     /// of the older migrations gives the same schema revisions.
     #[serde(default, skip_serializing)]
     pub parent_gate: Option<crate::model::Removed>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub launch_blocker: Option<bool>,
+    /// The removed launch flag of an older journal: only its presence stays, so the replay of
+    /// the older migrations gives the same schema revisions.
+    #[serde(default, skip_serializing)]
+    pub launch_blocker: Option<crate::model::Removed>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

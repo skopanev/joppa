@@ -175,18 +175,16 @@ fn configured_inputs_process_without_a_note_name_and_reopen_on_edits() {
     );
 }
 
+// ac:gate-checks-subject
 #[test]
-fn launch_configuration_counts_blockers_and_can_disable_the_preset() {
+fn a_live_schema_with_launch_blocker_is_refused_with_its_replacement() {
     let mut w = World::new();
-    let baseline = objects::launch_summary(&w.state);
-    assert_eq!(baseline["blocker_count"], 1);
-    w.confirm();
-    // Only an accept_commit acceptance on a green record makes the launch ready.
-    assert_eq!(objects::launch_summary(&w.state)["ready"], false);
-    let mut types = objects::defaults();
-    types.get_mut("ac").unwrap().launch_blocker = Some(false);
-    w.ok("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Remove launch conditions from this type"}));
-    assert_eq!(objects::launch_summary(&w.state)["configured"], false);
+    let mut types = serde_json::to_value(objects::defaults()).unwrap();
+    types["ac"]["launch_blocker"] = json!(true);
+    let error = w
+        .apply("owner",json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Make criteria launch conditions"}))
+        .unwrap_err();
+    assert_eq!(error.to_string(), joppa::removed_ops::LAUNCH_BLOCKER);
 }
 
 fn archive_world() -> World {

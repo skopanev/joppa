@@ -1,14 +1,15 @@
 //! requirement:cli-commands and requirement:launch-gate, the administrative binary: its exact
-//! command list, the database commands as the given actor, and the launch gate on the commit
-//! of an acceptance.
+//! command list, the database commands as the given actor, and the refusal of the removed
+//! acceptance.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
 use joppa::store;
 use serde_json::{Value, json};
-use std::process::{Command, Output};
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "commands: check-journal | migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | gate WORKSPACE COMMIT | list";
+const USAGE: &str = "commands: check-journal | migrate | backfill-board | serve [PORT HOST] | command WORKSPACE REQUEST_ID | read WORKSPACE | list";
 
 /// Run the binary with these arguments, the database URL and, when given, the actor.
 fn joppa(url: &str, actor: Option<&str>, args: &[&str]) -> Result<Output> {
@@ -43,9 +44,9 @@ fn refused(url: &str, args: &[&str]) -> Result<String> {
     Ok(text(&out.stderr))
 }
 
-// cli-commands-list
+// ac:cli-command-list
 #[test]
-fn the_cli_names_exactly_its_8_commands() -> Result<()> {
+fn the_cli_names_exactly_its_7_commands() -> Result<()> {
     // Nothing listens on port 9, so the usage needs no database.
     let out = joppa("postgresql://nobody@127.0.0.1:9/none", None, &[])?;
     ensure!(!out.status.success(), "no arguments passed");
@@ -113,54 +114,55 @@ async fn check_journal_migrate_backfill_list_and_read_run_as_the_given_actor() -
     Ok(())
 }
 
-/// The current revision of an object, read through joppa_objects.
-async fn revision(w: &record_world::World, address: &str) -> Result<u64> {
-    let read = w.object(address).await?;
-    read["revision"]
-        .as_u64()
-        .with_context(|| format!("no revision: {read}"))
+/// Run `command WORKSPACE REQUEST_ID` as the owner with `input` on the standard input.
+fn command(url: &str, ws: &str, input: &Value) -> Result<Output> {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_joppa"))
+        .args(["command", ws, &uuid::Uuid::new_v4().to_string()])
+        .env("JOPPA_DATABASE_URL", url)
+        .env("JOPPA_ACTOR", "owner")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .context("stdin")?
+        .write_all(input.to_string().as_bytes())?;
+    Ok(child.wait_with_output()?)
 }
 
-async fn command(w: &record_world::World, command: Value) -> Result<Value> {
-    w.command(&w.owner, command.clone())
-        .await?
-        .map_err(|e| anyhow::anyhow!("{command}: {e}"))
-}
-
-// launch-gate-commit
+// ac:acceptance-needs-green
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_gate_passes_only_on_the_accepted_commit() -> Result<()> {
+async fn the_cli_refuses_an_acceptance_with_the_replacement() -> Result<()> {
     let test = "tests/x.rs > t";
     let w = record_world::world(&[test]).await?;
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
-    let tree = w
-        .mcp(&w.owner, "joppa_tree", json!({}))
-        .await?
-        .map_err(|e| anyhow::anyhow!("joppa_tree: {e}"))?;
-    command(&w, json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Make criteria launch conditions",
-        "put_types":{"ac":{"title":"Criteria","role":"ac","status":"children","root":false,"parents":["requirement"],"launch_blocker":true}}})).await?;
-    let ac = revision(&w, record_world::A).await?;
-    command(&w, json!({"op":"save_object","kind":"ac","id":"a","revision":ac,"parent":"requirement:r",
-        "data":{"title":"A","owner":"owner","before_launch":true},"reason":"Require A before launch"})).await?;
-    let ws = w.ws.as_str();
-    let usage = refused(&url, &["gate", ws])?;
-    ensure!(usage.contains("gate WORKSPACE COMMIT"), "{usage}");
-    let before = refused(&url, &["gate", ws, "c1c1c1c"])?;
-    ensure!(before.contains("has no acceptance on a commit"), "{before}");
     w.recorded("c1c1c1c", json!([{"test":test,"status":"pass"}]))
         .await?;
-    let requirement = revision(&w, "requirement:r").await?;
-    command(&w, json!({"op":"accept_commit","target":"requirement:r","revision":requirement,"commit":"c1c1c1c"})).await?;
-    let passed = ok(&url, &["gate", ws, "c1c1c1c"])?;
+    let read = w.object("requirement:r").await?;
+    let revision = read["revision"].as_u64().context("revision")?;
+    let ws = w.ws.as_str();
+    for input in [
+        json!({"op":"accept_commit","target":"requirement:r","revision":revision,"commit":"c1c1c1c"}),
+        json!({"op":"accept","req":"r","revision":revision,"run":"run-1"}),
+    ] {
+        let out = command(&url, ws, &input)?;
+        let error = text(&out.stderr);
+        ensure!(
+            !out.status.success() && error.contains("manual acceptance is gone"),
+            "{input}: {error}"
+        );
+    }
     ensure!(
-        passed.contains("1 launch conditions accepted on commit c1c1c1c"),
-        "{passed}"
+        w.object("requirement:r").await?["process"]
+            .get("acceptance")
+            .is_none(),
+        "the CLI accepted"
     );
-    let other = refused(&url, &["gate", ws, "c2c2c2c"])?;
-    ensure!(
-        other.contains("accepted on commit c1c1c1c, not c2c2c2c"),
-        "{other}"
-    );
+    // The CLI has no gate command.
+    let gate = refused(&url, &["gate", ws, "c1c1c1c"])?;
+    ensure!(gate.contains(USAGE), "{gate}");
     Ok(())
 }

@@ -58,8 +58,5 @@ the object has none. Each link has `workspace` (name or ID; the server stores th
 - Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
 - An empty `links` list removes the remote links of the object.
 
-An acceptance checks this wait with the access of the writer. It locks
-every workspace that a chain of blocking remote links reaches, in sorted ID order. A write that
-reaches a workspace outside its locks fails and asks for a retry.
 `workspace_key` in joppa_tree is the immutable ID of the workspace. joppa_tree gives it only
 when the request named an alias of the workspace.

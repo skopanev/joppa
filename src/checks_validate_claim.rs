@@ -82,18 +82,9 @@ pub fn apply(
         }
         Command::Result(crate::commands::ResultOp { .. }) => apply_result(w, actor, cmd)?,
         Command::Finish(crate::commands::FinishOp { .. }) => apply_finish(w, actor, cmd, position)?,
-        Command::Accept(crate::commands::AcceptOp { .. }) => apply_accept(w, actor, cmd, position)?,
-        Command::Revoke(crate::commands::RevokeOp {
-            req,
-            revision: n,
-            reason,
-        }) => {
-            nonempty(reason)?;
-            let r = revision(w, req, *n, true)?;
-            ensure!(r.owner == actor, "only owner revokes acceptance");
-            ensure!(r.acceptance.is_some(), "no acceptance to revoke");
-            r.acceptance = None;
-        }
+        // A stored acceptance and its revocation replay without effect: manual acceptance is gone.
+        Command::Accept(crate::commands::AcceptOp { .. })
+        | Command::Revoke(crate::commands::RevokeOp { .. }) => {}
         Command::Issue(crate::commands::IssueOp { .. }) => apply_issue(w, actor, cmd, position)?,
         Command::Resolve(crate::commands::ResolveOp { .. }) => {
             apply_resolve(w, actor, cmd, position)?
