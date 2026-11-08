@@ -5,8 +5,8 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 /// The data fields of every example: the title, the text and the owner. Reference, required
-/// and own typed fields of the type follow. A computed typed field is left out: a save
-/// refuses it.
+/// and own typed fields of the type follow. A computed typed field or reference is left out:
+/// a save refuses it.
 const DATA_FIELDS: [&str; 3] = ["title", "body", "owner"];
 
 fn placeholder(field: &str, limit: usize) -> Value {
@@ -52,7 +52,7 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
         for (field, rule) in t.fields.iter().filter(|(_, r)| r.source() == "own") {
             data.insert(field.clone(), typed(rule));
         }
-        for (field, rule) in &t.references {
+        for (field, rule) in t.references.iter().filter(|(_, r)| r.from.is_none()) {
             let target = format!("<{}:id>", rule.target);
             data.insert(
                 field.clone(),

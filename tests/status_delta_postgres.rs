@@ -1,18 +1,19 @@
 //! requirement:precomputed-status-reads: a write recomputes the status of the nodes that it
-//! reaches only, and after each write the stored statuses equal a full rebuild.
+//! reaches only, and after each write the stored statuses and computed values equal a full
+//! rebuild.
 use anyhow::{Result, ensure};
 use joppa::{probe, store};
 use serde_json::{Value, json};
 
-type Rows = Vec<(String, Option<String>, Option<String>)>;
+type Rows = Vec<(String, Option<String>, Option<String>, Option<String>)>;
 
-/// The stored status of each object of the workspace.
+/// The stored status and computed values of each object of the workspace.
 async fn rows(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Rows> {
-    let sql = "SELECT address,test_status::text,rollup::text FROM joppa.objects WHERE workspace=$1 ORDER BY address";
+    let sql = "SELECT address,test_status::text,rollup::text,computed::text FROM joppa.objects WHERE workspace=$1 ORDER BY address";
     let rows = pool.get().await?.query(sql, &[&ws]).await?;
     Ok(rows
         .iter()
-        .map(|r| (r.get(0), r.get(1), r.get(2)))
+        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
         .collect())
 }
 
@@ -68,15 +69,19 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
     };
     let test = |id: &str, parent: &str| {
         json!({"op":"save_object","kind":"test","id":id,"revision":0,
-        "parent":parent,"data":{"title":format!("tests/x.rs > {id}"),"owner":"owner"},"reason":"Bind"})
+        "parent":parent,"data":{"title":format!("tests/x.rs > {id}"),"owner":"owner","tags":[id]},"reason":"Bind"})
     };
     let pass =
         |id: &str, status: &str| json!({"test":format!("tests/x.rs > {id}"),"status":status});
     let tree = store::tree_schema(pool, ws, "owner", None).await?;
+    // The union fields: test tags climb to the criteria and the requirements, and area
+    // references of the criteria climb to the requirements.
+    let union = json!({"tags":{"type":"list","from":"children"}});
+    let refs = |from: Option<&str>| json!({"refs":{"target":"area","title":"Areas","multiple":true,"from":from}});
     step(pool, ws, "schema", true, write(json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[]},
-        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
-        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400},
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","root":true,"parents":[],"fields":union,"references":refs(Some("children"))},
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"],"fields":union,"references":refs(None)},
+        "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400,"fields":{"tags":{"type":"list"}}},
         "area":{"title":"Areas","role":"document","status":"links","root":true,"parents":[]}}}))).await?;
     let none = json!([]);
     for (id, kind, parent) in [
@@ -132,10 +137,10 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
     )
     .await?;
     let move_a = json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r2",
-        "data":{"title":"a","owner":"owner","body":"The rule"},"links":[{"target":"area:x","relation":"related"}],"reason":"Move"});
+        "data":{"title":"a","owner":"owner","body":"The rule","refs":["x"]},"links":[{"target":"area:x","relation":"related"}],"reason":"Move"});
     step(pool, ws, "move and link", false, write(move_a)).await?;
     let depend = json!({"op":"save_object","kind":"ac","id":"b","revision":1,"parent":"requirement:r",
-        "data":{"title":"b","owner":"owner","body":"The rule"},"links":[{"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Depend"});
+        "data":{"title":"b","owner":"owner","body":"The rule","refs":["area:x"]},"links":[{"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Depend"});
     step(pool, ws, "a dependency", false, write(depend)).await?;
     step(
         pool,

@@ -31,6 +31,7 @@ fn rule() -> ReferenceRule {
         multiple: false,
         verification_subject: None,
         allow_all: false,
+        from: None,
     }
 }
 

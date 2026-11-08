@@ -24,6 +24,10 @@ pub(crate) fn targets_of(
         .context("unknown object type")?;
     let mut targets = vec![];
     for (field, rule) in &t.references {
+        // A computed reference has no own value: a stored value from before the rule is unread.
+        if rule.from.is_some() {
+            continue;
+        }
         // The explicit value all names every object of the target type.
         if rule.allow_all && data.get(field).and_then(Value::as_str) == Some("all") {
             continue;

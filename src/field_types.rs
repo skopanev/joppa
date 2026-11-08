@@ -34,7 +34,8 @@ impl FieldType {
 }
 
 /// Refuse a rule with an unknown type, an enum without values, values on another type, an
-/// unknown source, or children or links on a field that is not an enum.
+/// unknown source, links on a field that is not an enum, or children on a field that is not
+/// an enum or a list.
 pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
     let name = field.chars().next().is_some_and(|c| c.is_ascii_lowercase())
         && field.len() <= 32
@@ -65,9 +66,10 @@ pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
         SOURCES.contains(&rule.source()),
         "{field}: from is own, children, links or parent"
     );
+    let list_children = rule.kind == "list" && rule.source() == "children";
     ensure!(
-        !matches!(rule.source(), "children" | "links") || rule.kind == "enum",
-        "{field}: only an enum field takes its value from children or links"
+        !matches!(rule.source(), "children" | "links") || rule.kind == "enum" || list_children,
+        "{field}: only an enum field takes its value from children or links, and a list field from children"
     );
     Ok(())
 }

@@ -46,6 +46,7 @@ async fn configured_references_drive_the_index_without_rewriting_history() -> Re
             multiple: true,
             verification_subject: None,
             allow_all: false,
+            from: None,
         },
     )]
     .into();

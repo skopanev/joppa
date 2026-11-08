@@ -76,6 +76,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     multiple: true,
                     verification_subject: None,
                     allow_all: false,
+                    from: None,
                 },
             );
         }
@@ -91,6 +92,7 @@ pub fn schema_migration_defaults() -> BTreeMap<String, TreeType> {
                     // inside the verification subject.
                     verification_subject: Some(true),
                     allow_all: false,
+                    from: None,
                 },
             );
             t.parent_decision = true;

@@ -1,5 +1,6 @@
 Read joppa_tree for the workspace types, parents, references, questions, status rules and typed fields. Use those rules for the current workspace.
 A typed field (fields.<name>) has type, values and from. The order of values is the rollup priority: the first value wins. from own: the node stores the value. from children, links or parent: the server computes and stores it, a read gives it in data, and a save that sends it is refused.
+A list field or a multiple reference with from children gives the sorted union of the values of the children, each value once.
 Use joppa_objects to find and read current objects. Read one historical revision only when needed. Use joppa_search to find related work.
 Read joppa_help with op for the operation you need.
 Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.

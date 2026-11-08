@@ -16,6 +16,7 @@ The recommended recipe below has two verticals and two document types. The owner
   empty only for a manual check, which attaches its evidence with `joppa_attach`.
 - `inbox`: a raw incoming signal before analysis. `source`: an owner decision, a specification
   or an external standard with a fixed version. Each AC names its Sources in `sources`.
+  `requirement`, `capability`, `domain` and `tech` compute `sources` from their children.
 
 ```json
 {
@@ -23,11 +24,15 @@ The recommended recipe below has two verticals and two document types. The owner
   "revision": 0,
   "reason": "Apply the recommended tree",
   "types": {
-    "domain": {"title": "Domain", "badge": "DOM", "role": "group", "root": true, "parents": [], "status": "children"},
-    "capability": {"title": "Capability", "badge": "CAP", "role": "group", "root": false, "parents": ["domain"], "status": "children"},
+    "domain": {"title": "Domain", "badge": "DOM", "role": "group", "root": true, "parents": [], "status": "children",
+      "references": {"sources": {"target": "source", "title": "Sources", "multiple": true, "from": "children"}}},
+    "capability": {"title": "Capability", "badge": "CAP", "role": "group", "root": false, "parents": ["domain"], "status": "children",
+      "references": {"sources": {"target": "source", "title": "Sources", "multiple": true, "from": "children"}}},
     "tech": {"title": "Tech", "badge": "TECH", "role": "group", "root": true, "status": "children", "parents": [], "color": "#3f7f8c", "title_size": 17,
-      "question": "Which shared technical area (API, Database, Integrations, Platform, Security, Infra) does this root own?"},
-    "requirement": {"title": "Requirement", "badge": "REQ", "role": "requirement", "root": false, "parents": ["capability", "tech"], "status": "children"},
+      "question": "Which shared technical area (API, Database, Integrations, Platform, Security, Infra) does this root own?",
+      "references": {"sources": {"target": "source", "title": "Sources", "multiple": true, "from": "children"}}},
+    "requirement": {"title": "Requirement", "badge": "REQ", "role": "requirement", "root": false, "parents": ["capability", "tech"], "status": "children",
+      "references": {"sources": {"target": "source", "title": "Sources", "multiple": true, "from": "children"}}},
     "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children",
       "references": {"sources": {"target": "source", "title": "Sources", "required": true, "multiple": true}}},
     "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac"], "status": "own", "title_max_length": 400,
@@ -114,16 +119,25 @@ Set `fields` on a type to give a data field its type:
 `from` sets the source of the value of a typed field. The default is `own`: the node stores it.
 
 ```json
-{"task": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"]}}},
+{"task": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"]},
+   "tags": {"type": "list"}}},
  "bug": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"], "from": "links"}}},
- "ac": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"], "from": "children"}}}}
+ "ac": {"fields": {"stage": {"type": "enum", "values": ["in_progress", "review", "todo", "done"], "from": "children"},
+   "tags": {"type": "list", "from": "children"}}}}
 ```
 
-- `children`: the value of the present children that comes first in `values`.
+With tasks `["web", "api"]` and `["api", "ios"]` under it, the AC gives `"tags": ["api", "ios", "web"]`.
+
+- `children` on an enum field: the value of the present children that comes first in `values`.
+- `children` on a list field: the sorted union of the values of the present children. Each
+  value occurs once. A child gives its own value or its computed value, so the union climbs
+  from level to level. A list with `values` keeps only the values that it names. Without a
+  value in the children, the field has no value.
 - `links`: the own value of the present nodes that link to the node or that it links to, the
   one that comes first in `values`. Any number of links counts.
 - `parent`: the value of the nearest ancestor that has one.
-- Only an enum field takes `children` or `links`. A value that `values` does not name counts not.
+- An enum field takes `children` or `links`. A list field takes `children`. Another field
+  takes only `own` or `parent`. A value that `values` does not name counts not.
 - `links` reads only own values, and `children` skips the children of the `parent` rule. So the
   values have no cycle.
 - Each write that changes a node, its parent, its children or its links recomputes the values
@@ -244,9 +258,26 @@ A result field has no `board` or `applies`: `set_tree_schema` refuses them with
 - `target` names a configured type, or `"*"` for any type. A wildcard needs full addresses.
 - `multiple: true` takes an array of addresses. `required: true` refuses a missing or empty value.
 - Duplicates and missing targets are refused. References change no parent, no readiness and no tone.
+- `from: "children"` makes a computed reference. Its value is the sorted union of the
+  addresses of the same field in the present children, each address once. A child gives its
+  own or its computed value, so the addresses climb from level to level. The server sets the
+  value, and a save that sends it is refused:
+  `sources is computed from children and cannot be set on requirement`.
+- A computed reference needs `multiple: true`. `set_tree_schema` refuses `required: true` or
+  `allow_all: true` with it, because no save sets the value. It also refuses another `from`
+  and a typed field with the same name.
+- A read gives the addresses in `data` and their titles in `references`. The `data` filter
+  matches them, for example `{"sources": ["source:s3"]}`.
+
+```json
+{"requirement": {"references": {"sources": {"target": "source", "title": "Sources",
+  "multiple": true, "from": "children"}}}}
+```
 
 A type with `process_fields` or a reference with `verification_subject` is refused:
 `process_fields and verification_subject were removed; every node shows its process facts, and a reference changes no Task scope`.
 
-The recommended recipe defines `ac.sources` (one or more Sources, required). A workspace can add
+The recommended recipe defines `ac.sources` (one or more Sources, required). The types
+`requirement`, `capability`, `domain` and `tech` compute `sources` from their children, so
+each root gives the Sources of all criteria below it. A workspace can add
 other references, for example `ac.consumer` (one consumer, required) or `task.projects`.

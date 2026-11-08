@@ -25,6 +25,7 @@ fn rule(target: &str, multiple: bool, required: bool) -> ReferenceRule {
         required,
         verification_subject: None,
         allow_all: false,
+        from: None,
     }
 }
 

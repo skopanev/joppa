@@ -110,6 +110,7 @@ pub fn set_schema(
         for (field, rule) in &t.references {
             commands::identifier(field)?;
             commands::nonempty(&rule.title)?;
+            rule.validate_from(field, t)?;
             ensure!(
                 rule.target == "*" || types.contains_key(&rule.target),
                 "unknown reference target type"

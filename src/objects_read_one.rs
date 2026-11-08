@@ -1,4 +1,5 @@
-//! The read of one object by its address.
+//! The read of one object by its address. Its references give the own and the computed
+//! reference values with the titles of their objects.
 use super::*;
 
 /// One object by its address, at its current or an older revision.
@@ -84,11 +85,19 @@ pub(super) async fn read_one(
             item
         })
         .collect();
-    let references: Vec<Value> = if n == current as u32 {
+    let mut references: Vec<Value> = if n == current as u32 {
         conn.query("SELECT l.target,l.relation,o.title,o.revision,o.present FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.target WHERE l.workspace=$1 AND l.source=$2 AND l.relation LIKE 'reference:%' ORDER BY l.relation,l.target", &[&workspace,&key]).await?.iter().map(|r| json!({"target":r.get::<_,String>(0),"field":r.get::<_,String>(1).strip_prefix("reference:").unwrap(),"title":r.get::<_,String>(2),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)})).collect()
     } else {
         vec![]
     };
+    if n == current as u32 {
+        let kind = row.get::<_, String>(0);
+        references.extend(computed_references(conn, &workspace, &kind, &document).await?);
+        references.sort_by(|a, b| {
+            (a["field"].as_str(), a["target"].as_str())
+                .cmp(&(b["field"].as_str(), b["target"].as_str()))
+        });
+    }
     // The incoming links come as counts by group; a group read gives them in pages.
     let link_groups = if n == current as u32 {
         super::link_groups::groups(&*conn, &workspace, &key).await?
@@ -150,4 +159,42 @@ pub(super) async fn read_one(
         }
     }
     Ok(item)
+}
+
+/// The items of the references of `kind` with `from` children: each address of the computed
+/// value in `document` with the title of its object, as the own references give them.
+async fn computed_references(
+    conn: &tokio_postgres::Transaction<'_>,
+    workspace: &str,
+    kind: &str,
+    document: &Value,
+) -> Result<Vec<Value>> {
+    let sql = "SELECT (value->'types'->$2->'references')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1";
+    let rules = conn.query_opt(sql, &[&workspace, &kind]).await?;
+    let rules: Option<String> = rules.and_then(|r| r.get(0));
+    let rules: Value = serde_json::from_str(rules.as_deref().unwrap_or("null"))?;
+    let mut wanted: Vec<(String, String)> = vec![];
+    for (field, _) in rules
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, r)| r["from"].is_string())
+    {
+        for target in document["data"][field].as_array().into_iter().flatten() {
+            wanted.extend(target.as_str().map(|t| (field.clone(), t.to_owned())));
+        }
+    }
+    if wanted.is_empty() {
+        return Ok(vec![]);
+    }
+    let targets: Vec<&String> = wanted.iter().map(|(_, t)| t).collect();
+    let sql = "SELECT address,title,revision,present FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)";
+    let found: std::collections::BTreeMap<String, Value> = conn.query(sql, &[&workspace, &targets]).await?.iter().map(|r| (r.get(0), json!({"title":r.get::<_,String>(1),"current_revision":r.get::<_,i32>(2),"present":r.get::<_,bool>(3)}))).collect();
+    let items = wanted.into_iter().filter_map(|(field, target)| {
+        let mut item = found.get(&target)?.clone();
+        item["target"] = json!(target);
+        item["field"] = json!(field);
+        Some(item)
+    });
+    Ok(items.collect())
 }
