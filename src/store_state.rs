@@ -12,3 +12,6 @@ pub(crate) use project::*;
 #[path = "store_state_full.rs"]
 mod full;
 pub(crate) use full::*;
+#[path = "store_state_diff.rs"]
+mod diff;
+pub(crate) use diff::*;

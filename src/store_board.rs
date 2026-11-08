@@ -25,8 +25,22 @@ pub(super) async fn project_current(
     position: u64,
     previous: Option<&Workspace>,
 ) -> Result<()> {
-    super::state_rows::project(client, workspace, state, previous).await?;
     let selected = super::state_rows::affected(state, previous)?;
+    let at = (events, position);
+    project_selected(client, workspace, state, at, previous, selected).await
+}
+
+/// `project_current` with the objects that the write reaches (`state_rows::affected`), which
+/// the caller has computed already.
+pub(super) async fn project_selected(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    (events, position): (&[Event], u64),
+    previous: Option<&Workspace>,
+    selected: Option<std::collections::BTreeSet<String>>,
+) -> Result<()> {
+    super::state_rows::project(client, workspace, state, previous).await?;
     let summary = super::state_rows::changed_summaries(state, selected.as_ref());
     if let Some(summaries) = summary.as_object() {
         let rows: Vec<Value> = summaries

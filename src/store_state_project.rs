@@ -8,20 +8,15 @@ pub(crate) async fn project(
     state: &Workspace,
     previous: Option<&Workspace>,
 ) -> Result<()> {
-    let current = entries(state)?;
-    let previous_entries = previous.map(entries).transpose()?.unwrap_or_default();
-    let changed: Vec<Value> = current
+    let (changed, removed) = changed_entries(state, previous)?;
+    let changed: Vec<Value> = changed
         .iter()
-        .filter(|(key, value)| previous_entries.get(*key) != Some(*value))
         .map(|((section, key), value)| json!({"section":section,"key":key,"value":value}))
         .collect();
     if !changed.is_empty() {
         client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value,kind,compact) SELECT $1,x.section,x.key,COALESCE(x.value,'null'::jsonb),CASE WHEN x.section='objects' THEN x.value->>'kind' END,CASE WHEN x.section='objects' THEN jsonb_set(x.value,'{revisions,0,data}',(x.value->'revisions'->0->'data')-'body'-'description') END FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value,kind=EXCLUDED.kind,compact=EXCLUDED.compact", &[&workspace,&json!(changed).to_string()]).await?;
     }
-    for (section, key) in previous_entries
-        .keys()
-        .filter(|key| !current.contains_key(*key))
-    {
+    for (section, key) in &removed {
         client
             .execute(
                 "DELETE FROM joppa.state_entries WHERE workspace=$1 AND section=$2 AND key=$3",
@@ -32,13 +27,11 @@ pub(crate) async fn project(
     let mut revisions = vec![];
     for (key, q) in &state.requirements {
         for r in &q.revisions {
-            let value = serde_json::to_value(r)?;
             let old = previous
                 .and_then(|p| p.requirements.get(key))
-                .and_then(|q| q.revisions.iter().find(|old| old.number == r.number))
-                .map(serde_json::to_value)
-                .transpose()?;
-            if old.as_ref() != Some(&value) {
+                .and_then(|q| q.revisions.iter().find(|old| old.number == r.number));
+            if differs(r, old)? {
+                let value = serde_json::to_value(r)?;
                 revisions.push(
                     json!({"section":"requirements","key":key,"revision":r.number,"value":value}),
                 );

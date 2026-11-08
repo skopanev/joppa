@@ -2,7 +2,7 @@
 use super::*;
 
 /// Всё, что человек навесил на объект сверх его собственных полей.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 pub struct Notes {
     /// Пояснение к объекту. Для домена, капабилити и AC описание живёт в
     /// самом объекте — оно версионируется вместе с ним; сюда попадает
@@ -15,7 +15,7 @@ pub struct Notes {
     pub attachments: BTreeMap<String, Attachment>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Note {
     pub actor: String,
     /// The alias of the event that wrote the comment.
@@ -33,7 +33,7 @@ pub struct Note {
 /// Вложение: здесь только про файл, самого файла здесь нет.
 ///
 /// Байты лежат в Spaces под workspaces/<воркспейс>/<отпечаток> — см. src/spaces.rs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Attachment {
     pub name: String,
     pub content_type: String,

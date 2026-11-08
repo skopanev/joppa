@@ -27,21 +27,32 @@ pub(crate) async fn current(
     };
     let mut value = serde_json::to_value(Workspace::default())?;
     let mut unloaded = std::collections::BTreeSet::new();
+    // An object row becomes its object at once, without a JSON value of the whole workspace.
+    let mut objects = std::collections::BTreeMap::new();
     for row in client.query("SELECT s.section,s.key,(CASE WHEN s.section='objects' AND b.first_view->'object_types'->s.kind->>'inbox'='true' AND b.first_view->'object_types'->s.kind->>'role' IN ('group','document') THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,(s.section='objects' AND b.first_view->'object_types'->s.kind->>'inbox'='true' AND b.first_view->'object_types'->s.kind->>'role' IN ('group','document')) FROM joppa.state_entries s JOIN joppa.board_cache b ON b.workspace=s.workspace WHERE s.workspace=$1 ORDER BY s.section,s.key", &[&workspace]).await? {
         let section: String = row.get(0);
         let key: String = row.get(1);
+        if row.get::<_, Option<bool>>(3) == Some(true) {
+            unloaded.insert(key.clone());
+        }
+        if section == "objects" {
+            objects.insert(key, serde_json::from_str(row.get(2))?);
+            continue;
+        }
         let entry: Value = serde_json::from_str(row.get(2))?;
-        if row.get::<_,Option<bool>>(3) == Some(true) { unloaded.insert(key.clone()); }
         if section == "meta" {
             for (key, value_entry) in entry.as_object().unwrap() {
                 value[key] = value_entry.clone();
             }
         } else {
-            if !value[&section].is_object() { value[&section] = json!({}); }
+            if !value[&section].is_object() {
+                value[&section] = json!({});
+            }
             value[&section][key] = entry;
         }
     }
     let mut state: Workspace = serde_json::from_value(value)?;
+    state.objects = objects;
     state.unloaded_objects = unloaded;
     ensure!(
         !state.admin.is_empty(),

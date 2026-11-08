@@ -6,8 +6,11 @@ mod protocol;
 mod web;
 mod web_auth;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    joppa::runtime::build()?.block_on(run())
+}
+
+async fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let pool = store::pool(
         &std::env::var("JOPPA_DATABASE_URL").unwrap_or_else(|_| store::DEFAULT_URL.into()),

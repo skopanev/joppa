@@ -82,7 +82,8 @@ pub(super) async fn remove(
         }];
         let selected = state_rows::affected(&state, Some(&previous))?;
         search::project(client, id, &state, position, selected.as_ref()).await?;
-        board::project_current(client, id, &state, &events, position, Some(&previous)).await?;
+        let at = (events.as_slice(), position);
+        board::project_selected(client, id, &state, at, Some(&previous), selected).await?;
     }
     Ok(changed)
 }

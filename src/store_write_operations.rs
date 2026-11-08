@@ -100,7 +100,7 @@ pub(crate) async fn write(
                 let payload = serde_json::to_string(&command)?;
                 let recorded_at:String=tx.query_one("WITH context AS MATERIALIZED (SELECT set_config('joppa.reference_prefix',$6,true)) INSERT INTO joppa.events(workspace,position,actor,request_id,command,alias) SELECT $1,$2,$3,$4,$5::text::jsonb,$7 FROM context RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&event_request,&payload,&state.reference_prefix.as_deref().unwrap_or(&workspace),&alias]).await?.get(0);
                 state.alias = alias.clone();
-                commands::apply(&mut state, actor, &command, position, &recorded_at)?;
+                commands::apply_checked(&mut state, actor, &command, position, &recorded_at)?;
                 crate::objects::validate_tree(&state)?;
                 events.push(Event{position,actor:actor.to_owned(),recorded_at,command:command.clone()});
             }
@@ -146,15 +146,9 @@ pub(crate) async fn write(
         selected.as_ref(),
     )
     .await?;
-    super::board::project_current(
-        &*tx,
-        &workspace,
-        &state,
-        &events,
-        base_position + events.len() as u64,
-        Some(&previous),
-    )
-    .await?;
+    let at = (events.as_slice(), base_position + events.len() as u64);
+    let reached = selected.clone();
+    super::board::project_selected(&*tx, &workspace, &state, at, Some(&previous), reached).await?;
     super::search_revisions::project(&*tx, &workspace, selected.as_ref()).await?;
     let mut result = if batch {
         json!({"results":results})

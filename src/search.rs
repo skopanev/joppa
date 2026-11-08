@@ -42,7 +42,6 @@ pub(super) async fn project(
     position: u64,
     selected: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<()> {
-    let mut hydrated = state.clone();
     let mut addresses = std::collections::BTreeSet::new();
     for key in state
         .objects
@@ -64,14 +63,16 @@ pub(super) async fn project(
                 .and_then(|o| o.current().parent.as_deref());
         }
     }
-    state_rows::hydrate_objects(
-        client,
-        workspace,
-        &mut hydrated,
-        &addresses.into_iter().collect::<Vec<_>>(),
-    )
-    .await?;
-    let state = &hydrated;
+    // Only a selected object or an ancestor that is not loaded needs a copy of the workspace.
+    let hydrated = if addresses.is_empty() {
+        std::borrow::Cow::Borrowed(state)
+    } else {
+        let mut hydrated = state.clone();
+        let addresses: Vec<String> = addresses.into_iter().collect();
+        state_rows::hydrate_objects(client, workspace, &mut hydrated, &addresses).await?;
+        std::borrow::Cow::Owned(hydrated)
+    };
+    let state = hydrated.as_ref();
     let configured = crate::objects::schema(state);
     let mut documents = vec![];
     for (key, obj) in state

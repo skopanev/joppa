@@ -13,6 +13,7 @@ pub(crate) fn sync_with(
     force_siblings: bool,
     spec_reason: Option<&str>,
 ) {
+    crate::probe::count(&crate::probe::SYNC);
     let rows = document_rows(w);
     let rule = crate::commands::FORCED_KEEPS_CONTRACT;
     let keeps_contract = crate::commands::epoch_reached(w, rule, position);
@@ -170,8 +171,10 @@ pub(crate) fn sync_with(
         }
     }
     let roles = schema(w).types;
+    // The loop reads the legacy types for each object, so it builds them once.
+    let legacy = legacy_defaults();
     for (key, obj) in &mut w.objects {
-        if (legacy_defaults().contains_key(&obj.kind)
+        if (legacy.contains_key(&obj.kind)
             || roles
                 .get(&obj.kind)
                 .is_some_and(|t| t.role == "ac" || t.role == "requirement"))

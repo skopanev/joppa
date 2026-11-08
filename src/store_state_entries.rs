@@ -30,6 +30,16 @@ pub(crate) fn changed_summaries(
     Value::Object(summaries)
 }
 
+/// The JSON of `new` differs from the JSON of `old`. Equal values have equal JSON, so only
+/// unequal values are serialized.
+pub(crate) fn differs<T: serde::Serialize + PartialEq>(new: &T, old: Option<&T>) -> Result<bool> {
+    if old == Some(new) {
+        return Ok(false);
+    }
+    crate::probe::count(&crate::probe::ROWS);
+    Ok(Some(serde_json::to_value(new)?) != old.map(serde_json::to_value).transpose()?)
+}
+
 pub(crate) fn affected(
     state: &Workspace,
     previous: Option<&Workspace>,
@@ -47,41 +57,33 @@ pub(crate) fn affected(
     }
     let mut changed = BTreeSet::new();
     for (key, o) in &state.objects {
-        if previous.objects.get(key).is_none_or(|old| {
-            serde_json::to_value(old.current()).ok() != serde_json::to_value(o.current()).ok()
-        }) {
+        let old = previous.objects.get(key).map(|old| old.current());
+        if differs(o.current(), old)? {
             changed.insert(key.clone());
         }
     }
+    let mut revised = BTreeSet::new();
     for (req, q) in &state.requirements {
-        if serde_json::to_value(q)?
-            != previous
-                .requirements
-                .get(req)
-                .map(serde_json::to_value)
-                .transpose()?
-                .unwrap_or(Value::Null)
-        {
+        if differs(q, previous.requirements.get(req))? {
             changed.insert(crate::objects::requirement_address(req));
-            for w in [previous, state] {
-                for key in w.objects.keys() {
-                    if crate::objects::verification_context(w, key)
-                        .is_some_and(|(context, _)| context == req)
-                    {
-                        changed.insert(key.clone());
-                    }
+            revised.insert(req.as_str());
+        }
+    }
+    // Each object under a revised requirement changes. The walk reads the schema once.
+    if !revised.is_empty() {
+        for w in [previous, state] {
+            let types = crate::objects::schema(w).types;
+            for key in w.objects.keys() {
+                if crate::objects::verification_context_in(w, &types, key)
+                    .is_some_and(|(context, _)| revised.contains(context))
+                {
+                    changed.insert(key.clone());
                 }
             }
         }
     }
     for (key, t) in &state.task_process {
-        if Some(serde_json::to_value(t)?)
-            != previous
-                .task_process
-                .get(key)
-                .map(serde_json::to_value)
-                .transpose()?
-        {
+        if differs(t, previous.task_process.get(key))? {
             changed.insert(key.clone());
         }
     }
@@ -95,13 +97,7 @@ pub(crate) fn affected(
         }
     }
     for (key, notes) in &state.notes {
-        if Some(serde_json::to_value(notes)?)
-            != previous
-                .notes
-                .get(key)
-                .map(serde_json::to_value)
-                .transpose()?
-        {
+        if differs(notes, previous.notes.get(key))? {
             changed.insert(crate::objects::resolve_address(state, key).to_owned());
         }
     }
@@ -155,10 +151,8 @@ pub(crate) fn entries(state: &Workspace) -> Result<Entries> {
             for (key, value) in map {
                 let mut value = value.clone();
                 if ["objects", "requirements"].contains(&section.as_str()) {
-                    value["revisions"] = json!([value["revisions"]
-                        .as_array()
-                        .and_then(|r| r.last())
-                        .context("state entry has no revision")?]);
+                    crate::probe::count(&crate::probe::ROWS);
+                    trim(&mut value)?;
                 }
                 entries.insert((section.clone(), key.clone()), value);
             }
@@ -179,9 +173,11 @@ pub(crate) fn entries(state: &Workspace) -> Result<Entries> {
     Ok(entries)
 }
 
-pub(crate) fn metadata(state: &Workspace) -> Result<String> {
-    Ok(entries(state)?
-        .remove(&("meta".into(), String::new()))
-        .unwrap()
-        .to_string())
+/// Keep only the last revision of an object or a requirement row.
+pub(crate) fn trim(value: &mut Value) -> Result<()> {
+    value["revisions"] = json!([value["revisions"]
+        .as_array()
+        .and_then(|r| r.last())
+        .context("state entry has no revision")?]);
+    Ok(())
 }

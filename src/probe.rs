@@ -19,6 +19,10 @@ pub static DELTA: AtomicU64 = AtomicU64::new(0);
 pub static REPLAY: AtomicU64 = AtomicU64::new(0);
 /// Copies of the whole workspace that a save_object makes.
 pub static SAVE_COPY: AtomicU64 = AtomicU64::new(0);
+/// Syncs of the document ledger, each of which builds every document row.
+pub static SYNC: AtomicU64 = AtomicU64::new(0);
+/// Objects and requirements that a write serializes to compare or store their current rows.
+pub static ROWS: AtomicU64 = AtomicU64::new(0);
 
 pub fn count(counter: &AtomicU64) {
     counter.fetch_add(1, Ordering::Relaxed);
@@ -27,3 +31,17 @@ pub fn count(counter: &AtomicU64) {
 pub fn read(counter: &AtomicU64) -> u64 {
     counter.load(Ordering::Relaxed)
 }
+
+/// Each counter with its name, for a test that prints the counts of one request.
+pub static COUNTERS: [(&str, &AtomicU64); 10] = [
+    ("status", &STATUS),
+    ("rollup", &ROLLUP),
+    ("waits", &WAITS),
+    ("wait_reads", &WAIT_READS),
+    ("rebuild", &REBUILD),
+    ("delta", &DELTA),
+    ("replay", &REPLAY),
+    ("save_copy", &SAVE_COPY),
+    ("sync", &SYNC),
+    ("rows", &ROWS),
+];

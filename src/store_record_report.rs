@@ -42,6 +42,7 @@ pub(super) async fn record_report(
     }];
     let selected = state_rows::affected(&state, Some(&previous))?;
     search::project(tx, workspace, &state, position, selected.as_ref()).await?;
-    board::project_current(tx, workspace, &state, &events, position, Some(&previous)).await?;
+    let at = (events.as_slice(), position);
+    board::project_selected(tx, workspace, &state, at, Some(&previous), selected).await?;
     Ok(position)
 }

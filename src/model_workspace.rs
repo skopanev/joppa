@@ -8,6 +8,9 @@ pub struct Workspace {
     /// True while apply_replay applies a stored event.
     #[serde(skip)]
     pub replaying: bool,
+    /// True while a live write applies a command whose failure drops the workspace.
+    #[serde(skip)]
+    pub in_place: bool,
     #[serde(skip)]
     pub claim_time_ms: Option<i64>,
     /// The alias of the event that apply applies now (src/actor_alias.rs).
@@ -120,7 +123,7 @@ pub struct Workspace {
     pub remote_links: BTreeMap<String, crate::remote_links::RemoteLinks>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Domain {
     #[serde(default)]
     pub archived: bool,
@@ -135,7 +138,7 @@ pub struct Domain {
     pub confirmed: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Capability {
     pub title: String,
     #[serde(default)]
@@ -147,14 +150,14 @@ pub struct Capability {
     pub confirmed: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Consumer {
     pub title: String,
     pub description: String,
     pub owner: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Requirement {
     #[serde(default)]
     pub capability: Option<String>,
@@ -162,7 +165,7 @@ pub struct Requirement {
     pub comments: BTreeMap<String, Comment>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Revision {
     pub number: u32,
     #[serde(default)]
@@ -196,7 +199,7 @@ pub struct Revision {
     pub sources: BTreeMap<String, SourceRef>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CoverageReview {
     pub actor: String,
     pub at: u64,

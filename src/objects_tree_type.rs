@@ -179,7 +179,7 @@ impl Serialize for ObjectLink {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ObjectRevision {
     pub revision: u32,
     pub schema_revision: u32,
@@ -201,7 +201,7 @@ pub struct ObjectRevision {
     pub contract: Option<[u32; 2]>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Object {
     pub kind: String,
     pub id: String,

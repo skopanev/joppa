@@ -48,6 +48,31 @@ pub fn apply(
     if unchanged_save(w, actor, command, position, recorded_at)? {
         return Ok(());
     }
+    apply_changed(w, actor, command, position, recorded_at)
+}
+
+/// `apply` for a live write that has checked `unchanged_save` and that drops `w` when the
+/// command fails. A save writes into `w` without a copy of the workspace.
+pub fn apply_checked(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
+    w.in_place = true;
+    let result = apply_changed(w, actor, command, position, recorded_at);
+    w.in_place = false;
+    result
+}
+
+fn apply_changed(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
     w.claim_time_ms = crate::tasks::parse_time(recorded_at);
     w.replaying = false;
     if let Some(op) = crate::removed_ops::name(command) {
@@ -59,6 +84,10 @@ pub fn apply(
     crate::decision_migration::check(w, command)?;
     crate::objects::validate_current(w, command)?;
     apply_inner(w, actor, command, position, recorded_at)?;
+    // As in a replay, an event that writes no document skips the sync and the reset.
+    if writes_no_document(command) {
+        return Ok(());
+    }
     crate::objects::sync(w, actor, command, position, recorded_at);
     crate::objects::reset_changed(w, command, position, recorded_at)
 }

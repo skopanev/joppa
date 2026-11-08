@@ -116,6 +116,16 @@ pub fn annotation_address(w: &Workspace, key: &str) -> String {
 
 /// Resolve the configured verification role against the journal evidence adapter.
 pub fn verification_context<'a>(w: &'a Workspace, key: &str) -> Option<(&'a str, &'a Revision)> {
+    verification_context_in(w, &schema(w).types, key)
+}
+
+/// `verification_context` with the types of the current schema of `w`, which a caller reads
+/// once for many keys.
+pub(crate) fn verification_context_in<'a>(
+    w: &'a Workspace,
+    types: &BTreeMap<String, TreeType>,
+    key: &str,
+) -> Option<(&'a str, &'a Revision)> {
     let mut current = Some(resolve_address(w, key));
     let mut seen = BTreeSet::new();
     while let Some(key) = current {
@@ -123,8 +133,8 @@ pub fn verification_context<'a>(w: &'a Workspace, key: &str) -> Option<(&'a str,
             return None;
         }
         let o = w.objects.get(key)?;
-        let role = schema(w).types.get(&o.kind).map(|t| t.role.clone());
-        if role.as_deref() == Some("requirement")
+        let role = types.get(&o.kind).map(|t| t.role.as_str());
+        if role == Some("requirement")
             && !w.document_overrides.contains(key)
             && let Some(req) = requirement_key(w, key)
             && let Some(r) = w.requirements.get(req).and_then(|q| q.revisions.last())

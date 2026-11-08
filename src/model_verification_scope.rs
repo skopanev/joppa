@@ -1,7 +1,7 @@
 //! Part of `model`: `verification_scope` and the items after it, moved from model.rs unchanged.
 use super::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VerificationScope {
     pub subject_keys: Vec<String>,
     pub scope: String,
@@ -10,7 +10,7 @@ pub struct VerificationScope {
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SourceRef {
     pub kind: String,
     pub uri: String,
@@ -23,7 +23,7 @@ pub struct SourceRef {
     pub withdrawn: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Ac {
     pub id: String,
@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for Removed {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Comment {
     pub revision: u32,
     pub actor: String,
@@ -91,7 +91,7 @@ pub struct PlanningClaim {
     pub position: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claim: Option<TaskClaim>,
@@ -133,7 +133,7 @@ pub struct TaskBlock {
     pub position: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TaskClaim {
     pub heartbeat_at_ms: i64,
@@ -158,7 +158,7 @@ pub struct TaskBinding {
     pub origin_revision: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
     pub check: String,
@@ -169,7 +169,7 @@ pub struct Evidence {
     pub link: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Run {
     pub subject: BTreeMap<String, String>,
     pub plan: Vec<Check>,
@@ -183,7 +183,7 @@ pub struct Run {
     pub task_contexts: BTreeMap<String, Option<(String, u32)>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Issue {
     pub ac: String,
     pub comment: String,
@@ -191,7 +191,7 @@ pub struct Issue {
     pub resolved: Option<u64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Intake {
     pub said: String,
     pub author: String,
@@ -200,7 +200,7 @@ pub struct Intake {
     pub points: BTreeMap<String, Point>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Point {
     pub said: String,
     pub kind: String,

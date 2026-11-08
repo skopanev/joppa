@@ -26,8 +26,9 @@ pub fn save(
     at: &str,
 ) -> Result<()> {
     let old = saved_current(w, command);
-    // A replay stops at any refused event, so it writes into the state without a copy.
-    if w.replaying {
+    // A replay stops at any refused event, and a live write drops the state of a refused
+    // command. So both write into the state without a copy.
+    if w.replaying || w.in_place {
         if save_into(w, actor, command, position, at, false)? {
             mark_contract(old.as_ref(), w, command);
         }
