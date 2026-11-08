@@ -1,22 +1,24 @@
 //! The current state of each workspace after the last write of this process. A write that
 //! finds the same key in the database starts from this state and reads no current rows.
 //!
-//! The key is the position and the row version (`xmin`) of the board row. Each write and each
-//! projection rewrites that row, so a change by another process or another path gives a new
-//! key. The state goes into memory only after the commit, and a write takes it out first, so
+//! The key is the position and the row version (`xmin`) of the board row, and the state version
+//! of the workspace. Each write and each projection rewrites the board row, and a trigger raises
+//! the state version on each statement that changes the current rows (migration 059). So a change
+//! by another process, another path or by hand gives a new key. The state goes into memory only
+//! after the commit, and a write takes it out first, so
 //! a failed write or a deleted workspace leaves no state. The kept state is the state that a
 //! read of the rows gives: only the last revisions, and compact inbox documents.
 use super::*;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-/// The position and the row version of the board row.
+/// The position, and the row version of the board row with the state version.
 type Key = (i64, String);
 
 static STATES: LazyLock<Mutex<HashMap<String, (Key, Workspace)>>> = LazyLock::new(Default::default);
 
 async fn key(client: &impl GenericClient, workspace: &str) -> Result<Option<Key>> {
-    let sql = "SELECT position,xmin::text FROM joppa.board_cache WHERE workspace=$1";
+    let sql = "SELECT b.position,b.xmin::text||':'||COALESCE(v.version,0) FROM joppa.board_cache b LEFT JOIN joppa.state_versions v ON v.workspace=b.workspace WHERE b.workspace=$1";
     let row = client.query_opt(sql, &[&workspace]).await?;
     Ok(row.map(|row| (row.get(0), row.get(1))))
 }
@@ -110,10 +112,29 @@ async fn same_as_rows(
     let (rows, _) = state_rows::current(client, workspace).await?;
     // This proof is not a load of the write: the counter stays as it was.
     crate::probe::STATE_LOADS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    let (kept_json, rows_json) = (serde_json::to_value(kept)?, serde_json::to_value(&rows)?);
     ensure!(
-        serde_json::to_value(kept)? == serde_json::to_value(&rows)?
-            && kept.unloaded_objects == rows.unloaded_objects,
-        "the kept state of {workspace} differs from its rows"
+        kept_json == rows_json && kept.unloaded_objects == rows.unloaded_objects,
+        "the kept state of {workspace} differs from its rows at {}",
+        first_difference(&kept_json, &rows_json, String::new())
+            .unwrap_or_else(|| "unloaded_objects".into())
     );
     Ok(())
+}
+
+/// The path of the first value that differs, with both values.
+#[cfg(debug_assertions)]
+fn first_difference(kept: &Value, rows: &Value, path: String) -> Option<String> {
+    match (kept, rows) {
+        (Value::Object(k), Value::Object(r)) => k.keys().chain(r.keys()).find_map(|key| {
+            let (a, b) = (k.get(key), r.get(key));
+            let (a, b) = (a.unwrap_or(&Value::Null), b.unwrap_or(&Value::Null));
+            first_difference(a, b, format!("{path}/{key}"))
+        }),
+        (Value::Array(k), Value::Array(r)) if k.len() == r.len() => {
+            let mut pairs = k.iter().zip(r).enumerate();
+            pairs.find_map(|(i, (a, b))| first_difference(a, b, format!("{path}/{i}")))
+        }
+        _ => (kept != rows).then(|| format!("{path}: kept {kept}, rows {rows}")),
+    }
 }

@@ -1,7 +1,8 @@
 //! A write after a write of this process starts from the state in memory and stores the same
 //! rows as a write that reads the current rows. Two equal workspaces get the same writes: A
 //! keeps its state between writes, and in B an external change of the board row comes before
-//! each write, so each write of B reads the current rows. The test reads process-wide probe
+//! each write, so each write of B reads the current rows. Both get the same direct SQL change
+//! of one current row before one write. The test reads process-wide probe
 //! counters, so it is the only test of this binary.
 #[path = "common/state_compare.rs"]
 mod compare;
@@ -15,6 +16,15 @@ use serde_json::{Value, json};
 enum Step {
     Write(Value),
     Record(Value),
+}
+
+/// The change before a write in A: none, an external change of the board row, or a direct
+/// SQL change of one current row that does not touch the board row.
+#[derive(Clone, Copy, PartialEq)]
+enum Before {
+    Nothing,
+    Board,
+    Row,
 }
 
 /// The tree with a note type of the inbox, a requirement, two criteria, a test node and two
@@ -57,33 +67,37 @@ fn save(kind: &str, id: &str, revision: u32, parent: Option<&str>, body: &str) -
     )
 }
 
-/// The measured writes, and whether an external change of the board row comes before each in
-/// A. Index 3 is the failed write: a save with an old revision.
-fn steps() -> Vec<(Step, bool)> {
+/// The measured writes, and the change before each in A. Index 3 is the failed write: a save
+/// with an old revision.
+fn steps() -> Vec<(Step, Before)> {
+    use Before::{Board, Nothing as No, Row};
     vec![
-        (
-            save("ac", "a1", 1, Some("requirement:r"), "New rule"),
-            false,
-        ),
-        (save("ac", "a3", 0, Some("requirement:r"), "Third"), false),
-        (save("note", "n1", 1, None, "The changed note"), false),
-        (save("ac", "a1", 1, Some("requirement:r"), "Stale"), false),
+        (save("ac", "a1", 1, Some("requirement:r"), "New rule"), No),
+        (save("ac", "a3", 0, Some("requirement:r"), "Third"), No),
+        (save("note", "n1", 1, None, "The changed note"), No),
+        (save("ac", "a1", 1, Some("requirement:r"), "Stale"), No),
         (
             Step::Record(
                 json!({"commit":"c0ffee7","results":[{"test":"test:t1","status":"pass"}]}),
             ),
-            false,
+            No,
         ),
         (
             save("ac", "a2", 1, Some("requirement:r"), "Second rule"),
-            false,
+            No,
         ),
-        (save("note", "n2", 1, None, "Another note"), true),
-        (
-            save("ac", "a3", 1, Some("requirement:r"), "Third rule"),
-            false,
-        ),
+        (save("note", "n2", 1, None, "Another note"), Board),
+        (save("ac", "a3", 1, Some("requirement:r"), "Third rule"), No),
+        (save("ac", "a2", 2, Some("requirement:r"), "Hand rule"), Row),
+        (save("ac", "a1", 2, Some("requirement:r"), "Final rule"), No),
     ]
+}
+
+/// A change of the title in the meta row, as by hand: the board row stays as it is.
+async fn change_row(pool: &pg_plan::Pool, ws: &str) -> Result<()> {
+    let sql = "UPDATE joppa.state_entries SET value=jsonb_set(value,'{title}','\"Changed by hand\"') WHERE workspace=$1 AND section='meta' AND key=''";
+    ensure!(pool.get().await?.execute(sql, &[&ws]).await? == 1);
+    Ok(())
 }
 
 async fn touch(pool: &pg_plan::Pool, ws: &str) -> Result<()> {
@@ -97,8 +111,11 @@ async fn touch(pool: &pg_plan::Pool, ws: &str) -> Result<()> {
 async fn run(pool: &pg_plan::Pool, ws: &str, always_touch: bool) -> Result<Vec<(Value, u64, u64)>> {
     let names = compare::names(pool, ws).await?;
     let mut out = vec![];
-    for (i, (step, touched)) in steps().into_iter().enumerate() {
-        if always_touch || touched {
+    for (i, (step, before)) in steps().into_iter().enumerate() {
+        if before == Before::Row {
+            change_row(pool, ws).await?;
+        }
+        if always_touch || before == Before::Board {
             touch(pool, ws).await?;
         }
         let (loads, reuses) = (
@@ -160,8 +177,8 @@ async fn a_write_after_a_write_reuses_the_state_in_memory_and_stores_the_same_ro
         match i {
             // The first write may start from the state of the setup writes of this process.
             0 => {}
-            // The write after the failed write and the write after the external change.
-            4 | 6 => ensure!(*loads >= 1 && *reuses == 0, "A step {i}: {evidence}"),
+            // The write after the failed write and the writes after each external change.
+            4 | 6 | 8 => ensure!(*loads >= 1 && *reuses == 0, "A step {i}: {evidence}"),
             _ => ensure!(*loads == 0 && *reuses == 1, "A step {i}: {evidence}"),
         }
     }
@@ -178,5 +195,9 @@ async fn a_write_after_a_write_reuses_the_state_in_memory_and_stores_the_same_ro
             anyhow::bail!("{table} differs:\n{diff}");
         }
     }
+    // The writes after the direct change keep it: none of them wrote the old state back.
+    let sql = "SELECT value->>'title' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key=''";
+    let title: Option<String> = pool.get().await?.query_one(sql, &[&a]).await?.get(0);
+    ensure!(title.as_deref() == Some("Changed by hand"), "{title:?}");
     Ok(())
 }
