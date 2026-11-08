@@ -120,22 +120,19 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
             && requirement["items"][0].get("req").is_none(),
         "{requirement}"
     );
-    // Timeline and History: 25 by default and for a larger limit, with the total.
-    let timeline = read(&w, "joppa_timeline", json!({"limit":100})).await?;
-    let history = read(&w, "joppa_history", json!({})).await?;
-    let all = read(&w, "joppa_history", json!({"all":true,"limit":100})).await?;
-    ensure!(
-        count(&timeline) == 25
-            && timeline["total"].as_u64() > Some(25)
-            && timeline["next_cursor"].is_string(),
-        "{timeline}"
-    );
+    // History: 25 for a larger limit, with the total. Every entry is open, so open=true
+    // gives the same total.
+    let history = read(&w, "joppa_history", json!({"limit":100})).await?;
+    let open = read(&w, "joppa_history", json!({"open":true})).await?;
     ensure!(
         count(&history) == 25
             && history["total"].as_u64() > Some(25)
-            && count(&all) == 25
-            && all["total"] == timeline["total"],
-        "{history} {all}"
+            && history["next_cursor"].is_string(),
+        "{history}"
+    );
+    ensure!(
+        count(&open) == 25 && open["total"] == history["total"],
+        "{history} {open}"
     );
     // Workspaces and the test nodes.
     // The test database can hold the workspaces of earlier runs, so the check does not
@@ -209,12 +206,7 @@ async fn every_mcp_list_schema_takes_a_limit_of_1_to_25() -> Result<()> {
         .as_array()
         .cloned()
         .unwrap_or_default();
-    for name in [
-        "joppa_objects",
-        "joppa_search",
-        "joppa_timeline",
-        "joppa_history",
-    ] {
+    for name in ["joppa_objects", "joppa_search", "joppa_history"] {
         let tool = tools
             .iter()
             .find(|t| t["name"] == name)

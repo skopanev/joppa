@@ -176,11 +176,11 @@ The gate uses fresh test databases and runs all Rust and browser tests.
 
 ```sh
 bun run gate /absolute/source/.local/lane-test.env
-bun run test:only test_name_substring timeline_http
+bun run test:only test_name_substring history_http
 ```
 
 `test:only` runs matching Rust tests on a fresh database. It fails when no tests match.
-Name the test file (`timeline_http` for `tests/timeline_http.rs`) as the second
+Name the test file (`history_http` for `tests/history_http.rs`) as the second
 argument. Then Cargo builds only that test, not every test binary: about 26 s instead
 of about 300 s after a source change. Use `lib` for a unit test in `src/lib.rs` and `bin` for one in `src/main.rs`
 (such as `web::tests`). The target is required, so a focused run never builds every test.

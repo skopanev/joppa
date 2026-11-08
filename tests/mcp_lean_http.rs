@@ -110,7 +110,7 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             && absent(hit, &["kind", "id", "archived", "historical", "exact_id"]),
         "{search}"
     );
-    // Timeline and History give no default flag and no echo.
+    // History gives no default flag and no echo.
     // The test node of A gives its tone in the list and no echo in the detail.
     let tests = read(&w, "joppa_objects", json!({"parent":"ac:a","kind":"test"})).await?;
     let node = &tests["items"][0];
@@ -124,13 +124,8 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             && absent(&detail, &["tests_draft", "tests_saved_by"]),
         "{tests} {detail}"
     );
-    for tool in ["joppa_timeline", "joppa_history"] {
-        let page = read(&w, tool, json!({})).await?;
-        ensure!(
-            absent(&page, &ECHOES) && page["items"].is_array(),
-            "{tool}: {page}"
-        );
-    }
+    let page = read(&w, "joppa_history", json!({})).await?;
+    ensure!(absent(&page, &ECHOES) && page["items"].is_array(), "{page}");
     // A write gives the saved object and only the op of its command; a retry says replayed.
     let save = json!({"op":"save_object","kind":"requirement","id":"u","revision":0,
         "parent":null,"data":{"title":"U","owner":"owner","body":"Third rule"},"reason":"Add"});

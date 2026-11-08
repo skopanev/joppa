@@ -82,29 +82,31 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
         json!([{"test":"tests/x.rs > t","status":"pass"}]),
     )
     .await?;
-    let timeline = read(
+    let newest = read(
         &w,
-        "joppa_timeline",
+        "joppa_history",
         json!({"order":"newest","limit":1,"after":0}),
     )
     .await?;
-    let entry = &timeline["items"][0];
+    let entry = &newest["items"][0];
     ensure!(
-        absent(&timeline, &["after", "order"])
+        absent(&newest, &["after", "order", "open", "limit"])
             && entry["address"]
                 .as_str()
                 .is_some_and(|a| a.starts_with("record/"))
             && absent(entry, &["record", "report"]),
-        "{timeline}"
+        "{newest}"
     );
     // History and links give no workspace and no snapshot position.
-    for args in [json!({}), json!({"all":true,"limit":5})] {
+    for args in [json!({}), json!({"open":true,"limit":5})] {
         let history = read(&w, "joppa_history", args).await?;
         ensure!(
-            absent(&history, &["workspace", "position", "all", "limit"])
-                && history["items"].as_array().is_some_and(|items| {
-                    !items.is_empty() && items.iter().all(|i| absent(i, &["signal"]))
-                }),
+            absent(
+                &history,
+                &["workspace", "position", "open", "order", "after", "limit"]
+            ) && history["items"].as_array().is_some_and(|items| {
+                !items.is_empty() && items.iter().all(|i| absent(i, &["signal"]))
+            }),
             "{history}"
         );
     }

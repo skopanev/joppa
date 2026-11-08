@@ -108,13 +108,13 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
         revisions(&w, "ac:b").await? == [json!("p1"), json!("p3"), json!("p4")],
         "revisions"
     );
-    let timeline = w
-        .mcp(&w.owner, "joppa_timeline", json!({"order":"newest"}))
+    let history = w
+        .mcp(&w.owner, "joppa_history", json!({"order":"newest"}))
         .await?;
-    let timeline = timeline.map_err(anyhow::Error::msg)?;
-    let aliases: Vec<&Value> = timeline["items"]
+    let history = history.map_err(anyhow::Error::msg)?;
+    let aliases: Vec<&Value> = history["items"]
         .as_array()
-        .context("timeline")?
+        .context("history")?
         .iter()
         .filter(|i| i["actor"] == "owner")
         .map(|i| &i["alias"])
@@ -129,11 +129,11 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
                 &json!("p2"),
                 &json!("p1")
             ],
-        "{timeline}"
+        "{history}"
     );
-    let entry = timeline["items"]
+    let entry = history["items"]
         .as_array()
-        .context("timeline")?
+        .context("history")?
         .iter()
         .find(|i| i["alias"] == "p1")
         .context("p1 entry")?["position"]

@@ -92,9 +92,14 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     let refused = page(&pool, &ws, json!({"limit": 0})).await.unwrap_err();
     ensure!(refused.to_string().contains("limit"), "{refused}");
 
-    // Every entry after the marked entry 1 is open: at least 31. The first page holds 25,
-    // and the cursor gives the rest once, in journal order.
-    let first = page(&pool, &ws, json!({"limit": store::HISTORY_LIMIT})).await?;
+    // Every entry after the marked entry 1 is open: at least 31. With open=true the first
+    // page holds 25, and the cursor gives the rest once, in journal order.
+    let first = page(
+        &pool,
+        &ws,
+        json!({"limit": store::HISTORY_LIMIT, "open": true}),
+    )
+    .await?;
     let items = first["items"].as_array().cloned().unwrap_or_default();
     ensure!(items.len() == 25, "{first}");
     ensure!(items.iter().all(|i| i["status"] == "open"), "{first}");
@@ -112,7 +117,7 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     let second = page(
         &pool,
         &ws,
-        json!({"limit": store::HISTORY_LIMIT, "cursor": cursor}),
+        json!({"limit": store::HISTORY_LIMIT, "open": true, "cursor": cursor}),
     )
     .await?;
     let rest = second["items"].as_array().cloned().unwrap_or_default();
@@ -133,8 +138,8 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     );
     ensure!(second["next_cursor"].is_null(), "{second}");
 
-    // With all=true the marked entry comes first with its mark.
-    let all = page(&pool, &ws, json!({"limit": 25, "all": true})).await?;
+    // Without open the marked entry comes first with its mark.
+    let all = page(&pool, &ws, json!({"limit": 25})).await?;
     let marked = &all["items"][0];
     ensure!(
         marked["position"] == 1 && marked["status"] == "processed",

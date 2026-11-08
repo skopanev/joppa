@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 /// Every route of the server: the method and the path pattern.
-const ROUTES: [(&str, &str); 48] = [
+const ROUTES: [(&str, &str); 47] = [
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/.well-known/oauth-protected-resource/mcp"),
     ("GET", "/.well-known/oauth-authorization-server"),
@@ -49,7 +49,6 @@ const ROUTES: [(&str, &str); 48] = [
     ("GET", "/api/workspaces/{workspace}/board"),
     ("GET", "/api/workspaces/{workspace}/objects"),
     ("GET", "/api/workspaces/{workspace}/search"),
-    ("GET", "/api/workspaces/{workspace}/timeline"),
     ("GET", "/api/workspaces/{workspace}/history"),
     ("GET", "/api/workspaces/{workspace}/tree"),
     ("POST", "/api/workspaces/{workspace}/commands"),
@@ -61,7 +60,7 @@ const ROUTES: [(&str, &str); 48] = [
     ("POST", "/api/workspaces/{workspace}/delete"),
 ];
 
-const TOOLS: [&str; 13] = [
+const TOOLS: [&str; 12] = [
     "joppa_attach",
     "joppa_attachments",
     "joppa_batch",
@@ -73,7 +72,6 @@ const TOOLS: [&str; 13] = [
     "joppa_objects",
     "joppa_record_results",
     "joppa_search",
-    "joppa_timeline",
     "joppa_tree",
 ];
 
@@ -108,9 +106,11 @@ async fn every_listed_route_answers_and_an_unlisted_path_is_404() -> Result<()> 
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
-    // The router fallback: 404 and an empty body. The removed tests route is one of them.
-    let removed = format!("/api/workspaces/{}/tests", w.ws);
-    for path in ["/api/no-such-route", "/no-such-page", removed.as_str()] {
+    // The router fallback: 404 and an empty body. The removed tests and timeline routes are
+    // among them.
+    let tests = format!("/api/workspaces/{}/tests", w.ws);
+    let timeline = format!("/api/workspaces/{}/timeline", w.ws);
+    for path in ["/api/no-such-route", "/no-such-page", &tests, &timeline] {
         let (status, _, body) = call(&http, &w, "GET", path).await?;
         ensure!(
             status == 404 && body.is_empty(),
@@ -178,6 +178,14 @@ async fn mcp_tools_list_names_exactly_the_listed_tools() -> Result<()> {
     ensure!(
         reply["result"]["tools"].as_array().map(Vec::len) == Some(TOOLS.len()),
         "a tool name repeats"
+    );
+    // The removed joppa_timeline is refused and names its replacement.
+    let refused = w.mcp(&w.owner, "joppa_timeline", json!({})).await?;
+    ensure!(
+        refused
+            .as_ref()
+            .is_err_and(|e| e.contains("joppa_timeline was removed; use joppa_history")),
+        "{refused:?}"
     );
     Ok(())
 }

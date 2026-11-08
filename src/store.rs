@@ -30,19 +30,18 @@ mod record_results;
 mod reports;
 pub use record_results::record_results;
 pub use reports::test_status;
+#[path = "store_head.rs"]
+mod head;
+#[path = "store_history_items.rs"]
+mod history_items;
+#[path = "store_record_report.rs"]
+mod record_report;
 #[path = "store_remote.rs"]
 pub(crate) mod remote;
 #[path = "store_remote_status.rs"]
 pub(crate) mod remote_status;
-#[path = "store_timeline.rs"]
-mod timeline;
-#[path = "store_timeline_items.rs"]
-mod timeline_items;
 #[path = "store_waits.rs"]
 mod waits;
-pub use timeline::{TimelineScope, read_timeline};
-#[path = "store_head.rs"]
-mod head;
 pub(crate) use head::head;
 #[path = "store_history.rs"]
 mod history;

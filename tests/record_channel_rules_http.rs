@@ -69,9 +69,9 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
     // Exactly one journal entry follows the earlier position.
     let after = before.as_u64().unwrap_or_default();
     let page = w
-        .mcp(&w.alex, "joppa_timeline", json!({"after":after,"limit":10}))
+        .mcp(&w.alex, "joppa_history", json!({"after":after,"limit":10}))
         .await?
-        .map_err(|e| anyhow::anyhow!("joppa_timeline: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("joppa_history: {e}"))?;
     let items = page["items"].as_array().cloned().unwrap_or_default();
     ensure!(items.len() == 1, "{page}");
     let entry = &items[0];

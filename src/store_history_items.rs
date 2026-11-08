@@ -1,5 +1,5 @@
-//! The items of journal rows: one entry for each event, in the form of the timeline read.
-//! The timeline and the History read use it inside their own read transaction.
+//! The items of journal rows: one History entry for each event. The History read uses it
+//! inside its own read transaction.
 use super::*;
 
 /// Build one item for each row. Each row holds position, recorded_at::text, actor and
@@ -14,7 +14,8 @@ pub(super) async fn items(
         .map(|row| serde_json::from_str(row.get(3)))
         .collect::<std::result::Result<_, _>>()?;
     let positions: Vec<i64> = rows.iter().map(|row| row.get(0)).collect();
-    let addresses: Vec<Option<String>> = commands.iter().map(crate::timeline::address).collect();
+    let addresses: Vec<Option<String>> =
+        commands.iter().map(crate::history_entry::address).collect();
     // The object, its revision at the event and the revision before that one.
     let objects = conn.query(
         "SELECT x.i, o.address, o.kind, o.title, r.revision, r.document::text, p.document::text
@@ -46,7 +47,7 @@ pub(super) async fn items(
             ),
         );
     }
-    // The journal keeps redacted fragments; the timeline masks them in every text it returns.
+    // The journal keeps redacted fragments; History masks them in every text it returns.
     let fragments: Vec<String> = conn
         .query(
             "SELECT command->>'fragment' FROM joppa.events WHERE workspace=$1 AND command->>'op'='redact_object' AND command->>'fragment'<>''",
@@ -65,8 +66,8 @@ pub(super) async fn items(
     for (i, (row, command)) in rows.iter().zip(&commands).enumerate() {
         let position: i64 = row.get(0);
         let actor: String = row.get(2);
-        let mut change = crate::timeline::change(command);
-        let mut reason = crate::timeline::reason(command);
+        let mut change = crate::history_entry::change(command);
+        let mut reason = crate::history_entry::reason(command);
         let mut item = json!({
             "position": position,
             "at": row.get::<_, String>(1),
@@ -101,7 +102,7 @@ pub(super) async fn items(
                 if command["op"] == "save_object"
                     && previous
                         .as_ref()
-                        .is_some_and(|p| crate::timeline::moved(saved, p))
+                        .is_some_and(|p| crate::history_entry::moved(saved, p))
                 {
                     change = "move";
                 }

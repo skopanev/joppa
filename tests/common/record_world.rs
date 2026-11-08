@@ -207,11 +207,11 @@ impl World {
     pub async fn a_status(&self, token: &str) -> Result<Value> {
         store::test_status(&self.pool, &self.ws, self.member(token), A).await
     }
-    /// The journal position of the newest entry that member alex reads in joppa_timeline.
+    /// The journal position of the newest entry that member alex reads in joppa_history.
     pub async fn position(&self) -> Result<Value> {
         let newest = json!({"order":"newest","limit":1});
-        let page = self.mcp(&self.alex, "joppa_timeline", newest).await?;
-        let page = page.map_err(|e| anyhow::anyhow!("joppa_timeline: {e}"))?;
+        let page = self.mcp(&self.alex, "joppa_history", newest).await?;
+        let page = page.map_err(|e| anyhow::anyhow!("joppa_history: {e}"))?;
         let position = page["items"][0]["position"].clone();
         ensure!(position.is_u64(), "{page}");
         Ok(position)

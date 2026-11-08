@@ -7,7 +7,7 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 
 - MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or a private service credential of the server. An agent names itself with `alias`.
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
-- Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `timeline`, `history`, `tree` and `dependencies` under it.
+- Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `history`, `tree` and `dependencies` under it.
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
 
 Each command has `op` with its name. IDs hold ASCII letters, digits, `-`, `_` and `.`, 120 bytes
@@ -47,20 +47,24 @@ Live writes refuse the operations `claim_task`, `claim_next_task`, `heartbeat_ta
 `finish_planning`, `release_planning`, `set_priority`, `assess`, `assess_signal` and `comment`.
 The refusal is "<op> was removed; use <replacement>". The replacement of `comment` is `note`.
 
-## Workspace timeline
+## History
 
-`GET /api/workspaces/{workspace}/timeline` and `joppa_timeline` give the same page, one entry
-for each journal event, in journal order.
+`GET /api/workspaces/{workspace}/history` and `joppa_history` give the same page, one entry
+for each journal event.
 
-- Each entry has `position`, `at`, `actor`, `address`, `title`, `revision`, `change`, `op` and `reason`.
+- Each entry has `position`, `at`, `actor`, `address`, `title`, `revision`, `change`, `op`, `reason` and `status`.
+- `status` is `open` until a member marks the entry processed with `joppa_history_mark`. A processed entry also has `processed`: `actor`, `at`, `reason` and `nodes`.
 - A comment entry (op `comment`, `note` or `withdraw_note`) also has `comment_id`.
 - `change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent.
 - A record of test results has the change `results` and the address `record/ID`.
-- `after=POSITION` reads only later entries. Over HTTP, `limit` is 1 to 100, default 50. `joppa_timeline` gives at most 25 entries a page. Both give `total`.
-- Send `next_cursor` as `cursor` for the next page. The last page has `next_cursor: null`. `order=newest` reads the newest entries first.
+- `order=newest` reads the newest entries first; the default is `oldest`. `after=POSITION` reads only later entries. `open=true` gives only the open entries.
+- `limit` is 1 to 25, default 25; a larger limit is clamped. `total` counts the entries of the read after `after`. `next_item` names the oldest open entry.
+- Send `next_cursor` as `cursor` for the next page. The last page has `next_cursor: null`.
 - Members and agents of the workspace read it. Another account gets 404 `Workspace not found`.
+- Over HTTP an entry also has `signal`, the current status of its object.
 
-The board shows the timeline at `/?workspace=W&view=timeline`, newest first.
+The board shows History as a tab beside the root tabs, newest first, with the switches
+"Open only" and "Oldest first". A row opens its object at the revision of the change.
 
 ## Board views
 
@@ -196,7 +200,7 @@ session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` o
 
 - The alias changes no access: the actor of the session keeps every right.
 - The journal stores it with each event (`joppa.events.alias`), and a History mark stores it too.
-- The timeline, History, the revision headers, comments and files give
+- History, the revision headers, comments and files give
   `alias` next to `actor`. A rebuild from the journal keeps every alias.
 - The board shows the account and the alias, for example `alex · p1`.
 

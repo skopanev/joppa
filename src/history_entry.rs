@@ -1,5 +1,5 @@
-//! The workspace timeline: one entry for each journal event, in journal order.
-//! This module maps a stored command to its kind of change, its object and its reason.
+//! The History entry of a journal event. This module maps a stored command to its kind of
+//! change, its object and its reason.
 //! The store reads the events and the object revisions.
 use serde_json::Value;
 

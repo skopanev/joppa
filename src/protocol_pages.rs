@@ -75,26 +75,6 @@ pub async fn search(
     Ok(reply)
 }
 
-/// joppa_timeline: the entries after `after`, oldest or newest first.
-pub async fn timeline(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
-    let after = match a.get("after") {
-        Some(v) => v.as_u64().context("after must be a whole number")?,
-        None => 0,
-    };
-    store::read_timeline(
-        pool,
-        a["workspace"].as_str().context("missing workspace")?,
-        actor,
-        &store::TimelineScope {
-            after,
-            limit: limit(a, rc::PAGE)?,
-            cursor: a["cursor"].as_str(),
-            order: a["order"].as_str(),
-        },
-    )
-    .await
-}
-
 /// joppa_history: the History read with a clamped page size, 25 by default.
 pub fn history_args(a: &Value) -> anyhow::Result<Value> {
     let mut args = a.clone();

@@ -2,7 +2,7 @@
 
 // node-workspace-ac6
 #[tokio::test]
-async fn search_timeline_and_tasks_stay_in_their_own_workspace() -> Result<()> {
+async fn search_history_and_tasks_stay_in_their_own_workspace() -> Result<()> {
     let w = world().await?;
     w.ok(
         &w.owner,
@@ -46,15 +46,15 @@ async fn search_timeline_and_tasks_stay_in_their_own_workspace() -> Result<()> {
         kinds.contains(&"requirement:api"),
         "C search finds its own object: {found}"
     );
-    let timeline = w
+    let history = w
         .mcp(
             &w.owner,
-            "joppa_timeline",
+            "joppa_history",
             json!({"workspace":w.p,"limit":100}),
         )
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let addresses: Vec<&str> = timeline["items"]
+    let addresses: Vec<&str> = history["items"]
         .as_array()
         .into_iter()
         .flatten()

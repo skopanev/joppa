@@ -71,7 +71,7 @@ test('no-dashed-focus-ac1: a mouse click leaves no focus mark on the history Clo
 });
 
 // workspace-timeline-ac2
-test('workspace-timeline-ac2: alex reads the newest change first and opens R at the revision of its move', async () => {
+test('workspace-timeline-ac2: alex reads the newest change first in History and opens R at the revision of its move', async () => {
   const configured = {...types, signal: {title: 'Signals', role: 'document', status:'none', root: true, parents: [], inbox: true, badge: 'SIG'}};
   const f = await fixture({
     'domain:d': {title: 'Domain'},
@@ -89,39 +89,36 @@ test('workspace-timeline-ac2: alex reads the newest change first and opens R at 
     await f.command({op: 'archive_object', target: 'signal:n', revision: 1, reason: 'Signal N is handled'}, true);
     await f.command({op: 'note', target: 'ac:A', id: 'scope-a', text: 'The scope of A is known'}, true);
     await f.record('0123abc', [['one']]);
-    const newest = (await f.api('/timeline?order=newest&limit=5')).items;
+    const newest = (await f.api('/history?order=newest&limit=5')).items;
     assert.deepEqual(newest.map(item => item.change), ['results', 'comment', 'archive', 'move', 'save']);
     const move = newest[3];
     assert.deepEqual([move.address, move.revision, newest[4].address, newest[4].revision], ['requirement:R', 2, 'requirement:R', 1]);
     for (const viewport of [{width: 1280, height: 900}, {width: 390, height: 844}]) {
       await f.page.setViewportSize(viewport);
-      // alex opens the timeline page from the header link.
-      await f.open('domain:d');
-      const link = f.page.locator('#timeline-link');
-      assert.equal(new URL(await link.getAttribute('href'), f.live.root).search, '?workspace=' + f.live.ws + '&view=timeline');
-      await link.click();
-      const rows = f.page.locator('.timeline-list > .timeline-entry');
+      // alex opens the History tab of the board. The board has no Timeline link.
+      await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+      await f.page.getByRole('tab', {name: 'History'}).click();
+      assert.equal(await f.page.locator('#timeline-link').count(), 0);
+      const rows = f.page.locator('.history-collection .history-entry');
       await rows.nth(4).waitFor();
-      assert.equal(await f.page.locator('.timeline-title').innerText(), 'Timeline');
       for (const [index, item] of newest.entries()) {
         const row = rows.nth(index);
         assert.equal(await row.getAttribute('data-position'), String(item.position), viewport.width + ': row ' + (index + 1));
-        const expected = await f.page.evaluate(async item => {
-          const {eventDate, personLabel} = await import('board/format.js');
-          return [eventDate(item.at), personLabel(item.actor), item.title, item.change];
-        }, item);
-        assert.deepEqual(await row.locator('.timeline-time, .timeline-actor, .timeline-object, .timeline-change').allInnerTexts(),
-          expected, viewport.width + ': row ' + (index + 1));
+        const date = await f.page.evaluate(async at => (await import('board/format.js')).eventDate(at), item.at);
+        const summary = row.locator(':scope > summary');
+        assert.ok((await summary.innerText()).includes(item.title), viewport.width + ': row ' + (index + 1));
+        assert.equal(await summary.locator('.type-badge').innerText(), item.change.toUpperCase());
+        assert.equal(await summary.locator('.history-at').innerText(), date);
       }
-      assert.deepEqual(await rows.locator('.timeline-object').evaluateAll(nodes => nodes.slice(0, 5).map(node => node.textContent)),
-        ['Test results 0123abc', 'Criterion A', 'Signal N', 'Requirement R', 'Requirement R']);
       for (const index of [0, 4]) {
         const box = await rows.nth(index).boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, viewport.width + ': ' + JSON.stringify(box));
       }
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), viewport.width + ': no horizontal scroll');
-      // The move row opens R at the revision of the move.
-      await rows.nth(3).locator('a.timeline-row').click();
+      // The open move entry shows its actor, and its object link opens R at the revision of the move.
+      await rows.nth(3).locator(':scope > summary').click();
+      assert.ok((await rows.nth(3).locator('.history-actor').innerText()).startsWith(move.actor), viewport.width);
+      await rows.nth(3).locator('.history-object a').click();
       await f.page.waitForURL(url => url.searchParams.get('object') === 'requirement:R' && url.searchParams.get('revision') === String(move.revision));
       const card = f.page.locator('.object-page > .common-object[data-object-address="requirement:R"]');
       await card.waitFor();

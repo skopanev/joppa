@@ -1,4 +1,4 @@
-// Part 2 of tests/timeline_http.rs, included there, so the test names stay unchanged.
+// Part 2 of tests/history_http.rs, included there, so the test names stay unchanged.
 
 /// The ac1 fixture: the tree before p, then the five changes after p.
 /// Returns p and the report id.
@@ -61,15 +61,15 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
 async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
     let (p, report) = five_changes(&w).await?;
-    let http = w.get("bot", &format!("/timeline?after={p}")).await?;
+    let http = w.get("bot", &format!("/history?after={p}")).await?;
     let mcp = w
         .mcp(
             w.token("bot"),
-            "joppa_timeline",
+            "joppa_history",
             json!({"workspace":w.ws,"after":p}),
         )
         .await?;
-    ensure!(mcp_shape::timeline(&http) == mcp, "HTTP {http}\nMCP {mcp}");
+    ensure!(mcp_shape::history(&http) == mcp, "HTTP {http}\nMCP {mcp}");
     ensure!(http["next_cursor"].is_null(), "{http}");
     let items = http["items"].as_array().unwrap();
     ensure!(items.len() == 5, "{http}");
@@ -134,7 +134,7 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
 // workspace-timeline-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_reply() -> Result<()>
+async fn a_member_reads_the_history_and_a_stranger_gets_the_absent_workspace_reply() -> Result<()>
 {
     let w = world().await?;
     // The owner changes W. maria is a member of W, and eve is not.
@@ -146,7 +146,7 @@ async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_re
         async move {
             let reply = w
                 .http
-                .get(format!("{}/api/workspaces/{ws}/timeline?after=0", w.root))
+                .get(format!("{}/api/workspaces/{ws}/history?after=0", w.root))
                 .header(auth.0, auth.1)
                 .send()
                 .await?;
@@ -154,18 +154,18 @@ async fn a_member_reads_the_timeline_and_a_stranger_gets_the_absent_workspace_re
         }
     };
     let (code, body) = read(w.ws.clone(), ("authorization", format!("Bearer {maria}"))).await?;
-    let timeline: Value = serde_json::from_str(&body)?;
+    let history: Value = serde_json::from_str(&body)?;
     ensure!(
         code == 200
-            && timeline["items"]
+            && history["items"]
                 .as_array()
                 .is_some_and(|items| items.iter().any(|i| i["address"] == "domain:d")),
         "{code} {body}"
     );
     let mcp = w
-        .mcp(&maria, "joppa_timeline", json!({"workspace":w.ws}))
+        .mcp(&maria, "joppa_history", json!({"workspace":w.ws}))
         .await?;
-    ensure!(mcp == mcp_shape::timeline(&timeline), "{mcp} / {timeline}");
+    ensure!(mcp == mcp_shape::history(&history), "{mcp} / {history}");
     let eve = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),

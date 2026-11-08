@@ -1,4 +1,4 @@
-// Part 1 of tests/timeline_http.rs, included there, so the test names stay unchanged.
+// Part 1 of tests/history_http.rs, included there, so the test names stay unchanged.
 
 struct Server(Child);
 
@@ -40,13 +40,13 @@ async fn world() -> Result<World> {
     let pool = store::pool(&url)?;
     static MIGRATED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
     MIGRATED.get_or_try_init(|| store::migrate(&pool)).await?;
-    let ws = format!("timeline-{}", uuid::Uuid::new_v4().simple());
+    let ws = format!("history-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
         &pool,
         &ws,
         "owner",
         "create",
-        &json!({"op":"workspace","title":"Timeline"}),
+        &json!({"op":"workspace","title":"History"}),
     )
     .await?;
     for (id, role) in [
@@ -69,7 +69,7 @@ async fn world() -> Result<World> {
         }
     }
     let dir =
-        std::env::temp_dir().join(format!("joppa-timeline-{}", uuid::Uuid::new_v4().simple()));
+        std::env::temp_dir().join(format!("joppa-history-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let tokens: std::collections::BTreeMap<&'static str, String> =
         ["owner", "bot", "pat", "maria", "runner"]
@@ -122,7 +122,7 @@ async fn world() -> Result<World> {
             };
             let schema = w.get("owner", "/tree").await?;
             let types: Value = serde_json::from_str(TYPES)?;
-            w.command("owner", json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Configure the timeline tree"})).await?;
+            w.command("owner", json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Configure the History tree"})).await?;
             return Ok(w);
         }
         tokio::time::sleep(Duration::from_millis(50)).await;

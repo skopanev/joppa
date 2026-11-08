@@ -161,7 +161,7 @@ pub async fn record_results(
         )
         .await?;
         let position =
-            super::timeline::record_report(&*tx, &workspace, actor, event(id, true)).await?;
+            super::record_report::record_report(&*tx, &workspace, actor, event(id, true)).await?;
         tx.commit().await?;
         return Ok(
             json!({"record": id, "commit": commit, "tests": results.len(), "replayed": true, "actor": actor, "position": position, "unbound": unbound}),
@@ -173,7 +173,7 @@ pub async fn record_results(
         &[&id, &body],
     ).await?;
     let position =
-        super::timeline::record_report(&*tx, &workspace, actor, event(id, false)).await?;
+        super::record_report::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;
     Ok(
         json!({"record": id, "commit": commit, "tests": results.len(), "replayed": false, "actor": actor, "position": position, "unbound": unbound}),

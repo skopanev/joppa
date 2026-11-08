@@ -42,7 +42,7 @@ MCP reads have one shape. There is no `verbose` switch.
 | `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_objects` detail comments | fixed pages of 25 | `comments_cursor` |
-| `joppa_timeline`, `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
+| `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
 | `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |
 | `joppa_list` | fixed pages of 25 | `next_cursor` and `total` |
 
@@ -188,14 +188,14 @@ and every red test with `{"workspace": "w", "kind": "test", "status": "red"}`. T
 ## Other read tools
 
 Read Tasks with the node filters, for example `{"kind":"task","assignee":"alex","ready":true}`.
+A call of `joppa_timeline` is refused with `joppa_timeline was removed; use joppa_history, for example {"order":"newest","after":0}`.
 A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_objects with kind task, for example {"kind":"task","assignee":"alex","ready":true}`.
 
-`joppa_timeline`, `joppa_history` and `joppa_search` lose the empty keys, `item_id` and the
-echo of the request:
+`joppa_history` and `joppa_search` lose the empty keys, `item_id` and the echo of the
+request:
 
-- `joppa_timeline` gives no `after` or `order`. A record of test results names itself only
-  by its address `record/N`.
-- `joppa_history` gives no `all`, `limit` or `signal`. Read the current status of an object
+- `joppa_history` gives no `open`, `order`, `after`, `limit` or `signal`. A record of test
+  results names itself only by its address `record/N`. Read the current status of an object
   with `joppa_objects`.
 - A `joppa_search` result gives `address`, `title`, `revision`, `score` and `excerpt`, the
   first text of the object (`body` or `text`, at most 600 characters). It has no `kind`, `id` or `system_id`, no `req` on a requirement, and

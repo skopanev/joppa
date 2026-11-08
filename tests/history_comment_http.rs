@@ -1,13 +1,14 @@
-//! joppa_timeline over a real server: an entry of a comment event names its comment in
+//! joppa_history over a real server: an entry of a comment event names its comment in
 //! comment_id, for the ops note and withdraw_note.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 
+// ac:hihyhsl0
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_comment_entry_of_the_timeline_names_its_comment() -> Result<()> {
+async fn a_comment_entry_of_history_names_its_comment() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
     for command in [
         json!({"op":"note","target":"ac:a","id":"c1","text":"A question"}),
@@ -18,7 +19,7 @@ async fn a_comment_entry_of_the_timeline_names_its_comment() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("{command}: {e}"))?;
     }
     let newest = json!({"order":"newest","limit":2});
-    let page = w.mcp(&w.alex, "joppa_timeline", newest).await?;
+    let page = w.mcp(&w.alex, "joppa_history", newest).await?;
     let page = page.map_err(anyhow::Error::msg)?;
     let entries: Vec<(Value, Value, Value)> = page["items"]
         .as_array()
@@ -41,9 +42,7 @@ async fn a_comment_entry_of_the_timeline_names_its_comment() -> Result<()> {
         "{page}"
     );
     // Another change has no comment_id.
-    let all = w
-        .mcp(&w.alex, "joppa_timeline", json!({"limit":25}))
-        .await?;
+    let all = w.mcp(&w.alex, "joppa_history", json!({"limit":25})).await?;
     let all = all.map_err(anyhow::Error::msg)?;
     let other = all["items"].as_array().into_iter().flatten();
     ensure!(

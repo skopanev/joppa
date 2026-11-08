@@ -1,4 +1,4 @@
-// Part 3 of tests/timeline_http.rs, included there, so the test names stay unchanged.
+// Part 3 of tests/history_http.rs, included there, so the test names stay unchanged.
 
 // workspace-timeline-ac4
 #[tokio::test]
@@ -31,12 +31,12 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
     let mut pages = 0;
     loop {
         let path = match &cursor {
-            Some(c) => format!("/timeline?after={p}&cursor={c}"),
-            None => format!("/timeline?after={p}"),
+            Some(c) => format!("/history?after={p}&cursor={c}"),
+            None => format!("/history?after={p}"),
         };
         let page = w.get("bot", &path).await?;
         pages += 1;
-        ensure!(pages <= 10, "the cursor does not end");
+        ensure!(pages <= 12, "the cursor does not end");
         for item in page["items"].as_array().unwrap() {
             ensure!(item["change"] == "save", "{item}");
             positions.push(item["position"].as_i64().unwrap());
@@ -49,13 +49,13 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
             }
         }
     }
-    ensure!(pages == 5, "{pages} pages of 50");
+    ensure!(pages == 10, "{pages} pages of 25");
     ensure!(
         positions.windows(2).all(|pair| pair[1] == pair[0] + 1),
         "a gap or a duplicate: {positions:?}"
     );
     ensure!(positions == journal, "{positions:?} / {journal:?}");
-    // MCP follows the same cursor with pages of 25: a limit of 100 is clamped. Each page
+    // MCP follows the same cursor: a limit of 100 is clamped to 25. Each page
     // gives the total of the entries after `after`.
     let mut walked = vec![];
     let mut arguments = json!({"workspace":w.ws,"after":p,"limit":100});
@@ -63,7 +63,7 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
     for page in 1.. {
         ensure!(page <= pages + 1, "the MCP cursor does not end");
         let reply = w
-            .mcp(w.token("bot"), "joppa_timeline", arguments.clone())
+            .mcp(w.token("bot"), "joppa_history", arguments.clone())
             .await?;
         ensure!(reply["total"] == journal.len(), "{reply}");
         walked.extend(

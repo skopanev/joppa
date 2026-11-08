@@ -7,7 +7,6 @@ import {api} from 'board/api.js';
 import {clearBoard} from 'board/workspaces.js';
 import {inboxKinds} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
-import {renderTimelinePage} from 'board/timeline.js';
 import {renderGraphPage} from 'board/graph.js';
 import {renderObjectPage} from 'board/object-page.js';
 import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
@@ -23,12 +22,10 @@ export async function load() {
   state.data.objectTypes=next.object_types||{};
   applyStatuses(next.statuses);
   // The view drop-down switches between Tree and Graph and keeps the node filters of the link.
-  // Timeline opens the timeline page. A change reads the filters of that moment.
+  // A change reads the filters of that moment.
   const selection=new URLSearchParams(location.search),viewSelect=$('view-select');
   viewSelect.value=selection.get('view')==='graph'?'graph':'tree';
   viewSelect.onchange=()=>{location.href=viewHref(viewSelect.value);};
-  const timeline=$('timeline-link');timeline.href=viewHref('timeline');
-  if(selection.get('view')==='timeline')timeline.setAttribute('aria-current','page');else timeline.removeAttribute('aria-current');
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(state.ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(state.ws);
   await renderObjectTree();
@@ -36,7 +33,7 @@ export async function load() {
 function viewHref(name){
   const now=new URLSearchParams(location.search),next=new URLSearchParams({workspace:state.ws});
   if(name!=='tree')next.set('view',name);
-  if(name!=='timeline')for(const key of LINK_FILTERS)if(now.get(key))next.set(key,now.get(key));
+  for(const key of LINK_FILTERS)if(now.get(key))next.set(key,now.get(key));
   return '/?'+next;
 }
 // The tree schema gives each status tone a light and a dark colour. The theme picks one.
@@ -58,7 +55,6 @@ async function renderObjectTree(){
   }
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
-  if(selection.get('view')==='timeline')return renderTimelinePage(root,generation);
   if(selection.get('view')==='graph')return renderGraphPage(root,generation);
   if(state.data.launch.configured)root.append(E('p',state.data.launch.ready?'All launch conditions accepted':'Launch conditions remaining: '+(state.data.launch.blocker_count??state.data.launch.blockers?.length),'hint'));
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
 
 // ac:crwplj1r
-test('actor alias board: a comment and the timeline show the account and the alias', async () => {
+test('actor alias board: a comment and History show the account and the alias', async () => {
   const f = await fixture({
     note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: []},
   });
@@ -28,9 +28,11 @@ test('actor alias board: a comment and the timeline show the account and the ali
     await meta.waitFor({state: 'attached', timeout: 15000});
     assert.match(await meta.textContent(), /^alex · p1 · /);
 
-    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&view=timeline');
-    const actor = f.page.locator('.timeline-entry .timeline-actor').first();
-    await actor.waitFor({timeout: 15000});
-    assert.equal(await actor.innerText(), 'alex · p1');
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
+    await f.page.getByRole('tab', {name: 'History'}).click();
+    const entry = f.page.locator('.history-collection .history-entry').first();
+    await entry.waitFor({timeout: 15000});
+    await entry.locator(':scope > summary').click();
+    assert.match(await entry.locator('.history-actor').innerText(), /^alex · p1/);
   } finally { await f.close(); }
 });

@@ -1,4 +1,4 @@
-//! Read routes: the board, objects, the timeline, Tasks and the tree.
+//! Read routes: the board, objects, History and the tree.
 use super::*;
 
 pub(super) async fn read(
@@ -120,42 +120,14 @@ pub(super) async fn objects(
     )
 }
 #[derive(Deserialize)]
-pub(super) struct TimelineQuery {
-    after: Option<u64>,
-    limit: Option<usize>,
-    cursor: Option<String>,
-    order: Option<String>,
-}
-/// The workspace timeline, with the access rules of the other reads.
-pub(super) async fn timeline(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    Query(q): Query<TimelineQuery>,
-    headers: HeaderMap,
-) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
-    result(
-        store::read_timeline(
-            &app.pool,
-            &workspace,
-            &actor,
-            &store::TimelineScope {
-                after: q.after.unwrap_or(0),
-                limit: q.limit.unwrap_or(50),
-                cursor: q.cursor.as_deref(),
-                order: q.order.as_deref(),
-            },
-        )
-        .await,
-    )
-}
-#[derive(Deserialize)]
 pub(super) struct HistoryQuery {
     limit: Option<i64>,
     cursor: Option<String>,
-    all: Option<bool>,
+    open: Option<bool>,
+    order: Option<String>,
+    after: Option<i64>,
 }
-/// History: journal entries that are open until a member marks them processed.
+/// History: one entry for each journal event, open until a member marks it processed.
 pub(super) async fn history(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -164,7 +136,7 @@ pub(super) async fn history(
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     let limit = q.limit.unwrap_or(store::HISTORY_LIMIT);
-    let args = serde_json::json!({"limit": limit, "cursor": q.cursor, "all": q.all});
+    let args = serde_json::json!({"limit": limit, "cursor": q.cursor, "open": q.open, "order": q.order, "after": q.after});
     result(store::read_history(&app.pool, &workspace, &actor, &args).await)
 }
 pub(super) async fn tree_schema(

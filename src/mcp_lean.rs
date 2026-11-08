@@ -3,10 +3,9 @@
 use serde_json::{Map, Value, json};
 
 /// The tools whose replies give no workspace, no position and no echo of the address.
-const READS: [&str; 7] = [
+const READS: [&str; 6] = [
     "joppa_objects",
     "joppa_search",
-    "joppa_timeline",
     "joppa_history",
     "joppa_tree",
     "joppa_attach",

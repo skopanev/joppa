@@ -96,13 +96,13 @@ fn items(page: &Value) -> Vec<Value> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_default_read_returns_the_oldest_open_entry() -> Result<()> {
-    // ac:37bb64b0: entry 1 is processed, the later entries are open. A default read gives
-    // a page of up to 25 open entries, oldest first, and their total.
+async fn open_true_returns_the_oldest_open_entry() -> Result<()> {
+    // ac:37bb64b0: entry 1 is processed, the later entries are open. A read with open=true
+    // gives a page of up to 25 open entries, oldest first, and their total.
     let pool = pool().await?;
     let ws = workspace(&pool, 1).await?;
     mark(&pool, &ws, json!({"position":1,"reason":"Seen","nodes":[]})).await?;
-    let page = history(&pool, &ws, json!({})).await?;
+    let page = history(&pool, &ws, json!({"open": true})).await?;
     let list = items(&page);
     ensure!(
         list.len() >= 2 && page["total"] == list.len() && page["limit"] == 25,
@@ -118,12 +118,12 @@ async fn a_default_read_returns_the_oldest_open_entry() -> Result<()> {
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn all_true_also_returns_processed_entries_in_journal_order() -> Result<()> {
+async fn a_default_read_also_returns_processed_entries_in_journal_order() -> Result<()> {
     // ac:8efae8ce: entry 1 is processed and entry 2 is open.
     let pool = pool().await?;
     let ws = workspace(&pool, 1).await?;
     mark(&pool, &ws, json!({"position":1,"reason":"Seen","nodes":[]})).await?;
-    let page = history(&pool, &ws, json!({"all": true, "limit": 15})).await?;
+    let page = history(&pool, &ws, json!({"limit": 15})).await?;
     let list = items(&page);
     ensure!(
         list[0]["position"] == 1 && list[0]["status"] == "processed",
@@ -166,7 +166,7 @@ async fn a_mark_records_actor_time_reason_and_nodes_without_a_journal_entry() ->
         .await?
         .get(0);
     ensure!(inside, "{before} <= {at} <= {after}");
-    let page = history(&pool, &ws, json!({"all": true, "limit": 5})).await?;
+    let page = history(&pool, &ws, json!({"limit": 5})).await?;
     let entry = items(&page)
         .into_iter()
         .find(|i| i["position"] == 2)
@@ -217,7 +217,7 @@ async fn a_mark_refuses_16_nodes_a_second_mark_and_server_fields() -> Result<()>
             .expect_err("the mark must be refused");
         ensure!(e.to_string().contains(error), "{args}: {e}");
     }
-    let page = history(&pool, &ws, json!({"all": true, "limit": 5})).await?;
+    let page = history(&pool, &ws, json!({"limit": 5})).await?;
     let list = items(&page);
     let entry = |p: i64| list.iter().find(|i| i["position"] == p).cloned();
     ensure!(entry(3).is_some_and(|e| e["status"] == "open"), "{page}");

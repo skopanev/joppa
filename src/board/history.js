@@ -7,9 +7,9 @@ import {nodeTitle} from 'board/status.js';
 import {eventDate} from 'board/format.js';
 import {applyObjectColor} from 'board/object-types.js';
 import {collectionHeading} from 'board/collections.js';
-// History is a tab beside the root tabs. It lists open journal entries, oldest first,
-// and with "Show processed too" it also lists processed entries with their mark. The
-// server sets the page size. Load more reads the next page.
+// History is a tab beside the root tabs. It lists every journal entry, newest first, with
+// the mark of a processed entry. "Open only" keeps the open entries, and "Oldest first"
+// reverses the order. The server sets the page size. Load more reads the next page.
 export function historyPanel(root,existing){
   let panel=existing.find(node=>node.dataset.collectionKind==='@history');
   if(panel)return panel;
@@ -18,12 +18,16 @@ export function historyPanel(root,existing){
   collectionHeading(panel,'History','Changes of this workspace. An open entry waits until a member marks it processed.');
   const summary=panel.querySelector(':scope > header');
   const controls=E('div',undefined,'note-controls');
-  const option=E('label',undefined,'note-all'),all=E('input');all.type='checkbox';all.setAttribute('aria-label','Show processed too');
-  option.append(all,E('span','Show processed too'));controls.append(option);summary.append(controls);
+  const toggle=text=>{
+    const option=E('label',undefined,'note-all'),input=E('input');input.type='checkbox';input.setAttribute('aria-label',text);
+    option.append(input,E('span',text));controls.append(option);return input;
+  };
+  const open=toggle('Open only'),oldest=toggle('Oldest first');summary.append(controls);
   const items=panel.querySelector(':scope > .collection-items');
   let request=0,loaded=false;
   const page=async(cursor,mine)=>{
-    const params=new URLSearchParams();if(all.checked)params.set('all','true');if(cursor)params.set('cursor',cursor);
+    const params=new URLSearchParams({order:oldest.checked?'oldest':'newest'});
+    if(open.checked)params.set('open','true');if(cursor)params.set('cursor',cursor);
     const reply=await api('workspaces/'+encodeURIComponent(state.ws)+'/history?'+params);
     if(mine!==request||!panel.isConnected)return;
     items.append(...reply.items.map(historyRow));
@@ -40,10 +44,10 @@ export function historyPanel(root,existing){
       await page(undefined,mine);
       if(mine!==request)return;
       items.querySelector(':scope > .object-loading')?.remove();
-      if(!items.children.length)items.append(E('p',all.checked?'No changes yet.':'No open changes.','hint'));
+      if(!items.children.length)items.append(E('p',open.checked?'No open changes.':'No changes yet.','hint'));
     }catch(error){if(mine===request){loaded=false;items.replaceChildren();notify(error);}}
   };
-  all.onchange=load;
+  open.onchange=load;oldest.onchange=load;
   panel.collectionLoad=()=>{if(!loaded)load();};
   return panel;
 }

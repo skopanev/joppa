@@ -8,35 +8,50 @@ const {fixture, root, testType} = require('./board_fixture.cjs');
 
 const domains = {domain: {title: 'Domains', role: 'group', status:'children', root: true, parents: [], badge: 'D'}};
 
-test('ea0ca1c0 history-tab: History pages 25 rows with Load more, dates and Show processed too', async () => {
+test('ea0ca1c0 history-tab: History pages 25 rows newest first with Load more, dates, Open only and Oldest first', async () => {
   const f = await fixture(domains);
   try {
     // Every entry before the 30 new saves is processed: the first one is entry 1.
-    for (let open = await f.mcp('joppa_history', {}); open.items.length; open = await f.mcp('joppa_history', {}))
+    for (let open = await f.mcp('joppa_history', {open: true}); open.items.length; open = await f.mcp('joppa_history', {open: true}))
       await f.mcp('joppa_history_mark', {position: open.items[0].position, reason: 'Fixture setup'});
+    const setup = (await f.mcp('joppa_history', {})).total;
+    assert.ok(setup >= 1 && setup <= 20, 'setup entries: ' + setup);
     for (let n = 1; n <= 30; n++) await f.save('domain:d' + n, 'Domain ' + n);
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
     const tab = f.page.getByRole('tab', {name: 'History'});
     await tab.click();
     const panel = f.page.locator('.history-collection');
     const rows = panel.locator('.history-entry');
-    await f.page.waitForFunction(() => document.querySelectorAll('.history-collection .history-entry').length === 25);
+    const count = n => f.page.waitForFunction(n => document.querySelectorAll('.history-collection .history-entry').length === n, n);
+    const positions = () => rows.evaluateAll(list => list.map(row => Number(row.dataset.position)));
+    const processed = () => rows.locator('.note-state:not(.history-at)').filter({hasText: 'Processed'}).count();
+    await count(25);
     assert.deepEqual(await f.page.locator('.collection-tabs [role=tab]').allTextContents(), ['Domains', 'History']);
-    assert.equal(await rows.locator('.note-state:not(.history-at)').filter({hasText: 'Processed'}).count(), 0);
+    // The 25 newest entries come first, and all of them are open.
+    const first = await positions();
+    assert.deepEqual(first, [...first].sort((a, b) => b - a));
+    assert.equal(await processed(), 0);
     const dates = await rows.locator('.history-at').allTextContents();
     assert.equal(dates.length, 25);
     for (const date of dates) assert.match(date, /^\d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}$/);
     const more = panel.getByRole('button', {name: 'Load more'});
     await more.click();
-    await f.page.waitForFunction(() => document.querySelectorAll('.history-collection .history-entry').length === 30);
+    await count(setup + 30);
     assert.equal(await more.count(), 0);
-    const positions = await rows.evaluateAll(list => list.map(row => Number(row.dataset.position)));
-    assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
-    assert.equal(new Set(positions).size, 30);
-    await panel.getByLabel('Show processed too').check();
-    await f.page.waitForFunction(() => document.querySelector('.history-collection .history-entry')?.dataset.position === '1');
-    assert.equal(await rows.first().locator('.note-state:not(.history-at)').innerText(), 'Processed');
-    assert.equal(await rows.count(), 25);
+    const all = await positions();
+    assert.deepEqual(all, [...all].sort((a, b) => b - a));
+    assert.equal(new Set(all).size, setup + 30);
+    assert.equal(all.at(-1), 1);
+    assert.equal(await rows.last().locator('.note-state:not(.history-at)').innerText(), 'Processed');
+    // Open only starts the list again with the 25 newest open entries.
+    await panel.getByLabel('Open only').check();
+    await f.page.waitForFunction(() => document.querySelectorAll('.history-collection .history-entry').length === 25
+      && document.querySelector('.history-collection .collection-items > button'));
+    assert.equal(await processed(), 0);
+    // Oldest first starts it again from the oldest open entry.
+    await panel.getByLabel('Oldest first').check();
+    await f.page.waitForFunction(first => document.querySelector('.history-collection .history-entry')?.dataset.position === String(first), setup + 1);
+    assert.equal(await processed(), 0);
   } finally { await f.close(); }
 });
 

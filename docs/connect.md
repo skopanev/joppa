@@ -48,7 +48,7 @@ OpenCode 1.x, in the global `opencode.jsonc`:
 
 Agents of one person share the OAuth session of that person. Each agent sends its name as
 `alias` on each tool call, for example `"alias": "p1"`, or once for the session with the
-header `X-Joppa-Alias: p1`. The journal, the timeline, History and the board show it next
+header `X-Joppa-Alias: p1`. The journal, History and the board show it next
 to the account, for example `alex · p1`. The alias changes no access.
 
 Claude Code, for one agent:
@@ -63,14 +63,13 @@ claude mcp add --transport http --scope project joppa https://YOUR_JOPPA_DOMAIN/
 | Tool | Purpose |
 |---|---|
 | `joppa_list` | List accessible products |
-| `joppa_timeline` | Read every recorded change of a workspace in journal order, page by page |
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_help` | Read command shapes and API rules |
 | `joppa_tree` | Read the workspace schema and its saved revisions |
 | `joppa_objects` | Read object lists, documents, links and revisions |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
-| `joppa_history` | Read history pages |
+| `joppa_history` | Read every recorded change of a workspace, page by page, and the open entries to process |
 | `joppa_history_mark` | Mark history entries processed |
 | `joppa_record_results` | Record the test outcomes of one commit |
 | `joppa_attach` | Upload a file and attach it to an object in one call |

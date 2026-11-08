@@ -33,16 +33,10 @@ fn operation(result: &mut Value) {
     }
 }
 
-/// joppa_timeline: no echo of after and order.
-pub fn timeline(mut reply: Value) -> Value {
-    remove(&mut reply, &["after", "order"]);
-    reply
-}
-
-/// joppa_history: no echo of all and limit. An entry gives its own change; the current
-/// status of an object comes from joppa_objects.
+/// joppa_history: no echo of open, order, after and limit. An entry gives its own change;
+/// the current status of an object comes from joppa_objects.
 pub fn history(mut reply: Value) -> Value {
-    remove(&mut reply, &["all", "limit"]);
+    remove(&mut reply, &["open", "order", "after", "limit"]);
     for item in reply
         .get_mut("items")
         .and_then(Value::as_array_mut)

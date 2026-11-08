@@ -1,14 +1,15 @@
-//! History: the journal entries of a workspace, each open until a member marks it
-//! processed. A planner reads the oldest open entry, does the work and marks it with
-//! a reason and the nodes that the work created or changed. A mark adds no journal
-//! entry, so History never grows from its own marks.
+//! History: the journal entries of a workspace, one entry for each recorded change. Each
+//! entry is open until a member marks it processed. A planner reads the oldest open entry,
+//! does the work and marks it with a reason and the nodes that the work created or changed.
+//! A mark adds no journal entry, so History never grows from its own marks.
 use super::*;
-use serde::Deserialize;
+
+#[path = "store_history_mark.rs"]
+mod mark;
+pub use mark::mark_history;
 
 /// The largest History page.
 pub const HISTORY_LIMIT: i64 = 25;
-/// The largest node list of one mark.
-pub const MARK_NODES_MAX: usize = 15;
 
 /// A cursor holds the last position of the page that it continues.
 fn cursor_position(cursor: &str) -> Result<i64> {
@@ -30,25 +31,57 @@ fn page_limit(args: &Value) -> Result<i64> {
     }
 }
 
-/// Read open entries oldest first, or every entry with all=true. One read transaction
-/// gives the page, its items and the current status of each object.
+/// One History read: open only or every entry, oldest or newest first, after a position.
+struct Scope {
+    limit: i64,
+    open: bool,
+    newest: bool,
+    after: i64,
+    cursor: Option<i64>,
+}
+
+fn scope(args: &Value) -> Result<Scope> {
+    let open = match args.get("open") {
+        None | Some(Value::Null) => false,
+        Some(value) => value
+            .as_bool()
+            .ok_or(commands::ClientField("open must be true or false"))?,
+    };
+    let newest = match args.get("order").and_then(Value::as_str) {
+        None | Some("oldest") => false,
+        Some("newest") => true,
+        Some(_) => return Err(commands::ClientField("order must be oldest or newest").into()),
+    };
+    let after = match args.get("after") {
+        None | Some(Value::Null) => 0,
+        Some(value) => value
+            .as_i64()
+            .filter(|n| *n >= 0)
+            .ok_or(commands::ClientField("after must be a whole number"))?,
+    };
+    let cursor = args
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(cursor_position)
+        .transpose()?;
+    Ok(Scope {
+        limit: page_limit(args)?,
+        open,
+        newest,
+        after,
+        cursor,
+    })
+}
+
+/// Read one page of History. One read transaction gives the page, its items and the current
+/// status of each object.
 pub async fn read_history(
     pool: &Pool,
     workspace: &str,
     actor: &str,
     args: &Value,
 ) -> Result<Value> {
-    let limit = page_limit(args)?;
-    let all = match args.get("all") {
-        None | Some(Value::Null) => false,
-        Some(value) => value
-            .as_bool()
-            .ok_or(commands::ClientField("all must be true or false"))?,
-    };
-    let after = match args.get("cursor").and_then(Value::as_str) {
-        Some(cursor) => cursor_position(cursor)?,
-        None => 0,
-    };
+    let s = scope(args)?;
     let mut conn = pool.get().await?;
     let id = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &id, actor, false).await?;
@@ -59,22 +92,29 @@ pub async fn read_history(
         .start()
         .await?;
     let (public, position) = super::head(&*conn, &id).await?;
+    // Oldest first continues after the cursor; newest first continues before it.
+    let (low, high) = match (s.cursor, s.newest) {
+        (Some(p), false) => (s.after.max(p), i64::MAX),
+        (Some(p), true) => (s.after, p - 1),
+        (None, _) => (s.after, i64::MAX),
+    };
+    let order = if s.newest { "DESC" } else { "ASC" };
     let rows = conn.query(
-        "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND ($3 OR m.position IS NULL) ORDER BY e.position LIMIT $4",
-        &[&id, &after, &all, &(limit + 1)],
+        &format!("SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) ORDER BY e.position {order} LIMIT $5"),
+        &[&id, &low, &high, &s.open, &(s.limit + 1)],
     ).await?;
     let next_item: Option<i64> = conn.query_one(
         "SELECT min(e.position) FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS (SELECT 1 FROM joppa.history_marks m WHERE m.workspace=e.workspace AND m.position=e.position)",
         &[&id],
     ).await?.get(0);
-    // `total` counts every entry of the view, also the entries before the cursor.
+    // `total` counts every entry of the read after `after`, also the entries before the cursor.
     let total: i64 = conn.query_one(
-        "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND ($2 OR m.position IS NULL)",
-        &[&id, &all],
+        "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL)",
+        &[&id, &s.after, &s.open],
     ).await?.get(0);
-    let more = rows.len() as i64 > limit;
-    let rows = &rows[..rows.len().min(limit as usize)];
-    let mut items = super::timeline_items::items(&*conn, &id, rows).await?;
+    let more = rows.len() as i64 > s.limit;
+    let rows = &rows[..rows.len().min(s.limit as usize)];
+    let mut items = super::history_items::items(&*conn, &id, rows).await?;
     // The current status of each object, with the stored rollup as on the board.
     let addresses: Vec<String> = items
         .iter()
@@ -115,108 +155,22 @@ pub async fn read_history(
     }
     let next_cursor = (more && !rows.is_empty())
         .then(|| format!("h{}", rows.last().map(|r| r.get::<_, i64>(0)).unwrap_or(0)));
-    Ok(
-        json!({"workspace": public, "position": position, "items": items, "total": total, "next_item": next_item, "next_cursor": next_cursor, "all": all, "limit": limit}),
-    )
+    Ok(json!({
+        "workspace": public,
+        "position": position,
+        "items": items,
+        "total": total,
+        "next_item": next_item,
+        "next_cursor": next_cursor,
+        "open": s.open,
+        "order": if s.newest { "newest" } else { "oldest" },
+        "after": s.after,
+        "limit": s.limit,
+    }))
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Mark {
-    #[serde(default)]
-    workspace: Option<String>,
-    position: i64,
-    reason: String,
-    #[serde(default)]
-    nodes: Vec<String>,
-}
-
-/// Check a mark before any read of the workspace.
-fn parse_mark(args: &Value) -> Result<Mark> {
-    for field in ["actor", "at"] {
-        if args.get(field).is_some() {
-            return Err(commands::ClientField(if field == "actor" {
-                "actor comes from the server; do not supply it"
-            } else {
-                "at comes from the server; do not supply it"
-            })
-            .into());
-        }
-    }
-    let mark: Mark = serde_json::from_value(args.clone())
-        .map_err(|e| anyhow::anyhow!("invalid history mark: {e}"))?;
-    let _ = &mark.workspace;
-    ensure!(mark.position >= 1, "position must be a journal position");
-    ensure!(!mark.reason.trim().is_empty(), "a mark needs a reason");
-    ensure!(
-        mark.nodes.len() <= MARK_NODES_MAX,
-        "a mark names at most 15 nodes"
-    );
-    once(&mark.nodes)?;
-    Ok(mark)
-}
-
-fn once(nodes: &[String]) -> Result<()> {
-    let unique: std::collections::BTreeSet<&String> = nodes.iter().collect();
-    ensure!(unique.len() == nodes.len(), "a mark names each node once");
-    Ok(())
-}
-
-/// Mark one open entry processed. The server sets the actor and the time.
-pub async fn mark_history(
-    pool: &Pool,
-    workspace: &str,
-    actor: &str,
-    args: &Value,
-) -> Result<Value> {
-    let mut mark = parse_mark(args)?;
-    let mut conn = pool.get().await?;
-    let tx = conn.transaction().await?;
-    let id = resolve_workspace(&*tx, workspace).await?;
-    access::check(&*tx, &id, actor, false).await?;
-    // A public item ID names its node by its address, also next to that address.
-    mark.nodes = super::public_ids::node_addresses(&*tx, &id, &mark.nodes).await?;
-    once(&mark.nodes)?;
-    tx.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-        &[&id],
-    )
-    .await?;
-    let exists: bool = tx
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM joppa.events WHERE workspace=$1 AND position=$2)",
-            &[&id, &mark.position],
-        )
-        .await?
-        .get(0);
-    ensure!(exists, "position {} is not a journal entry", mark.position);
-    let found: i64 = tx
-        .query_one(
-            "SELECT count(*) FROM unnest($2::text[]) x(address) WHERE EXISTS (SELECT 1 FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT a.target FROM joppa.object_aliases a WHERE a.workspace=$1 AND a.address=x.address), x.address))",
-            &[&id, &mark.nodes],
-        )
-        .await?
-        .get(0);
-    ensure!(
-        found as usize == mark.nodes.len(),
-        "every node must be an object of the workspace"
-    );
-    let nodes = serde_json::to_string(&mark.nodes)?;
-    let alias = crate::actor_alias::current();
-    let row = tx.query_opt(
-        "INSERT INTO joppa.history_marks(workspace,position,actor,reason,nodes,alias) VALUES($1,$2,$3,$4,$5::text::jsonb,$6) ON CONFLICT (workspace,position) DO NOTHING RETURNING marked_at::text",
-        &[&id, &mark.position, &actor, &mark.reason, &nodes, &alias],
-    ).await?;
-    let Some(row) = row else {
-        return Err(commands::ClientField("the entry is already processed").into());
-    };
-    tx.commit().await?;
-    Ok({
-        let mut reply = json!({"position": mark.position, "status": "processed", "actor": actor, "at": row.get::<_, String>(0), "reason": mark.reason, "nodes": mark.nodes});
-        crate::actor_alias::put(&mut reply, alias.as_deref());
-        reply
-    })
-}
+#[cfg(test)]
+use mark::parse_mark;
 
 #[cfg(test)]
 #[path = "store_history_tests.rs"]
