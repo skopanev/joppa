@@ -37,12 +37,6 @@ fn links(value: &Value) -> Vec<Link> {
     out
 }
 
-/// The older links of `address` as the older release stored them.
-fn original(address: &str) -> Vec<Link> {
-    let found = fixture().into_iter().find(|(a, ..)| a == address);
-    links(&found.map_or(json!([]), |f| f.1))
-}
-
 /// The rollback links of `address`: depends_on blocks, related does not, pins stay.
 fn shadow(address: &str) -> Vec<Link> {
     let edges = wanted(address).into_iter();
@@ -118,14 +112,10 @@ async fn migrated(w: &World) -> Result<()> {
                 ensure!(right, "state row {key}: {revision}");
             }
         }
-        // The document keeps the older form when it maps back exactly, else it holds both.
+        // A migrated node maps back exactly: its document holds only the shadow links.
         let document: Value = serde_json::from_str(&text(3))?;
-        let right = if original(&key) == shadow(&key) {
-            links(&document["links"]) == original(&key) && document.get("relations").is_none()
-        } else {
-            flat(&document["relations"]) == wanted(&key)
-                && links(&document["links"]) == original(&key)
-        };
+        let right =
+            links(&document["links"]) == shadow(&key) && document.get("relations").is_none();
         ensure!(right, "document {key}: {document}");
     }
     let sql = "SELECT (SELECT first_position FROM joppa.replay_epochs WHERE workspace=$1 AND rule='relations_reset'),(SELECT max(position)+1 FROM joppa.events WHERE workspace=$1),(SELECT first_view->>'projection_version' FROM joppa.board_cache WHERE workspace=$1)";
