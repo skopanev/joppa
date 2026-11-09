@@ -27,7 +27,7 @@ An iOS condition means iOS; other clients are never added by assumption.
 - No criterion, no test: every test in the repository has a present test node. A
   full-run record must give `"unbound": []` before a merge.
 - Each type has a status rule: `own`, `children`, `links` or `none`. One rollup
-  gives every level the highest tone of its children: red, orange, yellow, grey,
+  gives every level the highest tone of its children: red, orange, yellow, blue,
   green. A criterion without a test node is orange.
 - Tasks under configured object parents, manual work and decision tasks. A Task is not
   a verified AC. There is no manual acceptance. Records append;

@@ -75,7 +75,7 @@ The newest result of the test after the last reset of its node decides:
 
 - Red: an outcome in `red_if_any`.
 - Green: an outcome in `green_if_all`.
-- Grey: no result, or a `skip` or `todo` result.
+- Blue: no result, or a `skip` or `todo` result.
 
 With `same_commit: "fail_wins"`, a failure in any record of the newest commit decides the test.
 An older skip or todo of that commit never hides a newer result.
@@ -86,7 +86,7 @@ Time alone never changes a tone.
 
 A node with `status: "children"` takes the highest tone of its present counted children, and
 a node with `status: "links"` the highest tone of the present objects that link to it by a
-depends_on or related edge or a reference field, in the order red, orange, yellow, grey, green.
+depends_on or related edge or a reference field, in the order red, orange, yellow, blue, green.
 A flow edge does not count.
 
 - A node with no counted child or link is orange: a criterion without a test node is orange.
@@ -97,7 +97,7 @@ A flow edge does not count.
 ## Changes
 
 With `reset_on_change`, a change of a node or of a node above it makes the earlier records stop
-counting for the test nodes at and below it. Such a test is grey until a newer record arrives.
+counting for the test nodes at and below it. Such a test is blue until a newer record arrives.
 
 - Any new parent, depends_on or related edge, or data value of a node resets the test nodes at
   and below it. This holds for each node type, a new pin included. A flow edge resets nothing.
@@ -122,10 +122,10 @@ without `check_result` changes no status.
 - A criterion with a live test node takes its status only from its tests.
 - Else the latest live file with `check_result` decides, from the files after the last reset of
   the criterion. Without `reset_on_change`, every file counts.
-- `fail` is red. `pass` is green until the date `valid_until` starts, then grey
+- `fail` is red. `pass` is green until the date `valid_until` starts, then blue
   "Manual check expired".
-- Only older files give grey "Awaits checks". No file gives grey "no tests".
-- At start and every 600 seconds the server turns expired checks grey, without a journal event.
+- Only older files give blue "Awaits checks". No file gives blue "no tests".
+- At start and every 600 seconds the server turns expired checks blue, without a journal event.
 
 ## No manual acceptance
 
