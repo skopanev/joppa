@@ -124,9 +124,9 @@ pub async fn execute_remote_input(
     .await
 }
 
-/// A member adds or removes one blocking dependency of `source` on `target`. The ordinary
-/// save writes the current document with only this link changed. An added link of a Task
-/// pins the current revision of its target; the link of another node pins nothing.
+/// A member adds or removes one depends_on edge of `source` to `target`. The ordinary save
+/// sends only the depends_on key. An added edge of a Task pins the current revision of its
+/// target; the edge of another node pins nothing.
 pub async fn save_dependency(
     pool: &Pool,
     workspace: &str,
@@ -142,13 +142,13 @@ pub async fn save_dependency(
     };
     let object = super::objects::read_objects(pool, workspace, actor, &scope).await?;
     let document = &object["document"];
-    let mut links: Vec<crate::objects::ObjectLink> =
-        serde_json::from_value(document["links"].clone())?;
-    let dependency =
-        |l: &crate::objects::ObjectLink| l.relation == "depends_on" && l.target == target;
+    let mut edges: Vec<crate::relations::Edge> =
+        serde_json::from_value(document["relations"]["depends_on"]["edges"].clone())
+            .unwrap_or_default();
     let kind = object["kind"].as_str().context("object has no kind")?;
     let schema = super::tree_schema(pool, workspace, actor, None).await?;
-    let before = links.len();
+    let before = edges.len();
+    edges.retain(|e| e.to != target);
     if add {
         let revision = if schema["schema"]["types"][kind]["role"] == "task" {
             let scope = super::ObjectScope {
@@ -164,16 +164,13 @@ pub async fn save_dependency(
         } else {
             None
         };
-        links.retain(|l| !dependency(l));
-        links.push(crate::objects::ObjectLink {
-            target: target.into(),
-            relation: "depends_on".into(),
+        edges.push(crate::relations::Edge {
+            to: target.into(),
+            when: None,
             revision,
-            blocking: true,
         });
     } else {
-        links.retain(|l| !(dependency(l) && l.blocking));
-        ensure!(links.len() < before, "unknown dependency");
+        ensure!(edges.len() < before, "unknown dependency");
     }
     let reason = if add {
         format!("Depend on {target}")
@@ -181,7 +178,7 @@ pub async fn save_dependency(
         format!("Remove the dependency on {target}")
     };
     let command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
-        "parent":document["parent"],"data":document["data"],"links":links,"reason":reason});
+        "parent":document["parent"],"data":document["data"],"relations":{"depends_on":{"title":document["relations"]["depends_on"]["title"],"edges":edges}},"reason":reason});
     execute_remote_input(pool, workspace, actor, request_id, &command).await
 }
 

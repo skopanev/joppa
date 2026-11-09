@@ -137,10 +137,10 @@ pub(crate) fn sync_with(
             .is_none_or(|v| v.data != data || v.parent != parent || !v.present)
             || forced;
         if changed {
-            let links = obj
+            let (relations, older_links) = obj
                 .revisions
                 .last()
-                .map(|v| v.links.clone())
+                .map(|v| (v.relations.clone(), v.older_links.clone()))
                 .unwrap_or_default();
             let spec = forced_req.is_some_and(|req| key == &requirement_address(req));
             let revision = obj.revisions.last().map_or(1, |r| r.revision + 1);
@@ -157,7 +157,8 @@ pub(crate) fn sync_with(
                 schema_revision,
                 parent,
                 data: data.clone(),
-                links,
+                relations,
+                older_links,
                 actor: actor.into(),
                 alias: w.alias.clone(),
                 at: at.into(),

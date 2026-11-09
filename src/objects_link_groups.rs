@@ -1,34 +1,31 @@
-//! The links of an object in groups. An object read gives one count for each direction,
-//! relation and kind of the other object. A group read gives the links of one group in
-//! pages, in address order, so a card with many links loads only what the reader opens.
+//! The edges of an object in groups. An object read gives one count for each relation and
+//! kind of the incoming edges (relation_groups). relations_of gives the edges in
+//! pages, in address order, so a card with many edges loads only what the reader opens.
 use super::*;
 
-const GROUPS: &str = "SELECT 'outgoing',l.relation,COALESCE(o.kind,split_part(l.target,':',1)),count(*) FROM joppa.object_links l
-    LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target
-    LEFT JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=COALESCE(a.target,l.target)
-    WHERE l.workspace=$1 AND l.source=$2 AND l.relation NOT LIKE 'reference:%' GROUP BY 1,2,3
-  UNION ALL SELECT 'incoming',l.relation,o.kind,count(*) FROM joppa.object_links l
+// The incoming edges by relation and kind; the relations of the object give the outgoing ones.
+const GROUPS: &str = "SELECT 'incoming',l.relation,o.kind,count(*) FROM joppa.object_links l
     JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source
     WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present GROUP BY 1,2,3
   ORDER BY 1,2,3";
 
-// One page of links in both directions, filtered by direction ($3), relation ($4) and kind
+// One page of edges in both directions, filtered by direction ($3), relation ($4) and kind
 // ($5) when they are given, in the order direction, relation, address after the cursor
-// ($6, $7, $8). Without a relation, the outgoing links omit the reference fields, as the
-// groups do. `total` counts every link of the filter, also the links before the cursor.
+// ($6, $7, $8). Without a relation, the outgoing edges omit the reference fields, as the
+// groups do. `total` counts every edge of the filter, also the edges before the cursor.
 const LINKS: &str = "SELECT * FROM (SELECT x.*,count(*) OVER() FROM (
-    SELECT 'outgoing' AS direction,l.relation,l.target AS other,COALESCE(o.title,l.target),COALESCE(o.kind,split_part(l.target,':',1)) AS kind,l.revision,l.blocking,COALESCE(o.present,false) FROM joppa.object_links l
+    SELECT 'outgoing' AS direction,l.relation,l.target AS other,COALESCE(o.title,l.target),COALESCE(o.kind,split_part(l.target,':',1)) AS kind,l.revision,l.when_label,COALESCE(o.present,false) FROM joppa.object_links l
     LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target
     LEFT JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=COALESCE(a.target,l.target)
     WHERE l.workspace=$1 AND l.source=$2 AND ($4::text IS NOT NULL OR l.relation NOT LIKE 'reference:%')
-  UNION ALL SELECT 'incoming',l.relation,l.source,o.title,o.kind,l.revision,l.blocking,o.present FROM joppa.object_links l
+  UNION ALL SELECT 'incoming',l.relation,l.source,o.title,o.kind,l.revision,l.when_label,o.present FROM joppa.object_links l
     JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source
     WHERE l.workspace=$1 AND l.target IN (SELECT $2 UNION SELECT address FROM joppa.object_aliases WHERE workspace=$1 AND target=$2) AND o.present) x
   WHERE ($3::text IS NULL OR x.direction=$3) AND ($4::text IS NULL OR x.relation=$4) AND ($5::text IS NULL OR x.kind=$5)) y
   WHERE $6::text IS NULL OR (y.direction,y.relation,y.other)>($6,$7,$8)
   ORDER BY y.direction,y.relation,y.other LIMIT $9";
 
-/// The link groups of the current revision of `key`.
+/// The relation groups of the current revision of `key`.
 pub(super) async fn groups(
     client: &impl GenericClient,
     workspace: &str,
@@ -42,10 +39,10 @@ pub(super) async fn groups(
         .collect::<Vec<_>>()))
 }
 
-/// The links of `address`, in pages: `direction` is outgoing or incoming, `relation` the
-/// link relation and `kind` the type of the other object. Each filter is optional. At most
-/// `limit` links (1–100) after `cursor`, with next_cursor, the total of the filter, the
-/// workspace and the journal position of the snapshot.
+/// The edges of `address`, in pages: `direction` is outgoing or incoming, `relation` the
+/// relation key and `kind` the type of the other object. Each filter is optional. At most
+/// `limit` edges (1–100) after `cursor`, with next_cursor, the total of the filter, the
+/// workspace and the journal position of the snapshot. MCP and HTTP read pages of 25.
 #[allow(clippy::too_many_arguments)]
 pub async fn link_page(
     pool: &Pool,
@@ -109,7 +106,16 @@ pub async fn link_page(
     let rows = &rows[..rows.len().min(limit)];
     let items = rows
         .iter()
-        .map(|r| json!({"address":r.get::<_,String>(2),"title":r.get::<_,String>(3),"kind":r.get::<_,String>(4),"relation":r.get::<_,String>(1),"direction":r.get::<_,String>(0),"revision":r.get::<_,Option<i32>>(5),"blocking":r.get::<_,bool>(6),"present":r.get::<_,bool>(7)}))
+        .map(|r| {
+            let mut item = json!({"address":r.get::<_,String>(2),"title":r.get::<_,String>(3),"kind":r.get::<_,String>(4),"relation":r.get::<_,String>(1),"direction":r.get::<_,String>(0),"present":r.get::<_,bool>(7)});
+            if let Some(when) = r.get::<_, Option<String>>(6) {
+                item["when"] = json!(when);
+            }
+            if let Some(revision) = r.get::<_, Option<i32>>(5) {
+                item["revision"] = json!(revision);
+            }
+            item
+        })
         .collect::<Vec<_>>();
     let next = more
         .then(|| {

@@ -67,7 +67,7 @@ pub fn refusal(name: &str) -> String {
     let replacement = match name {
         "set_domain_archived" => "archive_object or restore_object",
         "confirm_tree" => "save_object; a saved tree needs no confirmation",
-        "link_source" => "save_object with a Note and its links",
+        "link_source" => "save_object with a Note and its relations",
         "plan" | "result" | "finish" => "joppa_record_results",
         "issue" | "resolve" => "note",
         "review_coverage" | "define_verification_scope" | "set_ac_tests" => {
@@ -157,9 +157,16 @@ pub const LAUNCH_BLOCKER: &str = "launch_blocker was removed; manual acceptance 
 /// The refusal of the removed name rule of the test results.
 pub const TEST_NAME: &str = "test_results.name was removed; the title of a test node states the scenario in business language, and a record names the test by test:<id>";
 
+/// The refusal of the removed links of save_object.
+pub const LINKS: &str = "links was removed; use relations";
+
+/// The refusal of the removed read parameter `links_of`.
+pub const LINKS_OF: &str = "links_of was removed; use relations_of";
+
 /// The refusal of a removed field of a live operation, or None when the command uses none.
 pub fn removed_field(command: &Command) -> Option<&'static str> {
     match command {
+        Command::SaveObject(crate::commands::SaveObjectOp { links: Some(_), .. }) => Some(LINKS),
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp {
             types, put_types, ..
         }) if types

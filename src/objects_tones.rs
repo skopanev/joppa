@@ -3,8 +3,9 @@
 //! The status rule of the type decides, never the kind name:
 //! - `own` (a test node) and `tests`: the test status of the node, green, red or grey.
 //! - `children`: the tones of the present direct children, `links`: the tones of the present
-//!   objects that link to the node. The highest tone wins in the order red, orange, yellow,
-//!   grey, green. A node without a counted child or link is orange.
+//!   objects that link to the node by depends_on, related or a reference field, never by a
+//!   flow. The highest tone wins in the order red, orange, yellow, grey, green. A node without
+//!   a counted child or link is orange.
 //! - `none`: the process tone stays, and a parent does not count the node.
 //! - A type without a rule is orange.
 //!
@@ -130,7 +131,7 @@ pub(super) async fn graph(
     let mut linked = BTreeMap::<String, BTreeSet<String>>::new();
     for r in client
         .query(
-            "SELECT source,target FROM joppa.object_links WHERE workspace=$1",
+            "SELECT source,target FROM joppa.object_links WHERE workspace=$1 AND (relation IN ('depends_on','related') OR relation LIKE 'reference:%')",
             &[&workspace],
         )
         .await?

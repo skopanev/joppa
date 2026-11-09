@@ -161,6 +161,7 @@ pub fn schema(w: &Workspace) -> SchemaRevision {
             test_results: None,
             status_required: None,
             filters: None,
+            relations: crate::relations::system(),
             actor: w.admin.clone(),
             at: String::new(),
             position: 0,

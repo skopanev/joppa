@@ -135,7 +135,7 @@ impl Rows {
         let keys: Vec<&String> = nodes.iter().copied().chain(aliases.keys()).collect();
         let resolve = |a: String| aliases.get(&a).cloned().unwrap_or(a);
         let links = client
-            .query("SELECT source,target FROM joppa.object_links WHERE workspace=$1 AND target=ANY($2)", &[&workspace, &keys])
+            .query("SELECT source,target FROM joppa.object_links WHERE workspace=$1 AND target=ANY($2) AND (relation IN ('depends_on','related') OR relation LIKE 'reference:%')", &[&workspace, &keys])
             .await?;
         let sources: Vec<String> = links.iter().map(|r| r.get(0)).collect();
         let mut out = Rows {

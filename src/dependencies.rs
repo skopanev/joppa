@@ -1,4 +1,4 @@
-//! Ordering dependencies. Work waits while a blocking link of its node, or of an ancestor,
+//! Ordering dependencies. Work waits while a depends_on edge of its node, or of an ancestor,
 //! has a live target that is not satisfied. The same rule holds for every type: a live target
 //! is satisfied when it is a green criterion, or when it has live criteria below it and each
 //! of them is green. An archived target does not make work wait.
@@ -6,7 +6,7 @@
 use crate::model::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The live tree with the blocking links of every node.
+/// The live tree with the depends_on edges of every node.
 #[derive(Default)]
 pub struct Graph {
     parents: BTreeMap<String, Option<String>>,
@@ -26,10 +26,8 @@ impl Graph {
                 o.current().parent.as_deref().map(resolve),
                 role == Some("ac"),
             );
-            for link in &o.current().links {
-                if link.blocking && link.relation == "depends_on" {
-                    graph.link(key.clone(), resolve(&link.target));
-                }
+            for edge in o.current().depends_on() {
+                graph.link(key.clone(), resolve(&edge.to));
             }
         }
         graph
@@ -41,7 +39,7 @@ impl Graph {
         }
         self.parents.insert(key, parent);
     }
-    /// A blocking ordering link of a live node.
+    /// A depends_on edge of a live node.
     pub fn link(&mut self, source: String, target: String) {
         self.links.entry(source).or_default().insert(target);
     }

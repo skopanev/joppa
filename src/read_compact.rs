@@ -10,12 +10,12 @@ pub use crate::read_detail::{detail, headers, revision};
 mod fields;
 pub use fields::{DETAIL_FIELDS, check_fields, head, needs_data, object_fields};
 
-/// The page size of object lists, comments and links.
+/// The page size of object lists, comments and edges.
 pub const PAGE: usize = 25;
 
 /// Keys whose values are authored or replayed data, or raw link entries that clients hash.
-/// They stay exactly as stored.
-const AUTHORED: [&str; 4] = ["document", "data", "command", "remote_links"];
+/// They stay exactly as stored: a relation key without edges keeps `edges: []`.
+const AUTHORED: [&str; 5] = ["document", "data", "command", "remote_links", "relations"];
 
 /// The status of an object: the label and the tone of its signal.
 pub(crate) fn status(item: &Value) -> Option<Value> {

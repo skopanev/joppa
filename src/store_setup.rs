@@ -100,6 +100,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/059_search_and_reference_indexes.sql"),
         include_str!("../migrations/060_source_change_reset.sql"),
         HIDDEN_BY,
+        RELATIONS,
     ] {
         tx.batch_execute(sql).await?;
     }
@@ -120,6 +121,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
 /// Migration 061 moves the older hidden flag without a replay. It runs at serve start too: a
 /// server that starts without `joppa migrate` reads no older flag.
 const HIDDEN_BY: &str = include_str!("../migrations/061_hidden_by.sql");
+/// Migration 062 moves the stored links to relations without a replay, also at serve start.
+const RELATIONS: &str = include_str!("../migrations/062_relations.sql");
 pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
@@ -128,6 +131,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     // Migrations rebuild projections from the journal as it is (see migration 037).
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     tx.batch_execute(HIDDEN_BY).await?;
+    tx.batch_execute(RELATIONS).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
@@ -193,7 +197,7 @@ async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
         loop {
             let dependents: Vec<_> = state.objects.iter().filter(|(key, o)| {
                 !selected.contains(*key) && (o.current().parent.as_deref().is_some_and(|parent| selected.contains(crate::objects::resolve_address(&state,parent)))
-                    || o.current().links.iter().any(|link| link.relation == "depends_on" && selected.contains(crate::objects::resolve_address(&state,&link.target)))
+                    || o.current().depends_on().any(|edge| selected.contains(crate::objects::resolve_address(&state,&edge.to)))
                     || o.current().data["depends_on"].as_array().is_some_and(|deps| deps.iter().filter_map(Value::as_str).any(|key| selected.contains(&crate::objects::criterion_address(key)))))
             }).map(|(key,_)|key.clone()).collect();
             if dependents.is_empty() { break; }

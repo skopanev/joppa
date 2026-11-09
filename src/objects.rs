@@ -13,6 +13,9 @@ pub use process_facts::{process, requirement_summary, signal};
 #[path = "objects_tree_type.rs"]
 mod tree_type;
 pub use tree_type::*;
+#[path = "objects_link.rs"]
+mod link;
+pub use link::*;
 #[path = "objects_reference_rule.rs"]
 mod reference_rule;
 pub use reference_rule::*;

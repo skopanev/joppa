@@ -150,13 +150,15 @@ fn set_field(
     if data == current.data {
         return crate::objects::reset_criteria(w, address, at);
     }
+    let (links, relations) = current.save_fields();
     let command = crate::commands::Command::SaveObject(crate::commands::SaveObjectOp {
         id: o.id.clone(),
         kind: o.kind.clone(),
         revision: current.revision,
         parent: current.parent.clone(),
         data,
-        links: Some(current.links.clone()),
+        links,
+        relations,
         question_checked: None,
         reason: reason.into(),
     });

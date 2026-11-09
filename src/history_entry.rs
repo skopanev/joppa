@@ -85,12 +85,21 @@ pub fn change(command: &Value) -> &'static str {
         .map_or("other", |(change, _)| change)
 }
 
-/// A save is a move when the new revision has the data and links of the previous
-/// revision and a different parent.
-pub fn moved(saved: &Value, previous: &Value) -> bool {
-    saved["parent"] != previous["parent"]
-        && saved["data"] == previous["data"]
-        && saved["links"] == previous["links"]
+/// The kind of a save, or None for "save": "move" for a new parent only, "flow" for new flow
+/// keys only, "relations" for other new keys only. Older links compare by the replay rule.
+pub fn saved_change(saved: &Value, previous: &Value) -> Option<&'static str> {
+    if saved["data"] != previous["data"] {
+        return None;
+    }
+    let changed = crate::relations::changed_keys(saved, previous);
+    if saved["parent"] != previous["parent"] {
+        return changed.is_empty().then_some("move");
+    }
+    match changed.is_empty() {
+        true => None,
+        false if changed.iter().all(|k| crate::relations::flow(k)) => Some("flow"),
+        false => Some("relations"),
+    }
 }
 
 /// The address of a stored record of test results. Tree addresses are kind:id, so this

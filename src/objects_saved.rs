@@ -41,6 +41,7 @@ pub(crate) fn save_into(
         parent,
         data,
         links,
+        relations,
         reason,
         ..
     }) = command
@@ -120,12 +121,10 @@ pub(crate) fn save_into(
     if w.schema_migrated {
         reference_targets(w, kind, data)?;
     }
-    let kept = old
-        .as_ref()
-        .map(|o| o.current().links.clone())
-        .unwrap_or_default();
-    let links = &links.clone().unwrap_or_default(); // An older event without links gives none.
-    validate_links(w, &key, links, &kept)?;
+    let kept = old.as_ref().map(|o| o.current().relations.clone());
+    let kept = kept.unwrap_or_default();
+    let (relations, form) = crate::relations::of_save(relations.as_ref(), links.as_deref());
+    crate::relations::validate(w, &key, &relations, &kept)?;
     let unchanged = old
         .as_ref()
         .is_some_and(|o| o.current().data == *data && o.current().parent == *parent);
@@ -133,7 +132,7 @@ pub(crate) fn save_into(
         accept_unchanged
             && old.as_ref().is_some_and(|o| {
                 let r = o.current();
-                r.data == *saved && r.parent == *parent && r.links == *links
+                r.data == *saved && r.parent == *parent && r.relations == relations
             })
     };
     // Before migrate_generic_nodes a save of a Task also writes its Task record.
@@ -233,7 +232,8 @@ pub(crate) fn save_into(
         schema_revision,
         parent: parent.clone(),
         data: saved_data,
-        links: links.clone(),
+        relations: relations.clone(),
+        older_links: form,
         actor: actor.into(),
         alias: w.alias.clone(),
         at: at.into(),
@@ -243,6 +243,6 @@ pub(crate) fn save_into(
         contract: None,
     });
     w.objects.insert(key.clone(), object);
-    validate_links(w, &key, links, &kept)?;
+    crate::relations::validate(w, &key, &relations, &kept)?;
     Ok(true)
 }

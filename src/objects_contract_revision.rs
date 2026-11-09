@@ -26,12 +26,13 @@ pub fn tests_only_change(before: &ObjectRevision, after: &ObjectRevision) -> boo
     };
     before.data.get("tests") != after.data.get("tests")
         && before.parent == after.parent
-        && before.links == after.links
+        && before.relations == after.relations
+        && before.link_form() == after.link_form()
         && before.present == after.present
         && without(&before.data) == without(&after.data)
 }
 
-/// True when the node and each ancestor are present. The blocking links of a node are
+/// True when the node and each ancestor are present. The depends_on edges of a node are
 /// decided at read time by the test status of their criteria (dependencies::Graph).
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
     let mut current = Some(key);

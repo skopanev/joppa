@@ -5,7 +5,7 @@ use joppa::{read_compact as rc, read_shapes, store};
 use serde_json::{Value, json};
 
 pub async fn compact(pool: &Pool, actor: &str, _name: &str, a: &Value) -> anyhow::Result<Value> {
-    let keys = ["address", "parent", "related_to", "links_of"];
+    let keys = ["address", "parent", "related_to", "relations_of"];
     let resolved = with_addresses(pool, actor, a, &keys).await?;
     let mut reply = objects(pool, actor, &resolved).await?;
     // A read of one object by its public item ID names the address that it resolved.
@@ -73,7 +73,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .transpose()
         .context("invalid object revision")?;
     let limit = number(a, "limit")?.map_or(rc::PAGE, |n| (n as usize).min(rc::PAGE));
-    if let Some(address) = a["links_of"].as_str() {
+    anyhow::ensure!(a["links_of"].is_null(), joppa::removed_ops::LINKS_OF);
+    if let Some(address) = a["relations_of"].as_str() {
         let filter = |name: &str| match a.get(name) {
             None | Some(Value::Null) => Ok(None),
             Some(v) => v

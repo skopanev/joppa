@@ -117,15 +117,15 @@ pub(in crate::store) async fn project(
         }
         if r.revision > previous_revision || schema_changed {
             sources.push(address.clone());
-            for link in &r.links {
-                links.push(json!({"source":address,"target":link.target,"relation":link.relation,"revision":link.revision,"blocking":link.blocking}));
+            for (relation, edge) in r.edges() {
+                links.push(json!({"source":address,"target":edge.to,"relation":relation,"revision":edge.revision,"blocking":relation == crate::relations::DEPENDS_ON,"when_label":edge.when}));
             }
             if state.schema_migrated
                 && r.present
                 && let Ok(targets) = objects::stored_reference_targets(state, &obj.kind, &r.data)
             {
                 for (field, target, _) in targets {
-                    links.push(json!({"source":address,"target":target,"relation":format!("reference:{field}"),"revision":null,"blocking":false}));
+                    links.push(json!({"source":address,"target":target,"relation":format!("reference:{field}"),"revision":null,"blocking":false,"when_label":null}));
                 }
             }
         }
@@ -155,11 +155,16 @@ pub(in crate::store) async fn project(
     }
     if !revisions.is_empty() {
         let body = json!(revisions).to_string();
-        let conflicts=client.query_one("SELECT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,revision integer,document jsonb) JOIN joppa.object_revisions r ON r.workspace=$1 AND r.address=x.address AND r.revision=x.revision WHERE r.document IS DISTINCT FROM x.document)",&[&workspace,&body]).await?;
-        ensure!(
-            !conflicts.get::<_, bool>(0),
-            "stored object revision differs from the journal"
-        );
+        // A row stored before migration 062 holds links: it compares by the replay rule.
+        for row in client.query("SELECT x.document::text,r.document::text FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,revision integer,document jsonb) JOIN joppa.object_revisions r ON r.workspace=$1 AND r.address=x.address AND r.revision=x.revision WHERE r.document IS DISTINCT FROM x.document",&[&workspace,&body]).await? {
+            let replayed: Value = serde_json::from_str(row.get(0))?;
+            let stored: Value = serde_json::from_str(row.get(1))?;
+            ensure!(
+                stored.get("links").is_some()
+                    && crate::relations::adapt_document(stored)? == replayed,
+                "stored object revision differs from the journal"
+            );
+        }
         client.execute("INSERT INTO joppa.object_revisions(workspace,address,revision,document) SELECT $1,x.address,x.revision,x.document FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,revision integer,document jsonb) ON CONFLICT(workspace,address,revision) DO NOTHING", &[&workspace,&body]).await?;
     }
     if !sources.is_empty() {
@@ -169,7 +174,7 @@ pub(in crate::store) async fn project(
                 &[&workspace, &sources],
             )
             .await?;
-        client.execute("INSERT INTO joppa.object_links(workspace,source,target,relation,revision,blocking) SELECT $1,x.source,x.target,x.relation,x.revision,x.blocking FROM jsonb_to_recordset($2::text::jsonb) AS x(source text,target text,relation text,revision integer,blocking boolean)", &[&workspace,&json!(links).to_string()]).await?;
+        client.execute("INSERT INTO joppa.object_links(workspace,source,target,relation,revision,blocking,when_label) SELECT $1,x.source,x.target,x.relation,x.revision,x.blocking,x.when_label FROM jsonb_to_recordset($2::text::jsonb) AS x(source text,target text,relation text,revision integer,blocking boolean,when_label text)", &[&workspace,&json!(links).to_string()]).await?;
     }
     if !ids.is_empty() {
         client.execute("SELECT joppa.register_item($1,x.kind,x.local_id,$3) FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text)",&[&workspace,&json!(ids).to_string(),&prefix]).await?;

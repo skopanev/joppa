@@ -165,6 +165,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         test_results: previous_schema.test_results.clone(),
         status_required: previous_schema.status_required,
         filters: previous_schema.filters.clone(),
+        relations: previous_schema.relations.clone(),
         actor: actor.into(),
         at: at.into(),
         position,
@@ -192,19 +193,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
             let kind = current.data["kind"].as_str().unwrap_or("");
             current.data["review_policy"] = json!(w.questions.get(kind));
             if let Some(req) = current.data["requirement"].as_str() {
-                let link = ObjectLink {
-                    target: requirement_address(req),
-                    relation: "related".into(),
-                    revision: None,
-                    blocking: false,
-                };
-                if !current
-                    .links
-                    .iter()
-                    .any(|l| l.target == link.target && l.relation == link.relation)
-                {
-                    current.links.push(link);
-                }
+                current.link_related(&requirement_address(req), false);
             }
         } else {
             current.data["review_policy"] = json!(w.questions);

@@ -113,9 +113,10 @@ pub(crate) fn typed_save(
 
 /// Reset the criteria below each object whose revision at `position` changed it. From the epoch
 /// of any_change_reset, the object that `command` saves or links resets on any new parent,
-/// link or data value. Every other revision, such as a revision that a save gives to another
-/// object, resets only on a new title, text, non-blocking link or parent, and a Task or an
-/// inbox revision resets nothing.
+/// edge or data value. Every other revision, such as a revision that a save gives to another
+/// object, resets only on a new title, text, related edge or parent, and a Task or an inbox
+/// revision resets nothing. From the epoch of relations_reset, only the depends_on and related
+/// edges count and a flow never resets; before it, a revision compares its older links.
 pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &str) -> Result<()> {
     let types = schema(w).types;
     let migrated = w.test_rules_migrated;
@@ -140,12 +141,25 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
                 .get(kind)
                 .is_some_and(|t| t.role == crate::test_nodes::ROLE)
     };
+    let relations = commands::epoch_reached(w, commands::RELATIONS_RESET, position);
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
             .filter(|l| !(l.blocking && l.relation == "depends_on"))
             .cloned()
             .collect()
+    };
+    // Whether the edges changed, and whether the edges other than the dependencies changed.
+    let edges = |before: &ObjectRevision, current: &ObjectRevision| -> (bool, bool) {
+        if relations {
+            use crate::relations::{DEPENDS_ON, RELATED, edges_of};
+            let same = |key| edges_of(&before.relations, key).eq(edges_of(&current.relations, key));
+            let related = !same(RELATED);
+            (related || !same(DEPENDS_ON), related)
+        } else {
+            let (old, new) = (before.link_form(), current.link_form());
+            (old != new, content(&old) != content(&new))
+        }
     };
     let changed: Vec<String> = w
         .objects
@@ -169,13 +183,12 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
                         untitled(&current.data, quiet),
                         untitled(&before.data, quiet),
                     );
-                    // From the epoch on, any new parent, link or data value resets. A revision
+                    let (links, related) = edges(before, current);
+                    // From the epoch on, any new parent, edge or data value resets. A revision
                     // that changes none of them, such as a specification revision, does not.
-                    (any(key) && (before.parent != current.parent
-                        || before.links != current.links
-                        || old != data))
+                    (any(key) && (before.parent != current.parent || links || old != data))
                         || before.parent != current.parent
-                        || content(&before.links) != content(&current.links)
+                        || related
                         || !crate::body_migration::same_text(w, &old, &data)
                         // A new test list resets the criterion. The migration moves a list
                         // into the document and changes no status.

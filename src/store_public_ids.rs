@@ -34,9 +34,13 @@ fn slots(state: &Workspace, value: &Value) -> Vec<String> {
             out.push(format!("/{field}"));
         }
     }
-    let links = value["links"]
-        .as_array()
-        .filter(|_| value["op"] != "set_remote_links");
+    // The targets of set_remote_links are in other workspaces, and save_object refuses links.
+    let links = value["links"].as_array().filter(|_| {
+        !matches!(
+            value["op"].as_str(),
+            Some("set_remote_links" | "save_object")
+        )
+    });
     for (i, link) in links.into_iter().flatten().enumerate() {
         if link.is_string() {
             out.push(format!("/links/{i}"));
@@ -45,6 +49,20 @@ fn slots(state: &Workspace, value: &Value) -> Vec<String> {
         }
     }
     if value["op"] == "save_object" {
+        // Each edge of each relation names its target in `to`.
+        for (key, relation) in value["relations"].as_object().into_iter().flatten() {
+            let key = key.replace('~', "~0").replace('/', "~1");
+            for (i, edge) in relation["edges"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                if edge["to"].is_string() {
+                    out.push(format!("/relations/{key}/edges/{i}/to"));
+                }
+            }
+        }
         let kind = value["kind"].as_str().unwrap_or_default();
         let schema = crate::objects::schema(state);
         let fields = schema.types.get(kind).map(|t| t.references.keys());

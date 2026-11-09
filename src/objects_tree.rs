@@ -22,6 +22,7 @@ pub async fn tree_schema(
             test_results: None,
             status_required: None,
             filters: None,
+            relations: crate::relations::system(),
             actor: row.get(0),
             at: String::new(),
             position: 0,
@@ -39,15 +40,14 @@ pub async fn tree_schema(
         selected.statuses.as_ref(),
         selected.status_colors.as_ref()
     ));
-    // The tree page shows the values that apply: priority levels, link relations and the
-    // status rule of each type.
+    // The tree page shows the values that apply: priority levels and the status rule of each
+    // type. The relations of a revision without a registry are the system relations.
     schema["priority_levels"] = json!(
         selected
             .priorities
             .clone()
             .unwrap_or_else(|| { ["p0", "p1", "p2"].map(String::from).to_vec() })
     );
-    schema["link_relations"] = json!(objects::LINK_RELATIONS);
     schema["status_rules"] = json!(
         selected
             .types

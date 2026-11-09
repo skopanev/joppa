@@ -54,17 +54,12 @@ pub fn text(reply: &Value) -> anyhow::Result<String> {
 pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
     if READS.contains(&tool) {
         drop_keys(&mut reply, &["workspace", "position"]);
-        for key in ["address", "links_of", "ac", "task"] {
+        for key in ["address", "relations_of", "ac", "task"] {
             drop_value(&mut reply, &["address"], &args[key]);
         }
         drop_value(&mut reply, &["target"], &args["target"]);
     }
     match tool {
-        "joppa_objects" if args["links_of"].is_string() => each(&mut reply, "items", |item| {
-            drop_value(item, &["present"], &json!(true));
-            drop_value(item, &["blocking"], &json!(false));
-            drop_value(item, &["relation"], &json!("related"));
-        }),
         "joppa_search" => search(&mut reply),
         "joppa_tree" => tree(&mut reply, args),
         "joppa_help" => {

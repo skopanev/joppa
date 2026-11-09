@@ -100,11 +100,11 @@ pub(super) async fn items(
                     reason = text.to_owned();
                 }
                 if command["op"] == "save_object"
-                    && previous
+                    && let Some(kind) = previous
                         .as_ref()
-                        .is_some_and(|p| crate::history_entry::moved(saved, p))
+                        .and_then(|p| crate::history_entry::saved_change(saved, p))
                 {
-                    change = "move";
+                    change = kind;
                 }
             }
         }

@@ -200,13 +200,14 @@ pub(super) fn parent(w: &Workspace, address: &str) -> Option<String> {
     Some(crate::objects::resolve_address(w, parent).to_owned())
 }
 
-/// The targets of the stored links of a node: its links and its reference fields.
+/// The targets of the counted links of a node: its depends_on and related edges and its
+/// reference fields. A flow counts for no status rule.
 pub(super) fn link_targets(w: &Workspace, address: &str) -> Vec<String> {
     let Some(o) = w.objects.get(address) else {
         return vec![];
     };
     let r = o.current();
-    let mut out: Vec<String> = r.links.iter().map(|l| l.target.clone()).collect();
+    let mut out: Vec<String> = r.counted().map(|e| e.to.clone()).collect();
     if let Ok(targets) = crate::objects::stored_reference_targets(w, &o.kind, &r.data) {
         out.extend(targets.into_iter().map(|(_, target, _)| target));
     }

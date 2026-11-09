@@ -59,32 +59,33 @@ pub(super) async fn read_one(
     } else {
         serde_json::from_str(conn.query_opt("SELECT document::text FROM joppa.object_revisions WHERE workspace=$1 AND address=$2 AND revision=$3", &[&workspace,&key,&(n as i32)]).await?.context("unknown object revision")?.get(0))?
     };
-    let targets: Vec<String> = document["links"]
-        .as_array()
+    // A revision stored before migration 062 reads with relations by the replay rule.
+    let document = crate::relations::adapt_document(document)?;
+    let mut relations = document["relations"].clone();
+    let targets: Vec<String> = relations
+        .as_object()
         .into_iter()
-        .flatten()
-        .filter_map(|l| l["target"].as_str().map(str::to_owned))
+        .flat_map(|m| m.values())
+        .flat_map(|r| r["edges"].as_array().into_iter().flatten())
+        .filter_map(|e| e["to"].as_str().map(str::to_owned))
         .collect();
-    let found:std::collections::BTreeMap<String,Value>=conn.query("SELECT t.address,o.title,o.kind,o.revision,o.present FROM unnest($2::text[]) t(address) LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=t.address JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,t.address)",&[&workspace,&targets]).await?.iter().map(|r|(r.get(0),json!({"title":r.get::<_,String>(1),"kind":r.get::<_,String>(2),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)}))).collect();
-    let outgoing: Vec<Value> = document["links"]
-        .as_array()
+    let found:std::collections::BTreeMap<String,Value>=conn.query("SELECT t.address,o.title,o.kind,o.revision,o.present FROM unnest($2::text[]) t(address) LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=t.address JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,t.address)",&[&workspace,&targets]).await?.iter().map(|r|(r.get(0),json!({"title":r.get::<_,String>(1),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)}))).collect();
+    // Each edge with the title, the current revision and the presence of its target.
+    for relation in relations
+        .as_object_mut()
         .into_iter()
-        .flatten()
-        .map(|link| {
-            let mut item = found
-                .get(link["target"].as_str().unwrap_or(""))
-                .cloned()
-                .unwrap_or_else(|| json!({}));
-            item["link"] = link.clone();
-            item["blocking"] = json!(link["blocking"].as_bool().unwrap_or(false));
-            // An ordering dependency stores no revision field, so its link item shows none.
-            if let Some(revision) = link.get("revision") {
-                item["revision"] = revision.clone();
+        .flat_map(|m| m.values_mut())
+    {
+        for edge in relation["edges"].as_array_mut().into_iter().flatten() {
+            let target = found.get(edge["to"].as_str().unwrap_or(""));
+            for (key, value) in target.and_then(Value::as_object).into_iter().flatten() {
+                edge[key] = value.clone();
             }
-            item["metadata_scope"] = json!("current");
-            item
-        })
-        .collect();
+            if target.is_none() {
+                edge["present"] = json!(false);
+            }
+        }
+    }
     let mut references: Vec<Value> = if n == current as u32 {
         conn.query("SELECT l.target,l.relation,o.title,o.revision,o.present FROM joppa.object_links l JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.target WHERE l.workspace=$1 AND l.source=$2 AND l.relation LIKE 'reference:%' ORDER BY l.relation,l.target", &[&workspace,&key]).await?.iter().map(|r| json!({"target":r.get::<_,String>(0),"field":r.get::<_,String>(1).strip_prefix("reference:").unwrap(),"title":r.get::<_,String>(2),"current_revision":r.get::<_,i32>(3),"present":r.get::<_,bool>(4)})).collect()
     } else {
@@ -98,8 +99,8 @@ pub(super) async fn read_one(
                 .cmp(&(b["field"].as_str(), b["target"].as_str()))
         });
     }
-    // The incoming links come as counts by group; a group read gives them in pages.
-    let link_groups = if n == current as u32 {
+    // The edges come as counts by group; relations_of gives them in pages.
+    let relation_groups = if n == current as u32 {
         super::link_groups::groups(&*conn, &workspace, &key).await?
     } else {
         json!([])
@@ -115,7 +116,7 @@ pub(super) async fn read_one(
             comment["created_at"] = comment["at"].clone();
         }
     }
-    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(5),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"work_ready":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"links":outgoing,"references":references,"link_groups":link_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(6))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null}});
+    let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(5),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"work_ready":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"relations":relations,"references":references,"relation_groups":relation_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(6))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null}});
     if n == current as u32 {
         let mut files: Vec<_> = item["annotations"]["attachments"]
             .as_object()

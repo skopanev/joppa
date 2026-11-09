@@ -119,12 +119,7 @@ pub(crate) fn affected(
                 .parent
                 .iter()
                 .cloned()
-                .chain(
-                    r.links
-                        .iter()
-                        .filter(|l| l.relation == "depends_on")
-                        .map(|l| l.target.clone()),
-                )
+                .chain(r.depends_on().map(|e| e.to.clone()))
                 .collect();
             if let Some(deps) = r.data["depends_on"].as_array() {
                 targets.extend(

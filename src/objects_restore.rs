@@ -50,6 +50,7 @@ pub fn restore(
         Some(&target),
     )?;
     parent_cycle(w, &target, old.current().parent.as_deref())?;
+    crate::relations::check_restore(w, &old.current().relations)?;
 
     let mut next = old.current().clone();
     next.present = true;

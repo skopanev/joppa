@@ -35,6 +35,9 @@ pub use operation::*;
 #[path = "commands_person.rs"]
 mod person;
 pub use person::*;
+#[path = "commands_replay_rules.rs"]
+mod replay_rules;
+pub use replay_rules::*;
 #[path = "commands_apply_inner.rs"]
 mod apply_inner;
 pub(crate) use apply_inner::*;

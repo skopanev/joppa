@@ -41,8 +41,8 @@ impl<'a> Graph<'a> {
                 let children = graph.children.entry(parent).or_default();
                 children.push(address.clone());
             }
-            for link in &current.links {
-                let target = resolve_address(w, &link.target).to_owned();
+            for edge in current.counted() {
+                let target = resolve_address(w, &edge.to).to_owned();
                 if graph.present(&target) && target != *address {
                     let from = graph.linked.entry(address.clone()).or_default();
                     from.insert(target.clone());

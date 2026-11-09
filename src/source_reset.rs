@@ -38,18 +38,16 @@ pub fn reset(w: &mut Workspace, command: &Command, position: u64, at: &str) -> R
     // The criteria that the source links to, and the criteria that link to it or name it.
     let mut criteria: BTreeSet<String> = source
         .current()
-        .links
-        .iter()
-        .map(|l| resolve_address(w, &l.target).to_owned())
+        .counted()
+        .map(|e| resolve_address(w, &e.to).to_owned())
         .filter(|key| criterion(key))
         .collect();
     for (key, o) in &w.objects {
         let current = o.current();
         if criterion(key)
             && (current
-                .links
-                .iter()
-                .any(|l| resolve_address(w, &l.target) == changed)
+                .counted()
+                .any(|e| resolve_address(w, &e.to) == changed)
                 || names(w, &types, &o.kind, current, &changed))
         {
             criteria.insert(key.clone());

@@ -3,14 +3,14 @@
 //! parent to the root, links it to the old parent with relation related, and keeps every
 //! revision. Then each inbox type gets parents [].
 use crate::model::Workspace;
-use crate::objects::{ObjectLink, schema};
+use crate::objects::schema;
 use anyhow::{Result, bail, ensure};
 use std::collections::BTreeSet;
 
 pub const REASON: &str = "An inbox input has no parent: it links to the object that it informs";
 
 /// The error of a save or a schema change that gives an inbox object a parent.
-pub const REFUSAL: &str = "an inbox object has no parent: send parent null and links [{\"target\":\"kind:id\",\"relation\":\"related\"}]";
+pub const REFUSAL: &str = "an inbox object has no parent: send parent null and relations {\"related\":{\"edges\":[{\"to\":\"kind:id\"}]}}";
 
 fn inbox_kinds(w: &Workspace) -> BTreeSet<String> {
     schema(w)
@@ -73,14 +73,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         let o = w.objects.get_mut(&key).expect("listed object");
         let mut revision = o.current().clone();
         revision.parent = None;
-        if !revision.links.iter().any(|l| l.target == parent) {
-            revision.links.push(ObjectLink {
-                target: parent,
-                relation: "related".into(),
-                revision: None,
-                blocking: false,
-            });
-        }
+        revision.link_related(&parent, true);
         revision.revision += 1;
         revision.contract = None;
         revision.schema_revision = schema_revision;

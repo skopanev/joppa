@@ -38,11 +38,15 @@ pub(super) fn apply_set_tree_schema(
         test_results,
         status_required,
         filters,
+        put_relations,
+        remove_relations,
         reason,
     }) = command
     else {
         unreachable!()
     };
+    let relations =
+        crate::relations::requested(w, put_relations.as_ref(), remove_relations.as_ref())?;
     let types = crate::schema_nodes::requested_types(
         w,
         types.as_ref(),
@@ -60,6 +64,7 @@ pub(super) fn apply_set_tree_schema(
         test_results.as_ref(),
         *status_required,
         filters.as_ref(),
+        relations,
         reason,
         position,
         recorded_at,
@@ -164,6 +169,7 @@ pub(super) fn apply_set_note_status(
     let r = note.current();
     let mut data = r.data.clone();
     data["status"] = serde_json::json!(status);
+    let (links, relations) = r.save_fields();
     let command = Command::SaveObject(crate::commands::SaveObjectOp {
         question_checked: None,
         kind: note.kind.clone(),
@@ -171,7 +177,8 @@ pub(super) fn apply_set_note_status(
         revision: *revision,
         parent: r.parent.clone(),
         data,
-        links: Some(r.links.clone()),
+        links,
+        relations,
         reason: reason.clone(),
     });
     crate::objects::save(w, actor, &command, position, recorded_at)?;

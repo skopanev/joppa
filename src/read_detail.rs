@@ -1,5 +1,6 @@
 //! The detail shape of MCP object reads (requirement:read-contract): revision, parent, data,
-//! status, process, comments, one list of titled links, incoming link counts and remote links.
+//! status, process, comments, the relations with titled edges, incoming edge counts and
+//! remote links.
 //! No key repeats another key or the request; `history: true` gives the revision headers.
 use crate::read_compact::{page, status, strip_empty};
 use anyhow::Result;
@@ -7,7 +8,7 @@ use serde_json::{Value, json};
 
 #[path = "read_links.rs"]
 mod links;
-use links::{detail_link, drop_copies, drop_empty_remote, drop_same, flatten};
+use links::{detail_relations, drop_copies, drop_empty_remote, drop_same, flatten};
 pub use links::{headers, revision};
 
 /// The comments of an annotation map as a list in time order, without duplicate keys.
@@ -43,8 +44,9 @@ fn process(reply: &mut Value) {
     drop_same(process, &["status"], &status);
 }
 
-/// A detail reply: revision, parent and data, one page of comments, all titled links, the
-/// incoming link counts, one copy of each process fact, and no empty keys outside data.
+/// A detail reply: revision, parent and data, one page of comments, the relations with titled
+/// edges, the incoming edge counts, one copy of each process fact, and no empty keys outside
+/// data.
 pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> Result<Value> {
     let comments = comment_list(&reply["annotations"]["comments"]);
     if let Some(annotations) = reply["annotations"].as_object_mut() {
@@ -52,14 +54,8 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
         // `files` gives the same attachments.
         annotations.remove("attachments");
     }
-    // All outgoing links in one list, as a write sends them back.
-    let links: Vec<Value> = reply["links"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(detail_link)
-        .collect();
-    reply["links"] = json!(links);
+    // The relations as a write sends them back.
+    detail_relations(&mut reply);
     // An object without comments has no comments key.
     reply["comments"] = if comments.is_empty() {
         Value::Null
@@ -77,8 +73,8 @@ pub fn detail(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> R
     flatten(&mut reply);
     reply.as_object_mut().map(|m| m.remove("current_revision"));
     drop_same(&mut reply, &["work_ready"], &json!(true));
-    // `links` gives the outgoing links, so the counts keep the incoming groups.
-    if let Some(groups) = reply["link_groups"].as_array_mut() {
+    // `relations` gives the outgoing edges, so the counts keep the incoming groups.
+    if let Some(groups) = reply["relation_groups"].as_array_mut() {
         groups.retain(|g| g["direction"] == "incoming");
     }
     if let Some(references) = reply["references"].as_array_mut() {

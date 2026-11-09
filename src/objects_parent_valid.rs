@@ -111,7 +111,7 @@ pub(crate) const ROLES_SCHEMA_REASON: &str = "Use configured roles and flags for
 
 pub const TASK_GATE_SCHEMA_REASON: &str = "Record the default Task readiness gate";
 
-/// The relations that a link between two objects can have.
+/// The relations that a remote link can have (remote_links.rs).
 pub const LINK_RELATIONS: [&str; 2] = ["related", "depends_on"];
 
 #[allow(clippy::too_many_arguments)]

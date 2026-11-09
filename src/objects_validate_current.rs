@@ -15,12 +15,14 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
         kind,
         id,
         parent,
-        links,
+        relations,
         ..
     }) = cmd
     {
-        let links = links.clone().unwrap_or_default();
-        validate_wait_cycle(w, &address(kind, id), parent.as_deref(), &links)?;
+        let relations = relations.as_ref().map(crate::relations::whole);
+        let relations = relations.unwrap_or_default();
+        crate::relations::check_limits(&relations)?;
+        validate_wait_cycle(w, &address(kind, id), parent.as_deref(), &relations)?;
     }
     match cmd {
         Command::MigrateNotes {}

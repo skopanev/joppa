@@ -37,8 +37,11 @@ pub(super) struct ObjectQuery {
     related_to: Option<String>,
     /// Refused: work_filter was removed.
     work_filter: Option<String>,
-    /// The address whose links to read, with optional direction, relation and kind.
+    /// Refused: links_of was removed.
     links_of: Option<String>,
+    /// The address whose edges to read in pages of 25, with optional direction, relation
+    /// and kind.
+    relations_of: Option<String>,
     direction: Option<String>,
     relation: Option<String>,
     /// Comma-separated keys to keep in each list item; the address always stays.
@@ -57,7 +60,10 @@ pub(super) async fn objects(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
-    if let Some(address) = q.links_of.as_deref() {
+    if q.links_of.is_some() {
+        return result(Err(anyhow::anyhow!(joppa::removed_ops::LINKS_OF)));
+    }
+    if let Some(address) = q.relations_of.as_deref() {
         return result(
             store::link_page(
                 &app.pool,
@@ -67,7 +73,7 @@ pub(super) async fn objects(
                 q.direction.as_deref(),
                 q.relation.as_deref(),
                 q.kind.as_deref(),
-                q.limit.unwrap_or(50),
+                q.limit.unwrap_or(25).min(25),
                 q.cursor.as_deref(),
             )
             .await,

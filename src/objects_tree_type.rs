@@ -110,86 +110,28 @@ pub struct SchemaRevision {
     /// The data fields that the board offers as filter drop-downs (filter_fields).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filters: Option<Vec<String>>,
+    /// The registry of relations. A revision stored without it has the system relations.
+    #[serde(default = "crate::relations::system")]
+    pub relations: BTreeMap<String, crate::relations::RelationType>,
     pub actor: String,
     pub at: String,
     pub position: u64,
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(from = "LinkInput")]
-pub struct ObjectLink {
-    pub target: String,
-    pub relation: String,
-    pub revision: Option<u32>,
-    pub blocking: bool,
-}
-
-/// A link as a write sends it. A detail read gives each link with the title, the current
-/// revision and the presence of its target; a write takes that item back and ignores them.
-/// A link without a relation is `related`, as a detail read shows it.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LinkInput {
-    target: String,
-    #[serde(default = "related")]
-    relation: String,
-    #[serde(default)]
-    revision: Option<u32>,
-    #[serde(default)]
-    blocking: bool,
-    #[serde(default, rename = "title")]
-    _title: serde::de::IgnoredAny,
-    #[serde(default, rename = "current_revision")]
-    _current_revision: serde::de::IgnoredAny,
-    #[serde(default, rename = "present")]
-    _present: serde::de::IgnoredAny,
-}
-
-fn related() -> String {
-    "related".into()
-}
-
-impl From<LinkInput> for ObjectLink {
-    fn from(l: LinkInput) -> Self {
-        ObjectLink {
-            target: l.target,
-            relation: l.relation,
-            revision: l.revision,
-            blocking: l.blocking,
-        }
-    }
-}
-
-/// An ordering dependency stores no revision field. Other links keep their stored null,
-/// so the documents saved before ordering links serialize as they were stored.
-impl Serialize for ObjectLink {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let unpinned = self.relation == "depends_on" && self.revision.is_none();
-        let mut link = serializer.serialize_struct("ObjectLink", 4)?;
-        link.serialize_field("target", &self.target)?;
-        link.serialize_field("relation", &self.relation)?;
-        if unpinned {
-            link.skip_field("revision")?;
-        } else {
-            link.serialize_field("revision", &self.revision)?;
-        }
-        link.serialize_field("blocking", &self.blocking)?;
-        link.end()
-    }
-}
-
+/// A revision of a document. A stored revision with the older links reads as relations
+/// (relations_stored.rs).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(from = "crate::relations::StoredRevision")]
 pub struct ObjectRevision {
     pub revision: u32,
     pub schema_revision: u32,
     pub parent: Option<String>,
     pub data: Value,
-    pub links: Vec<ObjectLink>,
+    pub relations: crate::relations::Relations,
+    /// The links of an event before the epoch of relations_reset; never stored.
+    #[serde(skip)]
+    pub older_links: crate::relations::LinkForm,
     pub actor: String,
     /// The alias of the event that saved the revision.
     #[serde(default, skip_serializing_if = "Option::is_none")]

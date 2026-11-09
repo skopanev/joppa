@@ -58,11 +58,11 @@ pub fn search(mut reply: Value, all_workspaces: bool) -> Value {
     reply
 }
 
-/// links_of: no echo of the filters. An item gives its direction, relation and kind only
-/// when the request did not filter on them.
+/// relations_of: no echo of the filters. An item gives its direction and kind only when the
+/// request did not filter on them, and its relation always.
 pub fn links(mut reply: Value, args: &Value) -> Value {
-    let filters = ["direction", "relation", "kind"];
-    remove(&mut reply, &filters);
+    remove(&mut reply, &["direction", "relation", "kind"]);
+    let filters = ["direction", "kind"];
     for item in reply
         .get_mut("items")
         .and_then(Value::as_array_mut)

@@ -41,20 +41,15 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
     let kind = actor_type(w, actor);
     let mut decision =
         json!({"outcome": d.outcome, "reason": d.reason, "actor": actor, "actor_type": kind});
-    let mut links = note.current().links.clone();
+    // A related edge joins each target without a depends_on or related edge; a flow edge
+    // does not count. A revision of an older event keeps its links in their older form.
+    let mut revision = note.current().clone();
     let mut link = |target: &str| -> Result<()> {
         ensure!(
             w.objects.contains_key(target),
             "unknown linked object in this workspace"
         );
-        if !links.iter().any(|l| l.target == target) {
-            links.push(crate::objects::ObjectLink {
-                target: target.into(),
-                relation: "related".into(),
-                revision: None,
-                blocking: false,
-            });
-        }
+        revision.link_related(target, true);
         Ok(())
     };
     match d.outcome {
@@ -106,6 +101,7 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
     } else {
         "processed"
     });
+    let (links, relations) = revision.save_fields();
     let command = Command::SaveObject(crate::commands::SaveObjectOp {
         question_checked: None,
         kind: note.kind.clone(),
@@ -113,7 +109,8 @@ pub fn decide(w: &mut Workspace, actor: &str, d: &Decision, position: u64, at: &
         revision: d.revision,
         parent: r.parent.clone(),
         data,
-        links: Some(links),
+        links,
+        relations,
         reason: d.reason.into(),
     });
     crate::objects::save(w, actor, &command, position, at)

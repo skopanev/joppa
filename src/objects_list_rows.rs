@@ -35,14 +35,14 @@ pub(super) async fn list_rows(
             o.document_at,o.description,o.signal::text,o.present,o.inbox_status,o.process::text,
             CASE WHEN $10::boolean THEN {data}::text END,o.total,
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
-            CASE WHEN $10::boolean THEN COALESCE(o.document->'links','[]'::jsonb)::text END,
+            CASE WHEN $10::boolean THEN COALESCE(o.document->'relations','{{}}'::jsonb)::text END,
             o.document->'data'->>'assignee'
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         WHERE o.workspace=$1 AND (o.present OR $18)
             AND {filter}
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
-                AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))) o
+                AND l.relation IN ('depends_on','related') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
         ORDER BY {order} LIMIT $5
@@ -91,9 +91,9 @@ pub(super) async fn list_rows(
         if let Some(assignee) = row.get::<_, Option<String>>(19).filter(|a| !a.is_empty()) {
             item["assignee"] = json!(assignee);
         }
-        // A read with data also gives the stored links: {target, relation, blocking, revision?}.
-        if let Some(links) = row.get::<_, Option<String>>(18) {
-            item["links"] = serde_json::from_str::<Value>(&links)?;
+        // A read with data also gives the stored relations: {key: {title?, edges}}.
+        if let Some(relations) = row.get::<_, Option<String>>(18) {
+            item["relations"] = serde_json::from_str::<Value>(&relations)?;
         }
     }
     // The decoration comes from the status projection of the last write.

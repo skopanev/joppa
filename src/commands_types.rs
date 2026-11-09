@@ -34,6 +34,12 @@ pub struct SetTreeSchemaOp {
     /// The data fields of the board filter drop-downs; without it the schema keeps its list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filters: Option<Vec<String>>,
+    /// Relations to add, or to replace by title and description. Other relations stay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub put_relations: Option<BTreeMap<String, crate::relations::RelationType>>,
+    /// Relations to delete. No live node and no system flag may hold them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remove_relations: Option<Vec<String>>,
     pub reason: String,
 }
 
@@ -95,9 +101,17 @@ pub struct SaveObjectOp {
     pub revision: u32,
     pub parent: Option<String>,
     pub data: serde_json::Value,
-    /// The new links. A live save without them keeps the current links (omitted_links).
+    /// The links of an older event; a live save refuses them (removed_ops).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<crate::objects::ObjectLink>>,
+    /// The relations by key: a sent key replaces its title and edges, null removes it, and
+    /// the other keys stay. The server writes the whole map before the journal stores it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::relations::patch"
+    )]
+    pub relations: Option<crate::relations::Patch>,
     /// An older journal and an older client send it. No write checks it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_checked: Option<String>,

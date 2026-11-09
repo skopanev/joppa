@@ -1,4 +1,4 @@
-//! Part of `read_detail`: the link items, the flat document and the revision reads.
+//! Part of `read_detail`: the relation edges, the flat document and the revision reads.
 use crate::read_compact::strip_reply;
 use serde_json::{Value, json};
 
@@ -21,34 +21,29 @@ const REVISION_KEYS: [&str; 7] = [
     "revision",
     "parent",
     "data",
-    "links",
+    "relations",
     "present",
     "current_revision",
 ];
 
-/// One detail link: the stored link and the title of its target, without the default relation
-/// `related`. A pin adds the current target revision, a blocking link `blocking: true` and an
-/// archived target `present: false`. save_object takes the item back as it is.
-pub(super) fn detail_link(item: &Value) -> Value {
-    let link = &item["link"];
-    let mut out = json!({"target": link["target"]});
-    if link["relation"] != "related" {
-        out["relation"] = link["relation"].clone();
+/// The detail relations: each edge as stored with the title of its target. A pin adds the
+/// current target revision, and an archived target `present: false`. save_object takes the
+/// relations back as they are.
+pub(super) fn detail_relations(reply: &mut Value) {
+    let keys = reply["relations"]
+        .as_object_mut()
+        .into_iter()
+        .flat_map(|m| m.values_mut());
+    for edge in keys.flat_map(|r| r["edges"].as_array_mut().into_iter().flatten()) {
+        if let Some(map) = edge.as_object_mut() {
+            if map.get("revision").is_none_or(Value::is_null) {
+                map.remove("current_revision");
+            }
+            if map.get("present") == Some(&json!(true)) {
+                map.remove("present");
+            }
+        }
     }
-    if !item["title"].is_null() {
-        out["title"] = item["title"].clone();
-    }
-    if !link["revision"].is_null() {
-        out["revision"] = link["revision"].clone();
-        out["current_revision"] = item["current_revision"].clone();
-    }
-    if link["blocking"] == true {
-        out["blocking"] = json!(true);
-    }
-    if item["present"] != true {
-        out["present"] = json!(false);
-    }
-    out
 }
 
 /// The document as top-level keys: revision, parent and data. An archived object shows
@@ -95,18 +90,12 @@ pub(super) fn drop_empty_remote(reply: &mut Value) {
     }
 }
 
-/// A revision read (`revision: N`): the revision, parent, data and links of that document,
-/// and the current revision.
+/// A revision read (`revision: N`): the revision, parent, data and relations of that
+/// document, and the current revision.
 pub fn revision(mut reply: Value, asked: &str) -> Value {
     drop_copies(&mut reply, asked);
     drop_empty_remote(&mut reply);
-    let links: Vec<Value> = reply["links"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(detail_link)
-        .collect();
-    reply["links"] = json!(links);
+    detail_relations(&mut reply);
     flatten(&mut reply);
     if let Some(map) = reply.as_object_mut() {
         map.retain(|key, _| REVISION_KEYS.contains(&key.as_str()));

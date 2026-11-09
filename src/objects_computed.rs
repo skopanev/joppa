@@ -111,8 +111,8 @@ fn reach(
                 .cloned(),
         );
         if let Some(o) = previous.objects.get(address) {
-            let targets = o.current().links.iter();
-            set.extend(targets.map(|l| resolve_address(previous, &l.target).to_owned()));
+            let targets = o.current().counted();
+            set.extend(targets.map(|e| resolve_address(previous, &e.to).to_owned()));
         }
     }
     let mut above = BTreeSet::new();

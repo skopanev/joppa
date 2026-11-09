@@ -5,7 +5,8 @@ use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
 /// The first path segments that a list item gives itself. `status` is the status tone, and
-/// `links` gives the stored links of the item. A read by address gives its detail links.
+/// `relations` gives the stored relations of the item. A read by address gives its detail
+/// relations.
 pub const LIST_FIELDS: [&str; 19] = [
     "address",
     "data",
@@ -25,16 +26,16 @@ pub const LIST_FIELDS: [&str; 19] = [
     "process",
     "children",
     "child_counts",
-    "links",
+    "relations",
 ];
 
 /// The keys of a detail read that a list item does not give.
 pub const DETAIL_FIELDS: [&str; 11] = [
-    "links",
+    "relations",
     "comments",
     "files",
     "references",
-    "link_groups",
+    "relation_groups",
     "remote_links",
     "remote_review_required",
     "remote_links_revision",
@@ -73,7 +74,7 @@ pub fn head(field: &str) -> &str {
 pub fn needs_data(fields: &[String]) -> bool {
     fields.iter().any(|f| {
         let head = head(f);
-        head == "data" || head == "links" || !LIST_FIELDS.contains(&head)
+        head == "data" || head == "relations" || !LIST_FIELDS.contains(&head)
     })
 }
 
