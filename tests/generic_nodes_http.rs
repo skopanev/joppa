@@ -13,7 +13,7 @@ async fn the_ready_filter_follows_a_dependency_wait() -> Result<()> {
     let w = world(&[]).await?;
     let data = json!({"title":"Call the API","owner":"owner","body":"Call it","assignee":"alex"});
     // The task waits for the grey criterion ac:a.
-    let link = json!([{"target":"ac:a","relation":"depends_on","blocking":true}]);
+    let link = json!({"depends_on":{"edges":[{"to":"ac:a"}]}});
     save(&w, "task", "t", "requirement:r", data.clone(), link).await?;
     let task = w.object("task:t").await?;
     let mark = task["process"].get("assessment");
@@ -29,9 +29,9 @@ async fn the_ready_filter_follows_a_dependency_wait() -> Result<()> {
         listed(&w, alex).await? == ["task:t"],
         "alex holds the waiting task"
     );
-    // Without the link, the task is ready again.
+    // Without the depends_on edge, the task is ready again.
     let save = json!({"op":"save_object","kind":"task","id":"t","revision":task["revision"],
-        "parent":"requirement:r","data":data,"links":[],"reason":"No order"});
+        "parent":"requirement:r","data":data,"relations":{"depends_on":null},"reason":"No order"});
     w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
     ensure!(
         listed(&w, filter(true)).await? == ["requirement:r", "task:t"],
@@ -57,7 +57,7 @@ const STAGE: &str = "save_object with a typed field such as data.stage (fields i
 async fn the_task_operations_and_reads_are_refused_with_their_replacement() -> Result<()> {
     let w = world(&[]).await?;
     let task = json!({"title":"Ship","owner":"owner","body":"Ship it"});
-    save(&w, "task", "t", "ac:a", task, json!([])).await?;
+    save(&w, "task", "t", "ac:a", task, json!({})).await?;
     for (op, replacement) in [
         ("claim_task", "save_object with data.assignee"),
         ("claim_next_task", "save_object with data.assignee"),
@@ -108,8 +108,8 @@ async fn the_task_operations_and_reads_are_refused_with_their_replacement() -> R
 async fn a_dependency_on_a_task_waits_until_the_task_is_archived() -> Result<()> {
     let w = world(&[]).await?;
     let task = |title: &str| json!({"title":title,"owner":"owner","body":"Do it"});
-    save(&w, "task", "first", "ac:a", task("First"), json!([])).await?;
-    let link = json!([{"target":"task:first","relation":"depends_on","blocking":true}]);
+    save(&w, "task", "first", "ac:a", task("First"), json!({})).await?;
+    let link = json!({"depends_on":{"edges":[{"to":"task:first"}]}});
     save(&w, "task", "second", "ac:a", task("Second"), link).await?;
     let waiting = json!({"kind":"task","ready":false});
     ensure!(
@@ -134,7 +134,7 @@ async fn a_dependency_on_a_task_waits_until_the_task_is_archived() -> Result<()>
     );
     let mut third = task("Third");
     third["priority"] = json!("p1");
-    save(&w, "task", "third", "ac:a", third, json!([])).await?;
+    save(&w, "task", "third", "ac:a", third, json!({})).await?;
     ensure!(
         w.object("task:third").await?["data"]["priority"] == "p1",
         "p1"

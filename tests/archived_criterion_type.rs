@@ -31,7 +31,7 @@ fn save(w: &mut World, key: &str, parent: Option<&str>) -> anyhow::Result<()> {
     w.apply(
         "owner",
         json!({"op":"save_object","kind":kind,"id":id,"revision":current.revision,
-               "parent":parent,"data":current.data,"links":current.links,"reason":"Save again"}),
+               "parent":parent,"data":current.data,"reason":"Save again"}),
     )
 }
 

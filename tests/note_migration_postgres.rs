@@ -160,7 +160,7 @@ async fn source_notes_keep_public_ids_history_comments_and_files() -> Result<()>
     let id = migrated["id"].as_str().unwrap();
     let mut data = migrated["document"]["data"].clone();
     data["body"] = json!("Updated source");
-    let edited=store::execute_remote_input(&pool,&ws,"owner","edit-note",&json!({"op":"save_object","kind":"note","id":id,"revision":migrated["current_revision"],"parent":migrated["document"]["parent"],"data":data,"links":migrated["document"]["links"],"reason":"Correct the source"})).await?;
+    let edited=store::execute_remote_input(&pool,&ws,"owner","edit-note",&json!({"op":"save_object","kind":"note","id":id,"revision":migrated["current_revision"],"parent":migrated["document"]["parent"],"data":data,"reason":"Correct the source"})).await?;
     let edited_id = edited["system_ids"]["note"][id].as_str().unwrap();
     assert!(edited_id.ends_with(code_end(&public)));
     store::execute_remote_input(&pool,&ws,"agent","reply-old-address",&json!({"op":"note","target":"point:source/source.1","id":"followup","text":"New discussion"})).await?;

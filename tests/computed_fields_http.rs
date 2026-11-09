@@ -52,7 +52,7 @@ async fn save(
         "data":{"title":id,"owner":"owner"},"reason":"Stage"});
     for (k, v) in extra.as_object().into_iter().flatten() {
         match k.as_str() {
-            "parent" | "links" => command[k] = v.clone(),
+            "parent" | "relations" => command[k] = v.clone(),
             _ => command["data"][k] = v.clone(),
         }
     }
@@ -117,7 +117,7 @@ async fn a_computed_stage_follows_the_children_the_links_and_the_parent() -> Res
         ("step:s", json!({"parent":"task:t1"})),
         (
             "bug:b",
-            json!({"links":[{"target":"task:t2","relation":"related"}]}),
+            json!({"relations":{"related":{"edges":[{"to":"task:t2"}]}}}),
         ),
     ] {
         save(&w, address, 0, extra)
@@ -145,8 +145,8 @@ async fn a_computed_stage_follows_the_children_the_links_and_the_parent() -> Res
         ("review", &[]),
     )
     .await?;
-    // A link from t1 to b counts too: todo comes before done.
-    let link = json!({"links":[{"target":"bug:b","relation":"related"}]});
+    // A related edge from t1 to b counts too: todo comes before done.
+    let link = json!({"relations":{"related":{"edges":[{"to":"bug:b"}]}}});
     save(&w, "task:t1", 1, link)
         .await?
         .map_err(anyhow::Error::msg)?;
@@ -192,8 +192,8 @@ async fn a_computed_stage_follows_the_children_the_links_and_the_parent() -> Res
     save(&w, "bug:b2", 1, json!({"title":"B2"}))
         .await?
         .map_err(anyhow::Error::msg)?;
-    // An unlink reaches the bug: only t2 links to it now.
-    save(&w, "task:t1", 3, json!({"links":[]}))
+    // The removal of the related edge reaches the bug: only t2 links to it now.
+    save(&w, "task:t1", 3, json!({"relations":{"related":null}}))
         .await?
         .map_err(anyhow::Error::msg)?;
     expect(

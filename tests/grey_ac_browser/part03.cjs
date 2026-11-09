@@ -15,17 +15,20 @@ module.exports = shared => {
 test('pins-ignore-process-events-ac4: the board marks a link changed only when the server asks for review', async () => {
   const configured = {...types, task: {title: 'Tasks', role: 'task', status:'none', parents: ['ac']}};
   const f = await fixture(criterionRecords, configured);
-  const task = (id, contract, revision = 0, links = []) => f.command({op: 'save_object', kind: 'task', id, revision, parent: 'ac:A',
-    data: {title: 'Task ' + id, owner: 'owner', body: contract}, links, reason: 'Define the Task'});
+  // An omitted relations keeps the stored edges, so a save without them sends none.
+  const task = (id, contract, revision = 0, relations = undefined) => f.command({op: 'save_object', kind: 'task', id, revision, parent: 'ac:A',
+    data: {title: 'Task ' + id, owner: 'owner', body: contract}, relations, reason: 'Define the Task'});
   const meta = async () => {
     const card = await f.open('task:B');
     const text = await card.locator(':scope > .object-body .object-links').textContent();
-    assert.match(text, /Links to · depends_on · revision 1/);
+    // The card groups the edges by the relation title of the registry (R21).
+    assert.match(text, /Depends on/);
+    assert.match(text, /revision 1/);
     return {text};
   };
   try {
     await task('A', 'Implement the first part');
-    await task('B', 'Implement the second part', 0, [{target: 'task:A', relation: 'depends_on', revision: 1, blocking: true}]);
+    await task('B', 'Implement the second part', 0, {depends_on: {edges: [{to: 'task:A', revision: 1}]}});
     let read = await f.mcp('joppa_objects', {address: 'task:B'});
     assert.equal(read.review_required, undefined, JSON.stringify(read));
     assert.doesNotMatch((await meta()).text, /changed/);

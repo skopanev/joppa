@@ -2,19 +2,34 @@
 
 /// REQ key holds task:t1; REQ other holds task:t2 under other-rights and a second AC other-audit.
 async fn tasks_under_two_requirements(w: &World) -> Result<()> {
-    w.requirement("other", "restrict", "Other rights", "Scope", &[("other-rights", "Only write after review"), ("other-audit", "Record each write")]).await?;
+    w.requirement(
+        "other",
+        "restrict",
+        "Other rights",
+        "Scope",
+        &[
+            ("other-rights", "Only write after review"),
+            ("other-audit", "Record each write"),
+        ],
+    )
+    .await?;
     ready_task(w, "t1", "key-rights").await?;
     ready_task(w, "t2", "other-rights").await?;
     Ok(())
 }
 
-/// A Task save with one blocking link to `target` at revision 1.
+/// A Task save with one depends_on edge to `target` at revision 1. depends_on always blocks.
 fn linked_task_command(id: &str, revision: u32, ac: &str, target: &str) -> Value {
     let mut command = ready_task_command(id, ac);
     command["revision"] = json!(revision);
-    command["links"] =
-        json!([{"target":target,"relation":"depends_on","revision":1,"blocking":true}]);
+    command["relations"] = json!({"depends_on":{"edges":[{"to":target,"revision":1}]}});
     command
+}
+
+/// The HTTP read gives `document.relations.depends_on.edges` = [{to: target, revision: 1}],
+/// with no blocking field.
+fn depends_on_pinned(read: &Value, target: &str) -> bool {
+    read["document"]["relations"]["depends_on"]["edges"] == json!([{"to":target,"revision":1}])
 }
 
 // task-links-stay-in-req-ac1
@@ -36,14 +51,13 @@ async fn a_task_link_to_a_task_of_another_requirement_is_saved_and_waits() -> Re
     let args = json!({"workspace":w.ws,"request_id":request,"command":command});
     let mcp = mcp_call(&w, &w.owner, "joppa_command", args).await?;
     ensure!(mcp["isError"] != true, "{mcp}");
-    let link = json!([{"target":"task:t1","relation":"depends_on","revision":1,"blocking":true}]);
     let current = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
     // Each dependent Task keeps the link and waits until T1 is done and archived.
     for task in ["task:t2", "task:t3"] {
         let read = w.get(&format!("address={task}")).await?;
-        ensure!(read["document"]["links"] == link, "{read}");
+        ensure!(depends_on_pinned(&read, "task:t1"), "{read}");
         ensure!(read["waits_for"]["address"] == "task:t1", "{task}: {read}");
     }
     w.command(json!({"op":"archive_object","target":"task:t1","revision":current("task:t1").await?,"reason":"Implemented the contract"})).await?;
@@ -64,11 +78,7 @@ async fn a_task_link_across_criteria_of_one_requirement_is_saved() -> Result<()>
     )
     .await?;
     let t4 = w.get_as(&w.bot, "address=task:t4").await?;
-    ensure!(
-        t4["document"]["links"]
-            == json!([{"target":"task:t2","relation":"depends_on","revision":1,"blocking":true}]),
-        "{t4}"
-    );
+    ensure!(depends_on_pinned(&t4, "task:t2"), "{t4}");
     Ok(())
 }
 
@@ -91,11 +101,7 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
     .await?;
     ensure!(ok, "{saved}");
     let read = w.get_as(&w.bot, &format!("address={t4}")).await?;
-    let links = &read["document"]["links"];
-    ensure!(
-        links[0]["target"] == "task:t2" && links[0]["blocking"] == true,
-        "{read}"
-    );
+    ensure!(depends_on_pinned(&read, "task:t2"), "{read}");
     ensure!(read["waits_for"]["address"] == "task:t2", "{read}");
     let current = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
@@ -112,7 +118,7 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
 async fn a_journal_with_a_cross_requirement_task_link_still_replays() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
-    // A link stored in the journal before the live save replays to the same document.
+    // An edge stored in the journal before the live save replays to the same document.
     let command = linked_task_command("t2", 1, "other-rights", "task:t1");
     let position = journal_position(&w).await? + 1;
     let conn = w.pool.get().await?;
@@ -126,9 +132,7 @@ async fn a_journal_with_a_cross_requirement_task_link_still_replays() -> Result<
     store::backfill_board(&w.pool).await?;
     let t2 = w.get("address=task:t2").await?;
     ensure!(
-        t2["current_revision"] == 2
-            && t2["document"]["links"]
-                == json!([{"target":"task:t1","relation":"depends_on","revision":1,"blocking":true}]),
+        t2["current_revision"] == 2 && depends_on_pinned(&t2, "task:t1"),
         "{t2}"
     );
     Ok(())

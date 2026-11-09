@@ -36,20 +36,19 @@ async fn an_archived_link_target_leaves_the_links_value_at_once() -> Result<()> 
         "bug":node("Bugs", "document", &[], stage("links")),
         "area":node("Areas", "document", &[], json!({"status":"links"}))});
     schema(&w, types).await?.map_err(anyhow::Error::msg)?;
-    let to_x = json!([{"target":"area:x","relation":"related"}]);
-    let to_tasks = json!([{"target":"task:t1","relation":"related"},
-        {"target":"task:t2","relation":"related"}]);
+    let to_x = json!({"related":{"edges":[{"to":"area:x"}]}});
+    let to_tasks = json!({"related":{"edges":[{"to":"task:t1"},{"to":"task:t2"}]}});
     for (address, extra) in [
         ("area:x", json!({})),
         (
             "task:t1",
-            json!({"parent":"ac:a","stage":"done","links":to_x}),
+            json!({"parent":"ac:a","stage":"done","relations":to_x}),
         ),
         (
             "task:t2",
-            json!({"parent":"ac:a","stage":"todo","links":to_x}),
+            json!({"parent":"ac:a","stage":"todo","relations":to_x}),
         ),
-        ("bug:b", json!({"links":to_tasks})),
+        ("bug:b", json!({"relations":to_tasks})),
     ] {
         save(&w, address, 0, extra)
             .await?

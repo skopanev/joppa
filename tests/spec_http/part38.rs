@@ -1,18 +1,18 @@
 // Part 38 of tests/spec_http.rs, included there: dependencies have no rule by object type.
 
-/// The owner saves criterion `id` under `req` with `depends_on` and blocking `links`.
+/// The owner saves criterion `id` under `req` with the data field `depends_on` and `relations`.
 async fn save_criterion(
     w: &World,
     id: &str,
     req: &str,
     depends_on: Value,
-    links: Value,
+    relations: Value,
 ) -> Result<(bool, Value)> {
     let revision = w.get(&format!("address=ac:{id}")).await?["current_revision"].clone();
     let data = json!({"title":format!("Criterion {id}"),"owner":"owner","consumer":"customer",
         "before_launch":false,"depends_on":depends_on});
     let command = json!({"op":"save_object","kind":"ac","id":id,"revision":revision,
-        "parent":format!("requirement:{req}"),"data":data,"links":links,"reason":"Order the work"});
+        "parent":format!("requirement:{req}"),"data":data,"relations":relations,"reason":"Order the work"});
     send_as(w, &w.owner, &command).await
 }
 
@@ -41,7 +41,7 @@ fn refused(reply: &(bool, Value), text: &str) -> bool {
 async fn a_criterion_that_depends_on_a_task_waits_until_the_task_is_done() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
-    let link = json!([{"target":"task:t1","relation":"depends_on","blocking":true}]);
+    let link = json!({"depends_on":{"edges":[{"to":"task:t1"}]}});
     let saved = save_criterion(&w, "other-audit", "other", json!([]), link).await?;
     ensure!(saved.0, "{}", saved.1);
     ready_task(&w, "t4", "other-audit").await?;
@@ -61,7 +61,7 @@ async fn a_task_that_depends_on_a_requirement_waits_for_its_criteria() -> Result
     bind_tests(&w, &w.owner, "ac:key-rights", &[test]).await?;
     let pin = w.get("address=requirement:key").await?["current_revision"].clone();
     let mut command = linked_task_command("t2", 1, "other-rights", "requirement:key");
-    command["links"][0]["revision"] = pin;
+    command["relations"]["depends_on"]["edges"][0]["revision"] = pin;
     let (ok, saved) = send_as(&w, &w.owner, &command).await?;
     ensure!(ok, "{saved}");
     let early = waits(&w, "task:t2").await?;
@@ -83,7 +83,7 @@ async fn a_dependency_cycle_through_tasks_is_refused_like_any_other() -> Result<
     // A Task waits on its own requirement: the requirement needs the Task's criterion.
     let pin = w.get("address=requirement:key").await?["current_revision"].clone();
     let mut own = linked_task_command("t1", 1, "key-rights", "requirement:key");
-    own["links"][0]["revision"] = pin;
+    own["relations"]["depends_on"]["edges"][0]["revision"] = pin;
     let reply = send_as(&w, &w.owner, &own).await?;
     ensure!(refused(&reply, "dependency cycle"), "{reply:?}");
     // T2 waits on T1, so T1 cannot wait on T2.

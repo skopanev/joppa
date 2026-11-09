@@ -97,7 +97,7 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(entry, &["record", "report"]),
         "{newest}"
     );
-    // History and links give no workspace and no snapshot position.
+    // History and relations_of give no workspace and no snapshot position.
     for args in [json!({}), json!({"open":true,"limit":5})] {
         let history = read(&w, "joppa_history", args).await?;
         ensure!(
@@ -110,10 +110,10 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             "{history}"
         );
     }
-    let links = read(&w, "joppa_objects", json!({"links_of":"ac:a"})).await?;
+    let relations = read(&w, "joppa_objects", json!({"relations_of":"ac:a"})).await?;
     ensure!(
-        absent(&links, &["workspace", "position", "address"]),
-        "{links}"
+        absent(&relations, &["workspace", "position", "address"]),
+        "{relations}"
     );
     // Search counts every text match, and echoes no flag.
     let found = read(&w, "joppa_search", json!({"query":"Paging item"})).await?;

@@ -159,7 +159,7 @@ pub async fn seed(
     Ok(())
 }
 
-/// Save a new title of an object and keep its other fields, parent and links.
+/// Save a new title of an object and keep its other fields, parent and relations.
 pub async fn save_title(
     pool: &deadpool_postgres::Pool,
     ws: &str,
@@ -188,7 +188,7 @@ pub async fn save_title(
         actor,
         request,
         &json!({"op":"save_object","kind":kind,"id":id,"revision":current["current_revision"],
-            "parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":reason}),
+            "parent":current["document"]["parent"],"data":data,"reason":reason}),
     )
     .await
 }

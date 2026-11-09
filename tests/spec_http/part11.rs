@@ -17,7 +17,7 @@ async fn removing_a_type_with_three_objects_is_refused_over_http() -> Result<()>
     }
     let ids = ["first", "second", "third"];
     for id in ids {
-        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"skopanev","body":"Scope"},"links":[],"reason":"Save"})).await?;
+        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"skopanev","body":"Scope"},"reason":"Save"})).await?;
     }
     let tree = async || -> Result<Value> {
         let reply = w
@@ -167,7 +167,7 @@ async fn a_badge_change_keeps_the_object_revision_and_document_over_http() -> Re
         store::execute(&w.pool, &w.ws, "skopanev", &format!("setup-{i}"), &op).await?;
     }
     for (revision, body) in [(0, "First"), (1, "Second")] {
-        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":"kept","revision":revision,"parent":null,"data":{"title":"Kept","owner":"skopanev","body":body},"links":[],"reason":"Save"})).await?;
+        w.command_as(&w.skopanev, json!({"op":"save_object","kind":"note","id":"kept","revision":revision,"parent":null,"data":{"title":"Kept","owner":"skopanev","body":body},"reason":"Save"})).await?;
     }
     let hash = |read: &Value| -> Result<String> {
         let document = serde_json::to_string(&document(read))?;

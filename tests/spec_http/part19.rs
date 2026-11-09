@@ -13,31 +13,31 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
             .is_some_and(|i| i.iter().any(|i| i["address"] == "note:signal"));
         Ok((listed, list))
     };
-    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"signal","revision":0,"parent":null,"data":{"title":"Dark mode","owner":"owner","body":"Please add dark mode"},"links":[],"reason":"Save"})).await?;
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"signal","revision":0,"parent":null,"data":{"title":"Dark mode","owner":"owner","body":"Please add dark mode"},"reason":"Save"})).await?;
     let (listed, list) = inbox().await?;
     ensure!(listed, "{list}");
-    w.command_as(bot, json!({"op":"save_object","kind":"requirement","id":"dark","revision":0,"parent":"capability:restrict","data":{"title":"Dark mode","body":"Offer a dark theme","owner":"owner","consumers":["customer"]},"links":[{"relation":"related","target":"note:signal"}],"reason":"Turn the signal into a requirement"})).await?;
+    w.command_as(bot, json!({"op":"save_object","kind":"requirement","id":"dark","revision":0,"parent":"capability:restrict","data":{"title":"Dark mode","body":"Offer a dark theme","owner":"owner","consumers":["customer"]},"relations":{"related":{"edges":[{"to":"note:signal"}]}},"reason":"Turn the signal into a requirement"})).await?;
     w.command_as(bot, json!({"op":"archive_object","target":"note:signal","revision":1,"reason":"Covered by requirement:dark"})).await?;
     let (listed, list) = inbox().await?;
     ensure!(!listed, "{list}");
     let requirement = object_as(&w, bot, "requirement:dark", None).await?;
     ensure!(
-        requirement["links"].as_array().is_some_and(|l| l
-            .iter()
-            .any(|l| l.get("relation").is_none() && l["target"] == "note:signal")),
+        requirement["relations"]["related"]["edges"]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|l| l["to"] == "note:signal")),
         "{requirement}"
     );
     let signal = object_as(&w, bot, "note:signal", None).await?;
-    // The read counts the incoming links by group; the group read lists them.
+    // The read counts the incoming edges by group; the relations_of read lists them.
     let group = w
         .get_as(
             bot,
-            "links_of=note:signal&direction=incoming&relation=related&kind=requirement",
+            "relations_of=note:signal&direction=incoming&relation=related&kind=requirement",
         )
         .await?;
     ensure!(
         signal["present"] == false
-            && signal["link_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "related" && g["kind"] == "requirement" && g["count"] == 1))
+            && signal["relation_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "related" && g["kind"] == "requirement" && g["count"] == 1))
             && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "requirement:dark")),
         "{signal} {group}"
     );
@@ -48,11 +48,12 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()> {
     // typed-links-ac1
+    // A depends_on edge always blocks now; the edge shows on both objects.
     let w = world().await?;
     for id in ["a", "b"] {
-        w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":id},"links":[],"reason":"Save"})).await?;
+        w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":id,"owner":"owner","body":id},"reason":"Save"})).await?;
     }
-    w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":"b","revision":1,"parent":null,"data":{"title":"b","owner":"owner","body":"b"},"links":[{"target":"note:a","relation":"depends_on"}],"reason":"Save"})).await?;
+    w.command_as(&w.bot, json!({"op":"save_object","kind":"note","id":"b","revision":1,"parent":null,"data":{"title":"b","owner":"owner","body":"b"},"relations":{"depends_on":{"edges":[{"to":"note:a"}]}},"reason":"Save"})).await?;
     let (actor, command) = last_event(&w).await?;
     ensure!(actor == "bot", "{actor}: {command}");
     for mcp in [false, true] {
@@ -65,19 +66,18 @@ async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()
         };
         let b = read("b").await?;
         ensure!(
-            document(&b)["links"][0]["relation"] == "depends_on"
-                && document(&b)["links"][0]["target"] == "note:a",
+            document(&b)["relations"]["depends_on"]["edges"][0]["to"] == "note:a",
             "mcp={mcp}: {b}"
         );
         let a = read("a").await?;
         let group = w
             .get_as(
                 &w.bot,
-                "links_of=note:a&direction=incoming&relation=depends_on&kind=note",
+                "relations_of=note:a&direction=incoming&relation=depends_on&kind=note",
             )
             .await?;
         ensure!(
-            a["link_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "depends_on" && g["kind"] == "note" && g["count"] == 1))
+            a["relation_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "depends_on" && g["kind"] == "note" && g["count"] == 1))
                 && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "note:b")),
             "mcp={mcp}: {a} {group}"
         );
@@ -97,7 +97,7 @@ async fn an_account_without_membership_cannot_add_a_signal_over_http() -> Result
                 .http
                 .post(format!("{}/api/workspaces/{ws}/commands", w.root))
                 .bearer_auth(&w.eve)
-                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"eve","revision":0,"parent":null,"data":{"title":"Signal eve","owner":"owner","body":"Hi"},"links":[],"reason":"Intake"}}))
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"eve","revision":0,"parent":null,"data":{"title":"Signal eve","owner":"owner","body":"Hi"},"reason":"Intake"}}))
                 .send()
                 .await?;
             Ok::<_, anyhow::Error>((reply.status().as_u16(), reply.text().await?))
@@ -166,9 +166,9 @@ async fn an_account_without_membership_cannot_save_a_test_node_over_http() -> Re
 async fn a_redacted_fragment_cannot_be_read_anywhere() -> Result<()> {
     // owner-redacts-secret-ac1
     let w = world().await?;
-    w.note("leak", 0, "Leak", "the key is sk-123 for prod", json!([]))
+    w.note("leak", 0, "Leak", "the key is sk-123 for prod", json!({}))
         .await?;
-    w.note("leak", 1, "Leak", "rotate sk-123 today", json!([]))
+    w.note("leak", 1, "Leak", "rotate sk-123 today", json!({}))
         .await?;
     ensure!(
         w.search("sk-123").await? == ["note:leak"],

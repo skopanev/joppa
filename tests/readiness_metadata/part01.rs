@@ -30,7 +30,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     let data = serde_json::from_str::<Value>(requirement.get(1))?["data"].clone();
     store::execute_input(&pool, &ws, "owner", "link", &json!({"op":"save_object","kind":"requirement","id":"r",
         "revision":requirement.get::<_,i32>(0),"parent":"capability:c","data":data,
-        "links":[{"target":"requirement:other","relation":"depends_on","revision":other.get::<_,i32>(0),"blocking":true}],
+        "relations":{"depends_on":{"edges":[{"to":"requirement:other","revision":other.get::<_,i32>(0)}]}},
         "reason":"Order after the other requirement"})).await?;
     let current = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
     let full = (

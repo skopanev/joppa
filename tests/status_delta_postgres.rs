@@ -63,9 +63,9 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
         let args = json!({"workspace":ws,"commit":commit,"results":results});
         async move { store::record_results(pool, ws, "owner", &args).await }
     };
-    let save = |kind: &str, id: &str, parent: Value, links: Value| {
+    let save = |kind: &str, id: &str, parent: Value, relations: Value| {
         json!({"op":"save_object","kind":kind,"id":id,"revision":0,
-        "parent":parent,"data":{"title":id,"owner":"owner","body":"The rule"},"links":links,"reason":"Create"})
+        "parent":parent,"data":{"title":id,"owner":"owner","body":"The rule"},"relations":relations,"reason":"Create"})
     };
     let test = |id: &str, parent: &str| {
         json!({"op":"save_object","kind":"test","id":id,"revision":0,
@@ -83,7 +83,7 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
         "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"],"fields":union,"references":refs(None)},
         "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400,"fields":{"tags":{"type":"list"}}},
         "area":{"title":"Areas","role":"document","status":"links","root":true,"parents":[]}}}))).await?;
-    let none = json!([]);
+    let none = json!({});
     for (id, kind, parent) in [
         ("r", "requirement", Value::Null),
         ("r2", "requirement", Value::Null),
@@ -137,10 +137,10 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
     )
     .await?;
     let move_a = json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r2",
-        "data":{"title":"a","owner":"owner","body":"The rule","refs":["x"]},"links":[{"target":"area:x","relation":"related"}],"reason":"Move"});
+        "data":{"title":"a","owner":"owner","body":"The rule","refs":["x"]},"relations":{"related":{"edges":[{"to":"area:x"}]}},"reason":"Move"});
     step(pool, ws, "move and link", false, write(move_a)).await?;
     let depend = json!({"op":"save_object","kind":"ac","id":"b","revision":1,"parent":"requirement:r",
-        "data":{"title":"b","owner":"owner","body":"The rule","refs":["area:x"]},"links":[{"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Depend"});
+        "data":{"title":"b","owner":"owner","body":"The rule","refs":["area:x"]},"relations":{"depends_on":{"edges":[{"to":"ac:a"}]}},"reason":"Depend"});
     step(pool, ws, "a dependency", false, write(depend)).await?;
     step(
         pool,
@@ -172,10 +172,10 @@ async fn each_write_recomputes_the_reached_nodes_and_equals_a_full_rebuild() -> 
         write(json!({"op":"archive_object","target":"test:t3","revision":1,"reason":"Not needed"})),
     )
     .await?;
-    // Two areas that link to each other form a cycle: only the full rebuild orders it.
+    // Two areas with related edges to each other form a cycle: only the full rebuild orders it.
     let area = |id: &str, revision: u32, target: &str| {
         json!({"op":"save_object","kind":"area","id":id,"revision":revision,
-        "parent":null,"data":{"title":id,"owner":"owner","body":"The rule"},"links":[{"target":target,"relation":"related"}],"reason":"Link"})
+        "parent":null,"data":{"title":id,"owner":"owner","body":"The rule"},"relations":{"related":{"edges":[{"to":target}]}},"reason":"Link"})
     };
     step(
         pool,

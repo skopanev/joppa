@@ -93,11 +93,11 @@ impl Planning<'_> {
             .json()
             .await?)
     }
-    /// The owner saves `key` over HTTP with its current parent and no links.
+    /// The owner saves `key` over HTTP with its current parent. The relations stay.
     async fn owner_save(&self, key: &str, parent: Option<&str>, data: Value) -> Result<()> {
         let (kind, id) = key.split_once(':').unwrap();
         let root = self.w.base.split("/api/").next().unwrap();
-        let command = json!({"op":"save_object","kind":kind,"id":id,"revision":self.revision(key).await?,"parent":parent,"data":data,"links":[],"reason":"Change the group"});
+        let command = json!({"op":"save_object","kind":kind,"id":id,"revision":self.revision(key).await?,"parent":parent,"data":data,"reason":"Change the group"});
         self.w
             .http
             .post(format!("{root}/api/workspaces/{}/commands", self.ws))

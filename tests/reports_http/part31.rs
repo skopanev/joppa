@@ -13,10 +13,10 @@ async fn ac3_a_shared_parent_alone_never_makes_work_wait_over_http_and_mcp() -> 
     ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(free(&b1), "{b1}");
-    // Control: a blocking link from B to A makes B1 wait until it is removed.
+    // Control: a depends_on edge from B to A makes B1 wait until it is removed.
     p.link("spec:b", ordering_link("spec:a")).await?;
     ensure!(!p.ready_work().await?.contains(&"criterion:b1".to_owned()));
-    p.link("spec:b", json!([])).await?;
+    p.link("spec:b", json!({"depends_on":null})).await?;
     ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
     ensure!(free(&b1), "{b1}");
@@ -72,10 +72,10 @@ async fn ac6_a_dependency_cycle_through_the_tree_is_refused_over_http_and_mcp() 
     let w = world().await?;
     let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
     p.link("spec:b", ordering_link("spec:a")).await?;
-    let save = |key: &str, object: &Value, links: Value| {
+    let save = |key: &str, object: &Value, relations: Value| {
         let (kind, id) = key.split_once(':').unwrap();
         json!({"op":"save_object","kind":kind,"id":id,"revision":object["current_revision"],"parent":object["document"]["parent"],
-            "data":object["document"]["data"],"links":links,"reason":"Order the work"})
+            "data":object["document"]["data"],"relations":relations,"reason":"Order the work"})
     };
     // Each refusal leaves the committed rows and the journal position unchanged.
     for (case, source, target) in [
@@ -91,25 +91,25 @@ async fn ac6_a_dependency_cycle_through_the_tree_is_refused_over_http_and_mcp() 
         )
         .await?;
         ensure!(
-            p.object_both(source).await?["document"]["links"] == json!([]),
+            depends_on_targets(&p.object_both(source).await?).is_empty(),
             "{case}"
         );
     }
-    // Controls: a related link, a blocking link to an unrelated requirement and the removal
-    // of the link from B to A make no cycle.
+    // Controls: a related edge, a depends_on edge to an unrelated requirement and the removal
+    // of the edge from B to A make no cycle.
     p.save(
         "spec:d",
         Some("cap:c"),
         json!({"title":"spec:d","body":"Deliver another rule","owner":"owner"}),
-        json!([]),
+        json!({}),
     )
     .await?;
-    p.link("spec:a", json!([{"target":"spec:b","relation":"related"}]))
+    p.link("spec:a", json!({"related":{"edges":[{"to":"spec:b"}]}}))
         .await?;
     p.link("criterion:b1", ordering_link("spec:d")).await?;
-    p.link("spec:b", json!([])).await?;
-    ensure!(p.read("criterion:b1").await?["document"]["links"] == ordering_link("spec:d"));
-    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
+    p.link("spec:b", json!({"depends_on":null})).await?;
+    ensure!(depends_on_targets(&p.read("criterion:b1").await?) == ["spec:d"]);
+    ensure!(depends_on_targets(&p.read("spec:b").await?).is_empty());
     store::check_journal(&p.pool).await?;
     Ok(())
 }

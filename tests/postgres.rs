@@ -99,7 +99,7 @@ async fn postgres_journal_concurrency_isolation_immutability_and_roundtrip() -> 
         let mut data = current["document"]["data"].clone();
         data["title"] = json!("Paid access persists after sign-in");
         json!({"op":"save_object","kind":"requirement","id":"r","revision":revision,
-            "parent":current["document"]["parent"],"data":data,"links":current["document"]["links"],"reason":"Agreed wording"})
+            "parent":current["document"]["parent"],"data":data,"reason":"Agreed wording"})
     };
     let first = current["current_revision"].clone();
     let (a, b) = tokio::join!(

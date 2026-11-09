@@ -1,5 +1,5 @@
-// Chromium checks of object links on a card: an incoming link group shows its count and reads
-// its links in pages only when the reader opens it, and a Markdown link [Title](kind:id)
+// Chromium checks of object relations on a card: an incoming relation group shows its count and
+// reads its edges in pages only when the reader opens it, and a Markdown link [Title](kind:id)
 // opens that object.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,9 +10,12 @@ const types = {
   note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: [], inbox: true},
 };
 
-function save(kind, id, data, links = []) {
-  return {op: 'save_object', kind, id, revision: 0, parent: null, data: {owner: 'owner', ...data}, links, reason: 'Define the browser fixture'};
+function save(kind, id, data, relations = {}) {
+  return {op: 'save_object', kind, id, revision: 0, parent: null, data: {owner: 'owner', ...data}, relations, reason: 'Define the browser fixture'};
 }
+
+// One related edge to requirement:r.
+const toR = {related: {edges: [{to: 'requirement:r'}]}};
 
 async function openObject(f, address) {
   await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&object=' + encodeURIComponent(address));
@@ -24,14 +27,14 @@ test('grouped-links-board: the card loads a link group when the reader opens it'
   try {
     await f.command(save('requirement', 'r', {title: 'Paid access', body: 'Fixture text'}));
     for (let i = 0; i < 120; i++) {
-      await f.command(save('note', 'n' + String(i).padStart(3, '0'), {title: 'Input ' + i, body: 'Source'}, [{target: 'requirement:r', relation: 'related'}]));
+      await f.command(save('note', 'n' + String(i).padStart(3, '0'), {title: 'Input ' + i, body: 'Source'}, toR));
     }
     const reads = [];
-    f.page.on('request', request => { if (request.url().includes('links_of=')) reads.push(request.url()); });
+    f.page.on('request', request => { if (request.url().includes('relations_of=')) reads.push(request.url()); });
     await openObject(f, 'requirement:r');
     const group = f.page.locator('details.link-group[data-relation="related"][data-kind="note"]');
     await group.waitFor();
-    assert.match(await group.locator('summary').textContent(), /Linked from · related · note 120/);
+    assert.match(await group.locator('summary').textContent(), /Linked from · related · note 120/i);
     assert.equal(reads.length, 0, 'a link was read before the group opened');
     const rows = group.locator('.object-links > a');
     await group.locator('summary').click();
@@ -84,10 +87,10 @@ test('grouped-links-board: a group whose first page failed loads again when reop
   try {
     await f.command(save('requirement', 'r', {title: 'Paid access', body: 'Fixture text'}));
     for (let i = 0; i < 3; i++) {
-      await f.command(save('note', 'n' + i, {title: 'Input ' + i, body: 'Source'}, [{target: 'requirement:r', relation: 'related'}]));
+      await f.command(save('note', 'n' + i, {title: 'Input ' + i, body: 'Source'}, toR));
     }
     let failures = 1;
-    await f.page.route(url => url.href.includes('links_of='), route => failures-- > 0 ? route.fulfill({status: 500, body: '{"error":"down"}'}) : route.continue());
+    await f.page.route(url => url.href.includes('relations_of='), route => failures-- > 0 ? route.fulfill({status: 500, body: '{"error":"down"}'}) : route.continue());
     await openObject(f, 'requirement:r');
     const group = f.page.locator('details.link-group[data-relation="related"][data-kind="note"]');
     await group.locator('summary').click();

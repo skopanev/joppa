@@ -1,23 +1,37 @@
 // Part 1 of tests/objects.rs, included there, so the test names stay unchanged.
 
-fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value, links: Vec<ObjectLink>) {
+/// A local edge as (key, edge): a blocking edge goes to depends_on, any other edge to related.
+type Edge = (&'static str, Value);
+
+fn save(w: &mut World, key: &str, parent: Option<&str>, data: Value, links: Vec<Edge>) {
     let (kind, id) = key.split_once(':').unwrap();
     let revision = w.state.objects.get(key).map_or(0, |o| o.current().revision);
-    w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"links":links,"reason":"Update the current document"}));
+    w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"relations":relations(links),"reason":"Update the current document"}));
 }
 
-fn link(target: &str, revision: Option<u32>, blocking: bool) -> ObjectLink {
-    ObjectLink {
-        target: target.into(),
-        revision,
-        blocking,
-        relation: if revision.is_some() {
-            "depends_on"
-        } else {
-            "related"
-        }
-        .into(),
+fn link(target: &str, revision: Option<u32>, blocking: bool) -> Edge {
+    let mut edge = json!({"to": target});
+    if let Some(revision) = revision {
+        edge["revision"] = json!(revision);
     }
+    (if blocking { "depends_on" } else { "related" }, edge)
+}
+
+/// The relations value of a save: the edges grouped by key, in their order.
+fn relations(links: Vec<Edge>) -> Value {
+    let mut out = json!({});
+    for (key, edge) in links {
+        if out[key].is_null() {
+            out[key] = json!({"edges": []});
+        }
+        out[key]["edges"].as_array_mut().unwrap().push(edge);
+    }
+    out
+}
+
+/// The number of local edges of the current revision of `key`.
+fn edge_count(w: &World, key: &str) -> usize {
+    relation_edges::pairs(&relation_edges::of(w.state.objects[key].current())).len()
 }
 
 // [request-verbatim-ac1]
@@ -45,7 +59,7 @@ fn note_revisions_preserve_source_and_reject_stale_writes() {
     assert_eq!(o.revisions.len(), 2);
     assert_eq!(o.revisions[0].data["body"], "Original text");
     assert_eq!(o.current().data["body"], "Updated text");
-    assert_eq!(o.current().links.len(), 2);
+    assert_eq!(edge_count(&w, "note:n"), 2);
     w.no("agent",json!({"op":"save_object","kind":"note","id":"n","revision":1,"parent":null,"data":{"title":"Overwrite","owner":"owner"},"reason":"Stale edit"}));
     w.ok(
         "agent",
@@ -164,14 +178,10 @@ fn ordinary_cycles_are_allowed_and_blocking_cycles_are_rejected() {
     );
     let key = w.state.objects["ac:key"].current().data.clone();
     let n = w.state.objects["ac:key"].current().revision;
-    w.no("agent",json!({"op":"save_object","id":"key","kind":"ac","revision":n,"parent":"requirement:r","data":key,"links":[link("ac:ios",Some(2),true)],"reason":"Close a blocking cycle"}));
-    save(
-        &mut w,
-        "ac:ios",
-        Some("requirement:r"),
-        ios,
-        vec![link("ac:key", None, false)],
-    );
+    w.no("agent",json!({"op":"save_object","id":"key","kind":"ac","revision":n,"parent":"requirement:r","data":key,"relations":relations(vec![link("ac:ios",Some(2),true)]),"reason":"Close a blocking cycle"}));
+    // The related edge replaces the depends_on edge: null removes the depends_on key.
+    let n = w.state.objects["ac:ios"].current().revision;
+    w.ok("agent",json!({"op":"save_object","kind":"ac","id":"ios","revision":n,"parent":"requirement:r","data":ios,"relations":{"depends_on":null,"related":{"edges":[{"to":"ac:key"}]}},"reason":"Update the current document"}));
 }
 
 #[test]
@@ -201,7 +211,8 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
         json!({"title":"Context","body":"Second","owner":"owner"}),
         vec![],
     );
-    // dependencies-before-priority: an ordering link of a criterion pins nothing.
+    // dependencies-before-priority: a related edge with a pin blocks nothing. An old
+    // depends_on without blocking is related now.
     assert!(objects::work_ready(&w.state, "ac:ios"));
     let r = w.state.requirements["r"].revisions.last().unwrap();
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());

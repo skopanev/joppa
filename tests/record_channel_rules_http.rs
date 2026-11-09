@@ -202,9 +202,8 @@ async fn save(w: &World, field: &str, value: Value) -> Result<Result<Value, Stri
     let a = w.object(A).await?;
     let mut data = a["data"].clone();
     data[field] = value;
-    // A detail read without links has no links key.
-    let links = a.get("links").cloned().unwrap_or(json!([]));
-    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],"parent":a["parent"],"data":data,"links":links,"reason":"Save the criterion"});
+    // An omitted relations keeps the stored relations.
+    let command = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],"parent":a["parent"],"data":data,"reason":"Save the criterion"});
     w.command(&w.bot, command).await
 }
 

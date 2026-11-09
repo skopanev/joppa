@@ -31,7 +31,7 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"s","revision":0,"parent":null,
             "data":{"title":"S","owner":"owner","body":"Second rule"},
-            "links":[{"target":"requirement:r","relation":"related"}],"reason":"Link"}),
+            "relations":{"related":{"edges":[{"to":"requirement:r"}]}},"reason":"Link"}),
         json!({"op":"save_object","kind":"task","id":"t","revision":0,"parent":"ac:a",
             "data":{"title":"T","owner":"owner","body":"Do A"},
             "reason":"Work"}),
@@ -91,13 +91,16 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
         absent(&headers, &ECHOES) && headers["items"][0]["actor"] == "bot",
         "{headers}"
     );
-    let links = read(&w, "joppa_objects", json!({"links_of":"requirement:r"})).await?;
-    let link = &links["items"][0];
+    // A relations_of item always gives its relation and its presence, and never blocking.
+    let edges = read(&w, "joppa_objects", json!({"relations_of":"requirement:r"})).await?;
+    let edge = &edges["items"][0];
     ensure!(
-        absent(&links, &ECHOES)
-            && link["address"] == "requirement:s"
-            && absent(link, &["present", "blocking", "relation"]),
-        "{links}"
+        absent(&edges, &ECHOES)
+            && edge["address"] == "requirement:s"
+            && edge["relation"] == "related"
+            && edge["present"] == true
+            && absent(edge, &["blocking"]),
+        "{edges}"
     );
     // A search hit names its address and gives the clean text of the object.
     let search = read(&w, "joppa_search", json!({"query":"Second rule"})).await?;

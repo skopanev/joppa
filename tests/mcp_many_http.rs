@@ -14,9 +14,9 @@ async fn ok(w: &record_world::World, args: Value) -> Result<Value> {
     read(w, args).await?.map_err(anyhow::Error::msg)
 }
 
-async fn save(w: &record_world::World, id: &str, body: &str, links: Value) -> Result<()> {
+async fn save(w: &record_world::World, id: &str, body: &str, relations: Value) -> Result<()> {
     let save = json!({"op":"save_object","kind":"requirement","id":id,"revision":0,
-        "parent":null,"data":{"title":id,"owner":"owner","body":body},"links":links,
+        "parent":null,"data":{"title":id,"owner":"owner","body":body},"relations":relations,
         "reason":"Add"});
     w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
     Ok(())
@@ -27,7 +27,7 @@ async fn save(w: &record_world::World, id: &str, body: &str, links: Value) -> Re
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn one_read_gives_up_to_25_objects_with_their_addresses() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
-    save(&w, "s", "Second rule", json!([])).await?;
+    save(&w, "s", "Second rule", json!({})).await?;
     let r = ok(&w, json!({"address":"requirement:r"})).await?;
     let a = ok(&w, json!({"address":"ac:a"})).await?;
     // One address gives the object itself; more addresses give items in the order of the request.
@@ -78,7 +78,13 @@ async fn one_read_gives_up_to_25_objects_with_their_addresses() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
-    save(&w, "s", "Second rule", json!([{"target":"requirement:r"}])).await?;
+    save(
+        &w,
+        "s",
+        "Second rule",
+        json!({"related":{"edges":[{"to":"requirement:r"}]}}),
+    )
+    .await?;
     let fields = json!(["title", "status", "data.owner", "parent", "kind"]);
     let one = ok(&w, json!({"address":"ac:a","fields":fields})).await?;
     let list = ok(&w, json!({"parent":"requirement:r","fields":fields})).await?;
@@ -99,11 +105,11 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
             {"address":"requirement:r","title":"R"}]}),
         "{both}"
     );
-    // A detail key and a bare document field: links, status.label, body and an empty key.
+    // A detail key and a bare document field: relations, status.label, body and an empty key.
     let detail = ok(&w, json!({"address":"requirement:s"})).await?;
     let keys = json!([
         "revision",
-        "links",
+        "relations",
         "status.label",
         "body",
         "comments",
@@ -111,10 +117,10 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     ]);
     let s = ok(&w, json!({"address":"requirement:s","fields":keys})).await?;
     ensure!(
-        s == json!({"revision":detail["revision"],"links":detail["links"],
+        s == json!({"revision":detail["revision"],"relations":detail["relations"],
             "status.label":detail["status"]["label"],"body":"Second rule","comments":null,
             "note":null})
-            && s["links"][0]["target"] == "requirement:r",
+            && s["relations"]["related"]["edges"][0]["to"] == "requirement:r",
         "{s} {detail}"
     );
     // Each parameter of the read tools describes itself in the tool schema.
@@ -145,7 +151,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     }
     // A list gives the full body, also above 300 characters.
     let long = "A long rule. ".repeat(40);
-    save(&w, "long", &long, json!([])).await?;
+    save(&w, "long", &long, json!({})).await?;
     let roots = ok(&w, json!({"fields":["body"]})).await?;
     let bodies: Vec<&Value> = roots["items"]
         .as_array()
@@ -160,7 +166,7 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     // fields on an older revision give the document of that revision.
     let edit = json!({"op":"save_object","kind":"requirement","id":"s","revision":1,"parent":null,
         "data":{"title":"s","owner":"owner","body":"Second rule, edited"},
-        "links":[{"target":"requirement:r"}],"reason":"Edit"});
+        "relations":{"related":{"edges":[{"to":"requirement:r"}]}},"reason":"Edit"});
     w.command(&w.bot, edit).await?.map_err(anyhow::Error::msg)?;
     let old = json!({"address":"requirement:s","revision":1,"fields":["revision","body"]});
     let old = ok(&w, old).await?;
@@ -214,7 +220,7 @@ async fn a_list_reply_above_256_kb_is_refused_and_one_object_comes_in_full() -> 
         .await?
         .map_err(anyhow::Error::msg)?;
     let body = "x".repeat(262_144);
-    save(&w, "big", &body, json!([])).await?;
+    save(&w, "big", &body, json!({})).await?;
     // One object above 256 KB comes in full; a list with it is refused, and fields narrow it.
     let (code, one) = w
         .mcp_raw(

@@ -21,10 +21,10 @@ async fn batch(pool: &Pool, ws: &str, commands: Vec<Value>) -> Result<()> {
     Ok(())
 }
 
-fn node(kind: &str, id: &str, parent: Option<String>, links: Value) -> Value {
+fn node(kind: &str, id: &str, parent: Option<String>, relations: Value) -> Value {
     json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,
         "data":{"title":format!("{kind} {id}"),"owner":"owner","body":"The rule"},
-        "links":links,"reason":"Create"})
+        "relations":relations,"reason":"Create"})
 }
 
 /// A workspace of `domains` x 5 capabilities x 6 requirements x `acs` criteria, each with one
@@ -43,34 +43,41 @@ async fn tree(pool: &Pool, domains: usize, acs: usize) -> Result<String> {
     let mut commands = vec![];
     let mut last_req: Option<String> = None;
     for d in 0..domains {
-        commands.push(node("domain", &format!("d{d}"), None, json!([])));
+        commands.push(node("domain", &format!("d{d}"), None, json!({})));
         for c in 0..5 {
             let cap = format!("d{d}c{c}");
             commands.push(node(
                 "capability",
                 &cap,
                 Some(format!("domain:d{d}")),
-                json!([]),
+                json!({}),
             ));
             for r in 0..6 {
                 let req = format!("{cap}r{r}");
                 let parent = Some(format!("capability:{cap}"));
-                commands.push(node("requirement", &req, parent, json!([])));
+                commands.push(node("requirement", &req, parent, json!({})));
                 for a in 0..acs {
                     let ac = format!("{req}a{a}");
-                    let links = match (&last_req, a % 10) {
-                        (Some(prev), 0) => json!([{"target":format!("ac:{prev}a1"),
-                            "relation":"depends_on","blocking":true}]),
-                        (Some(prev), 5) => json!([{"target":format!("ac:{prev}a2"),
-                            "relation":"related"}]),
-                        _ => json!([]),
+                    let relations = match (&last_req, a % 10) {
+                        (Some(prev), 0) => {
+                            json!({"depends_on":{"edges":[{"to":format!("ac:{prev}a1")}]}})
+                        }
+                        (Some(prev), 5) => {
+                            json!({"related":{"edges":[{"to":format!("ac:{prev}a2")}]}})
+                        }
+                        _ => json!({}),
                     };
-                    commands.push(node("ac", &ac, Some(format!("requirement:{req}")), links));
+                    commands.push(node(
+                        "ac",
+                        &ac,
+                        Some(format!("requirement:{req}")),
+                        relations,
+                    ));
                     let mut test = node(
                         "test",
                         &format!("{ac}t"),
                         Some(format!("ac:{ac}")),
-                        json!([]),
+                        json!({}),
                     );
                     test["data"]["title"] = json!(format!("tests/big.rs > {ac}"));
                     commands.push(test);

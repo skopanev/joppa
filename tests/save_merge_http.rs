@@ -1,5 +1,5 @@
 //! requirement:edit-makes-revision over a real server: an update of save_object merges its
-//! data by key and keeps an omitted parent and links, and clean: true replaces the data.
+//! data by key and keeps an omitted parent and relations, and clean: true replaces the data.
 #[path = "common/generic_world.rs"]
 mod generic_world;
 use anyhow::{Result, ensure};
@@ -16,11 +16,14 @@ async fn update(w: &World, revision: u32, fields: Value) -> Result<Result<Value,
     w.command(&w.bot, command).await
 }
 
-/// The data, the parent and the link targets of ac:b.
+/// The data, the parent and the related edge targets of ac:b.
 async fn read(w: &World) -> Result<(Value, Value, Vec<Value>)> {
     let b = w.object("ac:b").await?;
-    let links = b["links"].as_array().cloned().unwrap_or_default();
-    let targets = links.iter().map(|l| l["target"].clone()).collect();
+    let edges = b["relations"]["related"]["edges"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let targets = edges.iter().map(|e| e["to"].clone()).collect();
     Ok((b["data"].clone(), b["parent"].clone(), targets))
 }
 
@@ -31,21 +34,21 @@ async fn an_update_merges_data_by_key_and_clean_replaces_it() -> Result<()> {
     let w = world(&[]).await?;
     let create = json!({"op":"save_object","kind":"ac","id":"b","revision":0,"parent":"requirement:r",
         "data":{"title":"B","owner":"owner","body":"The rule","env":"dev"},
-        "links":[{"target":"ac:a","relation":"related"}],"reason":"Create B"});
+        "relations":{"related":{"edges":[{"to":"ac:a"}]}},"reason":"Create B"});
     w.command(&w.bot, create)
         .await?
         .map_err(anyhow::Error::msg)?;
     update(&w, 1, json!({"data":{"env":"prod"}}))
         .await?
         .map_err(anyhow::Error::msg)?;
-    let (data, parent, links) = read(&w).await?;
+    let (data, parent, targets) = read(&w).await?;
     ensure!(
         data["title"] == "B" && data["body"] == "The rule" && data["env"] == "prod",
         "merge: {data}"
     );
     ensure!(
-        parent == "requirement:r" && links == [json!("ac:a")],
-        "{parent} {links:?}"
+        parent == "requirement:r" && targets == [json!("ac:a")],
+        "{parent} {targets:?}"
     );
     // The journal names the whole data and the parent of the update.
     let sql = "SELECT command::text FROM joppa.events WHERE workspace=$1 AND command->>'op'='save_object' AND command->>'id'='b' ORDER BY position DESC LIMIT 1";

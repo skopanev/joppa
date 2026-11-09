@@ -56,7 +56,7 @@ fn a_type_title_max_length_refuses_one_character_more_and_names_its_limit() {
     );
     let note = |id: &str, length: usize| {
         json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,
-            "data":{"title":title(length),"owner":"owner","body":"Context"},"links":[],
+            "data":{"title":title(length),"owner":"owner","body":"Context"},
             "reason":"Title limit test"})
     };
     w.ok("agent", note("fits", 64));

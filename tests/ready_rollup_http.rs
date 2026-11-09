@@ -25,7 +25,7 @@ async fn ok(w: &World, command: Value) -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_ready() -> Result<()>
 {
-    // requirement:r > ac:a (one test) and ac:b. requirement:q > ac:c. ac:b links to consumer:u.
+    // requirement:r > ac:a (one test) and ac:b. requirement:q > ac:c. ac:b relates to consumer:u.
     let w = world(&[TEST]).await?;
     let tree = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
     let revision = tree.map_err(anyhow::Error::msg)?["schema"]["revision"].clone();
@@ -39,12 +39,12 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
         "data":{"title":"U","owner":"owner","body":"A user"},"reason":"Create"});
     ok(&w, user).await?;
     let node = |title: &str| json!({"title":title,"owner":"owner"});
-    let related = json!([{"target":"consumer:u","relation":"related"}]);
+    let related = json!({"related":{"edges":[{"to":"consumer:u"}]}});
     save(&w, "ac", "b", "requirement:r", node("B"), related).await?;
     let root = json!({"op":"save_object","kind":"requirement","id":"q","revision":0,"parent":null,
         "data":{"title":"Q","owner":"owner","body":"The second rule"},"reason":"Create"});
     ok(&w, root).await?;
-    save(&w, "ac", "c", "requirement:q", node("C"), json!([])).await?;
+    save(&w, "ac", "c", "requirement:q", node("C"), json!({})).await?;
     let all = |test: &str| {
         let mut all = vec![
             "ac:a",
@@ -64,11 +64,10 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
         ready(&w, true).await? == all(&test[0]),
         "every node is ready"
     );
-    // B waits for the grey criterion A: its parent R and the consumer U that B links to wait
-    // too.
+    // B waits for the grey criterion A: its parent R and the consumer U that B relates to wait
+    // too. The save keeps the related edge and adds a depends_on edge.
     let wait = json!({"op":"save_object","kind":"ac","id":"b","revision":1,"parent":"requirement:r",
-        "data":node("B"),"links":[{"target":"consumer:u","relation":"related"},
-        {"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Order"});
+        "data":node("B"),"relations":{"depends_on":{"edges":[{"to":"ac:a"}]}},"reason":"Order"});
     ok(&w, wait).await?;
     ensure!(
         ready(&w, false).await? == ["ac:b", "consumer:u", "requirement:r"],
@@ -79,7 +78,7 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
     ensure!(r["work_ready"] == false, "{r}");
     // C waits for A too: Q waits too, until a pass makes A green.
     let link = json!({"op":"save_object","kind":"ac","id":"c","revision":1,"parent":"requirement:q",
-        "data":{"title":"C","owner":"owner"},"links":[{"target":"ac:a","relation":"depends_on","blocking":true}],"reason":"Order"});
+        "data":{"title":"C","owner":"owner"},"relations":{"depends_on":{"edges":[{"to":"ac:a"}]}},"reason":"Order"});
     ok(&w, link).await?;
     let waiting = ready(&w, false).await?;
     ensure!(

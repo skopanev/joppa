@@ -53,7 +53,7 @@ async fn a_write_takes_a_public_item_id_and_the_journal_stores_the_address() -> 
     let operations = json!([
         {"command":{"op":"save_object","kind":"ac","revision":0,"parent":r,
             "data":{"title":"New","owner":"owner","applies_to":[other]},
-            "links":[{"target":a,"relation":"related"}],"reason":"Create by item IDs"}},
+            "relations":{"related":{"edges":[{"to":a}]}},"reason":"Create by item IDs"}},
         {"command":{"op":"note","target":a,"id":"by-item-id","text":"A comment"}},
         {"command":{"op":"save_object","kind":"ac","id":a,"revision":1,"parent":r,
             "data":{"title":"A renamed","owner":"owner"},"reason":"Edit by item ID"}}
@@ -71,7 +71,7 @@ async fn a_write_takes_a_public_item_id_and_the_journal_stores_the_address() -> 
     ensure!(
         new["parent"] == "requirement:r"
             && new["data"]["applies_to"] == json!(["requirement:other"])
-            && new["links"][0]["target"] == "ac:a",
+            && new["relations"]["related"]["edges"][0]["to"] == "ac:a",
         "{new}"
     );
     ensure!(note["target"] == "ac:a", "{note}");

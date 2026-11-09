@@ -88,37 +88,39 @@ test('edit-makes-revision-ac1: web and MCP read the same saved revision', async 
 });
 
 // dependencies-before-priority narrows the pin to Task links: a domain keeps the stored
-// revision of its blocking link, and the revision gates nothing.
+// revision of its depends_on edge, and the revision gates nothing. A related edge also keeps
+// a pin. No edge has a blocking flag.
 test('blocking-pins-revision-ac1: a blocking link keeps its stored target revision', async () => {
   const f = await fixture({'domain:t': {title: 'Target'}});
   try {
     for (const revision of [1, 2]) await f.save('domain:t', {title: 'Target', body: 'Target at revision ' + (revision + 1)}, revision);
-    const link = (id, revision, links) => f.command({op: 'save_object', kind: 'domain', id, revision, parent: null,
-      data: {title: 'Source ' + id, owner: 'owner', body: 'Linked source'}, links, reason: 'Link the target'});
-    await link('s', 0, [{target: 'domain:t', relation: 'depends_on', revision: 3, blocking: true}]);
-    await link('u', 0, [{target: 'domain:t', relation: 'related'}]);
-    await link('u', 1, [{target: 'domain:t', relation: 'depends_on', revision: 3}]);
-    const read = async suffix => {
+    const link = (id, revision, relations) => f.command({op: 'save_object', kind: 'domain', id, revision, parent: null,
+      data: {title: 'Source ' + id, owner: 'owner', body: 'Linked source'}, relations, reason: 'Link the target'});
+    await link('s', 0, {depends_on: {edges: [{to: 'domain:t', revision: 3}]}});
+    await link('u', 0, {related: {edges: [{to: 'domain:t'}]}});
+    await link('u', 1, {related: {edges: [{to: 'domain:t', revision: 3}]}});
+    // The read gives the edge of `key` with the title of its target, and the stored edge.
+    const read = async (suffix, key) => {
       const value = await f.api('/objects?address=' + suffix);
-      assert.equal(value.links.length, 1);
-      const [item] = value.links;
-      assert.deepEqual(item.link, value.document.links[0]);
-      assert.deepEqual([item.title, item.kind, item.present, item.metadata_scope], ['Target', 'domain', true, 'current']);
-      return value;
+      const edges = value.relations[key].edges;
+      assert.equal(edges.length, 1);
+      const [edge] = edges;
+      assert.equal(edge.to, value.document.relations[key].edges[0].to);
+      assert.deepEqual([edge.to, edge.title, edge.present ?? true, edge.blocking], ['domain:t', 'Target', true, undefined]);
+      return {value, edge, stored: value.document.relations[key].edges[0]};
     };
-    const pinned = await read('domain:s');
-    assert.deepEqual([pinned.links[0].blocking, pinned.links[0].revision, pinned.links[0].current_revision], [true, 3, 3]);
-    assert.equal(pinned.review_required, undefined);
-    const unpinned = await read('domain:u&revision=1');
-    assert.deepEqual([unpinned.historical, unpinned.links[0].blocking, unpinned.links[0].revision], [true, false, null]);
-    assert.deepEqual(unpinned.links[0].link, {target: 'domain:t', relation: 'related', revision: null, blocking: false});
-    const later = await read('domain:u');
-    assert.deepEqual([later.links[0].blocking, later.links[0].revision], [false, 3]);
+    const pinned = await read('domain:s', 'depends_on');
+    assert.deepEqual([pinned.edge.revision, pinned.edge.current_revision, pinned.stored.revision], [3, 3, 3]);
+    assert.equal(pinned.value.review_required, undefined);
+    const unpinned = await read('domain:u&revision=1', 'related');
+    assert.deepEqual([unpinned.value.historical, unpinned.edge.revision ?? null, unpinned.stored.revision ?? null], [true, null, null]);
+    const later = await read('domain:u', 'related');
+    assert.deepEqual([later.edge.revision, later.stored.revision], [3, 3]);
     await f.save('domain:t', {title: 'Target', body: 'Target at revision 4'}, 3);
-    const stale = await read('domain:s');
-    assert.deepEqual([stale.links[0].blocking, stale.links[0].revision, stale.links[0].current_revision], [true, 3, 4]);
-    assert.deepEqual(stale.document.links, pinned.document.links);
-    assert.equal(stale.review_required, undefined);
+    const stale = await read('domain:s', 'depends_on');
+    assert.deepEqual([stale.edge.revision, stale.edge.current_revision], [3, 4]);
+    assert.deepEqual(stale.value.document.relations, pinned.value.document.relations);
+    assert.equal(stale.value.review_required, undefined);
   } finally { await f.close(); }
 });
 
@@ -139,11 +141,11 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
   try {
     // B1 waits for no dependency, so its work is in the queue. A is not green.
     assert.ok((await readyWork()).includes('ac:B1'));
-    // Save the blocking dependency on B via MCP/API command; the board displays it read-only.
+    // Save the depends_on edge of B via MCP/API command; the board displays it read-only.
     const currentB = await read('requirement:B');
     await f.command({op: 'save_object', kind: 'requirement', id: 'B', revision: currentB.current_revision,
       parent: 'capability:c', data: currentB.document.data,
-      links: [{target: 'requirement:A', relation: 'depends_on', blocking: true}], reason: 'Add blocking dependency'});
+      relations: {depends_on: {edges: [{to: 'requirement:A'}]}}, reason: 'Add blocking dependency'});
     assert.ok(!(await readyWork()).includes('ac:B1'), 'the work of B leaves the queue');
     // Each width is its own subtest, so the output names both runs.
     for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('dependencies-before-priority-ac5: ' + viewport.width + ' px', async () => {
@@ -176,7 +178,7 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     await unchanged('foreign Origin');
     const commands = await f.page.request.post(route + '/commands', {headers: {Origin: f.live.root},
       data: {request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'requirement', id: 'B', revision: before.current_revision,
-        parent: 'capability:c', data: before.document.data, links: [], reason: 'Cookie write'}}});
+        parent: 'capability:c', data: before.document.data, relations: {depends_on: null}, reason: 'Cookie write'}}});
     assert.equal(commands.status(), 403);
     await unchanged('cookie commands');
   } finally { await f.close(); }

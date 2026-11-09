@@ -1,27 +1,36 @@
-//! requirement:edit-makes-revision over a real server: a save_object without links keeps the
-//! links of the object, and links: [] removes them.
+//! requirement:edit-makes-revision over a real server: a save_object without relations keeps
+//! the relations of the object, and a relation key set to null removes its edges.
 #[path = "common/generic_world.rs"]
 mod generic_world;
+#[path = "common/relation_edges.rs"]
+mod relation_edges;
 use anyhow::{Result, ensure};
 use generic_world::{World, world};
 use serde_json::{Value, json};
 
-/// The link targets and the revision of ac:b.
+/// The related targets and the revision of ac:b.
 async fn read(w: &World) -> Result<(Vec<String>, Value)> {
     let b = w.object("ac:b").await?;
-    let links = b["links"].as_array().cloned().unwrap_or_default();
-    let targets = links
-        .iter()
-        .filter_map(|l| l["target"].as_str().map(String::from));
-    Ok((targets.collect(), b["revision"].clone()))
+    Ok((
+        relation_edges::targets(&b, "related"),
+        b["revision"].clone(),
+    ))
 }
 
-/// A save of ac:b with `title`, and with `links` when they are given.
-fn save(revision: u32, title: &str, links: Option<Value>) -> Value {
+/// The command of the last journal event that saved ac:b.
+async fn last_save(w: &World) -> Result<Value> {
+    let sql = "SELECT command::text FROM joppa.events WHERE workspace=$1 \
+        AND command->>'op'='save_object' AND command->>'id'='b' ORDER BY position DESC LIMIT 1";
+    let row = w.pool.get().await?.query_one(sql, &[&w.ws]).await?;
+    Ok(serde_json::from_str(row.get(0))?)
+}
+
+/// A save of ac:b with `title`, and with `relations` when they are given.
+fn save(revision: u32, title: &str, relations: Option<Value>) -> Value {
     let mut command = json!({"op":"save_object","kind":"ac","id":"b","revision":revision,
         "parent":"requirement:r","data":{"title":title,"owner":"owner"},"reason":"Edit B"});
-    if let Some(links) = links {
-        command["links"] = links;
+    if let Some(relations) = relations {
+        command["relations"] = relations;
     }
     command
 }
@@ -31,8 +40,8 @@ fn save(revision: u32, title: &str, links: Option<Value>) -> Value {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_save_without_links_keeps_them_and_an_empty_list_removes_them() -> Result<()> {
     let w = world(&[]).await?;
-    let link = json!([{"target":"ac:a","relation":"related"}]);
-    for command in [save(0, "B", Some(link)), save(1, "B again", None)] {
+    let related = relation_edges::one("related", &["ac:a"]);
+    for command in [save(0, "B", Some(related)), save(1, "B again", None)] {
         w.command(&w.bot, command)
             .await?
             .map_err(anyhow::Error::msg)?;
@@ -42,7 +51,14 @@ async fn a_save_without_links_keeps_them_and_an_empty_list_removes_them() -> Res
         targets == ["ac:a"] && revision == 2,
         "{targets:?} {revision}"
     );
-    w.command(&w.bot, save(2, "B alone", Some(json!([]))))
+    // The journal event of the live save names the full relations after the merge.
+    let event = last_save(&w).await?;
+    ensure!(
+        event["revision"] == 1
+            && relation_edges::pairs(&event) == [("related".to_owned(), "ac:a".to_owned())],
+        "{event}"
+    );
+    w.command(&w.bot, save(2, "B alone", Some(json!({"related":null}))))
         .await?
         .map_err(anyhow::Error::msg)?;
     let (targets, revision) = read(&w).await?;

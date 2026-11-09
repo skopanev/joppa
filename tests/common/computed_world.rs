@@ -34,7 +34,7 @@ pub fn sources(from: Option<&str>) -> Value {
     json!({"references":{"sources":rule}})
 }
 
-/// Save a new node, or with `revision` a change. `extra` gives parent, links or data fields.
+/// Save a new node, or with `revision` a change. `extra` gives parent, relations or data fields.
 pub async fn save(
     w: &World,
     address: &str,
@@ -46,7 +46,7 @@ pub async fn save(
         "data":{"title":id,"owner":"owner"},"reason":"Union"});
     for (k, v) in extra.as_object().into_iter().flatten() {
         match k.as_str() {
-            "parent" | "links" => command[k] = v.clone(),
+            "parent" | "relations" => command[k] = v.clone(),
             _ => command["data"][k] = v.clone(),
         }
     }

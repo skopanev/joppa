@@ -1,8 +1,17 @@
 // Part 36 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-/// One note save command with the given links.
-fn note_save(id: &str, revision: u32, body: &str, links: Value) -> Value {
-    json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,"data":{"title":id,"owner":"owner","body":body},"links":links,"reason":"Save"})
+/// One note save command with the given relations.
+fn note_save(id: &str, revision: u32, body: &str, relations: Value) -> Value {
+    json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,"data":{"title":id,"owner":"owner","body":body},"relations":relations,"reason":"Save"})
+}
+
+/// The number of edges in the stored relations and in the read relations of an HTTP read.
+fn edge_count(read: &Value) -> usize {
+    [&read["document"]["relations"], &read["relations"]]
+        .into_iter()
+        .flat_map(|r| r.as_object().into_iter().flatten())
+        .map(|(_, r)| r["edges"].as_array().map_or(0, Vec::len))
+        .sum()
 }
 
 /// Bot sends a write over HTTP. The write must fail with exactly `error` and change no row.
@@ -22,19 +31,17 @@ async fn bot_refused_over_http(w: &World, command: Value, error: &str) -> Result
 async fn bot_makes_a_blocking_dependency_cycle_over_http_and_is_refused() -> Result<()> {
     // blocking-pins-revision-ac2: A blocks B, so B has a blocking dependency on A.
     let w = world().await?;
-    w.command(note_save("a", 0, "A", json!([]))).await?;
-    let blocks_a = json!([{"target":"note:a","relation":"depends_on","blocking":true}]);
+    w.command(note_save("a", 0, "A", json!({}))).await?;
+    let blocks_a = json!({"depends_on":{"edges":[{"to":"note:a"}]}});
     w.command(note_save("b", 0, "B", blocks_a)).await?;
     let before = w.get("address=note:a").await?;
     ensure!(before["current_revision"] == 1, "{before}");
-    // Bot makes B block A. The link names no revision, as in blocking-pins-revision-ac1.
-    let blocks_b = json!([{"target":"note:b","relation":"depends_on","blocking":true}]);
+    // Bot makes B block A. The edge names no revision, as in blocking-pins-revision-ac1.
+    let blocks_b = json!({"depends_on":{"edges":[{"to":"note:b"}]}});
     bot_refused_over_http(&w, note_save("a", 1, "A", blocks_b), "dependency cycle").await?;
     let after = w.get("address=note:a").await?;
     ensure!(
-        after["current_revision"] == 1
-            && after["document"]["links"] == json!([])
-            && after["links"] == json!([]),
+        after["current_revision"] == 1 && edge_count(&after) == 0,
         "{after}"
     );
     Ok(())
@@ -45,8 +52,8 @@ async fn bot_makes_a_blocking_dependency_cycle_over_http_and_is_refused() -> Res
 async fn bot_saves_an_object_over_http_and_adds_exactly_one_revision() -> Result<()> {
     // edit-makes-revision-ac1: the object is at revision R=2 before the save.
     let w = world().await?;
-    w.command(note_save("a", 0, "First", json!([]))).await?;
-    w.command(note_save("a", 1, "Second", json!([]))).await?;
+    w.command(note_save("a", 0, "First", json!({}))).await?;
+    w.command(note_save("a", 1, "Second", json!({}))).await?;
     let read = w.get_as(&w.bot, "address=note:a").await?;
     let r = read["current_revision"]
         .as_u64()
@@ -61,7 +68,7 @@ async fn bot_saves_an_object_over_http_and_adds_exactly_one_revision() -> Result
     let (ok, body) = send_as(
         &w,
         &w.bot,
-        &json!({"op":"save_object","kind":"note","id":"a","revision":r,"parent":null,"data":data,"links":[],"reason":"Change"}),
+        &json!({"op":"save_object","kind":"note","id":"a","revision":r,"parent":null,"data":data,"reason":"Change"}),
     )
     .await?;
     ensure!(ok, "{body}");
@@ -82,13 +89,13 @@ async fn bot_saves_an_object_over_http_and_adds_exactly_one_revision() -> Result
 async fn bot_saves_on_a_stale_revision_over_http_and_is_refused() -> Result<()> {
     // edit-makes-revision-ac2: the object is at R+1=2, and bot saves with revision=R=1.
     let w = world().await?;
-    w.command(note_save("a", 0, "First", json!([]))).await?;
-    w.command(note_save("a", 1, "Second", json!([]))).await?;
+    w.command(note_save("a", 0, "First", json!({}))).await?;
+    w.command(note_save("a", 1, "Second", json!({}))).await?;
     let before = w.get_as(&w.bot, "address=note:a").await?;
     ensure!(before["current_revision"] == 2, "{before}");
     bot_refused_over_http(
         &w,
-        note_save("a", 1, "Stale change", json!([])),
+        note_save("a", 1, "Stale change", json!({})),
         "stale object revision; read the object again",
     )
     .await?;
@@ -119,20 +126,17 @@ async fn bot_saves_a_test_node_under_a_task_over_http_and_is_refused() -> Result
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn bot_saves_a_link_with_an_unknown_relation_over_http_and_is_refused() -> Result<()> {
-    // typed-links-ac2: two notes, and bot links them with relation "likes".
+    // typed-links-ac2: two notes, and bot relates them with the undeclared key "likes".
     let w = world().await?;
-    w.command(note_save("a", 0, "A", json!([]))).await?;
-    w.command(note_save("b", 0, "B", json!([]))).await?;
-    let likes = json!([{"target":"note:a","relation":"likes"}]);
+    w.command(note_save("a", 0, "A", json!({}))).await?;
+    w.command(note_save("b", 0, "B", json!({}))).await?;
+    let likes = json!({"likes":{"edges":[{"to":"note:a"}]}});
     bot_refused_over_http(&w, note_save("b", 1, "B", likes), "unknown link relation").await?;
-    // No link is stored in either direction.
+    // No edge is stored in either direction.
     for address in ["note:a", "note:b"] {
         let read = w.get(&format!("address={address}")).await?;
         ensure!(
-            read["current_revision"] == 1
-                && read["document"]["links"] == json!([])
-                && read["links"] == json!([])
-                && read["link_groups"] == json!([]),
+            read["current_revision"] == 1 && edge_count(&read) == 0,
             "{read}"
         );
     }

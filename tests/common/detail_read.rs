@@ -1,5 +1,5 @@
 //! The document facts of one object read in either shape: the `document` of an HTTP read, or
-//! the flat `revision`, `parent`, `data`, presence and links of an MCP detail read.
+//! the flat `revision`, `parent`, `data`, presence and relations of an MCP detail read.
 #![allow(dead_code)]
 use serde_json::{Value, json};
 
@@ -25,24 +25,27 @@ pub fn document(read: &Value) -> Value {
     if let Some(document) = read.get("document") {
         return document.clone();
     }
-    let links: Vec<Value> = read["links"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|l| {
-            // A link without a relation is related.
-            let relation = l.get("relation").cloned().unwrap_or(json!("related"));
-            let mut link = json!({"target":l["target"],"relation":relation,
-                "revision":l["revision"],"blocking":l["blocking"] == true});
-            // An ordering dependency without a pin stores no revision field.
-            if relation == "depends_on" && l["revision"].is_null() {
-                link.as_object_mut().map(|m| m.remove("revision"));
-            }
-            link
-        })
-        .collect();
+    // An MCP edge also gives the title, the current revision and the presence of its target.
+    let mut relations = json!({});
+    for (key, relation) in read["relations"].as_object().into_iter().flatten() {
+        let edges: Vec<Value> = relation["edges"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|e| {
+                let mut edge = json!({"to":e["to"]});
+                for field in ["when", "revision"] {
+                    if !e[field].is_null() {
+                        edge[field] = e[field].clone();
+                    }
+                }
+                edge
+            })
+            .collect();
+        relations[key] = json!({"edges":edges});
+    }
     json!({"revision":read["revision"],"parent":read["parent"],"data":read["data"],
-        "present":read["present"] != false,"links":links})
+        "present":read["present"] != false,"relations":relations})
 }
 
 /// The current revision: `current_revision` of an HTTP read, `revision` of an MCP detail.

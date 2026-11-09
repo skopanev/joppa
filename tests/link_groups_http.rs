@@ -1,6 +1,6 @@
-//! requirement:grouped-links over a real server: an object read gives link counts by group
-//! and no incoming list, and a group read gives the links of one group in pages over HTTP
-//! and MCP.
+//! requirement:grouped-links over a real server: an object read gives edge counts by group
+//! (relation_groups) and no incoming list, and a relations_of read gives the edges of one
+//! group in pages over HTTP and MCP.
 #[path = "common/search_world.rs"]
 mod world;
 use anyhow::{Result, ensure};
@@ -24,13 +24,13 @@ async fn db() -> Result<(deadpool_postgres::Pool, String)> {
     Ok((pool, url))
 }
 
-fn save(kind: &str, id: &str, parent: Option<&str>, links: Value) -> Value {
-    json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":{"title":format!("{kind} {id}"),"owner":"owner"},"links":links,"reason":"Link group test"})
+fn save(kind: &str, id: &str, parent: Option<&str>, relations: Value) -> Value {
+    json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":{"title":format!("{kind} {id}"),"owner":"owner"},"relations":relations,"reason":"Link group test"})
 }
 
 async fn http_page(root: &str, ws: &str, cursor: Option<&str>) -> Result<Value> {
     let mut query = vec![
-        ("links_of", "domain:r"),
+        ("relations_of", "domain:r"),
         ("direction", "incoming"),
         ("relation", "related"),
         ("kind", "note"),
@@ -71,26 +71,33 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
     };
     write(json!({"op":"workspace","title":"Links"})).await?;
     store::enroll_service(&pool, &ws, "owner", "bot", "agent").await?;
-    write(save("domain", "home", None, json!([]))).await?;
+    write(save("domain", "home", None, json!({}))).await?;
     for i in 0..3 {
         write(save(
             "capability",
             &format!("c{i}"),
             Some("domain:home"),
-            json!([]),
+            json!({}),
         ))
         .await?;
     }
+    // Three outgoing depends_on edges. A depends_on edge always blocks.
     let targets: Vec<Value> = (0..3)
-        .map(|i| json!({"target":format!("capability:c{i}"),"relation":"depends_on"}))
+        .map(|i| json!({"to":format!("capability:c{i}")}))
         .collect();
-    write(save("domain", "r", None, json!(targets))).await?;
+    write(save(
+        "domain",
+        "r",
+        None,
+        json!({"depends_on":{"edges":targets}}),
+    ))
+    .await?;
     for i in 0..120 {
         write(save(
             "note",
             &format!("n{i:03}"),
             None,
-            json!([{"target":"domain:r","relation":"related"}]),
+            json!({"related":{"edges":[{"to":"domain:r"}]}}),
         ))
         .await?;
     }
@@ -105,9 +112,9 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
     .await?;
     ensure!(
         object.get("incoming").is_none(),
-        "the read still lists incoming links"
+        "the read still lists incoming edges"
     );
-    let groups = object["link_groups"]
+    let groups = object["relation_groups"]
         .as_array()
         .cloned()
         .unwrap_or_default();
@@ -117,56 +124,52 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         ),
         "{groups:?}"
     );
-    // `links` gives the outgoing links, so the counts keep only the incoming groups.
+    // `relations` gives the outgoing edges, so the counts keep only the incoming groups.
+    let depends_on = object["relations"]["depends_on"]["edges"]
+        .as_array()
+        .map(Vec::len);
     ensure!(
         groups.iter().all(|g| g["direction"] == "incoming")
-            && object["links"].as_array().map(Vec::len) == Some(3)
-            && object["links"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .all(|l| l["relation"] == "depends_on"),
+            && depends_on == Some(3)
+            && object.get("links").is_none()
+            && object.get("link_groups").is_none(),
         "{groups:?} {}",
-        object["links"]
+        object["relations"]
     );
     let (mut cursor, mut seen, mut sizes) =
         (None::<String>, std::collections::BTreeSet::new(), vec![]);
     loop {
-        let mut args = json!({"workspace":ws,"links_of":"domain:r","direction":"incoming","relation":"related","kind":"note","limit":25});
+        let mut args = json!({"workspace":ws,"relations_of":"domain:r","direction":"incoming","relation":"related","kind":"note","limit":25});
         if let Some(c) = &cursor {
             args["cursor"] = json!(c);
         }
         let tool = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
-        // MCP gives the HTTP page without empty keys, without the echo of the request and
-        // the filters, and without default values: an item names no direction, relation or
-        // kind that the request sent, and no present true or blocking false.
-        let mut http = joppa::read_compact::strip_reply(
-            http_page(&server.root, &ws, cursor.as_deref()).await?,
+        // MCP and HTTP give the same page: the same items, the same total and the same next
+        // cursor. Each item names its relation and gives no blocking.
+        let http = http_page(&server.root, &ws, cursor.as_deref()).await?;
+        let addresses = |page: &Value| -> Vec<Value> {
+            let items = page["items"].as_array().cloned().unwrap_or_default();
+            items.iter().map(|i| i["address"].clone()).collect()
+        };
+        ensure!(
+            addresses(&tool) == addresses(&http)
+                && tool["total"] == http["total"]
+                && tool["next_cursor"] == http["next_cursor"],
+            "HTTP and MCP disagree:\n{tool}\n{http}"
         );
-        for key in [
-            "direction",
-            "relation",
-            "kind",
-            "address",
-            "workspace",
-            "position",
-        ] {
-            http.as_object_mut().map(|m| m.remove(key));
-        }
-        for item in http["items"].as_array_mut().into_iter().flatten() {
-            if let Some(map) = item.as_object_mut() {
-                map.retain(|key, _| !["direction", "relation", "kind"].contains(&key.as_str()));
-                map.retain(|key, v| !(key == "present" && v == true));
-                map.retain(|key, v| !(key == "blocking" && v == false));
-            }
-        }
-        ensure!(tool == http, "HTTP and MCP disagree:\n{tool}\n{http}");
         let items = tool["items"].as_array().cloned().unwrap_or_default();
+        ensure!(
+            tool["total"] == 120
+                && items
+                    .iter()
+                    .all(|i| i["relation"] == "related" && i.get("blocking").is_none()),
+            "{tool}"
+        );
         sizes.push(items.len());
         for item in &items {
             ensure!(
                 seen.insert(item["address"].as_str().unwrap_or("").to_owned()),
-                "a link came twice: {item}"
+                "an edge came twice: {item}"
             );
         }
         match tool["next_cursor"].as_str() {
@@ -176,14 +179,14 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
     }
     ensure!(
         sizes == [25, 25, 25, 25, 20] && seen.len() == 120,
-        "pages {sizes:?}, links {}",
+        "pages {sizes:?}, edges {}",
         seen.len()
     );
-    // Each filter is optional: without them the read gives every link of both directions,
+    // Each filter is optional: without them the read gives every edge of both directions,
     // and each item names its direction, relation and kind.
     let (mut cursor, mut all) = (None::<String>, vec![]);
     loop {
-        let mut args = json!({"workspace":ws,"links_of":"domain:r","limit":100});
+        let mut args = json!({"workspace":ws,"relations_of":"domain:r","limit":100});
         if let Some(c) = &cursor {
             args["cursor"] = json!(c);
         }
@@ -195,12 +198,11 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
             None => break,
         }
     }
-    // An unfiltered item names its direction and kind, and its relation unless it is related.
+    // An unfiltered item names its direction, its relation and its kind.
     let count = |direction: &str, relation: &str| {
         all.iter()
             .filter(|i| {
-                let named = i["relation"].as_str().unwrap_or("related");
-                i["direction"] == direction && named == relation && i["kind"].is_string()
+                i["direction"] == direction && i["relation"] == relation && i["kind"].is_string()
             })
             .count()
     };
@@ -214,13 +216,11 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         &server.root,
         "bot",
         "joppa_objects",
-        json!({"workspace":ws,"links_of":"domain:r","kind":"note","limit":1}),
+        json!({"workspace":ws,"relations_of":"domain:r","kind":"note","limit":1}),
     )
     .await?;
     ensure!(
-        notes["total"] == 120
-            && notes["items"][0].get("kind").is_none()
-            && notes["items"][0]["direction"] == "incoming",
+        notes["total"] == 120 && notes["items"][0]["direction"] == "incoming",
         "{notes}"
     );
     Ok(())

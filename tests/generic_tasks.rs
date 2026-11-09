@@ -89,7 +89,7 @@ fn configured() -> World {
 fn an_identical_save_keeps_the_workspace_and_a_change_adds_one_revision() {
     let mut w = configured();
     save(&mut w, "work:source", None, contract("Source task"));
-    w.ok("agent",json!({"op":"save_object","kind":"task","id":"dependent","revision":0,"parent":"spec:root","data":contract("Dependent task"),"links":[{"target":"work:source","relation":"depends_on","revision":1,"blocking":true}],"reason":"Depend on the source"}));
+    w.ok("agent",json!({"op":"save_object","kind":"task","id":"dependent","revision":0,"parent":"spec:root","data":contract("Dependent task"),"relations":{"depends_on":{"edges":[{"to":"work:source","revision":1}]}},"reason":"Depend on the source"}));
     let before = format!("{:?}", w.state);
     save(&mut w, "work:source", None, contract("Source task"));
     assert_eq!(format!("{:?}", w.state), before);
@@ -98,21 +98,19 @@ fn an_identical_save_keeps_the_workspace_and_a_change_adds_one_revision() {
     save(&mut w, "work:source", None, changed);
     assert_eq!(w.state.objects["work:source"].revisions.len(), 2);
 
-    let linked = |revision: u32, links: Value| json!({"op":"save_object","kind":"spec","id":"child","revision":revision,"parent":"spec:root","data":document("Nested specification"),"links":links,"reason":"Relate the specification"});
-    w.ok("agent", linked(1, json!([])));
+    let linked = |revision: u32, relations: Value| json!({"op":"save_object","kind":"spec","id":"child","revision":revision,"parent":"spec:root","data":document("Nested specification"),"relations":relations,"reason":"Relate the specification"});
+    w.ok("agent", linked(1, json!({})));
     assert_eq!(w.state.objects["spec:child"].revisions.len(), 1);
     w.ok(
         "agent",
-        linked(1, json!([{"target":"spec:root","relation":"related"}])),
+        linked(1, json!({"related":{"edges":[{"to":"spec:root"}]}})),
     );
     assert_eq!(w.state.objects["spec:child"].revisions.len(), 2);
 
     // A stored identical save still adds its historical revision on replay.
-    let cmd: Command = serde_json::from_value(linked(
-        2,
-        json!([{"target":"spec:root","relation":"related"}]),
-    ))
-    .unwrap();
+    let cmd: Command =
+        serde_json::from_value(linked(2, json!({"related":{"edges":[{"to":"spec:root"}]}})))
+            .unwrap();
     commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "later").unwrap();
     assert_eq!(w.state.objects["spec:child"].revisions.len(), 3);
 }

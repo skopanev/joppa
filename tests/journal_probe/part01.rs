@@ -98,7 +98,7 @@ async fn snapshot(pool: &Pool, workspace: &str) -> anyhow::Result<BTreeMap<Strin
 async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Result<()> {
     let (pool, ws) = fixture().await?;
     let raw = "original source input ".repeat(46);
-    store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"links":[],"reason":"Capture source"})).await?;
+    store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"reason":"Capture source"})).await?;
     let original_xmin: String = pool.get().await?.query_one("SELECT xmin::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:raw'", &[&ws]).await?.get(0);
     reset(&pool).await?;
     store::read_objects(
@@ -168,7 +168,7 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
         &json!({"op":"save_object","kind":"domain","id":"new","revision":0,"parent":null,"data":{"title":"Measured new domain","owner":"owner"},"reason":"Setup"}),
     )
     .await?;
-    store::execute_input(&pool, &ws, "agent", "normal-create-input", &json!({"op":"save_object","kind":"note","id":"new-input","revision":0,"parent":null,"data":{"title":"Measured new Input","owner":"owner","body":"New input"},"links":[],"reason":"Check new object registration"})).await?;
+    store::execute_input(&pool, &ws, "agent", "normal-create-input", &json!({"op":"save_object","kind":"note","id":"new-input","revision":0,"parent":null,"data":{"title":"Measured new Input","owner":"owner","body":"New input"},"reason":"Check new object registration"})).await?;
     store::execute_input(&pool, &ws, "owner", "normal-create-capability", &json!({"op":"save_object","kind":"capability","id":"new-capability","revision":0,"parent":"domain:d","data":{"title":"Measured new capability","owner":"owner"},"reason":"Setup"})).await?;
     store::execute_input(&pool, &ws, "owner", "normal-create-consumer", &json!({"op":"save_object","kind":"consumer","id":"new-consumer","revision":0,"parent":null,"data":{"title":"Measured new consumer","owner":"owner"},"reason":"Setup"})).await?;
     store::execute_input(&pool, &ws, "owner", "normal-create-requirement", &json!({"op":"save_object","kind":"requirement","id":"new","revision":0,"parent":"capability:c","data":{"title":"Measured new requirement","owner":"owner","body":"New rule"},"reason":"Setup"})).await?;

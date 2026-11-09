@@ -17,16 +17,14 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
     ensure!(p.status("criterion:a1").await?["status"] == "grey");
     let before = p.saved().await?["position"].as_i64().unwrap();
 
-    // P adds a blocking link from B to A without a revision. The new link of B resets B1
+    // P adds a depends_on edge from B to A without a revision. The new edge of B resets B1
     // below it.
     p.link("spec:b", ordering_link("spec:a")).await?;
     ensure!(p.status("criterion:b1").await?["status"] == "grey");
     let b = p.read("spec:b").await?;
-    let stored = &b["document"]["links"][0];
+    let stored = &b["document"]["relations"]["depends_on"]["edges"][0];
     ensure!(
-        stored["target"] == "spec:a"
-            && stored["blocking"] == true
-            && stored.get("revision").is_none(),
+        stored["to"] == "spec:a" && stored["revision"].is_null(),
         "{b}"
     );
     let events = p.saved().await?["events"]
@@ -43,7 +41,8 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
             && events[0]["command"]["kind"] == "spec"
             && events[0]["command"]["id"] == "b"
             && events[0]["command"]["reason"] == "Order the work"
-            && events[0]["command"]["links"][0].get("revision").is_none(),
+            && events[0]["command"]["relations"]["depends_on"]["edges"][0]["to"] == "spec:a"
+            && events[0]["command"]["relations"]["depends_on"]["edges"][0]["revision"].is_null(),
         "{events:?}"
     );
     // A new record after the link makes B1 green again.
@@ -69,10 +68,10 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
         );
     }
 
-    // A text change of B is a change of B. A link to the archived A cannot be saved again.
+    // A text change of B is a change of B. The save also removes the edge to the archived A.
     let object = p.read("spec:b").await?;
     p.owner_command(json!({"op":"save_object","kind":"spec","id":"b","revision":object["current_revision"],"parent":"cap:c",
-        "data":{"title":"spec:b","body":"Deliver the sharper rule","owner":"owner"},"links":[],"reason":"Sharpen the rule"}))
+        "data":{"title":"spec:b","body":"Deliver the sharper rule","owner":"owner"},"relations":{"depends_on":null},"reason":"Sharpen the rule"}))
         .await?;
     ensure!(p.status("criterion:b1").await?["status"] == "grey");
     store::check_journal(&p.pool).await?;
@@ -147,7 +146,7 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
             send(member.clone(), root.clone(), "/commands",
                 json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":{"op":"save_object","kind":"spec","id":"b",
                     "revision":b["current_revision"],"parent":"cap:c","data":b["document"]["data"],
-                    "links":ordering_link("spec:a"),"reason":"Cookie write"}})).await?,
+                    "relations":ordering_link("spec:a"),"reason":"Cookie write"}})).await?,
             403,
         ),
     ];
@@ -155,7 +154,8 @@ async fn ac5_the_dependency_route_refuses_foreign_origin_non_members_and_cookie_
         ensure!(code == expected, "{case}: {code} {reply}");
         ensure!(p.saved().await? == before, "{case} changed saved state");
     }
-    ensure!(p.read("spec:b").await?["document"]["links"] == json!([]));
+    let edges = &p.read("spec:b").await?["document"]["relations"]["depends_on"]["edges"];
+    ensure!(edges.as_array().is_none_or(Vec::is_empty), "{edges}");
     store::check_journal(&p.pool).await?;
     Ok(())
 }
