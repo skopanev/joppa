@@ -5,21 +5,30 @@
 -- meta row and the board state keep hidden_by only when it is not empty, as serde writes them.
 -- Only a workspace that the older release shows as hidden gets a write: its owner hid it. The
 -- older first_view of every other workspace keeps "hidden": false, which no code reads, until its
--- next write. So a second run writes nothing.
+-- next write.
+-- Each row keeps the older "hidden" next to hidden_by: after a rollback, the older release reads
+-- it. The live code ignores it, and the next live write drops it. A second run computes the same
+-- hidden_by and writes nothing. The board rows stay locked to the end of the transaction, so a
+-- live write waits for this pass.
 WITH old AS (
     SELECT b.workspace FROM joppa.board_cache b
     WHERE b.first_view->'hidden' = 'true'::jsonb OR b.state ? 'hidden' OR EXISTS (
         SELECT 1 FROM joppa.state_entries s
         WHERE s.workspace = b.workspace AND s.section = 'meta' AND s.key = '' AND s.value ? 'hidden')
+    FOR UPDATE OF b
 ), flags AS (
-    SELECT DISTINCT ON (e.workspace, f.member) e.workspace, f.member, f.hidden
-    FROM joppa.events e JOIN old o ON o.workspace = e.workspace
+    -- No index covers the op: the lateral read uses UNIQUE (workspace, position) for each
+    -- workspace, and never reads the whole journal.
+    SELECT DISTINCT ON (o.workspace, f.member) o.workspace, f.member, f.hidden
+    FROM old o
+    CROSS JOIN LATERAL (
+        SELECT e.position, e.actor, e.command FROM joppa.events e
+        WHERE e.workspace = o.workspace AND (e.command->>'op' = 'remove_member'
+            OR (e.command->>'op' = 'update_workspace' AND jsonb_typeof(e.command->'hidden') = 'boolean'))) e
     CROSS JOIN LATERAL (VALUES (
         CASE e.command->>'op' WHEN 'remove_member' THEN e.command->>'id' ELSE e.actor END,
         e.command->'hidden' = 'true'::jsonb)) f(member, hidden)
-    WHERE e.command->>'op' = 'remove_member'
-        OR (e.command->>'op' = 'update_workspace' AND jsonb_typeof(e.command->'hidden') = 'boolean')
-    ORDER BY e.workspace, f.member, e.position DESC
+    ORDER BY o.workspace, f.member, e.position DESC
 ), moved AS (
     -- A BTreeSet gives its members in byte order.
     SELECT o.workspace, COALESCE(jsonb_agg(f.member ORDER BY f.member COLLATE "C")
@@ -32,18 +41,18 @@ WITH old AS (
     FROM moved m
 ), meta_rows AS (
     UPDATE joppa.state_entries s
-    SET value = (s.value - '{hidden,hidden_by}'::text[]) || m.field
+    SET value = (s.value - 'hidden_by') || m.field
     FROM meta m
     WHERE s.workspace = m.workspace AND s.section = 'meta' AND s.key = ''
-        AND s.value IS DISTINCT FROM (s.value - '{hidden,hidden_by}'::text[]) || m.field
+        AND s.value IS DISTINCT FROM (s.value - 'hidden_by') || m.field
 ), boards AS (
     -- An empty board row stays empty: the backfill rebuilds it from the journal.
     SELECT b.workspace,
         CASE WHEN b.first_view ? 'object_types'
-            THEN (b.first_view - 'hidden') || jsonb_build_object('hidden_by', m.hidden_by)
+            THEN b.first_view || jsonb_build_object('hidden_by', m.hidden_by)
             ELSE b.first_view END AS first_view,
         CASE WHEN b.state ? 'admin'
-            THEN (b.state - '{hidden,hidden_by}'::text[]) || m.field
+            THEN (b.state - 'hidden_by') || m.field
             ELSE b.state END AS state
     FROM joppa.board_cache b JOIN meta m ON m.workspace = b.workspace
 )

@@ -70,7 +70,8 @@ use migrations::ensure_notes;
 
 /// A change of objects::work_ready, objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start. A raise replays every
-/// journal: time `joppa migrate` on a copy of production first (server/README.md).
+/// journal: time `joppa migrate` on a copy of production first (server/README.md). A change of
+/// the first_view shape needs no raise: a targeted SQL pass, such as migration 061, moves it.
 pub(super) const BOARD_PROJECTION_VERSION: &str = "22";
 pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
