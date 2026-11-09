@@ -3,10 +3,12 @@
 -- that a replay gives, without a replay: update_workspace with hidden adds or removes its actor,
 -- and remove_member removes its member. The last of these events for a member decides. The
 -- meta row and the board state keep hidden_by only when it is not empty, as serde writes them.
--- A workspace without the key gets no write, so a second run writes nothing.
+-- Only a workspace that the older release shows as hidden gets a write: its owner hid it. The
+-- older first_view of every other workspace keeps "hidden": false, which no code reads, until its
+-- next write. So a second run writes nothing.
 WITH old AS (
     SELECT b.workspace FROM joppa.board_cache b
-    WHERE b.first_view ? 'hidden' OR b.state ? 'hidden' OR EXISTS (
+    WHERE b.first_view->'hidden' = 'true'::jsonb OR b.state ? 'hidden' OR EXISTS (
         SELECT 1 FROM joppa.state_entries s
         WHERE s.workspace = b.workspace AND s.section = 'meta' AND s.key = '' AND s.value ? 'hidden')
 ), flags AS (
