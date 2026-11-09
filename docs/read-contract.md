@@ -220,11 +220,9 @@ address. `direction`, `relation` and `kind` are optional filters. An item names 
 
 ## Nodes of one relation
 
-`in_relation: "swap"` (HTTP `?in_relation=swap`) gives the present nodes that hold the key, also
-with no edges, and the present targets of its edges of present nodes. Pages of 25 in address order
-give `total` and `next_cursor` (the last address). It takes only `fields`, `limit` and `cursor`:
-another key is refused with `in_relation takes only fields, limit and cursor`, and a key outside
-the registry with `unknown link relation`.
+`in_relation: "swap"` (HTTP `?in_relation=swap`) gives the present holders of the key, also with
+no edges, and the present targets of their edges, by 25 in address order with `total` and
+`next_cursor`. Other keys than `fields`, `limit`, `cursor`: refused. An unknown key: refused.
 
 ## Writes
 
