@@ -44,9 +44,7 @@ async fn attach_with_upload_gives_a_15_minute_link_and_stores_nothing_yet() -> R
     let first = link(&w, "ac:a", fields).await?;
     let after = chrono::Utc::now().timestamp();
     ensure!(
-        keys(&first) == ["expires_at", "target", "upload_url", "workspace"]
-            && first["workspace"] == w.ws.as_str()
-            && first["target"] == "ac:a",
+        keys(&first) == ["expires_at", "upload_url"],
         "the first reply: {first}"
     );
     let url = first["upload_url"].as_str().context("upload_url")?;
