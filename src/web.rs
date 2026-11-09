@@ -131,6 +131,9 @@ fn require_write_credential(
 #[path = "web_files.rs"]
 mod files;
 use files::*;
+#[path = "web_uploads.rs"]
+mod uploads;
+use uploads::*;
 #[path = "web_workspaces.rs"]
 mod workspaces;
 use workspaces::*;

@@ -125,6 +125,12 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
             )),
         )
         .route("/api/workspaces/{workspace}/blobs/{hash}", get(download))
+        // The signed link is the credential. The route counts the 50 MiB itself, after the
+        // checks of the link and the access.
+        .route(
+            "/api/uploads/{token}",
+            axum::routing::put(put_upload).layer(axum::extract::DefaultBodyLimit::disable()),
+        )
         .with_state(state)
         .layer(axum::middleware::from_fn(no_store));
     let listener = tokio::net::TcpListener::bind((host, port)).await?;

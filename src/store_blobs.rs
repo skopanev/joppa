@@ -26,6 +26,18 @@ pub async fn attachment(
     Ok((key, found.get(0), found.get(1)))
 }
 
+/// The actor and the file hash of the stored request `request_id` of the resolved
+/// `workspace`, or None for a new request. An attach checks it BEFORE the upload, so a
+/// reused request_id with other bytes stores nothing. The hash is empty for another op.
+pub async fn receipt_hash(
+    pool: &Pool,
+    workspace: &str,
+    request_id: &str,
+) -> Result<Option<(String, String)>> {
+    let row = pool.get().await?.query_opt("SELECT actor,COALESCE(input->'operations'->0->'command'->>'hash',input->'legacy_command'->>'hash','') FROM joppa.command_receipts WHERE workspace=$1 AND request_id=$2", &[&workspace,&request_id]).await?;
+    Ok(row.map(|row| (row.get(0), row.get(1))))
+}
+
 /// Delete files in Spaces whose only attachments in the workspace were detached at least
 /// 14 days ago. Returns the number of files deleted from Spaces.
 pub async fn sweep_detached(pool: &Pool) -> Result<usize> {

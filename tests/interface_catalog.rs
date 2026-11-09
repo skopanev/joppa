@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 /// Every route of the server: the method and the path pattern.
-const ROUTES: [(&str, &str); 48] = [
+const ROUTES: [(&str, &str); 49] = [
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/.well-known/oauth-protected-resource/mcp"),
     ("GET", "/.well-known/oauth-authorization-server"),
@@ -57,6 +57,7 @@ const ROUTES: [(&str, &str); 48] = [
     ("POST", "/api/workspaces/{workspace}/dependencies"),
     ("POST", "/api/workspaces/{workspace}/blobs"),
     ("GET", "/api/workspaces/{workspace}/blobs/{hash}"),
+    ("PUT", "/api/uploads/{token}"),
     // The delete goes last: it removes the workspace of the other routes.
     ("POST", "/api/workspaces/{workspace}/delete"),
 ];

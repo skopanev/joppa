@@ -3,16 +3,18 @@
 use anyhow::{Context, Result, ensure};
 use base64::Engine;
 use deadpool_postgres::Pool;
-use joppa::{spaces, store};
+use joppa::{spaces, store, upload_link::Upload};
 use serde_json::{Value, json};
+#[path = "protocol_files_put.rs"]
+pub(crate) mod put;
 
 pub fn tools() -> [Value; 2] {
     let text = || json!({"type":"string"});
     [
         super::tool(
             "joppa_attach",
-            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64. content_type defaults to application/octet-stream. check_result (pass or fail) makes the file a manual check of a criterion. valid_until (YYYY-MM-DD, UTC) ends a pass. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
-            json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"request_id":text(),"check_result":{"type":"string","enum":["pass","fail"]},"valid_until":text()}),
+            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text), content_base64, url (an HTTPS GET of a public address) or upload: true. upload gives upload_url: PUT the raw bytes there in 15 minutes, with no token. content_type defaults to the url reply type, else application/octet-stream. check_result (pass or fail) makes the file a manual check of a criterion. valid_until (YYYY-MM-DD, UTC) ends a pass. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
+            json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"url":text(),"upload":{"type":"boolean"},"request_id":text(),"check_result":{"type":"string","enum":["pass","fail"]},"valid_until":text()}),
             json!(["workspace", "target", "filename"]),
         ),
         super::tool(
@@ -99,53 +101,62 @@ pub async fn attachments(pool: &Pool, actor: &str, a: &Value) -> Result<Value> {
 pub async fn attach(pool: &Pool, actor: &str, a: &Value) -> Result<Value> {
     let (workspace, target) = (field(a, "workspace")?, field(a, "target")?);
     let filename = field(a, "filename")?;
-    let bytes = match (a["content"].as_str(), a["content_base64"].as_str()) {
-        (Some(text), None) => text.as_bytes().to_vec(),
-        (None, Some(encoded)) => {
+    let text = |key: &str| a[key].as_str().map(str::to_owned);
+    let upload = match &a["upload"] {
+        Value::Null => false,
+        value => value.as_bool().context("upload must be a boolean")?,
+    };
+    let sources = ["content", "content_base64", "url"];
+    let count = sources.iter().filter(|k| a[**k].is_string()).count() + usize::from(upload);
+    ensure!(
+        count == 1,
+        "send exactly one of content, content_base64, url or upload"
+    );
+    let decoded = match a["content_base64"].as_str() {
+        Some(encoded) => {
             ensure!(
                 encoded.len() <= spaces::ATTACHMENT_MAX.div_ceil(3) * 4,
                 "an attachment is at most 50 MiB"
             );
-            base64::engine::general_purpose::STANDARD
-                .decode(encoded)
-                .context("content_base64 is not standard base64")?
+            let engine = base64::engine::general_purpose::STANDARD;
+            Some(
+                engine
+                    .decode(encoded)
+                    .context("content_base64 is not standard base64")?,
+            )
         }
-        _ => anyhow::bail!("send exactly one of content or content_base64"),
+        None => None,
     };
-    // The checks come BEFORE the upload: a refused attach stores nothing.
-    let check = |key: &str| (!a[key].is_null()).then(|| a[key].as_str().unwrap_or(""));
-    let (result, until) = (check("check_result"), check("valid_until"));
-    joppa::manual_checks::check_fields(result, until)?;
-    // A caller without access stores nothing.
-    let item = object(pool, actor, workspace, target).await?;
-    if result.is_some() {
-        let types = store::tree_schema(pool, workspace, actor, None).await?;
-        let kind = item["kind"].as_str().unwrap_or_default();
-        let role = &types["schema"]["types"][kind]["role"];
-        ensure!(role == "ac", joppa::manual_checks::TARGET_REFUSAL);
-    }
-    let folder = store::file_workspace(pool, workspace, actor).await?;
-    let (hash, size) = spaces::storage()?.put(&folder, &bytes).await?;
+    let check = |key: &str| (!a[key].is_null()).then(|| text(key).unwrap_or_default());
     // An identical retry with the same request_id sends the same command, so it replays.
-    let request = a["request_id"]
-        .as_str()
-        .map_or_else(|| uuid::Uuid::new_v4().to_string(), str::to_owned);
-    let id = joppa::digest_hex::sha256_hex(&request)[..32].to_owned();
-    let mut command = json!({"op":"attach","target":target,"id":id,"name":filename,
-        "content_type":a["content_type"].as_str().unwrap_or(""),"size":size,"hash":hash});
-    for (key, value) in [("check_result", result), ("valid_until", until)] {
-        if let Some(value) = value {
-            command[key] = json!(value);
-        }
+    let mut call = Upload {
+        actor: actor.into(),
+        alias: joppa::actor_alias::current(),
+        workspace: workspace.into(),
+        target: target.into(),
+        filename: filename.into(),
+        content_type: text("content_type").unwrap_or_default(),
+        check_result: check("check_result"),
+        valid_until: check("valid_until"),
+        request_id: text("request_id").unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        expires: 0,
+    };
+    // The checks come BEFORE the upload or the fetch: a refused attach stores nothing.
+    put::check(pool, &call).await?;
+    if upload {
+        return put::link(call);
     }
-    let reply = store::execute_remote_input(pool, workspace, actor, &request, &command).await?;
-    let file = files(pool, actor, workspace, target)
-        .await?
-        .as_array()
-        .and_then(|files| files.iter().find(|f| f["id"] == id.as_str()).cloned())
-        .context("the attached file is not listed")?;
-    Ok(
-        json!({"workspace":workspace,"target":target,"position":reply["position"],
-        "replayed":reply["replayed"],"file":file}),
-    )
+    let bytes = match (text("content"), decoded, text("url")) {
+        (Some(content), _, _) => content.into_bytes(),
+        (_, Some(bytes), _) => bytes,
+        (_, _, Some(url)) => {
+            let (bytes, sent) = joppa::attach_fetch::fetch(&url).await?;
+            if call.content_type.is_empty() {
+                call.content_type = sent.unwrap_or_default();
+            }
+            bytes
+        }
+        _ => unreachable!("one source is present"),
+    };
+    put::store_bytes(pool, &call, &bytes).await
 }

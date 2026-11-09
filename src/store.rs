@@ -201,4 +201,4 @@ pub mod workspace_prefix;
 #[path = "store_blobs.rs"]
 mod blobs;
 use blobs::remove_folder;
-pub use blobs::{attachment, file_workspace, sweep_detached};
+pub use blobs::{attachment, file_workspace, receipt_hash, sweep_detached};

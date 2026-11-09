@@ -3,7 +3,7 @@ use joppa::{mcp_shapes as shapes, store};
 use serde_json::{Value, json};
 
 #[path = "protocol_files.rs"]
-mod files;
+pub(crate) mod files;
 #[path = "protocol_help.rs"]
 mod help;
 #[path = "protocol_pages.rs"]

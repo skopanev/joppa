@@ -1,6 +1,7 @@
 pub mod ac_tests;
 pub mod access;
 pub mod actor_alias;
+pub mod attach_fetch;
 pub mod batch_defaults;
 pub mod body_migration;
 pub mod checks;
@@ -54,4 +55,5 @@ pub mod tasks;
 pub mod test_nodes;
 pub mod test_rules;
 pub mod tree_order;
+pub mod upload_link;
 pub mod workspace_references;
