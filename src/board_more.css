@@ -24,8 +24,10 @@
 .object-field>.type-label{display:block;margin-bottom:.2em}
 .object-field p{margin:.2em 0 0}
 .object-meta,.node-meta{display:flex;flex-wrap:wrap;gap:.2em 1.2em;margin:.8em 0;font-size:.8rem;color:var(--muted)}
-.object-links{display:grid;gap:.3em;margin-top:1em;min-width:0}
+.object-links,.relation-edges{display:grid;gap:.3em;margin-top:1em;min-width:0}
 .object-links h3{margin:0;font-size:.8em;color:var(--muted)}
+.relation-edge{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2em .8em;min-width:0}
+.relation-edge>.object-link{min-width:0;overflow-wrap:anywhere}
 .reference-links{display:flex;flex-wrap:wrap;gap:.3em 1em}
 .object-link{display:block;max-width:100%;text-align:left;color:var(--link);font-size:.95em;white-space:normal;overflow-wrap:anywhere}
 .object-link:visited{color:var(--visited)}

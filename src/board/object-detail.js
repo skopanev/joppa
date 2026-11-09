@@ -9,7 +9,7 @@ import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
 import {workspaceLinksSection} from 'board/workspace-links.js';
 import {incomingGroups} from 'board/link-groups.js';
-import {relationGroups} from 'board/relations.js';
+import {relationGroups,relationTitles} from 'board/relations.js';
 export function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
@@ -74,14 +74,19 @@ export function objectSection(title,cls){
   const group=E('details',undefined,'object-section '+cls);
   group.append(E('summary',title));enableBranchMotion(group);return group;
 }
-// The depends_on edges of a node, shown read-only on the board.
+// The depends_on edges of a node, shown read-only on the board with the registry title and pin.
 function dependencyList(detail){
   const edges=detail.relations?.depends_on?.edges||[];
   if(!edges.length)return null;
-  const box=E('div',undefined,'object-dependencies');
+  const box=E('div',undefined,'object-dependencies object-links');
   for(const edge of edges){
-    const row=E('p',undefined,'dependency-row');
-    row.append(E('span','Depends on','hint'),objectLink(edge.title||edge.to,edge.to));box.append(row);
+    const row=E('p',undefined,'dependency-row'),title=E('span','Depends on','hint');
+    relationTitles().then(titles=>{title.textContent=titles.depends_on||'Depends on';});
+    row.append(title,objectLink(edge.title||edge.to,edge.to));
+    const changed=edge.revision&&edge.current_revision!==edge.revision&&detail.review_required===true;
+    const meta=[edge.revision&&'revision '+edge.revision,changed&&'changed'].filter(Boolean);
+    if(meta.length)row.append(E('small',meta.join(' · '),'object-link-meta'));
+    box.append(row);
   }
   return box;
 }

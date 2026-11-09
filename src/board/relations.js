@@ -1,10 +1,11 @@
-// The outgoing relations of a card: one group for each relation key, named by the title of the
-// registry in the tree schema. A group shows its edges in pages of PAGE, with the condition
-// `when` and the pinned revision of each edge.
+// The relations of a card: one group for each relation key, named by the title of the registry
+// in the tree schema. A group reads its edges with relations_of when the reader opens it, in
+// pages of PAGE, and shows the condition `when` and the pinned revision of each edge.
 import {state} from 'board/state.js';
 import {E} from 'board/dom.js';
-import {api,PAGE} from 'board/api.js';
+import {api,objectPart,PAGE} from 'board/api.js';
 import {objectLink} from 'board/links.js';
+import {notify} from 'board/feedback.js';
 let registry={ws:null,titles:null};
 // The title of each relation key of the workspace. One read of the tree for each workspace.
 export function relationTitles(){
@@ -14,26 +15,42 @@ export function relationTitles(){
   }
   return registry.titles;
 }
+// A group that reads the pages of `params` when it opens. `name` gives the summary from the
+// title of the relation, and `row` gives the row of one item. The outgoing edges sit in
+// `relation-edges`, so the depends_on list stays the one link list of a card without others.
+export function pagedGroup(section,key,name,params,row,rowsClass='object-links'){
+  const group=section(name(key),'object-relations link-group');group.dataset.relation=key;
+  relationTitles().then(titles=>{group.querySelector('summary').textContent=name(titles[key]||key);});
+  const rows=E('div',undefined,rowsClass);group.append(rows);
+  // loaded: the first page arrived. loading: a request runs, so a second click waits.
+  let loaded=false,loading=false;
+  const load=async cursor=>{
+    if(loading)return;loading=true;
+    const more=group.querySelector('.load-more');if(more)more.disabled=true;
+    try{
+      const page=await objectPart({...params,limit:PAGE,...(cursor?{cursor}:{})});
+      more?.remove();loaded=true;
+      for(const item of page.items)rows.append(row(item));
+      if(page.next_cursor){const next=E('button','Load more','text-button load-more');next.type='button';next.onclick=()=>load(page.next_cursor);group.append(next);}
+    }catch(e){if(more)more.disabled=false;notify(e);}
+    finally{loading=false;}
+  };
+  // A failed first page loads again when the reader opens the group again.
+  group.addEventListener('toggle',()=>{if(group.open&&!loaded)load();});
+  return group;
+}
 export function relationGroups(detail,section,historical){
   return Object.entries(detail.relations||{}).map(([key,relation])=>{
     const edges=relation.edges||[];
     const name=title=>title+(relation.title?' · '+relation.title:'')+' '+edges.length;
-    const group=section(name(key),'object-relations relation-group');group.dataset.relation=key;
-    relationTitles().then(titles=>{group.querySelector('summary').textContent=name(titles[key]||key);});
-    const rows=E('div',undefined,'object-links');group.append(rows);
-    let shown=0;
-    const more=()=>{
-      for(const e of edges.slice(shown,shown+Number(PAGE))){
-        const row=objectLink(e.title||e.to,e.to,e.revision);
-        const changed=e.revision&&e.current_revision!==e.revision&&detail.review_required===true;
-        const labels=[e.when,e.revision&&'revision '+e.revision,changed&&'changed',e.present===false&&'historical object',historical&&'current title'].filter(Boolean);
-        if(labels.length)row.append(E('small',labels.join(' · '),'object-link-meta'));
-        rows.append(row);
-      }
-      shown+=Number(PAGE);group.querySelector('.load-more')?.remove();
-      if(shown<edges.length){const next=E('button','Load more','text-button load-more');next.type='button';next.onclick=more;group.append(next);}
-    };
-    more();
-    return group;
+    const params={relations_of:detail.address,direction:'outgoing',relation:key};
+    return pagedGroup(section,key,name,params,item=>{
+      const edge=edges.find(e=>e.to===item.address)||{};
+      const changed=item.revision&&edge.current_revision!==item.revision&&detail.review_required===true;
+      const labels=[item.when,item.revision&&'revision '+item.revision,changed&&'changed',item.present===false&&'historical object',historical&&'current title'].filter(Boolean);
+      const line=E('div',undefined,'relation-edge');line.append(objectLink(item.title||item.address,item.address,item.revision));
+      if(labels.length)line.append(E('small',labels.join(' · '),'object-link-meta'));
+      return line;
+    },'relation-edges');
   });
 }
