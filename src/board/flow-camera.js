@@ -7,8 +7,10 @@ export function flowCamera(canvas){
   let view=[-500,-500,1000,1000],box=null,boxAt=0;
   // The canvas box is read at most once in 500 ms. A scroll or a resize reads it again.
   const rect=()=>{const now=performance.now();if(!box||now-boxAt>500){box=canvas.getBoundingClientRect();boxAt=now;}return box;};
-  for(const type of ['scroll','resize'])addEventListener(type,()=>{box=null;},{passive:true,capture:true});
-  new ResizeObserver(()=>{box=null;}).observe(canvas);
+  // destroy() removes the window listeners and the observer, so the window keeps no old canvas.
+  const stop=new AbortController(),observer=new ResizeObserver(()=>{box=null;});
+  for(const type of ['scroll','resize'])addEventListener(type,()=>{box=null;},{passive:true,capture:true,signal:stop.signal});
+  observer.observe(canvas);
   // The world units for one screen pixel. The SVG fits the whole view box into the canvas
   // (xMidYMid meet), so the larger of the two ratios applies.
   const unit=()=>{const b=rect();return b.width&&b.height?Math.max(view[2]/b.width,view[3]/b.height):1;};
@@ -34,6 +36,7 @@ export function flowCamera(canvas){
   const camera={
     point,unit,
     view:()=>[...view],
+    destroy(){stop.abort();observer.disconnect();},
     // Move the view by a screen distance in pixels.
     pan(dx,dy){const u=unit();view=[view[0]+dx*u,view[1]+dy*u,view[2],view[3]];apply();},
     // Show every point with a margin. Fewer than one point keeps the view.

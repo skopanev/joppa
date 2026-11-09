@@ -17,6 +17,10 @@ import {relationRegistry,relationTitles} from 'board/relations.js';
 import {drawFlow} from 'board/flow-draw.js';
 import {flowCard} from 'board/flow-card.js';
 const FIELDS='title,signal,relations',FILTER_PAGE='100',SEARCH_PAGE='50';
+// The shown page. A new board render closes it first.
+let shown=null;
+// Free the camera of the shown drawing before its canvas leaves the page.
+export function closeFlowPage(){shown?.flow?.camera.destroy();shown=null;}
 export async function renderFlowPage(root,generation){
   document.title='Flow · Joppa';
   const page=E('section',undefined,'flow-page');
@@ -27,6 +31,7 @@ export async function renderFlowPage(root,generation){
   const say=text=>{status.textContent=text;status.hidden=!text;};
   const ui={key:'',flow:null,nodes:new Map(),found:null,click:null,load:0,card,say};
   ui.pick=address=>{ui.click=address;paint(ui);};
+  closeFlowPage();shown=ui;
   const [registry,titles]=await Promise.all([relationRegistry(),relationTitles()]);
   if(generation!==state.loadNumber)return;
   const filters=commonObjectFilters(root,E('div'),async({params,text,scope,filtering,current})=>{
@@ -52,7 +57,7 @@ export async function renderFlowPage(root,generation){
   const show=async(key,address)=>{
     const mine=++ui.load,current=()=>live()&&mine===ui.load;
     description.textContent=registry[key]?.description||'';description.hidden=!description.textContent;
-    ui.flow?.canvas.remove();ui.flow=null;ui.click=null;flowCard(card,{});say('Loading nodes…');
+    ui.flow?.camera.destroy();ui.flow?.canvas.remove();ui.flow=null;ui.click=null;flowCard(card,{});say('Loading nodes…');
     const nodes=new Map();let cursor;
     try{
       do{

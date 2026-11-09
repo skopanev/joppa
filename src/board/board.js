@@ -7,7 +7,7 @@ import {api} from 'board/api.js';
 import {clearBoard} from 'board/workspaces.js';
 import {inboxKinds} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
-import {renderFlowPage} from 'board/flow.js';
+import {renderFlowPage,closeFlowPage} from 'board/flow.js';
 import {renderObjectPage} from 'board/object-page.js';
 import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
 import {commonNotes} from 'board/notes.js';
@@ -47,7 +47,7 @@ function applyStatuses(statuses){
   }
 }
 async function renderObjectTree(){
-  const root=$('tree');root.replaceChildren();
+  const root=$('tree');closeFlowPage();root.replaceChildren();
   const generation=state.loadNumber;
   if(!state.data.objectTypes||!Object.keys(state.data.objectTypes).length){
     const configuration=await api('workspaces/'+encodeURIComponent(state.ws)+'/tree');if(generation!==state.loadNumber)return;
