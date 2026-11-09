@@ -15,7 +15,7 @@ import {commonObjectFilters,matches} from 'board/filters.js';
 import {drawGraph} from 'board/graph-layout.js';
 import {nodeCard} from 'board/graph-card.js';
 // The graph reads lean pages of the server maximum: a path needs every node.
-const NODE_PAGE='100',SEARCH_PAGE='50',FIELDS='kind,parent,title,signal,links';
+const NODE_PAGE='100',SEARCH_PAGE='50',FIELDS='kind,parent,title,signal,relations';
 // The trail lists this many steps at most. A subgraph of at most PATH_MAX nodes shows its
 // flow at once. A graph of more than LARGE nodes shows the levels up to DEFAULT_LEVEL first.
 // Flow layers are LAYER_GAP apart, and the nodes of one layer ROW_GAP apart.

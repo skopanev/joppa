@@ -4,8 +4,8 @@ const element=(tag,text,cls)=>{const el=document.createElement(tag);el.textConte
 const svgElement=(tag,attributes)=>{const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attributes))el.setAttribute(key,value);return el;};
 async function api(path){const response=await fetch('/api/'+path);const value=await response.json();if(!response.ok)throw Error(value.error||'Could not read the schema.');return value;}
 
-// The configuration lists repeat the schema in words: root types, parent rules, link
-// relations, priority levels, the data fields of the board filter drop-downs and the status
+// The configuration lists repeat the schema in words: root types, parent rules, the relations
+// of the registry with their titles and descriptions, priority levels, the data fields of the board filter drop-downs and the status
 // rule of each type. Nothing here is editable.
 const RULE_TEXT={own:'Result of its own test',children:'Highest tone of its children',links:'Highest tone of linking objects',none:'Process status'};
 function renderConfig(schema){
@@ -14,7 +14,7 @@ function renderConfig(schema){
   const kinds=Object.keys(schema.types).sort();
   list('config-roots',kinds.filter(kind=>schema.types[kind].root).map(title));
   list('config-edges',kinds.flatMap(kind=>[...(schema.types[kind].root?['Workspace']:[]),...schema.types[kind].parents.map(title)].map(parent=>parent+' → '+title(kind))));
-  list('config-relations',schema.link_relations||[]);
+  list('config-relations',Object.entries(schema.relations||{}).map(([key,r])=>key+' · '+(r.title||key)+(r.description?': '+r.description:'')));
   list('config-priorities',schema.priority_levels||[]);
   list('config-filters',schema.filters||[]);
   list('config-status-rules',kinds.map(kind=>title(kind)+': '+(RULE_TEXT[schema.status_rules?.[kind]]||schema.status_rules?.[kind]||'')));

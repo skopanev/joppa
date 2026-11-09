@@ -1,4 +1,4 @@
-// The body of an object: fields, links, dependencies, comments and files.
+// The body of an object: fields, relations, dependencies, comments and files.
 import {state} from 'board/state.js';
 import {E} from 'board/dom.js';
 import {FILE_ICON,svgIcon} from 'board/icons.js';
@@ -9,6 +9,7 @@ import {objectLink} from 'board/links.js';
 import {markdownBlock} from 'board/markdown.js';
 import {workspaceLinksSection} from 'board/workspace-links.js';
 import {incomingGroups} from 'board/link-groups.js';
+import {relationGroups} from 'board/relations.js';
 export function fillCommonObject(body,detail){
   body.dataset.objectContextAddress=detail.address;
   const r=detail.document,d=r.data;
@@ -16,7 +17,7 @@ export function fillCommonObject(body,detail){
   const heading=body.parentElement?.querySelector(':scope > summary > .node-title,.history-dialog-header h2');
   const full=heading?E('div',undefined,'object-field object-full-title'):null;
   if(full){full.hidden=heading.dataset.truncated!=='true'&&heading.scrollHeight<=heading.clientHeight+1;full.append(E('small','Full title','type-label'),E('p',d.title,'node-description'));}
-  if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming links are not shown.','hint'));
+  if(historical)body.append(E('p','Saved document revision. Current status, comments, files and incoming edges are not shown.','hint'));
   if(r.present===false)body.append(E('p','Historical object. This object is absent from the current tree.','dependency-review'));
   const secondary=E('div',undefined,'object-secondary');
   // The properties come first in the body, right under the row and above the children.
@@ -42,7 +43,7 @@ export function fillCommonObject(body,detail){
       const refs=E('div',undefined,'object-links reference-links');
       for(const v of vals){
         const targetAddress=v.includes(':')?v:refRule.target+':'+v;
-        const title=detail.references?.find(l=>l.target===targetAddress)?.title||detail.links?.find(l=>l.link.target===targetAddress)?.title||v;
+        const title=detail.references?.find(l=>l.target===targetAddress)?.title||Object.values(detail.relations||{}).flatMap(r=>r.edges||[]).find(e=>e.to===targetAddress)?.title||v;
         refs.append(objectLink(String(title),targetAddress));
       }
       field.append(refs);
@@ -51,19 +52,12 @@ export function fillCommonObject(body,detail){
     }
     fields.append(field);
   }
-  // Blocking dependencies are shown read-only on the board.
+  // The depends_on edges are shown read-only on the board.
   const deps=!historical&&r.present!==false&&body.parentElement?.classList.contains('common-object')?dependencyList(detail):null;
   // A test node shows the deciding result of its test: status, commit and failure message.
   if(detail.result&&!historical){const r=detail.result,group=objectSection('Result','test-result');group.append(E('p',[r.status,r.commit&&'commit '+r.commit.slice(0,7)].filter(Boolean).join(' · '),'test-result-line'));if(r.message)group.append(E('pre',r.message,'test-message'));secondary.append(group);}
   if(deps)secondary.append(deps);
-  const links=new Map();
-  for(const {link,title,current_revision,present} of detail.links||[]){const key=link.target+'@'+(link.revision||'');const label='Links to · '+link.relation+(link.revision?' · revision '+link.revision:'')+(link.revision&&current_revision!==link.revision&&detail.review_required===true?' · changed':'')+(present===false?' · historical object':'')+(historical?' · current title':'');const entry=links.get(key)||{address:link.target,title:title||link.target,revision:link.revision,labels:[]};entry.labels.push(label);links.set(key,entry);}
-  if(links.size){
-    const group=objectSection('Links '+links.size,'object-relations');
-    const rows=E('div',undefined,'object-links');
-    for(const entry of links.values()){const row=objectLink(entry.title,entry.address,entry.revision);row.append(E('small',[...new Set(entry.labels)].join(' · '),'object-link-meta'));rows.append(row);}
-    group.append(rows);secondary.append(group);
-  }
+  secondary.append(...relationGroups(detail,objectSection,historical));
   if(!historical)secondary.append(...incomingGroups(detail,objectSection));
   const annotations=historical?{}:detail.annotations||{};
   if(annotations.description){const context=E('div',undefined,'object-field');context.append(E('small','Context','type-label'),E('p',annotations.description,'node-description'));fields.append(context);}
@@ -80,14 +74,14 @@ export function objectSection(title,cls){
   const group=E('details',undefined,'object-section '+cls);
   group.append(E('summary',title));enableBranchMotion(group);return group;
 }
-// Blocking dependencies of a node, shown read-only on the board.
+// The depends_on edges of a node, shown read-only on the board.
 function dependencyList(detail){
-  const blocking=(detail.links||[]).filter(({link})=>link.relation==='depends_on'&&link.blocking);
-  if(!blocking.length)return null;
+  const edges=detail.relations?.depends_on?.edges||[];
+  if(!edges.length)return null;
   const box=E('div',undefined,'object-dependencies');
-  for(const {link,title} of blocking){
-    const name=title||link.target,row=E('p',undefined,'dependency-row');
-    row.append(E('span','Depends on','hint'),objectLink(name,link.target));box.append(row);
+  for(const edge of edges){
+    const row=E('p',undefined,'dependency-row');
+    row.append(E('span','Depends on','hint'),objectLink(edge.title||edge.to,edge.to));box.append(row);
   }
   return box;
 }

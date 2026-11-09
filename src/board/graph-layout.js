@@ -36,7 +36,7 @@ export function drawGraph(nodes,onPick,holder){
   };
   for(const node of nodes.values()){
     edge(node.parent,node.address,false);
-    for(const link of node.links||[])if(link.relation==='depends_on')edge(link.target,node.address,true);
+    for(const e of node.relations?.depends_on?.edges||[])edge(e.to,node.address,true);
   }
   for(const node of nodes.values()){
     const tone=node.signal?.tone||'grey',level=Math.min(depth(nodes,node.address),RADIUS.length-1),r=RADIUS[level];
