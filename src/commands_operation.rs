@@ -60,6 +60,21 @@ pub const OPERATIONS: &[Operation] = &[
     op("detach", &["target", "id", "reason"], MEMBER),
 ];
 
+/// The optional fields of an operation with their allowed values, as help gives them.
+pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[(
+    "attach",
+    &[
+        (
+            "check_result",
+            "pass or fail: a manual check of a criterion",
+        ),
+        (
+            "valid_until",
+            "YYYY-MM-DD (UTC), with check_result: the day a pass expires",
+        ),
+    ],
+)];
+
 pub fn operation(name: &str) -> Option<&'static Operation> {
     OPERATIONS.iter().find(|o| o.name == name)
 }

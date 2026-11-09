@@ -220,10 +220,7 @@ impl Rows {
                 item["signal"]["tone"] = json!(crate::status_colors::ARCHIVED_TONE);
                 item["signal"]["label"] = json!("Archived");
             } else if let Some(Some(tone)) = tones.get(address) {
-                let counted = self.children.get(address).is_some_and(|c| !c.is_empty())
-                    || self.linked.get(address).is_some_and(|l| !l.is_empty());
-                item["signal"]["label"] =
-                    json!(label(rule_of(types, kind), tone, waits(base), counted));
+                item["signal"]["label"] = json!(self.label(address, types, tone));
                 item["signal"]["tone"] = json!(tone);
             }
             let children = self.children.get(address).into_iter().flatten();

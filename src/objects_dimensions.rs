@@ -39,12 +39,7 @@ pub(in crate::store) async fn project(
     let tested: Vec<String> = all
         .kinds
         .iter()
-        .filter(|(a, k)| match super::tone_items::rule_of(&types, k) {
-            "own" | "tests" => true,
-            // A node without children can take the tone of its manual checks.
-            "children" => all.children.get(*a).is_none_or(Vec::is_empty),
-            _ => false,
-        })
+        .filter(|(_, k)| crate::manual_checks::reads_status(types.get(*k)))
         .map(|(a, _)| a.clone())
         .collect();
     let criteria = super::reports::criteria_of(state, &tested);

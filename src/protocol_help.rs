@@ -1,7 +1,10 @@
 //! joppa_help: a short table of contents, or one section, or the shape of one operation.
 use anyhow::{Context, bail, ensure};
 use deadpool_postgres::Pool;
-use joppa::{commands::OPERATIONS, store};
+use joppa::{
+    commands::{OPERATIONS, OPTIONAL_FIELDS},
+    store,
+};
 use serde_json::{Map, Value, json};
 
 /// Each section and what it gives. The sections tree and examples need a workspace.
@@ -59,7 +62,15 @@ pub(super) async fn help(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<
                 .iter()
                 .filter(|o| op.is_none_or(|name| name == o.name))
                 .map(|o| {
-                    let shape = json!({"required": o.required, "callers": o.callers});
+                    let mut shape = json!({"required": o.required, "callers": o.callers});
+                    let optional = OPTIONAL_FIELDS.iter().find(|(name, _)| *name == o.name);
+                    if let Some((_, fields)) = optional {
+                        let fields: Map<String, Value> = fields
+                            .iter()
+                            .map(|(f, v)| ((*f).into(), json!(v)))
+                            .collect();
+                        shape["optional"] = Value::Object(fields);
+                    }
                     (o.name.to_owned(), shape)
                 })
                 .collect();

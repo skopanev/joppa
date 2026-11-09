@@ -96,6 +96,30 @@ pub fn tone(status: Option<&serde_json::Value>) -> Option<&'static str> {
     })
 }
 
+/// The label of a tone that manual checks gave, else the label of the status rule.
+pub fn label(status: Option<&serde_json::Value>, tone: &str, rule: &'static str) -> &'static str {
+    if self::tone(status) != Some(tone) {
+        return rule;
+    }
+    match tone {
+        "green" => "Manual check passed",
+        "red" => "Manual check failed",
+        _ if status.is_some_and(|s| s["reason"] == EXPIRED) => EXPIRED,
+        _ => AWAITS,
+    }
+}
+
+/// The tone of a node of this type reads its stored status: a node of the own or tests rule,
+/// and a criterion of the children rule, whose manual checks decide its tone when its children
+/// give none.
+pub fn reads_status(t: Option<&TreeType>) -> bool {
+    t.is_some_and(|t| match crate::objects::status_rule(t) {
+        "own" | "tests" => true,
+        "children" => t.role == "ac",
+        _ => false,
+    })
+}
+
 /// One live file with a check result.
 #[derive(Clone, Debug)]
 pub struct Check {

@@ -12,7 +12,7 @@ pub fn tools() -> [Value; 2] {
         super::tool(
             "joppa_attach",
             "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text) or content_base64. content_type defaults to application/octet-stream. check_result (pass or fail) makes the file a manual check of a criterion. valid_until (YYYY-MM-DD, UTC) ends a pass. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
-            json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"request_id":text(),"check_result":text(),"valid_until":text()}),
+            json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"request_id":text(),"check_result":{"type":"string","enum":["pass","fail"]},"valid_until":text()}),
             json!(["workspace", "target", "filename"]),
         ),
         super::tool(

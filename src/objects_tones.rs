@@ -42,14 +42,9 @@ pub(super) async fn add_status_tones(
         children,
         linked,
     } = graph(client, workspace, &present).await?;
-    // A node of the children rule without children can take the tone of its manual checks.
     let tested: Vec<String> = kinds
         .iter()
-        .filter(|(a, k)| match rule(k) {
-            "own" | "tests" => true,
-            "children" => children.get(*a).is_none_or(Vec::is_empty),
-            _ => false,
-        })
+        .filter(|(_, k)| crate::manual_checks::reads_status(types.get(*k)))
         .map(|(a, _)| a.clone())
         .collect();
     let statuses =
@@ -82,7 +77,9 @@ pub(super) async fn add_status_tones(
         };
         let counted = children.get(address).is_some_and(|c| !c.is_empty())
             || linked.get(address).is_some_and(|l| !l.is_empty());
-        item["signal"]["label"] = json!(label(rule(kind), t, waits(item), counted));
+        let rule = label(rule(kind), t, waits(item), counted);
+        item["signal"]["label"] =
+            json!(crate::manual_checks::label(statuses.get(address), t, rule));
         item["signal"]["tone"] = json!(t);
     }
     for item in items.iter_mut().filter(|i| i["present"] == false) {

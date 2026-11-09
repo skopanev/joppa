@@ -56,6 +56,17 @@ impl Rows {
         self.stored_tone(address, types)
     }
 
+    /// The label of the new tone of a recomputed node: the label of a manual check that gave the
+    /// tone, else the label of the status rule.
+    pub(super) fn label(&self, address: &str, types: &Types, tone: &str) -> &'static str {
+        let base = &self.base[address];
+        let counted = self.children.get(address).is_some_and(|c| !c.is_empty())
+            || self.linked.get(address).is_some_and(|l| !l.is_empty());
+        let kind = base["kind"].as_str().unwrap_or_default();
+        let rule = label(rule_of(types, kind), tone, waits(base), counted);
+        crate::manual_checks::label(self.stored.get(address).map(|s| &s.1), tone, rule)
+    }
+
     /// The new tone of a recomputed node, as `tone_of` in objects_tones.rs.
     pub(super) fn tone(
         &self,
