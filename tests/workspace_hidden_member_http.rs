@@ -9,7 +9,7 @@ use hidden_lists::{hide, items, listed, ok, refused, web};
 use serde_json::{Value, json};
 
 // ac:sfon2kd8
-// test:TBD
+// test:3ya57e9z
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn only_the_owner_changes_the_title_and_each_member_hides_for_the_own_list() -> Result<()> {
@@ -73,7 +73,7 @@ async fn alex_sees_it(w: &record_world::World, moment: &str) -> Result<()> {
 }
 
 // ac:nikye1a1
-// test:TBD
+// test:d406qlpg
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_removed_member_comes_back_without_the_hidden_flag() -> Result<()> {
@@ -91,7 +91,7 @@ async fn a_removed_member_comes_back_without_the_hidden_flag() -> Result<()> {
 }
 
 // ac:6asqz4s1
-// test:TBD
+// test:dxn3y6ru
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_full_web_list_gives_the_hidden_workspaces_of_the_caller() -> Result<()> {

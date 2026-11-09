@@ -37,7 +37,7 @@ async fn hidden_only_for_the_owner(w: &World, moment: &str) -> Result<()> {
 }
 
 // ac:yaqk6paj
-// test:TBD
+// test:bzpi5m0v
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_workspace_hidden_by_the_owner_before_the_change_stays_hidden_only_for_the_owner()

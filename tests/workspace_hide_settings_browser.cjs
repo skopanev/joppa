@@ -7,7 +7,7 @@ const {fixture} = require('./board_fixture.cjs');
 // The fixture member alex plays the owner O: alex creates and owns W and W2. maria, a new Google
 // person of each fixture, plays the member alex of the criterion: a member of W and W2, no owner.
 // ac:5m7fqi0h
-// test:TBD
+// test:3n92kacx
 test('hide-from-my-list: each member hides a workspace in Settings for the own drop-down', async () => {
   const f = await fixture({note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: []}});
   const member = await f.page.context().browser().newContext({reducedMotion: 'reduce', colorScheme: 'light'});
