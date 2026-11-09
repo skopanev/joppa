@@ -2,7 +2,7 @@
 // applies the node filters (src/node_filter.rs) at every level of the tree. A board link can
 // carry them in its query, for example /?workspace=w&assignee=user-1&ready=false: each picker
 // shows its link value, and a picker change writes its value back to the link. The schema
-// filter fields add one drop-down each (filter-fields.js), and a view can offer more pickers.
+// filter fields add one drop-down each (filter-fields.js).
 import {state} from 'board/state.js';
 import {E} from 'board/dom.js';
 import {notify,button} from 'board/feedback.js';
@@ -34,7 +34,7 @@ export function commonObjectFilters(root,contents,apply){
   // The search box uses the server search of joppa_search and combines with the other filters.
   const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
   const scope=searchScope(controls,()=>update());
-  // A graph gives `apply`: it reads the matches itself and dims the other nodes.
+  // Flow view gives `apply`: it reads the matches itself and fades the other nodes.
   const update=async()=>{const mine=++request,generation=state.loadNumber;const text=search.value.trim();
     const params={...linked,...Object.fromEntries(pickers.filter(s=>s.value).map(s=>[s.name,s.value])),...(fields.data()?{data:fields.data()}:{})};
     const filtering=Boolean(text||Object.keys(params).length);state.data.filterActive=filtering;
@@ -62,9 +62,7 @@ export function commonObjectFilters(root,contents,apply){
   const changed=()=>{markStatus();relink();update();};
   for(const select of [...pickers,...fields.selects])select.onchange=changed;
   let typing;search.oninput=()=>{clearTimeout(typing);typing=setTimeout(update,250);};root.append(controls,fromLink);if(Object.keys(linked).length||fields.data()||pickers.some(s=>s.value))update();
-  // A view offers one more picker of a link filter, for example the graph its roots.
-  const offer=(name,label,options)=>{const select=picker(name,label,options);controls.insertBefore(select,search);take(select);showLink();pickers.push(select);select.onchange=changed;return select;};
-  return {controls,offer};
+  return {controls};
 }
 // One page of the matches: the server search for a text, else the node list.
 export function matches(text,params){

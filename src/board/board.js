@@ -7,7 +7,7 @@ import {api} from 'board/api.js';
 import {clearBoard} from 'board/workspaces.js';
 import {inboxKinds} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
-import {renderGraphPage} from 'board/graph.js';
+import {renderFlowPage} from 'board/flow.js';
 import {renderObjectPage} from 'board/object-page.js';
 import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
 import {commonNotes} from 'board/notes.js';
@@ -21,10 +21,10 @@ export async function load() {
   state.data = next;
   state.data.objectTypes=next.object_types||{};
   applyStatuses(next.statuses);
-  // The view drop-down switches between Tree and Graph and keeps the node filters of the link.
-  // A change reads the filters of that moment.
+  // The view drop-down switches between Tree and Flow and keeps the node filters of the link.
+  // A change reads the filters of that moment. Any other view in the link opens the tree.
   const selection=new URLSearchParams(location.search),viewSelect=$('view-select');
-  viewSelect.value=selection.get('view')==='graph'?'graph':'tree';
+  viewSelect.value=selection.get('view')==='flow'?'flow':'tree';
   viewSelect.onchange=()=>{location.href=viewHref(viewSelect.value);};
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(state.ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(state.ws);
@@ -55,7 +55,7 @@ async function renderObjectTree(){
   }
   const selection=new URLSearchParams(location.search);
   if(selection.has('object'))return renderObjectPage(root,selection.get('object'),selection.get('revision'),generation);
-  if(selection.get('view')==='graph')return renderGraphPage(root,generation);
+  if(selection.get('view')==='flow')return renderFlowPage(root,generation);
   const contents=E('div',undefined,'object-filter-results');contents.hidden=true;
   commonObjectFilters(root,contents);root.append(contents);
   for(const kind of inboxKinds().filter(kind=>state.data.objectTypes[kind].root))commonNotes(root,undefined,kind);

@@ -171,54 +171,35 @@ dialog::backdrop{background:#22222240}
 .dependency-row>.object-link{display:inline;font-size:1em}
 .history-entry>.object-body p{margin:.2rem 0 0}
 :focus,:focus-visible{outline:none}
-/* The board view drop-down in the header: Tree or Graph. */
+/* The board view drop-down in the header: Tree or Flow. */
 .view-select{width:auto;font:inherit;color:var(--heading);background:transparent;border:0;padding:0 1.1rem 0 .2rem;cursor:pointer}
 .help-link[aria-current=page]{color:var(--heading)}
-/* The graph view (src/board/graph*.js). The dots take the tone colours. Without a pick the
-   graph is muted, a pick fades the rest almost out, and a filter hides the rest. */
-.graph-page{display:grid;gap:.5rem}
-.graph-picked{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;max-height:7.5rem;overflow:auto}
-.graph-hop{display:inline-flex;align-items:center;gap:.3rem;padding:.1rem .45rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
-.graph-hop:hover,.graph-hop[aria-current=step]{border-color:var(--heading);color:var(--heading)}
-.graph-hop-step{font-weight:bold;font-variant-numeric:tabular-nums}
-.graph-trail-arrow{color:var(--muted)}
-.graph-view{position:relative;height:min(78vh,900px);border:1px solid var(--rule);overflow:hidden}
-.graph-canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-.graph-canvas:active{cursor:grabbing}
-.graph-parent{stroke:var(--muted);stroke-width:1.4px;vector-effect:non-scaling-stroke;opacity:.45}
-.graph-edge-l0{opacity:.65;stroke-width:1.8px}
-.graph-edge-l1{opacity:.38;stroke-width:1.3px}
-.graph-depends{fill:none;stroke:var(--heading);stroke-width:1.5px; stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:.38;marker-end:url(#graph-arrow)}
-.graph-arrow-head{fill:var(--heading)}
-.graph-node{stroke:var(--bg);stroke-width:calc(1.2px * var(--u, 1));cursor:pointer;opacity:.88}
-.graph-label,.graph-step{display:none;font-size:calc(11.5px * var(--u, 1));fill:var(--text);pointer-events:none}
-.graph-label-level-0{font-size:calc(14.5px * var(--u, 1));font-weight:700;fill:var(--heading)}
-.graph-label-level-1{font-size:calc(12.5px * var(--u, 1));font-weight:600;fill:var(--heading)}
-.graph-label.graph-label-shown,.graph-label.graph-near,.graph-step.graph-step-shown{display:inline;paint-order:stroke;stroke:var(--bg);stroke-width:calc(3.2px * var(--u, 1))}
-.graph-step{font-size:calc(11px * var(--u, 1));font-weight:bold;fill:var(--heading)}
-.graph-lit{opacity:1}
-.graph-hop-1{opacity:1}
-.graph-hop-2{opacity:.68}
-.graph-hop-3{opacity:.42}
-.graph-faint{opacity:.08}
-.graph-hidden{display:none}
-.graph-depends.graph-lit{stroke:var(--heading);stroke-dasharray:none;stroke-width:2.5px;marker-end:url(#graph-arrow)}
-.graph-depends.graph-hop-2{stroke-width:1.9px}
-.graph-depends.graph-hop-3{stroke-width:1.4px}
-.graph-parent.graph-lit{stroke:var(--muted);stroke-width:1.6px}
-.graph-node.graph-near{opacity:1;stroke:var(--heading);stroke-width:calc(2px * var(--u, 1))}
-.graph-edge.graph-near{opacity:.95;stroke:var(--heading);stroke-dasharray:none;marker-end:url(#graph-arrow)}
-.graph-card{position:absolute;top:.5rem;right:.5rem;display:grid;gap:.4rem;width:min(24rem,calc(100% - 1rem));max-height:calc(100% - 1rem);overflow:auto;padding:.45rem .65rem;border:1px solid var(--rule);background:var(--bg);font-size:13px}
-.graph-card-collapsed{width:auto;max-width:calc(100% - 1rem)}
-.graph-card-collapsed .graph-card-details{display:none}
-.graph-card-details{display:grid;gap:.4rem}
-.graph-card-head{display:flex;align-items:center;gap:.4rem}
-.graph-card-title{flex:1;min-width:0;color:var(--heading);overflow-wrap:anywhere}
-.graph-card-close{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer}
-.graph-card-facts{display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem;margin:0}
-.graph-card-facts dt{color:var(--muted)}
-.graph-card-facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
-.graph-card-body{margin:0;white-space:pre-line}
-.graph-card-steps{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem}
-.graph-card-step{display:grid;gap:.2rem;justify-items:start}
-.graph-card-step-title{font-size:11px}
+/* Flow view (src/board/flow*.js): the nodes of one relation from left to right. The dots take
+   the tone colours. A pick lights a node and its neighbours and fades the rest almost out. */
+.flow-page{display:grid;gap:.5rem}
+.flow-description,.flow-status{margin:0}
+.flow-view{position:relative;height:min(78vh,900px);border:1px solid var(--rule);overflow:hidden}
+.flow-canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.flow-canvas:active{cursor:grabbing}
+.flow-edge{fill:none;stroke:var(--heading);stroke-width:1.5px;vector-effect:non-scaling-stroke;opacity:.6}
+.flow-back{stroke-dasharray:5 4}
+.flow-arrow-head{fill:var(--heading)}
+.flow-node{stroke:var(--bg);stroke-width:1.5px;cursor:pointer}
+.flow-label,.flow-when,.flow-transfer{text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.flow-label{font-size:13px;font-weight:600;fill:var(--heading);cursor:pointer}
+.flow-when{font-size:11px;fill:var(--muted);pointer-events:none}
+.flow-transfer{font-size:11px;fill:var(--link);cursor:pointer}
+.flow-transfer:hover{text-decoration:underline}
+.flow-lit{opacity:1}
+.flow-edge.flow-lit{stroke-width:2.5px}
+.flow-faint{opacity:.08}
+.flow-card{position:absolute;top:.5rem;right:.5rem;display:grid;gap:.4rem;width:min(24rem,calc(100% - 1rem));max-height:calc(100% - 1rem);overflow:auto;padding:.45rem .65rem;border:1px solid var(--rule);background:var(--bg);font-size:13px}
+.flow-card[hidden]{display:none}
+.flow-card-head{display:flex;align-items:center;gap:.4rem}
+.flow-card-title{flex:1;min-width:0;color:var(--heading);overflow-wrap:anywhere}
+.flow-card-close{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer}
+.flow-card-facts{display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem;margin:0}
+.flow-card-facts dt{color:var(--muted)}
+.flow-card-facts dd{display:flex;flex-wrap:wrap;gap:.3rem;margin:0;min-width:0;overflow-wrap:anywhere}
+.flow-step{display:inline-flex;align-items:center;gap:.3rem;padding:.1rem .45rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.flow-step:hover{border-color:var(--heading);color:var(--heading)}
