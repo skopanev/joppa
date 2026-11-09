@@ -9,7 +9,10 @@ import {flowCamera} from 'board/flow-camera.js';
 import {flowLayout} from 'board/flow-layout.js';
 const SVG='http://www.w3.org/2000/svg';
 // The dot radius, the space of a curve from its dots, and the text lines under a dot.
-const RADIUS=9,GAP=3,LABEL=RADIUS+17,BADGE=17;
+const RADIUS=9,GAP=3,LABEL=RADIUS+19,BADGE=20;
+// The first view uses at most MOST world units for one pixel, so its text is readable. The
+// text sizes of src/board_more.css grow with --u up to the same limit.
+const MOST=1.6;
 function svg(tag,attributes={},cls){
   const element=document.createElementNS(SVG,tag);
   for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
@@ -54,7 +57,7 @@ export function drawFlow(holder,nodes,edges,on){
   holder.prepend(canvas);
   // The view shows every dot and the top of every arc.
   const tops=drawn.filter(e=>e.back).map(e=>e.mid);
-  const camera=flowCamera(canvas);camera.fit([...position.values(),...tops]);
+  const camera=flowCamera(canvas);camera.fit([...position.values(),...tops],undefined,MOST);
   pointer(canvas,camera,on);
   return {canvas,camera,position,parts,edges:drawn};
 }

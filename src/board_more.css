@@ -185,10 +185,12 @@ dialog::backdrop{background:#22222240}
 .flow-back{stroke-dasharray:5 4}
 .flow-arrow-head{fill:var(--heading)}
 .flow-node{stroke:var(--bg);stroke-width:1.5px;cursor:pointer}
-.flow-label,.flow-when,.flow-transfer{text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
-.flow-label{font-size:13px;font-weight:600;fill:var(--heading);cursor:pointer}
-.flow-when{font-size:11px;fill:var(--muted);pointer-events:none}
-.flow-transfer{font-size:11px;fill:var(--link);cursor:pointer}
+/* The text keeps its screen size up to 1.6 world units for one pixel (MOST of flow-draw.js),
+   and shrinks with the drawing when the view is wider. */
+.flow-label,.flow-when,.flow-transfer{--k:min(var(--u, 1), 1.6);text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:calc(3px * var(--k))}
+.flow-label{font-size:calc(13px * var(--k));font-weight:600;fill:var(--heading);cursor:pointer}
+.flow-when{font-size:calc(11px * var(--k));fill:var(--muted);pointer-events:none}
+.flow-transfer{font-size:calc(11px * var(--k));fill:var(--link);cursor:pointer}
 .flow-transfer:hover{text-decoration:underline}
 .flow-lit{opacity:1}
 .flow-edge.flow-lit{stroke-width:2.5px}
