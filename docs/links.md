@@ -64,6 +64,10 @@ page. `next_cursor` is null on the last page. An item gives `address`, `title`, 
 target revision that the edge pins. The removed parameter `links_of` is refused:
 `links_of was removed; use relations_of`.
 
+`in_relation` reads the nodes of one relation: the present nodes that hold the key and the
+present targets of its edges, in address order and in pages of 25. Flow view of the board
+reads it. See [read contract](read-contract.md#nodes-of-one-relation).
+
 ## Other workspaces
 
 One product can use several workspaces, for example one for the product and one for each

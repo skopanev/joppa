@@ -40,6 +40,7 @@ MCP reads have one shape. There is no `verbose` switch.
 | --- | --- | --- |
 | `joppa_objects` lists, also with `fields`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
 | `joppa_objects` with `relations_of` | clamped to 25 | `next_cursor` and `total` |
+| `joppa_objects` with `in_relation` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_objects` detail comments | fixed pages of 25 | `comments_cursor` |
 | `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
@@ -216,6 +217,17 @@ address. `direction`, `relation` and `kind` are optional filters. An item names 
 `relation` and `present`, and `when` and `revision` when they are set. `next_cursor` is
 `direction/relation/address` of the last item. `links_of` is refused:
 `links_of was removed; use relations_of`.
+
+## Nodes of one relation
+
+`{"workspace": "w", "in_relation": "swap"}` gives the nodes of the relation `swap` in pages of
+25 with `total` and `next_cursor`, in address order. A node is in the page when it is present
+and holds the key, also with no edges, or when it is the present target of a `swap` edge of a
+present node. `next_cursor` is the address of the last item. HTTP takes the same key:
+`GET /api/workspaces/{workspace}/objects?in_relation=swap&fields=title,signal,relations`.
+`fields`, `limit` and `cursor` work as on any list. Every other list key is refused:
+`in_relation takes only fields, limit and cursor`. A key outside the registry is refused:
+`unknown link relation`.
 
 ## Writes
 

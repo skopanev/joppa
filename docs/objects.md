@@ -187,7 +187,7 @@ and `note_status` filter the list. Lists give no bodies and no history.
 
 `address` gives one current object: `revision`, `parent`, `data`, `comments`, the
 `relations` with titled edges and the incoming `relation_groups`. `relations_of` gives the
-edges of an object in pages of 25. `revision: N` reads one saved revision. `history: true` gives the revision
+edges of an object in pages of 25, and `in_relation` the nodes of one relation. `revision: N` reads one saved revision. `history: true` gives the revision
 headers. Resolve a copied public ID with `joppa_search`: the reply gives that object with
 `exact_id: true`. See [read contract](read-contract.md) and [read detail](read-detail.md).
 

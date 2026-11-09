@@ -82,32 +82,33 @@ The board shows History as a tab beside the root tabs, newest first, with the sw
 
 ## Board views
 
-The header drop-down Board view (Tree or Graph) changes the board view and keeps the node
+The header drop-down Board view (Tree or Flow) changes the board view and keeps the node
 filters of the link. Every board list reads one page of 25 rows. Load more reads the next page
 with its cursor. Each filter field of the tree schema (`filters`, see
 [schema](schema.md#filter-fields)) adds one drop-down to the filter bar. A choice is a part of
-the `data` node filter.
+the `data` node filter. Any other view in the link opens the tree.
 
 - Tree, `/?workspace=W`: the root collections, the cards and their children.
-- Graph, `/?workspace=W&view=graph`: one SVG of every present node in a live force layout.
-  The graph reads the nodes with
-  `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,relations`.
-  - A dot has the colour of its status tone. Its size shows its level: a root is the
-    largest. Two dots never overlap, and two shown labels never overlap.
-  - A line joins a parent to its child. A dashed arrow goes from a node to each node that
-    `depends_on` it.
-  - A graph of more than 120 nodes shows the top 3 levels first. Detail depth (the `depth`
-    node filter) shows the top 2 levels or all levels.
-  - A filter, a field choice, the Object root picker or a search keeps its subgraph: the
-    matches, the nodes below them and their `depends_on` nodes up and down. Every other
-    node hides.
-  - The flow of a clicked dot, or of a subgraph of at most 24 nodes, is lit: its
-    `depends_on` nodes up to 2 hops away, in flow layers with step numbers and a trail. The
-    other nodes fade to opacity 0.08. A card shows the node, its parent, its data fields, the
-    start of its body and the nodes one step up and down. Focus flow keeps only that flow,
-    and a click on the empty canvas resets it.
-  - A drag of a dot pulls its linked dots. A drag from any other place pans. A wheel or a
-    two-finger swipe pans, and a pinch (a wheel with Ctrl or Cmd, or a Safari gesture) zooms.
+- Flow, `/?workspace=W&view=flow&relation=KEY`: one SVG of the nodes of one relation, from
+  left to right. The picker Relation lists the registry in key order. Without `relation`, the
+  first view is the first key that is not a system key (`depends_on` when there is none), and
+  the link gets no `relation`. A pick writes `relation=KEY` into the link. An unknown key shows
+  the first view. The view reads the nodes in pages of 25 with
+  `GET /api/workspaces/{workspace}/objects?in_relation=KEY&fields=title,signal,relations&limit=25`.
+  - A node is in the column of the longest path to it. A depends_on arrow goes from the
+    blocker to the node that waits. The arrow of any other relation goes from the node to its
+    target. An edge back to an earlier node of a cycle is an arc over its nodes.
+  - A dot has the colour of its status tone. A node shows its own title in the relation, else
+    its object title. The condition `when` of an edge shows on the edge.
+  - A badge ⇄ names each other relation of the node that is not a system relation. A click on
+    the badge opens that relation and picks the node.
+  - A click on a dot lights the node, its neighbours and their edges, and fades the rest to
+    opacity 0.08. A card shows the title, the object title, the address, Open, and the nodes
+    before (Previous) and after (Next) the node. × or a click on the empty canvas clears it.
+  - A filter or a search fades the nodes that do not match. The status line shows only the
+    load, an error, `No node matches these filters.` and `No node holds this relation.`.
+  - A drag pans and picks nothing. A wheel or a two-finger swipe pans, and a pinch (a wheel
+    with Ctrl or Cmd, or a Safari gesture) zooms.
 
 ## Generated IDs and batches
 
