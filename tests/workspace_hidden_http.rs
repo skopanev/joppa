@@ -1,50 +1,39 @@
 //! requirement:owner-manages-workspace over a real server: update_workspace hides a workspace
-//! from the web lists, and every MCP read and write of it works as before.
+//! from the web lists of the member who sends it, and every MCP read and write of it works as
+//! before.
+#[path = "common/hidden_lists.rs"]
+mod hidden_lists;
 #[path = "common/legacy_event.rs"]
 mod legacy_event;
 #[path = "common/record_world.rs"]
 mod record_world;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
+use hidden_lists::{get, hide, listed, ok, web};
 use record_world::World;
-use serde_json::{Value, json};
+use serde_json::json;
 
-/// A GET of the server with the owner token: the HTTP code and the body.
-async fn get(w: &World, path: &str) -> Result<(u16, Value)> {
-    let url = format!("{}{path}", w.root);
-    let reply = w.http.get(url).bearer_auth(&w.owner).send().await?;
-    Ok((reply.status().as_u16(), reply.json().await?))
-}
-
-/// The workspace IDs of a web list: GET /api/workspaces, or the items of GET /api/access.
-async fn web(w: &World, path: &str) -> Result<Vec<String>> {
-    let (code, body) = get(w, path).await?;
-    ensure!(code == 200, "{path}: {code} {body}");
-    let items = body.get("items").unwrap_or(&body).as_array().cloned();
-    let items = items.with_context(|| format!("{path}: {body}"))?;
-    Ok(items
-        .iter()
-        .filter_map(|i| i["id"].as_str().map(String::from))
-        .collect())
-}
-
-/// The joppa_list item of the world workspace for the member of `token`.
-async fn listed(w: &World, token: &str) -> Result<Value> {
-    let list = w.mcp(token, "joppa_list", json!({})).await?;
-    let list = list.map_err(anyhow::Error::msg)?;
-    let items = list["items"].as_array().into_iter().flatten();
-    items
-        .into_iter()
-        .find(|i| i["id"] == w.ws.as_str())
-        .cloned()
-        .context("joppa_list item")
-}
-
-/// The refusal of one command, or an error when the command succeeds.
-async fn refused(w: &World, token: &str, command: Value) -> Result<String> {
-    match w.command(token, command.clone()).await? {
-        Err(text) => Ok(text),
-        Ok(reply) => anyhow::bail!("{command} was accepted: {reply}"),
+/// The lists of O and alex after one step: the web list of each, the joppa_list item of each
+/// with hidden: true only for a member in `hiders`, and GET /api/access of O with W.
+async fn step(w: &World, hiders: &[&str], step: &str) -> Result<()> {
+    for (token, name) in [(&w.owner, "owner"), (&w.alex, "alex")] {
+        let hides = hiders.contains(&name);
+        let lists = web(w, token, "/api/workspaces").await?.contains(&w.ws);
+        ensure!(lists != hides, "{step}: GET /api/workspaces of {name}");
+        let item = listed(w, token).await?;
+        let flag = item.get("hidden");
+        let right = if hides {
+            flag == Some(&json!(true))
+        } else {
+            flag.is_none()
+        };
+        ensure!(right, "{step}: joppa_list of {name}: {item}");
     }
+    let access = web(w, &w.owner, "/api/access").await?;
+    ensure!(
+        access.contains(&w.ws),
+        "{step}: GET /api/access of the owner"
+    );
+    Ok(())
 }
 
 // ac:mwr6am3k
@@ -54,56 +43,23 @@ async fn a_hidden_workspace_leaves_the_web_lists_and_keeps_its_mcp_reads_and_wri
 {
     let w = record_world::world(&[]).await?;
     let ws = w.ws.clone();
-    for path in ["/api/workspaces", "/api/access"] {
-        ensure!(web(&w, path).await?.contains(&ws), "{path} before");
-    }
-    let hide = json!({"op":"update_workspace","hidden":true});
-    let text = refused(&w, &w.alex, hide.clone()).await?;
-    ensure!(
-        text.contains("workspace owner updates the workspace"),
-        "{text}"
-    );
-    let text = refused(
-        &w,
-        &w.owner,
-        json!({"op":"update_workspace","reason":"Nothing"}),
-    )
-    .await?;
-    ensure!(
-        text.contains("update_workspace needs title, workspace_id, reference_prefix or hidden"),
-        "{text}"
-    );
-    let old = json!({"op":"rename_workspace","title":"Old","reason":"Rename"});
-    let text = refused(&w, &w.owner, old).await?;
-    ensure!(
-        text.contains("rename_workspace was removed; use update_workspace"),
-        "{text}"
-    );
+    step(&w, &[], "before").await?;
+    // The member alex hides the workspace only for alex.
+    ok(&w, &w.alex, hide(true)).await?;
+    step(&w, &["alex"], "alex hides").await?;
     // The owner hides the workspace without a reason.
-    w.command(&w.owner, hide)
-        .await?
-        .map_err(anyhow::Error::msg)?;
-    for path in ["/api/workspaces", "/api/access"] {
-        ensure!(
-            !web(&w, path).await?.contains(&ws),
-            "{path} lists the hidden workspace"
-        );
-    }
+    ok(&w, &w.owner, hide(true)).await?;
+    step(&w, &["owner", "alex"], "the owner hides").await?;
     for token in [&w.owner, &w.alex] {
-        let item = listed(&w, token).await?;
+        let (code, board) = get(&w, token, &format!("/api/workspaces/{ws}/board")).await?;
         ensure!(
-            item["hidden"] == true && item["title"] == "Record channel",
-            "{item}"
+            code == 200 && board["workspace"] == ws.as_str(),
+            "{code} {board}"
         );
     }
-    let (code, board) = get(&w, &format!("/api/workspaces/{ws}/board")).await?;
-    ensure!(
-        code == 200 && board["workspace"] == ws.as_str(),
-        "{code} {board}"
-    );
     let save = json!({"op":"save_object","kind":"ac","id":"b","revision":0,"parent":"requirement:r",
         "data":{"title":"B","owner":"owner"},"reason":"Create"});
-    w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
+    ok(&w, &w.bot, save).await?;
     let b = w
         .mcp(&w.bot, "joppa_objects", json!({"address":"ac:b"}))
         .await?;
@@ -113,25 +69,19 @@ async fn a_hidden_workspace_leaves_the_web_lists_and_keeps_its_mcp_reads_and_wri
     );
     // A new title keeps the workspace hidden. hidden: false shows it again.
     let title = json!({"op":"update_workspace","title":"Hidden channel"});
-    w.command(&w.owner, title)
-        .await?
-        .map_err(anyhow::Error::msg)?;
+    ok(&w, &w.owner, title).await?;
+    step(&w, &["owner", "alex"], "a new title").await?;
     ensure!(
-        listed(&w, &w.owner).await?["hidden"] == true,
-        "a new title shows the workspace"
+        listed(&w, &w.owner).await?["title"] == "Hidden channel",
+        "the new title"
     );
     let show = json!({"op":"update_workspace","hidden":false,"reason":"Show again"});
-    w.command(&w.owner, show)
-        .await?
-        .map_err(anyhow::Error::msg)?;
-    for path in ["/api/workspaces", "/api/access"] {
-        ensure!(web(&w, path).await?.contains(&ws), "{path} after");
-    }
-    let item = listed(&w, &w.owner).await?;
-    ensure!(
-        item.get("hidden").is_none() && item["title"] == "Hidden channel",
-        "{item}"
-    );
+    ok(&w, &w.owner, show).await?;
+    step(&w, &["alex"], "the owner shows").await?;
+    ok(&w, &w.alex, hide(false)).await?;
+    step(&w, &[], "alex shows").await?;
+    let item = listed(&w, &w.alex).await?;
+    ensure!(item["title"] == "Hidden channel", "{item}");
     Ok(())
 }
 
@@ -145,7 +95,7 @@ async fn an_old_journal_rename_still_names_the_workspace_after_a_rebuild() -> Re
     let item = listed(&w, &w.owner).await?;
     ensure!(item["title"] == "Old journal name", "{item}");
     ensure!(
-        web(&w, "/api/workspaces").await?.contains(&w.ws),
+        web(&w, &w.owner, "/api/workspaces").await?.contains(&w.ws),
         "the web list"
     );
     Ok(())

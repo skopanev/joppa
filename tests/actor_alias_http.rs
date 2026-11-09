@@ -177,12 +177,31 @@ async fn a_bad_alias_is_refused_and_an_alias_gives_no_access() -> Result<()> {
         "a bad header"
     );
     // A member who is not the owner stays one under any alias.
-    let args = json!({"request_id":"hide","command":{"op":"update_workspace","hidden":true},"alias":"owner"});
+    let args = json!({"request_id":"title","command":{"op":"update_workspace","title":"Taken"},"alias":"owner"});
     let text = w.mcp(&w.alex, "joppa_command", args).await?;
     ensure!(
         text.is_err_and(|t| t.contains("workspace owner updates the workspace")),
         "alias access"
     );
+    // Any member hides the workspace for that member. The alias "owner" hides it only for alex.
+    let args = json!({"request_id":"hide","command":{"op":"update_workspace","hidden":true},"alias":"owner"});
+    w.mcp(&w.alex, "joppa_command", args)
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    for (token, hidden) in [(&w.alex, json!(true)), (&w.owner, Value::Null)] {
+        let list = w.mcp(token, "joppa_list", json!({})).await?;
+        let list = list.map_err(anyhow::Error::msg)?;
+        let item = list["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|i| i["id"] == w.ws.as_str());
+        let item = item.context("joppa_list item")?;
+        ensure!(
+            item["hidden"] == hidden && item["title"] == "Record channel",
+            "{item}"
+        );
+    }
     let args = json!({"request_id":"c","command":save("c", 0, "Агент C"),"alias":"агент1"});
     w.mcp(&w.owner, "joppa_command", args)
         .await?
