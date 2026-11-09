@@ -64,13 +64,15 @@ pub fn of_save(
     }
 }
 
-/// The size limits of a live save.
-pub fn check_limits(relations: &Relations) -> Result<()> {
+/// The size limits of a live save. As with the field limit, only a new or changed key counts,
+/// and only a growing number of keys: an older node over a limit keeps its stored keys.
+pub fn check_limits(relations: &Relations, stored: &Relations) -> Result<()> {
     ensure!(
-        relations.len() <= KEYS_MAX,
+        relations.len() <= KEYS_MAX.max(stored.len()),
         "a node holds at most {KEYS_MAX} relations"
     );
-    for relation in relations.values() {
+    let changed = relations.iter().filter(|(k, r)| stored.get(*k) != Some(*r));
+    for (_, relation) in changed {
         ensure!(
             relation.edges.len() <= EDGES_MAX,
             "a relation holds at most {EDGES_MAX} edges"
@@ -97,7 +99,8 @@ pub fn validate(w: &Workspace, key: &str, relations: &Relations, kept: &Relation
         ensure!(registry.contains_key(name), "unknown link relation");
         let mut unique = BTreeSet::new();
         for edge in &relation.edges {
-            ensure!(unique.insert(&edge.to), "duplicate object link");
+            let to = resolve_address(w, &edge.to);
+            ensure!(unique.insert(to), "duplicate object link");
             let target = w
                 .objects
                 .get(resolve_address(w, &edge.to))

@@ -39,18 +39,26 @@ export function pagedGroup(section,key,name,params,row,rowsClass='object-links')
   group.addEventListener('toggle',()=>{if(group.open&&!loaded)load();});
   return group;
 }
+// A saved revision shows the edges of that revision from the read itself; the current card
+// reads its pages with relations_of.
 export function relationGroups(detail,section,historical){
   return Object.entries(detail.relations||{}).map(([key,relation])=>{
     const edges=relation.edges||[];
     const name=title=>title+(relation.title?' · '+relation.title:'')+' '+edges.length;
-    const params={relations_of:detail.address,direction:'outgoing',relation:key};
-    return pagedGroup(section,key,name,params,item=>{
-      const edge=edges.find(e=>e.to===item.address)||{};
+    const line=item=>{
+      const edge=edges.find(e=>e.to===(item.address||item.to))||item;
+      const address=item.address||item.to;
       const changed=item.revision&&edge.current_revision!==item.revision&&detail.review_required===true;
       const labels=[item.when,item.revision&&'revision '+item.revision,changed&&'changed',item.present===false&&'historical object',historical&&'current title'].filter(Boolean);
-      const line=E('div',undefined,'relation-edge');line.append(objectLink(item.title||item.address,item.address,item.revision));
-      if(labels.length)line.append(E('small',labels.join(' · '),'object-link-meta'));
-      return line;
-    },'relation-edges');
+      const row=E('div',undefined,'relation-edge');row.append(objectLink(item.title||address,address,item.revision));
+      if(labels.length)row.append(E('small',labels.join(' · '),'object-link-meta'));
+      return row;
+    };
+    if(historical){
+      const group=section(name(key),'object-relations link-group'),rows=E('div',undefined,'relation-edges');
+      relationTitles().then(titles=>{group.querySelector('summary').textContent=name(titles[key]||key);});
+      rows.append(...edges.map(line));group.append(rows);return group;
+    }
+    return pagedGroup(section,key,name,{relations_of:detail.address,direction:'outgoing',relation:key},line,'relation-edges');
   });
 }

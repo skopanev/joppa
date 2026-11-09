@@ -21,7 +21,10 @@ pub fn validate_current(w: &Workspace, cmd: &Command) -> Result<()> {
     {
         let relations = relations.as_ref().map(crate::relations::whole);
         let relations = relations.unwrap_or_default();
-        crate::relations::check_limits(&relations)?;
+        let none = crate::relations::Relations::new();
+        let stored = w.objects.get(resolve_address(w, &address(kind, id)));
+        let stored = stored.map_or(&none, |o| &o.current().relations);
+        crate::relations::check_limits(&relations, stored)?;
         validate_wait_cycle(w, &address(kind, id), parent.as_deref(), &relations)?;
     }
     match cmd {

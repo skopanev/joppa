@@ -26,17 +26,23 @@ pub fn tests_only_change(before: &ObjectRevision, after: &ObjectRevision) -> boo
     };
     before.data.get("tests") != after.data.get("tests")
         && before.parent == after.parent
-        && before.relations == after.relations
-        && before.link_form() == after.link_form()
+        // A revision of an older event compares its older links, any other its relations.
+        && match after.older_links.0 {
+            Some(_) => before.link_form() == after.link_form(),
+            None => before.relations == after.relations,
+        }
         && before.present == after.present
         && without(&before.data) == without(&after.data)
 }
 
-/// The revision `after` changes only flow keys of `before`. A flow is no part of the contract,
-/// so a pin of the node stays current. Before relations, no revision has a flow.
+/// The revision `after` changes only flow keys of `before`, or only the title of a key. A
+/// flow and a key title are no part of the contract, so a pin of the node stays current.
+/// Before relations, no revision has a flow or a key title.
 pub fn flow_only_change(before: &ObjectRevision, after: &ObjectRevision) -> bool {
-    let keys = before.relations.keys().chain(after.relations.keys());
-    let mut changed = keys.filter(|k| before.relations.get(*k) != after.relations.get(*k));
+    let (old, new) = (&before.relations, &after.relations);
+    let keys = old.keys().chain(new.keys());
+    let same = |k: &str| old.get(k).map(|r| &r.edges) == new.get(k).map(|r| &r.edges);
+    let mut changed = keys.filter(|k| !same(k));
     before.data == after.data
         && before.parent == after.parent
         && before.present == after.present
