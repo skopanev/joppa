@@ -28,7 +28,7 @@ async fn rebuild(w: &record_world::World) -> Result<()> {
 }
 
 // ac:nd3rb6a1
-// test:TBD
+// test:n68ypuuj
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_manual_check_keeps_its_tone_and_label_when_the_board_is_rebuilt() -> Result<()> {
