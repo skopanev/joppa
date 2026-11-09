@@ -63,7 +63,7 @@ async fn lists(w: &World, alex_hides: bool, step: &str) -> Result<()> {
 }
 
 // ac:k0mrgse5
-// test:TBD
+// test:zd3fuozh
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_browser_session_hides_a_workspace_for_its_member_through_the_hide_route() -> Result<()> {
