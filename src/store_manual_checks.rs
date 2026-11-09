@@ -1,5 +1,5 @@
 //! The check run of the manual checks (manual_checks.rs). At serve start and every 600 seconds
-//! the server turns the expired passes of each workspace grey, without a journal event. The
+//! the server turns the expired passes of each workspace blue, without a journal event. The
 //! stored status of a criterion that a pass with valid_until decides holds that date, so one
 //! read finds the candidates. A run that changes no status writes nothing.
 use super::*;

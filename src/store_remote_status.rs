@@ -177,7 +177,7 @@ pub(crate) async fn child_summary(
     child: &str,
 ) -> Result<Value> {
     if access::check(client, child, actor, false).await.is_err() {
-        return Ok(json!({"workspace": child, "access": false, "status": "grey"}));
+        return Ok(json!({"workspace": child, "access": false, "status": "blue"}));
     }
     let (green, red, total, _) = criteria(client, child, None).await?;
     let status = if red > 0 {
@@ -185,7 +185,7 @@ pub(crate) async fn child_summary(
     } else if total > 0 && green == total {
         "green"
     } else {
-        "grey"
+        "blue"
     };
     Ok(json!({"workspace": child, "access": true, "status": status,
         "criteria": {"green": green, "red": red, "total": total}}))

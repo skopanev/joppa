@@ -1,10 +1,10 @@
 //! Row decoration: the status tone of each node, from one rule for every type.
 //!
 //! The status rule of the type decides, never the kind name:
-//! - `own` (a test node) and `tests`: the test status of the node, green, red or grey.
+//! - `own` (a test node) and `tests`: the test status of the node, green, red or blue.
 //! - `children`: the tones of the present direct children, `links`: the tones of the present
 //!   objects that link to the node by depends_on, related or a reference field, never by a
-//!   flow. The highest tone wins in the order red, orange, yellow, grey, green. A node without
+//!   flow. The highest tone wins in the order red, orange, yellow, blue, green. A node without
 //!   a counted child or link is orange.
 //! - `none`: the process tone stays, and a parent does not count the node.
 //! - A type without a rule is orange.
@@ -16,7 +16,7 @@ use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The tones of a rollup, the winning tone first.
-pub const PRIORITY: [&str; 5] = ["red", "orange", "yellow", "grey", "green"];
+pub const PRIORITY: [&str; 5] = ["red", "orange", "yellow", "blue", "green"];
 
 pub(super) fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
     let found: BTreeSet<&str> = tones.into_iter().collect();
@@ -175,16 +175,16 @@ pub(super) fn tone_of(
     let kind = kinds.get(address)?;
     let item = items.get(address)?;
     let rule = |kind: &str| rule_of(types, kind);
-    // A cycle through links counts as grey.
+    // A cycle through links counts as blue.
     if !seen.insert(address.to_owned()) {
-        return Some("grey");
+        return Some("blue");
     }
     let own = match rule(kind) {
         "own" | "tests" => Some(
             match statuses.get(address).and_then(|s| s["status"].as_str()) {
                 Some("green") => "green",
                 Some("red") => "red",
-                _ => "grey",
+                _ => "blue",
             },
         ),
         "children" | "links" => {

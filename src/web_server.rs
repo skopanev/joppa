@@ -28,7 +28,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     let embedder = joppa::embeddings::Embedder::from_env()?;
     // The status projection of an older code version catches up after the start.
     tokio::spawn(joppa::store::status_projection_loop(pool.clone()));
-    // The expired manual checks turn grey at the start and every 600 seconds.
+    // The expired manual checks turn blue at the start and every 600 seconds.
     tokio::spawn(joppa::store::manual_check_loop(pool.clone()));
     tokio::spawn(joppa::store::search_indexer::run(
         pool.clone(),

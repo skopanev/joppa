@@ -3,7 +3,7 @@
 //! The server appends one internal event to each workspace that names the deleted one.
 //! The event removes the remote links to it and the child workspace binding of each node.
 //! Each change is a normal change of the source: the remote links get a new revision, a
-//! node gets a new object revision, and the criteria at and below it turn grey.
+//! node gets a new object revision, and the criteria at and below it turn blue.
 use crate::model::Workspace;
 use anyhow::{Result, ensure};
 use serde_json::Value;

@@ -2,7 +2,7 @@
 //!
 //! The block holds every rule of tests and results. It gives the status names of a
 //! result and the outcome that each name counts as, the fields of a result, the limits,
-//! and the rules that make a criterion green, red or grey. The
+//! and the rules that make a criterion green, red or blue. The
 //! live code reads only this block. The event migrate_test_rules writes the block into
 //! each workspace, see test_rules. The fields test, status and commit are the frame of a
 //! record, and pass, fail, skip and todo are the outcomes that the rules use.

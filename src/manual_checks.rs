@@ -7,9 +7,9 @@
 //! criterion, the latest live file with a check result decides, from the files that the server
 //! recorded after the boundary of the criterion (`Workspace::criterion_boundaries`). A file at
 //! the same time as the boundary does not count. Without reset_on_change, every file counts.
-//! fail gives red. pass gives green until the UTC date valid_until starts, then grey "Manual
-//! check expired". Only older files give grey "Awaits checks". Without files the criterion
-//! stays grey "no tests". The status projection uses the UTC date of today, and
+//! fail gives red. pass gives green until the UTC date valid_until starts, then blue "Manual
+//! check expired". Only older files give blue "Awaits checks". Without files the criterion
+//! stays blue "no tests". The status projection uses the UTC date of today, and
 //! store::expire_manual_checks the day of its run.
 use crate::ac_tests::{Boundary, CriterionStatus};
 use crate::model::Workspace;
@@ -92,7 +92,7 @@ pub fn tone(status: Option<&serde_json::Value>) -> Option<&'static str> {
     Some(match status["status"].as_str() {
         Some("green") => "green",
         Some("red") => "red",
-        _ => "grey",
+        _ => "blue",
     })
 }
 
@@ -156,7 +156,7 @@ impl Checks {
     }
 
     /// The status of a criterion without test nodes, and the expiry date of a deciding pass.
-    /// A criterion without checks gives none and keeps grey "no tests".
+    /// A criterion without checks gives none and keeps blue "no tests".
     pub fn decide(
         &self,
         address: &str,
@@ -175,9 +175,9 @@ impl Checks {
             .max_by(|a, b| a.at_us.cmp(&b.at_us).then_with(|| a.id.cmp(&b.id)));
         let expires = latest.filter(|c| c.pass).and_then(|c| c.valid_until);
         let (status, reason) = match latest {
-            None => ("grey", Some(AWAITS)),
+            None => ("blue", Some(AWAITS)),
             Some(c) if !c.pass => ("red", None),
-            Some(_) if expires.is_some_and(|d| d <= self.day) => ("grey", Some(EXPIRED)),
+            Some(_) if expires.is_some_and(|d| d <= self.day) => ("blue", Some(EXPIRED)),
             Some(_) => ("green", None),
         };
         let status = CriterionStatus {
