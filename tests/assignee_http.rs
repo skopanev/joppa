@@ -14,8 +14,8 @@ async fn an_agent_alias_is_an_assignee_that_lists_and_filters_show() -> Result<(
     let data = |title: &str| json!({"title":title,"owner":"owner","body":"Do the work"});
     let mut held = data("Held");
     held["assignee"] = json!("lane3");
-    save(&w, "task", "t1", "ac:a", held, json!([])).await?;
-    save(&w, "task", "t2", "ac:a", data("Free"), json!([])).await?;
+    save(&w, "task", "t1", "ac:a", held, json!({})).await?;
+    save(&w, "task", "t2", "ac:a", data("Free"), json!({})).await?;
     let page = w
         .mcp(&w.bot, "joppa_objects", json!({"kind":"task","parent":"*"}))
         .await?;

@@ -160,11 +160,13 @@ async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text
         .cloned()
         .unwrap_or_default();
     let text = command["description"].as_str().unwrap_or_default();
+    // Relations replace the links field: the text teaches relations and no links field.
     ensure!(
-        text.contains("links array of save_object")
+        text.contains("relations")
             && text.contains(r#"{"op":"note","target":"kind:id""#)
-            && text.contains("use links and the note op"),
-        "joppa_command does not send links and comments out of object text: {text}"
+            && !text.contains("links array of save_object")
+            && !text.contains("use links and the note op"),
+        "joppa_command does not send relations and comments out of object text: {text}"
     );
     let help = w
         .mcp(&w.bot, "joppa_help", json!({"section":"objects"}))

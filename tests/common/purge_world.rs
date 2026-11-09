@@ -69,7 +69,7 @@ pub async fn workspace(
         "owner",
         json!({"op":"save_object","kind":"note","id":"n","revision":0,"parent":null,
         "data":{"title":"Source note","owner":"owner","body":"Input"},
-        "links":[{"target":"domain:d","relation":"related"}],"reason":"Fixture"}),
+        "relations":{"related":{"edges":[{"to":"domain:d"}]}},"reason":"Fixture"}),
     )
     .await?;
     store::mark_history(

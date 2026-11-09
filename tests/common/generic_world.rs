@@ -32,10 +32,10 @@ pub async fn save(
     id: &str,
     parent: &str,
     data: Value,
-    links: Value,
+    relations: Value,
 ) -> Result<()> {
     let command = json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,
-        "data":data,"links":links,"reason":"Plan the work"});
+        "data":data,"relations":relations,"reason":"Plan the work"});
     w.command(&w.bot, command)
         .await?
         .map_err(anyhow::Error::msg)?;
