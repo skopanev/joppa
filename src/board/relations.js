@@ -6,14 +6,19 @@ import {E} from 'board/dom.js';
 import {api,objectPart,PAGE} from 'board/api.js';
 import {objectLink} from 'board/links.js';
 import {notify} from 'board/feedback.js';
-let registry={ws:null,titles:null};
-// The title of each relation key of the workspace. One read of the tree for each workspace.
-export function relationTitles(){
+let registry={ws:null,relations:null};
+// The registry of relations of the workspace: {key: {title, description, system}}. One read
+// of the tree for each workspace.
+export function relationRegistry(){
   if(registry.ws!==state.ws){
-    const titles=api('workspaces/'+encodeURIComponent(state.ws)+'/tree').then(c=>Object.fromEntries(Object.entries(c.schema.relations||{}).map(([key,r])=>[key,r.title||key]))).catch(()=>({}));
-    registry={ws:state.ws,titles};
+    const relations=api('workspaces/'+encodeURIComponent(state.ws)+'/tree').then(c=>c.schema.relations||{}).catch(()=>({}));
+    registry={ws:state.ws,relations};
   }
-  return registry.titles;
+  return registry.relations;
+}
+// The title of each relation key of the workspace.
+export function relationTitles(){
+  return relationRegistry().then(relations=>Object.fromEntries(Object.entries(relations).map(([key,r])=>[key,r.title||key])));
 }
 // A group that reads the pages of `params` when it opens. `name` gives the summary from the
 // title of the relation, and `row` gives the row of one item. The outgoing edges sit in
