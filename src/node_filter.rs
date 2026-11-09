@@ -8,6 +8,7 @@
 //! - `kind` and `status` take one value or a list.
 //! - `status` is the stored tone of the node: the rollup tone, else the signal tone. The tone
 //!   `purple` marks archived nodes: a list read with it also keeps the current archived nodes.
+//!   The older name of the tone blue reads as blue (status_colors_alias.rs).
 //! - `owner` is `data.owner` and `assignee` is `data.assignee`. Any node can have both.
 //! - `ready` is false when the node waits for a blocking dependency. A node of a type with the
 //!   status rule `children` or `links` is ready only when every counted child or linking object
@@ -65,7 +66,12 @@ impl NodeFilter {
         };
         // A parent address reads its direct children unless depth asks for more levels.
         let depth = depth.or_else(|| parent.as_deref().filter(|p| *p != "*").map(|_| 1));
-        let statuses = list(a, "status")?;
+        // A read filter takes the older tone as blue.
+        let statuses = list(a, "status")?.map(|tones| {
+            (tones.iter())
+                .map(|t| crate::status_colors::filter_tone(t).to_owned())
+                .collect::<Vec<_>>()
+        });
         for tone in statuses.iter().flatten() {
             ensure!(
                 STATUS_TONES.contains(&tone.as_str()),

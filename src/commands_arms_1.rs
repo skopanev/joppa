@@ -53,6 +53,15 @@ pub(super) fn apply_set_tree_schema(
         put_types.as_ref(),
         remove_types.as_ref(),
     )?;
+    // A replay reads a stored status list as this release does. A live list stays as sent.
+    use crate::status_colors::{stored_colors, stored_statuses};
+    let (status_colors, statuses) = match w.replaying {
+        true => (
+            status_colors.clone().map(stored_colors),
+            statuses.clone().map(stored_statuses),
+        ),
+        false => (status_colors.clone(), statuses.clone()),
+    };
     crate::objects::set_schema(
         w,
         actor,
