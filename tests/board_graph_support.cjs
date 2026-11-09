@@ -19,7 +19,7 @@ const world = {
     await f.save('domain:ship', 'Shipping', null, 'alex');
     const criterion = (id, title, parent, owner, target, tags) => f.command({op: 'save_object', kind: 'ac', id, revision: 0, parent,
       data: {title, owner, body: 'Fixture text', ...(tags ? {tags} : {})}, reason: 'Define the graph fixture',
-      links: target ? [{target, relation: 'depends_on', blocking: true}] : []});
+      ...(target ? {relations: {depends_on: {edges: [{to: target}]}}} : {})});
     await criterion('a', 'Zebra card capture', 'domain:pay', 'alex', null, ['swap']);
     await criterion('b', 'Refund the capture', 'domain:pay', 'alex', 'ac:a');
     await criterion('c', 'Ship after the refund', 'domain:ship', 'maria', 'ac:b');

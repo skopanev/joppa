@@ -140,18 +140,18 @@ assert 'archive_object' in operations and 'restore_object' in operations
 assert mcp('joppa_tree', {'workspace':ws})['schema']['revision'] == 9
 common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':None,
           'data':{'title':'Source note','owner':'owner','body':'Original text'},
-          'links':[{'target':'domain:security','relation':'related'}],'reason':'Record new information'}
+          'relations':{'related':{'edges':[{'to':'domain:security'}]}},'reason':'Record new information'}
 created = mcp('joppa_command', {'workspace':ws,'request_id':'common-note','command':common})
 common.update(revision=1, data={**common['data'],'body':'Updated text'})
 mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})
 old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1})
 assert old['data']['body'] == 'Original text' and old['revision'] == 1 and old['current_revision'] == 2
-assert 'historical' not in old and old.get('process') is None and not old.get('link_groups') and not old.get('annotations')
+assert 'historical' not in old and old.get('process') is None and not old.get('relation_groups') and not old.get('annotations')
 assert request('/api/workspaces/'+ws+'/objects?address=note:source')[1]['document']['revision'] == 2
 assert request('/api/workspaces/'+ws+'/tree')[1]['current_revision'] == 9
 empty = mcp('joppa_command', {'workspace':ws,'request_id':'empty-group',
     'command':{'op':'save_object','kind':'domain','id':'unused','revision':0,'parent':None,
-        'data':{'title':'Unused group','owner':'owner'},'links':[], 'reason':'Create an empty group'}})
+        'data':{'title':'Unused group','owner':'owner'}, 'reason':'Create an empty group'}})
 archive = {'op':'archive_object','target':'domain:unused','revision':1,'reason':'Archive an empty group'}
 mcp('joppa_command', {'workspace':ws,'request_id':'archive-group','command':archive}, owner_token)
 assert mcp('joppa_objects', {'workspace':ws,'address':'domain:unused'})['present'] is False

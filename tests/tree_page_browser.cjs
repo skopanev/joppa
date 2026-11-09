@@ -21,7 +21,8 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
     const expected = {
       roots: ['Areas', 'Memos'],
       edges: ['Areas → Rules', 'Rules → Checks', 'Workspace → Memos', 'Any object type → Memos', 'Workspace → Areas', 'Checks → Work'].sort(),
-      relations: ['related', 'depends_on'],
+      // The page lists each relation key of the registry; the API check below proves the keys.
+      relations: ['depends_on', 'related'],
       priorities: ['urgent', 'normal', 'later'],
       filters: ['tags', 'priority'],
       'status-rules': ['Areas: Highest tone of its children', 'Checks: Highest tone of its children', 'Memos: Process status',
@@ -29,7 +30,12 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
     };
     const saved = (await f.api('/tree')).schema;
     assert.deepEqual(saved.priority_levels, expected.priorities);
-    assert.deepEqual(saved.link_relations, expected.relations);
+    assert.equal(saved.link_relations, undefined);
+    assert.deepEqual(saved.relations, {
+      depends_on: {title: 'Depends on', description: 'The node waits until the target is green. No cycles.', system: true},
+      related: {title: 'Related', description: 'A reference between nodes that blocks nothing.', system: true},
+    });
+    assert.deepEqual(Object.keys(saved.relations).sort(), expected.relations);
     assert.deepEqual(saved.filters, expected.filters);
     assert.deepEqual(saved.status_rules, {area: 'children', check: 'children', memo: 'none', rule: 'children', work: 'links'});
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws));
@@ -38,7 +44,7 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
     await f.page.locator('#config-priorities li').first().waitFor();
     const rendered = await f.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.schema-config [data-category]')]
       .map(list => [list.dataset.category, [...list.children].map(item => item.textContent)])));
-    assert.deepEqual({...rendered, roots: [...rendered.roots].sort(), edges: [...rendered.edges].sort(), 'status-rules': [...rendered['status-rules']].sort()},
+    assert.deepEqual({...rendered, roots: [...rendered.roots].sort(), edges: [...rendered.edges].sort(), relations: [...rendered.relations].sort(), 'status-rules': [...rendered['status-rules']].sort()},
       {...expected, roots: [...expected.roots].sort(), 'status-rules': [...expected['status-rules']].sort()});
     // The diagram draws one line for each parent rule and each root type.
     const lines = await f.page.locator('.schema-edge:not(.reference-edge)').evaluateAll(paths => paths.map(path => path.dataset.source + '>' + path.dataset.target).sort());
