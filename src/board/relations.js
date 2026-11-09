@@ -8,14 +8,19 @@ import {objectLink} from 'board/links.js';
 import {notify} from 'board/feedback.js';
 let registry={ws:null,relations:null};
 // The registry of relations of the workspace: {key: {title, description, system}}. One read
-// of the tree for each workspace.
+// of the tree for each workspace and board load. A failed read gives {} and is not kept.
 export function relationRegistry(){
   if(registry.ws!==state.ws){
-    const relations=api('workspaces/'+encodeURIComponent(state.ws)+'/tree').then(c=>c.schema.relations||{}).catch(()=>({}));
+    const relations=api('workspaces/'+encodeURIComponent(state.ws)+'/tree').then(c=>c.schema.relations||{}).catch(()=>{
+      if(registry.relations===relations)forgetRelations();
+      return {};
+    });
     registry={ws:state.ws,relations};
   }
   return registry.relations;
 }
+// A board load reads the registry again, so a new relation key shows.
+export function forgetRelations(){registry={ws:null,relations:null};}
 // The title of each relation key of the workspace.
 export function relationTitles(){
   return relationRegistry().then(relations=>Object.fromEntries(Object.entries(relations).map(([key,r])=>[key,r.title||key])));

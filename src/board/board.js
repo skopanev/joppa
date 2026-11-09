@@ -8,11 +8,12 @@ import {clearBoard} from 'board/workspaces.js';
 import {inboxKinds} from 'board/object-types.js';
 import {rootCollectionTabs} from 'board/collections.js';
 import {renderFlowPage,closeFlowPage} from 'board/flow.js';
+import {forgetRelations} from 'board/relations.js';
 import {renderObjectPage} from 'board/object-page.js';
 import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
 import {commonNotes} from 'board/notes.js';
 export async function load() {
-  closeAccountMenu();
+  closeAccountMenu();forgetRelations();
   const request = ++state.loadNumber;
   let next;
   // The response and the error of an older selection are not shown.
