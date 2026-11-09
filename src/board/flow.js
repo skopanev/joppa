@@ -16,7 +16,7 @@ import {commonObjectFilters,matches} from 'board/filters.js';
 import {relationRegistry,relationTitles} from 'board/relations.js';
 import {drawFlow} from 'board/flow-draw.js';
 import {flowCard} from 'board/flow-card.js';
-const FIELDS='title,signal,relations',FILTER_PAGE='100',SEARCH_PAGE='50';
+const FIELDS='title,signal,relations';
 // The shown page. A new board render closes it first.
 let shown=null;
 // Free the camera of the shown drawing before its canvas leaves the page.
@@ -117,9 +117,10 @@ function paint(ui){
     nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>toneOf(nodes.get(a))}:{});
 }
 // The addresses that match the filters: the node list for the filters, the search for a text.
+// Both read every page of 25.
 async function matchSet(text,params,scope,current){
   const clean={...params};delete clean.depth;
-  const list=text?{...clean,q:text,limit:SEARCH_PAGE,...scope}:{parent:'*',...clean,limit:FILTER_PAGE,fields:'kind'};
+  const list=text?{...clean,q:text,limit:PAGE,...scope}:{parent:'*',...clean,limit:PAGE,fields:'kind'};
   const found=new Set();let cursor;
   do{
     const part=await matches(text,cursor?{...list,cursor}:list);if(!current())return undefined;
@@ -127,7 +128,7 @@ async function matchSet(text,params,scope,current){
       if(!text)found.add(item.address);
       else if(item.workspace===state.ws&&!item.historical)found.add(item.kind+':'+item.id);
     }
-    cursor=text?null:part.next_cursor;
+    cursor=part.next_cursor;
   }while(cursor);
   return found;
 }
