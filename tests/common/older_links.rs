@@ -1,6 +1,7 @@
 //! The stored rows of the older release (9a3887e, the master before requirement:q438uw0s) for
 //! the test of migration 062: documents, state rows and journal commands with links, rows of
 //! object_links with blocking, and no relations_reset epoch. Also the row reads of the test.
+//! Migration 062 keeps the blocking column of object_links.
 #![allow(dead_code)]
 use super::record_world::World;
 use super::relations_world::link;
@@ -116,9 +117,6 @@ pub async fn store_older_form(w: &World) -> Result<()> {
     // off, in this transaction only.
     conn.batch_execute("ALTER TABLE joppa.events DISABLE TRIGGER events_worm")
         .await?;
-    // The older table has the blocking column.
-    let column = "ALTER TABLE joppa.object_links ADD COLUMN IF NOT EXISTS blocking boolean NOT NULL DEFAULT false";
-    conn.batch_execute(column).await?;
     let sql =
         "SELECT address,revision,document::text FROM joppa.object_revisions WHERE workspace=$1";
     for row in conn.query(sql, &[&w.ws]).await? {
