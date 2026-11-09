@@ -57,7 +57,7 @@ fn keys_named(value: &Value, key: &str, path: &str, found: &mut Vec<String>) {
 }
 
 // ac:sz1ankav
-// test:TBD
+// test:d8drobju
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn tools_list_gives_the_writing_rules_once_and_short_text_field_descriptions() -> Result<()> {
@@ -88,7 +88,7 @@ async fn tools_list_gives_the_writing_rules_once_and_short_text_field_descriptio
 }
 
 // ac:bu6ms6hi
-// test:TBD
+// test:e3f2yznd
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_page_and_file_size_hints_are_in_initialize_and_not_in_each_tool() -> Result<()> {
@@ -130,7 +130,7 @@ async fn the_page_and_file_size_hints_are_in_initialize_and_not_in_each_tool() -
 }
 
 // ac:unjllzrh
-// test:TBD
+// test:tov0ash9
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn tools_list_is_at_least_4500_bytes_smaller() -> Result<()> {
@@ -146,7 +146,7 @@ async fn tools_list_is_at_least_4500_bytes_smaller() -> Result<()> {
 }
 
 // ac:61lt9q80
-// test:TBD
+// test:fyvtn6ty
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn joppa_batch_stays_listed_with_a_short_command_schema_and_saves_two_objects() -> Result<()>

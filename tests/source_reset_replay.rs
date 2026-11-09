@@ -70,7 +70,7 @@ async fn epoch(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Option<i64>> 
 }
 
 // ac:olgpns23
-// test:TBD
+// test:rpb6friz
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_replay_keeps_the_old_meaning_before_the_source_change_reset_epoch() -> Result<()> {

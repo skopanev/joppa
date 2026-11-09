@@ -18,7 +18,7 @@ fn file<'a>(files: &'a [Value], id: &str) -> Result<&'a Value> {
 }
 
 // ac:kd844dik
-// test:TBD
+// test:pew7836h
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_stores_check_result_and_valid_until() -> Result<()> {
@@ -62,7 +62,7 @@ async fn attach_stores_check_result_and_valid_until() -> Result<()> {
 }
 
 // ac:h506eqs2
-// test:TBD
+// test:9cpsf58w
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_refuses_a_bad_check_result_or_valid_until_and_stores_nothing() -> Result<()> {

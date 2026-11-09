@@ -28,7 +28,7 @@ async fn xmins(w: &record_world::World) -> Result<Vec<(String, String)>> {
 }
 
 // ac:x3l2e9l5
-// test:TBD
+// test:h72tfyyn
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_expired_manual_check_turns_grey_at_the_next_check_run_without_a_write() -> Result<()> {

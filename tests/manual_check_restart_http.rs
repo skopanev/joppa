@@ -20,7 +20,7 @@ const TABLES: [&str; 7] = [
 ];
 
 // ac:65ycqdmb
-// test:TBD
+// test:rq6f7as1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_pass_with_valid_until_today_is_grey_at_once_and_after_a_restart() -> Result<()> {

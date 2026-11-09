@@ -41,7 +41,7 @@ async fn step(
 }
 
 // ac:mnecdzab
-// test:TBD
+// test:3s2vaghc
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Result<()> {
