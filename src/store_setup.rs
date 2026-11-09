@@ -99,6 +99,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/058_test_node_records.sql"),
         include_str!("../migrations/059_search_and_reference_indexes.sql"),
         include_str!("../migrations/060_source_change_reset.sql"),
+        HIDDEN_BY,
     ] {
         tx.batch_execute(sql).await?;
     }
@@ -116,6 +117,9 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
     tx.commit().await?;
     Ok(())
 }
+/// Migration 061 moves the older hidden flag without a replay. It runs at serve start too: a
+/// server that starts without `joppa migrate` reads no older flag.
+const HIDDEN_BY: &str = include_str!("../migrations/061_hidden_by.sql");
 pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
@@ -123,6 +127,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
         .await?;
     // Migrations rebuild projections from the journal as it is (see migration 037).
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
+    tx.batch_execute(HIDDEN_BY).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())

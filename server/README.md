@@ -70,6 +70,11 @@ Before it stops the service, each deploy writes a checked custom-format dump to
 last deploy. When `/etc/joppa/backup.env` exists, it also runs `joppa-backup.service` once.
 A failed dump or backup stops the deploy while the old version still runs.
 
+Before you change `BOARD_PROJECTION_VERSION`, time `joppa migrate` on a copy of the
+production database. Do the same for any other change that replays journals at start.
+Put the measured time in the deploy request. If a replay runs too long, the service
+stays down until the migration ends.
+
 A failed application health check restores the previous binary when available;
 database migrations and configuration changes are not rolled back. The final
 check calls the public HTTPS health endpoint. This does not verify Google login
