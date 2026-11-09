@@ -174,16 +174,16 @@ async fn the_write_schema_names_data_owner_and_a_save_without_it_is_refused() ->
         .await?
         .json()
         .await?;
-    for name in ["joppa_command", "joppa_batch"] {
-        let tool = reply["result"]["tools"]
-            .as_array()
-            .and_then(|t| t.iter().find(|t| t["name"] == name));
-        let text = tool.map(Value::to_string).unwrap_or_default();
-        ensure!(
-            text.contains("data.owner: the member ID of a human owner, required on every save"),
-            "{name} does not name data.owner"
-        );
-    }
+    let tool = reply["result"]["tools"]
+        .as_array()
+        .and_then(|t| t.iter().find(|t| t["name"] == "joppa_command"));
+    let schema = tool
+        .map(|t| t["inputSchema"].to_string())
+        .unwrap_or_default();
+    ensure!(
+        schema.contains("data.owner: the member ID of a human owner, required on every save"),
+        "the schema of joppa_command does not name data.owner"
+    );
     let save = json!({"op":"save_object","kind":"requirement","id":"nobody","revision":0,
         "parent":null,"data":{"title":"No owner","body":"A rule"},"reason":"Create"});
     let refused = w.command(&w.bot, save).await?;

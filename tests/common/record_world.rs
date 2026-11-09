@@ -4,25 +4,19 @@
 #![allow(dead_code)]
 #[path = "fake_spaces.rs"]
 pub mod fake_spaces;
+#[path = "serve.rs"]
+pub mod serve;
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
 
 pub const A: &str = "ac:a"; // The criterion of each fixture.
 
-struct Server(Child);
-impl Drop for Server {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 pub struct World {
-    _server: Server,
-    _dir: std::path::PathBuf,
+    server: Option<serve::Server>,
+    url: String,
+    port: u16,
+    dir: std::path::PathBuf,
     pub root: String,
     pub ws: String,
     pub owner: String,
@@ -87,45 +81,34 @@ pub async fn world(tests: &[&str]) -> Result<World> {
         .local_addr()?
         .port();
     let root = format!("http://127.0.0.1:{port}");
-    let server = Server(
-        Command::new(env!("CARGO_BIN_EXE_joppa"))
-            .args(["serve", &port.to_string()])
-            .env("JOPPA_DATABASE_URL", &url)
-            .env("JOPPA_TOKENS_FILE", &tokens)
-            .env_remove("JOPPA_LOGIN_USERS_FILE")
-            .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
-            .env_remove("JOPPA_ACCESS_RULES_FILE")
-            .env("DEEPINFRA_API_KEY", "test-only-key")
-            .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
-            .envs(fake_spaces::start().env())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?,
-    );
-    for _ in 0..100 {
-        if reqwest::get(format!("{root}/health"))
-            .await
-            .is_ok_and(|r| r.status().is_success())
-        {
-            return Ok(World {
-                _server: server,
-                _dir: dir,
-                root,
-                ws,
-                owner,
-                bot,
-                alex,
-                outsider,
-                pool,
-                http: reqwest::Client::new(),
-            });
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    anyhow::bail!("server did not start")
+    let server = Some(serve::start(&url, &tokens, port).await?);
+    Ok(World {
+        server,
+        url,
+        port,
+        dir,
+        root,
+        ws,
+        owner,
+        bot,
+        alex,
+        outsider,
+        pool,
+        http: reqwest::Client::new(),
+    })
 }
 
 impl World {
+    /// Stop the server. The database keeps its rows.
+    pub fn stop(&mut self) {
+        self.server = None;
+    }
+    /// Start the server again on the same port, database and tokens.
+    pub async fn start(&mut self) -> Result<()> {
+        let tokens = self.dir.join("tokens.json");
+        self.server = Some(serve::start(&self.url, &tokens, self.port).await?);
+        Ok(())
+    }
     /// One MCP tool call. Without a token, the call has no session. Gives the HTTP code and body.
     pub async fn mcp_raw(
         &self,

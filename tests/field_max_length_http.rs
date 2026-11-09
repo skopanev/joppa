@@ -1,7 +1,7 @@
 //! requirement:field-length-limit over a real server: a type sets field_max_length from 1 to
-//! 262144 characters, a save of that type uses it, other types keep 1024, and joppa_tree,
-//! joppa_command, joppa_batch, joppa_help and /tree give the advice "Over 1 kb: prefer
-//! attach as a file".
+//! 262144 characters, a save of that type uses it, other types keep 1024, and the initialize
+//! instructions, joppa_tree, joppa_help and /tree give the advice "Over 1 kb: prefer attach as
+//! a file".
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -86,24 +86,26 @@ async fn a_type_sets_its_field_max_length_up_to_262144_characters() -> Result<()
 // field-limit-hint
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_tools_and_the_tree_page_say_over_1_kb_prefer_attach_as_a_file() -> Result<()> {
+async fn initialize_the_replies_and_the_tree_page_say_over_1_kb_prefer_attach_as_a_file()
+-> Result<()> {
     let w = record_world::world(&[]).await?;
     let reply: Value = w
         .http
         .post(format!("{}/mcp", w.root))
         .bearer_auth(&w.bot)
-        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}))
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
         .send()
         .await?
         .error_for_status()?
         .json()
         .await?;
-    let tools = reply["result"]["tools"].as_array().context("tools")?;
-    for name in ["joppa_tree", "joppa_command", "joppa_batch", "joppa_help"] {
-        let tool = tools.iter().find(|t| t["name"] == name).context("tool")?;
-        let text = tool["description"].as_str().unwrap_or_default();
-        ensure!(text.contains(HINT), "{name}: {text}");
-    }
+    let instructions = reply["result"]["instructions"]
+        .as_str()
+        .context("instructions")?;
+    ensure!(
+        instructions.contains(HINT),
+        "the initialize instructions do not hold the hint"
+    );
     for tool in ["joppa_tree", "joppa_help"] {
         let read = ok(w.mcp(&w.bot, tool, json!({})).await?)?;
         ensure!(read["field_hint"] == HINT, "{tool}: no field_hint");

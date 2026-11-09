@@ -112,19 +112,17 @@ async fn the_write_tools_and_the_save_examples_name_the_limit() -> Result<()> {
         .error_for_status()?
         .json()
         .await?;
-    for name in ["joppa_command", "joppa_batch"] {
-        let tool = reply["result"]["tools"]
-            .as_array()
-            .and_then(|tools| tools.iter().find(|t| t["name"] == name))
-            .cloned()
-            .unwrap_or_default();
-        let text = tool["description"].as_str().unwrap_or_default();
-        ensure!(
-            text.contains("at most the field_max_length of its type (default 1024 characters)")
-                && text.contains(joppa::field_limit::HINT),
-            "{name} does not name the limit"
-        );
-    }
+    let tool = reply["result"]["tools"]
+        .as_array()
+        .and_then(|tools| tools.iter().find(|t| t["name"] == "joppa_command"))
+        .cloned()
+        .unwrap_or_default();
+    let text = tool["description"].as_str().unwrap_or_default();
+    ensure!(
+        text.contains("at most the field_max_length of its type (default 1024 characters)")
+            && text.contains(joppa::field_limit::HINT),
+        "joppa_command does not name the limit: {text}"
+    );
     let help = w
         .mcp(&w.bot, "joppa_help", json!({"section":"examples"}))
         .await?; // mcp() adds the workspace
@@ -156,29 +154,17 @@ async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text
         .as_array()
         .cloned()
         .unwrap_or_default();
-    for name in ["joppa_command", "joppa_batch"] {
-        let tool = tools
-            .iter()
-            .find(|t| t["name"] == name)
-            .cloned()
-            .unwrap_or_default();
-        let text = tool["description"].as_str().unwrap_or_default();
-        ensure!(
-            text.contains("links array of save_object")
-                && text.contains(r#"{"op":"note","target":"kind:id""#),
-            "{name} does not send links and comments out of object text"
-        );
-    }
     let command = tools
         .iter()
         .find(|t| t["name"] == "joppa_command")
         .cloned()
         .unwrap_or_default();
+    let text = command["description"].as_str().unwrap_or_default();
     ensure!(
-        command["inputSchema"]["properties"]["command"]["properties"]["body"]["description"]
-            .as_str()
-            .is_some_and(|d| d.contains("use links and the note op")),
-        "the text field schema does not name links and the note op"
+        text.contains("links array of save_object")
+            && text.contains(r#"{"op":"note","target":"kind:id""#)
+            && text.contains("use links and the note op"),
+        "joppa_command does not send links and comments out of object text: {text}"
     );
     let help = w
         .mcp(&w.bot, "joppa_help", json!({"section":"objects"}))
