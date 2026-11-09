@@ -37,7 +37,7 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
             key,
             parent,
             json!({"title":key,"body":"Group scope","owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
     }
@@ -46,14 +46,14 @@ async fn branches(w: &World) -> Result<Planning<'_>> {
             spec,
             Some(area),
             json!({"title":spec,"body":"Implement the rule","owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
         p.save(
             criterion,
             Some(spec),
             json!({"title":criterion,"owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
         p.bind(&w.token, criterion, &[A, B]).await?;

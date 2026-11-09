@@ -90,7 +90,7 @@ fn removing_a_type_that_has_objects_is_refused() {
         "owner",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Base"}),
     );
-    w.ok("agent", note("a", 0, json!([])));
+    w.ok("agent", note("a", 0, json!({})));
     let mut without = types.clone();
     without.as_object_mut().unwrap().remove("note");
     refused(

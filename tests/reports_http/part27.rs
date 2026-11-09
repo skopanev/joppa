@@ -19,10 +19,15 @@ impl Planning<'_> {
         ensure!(code.is_success(), "{code} {}", reply.text().await?);
         Ok(())
     }
-    /// Owner S saves R over HTTP with `parent`, `title` and `relations`.
+    /// Owner S saves R over HTTP with `parent`, `title` and `relations`. Only an object is
+    /// sent as relations: a save with no edges omits them.
     async fn save_r(&self, parent: &str, title: &str, relations: Value) -> Result<()> {
         let revision = self.revision("spec:r").await?;
-        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"relations":relations,"reason":"Change R"})).await
+        let mut command = json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"reason":"Change R"});
+        if relations.is_object() {
+            command["relations"] = relations;
+        }
+        self.post_command(&self.w.owner, command).await
     }
     /// Owner S saves a new text of criterion A over HTTP, which resets only A.
     async fn change_a(&self) -> Result<()> {
