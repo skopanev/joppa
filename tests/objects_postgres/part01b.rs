@@ -16,7 +16,7 @@ async fn replay_concurrency_ids_and_schema_after_setup(
             .get::<_, String>(0),
         "joppa_test_projection_guard"
     );
-    let make = |body: &str, n: u32| json!({"op":"save_object","kind":"note","id":"source","revision":n,"parent":null,"data":{"title":"Source","owner":"owner","body":body},"links":[{"target":"domain:d","relation":"related"}],"reason":"Update source text"});
+    let make = |body: &str, n: u32| json!({"op":"save_object","kind":"note","id":"source","revision":n,"parent":null,"data":{"title":"Source","owner":"owner","body":body},"relations":{"related":{"edges":[{"to":"domain:d"}]}},"reason":"Update source text"});
     let first = store::execute_remote_input(
         &restricted,
         ws,
@@ -68,8 +68,8 @@ async fn replay_concurrency_ids_and_schema_after_setup(
     assert!(old["process"].is_null() && old["signal"].is_null());
     assert!(old.get("verification_summary").is_none());
     assert!(old["annotations"].as_object().unwrap().is_empty());
-    assert!(old["link_groups"].as_array().unwrap().is_empty());
-    assert_eq!(old["links"][0]["metadata_scope"], "current");
+    assert!(old["relation_groups"].as_array().unwrap().is_empty());
+    assert_eq!(old["relations"]["related"]["edges"][0]["to"], "domain:d");
 
     assert!(
         old["document"]["at"]

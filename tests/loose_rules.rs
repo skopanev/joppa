@@ -2,6 +2,8 @@
 //! member may move or hand over a Task, a criterion may have its own owner without a decision,
 //! and a new required field binds only later saves.
 mod common;
+#[path = "common/relation_edges.rs"]
+mod relation_edges;
 use common::*;
 use joppa::objects;
 use serde_json::{Value, json};
@@ -42,14 +44,14 @@ fn save(
     key: &str,
     parent: &str,
     data: Value,
-    links: Value,
+    relations: Value,
 ) -> anyhow::Result<()> {
     let (kind, id) = key.split_once(':').unwrap();
     let revision = w.state.objects.get(key).map_or(0, |o| o.current().revision);
     w.apply(
         actor,
         json!({"op":"save_object","kind":kind,"id":id,"revision":revision,
-        "parent":parent,"data":data,"links":links,"reason":"Change the work"}),
+        "parent":parent,"data":data,"relations":relations,"reason":"Change the work"}),
     )
 }
 
@@ -67,10 +69,10 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         "task:a",
         "ac:ios",
         task("A", "owner"),
-        json!([]),
+        json!({}),
     )
     .unwrap();
-    let link = json!([{"target":"task:a","relation":"depends_on","blocking":true}]);
+    let link = json!({"depends_on":{"edges":[{"to":"task:a"}]}});
     save(
         &mut w,
         "owner",
@@ -80,8 +82,12 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         link,
     )
     .unwrap();
-    assert_eq!(w.state.objects["task:b"].current().links[0].revision, None);
-    // A new text of A changes nothing for B: its link and its process stay the same.
+    let pin = |w: &World| {
+        let b = relation_edges::of(w.state.objects["task:b"].current());
+        relation_edges::edges(&b, "depends_on")[0]["revision"].clone()
+    };
+    assert_eq!(pin(&w), Value::Null);
+    // A new text of A changes nothing for B: its edge and its process stay the same.
     let before = objects::process(&w.state, "task:b");
     save(
         &mut w,
@@ -89,11 +95,11 @@ fn a_dependency_names_a_node_and_a_new_target_revision_asks_for_no_review() {
         "task:a",
         "ac:ios",
         task("A2", "owner"),
-        json!([]),
+        json!({}),
     )
     .unwrap();
     assert_eq!(objects::process(&w.state, "task:b"), before);
-    assert_eq!(w.state.objects["task:b"].current().links[0].revision, None);
+    assert_eq!(pin(&w), Value::Null);
     assert_eq!(w.state.objects["task:b"].revisions.len(), 1);
 }
 
@@ -107,7 +113,7 @@ fn a_task_has_no_purpose_and_a_member_moves_or_hands_over_a_task() {
         "task:p",
         "ac:ios",
         task("P", "owner"),
-        json!([]),
+        json!({}),
     )
     .unwrap();
     assert!(
@@ -119,7 +125,7 @@ fn a_task_has_no_purpose_and_a_member_moves_or_hands_over_a_task() {
     );
     let mut labelled = task("P", "owner");
     labelled["purpose"] = json!("documentation");
-    let error = save(&mut w, "owner", "task:p", "ac:ios", labelled, json!([])).unwrap_err();
+    let error = save(&mut w, "owner", "task:p", "ac:ios", labelled, json!({})).unwrap_err();
     assert_eq!(error.to_string(), joppa::purpose_migration::REFUSAL);
     // A member who is not the owner moves the Task and hands it over.
     save(
@@ -128,7 +134,7 @@ fn a_task_has_no_purpose_and_a_member_moves_or_hands_over_a_task() {
         "task:p",
         "ac:key",
         task("P", "legal"),
-        json!([]),
+        json!({}),
     )
     .unwrap();
     let p = w.state.objects["task:p"].current();
@@ -148,7 +154,7 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
         "ac:key",
         "requirement:r",
         ac.clone(),
-        json!([]),
+        json!({}),
     )
     .unwrap();
     let data = &w.state.objects["ac:key"].current().data;
@@ -166,6 +172,6 @@ fn a_criterion_has_its_own_owner_without_a_decision_and_a_new_rule_binds_later_s
         "reason":"Require Given"}),
     );
     ac["body"] = json!("No marker");
-    let refused = save(&mut w, "owner", "ac:key", "requirement:r", ac, json!([])).unwrap_err();
+    let refused = save(&mut w, "owner", "ac:key", "requirement:r", ac, json!({})).unwrap_err();
     assert_eq!(refused.to_string(), "Given");
 }

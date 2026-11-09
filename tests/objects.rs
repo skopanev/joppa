@@ -1,6 +1,8 @@
 mod common;
 use common::*;
-use joppa::objects::{self, ObjectLink, TreeType};
+use joppa::objects::{self, TreeType};
+#[path = "common/relation_edges.rs"]
+mod relation_edges;
 use serde_json::{Value, json};
 
 include!("objects/part01.rs");

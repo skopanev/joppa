@@ -32,7 +32,7 @@ fn edit(w: &mut World, key: &str, description: &str) -> anyhow::Result<()> {
     w.apply(
         "agent",
         json!({"op":"save_object","kind":"ac","id":id,"revision":current.revision,
-               "parent":current.parent,"data":data,"links":current.links,"reason":"Clarify the criterion"}),
+               "parent":current.parent,"data":data,"reason":"Clarify the criterion"}),
     )
 }
 
@@ -72,7 +72,7 @@ fn an_older_criterion_save_in_a_replay_keeps_the_sibling_revision_it_gave() {
     let mut data = current.data.clone();
     data["body"] = json!("Given a paid user on iOS, then access stays.");
     let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
-        "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
+        "revision":current.revision,"parent":current.parent,"data":data,
         "reason":"Clarify the criterion"}))
     .unwrap();
     let sibling = revision(&w, "ac:key");
@@ -114,7 +114,7 @@ fn an_older_criterion_save_in_a_replay_keeps_the_copied_specification_reason() {
     let mut data = current.data.clone();
     data["body"] = json!("Given a paid user on iOS, then access stays.");
     let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
-        "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
+        "revision":current.revision,"parent":current.parent,"data":data,
         "reason":"Clarify the criterion"}))
     .unwrap();
     commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();
@@ -162,7 +162,7 @@ fn an_older_criterion_save_in_a_replay_starts_a_new_contract_of_its_specificatio
     let mut data = current.data.clone();
     data["body"] = json!("Given a paid user on iOS, then access stays.");
     let cmd: Command = serde_json::from_value(json!({"op":"save_object","kind":"ac","id":"ios",
-        "revision":current.revision,"parent":current.parent,"data":data,"links":current.links,
+        "revision":current.revision,"parent":current.parent,"data":data,
         "reason":"Clarify the criterion"}))
     .unwrap();
     commands::apply_replay(&mut w.state, "agent", &cmd, w.position + 1, "now").unwrap();

@@ -39,7 +39,7 @@ fn archive_configured_documents_preserves_history_and_child_guards() {
         w.state.objects["incoming:parent"].current().data["body"],
         "Keep history"
     );
-    assert_eq!(w.state.objects["incoming:parent"].current().links.len(), 1);
+    assert_eq!(edge_count(&w, "incoming:parent"), 1);
     w.ok("owner", json!({"op":"restore_object","target":"incoming:child","revision":2,"reason":"Restore the child"}));
 }
 
@@ -74,7 +74,7 @@ fn archive_and_restore_group_objects() {
         serde_json::to_value(&object.revisions[0]).unwrap(),
         original
     );
-    assert_eq!(object.current().links.len(), 1);
+    assert_eq!(edge_count(&w, "initiative:i"), 1);
     assert_eq!(
         w.state.notes["initiative:i"].comments["source"].text,
         "Keep this context"

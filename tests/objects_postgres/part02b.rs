@@ -1,25 +1,21 @@
 // Part of tests/objects_postgres/part02.rs: the tail of the test before it, included right after it.
 
-/// The note queue, link and colour checks after the workspace setup.
+/// The note queue, relation and colour checks after the workspace setup.
 async fn note_queue_links_and_color_after_setup(
     pool: &deadpool_postgres::Pool,
     ws: &str,
 ) -> anyhow::Result<()> {
-    for (id, parent, links) in [
+    for (id, parent, relations) in [
         (
             "a",
             None::<&str>,
-            json!([{"target":"domain:d","relation":"related"}]),
+            json!({"related":{"edges":[{"to":"domain:d"}]}}),
         ),
-        ("b", None, json!([])),
-        // An inbox input has no parent: note c links to the domain that it informs.
-        (
-            "c",
-            None,
-            json!([{"target":"domain:d","relation":"related"}]),
-        ),
+        ("b", None, json!({})),
+        // An inbox input has no parent: note c has a related edge to the domain that it informs.
+        ("c", None, json!({"related":{"edges":[{"to":"domain:d"}]}})),
     ] {
-        store::execute_remote_input(pool,ws,"agent",id,&json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","body":"Original source","custom":"Keep this"},"links":links,"reason":"Capture input"})).await?;
+        store::execute_remote_input(pool,ws,"agent",id,&json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":parent,"data":{"title":id,"owner":"owner","body":"Original source","custom":"Keep this"},"relations":relations,"reason":"Capture input"})).await?;
     }
     let domain = store::read_objects(
         pool,
@@ -31,7 +27,7 @@ async fn note_queue_links_and_color_after_setup(
         },
     )
     .await?;
-    store::execute_remote_input(pool,ws,"agent","domain-link",&json!({"op":"save_object","kind":"domain","id":"d","revision":domain["current_revision"],"parent":null,"data":domain["document"]["data"],"links":[{"target":"note:b","relation":"related"}],"reason":"Link the input"})).await?;
+    store::execute_remote_input(pool,ws,"agent","domain-link",&json!({"op":"save_object","kind":"domain","id":"d","revision":domain["current_revision"],"parent":null,"data":domain["document"]["data"],"relations":{"related":{"edges":[{"to":"note:b"}]}},"reason":"Link the input"})).await?;
     // A decision of an old journal: live writes refuse decide_note, a replay reads it.
     common::append_legacy(pool,ws,"owner","process-a",&json!({"op":"decide_note","target":"note:a","revision":1,"outcome":"rejected","reason":"Input reviewed"})).await?;
     let incoming = store::read_objects(
@@ -94,7 +90,13 @@ async fn note_queue_links_and_color_after_setup(
     .await?;
     assert_eq!(note["document"]["data"]["body"], "Original source");
     assert_eq!(note["document"]["data"]["custom"], "Keep this");
-    assert_eq!(note["document"]["links"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        note["document"]["relations"]["related"]["edges"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
     let processed = store::read_objects(
         pool,
         ws,
@@ -109,7 +111,7 @@ async fn note_queue_links_and_color_after_setup(
     assert_eq!(processed["items"].as_array().unwrap().len(), 1);
     let mut data = note["document"]["data"].clone();
     data["body"] = json!("Changed input");
-    store::execute_remote_input(pool,ws,"agent","edit-a",&json!({"op":"save_object","kind":"note","id":"a","revision":2,"parent":null,"data":data,"links":note["document"]["links"],"reason":"Add source information"})).await?;
+    store::execute_remote_input(pool,ws,"agent","edit-a",&json!({"op":"save_object","kind":"note","id":"a","revision":2,"parent":null,"data":data,"reason":"Add source information"})).await?;
     let incoming = store::read_objects(
         pool,
         ws,
@@ -195,7 +197,7 @@ async fn note_queue_links_and_color_after_setup(
     .await?;
     let group = link_page::incoming_notes(pool, ws, "domain:d").await?;
     assert!(
-        domain["link_groups"].is_array()
+        domain["relation_groups"].is_array()
             && !group["items"]
                 .as_array()
                 .unwrap()

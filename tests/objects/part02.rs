@@ -1,11 +1,18 @@
 // Part 2 of tests/objects.rs, included there, so the test names stay unchanged.
 
+/// Save `key` with `relations` at its current revision, or create it.
+fn save_relations(w: &mut World, key: &str, parent: Option<&str>, data: Value, relations: Value) {
+    let (kind, id) = key.split_once(':').unwrap();
+    let revision = w.state.objects.get(key).map_or(0, |o| o.current().revision);
+    w.ok("agent",json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"relations":relations,"reason":"Update the current document"}));
+}
+
 #[test]
 fn parent_dependencies_cannot_block_their_own_descendants() {
     let mut w = World::new();
     let data = w.state.objects["requirement:r"].current().data.clone();
     let n = w.state.objects["ac:ios"].current().revision;
-    w.no("agent",json!({"op":"save_object","kind":"requirement","id":"r","revision":1,"parent":"capability:c","data":data,"links":[link("ac:ios",Some(n),true)],"reason":"Reject inherited blocking cycle"}));
+    w.no("agent",json!({"op":"save_object","kind":"requirement","id":"r","revision":1,"parent":"capability:c","data":data,"relations":{"depends_on":{"edges":[{"to":"ac:ios","revision":n}]}},"reason":"Reject inherited blocking cycle"}));
     assert_eq!(w.state.requirements["r"].revisions.len(), 1);
 }
 
@@ -48,19 +55,19 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
         "owner",
         json!({"op":"set_tree_schema","revision":0,"types":types,"reason":"Group capabilities"}),
     );
-    save(
+    save_relations(
         &mut w,
         "initiative:i",
         None,
         json!({"title":"Release","owner":"owner"}),
-        vec![],
+        json!({}),
     );
-    save(
+    save_relations(
         &mut w,
         "capability:custom",
         Some("initiative:i"),
         json!({"title":"Custom capability","owner":"owner","description":"Release scope"}),
-        vec![],
+        json!({}),
     );
     assert_eq!(w.state.capabilities["custom"].domain, None);
     assert_eq!(w.state.objects["capability:custom"].revisions.len(), 1);
@@ -71,26 +78,32 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
 #[test]
 fn note_processing_keeps_source_and_reopens_changed_input() {
     let mut w = World::new();
-    save(
+    save_relations(
         &mut w,
         "note:input",
         None,
         json!({"title":"Input","owner":"owner","body":"Original","custom":"Context"}),
-        vec![link("domain:d", None, false)],
+        json!({"related":{"edges":[{"to":"domain:d"}]}}),
     );
     // An old journal event decides the input: live writes refuse decide_note, a replay reads it.
     w.ok("agent", json!({"op":"decide_note","target":"note:input","revision":1,"outcome":"changed_spec","reason":"Updated the linked domain","links":["domain:d"]}));
     let r = w.state.objects["note:input"].current();
     assert_eq!(r.data["body"], "Original");
     assert_eq!(r.data["custom"], "Context");
-    assert_eq!(r.links.len(), 1);
+    let stored = serde_json::to_value(r).unwrap();
+    assert_eq!(
+        stored["relations"]["related"]["edges"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
     assert_eq!(r.data["status"], "processed");
-    save(
+    save_relations(
         &mut w,
         "note:input",
         None,
         json!({"title":"Input","owner":"owner","body":"Changed","custom":"Context","status":"processed"}),
-        vec![link("domain:d", None, false)],
+        json!({}),
     );
     assert_eq!(
         w.state.objects["note:input"].current().data["status"],

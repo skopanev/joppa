@@ -4,19 +4,19 @@
 fn a_link_keeps_its_relation_type() {
     // typed-links-ac1
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
+    w.ok("agent", note("a", 0, json!({})));
     w.ok(
         "agent",
         note(
             "b",
             0,
-            json!([{"target":"note:a","relation":"depends_on","revision":1}]),
+            json!({"depends_on":{"edges":[{"to":"note:a","revision":1}]}}),
         ),
     );
-    let link = &w.state.objects["note:b"].current().links[0];
+    let stored = serde_json::to_value(w.state.objects["note:b"].current()).unwrap();
     assert_eq!(
-        (link.target.as_str(), link.relation.as_str()),
-        ("note:a", "depends_on")
+        stored["relations"]["depends_on"]["edges"][0]["to"], "note:a",
+        "{stored}"
     );
 }
 
@@ -30,7 +30,7 @@ fn a_move_keeps_the_address_and_a_forbidden_parent_is_refused() {
     );
     let move_to = |w: &World, parent: &str| {
         let r = w.state.objects["requirement:r"].current();
-        json!({"op":"save_object","kind":"requirement","id":"r","revision":r.revision,"parent":parent,"data":r.data,"links":[],"reason":"Move"})
+        json!({"op":"save_object","kind":"requirement","id":"r","revision":r.revision,"parent":parent,"data":r.data,"reason":"Move"})
     };
     let command = move_to(&w, "capability:c2");
     w.ok("agent", command);

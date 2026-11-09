@@ -2,6 +2,8 @@
 //! same workspace as the live writes of the same events. It skips the document sync of an
 //! event that changes no document.
 mod common;
+#[path = "common/relation_edges.rs"]
+mod relation_edges;
 
 use common::*;
 use joppa::commands::{self, Command};
@@ -23,14 +25,19 @@ fn migrated() -> World {
     w
 }
 
-/// A save of a new body of a criterion of `w`.
+/// A save of a new body of a criterion of `w`. It sends the current relations, so that the
+/// replay of the raw event gives the same edges as the live write.
 fn edit(w: &World, key: &str, body: &str) -> Value {
     let current = w.state.objects[key].current();
     let mut data = current.data.clone();
     data["body"] = json!(body);
+    let relations = relation_edges::of(current)["relations"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
     json!({"op":"save_object","kind":"ac","id":key.split_once(':').unwrap().1,
         "revision":current.revision,"parent":current.parent,"data":data,
-        "links":current.links,"reason":"Clarify the criterion"})
+        "relations":relations,"reason":"Clarify the criterion"})
 }
 
 // ac:499ipqmz

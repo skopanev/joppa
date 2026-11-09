@@ -7,9 +7,9 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
     assert!(e.to_string().contains(error), "{command}: {e}");
 }
 
-fn note(id: &str, revision: u32, links: Value) -> Value {
+fn note(id: &str, revision: u32, relations: Value) -> Value {
     json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,
-           "data":{"title":id,"owner":"owner","body":"Signal"},"links":links,"reason":"Update"})
+           "data":{"title":id,"owner":"owner","body":"Signal"},"relations":relations,"reason":"Update"})
 }
 
 fn schema_types(w: &World) -> Value {
@@ -23,14 +23,14 @@ fn schema_types(w: &World) -> Value {
 fn a_save_on_a_stale_object_revision_is_refused() {
     // edit-makes-revision-ac2
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
-    let mut changed = note("a", 1, json!([]));
+    w.ok("agent", note("a", 0, json!({})));
+    let mut changed = note("a", 1, json!({}));
     changed["data"]["body"] = json!("Changed signal");
     w.ok("agent", changed);
     refused(
         &mut w,
         "agent",
-        note("a", 1, json!([])),
+        note("a", 1, json!({})),
         "stale object revision; read the object again",
     );
     assert_eq!(w.state.objects["note:a"].current().revision, 2);
@@ -40,12 +40,12 @@ fn a_save_on_a_stale_object_revision_is_refused() {
 fn a_link_with_an_unknown_relation_is_refused() {
     // typed-links-ac2
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
-    w.ok("agent", note("b", 0, json!([])));
+    w.ok("agent", note("a", 0, json!({})));
+    w.ok("agent", note("b", 0, json!({})));
     refused(
         &mut w,
         "agent",
-        note("b", 1, json!([{"target":"note:a","relation":"likes"}])),
+        note("b", 1, json!({"likes":{"edges":[{"to":"note:a"}]}})),
         "unknown link relation",
     );
 }
@@ -54,14 +54,14 @@ fn a_link_with_an_unknown_relation_is_refused() {
 fn a_blocking_dependency_cycle_is_refused() {
     // blocking-pins-revision-ac2
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
-    w.ok("agent", note("b", 0, json!([])));
+    w.ok("agent", note("a", 0, json!({})));
+    w.ok("agent", note("b", 0, json!({})));
     w.ok(
         "agent",
         note(
             "a",
             1,
-            json!([{"target":"note:b","relation":"depends_on","revision":1,"blocking":true}]),
+            json!({"depends_on":{"edges":[{"to":"note:b","revision":1}]}}),
         ),
     );
     refused(
@@ -70,7 +70,7 @@ fn a_blocking_dependency_cycle_is_refused() {
         note(
             "b",
             1,
-            json!([{"target":"note:a","relation":"depends_on","revision":2,"blocking":true}]),
+            json!({"depends_on":{"edges":[{"to":"note:a","revision":2}]}}),
         ),
         "dependency cycle",
     );
@@ -80,14 +80,14 @@ fn a_blocking_dependency_cycle_is_refused() {
 fn a_link_outside_the_workspace_is_refused() {
     // links-in-workspace-ac1, workspaces-isolated-ac2
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
+    w.ok("agent", note("a", 0, json!({})));
     refused(
         &mut w,
         "agent",
         note(
             "a",
             1,
-            json!([{"target":"note:only-in-workspace-b","relation":"related"}]),
+            json!({"related":{"edges":[{"to":"note:only-in-workspace-b"}]}}),
         ),
         "unknown linked object in this workspace",
     );
@@ -188,8 +188,8 @@ fn a_requirement_with_no_live_criteria_can_be_archived() {
 fn saving_an_object_adds_exactly_one_revision() {
     // edit-makes-revision-ac1
     let mut w = World::new();
-    w.ok("agent", note("a", 0, json!([])));
-    let mut next = note("a", 1, json!([]));
+    w.ok("agent", note("a", 0, json!({})));
+    let mut next = note("a", 1, json!({}));
     next["data"]["body"] = json!("New text");
     w.ok("agent", next);
     let current = w.state.objects["note:a"].current();
