@@ -14,7 +14,7 @@ fn count(reply: &Value) -> usize {
 }
 
 /// 30 criteria `ac:b00` ... `ac:b29` titled "Paging item NN", and 29 more revisions of `ac:a`
-/// that link to all of them.
+/// with a related edge to each of them.
 async fn fixture(w: &record_world::World) -> Result<()> {
     let mut operations: Vec<Value> = (0..30)
         .map(|i| {
@@ -23,13 +23,13 @@ async fn fixture(w: &record_world::World) -> Result<()> {
             "reason":"Paging test"}})
         })
         .collect();
-    let links: Vec<Value> = (0..30)
-        .map(|i| json!({"target":format!("ac:b{i:02}"),"relation":"related"}))
+    let edges: Vec<Value> = (0..30)
+        .map(|i| json!({"to":format!("ac:b{i:02}")}))
         .collect();
     for revision in 1..30 {
         operations.push(
             json!({"command":{"op":"save_object","kind":"ac","id":"a","revision":revision,
-            "parent":"requirement:r","links":links,
+            "parent":"requirement:r","relations":{"related":{"edges":edges}},
             "data":{"title":"A","owner":"owner","body":format!("Revision {}", revision + 1)},
             "reason":format!("Revision {}", revision + 1)}}),
         );
@@ -73,13 +73,14 @@ async fn every_mcp_list_gives_items_total_and_next_cursor() -> Result<()> {
             && rest.get("next_cursor").is_none(),
         "{first} {rest}"
     );
-    // One link group: 30 links give 25 with the total of the group.
-    let links = read(&w, "joppa_objects", json!({"links_of":"ac:a","direction":"outgoing","relation":"related","kind":"ac","limit":100})).await?;
+    // One relation group: 30 edges give 25 with the total of the group.
+    let edges = read(&w, "joppa_objects", json!({"relations_of":"ac:a","direction":"outgoing","relation":"related","kind":"ac","limit":100})).await?;
     ensure!(
-        count(&links) == 25
-            && links["total"] == 30
-            && links["next_cursor"] == "outgoing/related/ac:b24",
-        "{links}"
+        count(&edges) == 25
+            && edges["total"] == 30
+            && edges["items"][24]["address"] == "ac:b24"
+            && edges["next_cursor"].is_string(),
+        "{edges}"
     );
     // Search: a larger limit gives 25, and the cursor gives the rest of the same ranking.
     let found = read(

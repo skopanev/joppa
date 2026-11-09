@@ -7,8 +7,7 @@ async fn an_account_without_membership_cannot_comment_on_an_object() -> Result<(
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
     let question = "Which fact does this record preserve?";
-    types["record"] =
-        json!({"title":"Record","role":"document","status":"none","root":true,"parents":[],"question":question});
+    types["record"] = json!({"title":"Record","role":"document","status":"none","root":true,"parents":[],"question":question});
     w.command(json!({"op":"set_tree_schema","revision":schema["current_revision"],"types":types,"reason":"Use a configured document type"})).await?;
     w.command(json!({"op":"save_object","kind":"record","id":"one","revision":0,"parent":null,"data":{"title":"A recorded fact","owner":"owner","body":"The current boundary"},"reason":"Prepare the comment target"})).await?;
     let absent = format!("absent-{}", uuid::Uuid::new_v4().simple());
@@ -108,7 +107,7 @@ async fn any_past_revision_reads_whole_by_its_number() -> Result<()> {
     .into_iter()
     .enumerate()
     {
-        w.command(json!({"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":data,"links":[],"reason":"Save"})).await?;
+        w.command(json!({"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":data,"reason":"Save"})).await?;
     }
     let reply = w
         .http

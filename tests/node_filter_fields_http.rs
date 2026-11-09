@@ -86,7 +86,7 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"status":tones}))).await? == all,
         "{tones:?}"
     );
-    // Every node is ready until it waits. A blocking link from rule:z to the grey ac:b makes
+    // Every node is ready until it waits. A depends_on edge from rule:z to the grey ac:b makes
     // only rule:z wait.
     ensure!(
         kept(&w, under(json!({"ready":true}))).await? == all,
@@ -95,7 +95,7 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
     let z = w.object("rule:z").await?;
     let wait = json!({"op":"save_object","kind":"rule","id":"z","revision":z["revision"],
         "parent":"rule:x","data":z["data"],"reason":"Order after ac:b",
-        "links":[{"target":"ac:b","relation":"depends_on","blocking":true}]});
+        "relations":{"depends_on":{"edges":[{"to":"ac:b"}]}}});
     w.command(&w.bot, wait).await?.map_err(anyhow::Error::msg)?;
     let ready = kept(&w, under(json!({"ready":true}))).await?;
     let waiting = kept(&w, under(json!({"ready":false}))).await?;

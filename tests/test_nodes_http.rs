@@ -92,7 +92,7 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
             "data":{"title":"C","owner":"owner"},"reason":"Create"}),
         json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],
             "parent":"requirement:r","data":a["data"],"reason":"Order after C",
-            "links":[{"target":"ac:c","relation":"depends_on","blocking":true}]}),
+            "relations":{"depends_on":{"edges":[{"to":"ac:c"}]}}}),
     ] {
         w.command(&w.bot, command)
             .await?

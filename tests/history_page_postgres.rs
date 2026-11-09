@@ -59,7 +59,7 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
         &json!({"op":"workspace","title":"History pages"}),
     )
     .await?;
-    write(&pool, &ws, json!({"op":"save_object","kind":"note","id":"intake","revision":0,"parent":null,"data":{"title":"Intake note","owner":"owner","body":"Refunds are slow"},"links":[],"reason":"Intake"})).await?;
+    write(&pool, &ws, json!({"op":"save_object","kind":"note","id":"intake","revision":0,"parent":null,"data":{"title":"Intake note","owner":"owner","body":"Refunds are slow"},"reason":"Intake"})).await?;
     for i in 0..30 {
         write(
             &pool,

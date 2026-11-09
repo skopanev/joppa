@@ -17,13 +17,13 @@ async fn type_status_rules_ac6_a_links_node_takes_the_highest_tone_of_its_linkin
     w.save("user", "u", None).await?;
     w.save("area", "g", None).await?;
     w.save("rule", "r", Some("area:g")).await?;
-    let link = json!([{"target":"user:u","relation":"related","blocking":false}]);
+    let related = json!({"related":{"edges":[{"to":"user:u"}]}});
     let save_linked = |kind: &str, id: &str, parent: &str, extra: Value| {
         let mut data = json!({"title":id,"owner":"owner","body":"Given: a node.\nWhen: alex reads it.\nThen: it has a tone.\nEvidence: the tone."});
         for (k, v) in extra.as_object().into_iter().flatten() {
             data[k] = v.clone();
         }
-        json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"links":link,"reason":"Link to the user"})
+        json!({"op":"save_object","kind":kind,"id":id,"revision":0,"parent":parent,"data":data,"relations":related,"reason":"Link to the user"})
     };
     // Fixture 1: no object links to U, so U is orange.
     ensure!(w.tones(&["user:u"]).await? == ["orange"], "fixture 1");

@@ -1,5 +1,5 @@
 //! requirement:save-examples-show-links: each save example of joppa_help shows a related
-//! link, omits id, and gives an inbox type parent null.
+//! edge in relations and no links, omits id, and gives an inbox type parent null.
 #[path = "common/search_world.rs"]
 mod world;
 use anyhow::{Result, ensure};
@@ -50,8 +50,12 @@ async fn each_save_example_shows_a_related_link_and_a_note_has_no_parent() -> Re
     let examples = help["examples"].as_object().cloned().unwrap_or_default();
     ensure!(!examples.is_empty(), "no save examples: {help}");
     for (kind, example) in &examples {
+        // The example names one related edge (R18): no top-level links and no blocking flag.
+        let edge = &example["relations"]["related"]["edges"][0];
         ensure!(
-            example["links"] == json!([{"target":"<kind:id>","relation":"related"}]),
+            edge["to"].is_string()
+                && edge.get("blocking").is_none()
+                && example.get("links").is_none(),
             "{kind}: {example}"
         );
         ensure!(example.get("id").is_none(), "{kind} names an id: {example}");

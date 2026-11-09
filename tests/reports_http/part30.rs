@@ -49,15 +49,26 @@ impl Planning<'_> {
         ensure!(code == 200, "{command}: {code} {body}");
         Ok(body)
     }
-    /// P saves the current document of `key` with `links` over HTTP.
-    async fn link(&self, key: &str, links: Value) -> Result<Value> {
+    /// P saves the current document of `key` with `relations` over HTTP. The relations merge
+    /// by key, and a null key removes its edges.
+    async fn link(&self, key: &str, relations: Value) -> Result<Value> {
         let (kind, id) = key.split_once(':').unwrap();
         let object = self.read(key).await?;
         let document = &object["document"];
         self.owner_command(json!({"op":"save_object","kind":kind,"id":id,"revision":object["current_revision"],
-            "parent":document["parent"],"data":document["data"],"links":links,"reason":"Order the work"}))
+            "parent":document["parent"],"data":document["data"],"relations":relations,"reason":"Order the work"}))
             .await
     }
+}
+
+/// The targets of the stored depends_on edges of a read.
+fn depends_on_targets(object: &Value) -> Vec<String> {
+    object["document"]["relations"]["depends_on"]["edges"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e["to"].as_str().map(str::to_owned))
+        .collect()
 }
 
 /// A waiting criterion reads work_ready=false and names `target` with the reason.
@@ -78,8 +89,8 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
     p.link("spec:b", ordering_link("spec:a")).await?;
     let b = p.object_both("spec:b").await?;
     ensure!(
-        b["document"]["links"]
-            == json!([{"target":"spec:a","relation":"depends_on","blocking":true}]),
+        depends_on_targets(&b) == ["spec:a"]
+            && b["document"]["relations"]["depends_on"]["edges"][0]["revision"].is_null(),
         "the link stores no revision: {b}"
     );
     // Controls: A1 is ready and grey.

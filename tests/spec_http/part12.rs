@@ -112,8 +112,7 @@ async fn archived_tasks_do_not_block_archiving_a_criterion() -> Result<()> {
         ready_task(&w, "b-open", "arch-b").await?;
         // The task waits for a criterion that is not green.
         let mut waiting = ready_task_command("c-waiting", "arch-c");
-        waiting["links"] =
-            json!([{"target":"ac:key-rights","relation":"depends_on","blocking":true}]);
+        waiting["relations"] = json!({"depends_on":{"edges":[{"to":"ac:key-rights"}]}});
         w.command(waiting).await?;
         let tasks_before = [
             w.get(&format!("address={done}")).await?,

@@ -90,7 +90,7 @@ async fn owner_manages_workspace_ac3_the_install_role_runs_the_settings_writes()
         store::grant_email(&app, &ws, "owner", "lena@example.org").await?;
         store::revoke_email(&app, &ws, "owner", "lena@example.org").await?;
         // A redaction rewrites stored revisions of the note.
-        execute(&app, &ws, "owner", json!({"op":"save_object","kind":"note","id":"secret","revision":0,"parent":null,"data":{"title":"Secret note","owner":"owner","body":"Token s3cr3t"},"links":[],"reason":"Save"})).await?;
+        execute(&app, &ws, "owner", json!({"op":"save_object","kind":"note","id":"secret","revision":0,"parent":null,"data":{"title":"Secret note","owner":"owner","body":"Token s3cr3t"},"reason":"Save"})).await?;
         execute(&app, &ws, "owner", json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"})).await?;
         // owner-manages-workspace-ac2: the deletion removes every row of the workspace.
         // The role itself cannot delete a journal row, also with the purge setting.

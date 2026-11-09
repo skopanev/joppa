@@ -20,8 +20,8 @@ impl World {
 async fn an_edit_adds_a_revision_and_keeps_the_original() -> Result<()> {
     // edits-keep-original-ac1
     let w = world().await?;
-    w.note("a", 0, "A", "original text", json!([])).await?;
-    w.note("a", 1, "A", "edited text", json!([])).await?;
+    w.note("a", 0, "A", "original text", json!({})).await?;
+    w.note("a", 1, "A", "edited text", json!({})).await?;
     let current = w.get("address=note:a").await?;
     let first = w.get("address=note:a&revision=1").await?;
     ensure!(
@@ -42,10 +42,10 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
     // workspaces-isolated-ac2
     let a = world().await?;
     let b = world().await?;
-    b.note("only-b", 0, "B", "lives in B", json!([])).await?;
-    a.note("a", 0, "A", "lives in A", json!([])).await?;
+    b.note("only-b", 0, "B", "lives in B", json!({})).await?;
+    a.note("a", 0, "A", "lives in A", json!({})).await?;
     let error = a
-        .refused(json!({"op":"save_object","kind":"note","id":"a","revision":1,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"links":[{"target":"note:only-b","relation":"related"}],"reason":"Link"}))
+        .refused(json!({"op":"save_object","kind":"note","id":"a","revision":1,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"relations":{"related":{"edges":[{"to":"note:only-b"}]}},"reason":"Link"}))
         .await?;
     ensure!(
         error.contains("unknown linked object in this workspace"),
@@ -54,7 +54,7 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
 
     // links-in-workspace-ac1: the bot writes in workspace A.
     let bot = a.bot.as_str();
-    a.note("also-a", 0, "Also A", "lives in A", json!([]))
+    a.note("also-a", 0, "Also A", "lives in A", json!({}))
         .await?;
     let link = |revision: u32, target: &'static str| {
         let a = &a;
@@ -63,7 +63,7 @@ async fn a_link_to_another_workspace_is_refused() -> Result<()> {
                 .http
                 .post(format!("{}/api/workspaces/{}/commands", a.root, a.ws))
                 .bearer_auth(bot)
-                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"links":[{"target":target,"relation":"related"}],"reason":"Link"}}))
+                .json(&json!({"request_id": uuid::Uuid::new_v4().to_string(), "command": {"op":"save_object","kind":"note","id":"a","revision":revision,"parent":null,"data":{"title":"A","owner":"owner","body":"lives in A"},"relations":{"related":{"edges":[{"to":target}]}},"reason":"Link"}}))
                 .send()
                 .await?;
             let status = reply.status();

@@ -89,7 +89,7 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
     )
     .await?["current_revision"]
         .clone();
-    let command = json!({"op":"save_object","kind":"area","id":"g","revision":g,"parent":null,"data":{"title":"G","body":"Changed group scope","owner":OWNER},"links":[],"reason":"Change the group"});
+    let command = json!({"op":"save_object","kind":"area","id":"g","revision":g,"parent":null,"data":{"title":"G","body":"Changed group scope","owner":OWNER},"reason":"Change the group"});
     f.post(
         "commands",
         &f.owner,

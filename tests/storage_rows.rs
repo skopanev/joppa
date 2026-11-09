@@ -20,7 +20,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     let ws = format!("storage-{}", uuid::Uuid::new_v4().simple());
     common::seed(&pool, &ws, "owner", common::setup()).await?;
     let raw = "original source input ".repeat(46);
-    store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"links":[],"reason":"Capture source"})).await?;
+    store::execute_input(&pool,&ws,"agent","input",&json!({"op":"save_object","kind":"note","id":"raw","revision":0,"parent":null,"data":{"title":"Source input","owner":"owner","body":raw,"status":"unprocessed"},"reason":"Capture source"})).await?;
     let conn = pool.get().await?;
     let row = conn.query_one("SELECT xmin::text,value->'revisions'->0->'data'->>'body',compact->'revisions'->0->'data' ? 'body' FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:raw'", &[&ws]).await?;
     let original_xmin: String = row.get(0);
@@ -111,7 +111,7 @@ async fn storage_reads_only_selected_history_and_preserves_unrelated_input_paylo
     // Updating the input must hydrate and preserve its earlier revision.
     let mut data = detail["document"]["data"].clone();
     data["title"] = json!("Raw input, read");
-    store::execute_input(&pool,&ws,"owner","update-input",&json!({"op":"save_object","kind":"note","id":"raw","revision":1,"parent":null,"data":data,"links":detail["document"]["links"],"reason":"Mark the source as read"})).await?;
+    store::execute_input(&pool,&ws,"owner","update-input",&json!({"op":"save_object","kind":"note","id":"raw","revision":1,"parent":null,"data":data,"reason":"Mark the source as read"})).await?;
     let old = store::read_objects(
         &pool,
         &ws,
@@ -166,7 +166,7 @@ async fn archived_groups_survive_current_state_reads_and_keep_their_history() ->
         &json!({"op":"note","target":"domain:unused","id":"context","text":"Retain this comment"}),
     )
     .await?;
-    store::execute_input(&pool, &ws, "agent", "source", &json!({"op":"save_object","kind":"note","id":"source","revision":0,"parent":null,"data":{"title":"Source","owner":"owner","body":"Original source"},"links":[{"target":"domain:unused","relation":"related"}],"reason":"Link the source"})).await?;
+    store::execute_input(&pool, &ws, "agent", "source", &json!({"op":"save_object","kind":"note","id":"source","revision":0,"parent":null,"data":{"title":"Source","owner":"owner","body":"Original source"},"relations":{"related":{"edges":[{"to":"domain:unused"}]}},"reason":"Link the source"})).await?;
     let scope = store::ObjectScope {
         address: Some("domain:unused"),
         ..Default::default()

@@ -142,7 +142,7 @@ impl World {
             .await?;
         let mut data = current["document"]["data"].clone();
         data["title"] = json!(text);
-        let command = json!({"op":"save_object","kind":"ac","id":"key-rights","revision":current["current_revision"],"parent":"requirement:key","data":data,"links":current["document"]["links"],"reason":"Sharper wording"});
+        let command = json!({"op":"save_object","kind":"ac","id":"key-rights","revision":current["current_revision"],"parent":"requirement:key","data":data,"reason":"Sharper wording"});
         let reply = self
             .http
             .post(format!("{}/commands", self.base))

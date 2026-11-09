@@ -9,7 +9,7 @@ fn world() -> World {
 }
 
 fn signal(w: &mut World, id: &str, author: &str) {
-    w.ok("agent", json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":format!("Signal {id}"),"owner":"owner","body":"Refunds are slow","source":{"author":author}},"links":[],"reason":"Intake"}));
+    w.ok("agent", json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":null,"data":{"title":format!("Signal {id}"),"owner":"owner","body":"Refunds are slow","source":{"author":author}},"reason":"Intake"}));
 }
 
 fn data(w: &World, id: &str) -> Value {
@@ -25,4 +25,3 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
         .expect_err(&format!("{command} must be refused"));
     assert!(e.to_string().contains(error), "{command}: {e}");
 }
-

@@ -181,9 +181,14 @@ impl World {
         revision: u32,
         title: &str,
         body: &str,
-        links: Value,
+        relations: Value,
     ) -> Result<()> {
-        self.command(json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,"data":{"title":title,"owner":"owner","body":body},"links":links,"reason":"Save"})).await?;
+        let mut command = json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,"data":{"title":title,"owner":"owner","body":body},"reason":"Save"});
+        // An empty list or null sends no relations: the stored relations stay.
+        if relations.is_object() {
+            command["relations"] = relations;
+        }
+        self.command(command).await?;
         Ok(())
     }
     async fn search(&self, query: &str) -> Result<Vec<String>> {

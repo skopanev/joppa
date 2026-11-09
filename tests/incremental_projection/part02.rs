@@ -6,24 +6,24 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
     let scope = "One agreed build set";
     let subject =
         json!({"app":"sha-a","backend":"sha-b","infra":"config-v1","environment":"staging"});
-    let note = |id: &str, title: &str, parent: Option<&str>, links: Value| {
+    let note = |id: &str, title: &str, parent: Option<&str>, relations: Value| {
         json!({"op":"save_object","kind":"note","id":id,"revision":0,"parent":parent,
-            "data":{"title":title,"owner":"owner","body":"Recorded input"},"links":links,
+            "data":{"title":title,"owner":"owner","body":"Recorded input"},"relations":relations,
             "reason":"Record an input"})
     };
     let mut steps: Vec<(&'static str, Value)> = vec![
         ("confirm", json!({"op":"confirm","req":"r","revision":1})),
     ];
-    // Three linked inputs: a note has no parent, so each input links to the one above it.
+    // Three related inputs: a note has no parent, so each input relates to the one above it.
     let nesting = vec![
-        ("note top", note("top", "Top input", None, json!([]))),
+        ("note top", note("top", "Top input", None, json!({}))),
         (
             "note middle",
             note(
                 "middle",
                 "Middle input",
                 None,
-                json!([{"target":"note:top","relation":"related"}]),
+                json!({"related":{"edges":[{"to":"note:top"}]}}),
             ),
         ),
         (
@@ -32,28 +32,28 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
                 "leaf",
                 "Leaf input",
                 None,
-                json!([{"target":"note:middle","relation":"related"}]),
+                json!({"related":{"edges":[{"to":"note:middle"}]}}),
             ),
         ),
     ];
     // Two inputs that point at each other: an ordinary cycle is allowed and
     // must not make the closure loop.
     let cycle = vec![
-        ("note left", note("left", "Left input", None, json!([]))),
+        ("note left", note("left", "Left input", None, json!({}))),
         (
             "note right",
             note(
                 "right",
                 "Right input",
                 None,
-                json!([{"target":"note:left","relation":"related"}]),
+                json!({"related":{"edges":[{"to":"note:left"}]}}),
             ),
         ),
         (
             "note left points back",
             json!({"op":"save_object","kind":"note","id":"left","revision":1,"parent":null,
                 "data":{"title":"Left input","owner":"owner","body":"Recorded input"},
-                "links":[{"target":"note:right","relation":"related"}],"reason":"Close the cycle"}),
+                "relations":{"related":{"edges":[{"to":"note:right"}]}},"reason":"Close the cycle"}),
         ),
     ];
     if seed.is_multiple_of(2) {
@@ -111,12 +111,12 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
                 "note":"Recorded by the suite"}}),
         ),
         ("finish", json!({"op":"finish","req":"r","revision":1,"run":"r1"})),
-        // A blocking dependency on a criterion: its evidence decides readiness.
+        // A depends_on edge to a criterion: its evidence decides readiness.
         (
             "note waits for a criterion",
             json!({"op":"save_object","kind":"note","id":"waiting","revision":0,"parent":null,
                 "data":{"title":"Waiting input","owner":"owner","body":"Needs the criterion"},
-                "links":[{"target":"ac:key","relation":"depends_on","revision":1,"blocking":true}],
+                "relations":{"depends_on":{"edges":[{"to":"ac:key","revision":1}]}},
                 "reason":"Depend on a criterion"}),
         ),
         (

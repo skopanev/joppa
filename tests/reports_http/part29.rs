@@ -36,7 +36,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         "area:p",
         None,
         json!({"title":"P","body":"Group scope","owner":"owner"}),
-        json!([]),
+        json!({}),
     )
     .await?;
     for spec in ["spec:r", "spec:r2"] {
@@ -44,7 +44,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
             spec,
             Some("area:p"),
             json!({"title":spec,"body":"Implement the rule","owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
     }
@@ -58,7 +58,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
             ac,
             Some(spec),
             json!({"title":ac,"owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
         p.bind(&w.token, ac, &[test]).await?;
@@ -155,7 +155,7 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
             key,
             parent,
             json!({"title":key,"body":"Deliver the rule","owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
     }
@@ -168,14 +168,15 @@ async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Resu
             key,
             Some(parent),
             json!({"title":key,"owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
     }
     Ok(p)
 }
 
-/// A blocking ordering link without a revision.
+/// An ordering depends_on edge without a revision, as a relations value. depends_on always
+/// blocks.
 fn ordering_link(target: &str) -> Value {
-    json!([{"target":target,"relation":"depends_on","blocking":true}])
+    json!({"depends_on":{"edges":[{"to":target}]}})
 }

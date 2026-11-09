@@ -45,7 +45,7 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     )
     .await?;
     let r1 = revision(&pool, "requirement:r1").await?;
-    run(&pool, &mut n, json!({"op":"save_object","kind":"requirement","id":"r1","revision":r1,"parent":"capability:c","data":{"title":"First","owner":"owner","body":"Rule one.","consumers":["user"]},"links":[{"target":"requirement:r2","relation":"depends_on","blocking":true}],"reason":"Order after r2"})).await?;
+    run(&pool, &mut n, json!({"op":"save_object","kind":"requirement","id":"r1","revision":r1,"parent":"capability:c","data":{"title":"First","owner":"owner","body":"Rule one.","consumers":["user"]},"relations":{"depends_on":{"edges":[{"to":"requirement:r2"}]}},"reason":"Order after r2"})).await?;
 
     // Reads: no status, rollup or wait computation.
     let before = counts();

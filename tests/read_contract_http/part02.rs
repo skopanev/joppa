@@ -144,8 +144,9 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
     save_ac(&w, "b").await?;
     let compact = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
     ensure!(no_empty_keys(&compact), "{compact}");
-    // No item ID, no signal copy of status, and no empty comment or link page.
-    for key in ["item_id", "signal", "comments", "links"] {
+    // No item ID, no signal copy of status, no empty comment page and no empty relations.
+    // No read gives links.
+    for key in ["item_id", "signal", "comments", "links", "relations"] {
         ensure!(compact.get(key).is_none(), "{key}: {compact}");
     }
     ensure!(

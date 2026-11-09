@@ -95,8 +95,8 @@ async fn an_inbox_parent_rule_and_an_inbox_save_with_a_parent_are_refused() -> R
         "command":save("note", "n", 0, Some("capability:c"), json!({"title":"Input","owner":"owner","body":"Source"}))})).await;
     let error = refused.err().map(|e| e.to_string()).unwrap_or_default();
     ensure!(
-        error.contains("links") && error.contains("related"),
-        "the error does not name links: {error}"
+        error.contains("relations") && error.contains("related"),
+        "the error does not name relations: {error}"
     );
     let after = store::tree_schema(&pool, &ws, "owner", None).await?;
     ensure!(
@@ -184,9 +184,9 @@ async fn the_migration_moves_a_note_to_the_root_with_a_related_link() -> Result<
     let tree = store::tree_schema(&pool, &ws, "owner", None).await?;
     ensure!(n["document"]["parent"].is_null(), "{n}");
     ensure!(
-        n["links"].as_array().is_some_and(|l| l
-            .iter()
-            .any(|l| l["link"]["target"] == "capability:c" && l["link"]["relation"] == "related")),
+        n["document"]["relations"]["related"]["edges"]
+            .as_array()
+            .is_some_and(|e| e.iter().any(|e| e["to"] == "capability:c")),
         "{n}"
     );
     ensure!(

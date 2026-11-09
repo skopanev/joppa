@@ -39,14 +39,15 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     w.command(save(1, title, json!({}))).await?;
     let read = async |address: &str| w.get(&format!("address={address}")).await;
     let revisions = async || w.get("address=task:t&history=true").await;
-    w.command_as(&w.bot, save(2, title, json!({"assignee":"bot"}))).await?;
+    w.command_as(&w.bot, save(2, title, json!({"assignee":"bot"})))
+        .await?;
     w.command_as(&w.bot, save(3, title, done.clone())).await?;
     let finished = read(&t).await?;
     ensure!(
         finished["current_revision"] == 4 && finished["document"]["data"]["assignee"] == "bot",
         "{finished}"
     );
-    w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","body":"Use the completed work and record the result","projects":[]},"links":[{"target":t,"relation":"depends_on","revision":4,"blocking":true}],"reason":"Depend on the completed work"})).await?;
+    w.command(json!({"op":"save_object","kind":"task","id":"u","revision":0,"parent":"ac:key-rights","data":{"title":"Use the specified work","owner":"owner","body":"Use the completed work and record the result","projects":[]},"relations":{"depends_on":{"edges":[{"to":t,"revision":4}]}},"reason":"Depend on the completed work"})).await?;
     let position = journal_position(&w).await?;
 
     // The write gives the current revision of the parent too.
@@ -65,17 +66,33 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     let u = read("task:u").await?;
     ensure!(
         u.get("review_required").is_none()
-            && u["document"]["links"][0]["revision"] == task["current_revision"],
+            && u["document"]["relations"]["depends_on"]["edges"][0]["revision"]
+                == task["current_revision"],
         "{u}"
     );
     // joppa_objects over MCP reads the same revisions and the same pin.
-    let mcp_task = mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":t,"history":true})).await?;
+    let mcp_task = mcp_value(
+        &w,
+        "joppa_objects",
+        json!({"workspace":w.ws,"address":t,"history":true}),
+    )
+    .await?;
     ensure!(
-        mcp_task["current_revision"] == 4 && mcp_task["items"].as_array().map(Vec::len) == Some(4) && mcp_task["total"] == 4,
+        mcp_task["current_revision"] == 4
+            && mcp_task["items"].as_array().map(Vec::len) == Some(4)
+            && mcp_task["total"] == 4,
         "{mcp_task}"
     );
-    let mcp_u = mcp_value(&w, "joppa_objects", json!({"workspace":w.ws,"address":"task:u"})).await?;
-    ensure!(mcp_u["links"][0]["revision"] == 4, "{mcp_u}");
+    let mcp_u = mcp_value(
+        &w,
+        "joppa_objects",
+        json!({"workspace":w.ws,"address":"task:u"}),
+    )
+    .await?;
+    ensure!(
+        mcp_u["relations"]["depends_on"]["edges"][0]["revision"] == 4,
+        "{mcp_u}"
+    );
     ensure!(journal_position(&w).await? == position);
 
     let reply = w
@@ -87,7 +104,10 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
         .await?;
     ensure!(!reply.status().is_success(), "a stale save is refused");
     let reply: Value = reply.json().await?;
-    ensure!(reply["error"] == "stale object revision; read the object again", "{reply}");
+    ensure!(
+        reply["error"] == "stale object revision; read the object again",
+        "{reply}"
+    );
     let task = revisions().await?;
     ensure!(
         task["current_revision"] == 4 && task["revisions"].as_array().map(Vec::len) == Some(4),
@@ -95,7 +115,8 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     );
     ensure!(journal_position(&w).await? == position);
     // Any member changes the finished Task: it gets one revision and keeps its data.
-    w.command_as(&w.maria, save(4, "Implement other work", done)).await?;
+    w.command_as(&w.maria, save(4, "Implement other work", done))
+        .await?;
     let amended = read(&t).await?;
     ensure!(
         amended["current_revision"] == 5 && amended["document"]["data"]["commit"] == "c0ffee0",

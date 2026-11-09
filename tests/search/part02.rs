@@ -43,7 +43,7 @@ async fn current_search_is_scoped_fresh_rebuildable_and_hybrid_without_touching_
         "wording",
         &json!({"op":"save_object","kind":"requirement","id":"r",
         "revision":current["current_revision"],"parent":current["document"]["parent"],"data":data,
-        "links":current["document"]["links"],"reason":"Agreed wording"}),
+        "reason":"Agreed wording"}),
     )
     .await?;
     let before = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;

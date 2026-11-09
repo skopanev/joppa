@@ -1,5 +1,9 @@
 // Part 1 of tests/read_pages_http.rs, included there, so the test names stay unchanged.
 
+// An included file resolves #[path] from its own folder.
+#[path = "../common/relation_edges.rs"]
+mod relation_edges;
+
 async fn read(w: &record_world::World, tool: &str, args: Value) -> Result<Value> {
     w.mcp(&w.bot, tool, args).await?.map_err(anyhow::Error::msg)
 }
@@ -42,51 +46,58 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
             "reason":"Link target"})
     })
     .await?;
-    // 29 related links and one blocking dependency with a pin.
-    let mut links: Vec<Value> = (0..29)
-        .map(|i| json!({"target":format!("requirement:t{i:02}"),"relation":"related"}))
+    // 29 related edges and one depends_on edge with a pin.
+    let related: Vec<Value> = (0..29)
+        .map(|i| json!({"to":format!("requirement:t{i:02}")}))
         .collect();
-    links.push(json!({"target":"requirement:t29","relation":"depends_on","revision":1,"blocking":true}));
+    let relations = json!({"related":{"edges":related},
+        "depends_on":{"edges":[{"to":"requirement:t29","revision":1}]}});
     w.command(
         &w.bot,
         json!({"op":"save_object","kind":"requirement","id":"d","revision":0,
-        "parent":null,"data":{"title":"D","owner":"owner","body":"Rule"},"links":links,
+        "parent":null,"data":{"title":"D","owner":"owner","body":"Rule"},"relations":relations,
         "reason":"Link test"}),
     )
     .await?
     .map_err(anyhow::Error::msg)?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
-    let items = detail["links"].as_array().cloned().unwrap_or_default();
+    let items = relation_edges::edges(&detail, "related");
+    let pinned = relation_edges::edges(&detail, "depends_on");
     ensure!(
-        items.len() == 30 && items.iter().all(|l| l["title"].is_string()),
+        items.len() == 29 && pinned.len() == 1 && items.iter().all(|e| e["title"].is_string()),
         "{detail}"
     );
-    // One list: the stored link with the title of its target. A related link has no
-    // relation and no pin.
+    // Each edge gives the title of its target. A related edge without a pin has no revision,
+    // and a pin shows the current revision. No edge gives blocking.
     ensure!(
-        items[0] == json!({"target":"requirement:t00","title":"T00"})
-            && items[29]
-                == json!({"target":"requirement:t29","relation":"depends_on","title":"T29",
-                    "revision":1,"current_revision":1,"blocking":true}),
+        items[0]["to"] == "requirement:t00"
+            && items[0]["title"] == "T00"
+            && items[0].get("revision").is_none()
+            && pinned[0]["to"] == "requirement:t29"
+            && pinned[0]["title"] == "T29"
+            && pinned[0]["revision"] == 1
+            && pinned[0]["current_revision"] == 1
+            && pinned[0].get("blocking").is_none(),
         "{} {}",
         items[0],
-        items[29]
+        pinned[0]
     );
     ensure!(
-        detail["link_groups"]
+        detail["relation_groups"]
             .as_array()
             .into_iter()
             .flatten()
             .all(|g| g["direction"] == "incoming")
+            && detail.get("links").is_none()
             && detail.get("document").is_none(),
         "{detail}"
     );
-    // save_object takes the read links back as they are and stores the same links.
+    // save_object takes the read relations back as they are and stores the same edges.
     w.command(
         &w.bot,
         json!({"op":"save_object","kind":"requirement","id":"d","revision":detail["revision"],
-        "parent":null,"data":{"title":"D","owner":"owner","body":"Rule v2"},"links":items,
-        "reason":"Save the read links"}),
+        "parent":null,"data":{"title":"D","owner":"owner","body":"Rule v2"},
+        "relations":detail["relations"],"reason":"Save the read relations"}),
     )
     .await?
     .map_err(anyhow::Error::msg)?;
@@ -96,8 +107,12 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
         json!({"address":"requirement:d","revision":2}),
     )
     .await?;
-    // Revision 2 holds the same links, so its read gives the same items.
-    ensure!(saved["links"] == json!(items), "{saved}");
+    // Revision 2 holds the same edges, so its read gives the same edges.
+    ensure!(
+        relation_edges::edges(&saved, "related") == items
+            && relation_edges::edges(&saved, "depends_on") == pinned,
+        "{saved}"
+    );
     Ok(())
 }
 

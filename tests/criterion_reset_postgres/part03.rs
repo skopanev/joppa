@@ -33,10 +33,10 @@ async fn a_new_data_value_or_link_resets_the_criteria_below_and_a_sibling_save_d
     ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "green", "a new record");
     // A new link of spec R resets A below it.
     let r = revision(&pool, &ws, "spec:r").await?;
-    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":"r","revision":r,"parent":"area:g","data":{"title":"r","body":"Implement the rule","owner":"owner"},"links":[{"target":"spec:rh","relation":"related"}],"reason":"Relate the rules"})).await?;
+    write(&pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":"r","revision":r,"parent":"area:g","data":{"title":"r","body":"Implement the rule","owner":"owner"},"relations":{"related":{"edges":[{"to":"spec:rh"}]}},"reason":"Relate the rules"})).await?;
     ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "grey", "link change");
     upload_c1(&pool, &ws).await?;
-    // A new sibling C under R gives R a new revision with the same parent, links and data:
+    // A new sibling C under R gives R a new revision with the same parent, relations and data:
     // A stays green.
     write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"c","revision":0,"parent":"spec:r","data":{"title":"c","owner":"owner"},"reason":"Create the criterion"})).await?;
     ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "green", "sibling save");

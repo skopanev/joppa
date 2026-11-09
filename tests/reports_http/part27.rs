@@ -19,19 +19,19 @@ impl Planning<'_> {
         ensure!(code.is_success(), "{code} {}", reply.text().await?);
         Ok(())
     }
-    /// Owner S saves R over HTTP with `parent`, `title` and `links`.
-    async fn save_r(&self, parent: &str, title: &str, links: Value) -> Result<()> {
+    /// Owner S saves R over HTTP with `parent`, `title` and `relations`.
+    async fn save_r(&self, parent: &str, title: &str, relations: Value) -> Result<()> {
         let revision = self.revision("spec:r").await?;
-        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"links":links,"reason":"Change R"})).await
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"spec","id":"r","revision":revision,"parent":parent,"data":{"title":title,"body":"Implement the rule","owner":"owner"},"relations":relations,"reason":"Change R"})).await
     }
     /// Owner S saves a new text of criterion A over HTTP, which resets only A.
     async fn change_a(&self) -> Result<()> {
         let revision = self.revision("criterion:a").await?;
-        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"criterion","id":"a","revision":revision,"parent":"spec:r","data":{"title":"criterion:a","owner":"owner","body":"A changed criterion"},"links":[],"reason":"Change A"})).await
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"criterion","id":"a","revision":revision,"parent":"spec:r","data":{"title":"criterion:a","owner":"owner","body":"A changed criterion"},"reason":"Change A"})).await
     }
     /// Owner S saves inbox signal s under R over HTTP.
     async fn signal(&self) -> Result<()> {
-        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"links":[{"target":"spec:r","relation":"related"}],"reason":"Record the signal"})).await
+        self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"relations":{"related":{"edges":[{"to":"spec:r"}]}},"reason":"Record the signal"})).await
     }
     /// A is grey with the test list of `before`.
     async fn reset(&self, before: &Value) -> Result<()> {
@@ -60,7 +60,7 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
     let w = world().await?;
     let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
-    p.save_r("area:g", "R renamed", json!([])).await?;
+    p.save_r("area:g", "R renamed", json!({})).await?;
     p.reset(&before).await?;
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
@@ -116,7 +116,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_and_greys_a() -> Result<()> {
     data["body"] = json!("Changed scope");
     let (code, reply) = post(&w, &w.token, "/commands", json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":
         {"op":"save_object","kind":"requirement","id":"key","revision":2,"parent":r["document"]["parent"],
-         "data":data,"links":[],"reason":"Change R"}})).await?;
+         "data":data,"reason":"Change R"}})).await?;
     ensure!(code == 200, "bot saves R: {code} {reply}");
     let r = read(
         "address=requirement:key",
@@ -155,7 +155,7 @@ async fn frozen_f2_a_new_link_of_r_makes_a_grey() -> Result<()> {
     p.save_r(
         "area:g",
         "R",
-        json!([{"target":"area:h","relation":"related"}]),
+        json!({"related":{"edges":[{"to":"area:h"}]}}),
     )
     .await?;
     p.reset(&before).await
@@ -168,7 +168,7 @@ async fn frozen_f3_a_move_of_r_makes_a_grey() -> Result<()> {
     let w = world().await?;
     let p = frozen(&w).await?;
     let before = p.ac_tests("criterion:a").await?;
-    p.save_r("area:h", "R", json!([])).await?;
+    p.save_r("area:h", "R", json!({})).await?;
     p.reset(&before).await
 }
 

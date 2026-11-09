@@ -11,7 +11,7 @@ async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
         empty["items"].as_array().is_some_and(Vec::is_empty),
         "{empty}"
     );
-    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"first","revision":0,"parent":null,"data":{"title":"First","owner":"owner","body":"Refunds are slow"},"links":[],"reason":"Save"})).await?;
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"first","revision":0,"parent":null,"data":{"title":"First","owner":"owner","body":"Refunds are slow"},"reason":"Save"})).await?;
     let inbox = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     let items = inbox["items"].as_array().cloned().unwrap_or_default();
     ensure!(
@@ -27,8 +27,8 @@ async fn a_new_signal_appears_in_the_inbox_list() -> Result<()> {
 async fn a_note_linked_to_any_object_also_appears_in_the_inbox() -> Result<()> {
     let w = world().await?;
     let bot = w.bot.as_str();
-    // A note has no parent: it links to the object that it informs.
-    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":null,"data":{"title":"Under","owner":"owner","body":"About keys"},"links":[{"target":"requirement:key","relation":"related"}],"reason":"Save"}))
+    // A note has no parent: it has a related edge to the object that it informs.
+    w.command_as(bot, json!({"op":"save_object","kind":"note","id":"under","revision":0,"parent":null,"data":{"title":"Under","owner":"owner","body":"About keys"},"relations":{"related":{"edges":[{"to":"requirement:key"}]}},"reason":"Save"}))
         .await?;
     let inbox = w.get_as(bot, "kind=note&parent=*&limit=100").await?;
     let items = inbox["items"].as_array().cloned().unwrap_or_default();

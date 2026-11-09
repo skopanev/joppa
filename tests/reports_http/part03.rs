@@ -39,16 +39,27 @@ impl Planning<'_> {
             .as_u64()
             .unwrap_or(0))
     }
-    async fn save(&self, key: &str, parent: Option<&str>, data: Value, links: Value) -> Result<()> {
+    /// `relations` goes into the save only when it is an object: a list sends none.
+    async fn save(
+        &self,
+        key: &str,
+        parent: Option<&str>,
+        data: Value,
+        relations: Value,
+    ) -> Result<()> {
         let (kind, id) = key.split_once(':').unwrap();
         let revision = match self.read(key).await {
             Ok(object) => object["current_revision"].as_u64().unwrap_or(0),
             Err(_) => 0,
         };
-        self.write("owner", json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"links":links,"reason":"Set the contract"})).await?;
+        let mut command = json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"reason":"Set the contract"});
+        if relations.is_object() {
+            command["relations"] = relations;
+        }
+        self.write("owner", command).await?;
         Ok(())
     }
-    /// Committed rows of the workspace: documents, revisions, links, process data,
+    /// Committed rows of the workspace: documents, revisions, relation rows, process data,
     /// planning claims, receipts and the journal, each in a stable order.
     async fn saved(&self) -> Result<Value> {
         let client = self.pool.get().await?;
