@@ -6,7 +6,7 @@ mod hidden_lists;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
-use hidden_lists::{listed, web};
+use hidden_lists::{hide, listed, ok, web};
 use record_world::World;
 use serde_json::json;
 
@@ -52,6 +52,7 @@ async fn store_older_form(w: &World, ws: &str, hidden: bool) -> Result<()> {
 }
 
 /// The board row of `ws`: its xmin, first_view.projection_version and the xmin of its meta row.
+/// The test does not read the older "hidden" key: the fix can keep it next to hidden_by.
 async fn rows_of(w: &World, ws: &str) -> Result<(String, String, String)> {
     let sql = "SELECT b.xmin::text,COALESCE(b.first_view->>'projection_version',''),(SELECT s.xmin::text FROM joppa.state_entries s WHERE s.workspace=b.workspace AND s.section='meta' AND s.key='') FROM joppa.board_cache b WHERE b.workspace=$1";
     let row = w.pool.get().await?.query_one(sql, &[&ws]).await?;
@@ -67,15 +68,19 @@ async fn a_workspace_hidden_by_the_owner_before_the_change_stays_hidden_only_for
     let mut w = record_world::world(&[]).await?;
     // Workspace V of the same owner and alex never hid.
     let v = hidden_lists::second_workspace(&w).await?;
+    // The journal of W gets several events from O. The last update_workspace {hidden: true}
+    // wins, and O removes alex and adds alex again.
+    for command in [
+        hide(true),
+        hide(false),
+        json!({"op":"remove_member","id":"alex","reason":"Left the team"}),
+        json!({"op":"member","id":"alex","role":"human"}),
+        hide(true),
+    ] {
+        ok(&w, &w.owner, command).await?;
+    }
     w.stop();
-    // The journal of W gets update_workspace {hidden: true} from O, as the older release wrote
-    // it. W and V keep the older stored form with the older projection version.
-    let event = json!({"op":"update_workspace","hidden":true}).to_string();
-    let request = uuid::Uuid::new_v4().to_string();
-    w.pool.get().await?.execute(
-        "INSERT INTO joppa.events(workspace,position,actor,request_id,command) SELECT $1,COALESCE(MAX(position),0)+1,'owner',$2,$3::text::jsonb FROM joppa.events WHERE workspace=$1",
-        &[&w.ws, &request, &event],
-    ).await?;
+    // W and V keep the older stored form with the older projection version.
     store_older_form(&w, &w.ws, true).await?;
     store_older_form(&w, &v, false).await?;
     let stored_v = rows_of(&w, &v).await?;
@@ -91,8 +96,8 @@ async fn a_workspace_hidden_by_the_owner_before_the_change_stays_hidden_only_for
         first.1
     );
     ensure!(
-        first.1.0 == stored_v.0,
-        "the board row of V keeps its xmin: before {stored_v:?}, after {:?}",
+        first.1 == stored_v,
+        "the board row and the meta row of V keep their xmin: before {stored_v:?}, after {:?}",
         first.1
     );
     // A second start changes no row.
@@ -105,5 +110,8 @@ async fn a_workspace_hidden_by_the_owner_before_the_change_stays_hidden_only_for
         second == first,
         "a second start changes no row: first {first:?}, second {second:?}"
     );
+    // A full replay of the journal of W gives the same lists as the migration.
+    hidden_lists::rebuild(&mut w).await?;
+    hidden_only_for_the_owner(&w, "after a full rebuild").await?;
     Ok(())
 }
