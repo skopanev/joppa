@@ -76,7 +76,11 @@ Put the measured time in the deploy request. If a replay runs too long, the serv
 stays down until the migration ends.
 
 A failed application health check restores the previous binary when available;
-database migrations and configuration changes are not rolled back. The final
+database migrations and configuration changes are not rolled back. After migration 062
+(relations), the previous binary reads the current rows through their shadow `links`, but it
+cannot save a node that stores both forms (a flow, a key title, `when` or an empty key), and
+it cannot parse the new save_object events, so a full read, `check-journal` or a rebuild
+fails. The primary rollback is the pre-deploy dump. The final
 check calls the public HTTPS health endpoint. This does not verify Google login
 or establish Spaces retention: those require their own acceptance checks.
 
