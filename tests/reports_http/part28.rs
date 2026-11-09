@@ -116,6 +116,6 @@ async fn a_member_archive_of_a_signal_under_r_keeps_a_green() -> Result<()> {
     }
     // Control: the fixture detects a reset.
     let tests = p.ac_tests("criterion:a").await?;
-    p.save_r("area:g", "R renamed", json!([])).await?;
+    p.save_r("area:g", "R renamed", json!({})).await?;
     p.reset(&tests).await
 }

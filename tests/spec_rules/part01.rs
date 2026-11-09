@@ -7,9 +7,14 @@ fn refused(w: &mut World, actor: &str, command: Value, error: &str) {
     assert!(e.to_string().contains(error), "{command}: {e}");
 }
 
+/// A note save. Only an object is sent as relations: a save with no edges omits them.
 fn note(id: &str, revision: u32, relations: Value) -> Value {
-    json!({"op":"save_object","kind":"note","id":id,"revision":revision,"parent":null,
-           "data":{"title":id,"owner":"owner","body":"Signal"},"relations":relations,"reason":"Update"})
+    let mut command = json!({"op":"save_object","kind":"note","id":id,"revision":revision,
+        "parent":null,"data":{"title":id,"owner":"owner","body":"Signal"},"reason":"Update"});
+    if relations.is_object() {
+        command["relations"] = relations;
+    }
+    command
 }
 
 fn schema_types(w: &World) -> Value {

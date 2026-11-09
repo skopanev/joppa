@@ -38,7 +38,7 @@ async fn frozen(w: &World) -> Result<Planning<'_>> {
             key,
             None,
             json!({"title":key,"body":"Group scope","owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
     }
@@ -46,7 +46,7 @@ async fn frozen(w: &World) -> Result<Planning<'_>> {
         "spec:r",
         Some("area:g"),
         json!({"title":"R","body":"Implement the rule","owner":"owner"}),
-        json!([]),
+        json!({}),
     )
     .await?;
     for (ac, tests) in [("criterion:a", vec![A, B]), ("criterion:b", vec![REJECTS])] {
@@ -54,7 +54,7 @@ async fn frozen(w: &World) -> Result<Planning<'_>> {
             ac,
             Some("spec:r"),
             json!({"title":ac,"owner":"owner"}),
-            json!([]),
+            json!({}),
         )
         .await?;
         p.bind(&w.token, ac, &tests).await?;
