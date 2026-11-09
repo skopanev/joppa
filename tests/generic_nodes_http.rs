@@ -12,7 +12,7 @@ use serde_json::json;
 async fn the_ready_filter_follows_a_dependency_wait() -> Result<()> {
     let w = world(&[]).await?;
     let data = json!({"title":"Call the API","owner":"owner","body":"Call it","assignee":"alex"});
-    // The task waits for the grey criterion ac:a.
+    // The task waits for the blue criterion ac:a.
     let link = json!({"depends_on":{"edges":[{"to":"ac:a"}]}});
     save(&w, "task", "t", "requirement:r", data.clone(), link).await?;
     let task = w.object("task:t").await?;

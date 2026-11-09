@@ -127,14 +127,14 @@ async fn upload_c1(pool: &deadpool_postgres::Pool, ws: &str) -> Result<Value> {
     .await
 }
 
-/// The owner changes the text of criterion A and keeps its test nodes, so A is grey until a
+/// The owner changes the text of criterion A and keeps its test nodes, so A is blue until a
 /// newer record.
 async fn change_a(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
     let a = read(pool, ws, "criterion:a").await?;
     write(pool, ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a["current_revision"],"parent":"spec:r","data":{"title":"a changed","owner":"owner"},"reason":"Sharper wording"})).await?;
     let s = status(pool, ws, "criterion:a").await?;
     ensure!(
-        s["status"] == "grey" && s["tests"].as_array().is_some_and(|t| t.len() == 2),
+        s["status"] == "blue" && s["tests"].as_array().is_some_and(|t| t.len() == 2),
         "after the change: {s}"
     );
     Ok(())

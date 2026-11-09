@@ -61,7 +61,7 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
     let s = criterion_status(&both, false, at, &old, &rows, &joppa::test_rules::legacy());
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
-        ("grey", "not_run")
+        ("blue", "not_run")
     );
     // Two records after the boundary pass every test together: green, because
     // the latest eligible result of each test decides.
@@ -131,7 +131,7 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         &joppa::test_rules::legacy(),
     );
     assert_eq!(s.status, "green");
-    // A boundary that cannot be read gives grey, whatever the reports say.
+    // A boundary that cannot be read gives blue, whatever the reports say.
     assert_eq!(Boundary::read(Some("not a time")), Boundary::Unreadable);
     let s = criterion_status(
         &both,
@@ -141,7 +141,7 @@ fn reports_at_or_before_a_boundary_do_not_count_and_partial_runs_no_longer_combi
         &pass(5),
         &joppa::test_rules::legacy(),
     );
-    assert_eq!(s.status, "grey");
+    assert_eq!(s.status, "blue");
     assert_eq!(Boundary::read(None), Boundary::None);
     assert_eq!(
         Boundary::read(Some("2026-10-14 18:20:01.000123+00")),

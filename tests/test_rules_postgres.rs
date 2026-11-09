@@ -102,7 +102,7 @@ async fn the_green_and_same_commit_rules_come_from_the_schema() -> Result<()> {
 async fn the_reset_rule_comes_from_the_schema() -> Result<()> {
     let pool = pool().await?;
     const X: &str = "tests/x.rs > x";
-    for (reset, expected) in [(true, "grey"), (false, "green")] {
+    for (reset, expected) in [(true, "blue"), (false, "green")] {
         let ws = fixture(&pool, json!({"reset_on_change":reset})).await?;
         bind(&pool, &ws, json!([X])).await?;
         record(&pool, &ws, json!([{"test":X,"status":"pass"}])).await?;

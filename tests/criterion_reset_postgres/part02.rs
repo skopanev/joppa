@@ -137,10 +137,10 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
         .as_str()
         .context("the changed node")?;
     let node = status(&pool, &ws, node).await?;
-    ensure!(node["status"] == "grey", "the changed node: {node}");
+    ensure!(node["status"] == "blue", "the changed node: {node}");
     let live = snapshot(&pool, &ws).await?;
     ensure!(
-        live["criterion:a"]["status"]["status"] == "grey"
+        live["criterion:a"]["status"]["status"] == "blue"
             && live["criterion:d"]["status"]["status"] == "green",
         "{live}"
     );
@@ -169,12 +169,12 @@ async fn a_test_node_change_and_a_criterion_archive_survive_replay() -> Result<(
     let replayed = replay(&pool, &ws).await?;
     ensure!(replayed == live, "replay: {replayed}\nlive: {live}");
     // An archive before the epoch of archive_own_reset keeps its old meaning in a replay:
-    // it resets the criteria at and below the parent, so A is grey.
+    // it resets the criteria at and below the parent, so A is blue.
     let after = events(&pool, &ws).await? + 1;
     pool.get().await?.execute("UPDATE joppa.replay_epochs SET first_position=$2 WHERE workspace=$1 AND rule='archive_own_reset'", &[&ws, &after]).await?;
     let old = replay(&pool, &ws).await?;
     ensure!(
-        old["criterion:a"]["status"]["status"] == "grey"
+        old["criterion:a"]["status"]["status"] == "blue"
             && old["criterion:d"]["status"]["status"] == "green",
         "{old}"
     );
@@ -235,6 +235,6 @@ async fn a_failed_receipt_write_rejects_the_identical_upload() -> Result<()> {
         "the report has a new receipt"
     );
     let s = status(&pool, &ws, "criterion:a").await?;
-    ensure!(s["status"] == "grey", "after the failed upload: {s}");
+    ensure!(s["status"] == "blue", "after the failed upload: {s}");
     Ok(())
 }

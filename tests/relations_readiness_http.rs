@@ -37,10 +37,10 @@ fn edge(relation: &str, target: &str) -> Value {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn depends_on_blocks_ready_and_refuses_cycles() -> Result<()> {
-    // C is criterion A: it lists a test without a result, so it is grey.
+    // C is criterion A: it lists a test without a result, so it is blue.
     let w = relations_world::world(&["tests/c.rs > c"]).await?;
-    let grey = relations_world::tone(&w, A).await?;
-    ensure!(grey == "grey", "C is grey: {grey}");
+    let blue = relations_world::tone(&w, A).await?;
+    ensure!(blue == "blue", "C is blue: {blue}");
     let parent = json!({"parent":"requirement:r"});
     saved(&w, "task:t1", 0, parent.clone()).await?;
     saved(&w, "task:t2", 0, parent).await?;

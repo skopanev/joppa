@@ -97,7 +97,7 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
     )
     .await?;
     let (a, d) = f
-        .expect("step 2, after the change of G", "grey", "green")
+        .expect("step 2, after the change of G", "blue", "green")
         .await?;
     for (name, reply) in [("A", &a), ("D", &d)] {
         ensure!(
@@ -177,7 +177,7 @@ async fn grey_and_green_criteria_keep_their_status_across_a_restart_that_rebuild
         );
     }
     ensure!(
-        after.0["status"] == "grey" && after.1["status"] == "green",
+        after.0["status"] == "blue" && after.1["status"] == "green",
         "step 4: A {} and D {} after the restart",
         after.0,
         after.1

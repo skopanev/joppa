@@ -1,4 +1,4 @@
-//! requirement:jjhid61n: store::expire_manual_checks turns an expired manual check grey
+//! requirement:jjhid61n: store::expire_manual_checks turns an expired manual check blue
 //! without a journal event, and a run that changes no status writes no row.
 #[path = "common/manual_check.rs"]
 mod manual_check;
@@ -58,9 +58,9 @@ async fn an_expired_manual_check_turns_grey_at_the_next_check_run_without_a_writ
     expect(&w, "the run with D - 1", "ac:a", "green", None).await?;
     let changed = joppa::store::expire_manual_checks(&w.pool, &w.ws, d).await?;
     ensure!(changed == 1, "the first run with D returns {changed}");
-    expect(&w, "the first run with D", "ac:a", "grey", EXPIRED).await?;
+    expect(&w, "the first run with D", "ac:a", "blue", EXPIRED).await?;
     let r = manual_check::tone(&w, "requirement:r").await?;
-    ensure!(r == "grey", "the first run with D: R must be grey: {r}");
+    ensure!(r == "blue", "the first run with D: R must be blue: {r}");
     let after = xmins(&w).await?;
     let changed = joppa::store::expire_manual_checks(&w.pool, &w.ws, d).await?;
     ensure!(
@@ -68,7 +68,7 @@ async fn an_expired_manual_check_turns_grey_at_the_next_check_run_without_a_writ
         "the second run with D changed a row"
     );
     ensure!(changed == 0, "the second run with D returns {changed}");
-    expect(&w, "the second run with D", "ac:a", "grey", EXPIRED).await?;
+    expect(&w, "the second run with D", "ac:a", "blue", EXPIRED).await?;
     expect(&w, "after the runs", "ac:f", "green", None).await?;
     ensure!(
         w.position().await? == position,

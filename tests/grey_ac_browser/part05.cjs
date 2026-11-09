@@ -165,7 +165,7 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     // B has no test node, so B is orange and R takes orange over the green A.
     await check('fixture 1', ['orange', 'orange', 'orange']);
     await f.bind('check:b', ['b']);
-    await check('fixture 2', ['grey', 'grey', 'grey']);
+    await check('fixture 2', ['blue', 'blue', 'blue']);
     await report([['a'], ['b']]);
     await check('fixture 3', ['green', 'green', 'green']);
     await report([['a'], ['b', 'boom']]);
@@ -178,11 +178,11 @@ test('type-status-rules-ac4: the board dot of each node has the colour of its st
     await f.save('check:d', {title: 'D', parent: 'rule:r2'});
     // One rollup decides every tone: the orange R2 does not put orange over red.
     await check('fixture 6', ['red', 'red', 'red']);
-    // An orange R says that a child has no tests, a grey R that its children await checks, a
+    // An orange R says that a child has no tests, a blue R that its children await checks, a
     // green R that its children passed, and a red R that a child failed, in every theme.
     assert.deepEqual([...new Set(labels)], [
       'orange: Status: A child has no tests',
-      'grey: Status: Children await checks',
+      'blue: Status: Children await checks',
       'green: Status: Children checks passed',
       'red: Status: Child checks failed',
     ], JSON.stringify(labels));

@@ -6,9 +6,9 @@
 async fn ac3_a_shared_parent_alone_never_makes_work_wait_over_http_and_mcp() -> Result<()> {
     let w = world().await?;
     let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
-    // Controls: A1 and B1 are grey, and B1 is ready.
-    ensure!(p.status("criterion:a1").await?["status"] == "grey");
-    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    // Controls: A1 and B1 are blue, and B1 is ready.
+    ensure!(p.status("criterion:a1").await?["status"] == "blue");
+    ensure!(p.status("criterion:b1").await?["status"] == "blue");
     let free = |b1: &Value| b1["work_ready"] == true && b1.get("waits_for").is_none();
     ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     let b1 = p.object_both("criterion:b1").await?;
@@ -38,11 +38,11 @@ async fn ac4_a_red_target_criterion_keeps_dependents_waiting_over_http_and_mcp()
         outcomes(&[("opens", "pass"), ("refuses", "pass")]),
     )
     .await?;
-    // Controls: A1 and A2 are green, B1 is ready and grey, and B1 is listed.
+    // Controls: A1 and A2 are green, B1 is ready and blue, and B1 is listed.
     for ac in ["criterion:a1", "criterion:a2"] {
         ensure!(p.status(ac).await?["status"] == "green", "{ac}");
     }
-    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    ensure!(p.status("criterion:b1").await?["status"] == "blue");
     ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
     // A record fails the test of A2.
     p.record(

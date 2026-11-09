@@ -135,7 +135,7 @@ async fn a_flow_on_a_source_resets_nothing() -> Result<()> {
     let moved = of(&after, "ac:bb").is_some() && of(&before, "ac:bb") != of(&after, "ac:bb");
     ensure!(moved, "B gets a new boundary: {before:?} {after:?}");
     status(&w, "ac:aa", "green", "after the source save").await?;
-    status(&w, "ac:bb", "grey", "after the source save").await
+    status(&w, "ac:bb", "blue", "after the source save").await
 }
 
 // ac:8cp0n5ec

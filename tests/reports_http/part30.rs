@@ -93,10 +93,10 @@ async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp()
             && b["document"]["relations"]["depends_on"]["edges"][0]["revision"].is_null(),
         "the link stores no revision: {b}"
     );
-    // Controls: A1 is ready and grey.
+    // Controls: A1 is ready and blue.
     let a1 = p.object_both("criterion:a1").await?;
     ensure!(a1["work_ready"] == true, "{a1}");
-    ensure!(p.status("criterion:a1").await?["status"] == "grey");
+    ensure!(p.status("criterion:a1").await?["status"] == "blue");
     let listed = p.ready_work().await?;
     ensure!(
         listed.contains(&"criterion:a1".to_owned()) && !listed.contains(&"criterion:b1".to_owned()),

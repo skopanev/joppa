@@ -55,7 +55,7 @@ async fn a_manual_check_keeps_its_tone_and_label_when_the_board_is_rebuilt() -> 
         (json!({"check_result":"fail"}), "red", "Manual check failed"),
         (
             json!({"check_result":"pass","valid_until":day(0)}),
-            "grey",
+            "blue",
             "Manual check expired",
         ),
     ] {

@@ -14,7 +14,7 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
     let read = w.object(&w.owner, &w.p, "component:backend").await?;
     ensure!(
         read["child_workspace"]
-            == json!({"workspace":w.c,"access":true,"status":"grey","criteria":{"green":0,"red":0,"total":1}}),
+            == json!({"workspace":w.c,"access":true,"status":"blue","criteria":{"green":0,"red":0,"total":1}}),
         "{read}"
     );
     w.record("1111111111111111111111111111111111111111", "pass")
@@ -58,7 +58,7 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
     );
     let alex = w.object(&w.alex, &w.p, "component:backend").await?;
     ensure!(
-        alex["child_workspace"] == json!({"workspace":w.c,"access":false,"status":"grey"}),
+        alex["child_workspace"] == json!({"workspace":w.c,"access":false,"status":"blue"}),
         "a reader without access sees no data: {alex}"
     );
     // The own workspace, an unknown workspace and a workspace without access are refused.

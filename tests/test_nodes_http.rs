@@ -1,5 +1,5 @@
 //! requirement:test-nodes over a real server: a test is a node under its criterion, its latest
-//! result decides its tone, and one rollup decides every level: red, orange, yellow, grey, green.
+//! result decides its tone, and one rollup decides every level: red, orange, yellow, blue, green.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -40,9 +40,9 @@ async fn a_test_is_a_node_and_its_latest_result_decides_its_tone() -> Result<()>
     let nodes = json!({"parent":"ac:a","kind":"test","fields":["title","status"]});
     ensure!(
         tones(&w, nodes.clone()).await?
-            == [(ONE.into(), "grey".into()), (TWO.into(), "grey".into())]
+            == [(ONE.into(), "blue".into()), (TWO.into(), "blue".into())]
             || tones(&w, nodes.clone()).await?
-                == [(TWO.into(), "grey".into()), (ONE.into(), "grey".into())]
+                == [(TWO.into(), "blue".into()), (ONE.into(), "blue".into())]
     );
     let first = w.recorded(&"a".repeat(40), json!([{"test":ONE,"status":"pass"},{"test":TWO,"status":"fail"},{"test":"tests/x.rs > free","status":"pass"}])).await?;
     ensure!(first["unbound"] == json!(["tests/x.rs > free"]), "{first}");

@@ -14,13 +14,13 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
     )
     .await?;
     ensure!(p.status("criterion:b1").await?["status"] == "green");
-    ensure!(p.status("criterion:a1").await?["status"] == "grey");
+    ensure!(p.status("criterion:a1").await?["status"] == "blue");
     let before = p.saved().await?["position"].as_i64().unwrap();
 
     // P adds a depends_on edge from B to A without a revision. The new edge of B resets B1
     // below it.
     p.link("spec:b", ordering_link("spec:a")).await?;
-    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    ensure!(p.status("criterion:b1").await?["status"] == "blue");
     let b = p.read("spec:b").await?;
     let stored = &b["document"]["relations"]["depends_on"]["edges"][0];
     ensure!(
@@ -73,7 +73,7 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
     p.owner_command(json!({"op":"save_object","kind":"spec","id":"b","revision":object["current_revision"],"parent":"cap:c",
         "data":{"title":"spec:b","body":"Deliver the sharper rule","owner":"owner"},"relations":{"depends_on":null},"reason":"Sharpen the rule"}))
         .await?;
-    ensure!(p.status("criterion:b1").await?["status"] == "grey");
+    ensure!(p.status("criterion:b1").await?["status"] == "blue");
     store::check_journal(&p.pool).await?;
     Ok(())
 }

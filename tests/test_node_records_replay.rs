@@ -151,7 +151,7 @@ async fn an_older_journal_with_the_name_rule_and_title_records_replays_with_the_
     let live = tones(&pool, &ws).await?;
     ensure!(tone(&live, "test:over") == "green", "{live}");
     ensure!(
-        tone(&live, "test:refund") == "grey" && tone(&live, "ac:b") == "grey",
+        tone(&live, "test:refund") == "blue" && tone(&live, "ac:b") == "blue",
         "{live}"
     );
     // A full replay of the journal gives the same statuses as the live writes.
