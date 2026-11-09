@@ -28,8 +28,11 @@ const REVISION_KEYS: [&str; 7] = [
 
 /// The detail relations: each edge as stored with the title of its target. A pin adds the
 /// current target revision, and an archived target `present: false`. save_object takes the
-/// relations back as they are.
+/// relations back as they are. A node without relations has no `relations` key.
 pub(super) fn detail_relations(reply: &mut Value) {
+    if reply["relations"] == json!({}) {
+        reply.as_object_mut().map(|m| m.remove("relations"));
+    }
     let keys = reply["relations"]
         .as_object_mut()
         .into_iter()

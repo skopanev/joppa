@@ -23,7 +23,7 @@ revision. A relation does not change the parent of a node.
 A live depends_on target is satisfied when it is a green criterion, or when it has live
 criteria below it and each is green. An archived target does not make work wait. The status
 rule `links`, a typed field with `from: links` and the source reset count depends_on and
-related edges, never a flow. `related_to` lists the depends_on and related neighbours.
+related edges, never a flow. `related_to` lists the depends_on, related and reference neighbours, never a flow neighbour.
 
 A save merges `relations` by key: a sent key replaces its `title` and `edges`, `null` removes
 the key, and the other keys stay. A key with `edges: []` stays and counts as used. A node holds

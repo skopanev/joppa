@@ -42,7 +42,7 @@ pub(super) async fn list_rows(
             AND {filter}
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
-                AND l.relation IN ('depends_on','related') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))) o
+                AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
         ORDER BY {order} LIMIT $5

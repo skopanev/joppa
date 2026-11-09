@@ -44,8 +44,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `actor` and `at`.
 - `relation_groups` counts the incoming edges by relation and kind.
 - `references` gives the title of each object that a data field names.
-- An object without comments has no `comments` key. An object without relations gives
-  `relations: {}`.
+- An object without comments has no `comments` key. An object without relations has no
+  `relations` key.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
 - `process` is the same for every type: `annotation_address`, `verification` and the `status`
   of an inbox type. `annotation_address` shows only when it
