@@ -22,27 +22,30 @@ pub(super) async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) 
         Json(json!({"ok":healthy})),
     )
 }
-/// The workspaces of the caller without the ones that the caller hid.
-pub(super) async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
-    result(store::list(&app.pool, &actor).await.map(store::visible))
+/// The workspaces of the caller. Without `all`, the ones that the caller hid are left out.
+async fn listed(app: &App, headers: &HeaderMap, all: bool) -> ApiResult {
+    let actor = authenticate(app, headers).await?;
+    let list = store::list(&app.pool, &actor).await;
+    result(if all { list } else { list.map(store::visible) })
 }
+/// The workspaces of the caller without the ones that the caller hid.
+#[cfg(test)]
+pub(super) async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
+    listed(&app, &headers, false).await
+}
+/// A text value, so that any value of `all` reaches the session check.
 #[derive(Deserialize)]
 pub(super) struct ListQuery {
-    all: Option<bool>,
+    all: Option<String>,
 }
-/// `GET /api/workspaces`. With `all=true`, every workspace of the caller, and one that the
+/// `GET /api/workspaces`. Only with `all=true`, every workspace of the caller, and one that the
 /// caller hid gives `"hidden": true`.
 pub(super) async fn list_route(
     State(app): State<App>,
     Query(q): Query<ListQuery>,
     headers: HeaderMap,
 ) -> ApiResult {
-    if q.all != Some(true) {
-        return list(State(app), headers).await;
-    }
-    let actor = authenticate(&app, &headers).await?;
-    result(store::list(&app.pool, &actor).await)
+    listed(&app, &headers, q.all.as_deref() == Some("true")).await
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

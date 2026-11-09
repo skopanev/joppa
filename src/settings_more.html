@@ -58,16 +58,24 @@ const load=async selected=>{
 };
 select.onchange=show;
 // The checkbox hides the selected workspace only from the lists of the signed-in member. The
-// request is keepalive, so it ends also when the member leaves the page at once.
+// request is keepalive, so it ends also when the member leaves the page at once. While it runs,
+// the checkbox and the select stay locked, so its answer belongs to the selected workspace.
 $('hide-workspace').onchange=async()=>{
   const box=$('hide-workspace'),workspace=select.value,hidden=box.checked;
-  $('hide-error').textContent='';
-  try{
-    const response=await fetch('/api/workspaces/'+encodeURIComponent(workspace)+'/hide',{method:'POST',keepalive:true,
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})});
-    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Could not change your workspace list.');
-    await load(workspace);
-  }catch(e){box.checked=!hidden;$('hide-error').textContent=e.message;}
+  box.disabled=select.disabled=true;box.setAttribute('aria-busy','true');$('hide-error').textContent='';
+  const response=await fetch('/api/workspaces/'+encodeURIComponent(workspace)+'/hide',{method:'POST',keepalive:true,
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})}).catch(()=>null);
+  if(!response?.ok){
+    // Only a refused or lost request puts the checkbox back.
+    box.checked=!hidden;
+    $('hide-error').textContent=(response&&(await response.json().catch(()=>({}))).error)||'Could not change your workspace list.';
+  }else{
+    // The server keeps the new flag. A failed reload keeps it on the page and names the failure.
+    const item=workspaces.find(w=>w.id===workspace);
+    if(item){if(hidden)item.hidden=true;else delete item.hidden;}
+    await load(workspace).catch(e=>{$('hide-error').textContent=e.message;});
+  }
+  box.disabled=false;box.setAttribute('aria-busy','false');select.disabled=!workspaces.length;
 };
 // Each header button opens its form above the people; Cancel or a second click closes it.
 const drawer=(button,form,focus)=>{

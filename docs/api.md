@@ -180,7 +180,8 @@ A command request without an Authorization header gets 403, also with a session 
 The browser never stores bearer tokens. A missing Google configuration fails closed.
 
 The board is read-only for content. The Settings page needs a browser session for its writes:
-it creates a workspace, renames or deletes it and grants access.
+it creates a workspace, renames or deletes it and grants access. Each member also hides a
+workspace there from the own list of that member.
 
 ## MCP authentication
 
