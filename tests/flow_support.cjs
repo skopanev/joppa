@@ -60,7 +60,9 @@ async function open(f, query, count) {
 // its ancestors inside the canvas. faint is the opacity of the element that has .flow-faint.
 function snapshot() {
   const canvas = document.querySelector('.flow-canvas');
-  const svg = canvas.matches('svg') ? canvas : canvas.querySelector('svg');
+  const svg = canvas && (canvas.matches('svg') ? canvas : canvas.querySelector('svg'));
+  // A relation switch draws the canvas again: until then the snapshot is empty.
+  if (!svg) return {nodes: [], edges: [], whens: [], badges: [], lines: 0, view: [], unit: 1, arrowHead: false, select: ''};
   const address = el => (el.closest('[data-address]') || el.querySelector('[data-address]'))?.dataset.address;
   const marks = el => { const out = new Set(); for (let e = el; e && e !== canvas; e = e.parentElement) for (const c of e.classList) out.add(c); return [...out].sort(); };
   const faint = el => { for (let e = el; e && e !== canvas; e = e.parentElement) if (e.classList.contains('flow-faint')) return getComputedStyle(e).opacity; return null; };
@@ -127,21 +129,22 @@ async function waitMarks(f, wanted, step) {
 }
 const NONE = {nodes: [], edges: []};
 
-// In the page: the open card, found from its Open link and its button ×. head is the text of
-// its title element, and facts gives the text next to each label.
+// In the page: the open card, found from its Open link (the text starts with Open) and its
+// button ×. head is the text of its first heading, and facts gives the text next to each label.
 function readCard() {
-  const link = [...document.querySelectorAll('a')].find(a => a.textContent.trim() === 'Open' && /[?&]object=/.test(a.getAttribute('href') || ''));
+  const link = [...document.querySelectorAll('a')].find(a => /^Open\b/.test(a.textContent.trim()) && /[?&]object=/.test(a.getAttribute('href') || ''));
   if (!link || !link.checkVisibility()) return null;
+  // The card is the widest element around the link without the canvas.
   let card = link.parentElement;
-  while (card && ![...card.querySelectorAll('button')].some(b => b.textContent.trim() === '×')) card = card.parentElement;
-  if (!card) return null;
+  while (card.parentElement && card.parentElement !== document.body && !card.parentElement.querySelector('.flow-canvas')) card = card.parentElement;
+  if (![...card.querySelectorAll('button')].some(b => b.textContent.trim() === '×')) return null;
   const fact = name => {
     const label = [...card.querySelectorAll('*')].find(e => e.children.length === 0 && e.textContent.trim() === name);
     if (!label) return null;
     if (label.tagName === 'DT') { let text = '', e = label.nextElementSibling; while (e && e.tagName !== 'DT') { text += ' ' + e.textContent; e = e.nextElementSibling; } return text.trim(); }
     return (label.nextElementSibling ? label.nextElementSibling.textContent : label.parentElement.textContent.replace(name, '')).trim();
   };
-  const head = card.querySelector('h1,h2,h3,h4,h5,h6,[role=heading],[class*=title],[class*=head]');
+  const head = card.querySelector('h1,h2,h3,h4,h5,h6,[role=heading]');
   return {head: head?.textContent.trim(), text: card.textContent, open: new URLSearchParams(link.getAttribute('href').split('?')[1] || '').get('object'),
     facts: Object.fromEntries(['Object', 'Previous', 'Next'].map(name => [name, fact(name)]))};
 }
