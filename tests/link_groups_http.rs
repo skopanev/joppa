@@ -159,9 +159,10 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         );
         let items = tool["items"].as_array().cloned().unwrap_or_default();
         ensure!(
-            items
-                .iter()
-                .all(|i| i["relation"] == "related" && i.get("blocking").is_none()),
+            tool["total"] == 120
+                && items
+                    .iter()
+                    .all(|i| i["relation"] == "related" && i.get("blocking").is_none()),
             "{tool}"
         );
         sizes.push(items.len());

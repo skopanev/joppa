@@ -162,8 +162,9 @@ async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text
     let text = command["description"].as_str().unwrap_or_default();
     // Relations replace the links field: the text teaches relations and no links field.
     ensure!(
-        text.contains("relations")
+        text.contains("relations map of save_object")
             && text.contains(r#"{"op":"note","target":"kind:id""#)
+            && text.contains("use relations and the note op")
             && !text.contains("links array of save_object")
             && !text.contains("use links and the note op"),
         "joppa_command does not send relations and comments out of object text: {text}"
@@ -174,7 +175,7 @@ async fn the_write_tools_and_the_help_send_links_and_comments_out_of_object_text
     let help = help.map_err(|e| anyhow::anyhow!(e))?;
     let objects = help["objects"].as_str().unwrap_or_default();
     ensure!(
-        objects.contains("## Links and comments, not object text")
+        objects.contains("## Relations and comments, not object text")
             && objects.contains(r#"{"op": "note", "target": "<kind>:<id>""#)
             && objects.contains("Do not paste lists of Tasks, tickets or addresses"),
         "joppa_help.objects does not state the two rules"

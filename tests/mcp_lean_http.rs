@@ -91,13 +91,14 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
         absent(&headers, &ECHOES) && headers["items"][0]["actor"] == "bot",
         "{headers}"
     );
-    // A relations_of item always names its relation (R16) and never a blocking flag.
+    // A relations_of item always gives its relation and its presence, and never blocking.
     let edges = read(&w, "joppa_objects", json!({"relations_of":"requirement:r"})).await?;
     let edge = &edges["items"][0];
     ensure!(
         absent(&edges, &ECHOES)
             && edge["address"] == "requirement:s"
             && edge["relation"] == "related"
+            && edge["present"] == true
             && absent(edge, &["blocking"]),
         "{edges}"
     );

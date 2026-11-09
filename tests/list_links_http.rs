@@ -6,7 +6,7 @@ mod record_world;
 #[path = "common/relation_edges.rs"]
 mod relation_edges;
 use anyhow::{Result, ensure};
-use relation_edges::{pairs, targets};
+use relation_edges::targets;
 use serde_json::{Value, json};
 
 // list-links-ac1
@@ -22,25 +22,18 @@ async fn a_list_item_gives_its_stored_links_over_mcp_and_http() -> Result<()> {
         let items = list["items"].as_array().cloned().unwrap_or_default();
         items.into_iter().find(|i| i["address"] == address)
     };
-    // An item gives only its address and the fields that the read names.
-    let only = |item: &Value| {
-        item.as_object()
-            .is_some_and(|m| m.keys().all(|k| k == "address" || k == "relations"))
-    };
+    // An item gives only its address and the stored relations, and r gives an empty map.
+    let item_s = json!({"address":"requirement:s",
+        "relations":{"depends_on":{"edges":[{"to":"requirement:r"}]}}});
+    let item_r = json!({"address":"requirement:r","relations":{}});
     let args = json!({"parent":"*","kind":"requirement","fields":["relations"]});
     let mcp = w.mcp(&w.bot, "joppa_objects", args).await?;
     let mcp = mcp.map_err(anyhow::Error::msg)?;
-    let s = of(&mcp, "requirement:s").unwrap_or_default();
     ensure!(
-        only(&s)
-            && pairs(&s) == [("depends_on".to_owned(), "requirement:r".to_owned())]
-            && s["relations"]["depends_on"]["edges"][0]
-                .get("blocking")
-                .is_none(),
+        of(&mcp, "requirement:s") == Some(item_s.clone())
+            && of(&mcp, "requirement:r") == Some(item_r.clone()),
         "{mcp}"
     );
-    let r = of(&mcp, "requirement:r").unwrap_or_default();
-    ensure!(only(&r) && pairs(&r).is_empty(), "{mcp}");
     let url = format!(
         "{}/api/workspaces/{}/objects?parent=*&kind=requirement&fields=relations",
         w.root, w.ws
@@ -54,7 +47,7 @@ async fn a_list_item_gives_its_stored_links_over_mcp_and_http() -> Result<()> {
         .json()
         .await?;
     ensure!(
-        of(&http, "requirement:s") == of(&mcp, "requirement:s"),
+        of(&http, "requirement:s") == Some(item_s) && of(&http, "requirement:r") == Some(item_r),
         "{http}"
     );
     // The read by address keeps its detail edges, with the title of the target.

@@ -1,15 +1,15 @@
 //! The fixture of the source reset tests on a real server. Type src has source: true, type doc
 //! has no flag, and type ac has the reference field sources (multiple, target src). Criterion
-//! AA names source S in sources, BB has a related edge to S, HH has a related edge to S (an old
-//! depends_on without blocking is related now), and S has a related edge to KK. CC has a related
-//! edge to document D of type doc, and EE names nothing. Each criterion has one test node, and a record passes every test.
+//! AA names source S in sources, BB has a related edge to S, and S has a related edge to KK. CC
+//! has a related edge to document D of type doc, and EE names nothing. Each criterion has one
+//! test node, and a record passes every test.
 #![allow(dead_code)]
 use crate::record_world::{self, World};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 
-/// The criteria that name source S: A, B, H and K of the criterion.
-pub const NAMED: [&str; 4] = ["ac:aa", "ac:bb", "ac:hh", "ac:kk"];
+/// The criteria that name source S: A, B and K of the criterion.
+pub const NAMED: [&str; 3] = ["ac:aa", "ac:bb", "ac:kk"];
 /// The criteria that do not name S: C and E of the criterion.
 pub const OTHER: [&str; 2] = ["ac:cc", "ac:ee"];
 
@@ -93,7 +93,6 @@ pub async fn world() -> Result<World> {
     criterion(&w, "aa", json!({"sources":["src:s"]}), json!({})).await?;
     let related = |target: &str| json!({"related":{"edges":[{"to":target}]}});
     criterion(&w, "bb", json!({}), related("src:s")).await?;
-    criterion(&w, "hh", json!({}), related("src:s")).await?;
     criterion(&w, "cc", json!({}), related("doc:d")).await?;
     criterion(&w, "ee", json!({}), json!({})).await?;
     record(&w, 0).await?;

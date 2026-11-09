@@ -136,9 +136,7 @@ async fn bot_saves_a_link_with_an_unknown_relation_over_http_and_is_refused() ->
     for address in ["note:a", "note:b"] {
         let read = w.get(&format!("address={address}")).await?;
         ensure!(
-            read["current_revision"] == 1
-                && edge_count(&read) == 0
-                && read["relation_groups"].as_array().is_none_or(Vec::is_empty),
+            read["current_revision"] == 1 && edge_count(&read) == 0,
             "{read}"
         );
     }

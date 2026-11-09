@@ -26,12 +26,10 @@ fn linked_task_command(id: &str, revision: u32, ac: &str, target: &str) -> Value
     command
 }
 
-/// The stored relations of `read` hold one depends_on edge to `target` at revision 1.
+/// The HTTP read gives `document.relations.depends_on.edges` = [{to: target, revision: 1}],
+/// with no blocking field.
 fn depends_on_pinned(read: &Value, target: &str) -> bool {
-    let edges = &read["document"]["relations"]["depends_on"]["edges"];
-    edges.as_array().map(Vec::len) == Some(1)
-        && edges[0]["to"] == target
-        && edges[0]["revision"] == 1
+    read["document"]["relations"]["depends_on"]["edges"] == json!([{"to":target,"revision":1}])
 }
 
 // task-links-stay-in-req-ac1

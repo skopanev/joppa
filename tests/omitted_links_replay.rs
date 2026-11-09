@@ -46,8 +46,17 @@ fn an_event_without_links_replays_with_none_and_a_live_save_names_the_current_li
         ["ac:key"],
         "the live save keeps the current relations: {kept}"
     );
-    // A journal event without relations or links replays with none.
+    // The journal event of a live save names the full relations after the merge.
     let save: Command = serde_json::from_value(save).unwrap();
+    let mut event = save.clone();
+    joppa::omitted_links::keep(&w.state, &mut event);
+    let event = serde_json::to_value(&event).unwrap();
+    assert_eq!(
+        relation_edges::pairs(&event),
+        [("related".to_owned(), "ac:key".to_owned())],
+        "the live save names the current relations: {event}"
+    );
+    // A journal event without relations or links replays with none.
     commands::apply_replay(&mut w.state, "agent", &save, w.position + 1, "now").unwrap();
     let replayed = relation_edges::of(w.state.objects["ac:ios"].current());
     assert!(

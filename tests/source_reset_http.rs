@@ -15,7 +15,7 @@ use source_world::{NAMED, expect, record, save};
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_title_body_or_file_of_a_source_resets_the_criteria_that_name_it() -> Result<()> {
     let w = source_world::world().await?;
-    // Each change of S makes A, B, H and K grey. C and E stay green.
+    // Each change of S makes A, B and K grey. C and E stay green.
     save(&w, "src:s", json!({"body":"The new source text"})).await?;
     expect(&w, "the new body of S", &NAMED).await?;
     record(&w, 1).await?;

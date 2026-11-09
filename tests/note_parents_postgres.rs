@@ -94,9 +94,10 @@ async fn an_inbox_parent_rule_and_an_inbox_save_with_a_parent_are_refused() -> R
     let refused = world::mcp(&server.root, "bot", "joppa_command", json!({"workspace":ws,"request_id":"note-under-c",
         "command":save("note", "n", 0, Some("capability:c"), json!({"title":"Input","owner":"owner","body":"Source"}))})).await;
     let error = refused.err().map(|e| e.to_string()).unwrap_or_default();
+    let text = r#"an inbox object has no parent: send parent null and relations {"related":{"edges":[{"to":"kind:id"}]}}"#;
     ensure!(
-        error.contains("relations") && error.contains("related"),
-        "the error does not name relations: {error}"
+        error.contains(text),
+        "the error is not the inbox parent text: {error}"
     );
     let after = store::tree_schema(&pool, &ws, "owner", None).await?;
     ensure!(

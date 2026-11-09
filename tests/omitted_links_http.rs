@@ -17,6 +17,14 @@ async fn read(w: &World) -> Result<(Vec<String>, Value)> {
     ))
 }
 
+/// The command of the last journal event that saved ac:b.
+async fn last_save(w: &World) -> Result<Value> {
+    let sql = "SELECT command::text FROM joppa.events WHERE workspace=$1 \
+        AND command->>'op'='save_object' AND command->>'id'='b' ORDER BY position DESC LIMIT 1";
+    let row = w.pool.get().await?.query_one(sql, &[&w.ws]).await?;
+    Ok(serde_json::from_str(row.get(0))?)
+}
+
 /// A save of ac:b with `title`, and with `relations` when they are given.
 fn save(revision: u32, title: &str, relations: Option<Value>) -> Value {
     let mut command = json!({"op":"save_object","kind":"ac","id":"b","revision":revision,
@@ -42,6 +50,13 @@ async fn a_save_without_links_keeps_them_and_an_empty_list_removes_them() -> Res
     ensure!(
         targets == ["ac:a"] && revision == 2,
         "{targets:?} {revision}"
+    );
+    // The journal event of the live save names the full relations after the merge.
+    let event = last_save(&w).await?;
+    ensure!(
+        event["revision"] == 1
+            && relation_edges::pairs(&event) == [("related".to_owned(), "ac:a".to_owned())],
+        "{event}"
     );
     w.command(&w.bot, save(2, "B alone", Some(json!({"related":null}))))
         .await?
