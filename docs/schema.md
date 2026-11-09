@@ -168,11 +168,14 @@ With tasks `["web", "api"]` and `["api", "ios"]` under it, the AC gives `"tags":
 
 `statuses` is the ordered list of status tones with one colour for each theme:
 `[{"tone": "red", "light": "#bc5d52", "dark": "#e07a70"}, ...]`. The tones are red, purple,
-yellow, orange, grey and green; purple marks an archived node. The list sets the colours and
+yellow, orange, blue and green; purple marks an archived node. The list sets the colours and
 the order of the board status filter. The board lists only present nodes, so its filter omits
-purple. The rollup order is fixed: red, orange, yellow, grey, green (see
+purple. The rollup order is fixed: red, orange, yellow, blue, green (see
 [what green means](green.md)). A type has no status order: `status_order` is an unknown field.
-A tone that the list omits keeps its default colours. A change without `statuses` keeps the list.
+A tone that the list omits keeps its default colours. The default colours of blue are
+`#6fa8dc` (light) and `#8bbbe8` (dark). A stored list of an earlier release reads with blue at
+the place of its older tone, and an older default pair of that tone becomes the pair of blue.
+A change without `statuses` keeps the list.
 Presentation changes add a schema revision. They do not change objects or evidence.
 
 ## Status rules

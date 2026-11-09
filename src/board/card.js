@@ -15,8 +15,8 @@ import {personLabel} from 'board/format.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
-  const tone=item.work_ready?'grey':'yellow';
-  const signal=item.historical?{tone:'grey',label:'Saved revision',at:item.at}:item.present===false?{tone:'grey',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.work_ready?'Current document':'Dependency not ready',at:item.at};
+  const tone=item.work_ready?'blue':'yellow';
+  const signal=item.historical?{tone:'blue',label:'Saved revision',at:item.at}:item.present===false?{tone:'blue',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.work_ready?'Current document':'Dependency not ready',at:item.at};
   const repeatsParent=item.title===parentTitle;
   const heading=repeatsParent?state.data.objectTypes[item.kind].title+' · '+signal.label:item.title;
   const preview=objectTitlePreview(heading,item.kind);

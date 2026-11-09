@@ -95,10 +95,20 @@ pub struct SchemaRevision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priorities: Option<Vec<String>>,
     /// The colour of each status dot, as #RRGGBB per tone. Without it the board colours stay.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// A stored revision reads the older tone as blue (status_colors_alias.rs).
+    #[serde(
+        default,
+        deserialize_with = "crate::status_colors::read_colors",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub status_colors: Option<BTreeMap<String, String>>,
-    /// The ordered status tones with a light and a dark colour each.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// The ordered status tones with a light and a dark colour each. A stored revision reads
+    /// the older tone as blue.
+    #[serde(
+        default,
+        deserialize_with = "crate::status_colors::read_statuses",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub statuses: Option<Vec<crate::status_colors::Status>>,
     /// The test rules: the block test_results, see result_shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]

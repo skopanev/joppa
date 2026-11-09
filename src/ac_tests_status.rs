@@ -90,7 +90,7 @@ pub struct TestStatus {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct CriterionStatus {
-    /// One of green, red, grey.
+    /// One of green, red, blue.
     pub status: String,
     pub reason: Option<String>,
     pub tests_draft: bool,
@@ -216,11 +216,11 @@ pub fn criterion_status(
     let decided_after_change =
         matches!(boundary, Boundary::After(_)) && statuses.iter().all(|t| t.status != "not_run");
     let (status, reason) = if tests.is_empty() {
-        ("grey", Some("no tests"))
+        ("blue", Some("no tests"))
     } else if draft && !decided_after_change {
-        ("grey", Some("tests_draft"))
+        ("blue", Some("tests_draft"))
     } else if boundary == Boundary::Unreadable {
-        ("grey", Some("the reset time cannot be read"))
+        ("blue", Some("the reset time cannot be read"))
     } else if statuses
         .iter()
         .any(|t| rules.red_if_any.iter().any(|o| o == outcome(&t.status)))
@@ -230,7 +230,7 @@ pub fn criterion_status(
         .iter()
         .all(|t| rules.green_if_all.iter().any(|o| o == outcome(&t.status)))
     {
-        ("grey", Some("not all tests passed"))
+        ("blue", Some("not all tests passed"))
     } else {
         ("green", None)
     };

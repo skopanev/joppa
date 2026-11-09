@@ -2,7 +2,7 @@
 // The server reads both with the access of the viewer; the board only shows them.
 import {E} from 'board/dom.js';
 
-const STATUS={green:'all criteria green',red:'a criterion is red',grey:'not all criteria green'};
+const STATUS={green:'all criteria green',red:'a criterion is red',blue:'not all criteria green'};
 // A tone without a label still shows its name, never "undefined".
 const statusLabel=status=>STATUS[status]||'status '+status;
 

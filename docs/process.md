@@ -165,7 +165,7 @@ REQ context and the relevant AC are unchanged. Cite it in the new analysis.
 
 ## Changes
 
-Saving any REQ or AC wording change creates a new revision. Its ACs are grey until a newer
+Saving any REQ or AC wording change creates a new revision. Its ACs are blue until a newer
 test record arrives. Even a small edit needs fresh results. Earlier revisions keep their
 records.
 

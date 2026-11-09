@@ -105,6 +105,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         tx.batch_execute(sql).await?;
     }
     relations_data(&*tx).await?;
+    tx.batch_execute(BLUE_TONE).await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -127,6 +128,9 @@ const HIDDEN_BY: &str = include_str!("../migrations/061_hidden_by.sql");
 /// relations, and it needs no DDL: the application role runs it.
 const RELATIONS: &str = include_str!("../migrations/062_relations_data.sql");
 const RELATIONS_PENDING: &str = "SELECT EXISTS(SELECT 1 FROM joppa.workspaces w WHERE NOT EXISTS(SELECT 1 FROM joppa.replay_epochs e WHERE e.workspace=w.id AND e.rule='relations_reset')) OR EXISTS(SELECT 1 FROM joppa.state_entries WHERE section='objects' AND NOT value->'revisions'->0 ? 'relations')";
+/// Migration 063 moves the older tone of the current rows to blue without a replay. It
+/// needs no DDL and runs at serve start too. A second run writes nothing.
+const BLUE_TONE: &str = include_str!("../migrations/063_blue_tone.sql");
 async fn relations_data(client: &impl GenericClient) -> Result<()> {
     if client.query_one(RELATIONS_PENDING, &[]).await?.get(0) {
         client.batch_execute(RELATIONS).await?;
@@ -142,6 +146,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     tx.batch_execute(HIDDEN_BY).await?;
     relations_data(&*tx).await?;
+    tx.batch_execute(BLUE_TONE).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())

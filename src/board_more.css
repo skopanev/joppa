@@ -55,9 +55,9 @@
 .detail-fact{margin:.3em 0;font-size:.85em;white-space:pre-wrap}
 
 /* Evidence: status is a coloured dot that always carries a text label. */
-.status-circle{--signal:var(--dot-grey);display:inline-block;flex:none;width:8px;height:8px;margin-right:var(--row-gap,.45rem);border-radius:50%;background:var(--signal);vertical-align:2px}
+.status-circle{--signal:var(--dot-blue);display:inline-block;flex:none;width:8px;height:8px;margin-right:var(--row-gap,.45rem);border-radius:50%;background:var(--signal);vertical-align:2px}
 .status-circle.green{--signal:var(--dot-green)}.status-circle.yellow{--signal:var(--dot-yellow)}.status-circle.orange{--signal:var(--dot-orange)}
-.status-circle.red{--signal:var(--dot-red)}.status-circle.purple{--signal:var(--dot-purple)}.status-circle.grey{--signal:var(--dot-grey)}
+.status-circle.red{--signal:var(--dot-red)}.status-circle.purple{--signal:var(--dot-purple)}.status-circle.blue{--signal:var(--dot-blue)}
 .status-circle.numbered{width:auto;height:auto;background:none;border-radius:0;color:color-mix(in srgb,var(--signal) var(--badge-share),var(--heading));font-size:.8em;vertical-align:baseline}
 .status-hint{position:fixed;z-index:10000;pointer-events:none;max-width:min(300px,calc(100vw - 16px));padding:.5em .7em;background:var(--heading);color:var(--bg);font-size:.75em;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
 .waiting{--status-ink:var(--waiting)}.available{--status-ink:var(--available)}.progress{--status-ink:var(--progress)}

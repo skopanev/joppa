@@ -125,10 +125,10 @@ pub fn check_save(
 }
 
 /// The status of a node from the statuses of its test nodes: red when one is red, green when
-/// every one is green, else grey. It shows the oldest commit among them.
+/// every one is green, else blue. It shows the oldest commit among them.
 pub fn combine(parts: Vec<crate::ac_tests::CriterionStatus>) -> crate::ac_tests::CriterionStatus {
     let (status, reason) = if parts.is_empty() {
-        ("grey", Some("no tests".to_owned()))
+        ("blue", Some("no tests".to_owned()))
     } else if parts.iter().any(|p| p.status == "red") {
         ("red", None)
     } else if parts.iter().all(|p| p.status == "green") {
@@ -138,7 +138,7 @@ pub fn combine(parts: Vec<crate::ac_tests::CriterionStatus>) -> crate::ac_tests:
             .iter()
             .find(|p| p.status != "green")
             .and_then(|p| p.reason.clone());
-        ("grey", reason)
+        ("blue", reason)
     };
     let oldest = parts
         .iter()

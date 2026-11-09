@@ -51,18 +51,18 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
     };
     let p = process(w, key);
     let (tone, label) = if !o.current().present {
-        ("grey", "Archived")
+        ("blue", "Archived")
     } else if !work_ready(w, key) {
         ("yellow", "Dependency is not ready")
     } else if p["status"] == "processed" {
-        ("grey", "Input processed")
+        ("blue", "Input processed")
     } else if p["status"] == "unprocessed" {
         ("yellow", "Input awaits processing")
     } else {
         match p["verification"].as_str() {
             Some("fail") => ("red", "Checks failed"),
             Some("pass") => ("green", "Checks passed"),
-            _ => ("grey", "Current document"),
+            _ => ("blue", "Current document"),
         }
     };
     json!({"tone":tone,"label":label,"at":o.current().at})

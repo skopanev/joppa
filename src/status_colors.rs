@@ -2,13 +2,19 @@
 //! The list sets the colours and the order of the status filter. One fixed priority decides
 //! every rollup. A schema without `statuses` uses the default list. The older `status_colors`
 //! map stays readable for earlier journal events. It colours the default list for both themes,
-//! and a saved `statuses` list replaces it.
+//! and a saved `statuses` list replaces it. A stored list of an earlier release names the older
+//! tone of blue (status_colors_alias.rs).
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "status_colors_alias.rs"]
+mod alias;
+pub use alias::{filter_tone, stored_colors, stored_statuses};
+pub(crate) use alias::{read_colors, read_statuses};
+
 /// The status tones that the status rules produce.
-pub const STATUS_TONES: [&str; 6] = ["red", "purple", "yellow", "orange", "grey", "green"];
+pub const STATUS_TONES: [&str; 6] = ["red", "purple", "yellow", "orange", "blue", "green"];
 
 /// The tone of an archived node. Only a read that includes archived nodes finds it.
 pub const ARCHIVED_TONE: &str = "purple";
@@ -19,7 +25,7 @@ pub const LABELS: [(&str, &str); 6] = [
     ("purple", "Archived"),
     ("yellow", "Waits"),
     ("orange", "No tests"),
-    ("grey", "Awaits checks"),
+    ("blue", "Awaits checks"),
     ("green", "Checks passed"),
 ];
 
@@ -47,7 +53,7 @@ pub fn defaults() -> Vec<Status> {
         ("purple", "#8061a9", "#9b7bc6"),
         ("yellow", "#ae7a16", "#c8921f"),
         ("orange", "#c4772e", "#c4772e"),
-        ("grey", "#b8b3a8", "#b4b8bf"),
+        ("blue", "#6fa8dc", "#8bbbe8"),
         ("green", "#39835a", "#39835a"),
     ]
     .into_iter()
@@ -68,7 +74,7 @@ pub fn validate(colors: &BTreeMap<String, String>) -> Result<()> {
     for (tone, color) in colors {
         ensure!(
             STATUS_TONES.contains(&tone.as_str()),
-            "status tones are red, purple, yellow, orange, grey and green"
+            "status tones are red, purple, yellow, orange, blue and green"
         );
         ensure!(hex(color), "a status colour is #RRGGBB");
     }
@@ -82,7 +88,7 @@ pub fn validate_statuses(statuses: &[Status]) -> Result<()> {
     for s in statuses {
         ensure!(
             STATUS_TONES.contains(&s.tone.as_str()),
-            "status tones are red, purple, yellow, orange, grey and green"
+            "status tones are red, purple, yellow, orange, blue and green"
         );
         ensure!(
             seen.insert(s.tone.as_str()),
@@ -132,7 +138,7 @@ mod tests {
         for tone in STATUS_TONES {
             assert!(!label(tone).is_empty(), "{tone}");
         }
-        assert_eq!((label("orange"), label("blue")), ("No tests", ""));
+        assert_eq!((label("blue"), label("grey")), ("Awaits checks", ""));
     }
 
     #[test]
@@ -147,29 +153,29 @@ mod tests {
             .collect();
         assert_eq!(
             tones,
-            ["green", "red", "purple", "yellow", "orange", "grey"]
+            ["green", "red", "purple", "yellow", "orange", "blue"]
         );
     }
 
     #[test]
     fn the_older_map_overrides_both_theme_colours() {
-        let colors: BTreeMap<String, String> = [("grey".to_owned(), "#c8c3b8".to_owned())].into();
-        let grey = effective(None, Some(&colors))
+        let colors: BTreeMap<String, String> = [("blue".to_owned(), "#c8c3b8".to_owned())].into();
+        let blue = effective(None, Some(&colors))
             .into_iter()
-            .find(|s| s.tone == "grey")
+            .find(|s| s.tone == "blue")
             .unwrap();
         assert_eq!(
-            (grey.light.as_str(), grey.dark.as_str()),
+            (blue.light.as_str(), blue.dark.as_str()),
             ("#c8c3b8", "#c8c3b8")
         );
         // A saved list replaces the older map.
-        let own = vec![status("grey", "#aaaaaa", "#555555")];
-        let grey = effective(Some(&own), Some(&colors))
+        let own = vec![status("blue", "#aaaaaa", "#555555")];
+        let blue = effective(Some(&own), Some(&colors))
             .into_iter()
-            .find(|s| s.tone == "grey")
+            .find(|s| s.tone == "blue")
             .unwrap();
         assert_eq!(
-            (grey.light.as_str(), grey.dark.as_str()),
+            (blue.light.as_str(), blue.dark.as_str()),
             ("#aaaaaa", "#555555")
         );
     }
@@ -179,8 +185,8 @@ mod tests {
         let bad = [
             (vec![], "at least one"),
             (
-                vec![status("blue", "#000000", "#000000")],
-                "status tones are",
+                vec![status("grey", "#000000", "#000000")],
+                "status tones are red, purple, yellow, orange, blue and green",
             ),
             (
                 vec![
@@ -196,7 +202,7 @@ mod tests {
             let message = validate_statuses(&list).unwrap_err().to_string();
             assert!(message.contains(error), "{list:?}: {message}");
         }
-        let colors: BTreeMap<String, String> = [("blue".to_owned(), "#000000".to_owned())].into();
+        let colors: BTreeMap<String, String> = [("grey".to_owned(), "#000000".to_owned())].into();
         assert!(validate(&colors).is_err());
     }
 }

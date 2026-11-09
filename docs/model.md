@@ -103,7 +103,7 @@ is no separate proposal entity or approval workflow to maintain.
 
 Each saved change to the REQ or its ACs creates a new REQ revision. History
 keeps who changed what and when, with the previous wording and removed ACs.
-A change of a node resets the criteria at and below it: they are grey until a
+A change of a node resets the criteria at and below it: they are blue until a
 newer test record arrives. Comments do not create revisions. See the
 [process](process.md) and [what green means](green.md).
 A move to another capability keeps the REQ ID and adds a revision with a reason.

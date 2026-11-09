@@ -68,7 +68,7 @@ every node, or absent for the roots. The [node filters](#node-filters) narrow th
   "next_cursor": "ac:a3",
   "items": [
     {"address": "ac:a", "title": "Each saved task has an owner", "status": "green"},
-    {"address": "ac:a1", "title": "A refused save stores nothing", "status": "grey"}
+    {"address": "ac:a1", "title": "A refused save stores nothing", "status": "blue"}
   ]
 }
 ```
@@ -145,14 +145,14 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `parent` | The direct children of the node. `*`: every level. |
 | `depth` | Nodes at most N levels (1 to 100) below `parent`, or below the top without a parent address. With a parent address, the default is 1. `100` reads the whole subtree. |
 | `kind` | Nodes of one type or of a list of types. |
-| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
+| `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `blue`, `green`. The tone is the `status` of a list item. The older name of `blue` reads as `blue`. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. |
 | `ready` | `false`: nodes that wait for a `depends_on` target that is not green or whose contract revision changed (`waits_for`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
 
 ```json
-{"workspace": "w", "parent": "domain:billing", "kind": ["ac"], "status": ["red", "grey"]}
+{"workspace": "w", "parent": "domain:billing", "kind": ["ac"], "status": ["red", "blue"]}
 {"workspace": "w", "data": {"tags": ["kyc"]}, "fields": ["title"]}
 ```
 
@@ -166,7 +166,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
   opens the board with that list. The board pickers `owner`, `assignee`, `status` and `ready` show
   the link values, and a picker change writes its value to the link. The board filters and the
   board search read every level of the tree.
-- A bad value is refused: `unknown status blue; use red, purple, yellow, orange, grey, green`,
+- A bad value is refused: `unknown status gray; use red, purple, yellow, orange, blue, green`,
   `status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions`
   (a search without `all_versions`),
   `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.

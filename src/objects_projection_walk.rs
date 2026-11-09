@@ -93,7 +93,7 @@ impl Rows {
                 Some(match status.and_then(Value::as_str) {
                     Some("green") => "green",
                     Some("red") => "red",
-                    _ => "grey",
+                    _ => "blue",
                 })
             }
             "children" | "links" => {
@@ -189,9 +189,9 @@ pub(super) type Walk<'a> = (
     &'a BTreeMap<String, String>,
 );
 
-/// A stored tone as one of the rollup tones; another stored value counts as grey.
+/// A stored tone as one of the rollup tones; another stored value counts as blue.
 fn static_tone(tone: &str) -> Option<&'static str> {
-    PRIORITY.into_iter().find(|t| *t == tone).or(Some("grey"))
+    PRIORITY.into_iter().find(|t| *t == tone).or(Some("blue"))
 }
 
 /// The parent of a node, by its current address.

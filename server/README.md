@@ -80,7 +80,10 @@ database migrations and configuration changes are not rolled back. After migrati
 (relations), the previous binary reads the current rows through their shadow `links`, but it
 cannot save a node that stores both forms (a flow, a key title, `when` or an empty key), and
 it cannot parse the new save_object events, so a full read, `check-journal` or a rebuild
-fails. The primary rollback is the pre-deploy dump. The final
+fails. After migration 063 (the tone blue), the previous binary cannot replay a blue status
+list and has no `--dot-blue`, so the rollback is the pre-deploy dump. Migration 063 replays no
+journal: put its measured time on a copy of production in the deploy request. The primary
+rollback is the pre-deploy dump. The final
 check calls the public HTTPS health endpoint. This does not verify Google login
 or establish Spaces retention: those require their own acceptance checks.
 

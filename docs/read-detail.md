@@ -114,7 +114,7 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
 
 ```json
 {"items": [{"address": "ac:a", "title": "A", "status": "green"},
-           {"address": "requirement:r", "title": "R", "status": "grey"}]}
+           {"address": "requirement:r", "title": "R", "status": "blue"}]}
 ```
 
 - A list field has the value of the list item: `status` is the tone, `status.label` gives
