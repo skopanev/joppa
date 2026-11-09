@@ -220,14 +220,11 @@ address. `direction`, `relation` and `kind` are optional filters. An item names 
 
 ## Nodes of one relation
 
-`{"workspace": "w", "in_relation": "swap"}` gives the nodes of the relation `swap` in pages of
-25 with `total` and `next_cursor`, in address order. A node is in the page when it is present
-and holds the key, also with no edges, or when it is the present target of a `swap` edge of a
-present node. `next_cursor` is the address of the last item. HTTP takes the same key:
-`GET /api/workspaces/{workspace}/objects?in_relation=swap&fields=title,signal,relations`.
-`fields`, `limit` and `cursor` work as on any list. Every other list key is refused:
-`in_relation takes only fields, limit and cursor`. A key outside the registry is refused:
-`unknown link relation`.
+`in_relation: "swap"` (HTTP `?in_relation=swap`) gives the present nodes that hold the key, also
+with no edges, and the present targets of its edges of present nodes. Pages of 25 in address order
+give `total` and `next_cursor` (the last address). It takes only `fields`, `limit` and `cursor`:
+another key is refused with `in_relation takes only fields, limit and cursor`, and a key outside
+the registry with `unknown link relation`.
 
 ## Writes
 

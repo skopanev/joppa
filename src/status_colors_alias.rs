@@ -72,6 +72,7 @@ mod tests {
         }
     }
 
+    // ac:17ses87u
     #[test]
     fn a_stored_grey_reads_as_blue() {
         let stored = vec![
@@ -96,6 +97,7 @@ mod tests {
         assert_eq!(stored_statuses(blue.clone()), blue);
     }
 
+    // ac:17ses87u
     #[test]
     fn the_older_map_keeps_each_colour() {
         let map = [("grey", "#c8c3b8"), ("red", "#123456")]
@@ -106,6 +108,7 @@ mod tests {
         assert_eq!(tones, [("blue", "#c8c3b8"), ("red", "#123456")]);
     }
 
+    // ac:nvghv6nt
     #[test]
     fn a_read_filter_takes_grey_as_blue() {
         let tones = ["grey", "blue", "gray", "red"].map(filter_tone);
