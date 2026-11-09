@@ -49,13 +49,18 @@ pub fn whole(patch: &Patch) -> Relations {
     merge(&Relations::new(), patch)
 }
 
-/// The relations and the link form of a save. An event names its whole relations, an older
-/// event its links, and an older event without both gives the object none.
-pub fn of_save(patch: Option<&Patch>, links: Option<&[ObjectLink]>) -> (Relations, LinkForm) {
+/// The relations and the link form of a save. An event names its whole relations, and an
+/// older event its links. A live save without both keeps the relations `live` of the node,
+/// and an older event without both gives the node none.
+pub fn of_save(
+    patch: Option<&Patch>,
+    links: Option<&[ObjectLink]>,
+    live: Option<&Relations>,
+) -> (Relations, LinkForm) {
     match (patch, links) {
         (Some(patch), _) => (whole(patch), LinkForm(None)),
         (None, Some(links)) => (from_links(links), LinkForm(Some(links.to_vec()))),
-        (None, None) => Default::default(),
+        (None, None) => (live.cloned().unwrap_or_default(), LinkForm(None)),
     }
 }
 

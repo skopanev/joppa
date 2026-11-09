@@ -123,7 +123,8 @@ pub(crate) fn save_into(
     }
     let kept = old.as_ref().map(|o| o.current().relations.clone());
     let kept = kept.unwrap_or_default();
-    let (relations, form) = crate::relations::of_save(relations.as_ref(), links.as_deref());
+    let live = (!w.replaying).then_some(&kept);
+    let (relations, form) = crate::relations::of_save(relations.as_ref(), links.as_deref(), live);
     crate::relations::validate(w, &key, &relations, &kept)?;
     let unchanged = old
         .as_ref()
