@@ -1,5 +1,7 @@
 //! requirement:q438uw0s over a real server: the links status rule and from: links ignore flows,
-//! and decide_note adds a related edge also when a flow edge exists.
+//! and an old decide_note event adds a related edge also when a flow edge exists.
+#[path = "common/legacy_event.rs"]
+mod legacy_event;
 #[path = "common/record_world.rs"]
 mod record_world;
 #[path = "common/relations_world.rs"]
@@ -88,14 +90,29 @@ async fn the_links_status_rule_and_from_links_ignore_flows() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn decide_note_adds_a_related_edge_also_when_a_flow_edge_exists() -> Result<()> {
-    let w = relations_world::world(&[]).await?;
+    let mut w = relations_world::world(&[]).await?;
     declare(&w, &[("swap", "Swap")]).await?;
     let swap = json!({"swap":{"edges":[{"to":"requirement:r"}]}});
     saved(&w, "note:n", 0, json!({"relations":swap})).await?;
     let (revision, ..) = stored(&w, "note:n").await?;
     let decide = json!({"op":"decide_note","target":"note:n","revision":revision,
         "outcome":"changed_spec","reason":"Updated the requirement","links":["requirement:r"]});
-    w.command(&w.bot, decide).await?.map_err(msg)?;
+    // A live decide_note call is refused with its removed-operation text.
+    let refused = w.command(&w.bot, decide.clone()).await?;
+    let text = joppa::removed_ops::refusal("decide_note");
+    ensure!(
+        refused
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.contains("decide_note was removed") && e.contains(&text)),
+        "the live call: {refused:?}"
+    );
+    // The old journal holds the decide_note event. The server replays W at its next start.
+    w.stop();
+    legacy_event::execute(&w.pool, &w.ws, "bot", decide).await?;
+    let stale = "UPDATE joppa.board_cache SET first_view='{}'::jsonb WHERE workspace=$1";
+    w.pool.get().await?.execute(stale, &[&w.ws]).await?;
+    w.start().await?;
     let n = w.object("note:n").await?;
     ensure!(
         edges(&n, "related") == [to("requirement:r")],
