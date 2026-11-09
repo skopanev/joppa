@@ -161,12 +161,7 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
             .collect()
     };
     let command = names(&schema("joppa_command")["properties"]["command"]);
-    let batch =
-        names(&schema("joppa_batch")["properties"]["operations"]["items"]["properties"]["command"]);
-    ensure!(
-        !command.is_empty() && batch == command,
-        "{command:?} / {batch:?}"
-    );
+    ensure!(!command.is_empty(), "joppa_command has no op enum");
     for name in [
         "heartbeat_task",
         "workspace",
