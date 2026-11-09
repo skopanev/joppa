@@ -30,8 +30,9 @@ const REVISION_KEYS: [&str; 7] = [
 /// current target revision, and an archived target `present: false`. save_object takes the
 /// relations back as they are. A node without relations has no `relations` key.
 pub(super) fn detail_relations(reply: &mut Value) {
-    if reply["relations"] == json!({}) {
+    if reply.get("relations").is_none_or(|r| r == &json!({})) {
         reply.as_object_mut().map(|m| m.remove("relations"));
+        return;
     }
     let keys = reply["relations"]
         .as_object_mut()
