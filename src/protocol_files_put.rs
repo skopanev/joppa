@@ -20,10 +20,7 @@ pub(crate) async fn check(pool: &Pool, call: &Upload) -> Result<()> {
 
 /// The signed upload link of `call` on this server. It stores nothing yet.
 pub(crate) fn link(mut call: Upload) -> Result<Value> {
-    let origin = std::env::var("JOPPA_PUBLIC_URL")
-        .ok()
-        .context("Public server URL is not configured")?;
-    let origin = reqwest::Url::parse(&origin)?.origin().ascii_serialization();
+    let origin = joppa::public_origin::get()?;
     call.expires = chrono::Utc::now().timestamp() + upload_link::lifetime()?;
     let expires_at = chrono::DateTime::from_timestamp(call.expires, 0)
         .context("the link lifetime is out of range")?

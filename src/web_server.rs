@@ -22,6 +22,8 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         );
     }
     let oauth_origin = login.public_origin()?;
+    // The upload links of joppa_attach name this origin.
+    joppa::public_origin::configure(oauth_origin.clone());
     // Search is always hybrid: without the provider key the server does not start.
     let embedder = joppa::embeddings::Embedder::from_env()?;
     // The status projection of an older code version catches up after the start.

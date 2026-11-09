@@ -3,31 +3,8 @@ use super::*;
 
 impl Login {
     pub fn public_origin(&self) -> Result<Option<String>> {
-        let origin = std::env::var("JOPPA_PUBLIC_URL").ok().or_else(|| {
-            self.google.as_ref().map(|g| {
-                reqwest::Url::parse(&g.config.redirect_uri)
-                    .unwrap()
-                    .origin()
-                    .ascii_serialization()
-            })
-        });
-        if let Some(raw) = &origin {
-            let u = reqwest::Url::parse(raw)?;
-            ensure!(
-                (u.scheme() == "https"
-                    || (u.scheme() == "http"
-                        && matches!(u.host_str(), Some("localhost" | "127.0.0.1"))))
-                    && u.host_str().is_some()
-                    && u.username().is_empty()
-                    && u.password().is_none()
-                    && u.query().is_none()
-                    && u.fragment().is_none()
-                    && u.path() == "/",
-                "JOPPA_PUBLIC_URL must be an HTTPS origin (HTTP only on loopback)"
-            );
-            return Ok(Some(u.origin().ascii_serialization()));
-        }
-        Ok(None)
+        let redirect = self.google.as_ref().map(|g| g.config.redirect_uri.as_str());
+        joppa::public_origin::resolve(redirect)
     }
 
     pub fn from_env() -> Result<Self> {

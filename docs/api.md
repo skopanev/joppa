@@ -9,7 +9,10 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
 - Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `history`, `tree` and `dependencies` under it.
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
-- Upload links: `PUT /api/uploads/{token}` takes the raw bytes of one `joppa_attach` call with `upload: true`. The signed link is the credential, so the request needs no token or cookie. The server checks the signature, the lifetime, the access and the size in this order. Then it stores the bytes and answers with the `joppa_attach` reply. The errors are 403 `upload link is not valid`, 410 `upload link expired`, 404 `Workspace not found` and 413 `an attachment is at most 50 MiB`.
+- Upload links: `PUT /api/uploads/{token}` takes the raw bytes of one `joppa_attach` call with `upload: true`. The signed link is the credential, so the request needs no token or cookie. The server checks the signature, the lifetime, the access and the size in this order. Then it stores the bytes and answers with the `joppa_attach` reply. The errors are:
+  - 403 `upload link is not valid`, 410 `upload link expired` and 404 `Workspace not found`.
+  - 413 `an attachment is at most 50 MiB`, and 400 `the upload did not finish` when the body stops before its end.
+  - 409 `an empty file carries nothing` for an empty body, and 409 `request_id reused with different content/actor` when the link already stored other bytes.
 
 Each command has `op` with its name. IDs hold ASCII letters, digits, `-`, `_` and `.`, 120 bytes
 at most. Authentication gives the actor. A request that supplies `actor` is refused.
@@ -29,8 +32,8 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
 
 - `note {target, id, text, reply_to}` adds a comment to any object.
 - `attach {target, id, name, content_type, size, hash, check_result?, valid_until?}` names bytes that the blob route stored. `joppa_attach {workspace, target, filename, content_type?, content | content_base64 | url | upload, check_result?, valid_until?}` uploads and attaches in one call. Send exactly one of `content`, `content_base64`, `url` or `upload: true`.
-  - `url` is an HTTPS GET with at most 3 redirects, 50 MiB and 30 seconds. The server refuses a host with any private, loopback, link-local, shared or multicast address, and it connects only to the addresses that it checked. `content_type` defaults to the Content-Type of the reply.
-  - `upload: true` checks the access and the fields, stores nothing and gives `{workspace, target, upload_url, expires_at}`. `upload_url` is `JOPPA_PUBLIC_URL/api/uploads/<token>`, valid 15 minutes. One PUT of the raw bytes to it attaches the file, for example `curl -T file.pdf "$upload_url"`. A restart of the server makes older links invalid.
+  - `url` is an HTTPS GET with at most 3 redirects, 50 MiB and 30 seconds. The server refuses a url with a user or a password. It refuses a host with any private, loopback, link-local, shared, reserved, documentation or multicast address, also inside an IPv6 address. It connects only to the addresses that it checked. `content_type` defaults to the Content-Type of the reply.
+  - `upload: true` checks the access and the fields, stores nothing and gives `{upload_url, expires_at}`. `upload_url` is `<public origin>/api/uploads/<token>`. The public origin is `JOPPA_PUBLIC_URL`, else the origin of the Google redirect URI. The link is valid 15 minutes. One PUT of the raw bytes to it attaches the file, for example `curl -T file.pdf "$upload_url"`. A restart of the server makes older links invalid.
   - `check_result` (`pass` or `fail`) makes the file a manual check of a criterion, and `valid_until` (`YYYY-MM-DD`, UTC) ends a pass.
 - `detach {target, id, reason}` keeps the file readable for 14 days. Then the periodic reconcile deletes it, unless an active attachment of the workspace names its hash. `joppa_attachments {workspace, target, removed: true}` also lists the files detached in the last 14 days, with `removed: true`, `removed_at` and a download `url`.
 - `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from an owner with a bearer token.

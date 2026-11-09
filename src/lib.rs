@@ -32,6 +32,7 @@ pub mod objects;
 pub mod omitted_links;
 pub mod planning;
 pub mod probe;
+pub mod public_origin;
 pub mod purpose_migration;
 pub mod read_compact;
 mod read_detail;
