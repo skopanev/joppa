@@ -58,7 +58,7 @@ fn no_local_flag(name: &str, text: &str) -> Result<()> {
 }
 
 // ac:r844gtkn
-// test:TBD
+// test:fp5xeyi2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn help_the_tools_the_instructions_and_the_guide_teach_relations() -> Result<()> {

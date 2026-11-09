@@ -15,7 +15,7 @@ fn keys(keys: &[String]) -> Map<String, Value> {
 }
 
 // ac:jey19ie7
-// test:TBD
+// test:pzay5s8q
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn relations_have_size_limits() -> Result<()> {

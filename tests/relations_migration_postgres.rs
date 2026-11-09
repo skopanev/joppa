@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 // ac:ajpnbe0g
-// test:TBD
+// test:56hv9nbj
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn migration_062_moves_the_stored_links_without_a_replay() -> Result<()> {

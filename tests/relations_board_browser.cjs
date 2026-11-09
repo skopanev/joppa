@@ -30,7 +30,7 @@ async function openGroup(f, title, row) {
 }
 
 // ac:1nywudsy
-// test:TBD
+// test:4h530ybl
 test('the board reads relations: the card groups the edges by relation title and pages them', async () => {
   const f = await fixture(types);
   try {

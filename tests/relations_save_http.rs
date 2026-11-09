@@ -31,7 +31,7 @@ async fn empty_key(w: &World, address: &str, key: &str, title: Option<&str>) -> 
 }
 
 // ac:84v38a55
-// test:TBD
+// test:x4inukfn
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn save_object_merges_relations_by_key() -> Result<()> {
@@ -109,7 +109,7 @@ async fn save_object_merges_relations_by_key() -> Result<()> {
 }
 
 // ac:xo4b5he5
-// test:TBD
+// test:fw821p22
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn save_object_checks_relation_keys_targets_and_pins() -> Result<()> {

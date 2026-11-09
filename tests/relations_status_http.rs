@@ -16,7 +16,7 @@ fn field(from: &str) -> serde_json::Value {
 }
 
 // ac:loecwtbg
-// test:TBD
+// test:go9ltybt
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_links_status_rule_and_from_links_ignore_flows() -> Result<()> {
@@ -84,7 +84,7 @@ async fn the_links_status_rule_and_from_links_ignore_flows() -> Result<()> {
 }
 
 // ac:yq4hkhb7
-// test:TBD
+// test:n5af88w0
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn decide_note_adds_a_related_edge_also_when_a_flow_edge_exists() -> Result<()> {

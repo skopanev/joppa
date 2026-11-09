@@ -27,7 +27,7 @@ async fn boundaries_at(w: &World, at: &str, step: &str) -> Result<()> {
 }
 
 // ac:kv34ae3j
-// test:TBD
+// test:d5l51tyo
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_old_journal_replays_into_relations_with_the_same_state() -> Result<()> {
@@ -74,7 +74,7 @@ async fn an_old_journal_replays_into_relations_with_the_same_state() -> Result<(
 }
 
 // ac:bgklhw0n
-// test:TBD
+// test:oiyxzzp8
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_read_of_an_old_revision_and_its_history_give_relations() -> Result<()> {

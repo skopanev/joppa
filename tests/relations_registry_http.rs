@@ -68,7 +68,7 @@ fn has_system(tree: &Value, name: &str) -> Result<()> {
 }
 
 // ac:esfpw74b
-// test:TBD
+// test:mu4xp9ux
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn every_workspace_has_the_system_relations_depends_on_and_related() -> Result<()> {
@@ -102,7 +102,7 @@ async fn every_workspace_has_the_system_relations_depends_on_and_related() -> Re
 }
 
 // ac:8dcnlo3s
-// test:TBD
+// test:ag3sm8mm
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_owner_declares_a_flow_relation_and_a_types_only_change_keeps_it() -> Result<()> {
@@ -150,7 +150,7 @@ async fn the_owner_declares_a_flow_relation_and_a_types_only_change_keeps_it() -
 }
 
 // ac:602nwv8y
-// test:TBD
+// test:7m5o1x60
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_used_or_system_relation_cannot_be_removed() -> Result<()> {
@@ -174,7 +174,7 @@ async fn a_used_or_system_relation_cannot_be_removed() -> Result<()> {
 }
 
 // ac:9ubwij03
-// test:TBD
+// test:b5s5p58g
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn restore_object_refuses_a_node_with_a_removed_relation() -> Result<()> {

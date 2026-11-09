@@ -30,7 +30,7 @@ fn no_links(name: &str, read: &Value) -> Result<()> {
 }
 
 // ac:u6ijlvvc
-// test:TBD
+// test:qains2w9
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn links_and_links_of_are_removed_from_the_live_api() -> Result<()> {
@@ -138,7 +138,7 @@ async fn links_and_links_of_are_removed_from_the_live_api() -> Result<()> {
 }
 
 // ac:s51at8yc
-// test:TBD
+// test:r6y4ah5p
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_edge_takes_a_public_item_id() -> Result<()> {

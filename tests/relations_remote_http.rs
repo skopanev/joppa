@@ -44,7 +44,7 @@ fn remote(ws: &str, relation: &str, blocking: bool) -> Value {
 }
 
 // ac:yk7ypz6b
-// test:TBD
+// test:v6ems9ts
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn remote_links_and_the_workspace_deletion_keep_working() -> Result<()> {

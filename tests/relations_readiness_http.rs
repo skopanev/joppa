@@ -33,7 +33,7 @@ fn edge(relation: &str, target: &str) -> Value {
 }
 
 // ac:syebi8av
-// test:TBD
+// test:0n3j3bb7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn depends_on_blocks_ready_and_refuses_cycles() -> Result<()> {
@@ -57,7 +57,7 @@ async fn depends_on_blocks_ready_and_refuses_cycles() -> Result<()> {
 }
 
 // ac:4tkeo6nc
-// test:TBD
+// test:5c4823x0
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_flow_allows_cycles_and_blocks_nothing() -> Result<()> {
@@ -88,7 +88,7 @@ async fn a_flow_allows_cycles_and_blocks_nothing() -> Result<()> {
 }
 
 // ac:vp0gqqm5
-// test:TBD
+// test:t20krobe
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn related_to_lists_only_depends_on_and_related_neighbours() -> Result<()> {

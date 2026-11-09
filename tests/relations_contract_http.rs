@@ -33,7 +33,7 @@ async fn review(w: &World, ws: &str, address: &str) -> Result<Value> {
 }
 
 // ac:8kphub4v
-// test:TBD
+// test:mkz86ej5
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_flow_change_resets_no_criterion_and_keeps_the_contract() -> Result<()> {
@@ -89,7 +89,7 @@ async fn a_flow_change_resets_no_criterion_and_keeps_the_contract() -> Result<()
 }
 
 // ac:4xbl6uha
-// test:TBD
+// test:049tu1s1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_flow_on_a_source_resets_nothing() -> Result<()> {
@@ -139,7 +139,7 @@ async fn a_flow_on_a_source_resets_nothing() -> Result<()> {
 }
 
 // ac:8cp0n5ec
-// test:TBD
+// test:ql5scc4r
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_new_workspace_starts_with_the_flow_neutral_reset() -> Result<()> {
