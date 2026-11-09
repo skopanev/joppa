@@ -176,27 +176,29 @@ async fn the_upload_link_refuses_a_bad_late_or_empty_upload_and_stores_nothing()
         url(&link(&w, "ac:a", fields()).await?).context("large")?,
         url(&link(&w, "ac:a", fields()).await?).context("left")?,
     );
-    // The second server issues the late link. Its JOPPA_PUBLIC_URL is its own root.
-    let call = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_attach",
-        "arguments":{"workspace":w.ws,"target":"ac:a","filename":"f.bin","upload":true}}});
-    let reply = w
-        .http
-        .post(format!("{second_root}/mcp"))
-        .bearer_auth(&w.bot)
-        .json(&call);
-    let reply: Value = reply.send().await?.json().await?;
-    let text = reply["result"]["content"][0]["text"].as_str().unwrap_or("");
-    let late = serde_json::from_str::<Value>(text)
-        .ok()
-        .as_ref()
-        .and_then(url);
-    let late = late.with_context(|| format!("no link from the second server: {reply}"))?;
-    ensure!(
-        late.starts_with(&format!("{second_root}/api/uploads/")),
-        "{late}"
-    );
-    let (base, token) = bad.rsplit_once('/').context("token")?;
-    let bad = format!("{base}/{}", changed(token));
+    // The second server issues the late links. Its JOPPA_PUBLIC_URL is its own root.
+    let second_link = async || {
+        let call = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_attach",
+            "arguments":{"workspace":w.ws,"target":"ac:a","filename":"f.bin","upload":true}}});
+        let reply = w
+            .http
+            .post(format!("{second_root}/mcp"))
+            .bearer_auth(&w.bot);
+        let reply: Value = reply.json(&call).send().await?.json().await?;
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let late = serde_json::from_str::<Value>(text).ok();
+        let late = late
+            .as_ref()
+            .and_then(url)
+            .filter(|u| u.starts_with(&second_root));
+        late.with_context(|| format!("no link from the second server: {reply}"))
+    };
+    let (late, late_bad) = (second_link().await?, second_link().await?);
+    let bad_link = |link: &str| {
+        let (base, token) = link.rsplit_once('/').context("token")?;
+        anyhow::Ok(format!("{base}/{}", changed(token)))
+    };
+    let (bad, late_bad) = (bad_link(&bad)?, bad_link(&late_bad)?);
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     // Each body would also fail a later check: the order of the checks gives the reply.
     let error = |text: &str| json!({ "error": text });
@@ -208,24 +210,16 @@ async fn the_upload_link_refuses_a_bad_late_or_empty_upload_and_stores_nothing()
         }
         anyhow::Ok(())
     };
-    send(
-        "changed token",
-        &bad,
-        60 * 1024 * 1024,
-        403,
+    let (invalid, big) = (
         "upload link is not valid",
-    )
-    .await?;
+        "an attachment is at most 50 MiB",
+    );
+    send("changed token", &bad, 60 * 1024 * 1024, 403, invalid).await?;
+    // A changed token that is also late: the signature check comes before the lifetime check.
+    send("changed and late", &late_bad, OVER, 403, invalid).await?;
     send("late", &late, OVER, 410, "upload link expired").await?;
     send("empty", &empty, 0, 409, "an empty file carries nothing").await?;
-    send(
-        "large",
-        &large,
-        OVER,
-        413,
-        "an attachment is at most 50 MiB",
-    )
-    .await?;
+    send("large", &large, OVER, 413, big).await?;
     let remove = json!({"op":"remove_member","id":"bot","reason":"Left the team"});
     w.command(&w.owner, remove)
         .await?
