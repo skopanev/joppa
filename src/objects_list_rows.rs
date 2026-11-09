@@ -35,7 +35,7 @@ pub(super) async fn list_rows(
             o.document_at,o.description,o.signal::text,o.present,o.inbox_status,o.process::text,
             CASE WHEN $10::boolean THEN {data}::text END,o.total,
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
-            CASE WHEN $10::boolean THEN COALESCE(o.document->'relations','{{}}'::jsonb)::text END,
+            CASE WHEN $10::boolean THEN COALESCE(o.document->'relations',joppa.relations_of_links(o.document->'links'),'{{}}'::jsonb)::text END,
             o.document->'data'->>'assignee'
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         WHERE o.workspace=$1 AND (o.present OR $18)

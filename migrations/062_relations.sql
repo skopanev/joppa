@@ -1,14 +1,9 @@
--- The relations of a node replace its links. This pass moves the stored links of the current
--- rows to relations without a replay, by the replay rule of src/relations.rs: a blocking
--- depends_on link is a depends_on edge, every other link is a related edge. The edges keep the
--- order of the links, and the first link to a target in a key gives its edge and its pin. A
--- revision without a pin stores no revision field, as serde writes an edge.
--- The pass rewrites only the current rows: state_entries section objects (each revision of
--- value, and compact), joppa.objects.document and joppa.object_links. The journal, the object
--- revisions and the schema revisions stay as stored: a read maps an older revision on the fly.
--- A journal that exists now gets the epoch of relations_reset after its last event. A
--- workspace that this server creates stores the epoch at creation. A second run finds no
--- links and writes nothing.
+-- The relations of a node replace its links. This file holds the DDL of migration 062: the
+-- when column of object_links and the functions of the data pass (062_relations_data.sql).
+-- Only `joppa migrate` runs it, as the owner of the schema. The mapping is the replay rule of
+-- src/relations.rs: a blocking depends_on link is a depends_on edge, every other link is a
+-- related edge. The edges keep the order of the links, and the first link to a target in a key
+-- gives its edge and its pin. An edge without a pin stores no revision field.
 ALTER TABLE joppa.object_links ADD COLUMN IF NOT EXISTS when_label text;
 
 CREATE OR REPLACE FUNCTION joppa.relations_of_links(links jsonb)
@@ -30,15 +25,38 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
     ) g
 $$;
 
+-- The rollback shadow of relations, as src/relations_stored.rs writes it: the depends_on edges
+-- as blocking links, then the related edges, each with its pin. The older release reads it.
+-- Deploy 19b removes the shadow.
+CREATE OR REPLACE FUNCTION joppa.links_shadow(relations jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE(jsonb_agg(x.link ORDER BY x.k, x.i), '[]'::jsonb) FROM (
+        SELECT 0 AS k, t.i, jsonb_build_object('target', t.e->>'to', 'relation', 'depends_on', 'blocking', true)
+            || CASE WHEN t.e ? 'revision' THEN jsonb_build_object('revision', t.e->'revision') ELSE '{}'::jsonb END AS link
+        FROM jsonb_array_elements(relations->'depends_on'->'edges') WITH ORDINALITY t(e, i)
+        UNION ALL
+        SELECT 1, t.i, jsonb_build_object('target', t.e->>'to', 'relation', 'related',
+            'revision', COALESCE(t.e->'revision', 'null'::jsonb), 'blocking', false)
+        FROM jsonb_array_elements(relations->'related'->'edges') WITH ORDINALITY t(e, i)
+    ) x
+$$;
+
+-- One revision document with links: its relations, and the links become their shadow.
+CREATE OR REPLACE FUNCTION joppa.revision_relations_of_links(r jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+    SELECT r || jsonb_build_object('relations', s.rel, 'links', joppa.links_shadow(s.rel))
+    FROM (SELECT joppa.relations_of_links(r->'links') AS rel) s
+$$;
+
 -- One revision document: its links become relations. A revision without links needs no
--- aggregate: most revisions have none.
+-- aggregate, and most revisions have none. The body is one expression, so a query inlines it.
 CREATE OR REPLACE FUNCTION joppa.revision_relations(r jsonb)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
-    SELECT CASE WHEN r ? 'links' AND NOT r ? 'relations'
-        THEN (r - 'links') || jsonb_build_object('relations',
-            CASE WHEN jsonb_typeof(r->'links') = 'array' AND jsonb_array_length(r->'links') = 0
-                THEN '{}'::jsonb ELSE joppa.relations_of_links(r->'links') END)
-        ELSE r END
+    SELECT CASE
+        WHEN NOT r ? 'links' OR r ? 'relations' THEN r
+        WHEN jsonb_typeof(r->'links') = 'array' AND jsonb_array_length(r->'links') = 0
+            THEN r || '{"relations":{}}'::jsonb
+        ELSE joppa.revision_relations_of_links(r) END
 $$;
 
 -- One object row of state_entries: each of its revisions.
@@ -47,52 +65,3 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
     SELECT jsonb_set(o, '{revisions}', COALESCE((SELECT jsonb_agg(joppa.revision_relations(r) ORDER BY i)
         FROM jsonb_array_elements(o->'revisions') WITH ORDINALITY t(r, i)), '[]'::jsonb))
 $$;
-
--- A row keeps one revision, and its compact form is the same revision without the body: it
--- takes the same relations. A row with more revisions maps each of them.
-UPDATE joppa.state_entries s
-SET value = n.value,
-    compact = CASE WHEN s.compact IS NULL THEN NULL
-        ELSE jsonb_set(s.compact #- '{revisions,0,links}', '{revisions,0,relations}',
-            n.value->'revisions'->0->'relations') END
-FROM (
-    SELECT workspace, key,
-        jsonb_set(value, '{revisions,0}', joppa.revision_relations(value->'revisions'->0)) AS value
-    FROM joppa.state_entries
-    WHERE section = 'objects' AND jsonb_array_length(value->'revisions') = 1
-        AND value->'revisions'->0 ? 'links' AND NOT value->'revisions'->0 ? 'relations'
-) n
-WHERE s.workspace = n.workspace AND s.section = 'objects' AND s.key = n.key;
-
-UPDATE joppa.state_entries s
-SET value = joppa.object_relations(s.value),
-    compact = CASE WHEN s.compact IS NULL THEN NULL ELSE joppa.object_relations(s.compact) END
-WHERE s.section = 'objects' AND jsonb_array_length(s.value->'revisions') <> 1
-    AND (jsonb_path_exists(s.value, '$.revisions[*].links')
-        OR COALESCE(jsonb_path_exists(s.compact, '$.revisions[*].links'), false));
-
--- The object_links rows of a moved document follow its relations: the reference rows stay,
--- and a merged edge gives one row.
-CREATE TEMP TABLE IF NOT EXISTS relations_moved (workspace text, address text) ON COMMIT DROP;
-WITH moved AS (
-    UPDATE joppa.objects o SET document = joppa.revision_relations(o.document)
-    WHERE o.document ? 'links' AND NOT o.document ? 'relations'
-    RETURNING o.workspace, o.address
-)
-INSERT INTO relations_moved SELECT workspace, address FROM moved;
-
-DELETE FROM joppa.object_links l USING relations_moved m
-WHERE l.workspace = m.workspace AND l.source = m.address AND l.relation NOT LIKE 'reference:%';
-
-INSERT INTO joppa.object_links(workspace, source, target, relation, revision, blocking, when_label)
-SELECT m.workspace, m.address, e.edge->>'to', r.key, (e.edge->>'revision')::integer,
-    r.key = 'depends_on', e.edge->>'when'
-FROM relations_moved m
-JOIN joppa.objects o ON o.workspace = m.workspace AND o.address = m.address
-CROSS JOIN LATERAL jsonb_each(o.document->'relations') r(key, value)
-CROSS JOIN LATERAL jsonb_array_elements(r.value->'edges') e(edge);
-
-INSERT INTO joppa.replay_epochs(workspace, rule, first_position)
-SELECT w.id, 'relations_reset', (SELECT COALESCE(max(e.position), 0) + 1 FROM joppa.events e WHERE e.workspace = w.id)
-FROM joppa.workspaces w
-ON CONFLICT (workspace, rule) DO NOTHING;

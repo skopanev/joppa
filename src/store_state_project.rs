@@ -11,7 +11,15 @@ pub(crate) async fn project(
     let (changed, removed) = changed_entries(state, previous)?;
     let changed: Vec<Value> = changed
         .iter()
-        .map(|((section, key), value)| json!({"section":section,"key":key,"value":value}))
+        .map(|((section, key), value)| {
+            let mut value = value.clone();
+            // An object row keeps the rollback shadow of its relations (relations_stored.rs).
+            if section == "objects" {
+                let revisions = value["revisions"].as_array_mut().into_iter().flatten();
+                revisions.for_each(crate::relations::with_shadow);
+            }
+            json!({"section":section,"key":key,"value":value})
+        })
         .collect();
     if !changed.is_empty() {
         client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value,kind,compact) SELECT $1,x.section,x.key,COALESCE(x.value,'null'::jsonb),CASE WHEN x.section='objects' THEN x.value->>'kind' END,CASE WHEN x.section='objects' THEN jsonb_set(x.value,'{revisions,0,data}',(x.value->'revisions'->0->'data')-'body'-'description') END FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value,kind=EXCLUDED.kind,compact=EXCLUDED.compact", &[&workspace,&json!(changed).to_string()]).await?;

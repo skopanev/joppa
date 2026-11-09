@@ -1,6 +1,7 @@
 //! The application role of server/install.sh can run the Settings writes: email and domain
 //! grants and their removal, a member removal, a first and a later Google sign-in, and a
-//! redaction. The test makes a role with exactly the install.sh grants and runs as that role.
+//! redaction, and a serve start with the data pass of migration 062. The test makes a role with
+//! exactly the install.sh grants and runs as that role.
 use anyhow::{Context, Result, ensure};
 use joppa::{commands::Command, store};
 use serde_json::{Value, json};
@@ -92,6 +93,13 @@ async fn owner_manages_workspace_ac3_the_install_role_runs_the_settings_writes()
         // A redaction rewrites stored revisions of the note.
         execute(&app, &ws, "owner", json!({"op":"save_object","kind":"note","id":"secret","revision":0,"parent":null,"data":{"title":"Secret note","owner":"owner","body":"Token s3cr3t"},"reason":"Save"})).await?;
         execute(&app, &ws, "owner", json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"})).await?;
+        // A serve start as the application role runs no DDL. The data pass of migration 062
+        // runs for a workspace without the relations_reset epoch or a row without relations.
+        store::migrate_notes(&app).await?;
+        admin.get().await?.batch_execute(&format!("DELETE FROM joppa.replay_epochs WHERE workspace='{ws}' AND rule='relations_reset'; UPDATE joppa.state_entries SET value=value #- '{{revisions,0,relations}}' WHERE workspace='{ws}' AND section='objects' AND key='note:secret'")).await?;
+        store::migrate_notes(&app).await?;
+        let moved: bool = admin.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.replay_epochs WHERE workspace=$1 AND rule='relations_reset') AND (SELECT value->'revisions'->0 ? 'relations' FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:secret')", &[&ws]).await?.get(0);
+        ensure!(moved, "the serve start did not move the pending workspace");
         // owner-manages-workspace-ac2: the deletion removes every row of the workspace.
         // The role itself cannot delete a journal row, also with the purge setting.
         let conn = app.get().await?;

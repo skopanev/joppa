@@ -75,7 +75,7 @@ pub(in crate::store) async fn project(
                 .find(|r| r.revision == previous_revision)
                 .context("object revision history was shortened")?;
             ensure!(
-                serde_json::to_value(old)? == previous["document"],
+                crate::relations::stored_document(old)? == previous["document"],
                 "object history changed at {address}/{previous_revision}"
             );
         }
@@ -98,7 +98,8 @@ pub(in crate::store) async fn project(
         let document = if state.unloaded_objects.contains(address) {
             previous.context("unloaded object projection is missing")?["document"].clone()
         } else {
-            json!(r)
+            // The row keeps the rollback form of the relations (relations_stored.rs).
+            crate::relations::stored_document(r)?
         };
         let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"work_ready":objects::work_ready(state,address),"signal":signal,"process":objects::process(state,address)});
         if previous != Some(&doc) {

@@ -100,10 +100,11 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/059_search_and_reference_indexes.sql"),
         include_str!("../migrations/060_source_change_reset.sql"),
         HIDDEN_BY,
-        RELATIONS,
+        include_str!("../migrations/062_relations.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }
+    relations_data(&*tx).await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -121,8 +122,17 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
 /// Migration 061 moves the older hidden flag without a replay. It runs at serve start too: a
 /// server that starts without `joppa migrate` reads no older flag.
 const HIDDEN_BY: &str = include_str!("../migrations/061_hidden_by.sql");
-/// Migration 062 moves the stored links to relations without a replay, also at serve start.
-const RELATIONS: &str = include_str!("../migrations/062_relations.sql");
+/// The data pass of migration 062 moves the stored links to relations without a replay. At
+/// serve start it runs only when a workspace has no relations_reset epoch or a state row has no
+/// relations, and it needs no DDL: the application role runs it.
+const RELATIONS: &str = include_str!("../migrations/062_relations_data.sql");
+const RELATIONS_PENDING: &str = "SELECT EXISTS(SELECT 1 FROM joppa.workspaces w WHERE NOT EXISTS(SELECT 1 FROM joppa.replay_epochs e WHERE e.workspace=w.id AND e.rule='relations_reset')) OR EXISTS(SELECT 1 FROM joppa.state_entries WHERE section='objects' AND NOT value->'revisions'->0 ? 'relations')";
+async fn relations_data(client: &impl GenericClient) -> Result<()> {
+    if client.query_one(RELATIONS_PENDING, &[]).await?.get(0) {
+        client.batch_execute(RELATIONS).await?;
+    }
+    Ok(())
+}
 pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
@@ -131,7 +141,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     // Migrations rebuild projections from the journal as it is (see migration 037).
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
     tx.batch_execute(HIDDEN_BY).await?;
-    tx.batch_execute(RELATIONS).await?;
+    relations_data(&*tx).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())
