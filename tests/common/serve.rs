@@ -18,6 +18,16 @@ impl Drop for Server {
 /// Start a server on `port` with the database `url` and the token file `tokens`, and wait until
 /// /health answers.
 pub async fn start(url: &str, tokens: &std::path::Path, port: u16) -> Result<Server> {
+    start_with(url, tokens, port, &[]).await
+}
+
+/// Start a server as `start` does, with the extra variables `env` for the server process.
+pub async fn start_with(
+    url: &str,
+    tokens: &std::path::Path,
+    port: u16,
+    env: &[(String, String)],
+) -> Result<Server> {
     let server = Server(
         Command::new(env!("CARGO_BIN_EXE_joppa"))
             .args(["serve", &port.to_string()])
@@ -29,6 +39,7 @@ pub async fn start(url: &str, tokens: &std::path::Path, port: u16) -> Result<Ser
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
             .envs(super::fake_spaces::start().env())
+            .envs(env.iter().cloned())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,
