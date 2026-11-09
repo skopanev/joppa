@@ -50,8 +50,8 @@ fn saved_current(w: &Workspace, command: &Command) -> Option<ObjectRevision> {
     Some(w.objects.get(resolve_address(w, &key))?.current().clone())
 }
 
-/// A new revision that changes only the test list keeps the contract revision of the
-/// revision before it.
+/// A new revision that changes only the test list or only flow keys keeps the contract
+/// revision of the revision before it.
 pub(crate) fn mark_contract(
     old: Option<&ObjectRevision>,
     candidate: &mut Workspace,
@@ -72,7 +72,7 @@ pub(crate) fn mark_contract(
     else {
         return;
     };
-    if new.revision != old.revision && tests_only_change(old, new) {
+    if new.revision != old.revision && (tests_only_change(old, new) || flow_only_change(old, new)) {
         new.contract = Some([new.revision, contract_of(old)]);
     }
 }

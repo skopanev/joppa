@@ -32,6 +32,18 @@ pub fn tests_only_change(before: &ObjectRevision, after: &ObjectRevision) -> boo
         && without(&before.data) == without(&after.data)
 }
 
+/// The revision `after` changes only flow keys of `before`. A flow is no part of the contract,
+/// so a pin of the node stays current. Before relations, no revision has a flow.
+pub fn flow_only_change(before: &ObjectRevision, after: &ObjectRevision) -> bool {
+    let keys = before.relations.keys().chain(after.relations.keys());
+    let mut changed = keys.filter(|k| before.relations.get(*k) != after.relations.get(*k));
+    before.data == after.data
+        && before.parent == after.parent
+        && before.present == after.present
+        && before.relations != after.relations
+        && changed.all(|k| crate::relations::flow(k))
+}
+
 /// True when the node and each ancestor are present. The depends_on edges of a node are
 /// decided at read time by the test status of their criteria (dependencies::Graph).
 pub fn work_ready(w: &Workspace, key: &str) -> bool {
