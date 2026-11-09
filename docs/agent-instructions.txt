@@ -2,6 +2,7 @@ Read joppa_tree for the workspace types, parents, references, questions, status 
 A typed field (fields.<name>) has type, values and from. The order of values is the rollup priority: the first value wins. from own: the node stores the value. from children, links or parent: the server computes and stores it, a read gives it in data, and a save that sends it is refused.
 A list field or a multiple reference with from children gives the sorted union of the values of the children, each value once.
 Use joppa_objects to find and read current objects. Read one historical revision only when needed. Use joppa_search to find related work.
+Each list gives items, total and next_cursor, with at most 25 items in a page. Send next_cursor as cursor to read the next page.
 Read joppa_help with op for the operation you need.
 Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.
 
@@ -10,6 +11,7 @@ Create with save_object and revision:0. Omit id so the server generates it. Pres
 Write a title and body that answer the question of the type.
 A write takes a public item ID where it takes an address of the workspace. The journal stores the address.
 Use joppa_batch for related writes. Retry identical input with the same request_id after a lost response.
+Each data value holds at most the field_max_length of its type. Over 1 kb: prefer attach as a file.
 Set data.workspace on a node to bind a child workspace; use set_remote_links for links across workspaces.
 
 Save a raw incoming signal as an Inbox item: the type with inbox: true, parent:null. Preserve its original text and language.
