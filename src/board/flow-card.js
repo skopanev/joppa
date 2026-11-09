@@ -13,7 +13,7 @@ export function flowCard(card,flow){
   const close=E('button','×','flow-card-close');close.type='button';close.setAttribute('aria-label','Close the card');close.onclick=()=>pick(null);
   const open=E('a','Open →','flow-open');open.href=objectURL(address);
   const head=E('div',undefined,'flow-card-head');
-  head.append(E('span',undefined,'status-circle '+toneOf(address)),E('strong',label,'flow-card-title'),open,close);
+  head.append(E('span',undefined,'status-circle '+toneOf(address)),E('h3',label,'flow-card-title'),open,close);
   const facts=E('dl',undefined,'flow-card-facts');
   const fact=(term,...values)=>{const dd=E('dd');dd.append(...values);facts.append(E('dt',term),dd);};
   fact('Object',node.title||address);fact('Address',address);fact('Status',node.signal?.label||toneOf(address));
