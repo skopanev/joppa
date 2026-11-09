@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 /// Every route of the server: the method and the path pattern.
-const ROUTES: [(&str, &str); 47] = [
+const ROUTES: [(&str, &str); 48] = [
     ("GET", "/.well-known/oauth-protected-resource"),
     ("GET", "/.well-known/oauth-protected-resource/mcp"),
     ("GET", "/.well-known/oauth-authorization-server"),
@@ -45,6 +45,7 @@ const ROUTES: [(&str, &str); 47] = [
     ("POST", "/api/domain-grants"),
     ("GET", "/api/workspaces/{workspace}"),
     ("POST", "/api/workspaces/{workspace}/rename"),
+    ("POST", "/api/workspaces/{workspace}/hide"),
     ("GET", "/api/workspaces/{workspace}/references"),
     ("GET", "/api/workspaces/{workspace}/board"),
     ("GET", "/api/workspaces/{workspace}/objects"),

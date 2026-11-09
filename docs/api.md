@@ -217,14 +217,17 @@ session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` o
 
 `update_workspace {title?, workspace_id?, reference_prefix?, hidden?, reason?}` changes each
 field that it sends and keeps all history. It needs one of `title`, `workspace_id`,
-`reference_prefix` and `hidden`. `rename_workspace` was removed: a write of it is refused with
+`reference_prefix` and `hidden`. Only the owner changes `title`, `workspace_id` and
+`reference_prefix`. `rename_workspace` was removed: a write of it is refused with
 `rename_workspace was removed; use update_workspace`.
 A new `workspace_id` becomes the public ID in lists and reads. Old names stay aliases with
 the same access, and no other workspace can take them. A new `reference_prefix` changes the
 prefix of new public IDs. Old IDs stay valid.
 
-`hidden: true` hides the workspace from the web lists: `GET /api/workspaces`, the board
-drop-down and Settings (`GET /api/access`). A direct board link `/?workspace=<id>` still opens
-it, and the drop-down then shows it for that page only. `joppa_list` and the server command
-line list it with `"hidden": true`. Every MCP read and write works on it as before.
-`hidden: false` shows it again.
+`hidden: true` hides the workspace only for the member who sends it. A member of any role,
+also an agent or a runner, may send it. The workspace leaves the web lists of that member:
+`GET /api/workspaces` and the board drop-down. A direct board link `/?workspace=<id>` still
+opens it, and the drop-down then shows it for that page only. `GET /api/workspaces?all=true`,
+Settings and `GET /api/access` still list it. `joppa_list`, `?all=true` and the server
+command line give it `"hidden": true` for that member only. Every MCP read and write works on
+it as before. `hidden: false` shows it again. `remove_member` clears the flag of the member.

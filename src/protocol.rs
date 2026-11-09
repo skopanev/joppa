@@ -39,7 +39,7 @@ pub async fn handle(
         }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": json!([
-            tool("joppa_list", "List your workspaces: items {id, title, hidden}. hidden: true means the web lists hide the workspace; MCP reads and writes it as usual.", json!({"cursor":{"type":"string"}}), json!([])),
+            tool("joppa_list", "List your workspaces: items {id, title, hidden}. hidden: true means you hid the workspace from your web lists; MCP reads and writes it as usual.", json!({"cursor":{"type":"string"}}), json!([])),
             tool("joppa_search", "Find objects by words and meaning. A result gives address, title, revision, score and excerpt. Read the object before a change. A list reply over 256 KB is refused.", schemas::search(), json!(["workspace","query"])),
             tool("joppa_tree", "Read the workspace schema: types with parents, roles, status rules (own, children, links, none), questions, references, typed data fields, filters and test_results. A typed field names type (text, number, boolean, enum, list), values and from. The order of values is the rollup priority: the first value wins. from: own (default, the node stores it), children, links (both directions) or parent; the server computes the other three. An enum takes children or links. A list field or a multiple reference with from children gives the sorted union of the values of the children. A filter field that a result field of type enum or ref also names is a dimension: a data filter with its value, such as {\"env\":\"dev\"}, gives the tones of that value. Change it with set_tree_schema and send schema.revision; put_types and remove_types change single types. A type can set field_max_length for its data values. The reply gives field_hint.", json!({"workspace":{"type":"string"},"revision":{"type":"integer","minimum":0}}), json!(["workspace"])),
             tool("joppa_objects", "Read objects. Without address: a page of items {address, title, status tone, assignee when set}. parent gives the direct children; depth up to 100 reads deeper; parent \"*\" reads every level. fields keeps the named keys: [\"children\"] counts children, [\"links\"] gives links. With address: one object with revision, parent, data, status, process, comments and links; 2 to 25 addresses give {items}. A list reply over 256 KB is refused.", schemas::objects(), json!([])),
@@ -102,7 +102,7 @@ fn authoring_command_schema() -> Value {
             "data":{"type":"object","description":"Document fields. data.owner: the member ID of a human owner, required on every save; an AC without it takes the owner of its REQ. data.title: one concise statement (max 128 chars). data.body: the text of every object type; data.description, data.contract and data.decision_required are refused. Each other text value follows the text rules of joppa_command. A computed field (from children, links or parent) is refused: the server sets it."},
             "title":{"description":"One concise statement (max 128 chars). Prefer English. Follow ASD-STE100 Issue 9."}, "body":text(), "text":text(),
             "reason":text(), "value":text(),
-            "hidden":{"type":"boolean","description":"For update_workspace: true hides the workspace from the web lists, false shows it again."}
+            "hidden":{"type":"boolean","description":"For update_workspace: true hides the workspace from your own web lists, false shows it again. Any member may send it."}
         }
     })
 }

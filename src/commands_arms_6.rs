@@ -72,3 +72,52 @@ pub(super) fn apply_comment(
     );
     Ok(())
 }
+
+/// Apply `update_workspace`. An old `rename_workspace` applies as one with its fields.
+pub(super) fn apply_update_workspace(
+    w: &mut Workspace,
+    actor: &str,
+    op: &crate::commands::UpdateWorkspaceOp,
+) -> Result<()> {
+    let crate::commands::UpdateWorkspaceOp {
+        title,
+        workspace_id,
+        reference_prefix,
+        hidden,
+        reason,
+    } = op;
+    let owner_fields = title.is_some() || workspace_id.is_some() || reference_prefix.is_some();
+    ensure!(
+        owner_fields || hidden.is_some(),
+        "update_workspace needs title, workspace_id, reference_prefix or hidden"
+    );
+    // hidden alone is the flag of the sender, so any member may send it.
+    ensure!(
+        !owner_fields || actor == w.admin,
+        "workspace owner updates the workspace"
+    );
+    for text in [title, reason].into_iter().flatten() {
+        nonempty(text)?;
+    }
+    for id in [workspace_id, reference_prefix].into_iter().flatten() {
+        identifier(id)?;
+    }
+    if let Some(title) = title {
+        w.title = title.clone();
+    }
+    if let Some(id) = workspace_id {
+        w.workspace_id = Some(id.clone());
+    }
+    if let Some(prefix) = reference_prefix {
+        w.reference_prefix = Some(prefix.clone());
+        // The server derives a prefix from the title with this reason. After an explicit
+        // prefix, it derives none.
+        w.prefix_from_title = reason.as_deref() == Some(crate::store::workspace_prefix::REASON);
+    }
+    match hidden {
+        Some(true) => _ = w.hidden_by.insert(actor.to_owned()),
+        Some(false) => _ = w.hidden_by.remove(actor),
+        None => {}
+    }
+    Ok(())
+}

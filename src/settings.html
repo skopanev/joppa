@@ -37,6 +37,8 @@ try{
 .owner-mark{color:var(--muted);font-size:.85em;flex:none}
 #workspace-people li[data-kind=email],#workspace-people li[data-kind=domain]{color:var(--muted)}
 #not-owner{color:var(--muted);margin:.6em 0 0}
+/* Each member hides the selected workspace from the own lists. */
+.settings .hide-check{display:inline-flex;align-items:center;gap:.5em;min-height:44px;margin:.4em 0 0;font-size:1em;color:var(--text)}
 .owner-block{margin-top:1.2em}
 .danger{margin-top:1.6em;padding-top:1.2em;border-top:1px solid var(--rule)}
 .settings .danger .action{color:var(--fail);border-color:var(--fail)}
@@ -85,6 +87,8 @@ try{
   </form>
   <p id="workspace-error" role="alert"></p>
   <div id="workspace-panel" hidden>
+    <label class="hide-check"><input id="hide-workspace" type="checkbox"> Hide from my list</label>
+    <p id="hide-error" role="alert"></p>
     <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
     <section id="owner-panel" aria-labelledby="people-title" hidden>
       <h2 id="people-title">People</h2>

@@ -39,12 +39,15 @@ const show=()=>{
   $('rename-title').value=own?.title||'';
   // The pencil renames the selected workspace, so only its owner sees it.
   $('rename-open').hidden=!own;if(!own)$('rename-workspace').hidden=true;
-  for(const id of ['grant-error','rename-error','delete-error'])$(id).textContent='';
+  // The checkbox shows the flag of the signed-in member for the selected workspace.
+  $('hide-workspace').checked=workspaces.some(w=>w.id===id&&w.hidden===true);
+  for(const id of ['hide-error','grant-error','rename-error','delete-error'])$(id).textContent='';
   $('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;
 };
-// A reload keeps the selection when the workspace is still listed.
+// A reload keeps the selection when the workspace is still listed. The list has the hidden
+// workspaces of the member too, so the member can show them again.
 const load=async selected=>{
-  const [all,access]=await Promise.all([send('/api/workspaces','GET',undefined,'Could not load your workspaces.'),
+  const [all,access]=await Promise.all([send('/api/workspaces?all=true','GET',undefined,'Could not load your workspaces.'),
     send('/api/access','GET',undefined,'Could not load owned workspaces.').then(v=>v.items,e=>e)]);
   workspaces=all;owned=access instanceof Error?[]:access;
   select.replaceChildren(...workspaces.map(w=>new Option(w.title,w.id)));
@@ -54,6 +57,18 @@ const load=async selected=>{
   show();
 };
 select.onchange=show;
+// The checkbox hides the selected workspace only from the lists of the signed-in member. The
+// request is keepalive, so it ends also when the member leaves the page at once.
+$('hide-workspace').onchange=async()=>{
+  const box=$('hide-workspace'),workspace=select.value,hidden=box.checked;
+  $('hide-error').textContent='';
+  try{
+    const response=await fetch('/api/workspaces/'+encodeURIComponent(workspace)+'/hide',{method:'POST',keepalive:true,
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})});
+    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Could not change your workspace list.');
+    await load(workspace);
+  }catch(e){box.checked=!hidden;$('hide-error').textContent=e.message;}
+};
 // Each header button opens its form above the people; Cancel or a second click closes it.
 const drawer=(button,form,focus)=>{
   $(button).onclick=()=>{

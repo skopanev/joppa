@@ -22,9 +22,27 @@ pub(super) async fn health(State(app): State<App>) -> (StatusCode, Json<Value>) 
         Json(json!({"ok":healthy})),
     )
 }
+/// The workspaces of the caller without the ones that the caller hid.
 pub(super) async fn list(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::list(&app.pool, &actor).await.map(store::visible))
+}
+#[derive(Deserialize)]
+pub(super) struct ListQuery {
+    all: Option<bool>,
+}
+/// `GET /api/workspaces`. With `all=true`, every workspace of the caller, and one that the
+/// caller hid gives `"hidden": true`.
+pub(super) async fn list_route(
+    State(app): State<App>,
+    Query(q): Query<ListQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    if q.all != Some(true) {
+        return list(State(app), headers).await;
+    }
+    let actor = authenticate(&app, &headers).await?;
+    result(store::list(&app.pool, &actor).await)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -128,6 +146,35 @@ pub(super) async fn rename_workspace(
         store::execute(&app.pool, &workspace, &actor, &request_id, &command)
             .await
             .map(|_| json!({"id": workspace, "title": body.title})),
+    )
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct WorkspaceHidden {
+    hidden: bool,
+}
+/// A member hides a workspace from the own web lists, or shows it again, from a signed-in
+/// browser.
+pub(super) async fn hide_workspace(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<WorkspaceHidden>,
+) -> ApiResult {
+    if headers.contains_key(header::AUTHORIZATION) {
+        return Err(auth_error("Sign in with the browser to hide a workspace"));
+    }
+    let actor = authenticate(&app, &headers).await?;
+    web_auth::check_origin(&headers).map_err(auth_error)?;
+    let command = Command::UpdateWorkspace(joppa::commands::UpdateWorkspaceOp {
+        hidden: Some(body.hidden),
+        ..Default::default()
+    });
+    let request_id = uuid::Uuid::new_v4().to_string();
+    result(
+        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
+            .await
+            .map(|_| json!({"id": workspace, "hidden": body.hidden})),
     )
 }
 /// The owner reads the workspaces that link to this workspace, before a deletion.

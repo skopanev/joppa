@@ -1,48 +1,6 @@
 //! Arms of `apply_inner` in commands.rs, one function for each operation.
 use super::*;
 
-/// Apply `update_workspace`. An old `rename_workspace` applies as one with its fields.
-pub(super) fn apply_update_workspace(
-    w: &mut Workspace,
-    actor: &str,
-    op: &crate::commands::UpdateWorkspaceOp,
-) -> Result<()> {
-    let crate::commands::UpdateWorkspaceOp {
-        title,
-        workspace_id,
-        reference_prefix,
-        hidden,
-        reason,
-    } = op;
-    ensure!(actor == w.admin, "workspace owner updates the workspace");
-    ensure!(
-        title.is_some() || workspace_id.is_some() || reference_prefix.is_some() || hidden.is_some(),
-        "update_workspace needs title, workspace_id, reference_prefix or hidden"
-    );
-    for text in [title, reason].into_iter().flatten() {
-        nonempty(text)?;
-    }
-    for id in [workspace_id, reference_prefix].into_iter().flatten() {
-        identifier(id)?;
-    }
-    if let Some(title) = title {
-        w.title = title.clone();
-    }
-    if let Some(id) = workspace_id {
-        w.workspace_id = Some(id.clone());
-    }
-    if let Some(prefix) = reference_prefix {
-        w.reference_prefix = Some(prefix.clone());
-        // The server derives a prefix from the title with this reason. After an explicit
-        // prefix, it derives none.
-        w.prefix_from_title = reason.as_deref() == Some(crate::store::workspace_prefix::REASON);
-    }
-    if let Some(hidden) = hidden {
-        w.hidden = *hidden;
-    }
-    Ok(())
-}
-
 /// Apply `member`.
 pub(super) fn apply_member(
     w: &mut Workspace,

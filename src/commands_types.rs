@@ -140,7 +140,8 @@ pub struct UpdateWorkspaceOp {
     pub workspace_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_prefix: Option<String>,
-    /// A hidden workspace leaves the web lists. MCP and a direct board link still read it.
+    /// The flag of the sender only: a hidden workspace leaves the web lists of that member.
+    /// MCP and a direct board link still read it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

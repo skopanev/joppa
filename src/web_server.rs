@@ -90,7 +90,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/auth/logout", post(logout))
         .route("/api/me", get(me))
         .route("/settings", get(settings_page))
-        .route("/api/workspaces", get(list).post(create_workspace))
+        .route("/api/workspaces", get(list_route).post(create_workspace))
         .route(
             "/api/email-grants",
             get(list_email_grants).post(grant_email),
@@ -103,6 +103,7 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         )
         .route("/api/workspaces/{workspace}", get(read))
         .route("/api/workspaces/{workspace}/rename", post(rename_workspace))
+        .route("/api/workspaces/{workspace}/hide", post(hide_workspace))
         .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
         .route(
             "/api/workspaces/{workspace}/references",

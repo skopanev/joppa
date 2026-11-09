@@ -153,6 +153,7 @@ pub(crate) fn apply_inner(
             nonempty(reason)?;
             ensure!(*id != w.admin, "workspace owner cannot be removed");
             ensure!(w.members.remove(id).is_some(), "unknown member");
+            w.hidden_by.remove(id);
         }
         Command::Consumer(crate::commands::ConsumerOp { .. }) => apply_consumer(w, command)?,
         Command::EditConsumer(crate::commands::EditConsumerOp { .. }) => {

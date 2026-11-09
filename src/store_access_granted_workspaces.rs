@@ -187,7 +187,7 @@ pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) 
 /// The workspaces that this actor owns, each with its people and its pending grants, in one read.
 /// A person shows as "name <email>", as the email, or as the member ID when no Google identity is
 /// bound. Agent members are not people, so the list omits them. An email grant of a person who
-/// is already a member is not listed again. A hidden workspace is left out.
+/// is already a member is not listed again. A hidden workspace is listed too.
 pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
     let items: Vec<Value> = conn
@@ -208,7 +208,6 @@ pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
              WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1 AND s.value->'deleted_at' IS NULL
-               AND NOT COALESCE((b.first_view->>'hidden')::boolean,false)
              ORDER BY 2,1",
             &[&actor],
         )
