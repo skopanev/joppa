@@ -39,7 +39,7 @@ async fn nothing_stored(
 }
 
 // ac:a8aay7d5
-// test:TBD
+// test:4rly7epe
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_with_url_stores_the_bytes_of_the_reply() -> Result<()> {
@@ -98,7 +98,7 @@ async fn attach_with_url_stores_the_bytes_of_the_reply() -> Result<()> {
 }
 
 // ac:l83lfswu
-// test:TBD
+// test:04whsv0u
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_refuses_a_url_with_a_private_address_and_stores_nothing() -> Result<()> {
@@ -132,7 +132,7 @@ async fn attach_refuses_a_url_with_a_private_address_and_stores_nothing() -> Res
 }
 
 // ac:ffibh2rq
-// test:TBD
+// test:lz5y1nsd
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_refuses_a_bad_url_fetch_and_stores_nothing() -> Result<()> {

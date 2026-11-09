@@ -33,7 +33,7 @@ fn changed(token: &str) -> String {
 }
 
 // ac:34wr41bv
-// test:TBD
+// test:1ozo04iw
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn attach_with_upload_gives_a_15_minute_link_and_stores_nothing_yet() -> Result<()> {
@@ -96,7 +96,7 @@ async fn attach_with_upload_gives_a_15_minute_link_and_stores_nothing_yet() -> R
 }
 
 // ac:hb4nerzr
-// test:TBD
+// test:m15tnj03
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn one_put_to_the_upload_link_stores_the_file_and_writes_the_attach() -> Result<()> {
@@ -160,7 +160,7 @@ async fn one_put_to_the_upload_link_stores_the_file_and_writes_the_attach() -> R
 }
 
 // ac:cxcb5yaa
-// test:TBD
+// test:ubfnp84u
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_upload_link_refuses_a_bad_late_or_empty_upload_and_stores_nothing() -> Result<()> {
