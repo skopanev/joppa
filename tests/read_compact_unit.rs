@@ -79,9 +79,9 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
 // read-detail-pages
 #[test]
 fn a_detail_gives_each_fact_once() {
-    let related = json!({"target":"ac:b","relation":"related","blocking":false,"revision":null});
-    let pinned = json!({"target":"task:t","relation":"depends_on","blocking":true,"revision":3});
-    let stored = json!({"revision":4,"parent":"requirement:r","links":[related,pinned],
+    let stored_relations = json!({"related":{"edges":[{"to":"ac:b"}]},
+        "depends_on":{"edges":[{"to":"task:t","revision":3}]}});
+    let stored = json!({"revision":4,"parent":"requirement:r","relations":stored_relations,
         "data":{"title":"A","note":null},"actor":"bot","at":"2026-10-30",
         "reason":"Save","schema_revision":20,"position":8,"present":true,"contract":[4,3]});
     let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
@@ -89,26 +89,23 @@ fn a_detail_gives_each_fact_once() {
         "historical":false,"metadata_scope":"current",
         "document":stored,"signal":{"label":"Ready","tone":"green"},
         "work_ready":true,
-        "links":[{"link":related,"title":"B","kind":"ac","current_revision":2,"present":true,
-            "blocking":false,"revision":null,"metadata_scope":"current"},
-            {"link":pinned,"title":"T","kind":"task","current_revision":5,"present":false,
-            "blocking":true,"revision":3,"metadata_scope":"current"}],
+        "relations":{"related":{"edges":[{"to":"ac:b","title":"B","current_revision":2,"present":true}]},
+            "depends_on":{"edges":[{"to":"task:t","revision":3,"title":"T","current_revision":5,"present":false}]}},
         "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
-        "link_groups":[{"direction":"outgoing","relation":"related","kind":"ac","count":1},
-            {"direction":"incoming","relation":"related","kind":"task","count":2}],
+        "relation_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
         "annotations":{"comments":{},"attachments":{}},
         "process":{"annotation_address":"ac:a","verification":"pass"},
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
-    // One links list: a related link has no pin, and a pin shows the current revision.
+    // The relations by key: an edge without a pin has no current revision, and a pin shows it.
     assert_eq!(
         detail(reply.clone(), "ac:a", None).unwrap(),
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
             "status":{"label":"Ready","tone":"green"},
-            "links":[{"target":"ac:b","title":"B"},
-                {"target":"task:t","relation":"depends_on","title":"T","revision":3,
-                    "current_revision":5,"blocking":true,"present":false}],
+            "relations":{"related":{"edges":[{"to":"ac:b","title":"B"}]},
+                "depends_on":{"edges":[{"to":"task:t","title":"T","revision":3,
+                    "current_revision":5,"present":false}]}},
             "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
-            "link_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
+            "relation_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
             // The annotation address repeats the address.
             "process":{"verification":"pass"}})
     );
@@ -127,19 +124,18 @@ fn a_detail_gives_each_fact_once() {
         (&json!(false), &json!(false))
     );
     // A revision read gives the flat document of that revision and the current revision.
-    let old = json!({"revision":2,"parent":"requirement:r","links":[related],"data":{"title":"A"},
-        "actor":"bot","at":"2026-10-29","reason":"Save","schema_revision":20,"position":5,
-        "present":true});
+    let old = json!({"revision":2,"parent":"requirement:r","relations":{"related":{"edges":[{"to":"ac:b"}]}},
+        "data":{"title":"A"},"actor":"bot","at":"2026-10-29","reason":"Save","schema_revision":20,
+        "position":5,"present":true});
     assert_eq!(
         revision(
             json!({"workspace":"w","workspace_key":"w","address":"ac:a","kind":"ac","id":"a",
-            "historical":true,"current_revision":4,"document":old,
-            "position":9,"links":[{"link":related,"title":"B","current_revision":2,
-            "present":true}],"remote_links":[],"remote_links_revision":0,
-            "remote_review_required":false}),
+            "historical":true,"current_revision":4,"document":old,"position":9,
+            "relations":{"related":{"edges":[{"to":"ac:b","title":"B","current_revision":2,"present":true}]}},
+            "remote_links":[],"remote_links_revision":0,"remote_review_required":false}),
             "ac:a"
         ),
         json!({"revision":2,"parent":"requirement:r","data":{"title":"A"},"current_revision":4,
-            "links":[{"target":"ac:b","title":"B"}]})
+            "relations":{"related":{"edges":[{"to":"ac:b","title":"B"}]}}})
     );
 }
