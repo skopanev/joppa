@@ -128,7 +128,7 @@ const HIDDEN_BY: &str = include_str!("../migrations/061_hidden_by.sql");
 /// relations, and it needs no DDL: the application role runs it.
 const RELATIONS: &str = include_str!("../migrations/062_relations_data.sql");
 const RELATIONS_PENDING: &str = "SELECT EXISTS(SELECT 1 FROM joppa.workspaces w WHERE NOT EXISTS(SELECT 1 FROM joppa.replay_epochs e WHERE e.workspace=w.id AND e.rule='relations_reset')) OR EXISTS(SELECT 1 FROM joppa.state_entries WHERE section='objects' AND NOT value->'revisions'->0 ? 'relations')";
-/// Migration 063 moves the stored tone grey of the current rows to blue without a replay. It
+/// Migration 063 moves the older tone of the current rows to blue without a replay. It
 /// needs no DDL and runs at serve start too. A second run writes nothing.
 const BLUE_TONE: &str = include_str!("../migrations/063_blue_tone.sql");
 async fn relations_data(client: &impl GenericClient) -> Result<()> {
