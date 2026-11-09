@@ -14,7 +14,7 @@ const AWAITS: Option<&str> = Some("Awaits checks");
 
 /// A is `a` with the reason `why`, B is grey, and R is `r` after `step`. A criterion without
 /// test nodes and without checks has the tone orange (No children) on the board, so grey
-/// "no tests" accepts the tone orange for A and R.
+/// "no tests" needs the tone orange for A.
 async fn step(
     w: &record_world::World,
     step: &str,
@@ -22,21 +22,18 @@ async fn step(
     why: Option<&str>,
     r: &str,
 ) -> Result<()> {
-    let tones = |want: &str| match why {
-        Some("no tests") => vec![want.to_owned(), "orange".to_owned()],
-        _ => vec![want.to_owned()],
+    let want = match why {
+        Some("no tests") => "orange",
+        _ => a,
     };
     let (status, reason, tone) = manual_check::state(w, "ac:a").await?;
     ensure!(
-        status == a && why.is_none_or(|y| reason == y) && tones(a).iter().any(|t| tone == *t),
+        status == a && why.is_none_or(|y| reason == y) && tone == want,
         "{step}: A must be {a} {why:?}: status {status}, reason {reason}, tone {tone}"
     );
     expect(w, step, "ac:b", "grey", None).await?;
     let tone = manual_check::tone(w, "requirement:r").await?;
-    ensure!(
-        tones(r).iter().any(|t| tone == *t),
-        "{step}: R must be {r}: tone {tone}"
-    );
+    ensure!(tone == r, "{step}: R must be {r}: tone {tone}");
     Ok(())
 }
 
@@ -54,7 +51,7 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
         "a file without check_result",
         "grey",
         GREY_NO_TESTS,
-        "grey",
+        "orange",
     )
     .await?;
     check(&w, "ac:a", json!({"check_result":"pass"})).await?;
