@@ -21,12 +21,12 @@ pub async fn start(url: &str, tokens: &std::path::Path, port: u16) -> Result<Ser
     start_with(url, tokens, port, &[]).await
 }
 
-/// `start` with more environment variables, such as JOPPA_PUBLIC_URL or a test hook.
+/// Start a server as `start` does, with the extra variables `env` for the server process.
 pub async fn start_with(
     url: &str,
     tokens: &std::path::Path,
     port: u16,
-    env: &[(&str, &str)],
+    env: &[(String, String)],
 ) -> Result<Server> {
     let server = Server(
         Command::new(env!("CARGO_BIN_EXE_joppa"))
@@ -39,7 +39,7 @@ pub async fn start_with(
             .env("DEEPINFRA_API_KEY", "test-only-key")
             .env("JOPPA_EMBEDDING_URL", "http://127.0.0.1:9/embeddings")
             .envs(super::fake_spaces::start().env())
-            .envs(env.iter().copied())
+            .envs(env.iter().cloned())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?,

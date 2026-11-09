@@ -17,6 +17,7 @@ pub struct World {
     url: String,
     port: u16,
     dir: std::path::PathBuf,
+    env: Vec<(String, String)>,
     pub root: String,
     pub ws: String,
     pub owner: String,
@@ -29,6 +30,22 @@ pub struct World {
 
 /// Start a server for a new workspace in which criterion A lists `tests`.
 pub async fn world(tests: &[&str]) -> Result<World> {
+    build(tests, None).await
+}
+
+/// `world` with the variables `env` and JOPPA_PUBLIC_URL of its own root for the server.
+pub async fn world_env(tests: &[&str], env: &[(&str, String)]) -> Result<World> {
+    build(tests, Some(env)).await
+}
+
+/// The variables `env` and JOPPA_PUBLIC_URL `root`, for a server process.
+fn vars(root: &str, env: &[(&str, String)]) -> Vec<(String, String)> {
+    let mut vars = vec![("JOPPA_PUBLIC_URL".to_owned(), root.to_owned())];
+    vars.extend(env.iter().map(|(k, v)| ((*k).to_owned(), v.clone())));
+    vars
+}
+
+async fn build(tests: &[&str], env: Option<&[(&str, String)]>) -> Result<World> {
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
     ensure!(
         url.rsplit('/')
@@ -81,12 +98,14 @@ pub async fn world(tests: &[&str]) -> Result<World> {
         .local_addr()?
         .port();
     let root = format!("http://127.0.0.1:{port}");
-    let server = Some(serve::start(&url, &tokens, port).await?);
+    let env = env.map(|env| vars(&root, env)).unwrap_or_default();
+    let server = Some(serve::start_with(&url, &tokens, port, &env).await?);
     Ok(World {
         server,
         url,
         port,
         dir,
+        env,
         root,
         ws,
         owner,
@@ -106,8 +125,17 @@ impl World {
     /// Start the server again on the same port, database and tokens.
     pub async fn start(&mut self) -> Result<()> {
         let tokens = self.dir.join("tokens.json");
-        self.server = Some(serve::start(&self.url, &tokens, self.port).await?);
+        self.server = Some(serve::start_with(&self.url, &tokens, self.port, &self.env).await?);
         Ok(())
+    }
+    /// A second server, with the same database and tokens, as `world_env` starts it. Gives its root.
+    pub async fn spare(&self, env: &[(&str, String)]) -> Result<(serve::Server, String)> {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?;
+        let root = format!("http://{port}");
+        let port = port.port();
+        let tokens = self.dir.join("tokens.json");
+        let server = serve::start_with(&self.url, &tokens, port, &vars(&root, env)).await?;
+        Ok((server, root))
     }
     /// One MCP tool call. Without a token, the call has no session. Gives the HTTP code and body.
     pub async fn mcp_raw(

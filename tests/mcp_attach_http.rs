@@ -118,11 +118,11 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
     both["content_base64"] = json!("eA==");
     refused(
         attach(&w, &w.bot, both).await?,
-        "exactly one of content or content_base64",
+        "send exactly one of content, content_base64, url or upload",
     )?;
     refused(
         attach(&w, &w.bot, base.clone()).await?,
-        "exactly one of content or content_base64",
+        "send exactly one of content, content_base64, url or upload",
     )?;
     let over = vec![9u8; joppa::spaces::ATTACHMENT_MAX + 1];
     let mut large = base.clone();
