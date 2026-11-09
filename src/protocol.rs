@@ -98,6 +98,7 @@ fn authoring_command_schema() -> Value {
         "properties":{
             "op":{"type":"string","enum":joppa::commands::OPERATIONS.iter().map(|o| o.name).collect::<Vec<_>>(),"description":"Operation name. Read joppa_help with this op for its required fields and callers."},
             "revision":{"description":"For save_object, archive_object, restore_object and set_tree_schema, send the revision you read. Zero creates a new object or changes the default schema. The server creates the next revision."},
+            "relations":{"type":"object","description":"For save_object: key -> {title?, edges: [{to, when?, revision?}]}. An omitted key stays, a sent key replaces, null removes it."},
             "clean":{"type":"boolean","description":"For save_object with revision > 0: true replaces data whole. Without it, data merges by key, null removes a field, and an omitted parent or relation key stays."},
             "data":{"type":"object","description":"Document fields. data.owner: the member ID of a human owner, required on every save; an AC without it takes the owner of its REQ. data.title: one concise statement (max 128 chars). data.body: the text of every object type; data.description, data.contract and data.decision_required are refused. Each other text value follows the text rules of joppa_command. A computed field (from children, links or parent) is refused: the server sets it."},
             "title":{"description":"One concise statement (max 128 chars). Prefer English. Follow ASD-STE100 Issue 9."}, "body":text(), "text":text(),
