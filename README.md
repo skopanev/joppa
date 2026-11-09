@@ -2,7 +2,7 @@
 
 **A versioned product tree with connected tasks.**
 
-Each workspace defines its object types, parents, links, colors and order.
+Each workspace defines its object types, parents, relations, colors and order.
 The recommended recipe is Domain → Capability → Requirement → AC → Test, and Tech → Requirement → AC → Test.
 Tasks and test nodes belong to the parents that the workspace schema permits (`ac`).
 Inbox items hold raw incoming signals. Sources ground every AC.
@@ -17,7 +17,7 @@ An iOS condition means iOS; other clients are never added by assumption.
 ## What works
 
 - Workspaces, members, decision authorities, capabilities and owned REQs and ACs.
-- Inbox items with revisions, comments, attachments and links to affected objects.
+- Inbox items with revisions, comments, attachments and related edges to affected objects.
   The default queue shows unprocessed Inbox items. Processed items stay available.
 - REQ cards with revisions, discussion, specialist decisions and actor/time
   history.
@@ -130,7 +130,7 @@ Use **Revisions** to read one saved document. Historical documents omit current
 comments, files and process status. Current comments, attachments and Context
 remain separate annotations.
 
-The board is read-only for content. Agents change documents, links and schema through MCP.
+The board is read-only for content. Agents change documents, relations and schema through MCP.
 The **Settings** page creates workspaces, grants access and issues agent tokens.
 Types with `inbox: true` supply an Inbox queue. It shows unprocessed items first.
 The **All** checkbox includes processed items. Related Inbox items stay visible
@@ -223,5 +223,5 @@ Administrative recovery replays the journal. The board is read-only for content;
 decisions use MCP.
 
 See the [model](docs/model.md), [process](docs/process.md), [objects](docs/objects.md),
-[workspace schema](docs/schema.md), [links](docs/links.md), [green rule](docs/green.md),
+[workspace schema](docs/schema.md), [relations](docs/links.md), [green rule](docs/green.md),
 [API](docs/api.md), [read contract](docs/read-contract.md) and [storage](docs/storage.md).
