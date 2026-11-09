@@ -9,7 +9,7 @@ mod tree;
 pub use tree::tree_schema;
 #[path = "objects_read.rs"]
 mod object_read;
-pub use object_read::read_objects;
+pub use object_read::{read_objects, relation_members};
 #[path = "objects_compact_list.rs"]
 mod compact_rows;
 pub use compact_rows::compact_list;

@@ -22,11 +22,14 @@ pub(super) async fn list_rows(
         bound,
         after_filter,
         order,
+        in_relation,
     } = plan;
     let filter = bound.clause_at([3, 4, 11, 12, 13, 14, 15, 16, 17]);
     let f = bound.params();
     // A status list with the archived tone also keeps the current archived nodes.
     let archived = scope.filter.archived();
+    // A member read ($19) keeps the holders of the key and the targets of its edges. A document
+    // of the older release holds only the links, so the holders come from them too.
     let query = format!(
         r#"
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.work_ready,
@@ -42,7 +45,10 @@ pub(super) async fn list_rows(
             AND {filter}
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
-                AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))) o
+                AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
+            AND ($19::text IS NULL OR COALESCE(o.document->'relations',joppa.relations_of_links(o.document->'links')) ? $19
+                OR EXISTS (SELECT 1 FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source AND s.present
+                    WHERE l.workspace=o.workspace AND l.relation=$19 AND l.target IN (SELECT o.address UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=o.address)))) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
         ORDER BY {order} LIMIT $5
@@ -71,6 +77,7 @@ pub(super) async fn list_rows(
                 f[7],
                 f[8],
                 &archived,
+                &in_relation,
             ],
         )
         .await?;

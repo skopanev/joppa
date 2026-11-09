@@ -44,6 +44,8 @@ pub(super) struct ObjectQuery {
     relations_of: Option<String>,
     direction: Option<String>,
     relation: Option<String>,
+    /// The relation key whose members to read in pages of 25 (src/relation_members.rs).
+    in_relation: Option<String>,
     /// Comma-separated keys to keep in each list item; the address always stays.
     fields: Option<String>,
     depth: Option<String>,
@@ -52,6 +54,36 @@ pub(super) struct ObjectQuery {
     assignee: Option<String>,
     ready: Option<String>,
     data: Option<String>,
+}
+impl ObjectQuery {
+    /// The names of the keys that the request sends, outside fields, limit and cursor.
+    fn other_keys(&self) -> Vec<&'static str> {
+        let texts = [
+            ("address", &self.address),
+            ("parent", &self.parent),
+            ("kind", &self.kind),
+            ("note_status", &self.note_status),
+            ("related_to", &self.related_to),
+            ("work_filter", &self.work_filter),
+            ("links_of", &self.links_of),
+            ("relations_of", &self.relations_of),
+            ("direction", &self.direction),
+            ("relation", &self.relation),
+            ("depth", &self.depth),
+            ("status", &self.status),
+            ("owner", &self.owner),
+            ("assignee", &self.assignee),
+            ("ready", &self.ready),
+            ("data", &self.data),
+        ];
+        let mut keys: Vec<&'static str> = texts
+            .into_iter()
+            .filter_map(|(key, value)| value.is_some().then_some(key))
+            .collect();
+        keys.extend(self.revision.map(|_| "revision"));
+        keys.extend(self.history.map(|_| "history"));
+        keys
+    }
 }
 pub(super) async fn objects(
     State(app): State<App>,
@@ -82,6 +114,34 @@ pub(super) async fn objects(
     if q.work_filter.is_some() {
         return result(Err(anyhow::anyhow!(joppa::removed_ops::WORK_FILTER)));
     }
+    let fields: Option<Vec<String>> = q.fields.as_deref().map(|f| {
+        f.split(',')
+            .filter(|k| !k.is_empty())
+            .map(str::to_owned)
+            .collect()
+    });
+    let data = fields
+        .as_deref()
+        .is_some_and(joppa::read_compact::needs_data);
+    if let Some(key) = q.in_relation.as_deref() {
+        if let Err(e) = joppa::relation_members::check_keys(q.other_keys()) {
+            return result(Err(e));
+        }
+        let limit = joppa::relation_members::page(q.limit);
+        let read = store::relation_members(
+            &app.pool,
+            &workspace,
+            &actor,
+            key,
+            limit,
+            q.cursor.as_deref(),
+            data,
+        );
+        return result(
+            read.await
+                .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
+        );
+    }
     // The node filters, in the same form as joppa_objects.
     let filter = match joppa::node_filter::NodeFilter::parse_query(&[
         ("parent", q.parent.as_deref()),
@@ -96,12 +156,6 @@ pub(super) async fn objects(
         Ok(filter) => filter,
         Err(e) => return result(Err(e)),
     };
-    let fields: Option<Vec<String>> = q.fields.as_deref().map(|f| {
-        f.split(',')
-            .filter(|k| !k.is_empty())
-            .map(str::to_owned)
-            .collect()
-    });
     result(
         store::read_objects(
             &app.pool,
@@ -116,9 +170,7 @@ pub(super) async fn objects(
                 cursor: q.cursor.as_deref(),
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
-                data: fields
-                    .as_deref()
-                    .is_some_and(joppa::read_compact::needs_data),
+                data,
             },
         )
         .await

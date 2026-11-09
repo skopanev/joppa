@@ -74,6 +74,10 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .context("invalid object revision")?;
     let limit = number(a, "limit")?.map_or(rc::PAGE, |n| (n as usize).min(rc::PAGE));
     anyhow::ensure!(a["links_of"].is_null(), joppa::removed_ops::LINKS_OF);
+    if let Some(key) = a.get("in_relation").filter(|v| !v.is_null()) {
+        let key = key.as_str().context("in_relation must be a string")?;
+        return members(pool, workspace, actor, a, key, fields).await;
+    }
     if let Some(address) = a["relations_of"].as_str() {
         let filter = |name: &str| match a.get(name) {
             None | Some(Value::Null) => Ok(None),
@@ -148,6 +152,30 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     {
         reply["next_cursor"] = json!(address);
     }
+    if let Some(fields) = &fields {
+        let items = reply["items"].as_array().into_iter().flatten();
+        let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
+        check(pool, workspace, actor, fields, false, &data).await?;
+    }
+    Ok(rc::list(reply, fields.as_deref()))
+}
+
+/// The member read of one relation (src/relation_members.rs), in pages of 25.
+async fn members(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    a: &Value,
+    key: &str,
+    fields: Option<Vec<String>>,
+) -> anyhow::Result<Value> {
+    let sent = a.as_object().into_iter().flatten();
+    let sent = sent.filter(|(_, v)| !v.is_null()).map(|(k, _)| k.as_str());
+    joppa::relation_members::check_keys(sent)?;
+    let limit = joppa::relation_members::page(number(a, "limit")?.map(|n| n as usize));
+    let data = fields.as_deref().is_some_and(rc::needs_data);
+    let cursor = a["cursor"].as_str();
+    let reply = store::relation_members(pool, workspace, actor, key, limit, cursor, data).await?;
     if let Some(fields) = &fields {
         let items = reply["items"].as_array().into_iter().flatten();
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();

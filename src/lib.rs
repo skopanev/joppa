@@ -38,6 +38,7 @@ pub mod read_compact;
 mod read_detail;
 pub mod read_shapes;
 pub mod redact;
+pub mod relation_members;
 pub mod relations;
 pub mod remote_links;
 pub mod removed_ops;

@@ -11,6 +11,8 @@ pub(super) struct ListPlan<'s> {
     pub(super) bound: crate::node_filter::Bound,
     pub(super) after_filter: String,
     pub(super) order: String,
+    /// The relation key of a member read (src/relation_members.rs).
+    pub(super) in_relation: Option<&'s str>,
 }
 
 // The body moved from read_objects unchanged, so it keeps `&*conn` on a borrowed transaction.
@@ -23,6 +25,7 @@ pub(super) async fn read_list(
     prefix: String,
     selected: std::collections::BTreeMap<String, objects::TreeType>,
     scope: &ObjectScope<'_>,
+    in_relation: Option<&str>,
 ) -> Result<Value> {
     ensure!(
         scope.revision.is_none() && !scope.history,
@@ -97,14 +100,14 @@ pub(super) async fn read_list(
     } else {
         (false, "")
     };
-    // Without a parent and without a filter, a list gives the roots. A related_to list reads
-    // every level.
+    // Without a parent and without a filter, a list gives the roots. A related_to list and a
+    // member read read every level.
     // A status list with the archived tone also keeps the current archived nodes.
     let bound = crate::node_filter::bind(
         conn,
         &workspace,
         &scope.filter,
-        related_to.is_none(),
+        related_to.is_none() && in_relation.is_none(),
         scope.filter.archived(),
     )
     .await?;
@@ -128,6 +131,7 @@ pub(super) async fn read_list(
         bound,
         after_filter,
         order,
+        in_relation,
     };
     super::object_list_rows::list_rows(
         conn, workspace, public, position, prefix, selected, scope, plan,

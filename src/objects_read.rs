@@ -7,6 +7,46 @@ pub async fn read_objects(
     actor: &str,
     scope: &ObjectScope<'_>,
 ) -> Result<Value> {
+    read(pool, workspace, actor, scope, None).await
+}
+
+/// The members of relation `key` (src/relation_members.rs): at most `limit` present nodes
+/// after the address `cursor`, in address order. `data` also gives the data and the
+/// relations of each item. next_cursor is the bare address of the last item.
+pub async fn relation_members(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    key: &str,
+    limit: usize,
+    cursor: Option<&str>,
+    data: bool,
+) -> Result<Value> {
+    ensure!((1..=25).contains(&limit), "limit must be 1 to 25");
+    let scope = ObjectScope {
+        limit,
+        cursor,
+        data,
+        ..ObjectScope::default()
+    };
+    let mut reply = read(pool, workspace, actor, &scope, Some(key)).await?;
+    if let Some((_, address)) = reply["next_cursor"]
+        .as_str()
+        .and_then(|c| c.split_once(':'))
+        .filter(|(p, _)| p.parse::<i64>().is_ok())
+    {
+        reply["next_cursor"] = json!(address);
+    }
+    Ok(reply)
+}
+
+async fn read(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    scope: &ObjectScope<'_>,
+    in_relation: Option<&str>,
+) -> Result<Value> {
     let (mut conn, workspace) = authorized(pool, workspace, actor).await?;
     let conn = conn
         .build_transaction()
@@ -29,7 +69,39 @@ pub async fn read_objects(
         }
         return Ok(object);
     }
-    super::object_list::read_list(&conn, workspace, public, position, prefix, selected, scope).await
+    if let Some(key) = in_relation {
+        ensure!(
+            registry(&conn, &workspace).await?.contains_key(key),
+            "unknown link relation"
+        );
+    }
+    super::object_list::read_list(
+        &conn,
+        workspace,
+        public,
+        position,
+        prefix,
+        selected,
+        scope,
+        in_relation,
+    )
+    .await
+}
+
+/// The relation keys of the current schema revision. A revision without a registry, and a
+/// workspace without a schema, have the system relations.
+async fn registry(
+    conn: &tokio_postgres::Transaction<'_>,
+    workspace: &str,
+) -> Result<std::collections::BTreeMap<String, Value>> {
+    let row = conn.query_opt("SELECT (value->'relations')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' AND revision=(SELECT (state->'tree_schema'->-1->>'revision')::bigint FROM joppa.board_cache WHERE workspace=$1)", &[&workspace]).await?;
+    match row.and_then(|r| r.get::<_, Option<String>>(0)) {
+        Some(text) => Ok(serde_json::from_str(&text)?),
+        None => Ok(crate::relations::system()
+            .into_keys()
+            .map(|key| (key, Value::Null))
+            .collect()),
+    }
 }
 
 #[path = "objects_read_one.rs"]

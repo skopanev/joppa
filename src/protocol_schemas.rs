@@ -51,6 +51,7 @@ pub(super) fn objects() -> Value {
         "direction": {"type":"string","enum":["outgoing","incoming"],
             "description":"with relations_of: only the edges in this direction"},
         "relation": text("with relations_of: only the edges of this relation key"),
+        "in_relation": text("relation key; its nodes in pages of 25, with fields, limit, cursor only"),
     }))
 }
 
