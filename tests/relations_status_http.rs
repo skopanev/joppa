@@ -77,10 +77,12 @@ async fn the_links_status_rule_and_from_links_ignore_flows() -> Result<()> {
         json!({"relations":{"related":{"edges":[{"to":"area:r"}]}}}),
     )
     .await?;
+    // The new related edge resets the tests of G: a new record passes the test of G.
+    w.recorded("5a5a5a5", json!([result("g", "pass")])).await?;
     let r = w.object("area:r").await?;
     ensure!(
         r["status"]["tone"] == "green" && r["data"]["f"] == "low",
-        "after the related save: {r}"
+        "after the related save and the new record: {r}"
     );
     Ok(())
 }
