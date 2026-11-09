@@ -85,12 +85,13 @@ Time alone never changes a tone.
 ## One rollup on every level
 
 A node with `status: "children"` takes the highest tone of its present counted children, and
-a node with `status: "links"` the highest tone of the present objects that link to it, in the
-order red, orange, yellow, grey, green.
+a node with `status: "links"` the highest tone of the present objects that link to it by a
+depends_on or related edge or a reference field, in the order red, orange, yellow, grey, green.
+A flow edge does not count.
 
 - A node with no counted child or link is orange: a criterion without a test node is orange.
 - A child with `status: "none"`, for example a Task, does not count.
-- A node that waits for a blocking dependency is at least yellow.
+- A node that waits for a depends_on target is at least yellow.
 - An archived node is purple and does not count.
 
 ## Changes
@@ -98,15 +99,16 @@ order red, orange, yellow, grey, green.
 With `reset_on_change`, a change of a node or of a node above it makes the earlier records stop
 counting for the test nodes at and below it. Such a test is grey until a newer record arrives.
 
-- Any new parent, link or data value of a node resets the test nodes at and below it. This holds
-  for each node type and each link, a blocking `depends_on` link and a new pin included.
+- Any new parent, depends_on or related edge, or data value of a node resets the test nodes at
+  and below it. This holds for each node type, a new pin included. A flow edge resets nothing.
 - A new title of a test node resets nothing. The title states the scenario, and the results
   stay with the node.
-- A revision with the same parent, links and data resets nothing. An example is the
+- A revision with the same parent, depends_on and related edges and data resets nothing. An example is the
   specification revision that a criterion save gives.
 - An archive resets only the test nodes at and below the archived object.
 - A node of a type with `source: true` that gets a new title, body or file resets each present
-  criterion that names it in a reference field or that has a link with it, in either direction.
+  criterion that names it in a reference field or that has a depends_on or related edge with it,
+  in either direction. A flow edge resets nothing.
   A detach and a new value of another field reset nothing.
 
 Old records stay in the history. They are facts about the old text.

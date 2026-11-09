@@ -1,7 +1,7 @@
 # Configurable workspace model
 
 Each workspace defines its own tree schema.
-All objects have common document revisions, comments, attachments and links.
+All objects have common document revisions, comments, attachments and relations.
 Read [Objects and workspace trees](objects.md) for the current contract.
 The model below describes the recommended tree and its verification roles.
 

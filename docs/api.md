@@ -69,7 +69,7 @@ for each journal event.
 - Each entry has `position`, `at`, `actor`, `address`, `title`, `revision`, `change`, `op`, `reason` and `status`.
 - `status` is `open` until a member marks the entry processed with `joppa_history_mark`. A processed entry also has `processed`: `actor`, `at`, `reason` and `nodes`.
 - A comment entry (op `comment`, `note` or `withdraw_note`) also has `comment_id`.
-- `change` is save, move, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent.
+- `change` is save, move, relations, flow, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent. A save that changes only the relations is `relations`, and only flow keys `flow`.
 - A record of test results has the change `results` and the address `record/ID`.
 - `order=newest` reads the newest entries first; the default is `oldest`. `after=POSITION` reads only later entries. `open=true` gives only the open entries.
 - `limit` is 1 to 25, default 25; a larger limit is clamped. `total` counts the entries of the read after `after`. `next_item` names the oldest open entry.
@@ -91,7 +91,7 @@ the `data` node filter.
 - Tree, `/?workspace=W`: the root collections, the cards and their children.
 - Graph, `/?workspace=W&view=graph`: one SVG of every present node in a live force layout.
   The graph reads the nodes with
-  `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,links`.
+  `GET /api/workspaces/{workspace}/objects?parent=*&limit=100&fields=kind,parent,title,signal,relations`.
   - A dot has the colour of its status tone. Its size shows its level: a root is the
     largest. Two dots never overlap, and two shown labels never overlap.
   - A line joins a parent to its child. A dashed arrow goes from a node to each node that
@@ -140,7 +140,7 @@ reference fails the whole batch. Plain text is never a template.
 The reply has `results` in operation order, each with `position` and the resolved `command`.
 
 Each field of a write that names an object takes its address or its public item ID, such as
-`joppa-R-DP6KXM62`: `target`, `parent`, `duplicate_of`, `links[].target`, each reference
+`joppa-R-DP6KXM62`: `target`, `parent`, `duplicate_of`, `relations.*.edges[].to`, each reference
 field of `data` (one ID or a list) and the `id` of `save_object`, which must name an object
 of its `kind`. `joppa_history_mark` takes IDs in `nodes`. The links of `set_remote_links`
 name objects of other workspaces, so they need addresses. The server replaces each ID with the `kind:id`

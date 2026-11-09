@@ -27,7 +27,7 @@ requires a new decision. Platforms come from the agreed AC and context; see
 Each Task has one parent permitted by the workspace schema and a technical contract.
 The recommended recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
 `data.assignee` names the member or the agent alias that does the Task.
-A Task waits for its blocking dependencies, the same as any other node.
+A Task waits for its depends_on targets, the same as any other node.
 `data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
 A Task records work evidence. It never supplies a passing criterion check.
@@ -50,7 +50,7 @@ instruction. Unattended automation uses a separate agent or runner identity.
 ## Inbox items and Sources
 
 Save each raw incoming signal as an Inbox item. Keep the original text, language and whitespace.
-Inbox items use the same revisions, comments, attachments and links as other objects.
+Inbox items use the same revisions, comments, attachments and relations as other objects.
 Ask for facts needed to formulate or verify the affected requirement.
 Missing facts can prevent work. They do not prevent someone from recording an Inbox item.
 

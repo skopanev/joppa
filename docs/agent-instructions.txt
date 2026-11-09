@@ -6,7 +6,7 @@ Each list gives items, total and next_cursor, with at most 25 items in a page. S
 Read joppa_help with op for the operation you need.
 Resolve a copied public ID with joppa_search({"workspace":"...","query":"<ID>"}): the reply gives only that object, with exact_id. Never guess local IDs.
 
-Read an object before you change it. Send its current revision. On an update, send only the data fields that change: data merges by key, and null removes a field. Omit parent and links to keep them. Send clean: true to replace data whole.
+Read an object before you change it. Send its current revision. On an update, send only the data fields that change: data merges by key, and null removes a field. Omit parent and relations to keep them; a sent relation key replaces its edges, and null removes it. Send clean: true to replace data whole.
 Create with save_object and revision:0. Omit id so the server generates it. Preserve the existing id when editing.
 Write a title and body that answer the question of the type.
 A write takes a public item ID where it takes an address of the workspace. The journal stores the address.
@@ -15,11 +15,11 @@ Each data value holds at most the field_max_length of its type. Over 1 kb: prefe
 Set data.workspace on a node to bind a child workspace; use set_remote_links for links across workspaces.
 
 Save a raw incoming signal as an Inbox item: the type with inbox: true, parent:null. Preserve its original text and language.
-After analysis, put the lasting content into a Source and into REQ and AC nodes, and link them. Then archive the Inbox item with archive_object.
+After analysis, put the lasting content into a Source and into REQ and AC nodes, and give them related edges. Then archive the Inbox item with archive_object.
 A Source records an owner decision, a specification or an external standard at a fixed version. When the schema defines ac.sources, set data.sources on every AC. Do not copy sources to the REQ.
 Keep comments (op note) for discussion. A comment is not an Inbox item and not a Source.
 Use a short title. Put context, conditions and evidence in body. Use clean Markdown in authored text.
-Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace structural links.
+Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace relations.
 
 Read open work with joppa_history open=true. Mark each processed entry with joppa_history_mark.
 Before implementation, score each REQ and AC with the 11111 checklist: Grounded, Atomic, Unambiguous, Minimal, Verifiable. Implement only a node that scores 11111. Read joppa_help section objects for the rules.
@@ -28,7 +28,7 @@ The agent that writes a node never scores it. An independent Reviewer agent with
 After APPROVE, one agent writes the code for the AC with its Tasks (one AC can have 1..N Tasks). Another independent agent writes the acceptance Test nodes of the same AC as a black box, from the AC and its Sources, so the coder cannot fit the code to known tests.
 There is no manual acceptance. Record the owner decision as a Source. Green Test nodes prove the criteria.
 Create a Task only under an AC, directly before you implement that AC. Never create Tasks in advance while the tree changes.
-Check existing Tasks before creating work. Set blocking dependencies explicitly. Read current dependency evidence before changing a revision pin.
+Check existing Tasks before creating work. Set dependencies explicitly with the depends_on relation. Read current dependency evidence before changing a revision pin.
 A Task is a node like any other: data.assignee names the person or the agent alias, such as lane3, a typed field such as data.stage gives its state, and archive_object ends it. Put the Git commit of finished work in data.commit. Test results prove a criterion. A finished Task does not prove a criterion.
 No criterion, no test. A test is a node: save_object with kind test under its AC. Every test in the repository must have a present test node.
 Write the title as the scenario in business language, with concrete numbers and no code. Put the inputs and the expected outcome in body. Set case: nominal (the normal working path), boundary (the edges of limits) or off_nominal (errors and safe refusals). Set command: the exact isolated command that runs this one test. A manual check is no test node: attach its evidence file to the AC with check_result.

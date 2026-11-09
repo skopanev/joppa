@@ -16,7 +16,7 @@ const SECTIONS: [(&str, &str); 6] = [
     ("writing", "The ASD-STE100 rules for new technical text."),
     (
         "objects",
-        "The object model: types, typed and computed fields, links, comments, tests and archives.",
+        "The object model: types, typed and computed fields, relations, comments, tests and archives.",
     ),
     (
         "search",

@@ -62,6 +62,12 @@ To change single types, send `put_types` and `remove_types` in place of `types`:
 - A command without all three keeps every type and changes only `priorities` or `statuses`.
 - `priorities` lists the values of `data.priority`, default `p0`, `p1` and `p2`. A save with another value is refused: `priority is one of ...`.
 
+`relations` is the registry of the relation keys that a node can hold. Every workspace has the
+system relations `depends_on` and `related`. `put_relations` adds a relation or replaces its
+`title` and `description`, and `remove_relations` removes one. A system relation and a relation
+that a live node holds cannot be removed. A command without them keeps the registry. See
+[relations and other workspaces](links.md).
+
 Read the current schema before you change it. The server refuses a schema that makes the
 current tree invalid. A member of the workspace configures the schema. The `/tree` page only reads it.
 
@@ -135,8 +141,9 @@ With tasks `["web", "api"]` and `["api", "ios"]` under it, the AC gives `"tags":
   value occurs once. A child gives its own value or its computed value, so the union climbs
   from level to level. A list with `values` keeps only the values that it names. Without a
   value in the children, the field has no value.
-- `links`: the own value of the present nodes that link to the node or that it links to, the
-  one that comes first in `values`. Any number of links counts.
+- `links`: the own value of the present nodes that have a depends_on or related edge to the
+  node or that it has such an edge to, the one that comes first in `values`. Any number of
+  edges counts. A flow edge does not count.
 - `parent`: the value of the nearest ancestor that has one.
 - An enum field takes `children` or `links`. A list field takes `children`. Another field
   takes only `own` or `parent`. A value that `values` does not name counts not.

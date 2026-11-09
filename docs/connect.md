@@ -66,7 +66,7 @@ claude mcp add --transport http --scope project joppa https://YOUR_JOPPA_DOMAIN/
 | `joppa_search` | Search current wording inside one authorized workspace |
 | `joppa_help` | Read command shapes and API rules |
 | `joppa_tree` | Read the workspace schema and its saved revisions |
-| `joppa_objects` | Read object lists, documents, links and revisions |
+| `joppa_objects` | Read object lists, documents, relations and revisions |
 | `joppa_command` | Append one operation; omit IDs for new objects |
 | `joppa_batch` | Append up to 100 related operations atomically |
 | `joppa_history` | Read every recorded change of a workspace, page by page, and the open entries to process |

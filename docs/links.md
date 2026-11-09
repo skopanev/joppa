@@ -1,32 +1,68 @@
-# Links and other workspaces
+# Relations and other workspaces
 
-## Links in one workspace
+## Relations in one workspace
 
-An object can link to many objects of any type in the same workspace.
-A link does not change the parent of an object.
-
-- `related` records context. Cycles are permitted.
-- `depends_on` records a dependency on a node. A new revision of the target asks for no review.
-- `blocking: true` makes the dependency a condition for the start of work.
-
-A live blocking target is satisfied when it is a green criterion, or when it has live criteria
-below it and each is green. An archived target does not make work wait. Blocking cycles, also
-through inherited parent dependencies, are refused. A blocking dependency makes the work wait
-until its target is satisfied.
-
-One object read gives `links`, its outgoing links with titles, and `link_groups`: a count for
-each direction, relation and kind of the other object. The MCP read keeps only the incoming
-counts. Read the links in pages with `joppa_objects`:
+A node holds `relations`: one key for each relation of the registry, with an optional `title`
+of the node for that relation and its `edges`. An edge is `{"to", "when"?, "revision"?}`:
+the target address or public item ID, the condition of a flow step, and the pinned target
+revision. A relation does not change the parent of a node.
 
 ```json
-{"workspace": "product", "links_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note", "limit": 25}
+{"relations": {
+  "depends_on": {"edges": [{"to": "ac:ledger-table"}]},
+  "related": {"edges": [{"to": "source:limits", "revision": 3}]},
+  "swap": {"title": "Enter amount", "edges": [{"to": "ac:pin-screen", "when": "limit ok"}]}}}
+```
+
+- `depends_on` makes the node wait until the target is green. Cycles are refused, also through
+  inherited parent dependencies. A new revision of the target asks for no review.
+- `related` records a reference between nodes. It blocks nothing, and cycles are permitted.
+- Every other key is a flow, such as a sequence of client screens. A flow allows cycles,
+  blocks nothing, resets no criterion and counts for no status rule.
+
+A live depends_on target is satisfied when it is a green criterion, or when it has live
+criteria below it and each is green. An archived target does not make work wait. The status
+rule `links`, a typed field with `from: links` and the source reset count depends_on and
+related edges, never a flow. `related_to` lists the depends_on and related neighbours.
+
+A save merges `relations` by key: a sent key replaces its `title` and `edges`, `null` removes
+the key, and the other keys stay. A key with `edges: []` stays and counts as used. A node holds
+at most 64 keys, a key at most 200 edges, and a `title` or a `when` at most 200 characters.
+A key that the registry does not have is refused: `unknown link relation`. The removed field
+`links` is refused: `links was removed; use relations`.
+
+### The registry
+
+`joppa_tree` gives `schema.relations`: each key with `title`, `description` and `system`.
+Every workspace has the system relations `depends_on` and `related`. Change the registry with
+`set_tree_schema`:
+
+```json
+{"op": "set_tree_schema", "revision": 7, "reason": "Model the swap flow",
+ "put_relations": {"swap": {"title": "Swap", "description": "Client screens"}}}
+```
+
+- `put_relations` adds a relation, or replaces its `title` and `description`. A key obeys the
+  ID rule. Only the server sets `system`.
+- `remove_relations` removes relations. A system relation and a relation of a live node are
+  refused. `restore_object` refuses a node with a removed relation: `declare relation <key> first`.
+- A command without them keeps the registry.
+
+### Reads
+
+One object read gives `relations` with titled edges and `relation_groups`: a count for each
+relation and kind of the incoming edges. Read the edges in pages of 25 with `joppa_objects`:
+
+```json
+{"workspace": "product", "relations_of": "domain:billing", "direction": "incoming", "relation": "related", "kind": "note"}
 ```
 
 `direction`, `relation` and `kind` are optional filters. The reply gives `items` in the order
 direction, relation, address, and `next_cursor`. Send `cursor` with that value for the next
-page. `next_cursor` is null on the last page. In an item, `address`, `title`, `kind` and
-`present` describe the other object now. `revision` is the target revision that the link pins,
-or null. Read the other object to get its current revision.
+page. `next_cursor` is null on the last page. An item gives `address`, `title`, `kind`,
+`relation`, `direction`, `when` and `revision` when set, and `present`. `revision` is the
+target revision that the edge pins. The removed parameter `links_of` is refused:
+`links_of was removed; use relations_of`.
 
 ## Other workspaces
 

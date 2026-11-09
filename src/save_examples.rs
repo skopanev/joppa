@@ -63,7 +63,7 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
                 },
             );
         }
-        // An inbox object has no parent: it links to the objects that it informs.
+        // An inbox object has no parent: a related edge names each object that it informs.
         let parent = if t.root || t.inbox == Some(true) {
             Value::Null
         } else {
@@ -74,7 +74,7 @@ pub fn save_examples(types: &BTreeMap<String, TreeType>) -> Value {
         };
         // A new object omits id: the server makes one.
         let example = json!({"op":"save_object","kind":kind,"revision":0,
-            "parent":parent,"data":data,"links":[{"target":"<kind:id>","relation":"related"}],"reason":"<why this change>"});
+            "parent":parent,"data":data,"relations":{"related":{"edges":[{"to":"<kind:id>"}]}},"reason":"<why this change>"});
         examples.insert(kind.clone(), example);
     }
     Value::Object(examples)

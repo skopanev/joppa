@@ -19,7 +19,7 @@ fn node_filters(mut schema: Value) -> Value {
         "status": one_or_list("status tone or a list: red, purple, yellow, orange, grey, green; purple keeps the archived nodes, and joppa_search needs all_versions for it"),
         "owner": text("member ID in data.owner"),
         "assignee": text("data.assignee: a member ID or an agent alias, such as lane3"),
-        "ready": {"type":"boolean","description":"false: the node waits for a blocking depends_on target that is not green or that changed its revision (waits_for); true: every other node"},
+        "ready": {"type":"boolean","description":"false: the node waits for a depends_on target that is not green or that changed its revision (waits_for); true: every other node"},
         "data": {"type":"object",
             "description":"JSONB containment filter on data, also on the computed fields, e.g. {\"tags\":[\"kyc\"]} or {\"stage\":\"done\"}"},
     });
@@ -47,10 +47,10 @@ pub(super) fn objects() -> Value {
         "note_status": {"type":"string","enum":["unprocessed","processed"],
             "description":"Inbox state; the list gives only inputs in this state"},
         "related_to": text("address; the list gives the objects linked to it in either direction"),
-        "links_of": text("address; gives its links in pages of 25"),
+        "relations_of": text("address; gives its edges in pages of 25"),
         "direction": {"type":"string","enum":["outgoing","incoming"],
-            "description":"with links_of: only the links in this direction"},
-        "relation": text("with links_of: only the links with this relation"),
+            "description":"with relations_of: only the edges in this direction"},
+        "relation": text("with relations_of: only the edges of this relation key"),
     }))
 }
 

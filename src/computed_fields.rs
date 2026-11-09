@@ -4,8 +4,8 @@
 //! - children: for an enum field, the value of the present children that comes first in
 //!   `values`. For a list field or a reference with `from` children, the sorted union of the
 //!   values of the present children, each value once.
-//! - links: the own value of the present nodes that link to the node or that it links to,
-//!   the one that comes first in `values`.
+//! - links: the own value of the present nodes with a depends_on or related edge to the node
+//!   or from it, the one that comes first in `values`. A flow edge does not count.
 //! - parent: the value of the nearest ancestor that has one.
 //!
 //! The order own, links, children, parent has no cycle: links reads only own values, children

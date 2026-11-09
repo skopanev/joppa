@@ -16,10 +16,11 @@ Retry identical input with the same `request_id` to get the same result.
 
 An update (`revision` > 0) merges `data` into the current fields: a sent field replaces its
 value, `null` removes the field, and every other field stays. `clean: true` replaces `data`
-whole. A save without `parent` keeps the parent, and `parent: null` makes a root. Sent
-`links` replace the current links. A save without `links` keeps them, and `links: []`
-removes every link. The journal stores the whole data, parent and links of each save.
-A link to an archived or absent object is refused, unless the current revision already has it.
+whole. A save without `parent` keeps the parent, and `parent: null` makes a root.
+`relations` merges by key: a sent key replaces its `title` and `edges`, `null` removes the
+key, and every other key stays. A save without `relations` keeps them. The journal stores the
+whole data, parent and relations of each save. A new edge to an archived or absent object is
+refused, unless the same key of the current revision already has it.
 Ordinary document fields can hold text, numbers, lists or maps.
 
 All documents have a title and an owner. The text of every type is `data.body`: the rule of
@@ -40,12 +41,12 @@ type. A save does not send the question, and the server does not check the answe
 The workspace schema gives the types, parents, required fields, status rules and test rules.
 See [the workspace schema](schema.md).
 
-## Links and comments, not object text
+## Relations and comments, not object text
 
 Keep each object text to its own contract. Do not add other data to it.
 
-1. Link objects with links, never with text.
-   - Send the `links` array of `save_object`: `[{"target": "task:<id>", "relation": "related"}]`. Use `depends_on` for a dependency.
+1. Link objects with relations, never with text.
+   - Send the `relations` map of `save_object`: `{"related": {"edges": [{"to": "task:<id>"}]}}`. Use the key `depends_on` for a dependency.
    - Use the reference fields of the schema, for example `consumer` or `projects`.
    - Use `set_remote_links` for an object of another workspace.
    - Do not paste lists of Tasks, tickets or addresses into `body`.
@@ -57,7 +58,7 @@ Keep each object text to its own contract. Do not add other data to it.
 
 One `joppa_batch` can save an object and add its comments atomically.
 In text, write a reference as [Title](kind:id). A Markdown link does not replace a structural link.
-See [links and other workspaces](links.md) for relations, dependencies and remote links.
+See [relations and other workspaces](links.md) for the registry, dependencies, flows and remote links.
 
 ## Inbox items and Sources
 
@@ -73,13 +74,13 @@ Keep the original text and language of the signal. A missing `data.status` means
 ```json
 {"op": "save_object", "kind": "inbox", "revision": 0, "parent": null,
  "data": {"title": "Customer feedback", "owner": "owner", "body": "Original source text"},
- "links": [{"target": "domain:billing", "relation": "related"}], "reason": "Record customer feedback"}
+ "relations": {"related": {"edges": [{"to": "domain:billing"}]}}, "reason": "Record customer feedback"}
 ```
 
 Analyze the Inbox item, then do these steps:
 
 1. Save the lasting content as a Source and as REQ and AC nodes.
-2. Link the Inbox item with `related` to the new nodes.
+2. Give the Inbox item a `related` edge to each new node.
 3. Archive the Inbox item with `archive_object`.
 
 A Source keeps the verbatim text and names its version. A Source can have a parent Source,
@@ -175,7 +176,8 @@ A Task has no purpose: `save_object` refuses `data.purpose` with
 
 `archive_object {target, revision, reason}` archives an object that has no live children.
 `restore_object` takes the same fields and needs a parent that the schema permits.
-Both keep IDs, links, fields and comments. IDs are never used again.
+Both keep IDs, relations, fields and comments. IDs are never used again. `restore_object`
+refuses a node with a relation that the registry no longer has: `declare relation <key> first`.
 
 ## Reads
 
@@ -183,8 +185,9 @@ Both keep IDs, links, fields and comments. IDs are never used again.
 object, and `parent: "*"` lists all current objects in pages. `kind`, `data`, `related_to`
 and `note_status` filter the list. Lists give no bodies and no history.
 
-`address` gives one current object: `revision`, `parent`, `data`, `comments` and the titled
-outgoing `links`. `revision: N` reads one saved revision. `history: true` gives the revision
+`address` gives one current object: `revision`, `parent`, `data`, `comments`, the
+`relations` with titled edges and the incoming `relation_groups`. `relations_of` gives the
+edges of an object in pages of 25. `revision: N` reads one saved revision. `history: true` gives the revision
 headers. Resolve a copied public ID with `joppa_search`: the reply gives that object with
 `exact_id: true`. See [read contract](read-contract.md) and [read detail](read-detail.md).
 

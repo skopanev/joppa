@@ -8,20 +8,20 @@ MCP reads have one shape. There is no `verbose` switch.
 - A page holds at most 25 items. A missing `next_cursor` means the last page.
 - Send the `next_cursor` value back as `cursor` (lists) or `comments_cursor`.
 - Keys whose value is `null`, `""`, `[]` or `{}` are omitted, except inside `document`,
-  `data`, `command` and `remote_links`. Those stay byte for byte as stored. `false` and `0` stay.
+  `data`, `command`, `remote_links` and `relations`. Those stay byte for byte as stored. `false` and `0` stay.
 - A top-level `items: []` stays when a list is empty.
 - Read an omitted key as empty: no value, no list, no map, `0`.
 - No key repeats another key, the address or the request. No read gives `workspace` or
-  a snapshot `position`, and no read repeats the `address`, `links_of`, `ac`, `task` or
+  a snapshot `position`, and no read repeats the `address`, `relations_of`, `ac`, `task` or
   `target` that the request sent. A detail or revision read gives `address` only when the
   request named an alias of the object.
-- No key gives a default value: a flag shows only when it is `true`, and a link relation
-  only when it is not `related`. Read a missing flag as `false`.
+- No key gives a default value: a flag shows only when it is `true`. Read a missing flag as
+  `false`.
 - An MCP reply with `items` holds at most 256 KB (262144 bytes). A larger list is refused:
   `reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit`.
   A read of one object comes in full, because one field can hold 256 KiB.
 - Each MCP read takes a public item ID such as `joppa-R-DP6KXM62` where it takes an
-  address: `address`, `parent`, `related_to` and `links_of` of `joppa_objects`, and `parent`
+  address: `address`, `parent`, `related_to` and `relations_of` of `joppa_objects`, and `parent`
   of `joppa_search`. A read of one object by its item ID gives its
   `address`. An unknown item ID is refused: `unknown object`.
 - A public item ID ends with an 8-character code of uppercase letters and digits. A copy
@@ -39,7 +39,7 @@ MCP reads have one shape. There is no `verbose` switch.
 | Tool | `limit` above the page size | Paging |
 | --- | --- | --- |
 | `joppa_objects` lists, also with `fields`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
-| `joppa_objects` with `links_of` | clamped to 25 | `next_cursor` and `total` |
+| `joppa_objects` with `relations_of` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
 | `joppa_objects` detail comments | fixed pages of 25 | `comments_cursor` |
 | `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
@@ -74,9 +74,10 @@ every node, or absent for the roots. The [node filters](#node-filters) narrow th
 
 - `status` is the status tone that the last write stored in the row. One query reads it.
 - `fields` `["children"]` gives the number of present children of each item, also `0`.
-- `fields` `["links"]` gives the stored links of each item, for example
-  `[{"target": "ac:b", "relation": "depends_on", "blocking": true}]`. A link with a pinned
-  revision also gives `revision`. A read by address gives its detail links instead.
+- `fields` `["relations"]` gives the stored relations of each item, for example
+  `{"depends_on": {"edges": [{"to": "ac:b"}]}}`, and `{}` for an item without relations.
+  An edge with a pinned revision also gives `revision`. A read by address gives its detail
+  relations instead.
 - Items come in address order. `next_cursor` is the address of the last item; the next page
   starts after it, so a new object does not move the items of a later page.
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed
@@ -107,7 +108,7 @@ Reply item: the address and each named path, also when its value is empty.
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
 `work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`,
-`child_counts`, `links`.
+`child_counts`, `relations`.
 
 `child_counts` comes from the status projection of the last write. It has one entry for each
 type of the present direct children that have a tone, in the order of the type index:
@@ -146,7 +147,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `grey`, `green`. The tone is the `status` of a list item. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. |
-| `ready` | `false`: nodes that wait for a blocking `depends_on` target that is not green or whose contract revision changed (`waits_for`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
+| `ready` | `false`: nodes that wait for a `depends_on` target that is not green or whose contract revision changed (`waits_for`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
 
 ```json
@@ -206,14 +207,15 @@ request:
   address or a generated local ID of 8 characters `[a-z0-9]`, the reply gives only the
   exact matches, each with `exact_id: true`.
 
-## Links of one object
+## Edges of one object
 
-`{"workspace": "w", "links_of": "domain:d", "direction": "incoming"}` gives the links of
+`{"workspace": "w", "relations_of": "domain:d", "direction": "incoming"}` gives the edges of
 `domain:d` in pages of 25 with `total` and `next_cursor`, in the order direction, relation,
 address. `direction`, `relation` and `kind` are optional filters. An item names its
-`direction`, `relation` and `kind` only when the request did not send that filter, and
-its `relation` only when it is not `related`. `present: false` and `blocking: true` show
-only when they apply. `next_cursor` is `direction/relation/address` of the last item.
+`direction` and `kind` only when the request did not send that filter. It always names its
+`relation` and `present`, and `when` and `revision` when they are set. `next_cursor` is
+`direction/relation/address` of the last item. `links_of` is refused:
+`links_of was removed; use relations_of`.
 
 ## Writes
 

@@ -20,11 +20,11 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
     "items": [{"id": "c00", "text": "Finding 1", "actor": "bot",
                "at": "...", "withdrawn": false}]
   },
-  "links": [
-    {"target": "ac:b", "title": "..."},
-    {"target": "task:u", "relation": "depends_on", "title": "...", "revision": 2,
-     "current_revision": 4, "blocking": true}],
-  "link_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}]
+  "relations": {
+    "related": {"edges": [{"to": "ac:b", "title": "..."}]},
+    "depends_on": {"edges": [{"to": "task:u", "title": "...", "revision": 2,
+                              "current_revision": 4}]}},
+  "relation_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}]
 }
 ```
 
@@ -34,18 +34,18 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `id`, `current_revision`, `revision_count`, `historical` or `metadata_scope` keys. The
   actor, time and reason of a revision come with `history: true` or `revision: N`.
 - `present: false` marks an archived object. A present object has no `present` key.
-- `links` is the one list of all outgoing links, without pages: `target` and the `title`
-  of the target. `relation` shows only when it is not `related`. A pinned link adds its
-  `revision` pin and the `current_revision` of the target. A blocking link adds
-  `blocking: true`. `present: false` marks an archived target.
-- `save_object` takes the link items back as they are. It ignores `title`,
-  `current_revision` and `present`, and a link without `relation` is `related`.
+- `relations` gives every key with its `title` and all its edges, without pages: `to`, `when`
+  and the `title` of the target. A pinned edge adds its `revision` pin and the
+  `current_revision` of the target. `present: false` marks an archived target. A key without
+  edges keeps `edges: []`.
+- `save_object` takes the relations back as they are. It ignores `title` of an edge,
+  `current_revision` and `present`.
 - `comments` are in time order. A comment has no `author` or `created_at` when they repeat
   `actor` and `at`.
-- `link_groups` counts the incoming links by relation and kind.
+- `relation_groups` counts the incoming edges by relation and kind.
 - `references` gives the title of each object that a data field names.
-- An object without comments has no `comments` key. An object without outgoing links has no
-  `links` key.
+- An object without comments has no `comments` key. An object without relations gives
+  `relations: {}`.
 - `files` lists the attachments. `annotations` has no `attachments` copy.
 - `process` is the same for every type: `annotation_address`, `verification` and the `status`
   of an inbox type. `annotation_address` shows only when it
@@ -59,12 +59,13 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
 - `comments_cursor` is an offset. A comment added between two reads moves the later items
   by one place. Read the first page again for a stable view.
-- `links_of` reads the incoming links in pages of 25.
+- `relations_of` reads the edges in both directions in pages of 25.
 
 ## One revision and the revision headers
 
 `{"workspace": "w", "address": "task:t", "revision": 1}` gives revision 1 as `revision`,
-`parent`, `data` and `links`, with `current_revision`. `present: false` marks an archived
+`parent`, `data` and `relations`, with `current_revision`. A revision stored before the
+relations gives its links as relations by the replay rule. `present: false` marks an archived
 revision. It gives no `document`, `historical`, actor, time, reason, status, process, comments
 or link counts.
 
@@ -119,8 +120,8 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
 - A list field has the value of the list item: `status` is the tone, `status.label` gives
   the label, and `body` is the full text, the same as `data.body`.
   `docs/read-contract.md` names the list fields.
-- A detail key gives its value in the detail read: `links`, `comments`, `files`,
-  `references`, `link_groups`, `remote_links`, `remote_review_required`,
+- A detail key gives its value in the detail read: `relations`, `comments`, `files`,
+  `references`, `relation_groups`, `remote_links`, `remote_review_required`,
   `remote_links_revision`, `child_workspace`, `annotations` and
   `result`. A key that the detail omits gives `null`.
 - Any other first part names a document field: `note` gives `data.note`. The rules of
