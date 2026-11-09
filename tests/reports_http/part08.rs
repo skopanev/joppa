@@ -30,7 +30,7 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
         let s = tests(ac).await?;
         let old = &before[ac];
         ensure!(
-            s["status"] == "grey"
+            s["status"] == "blue"
                 && addresses(&s) == addresses(old)
                 && s["tests_revision"] == old["tests_revision"]
                 && s["tests_saved_by"] == old["tests_saved_by"],
@@ -40,19 +40,19 @@ async fn a_group_change_resets_every_criterion_below_it_over_http_and_mcp() -> R
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
-    ensure!(mcp["status"]["tone"] == "grey", "MCP joppa_objects: {mcp}");
+    ensure!(mcp["status"]["tone"] == "blue", "MCP joppa_objects: {mcp}");
     let d = tests("criterion:d").await?;
     ensure!(d["status"] == "green", "{d}");
     let g = p
         .mcp_read("joppa_objects", json!({"address":"area:g"}))
         .await?;
-    ensure!(g["status"]["tone"] == "grey", "{g}");
+    ensure!(g["status"]["tone"] == "blue", "{g}");
     ensure!(tone("area:h").await? == "green", "the tone of H changed");
 
     // Partial runs after the change combine: the latest result of each test decides.
     p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = tests("criterion:a").await?;
-    ensure!(s["status"] == "grey", "after one record: {s}");
+    ensure!(s["status"] == "blue", "after one record: {s}");
     p.record("c3c3c3c", outcomes(&[("refuses", "pass")]))
         .await?;
     let s = tests("criterion:a").await?;

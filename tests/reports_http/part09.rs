@@ -66,7 +66,7 @@ async fn a_skipped_listed_test_keeps_the_criterion_grey() -> Result<()> {
     ensure!(
         s["tests"][0]["address"] == A
             && s["tests"][0]["status"] == "skipped"
-            && s["status"] == "grey",
+            && s["status"] == "blue",
         "{s}"
     );
     Ok(())
@@ -91,7 +91,7 @@ async fn a_todo_listed_test_keeps_the_criterion_grey() -> Result<()> {
     w.record("c2c2c2c", outcomes(&[("opens", "todo")])).await?;
     let s = w.status().await?;
     ensure!(
-        s["tests"][0]["address"] == A && s["tests"][0]["status"] == "todo" && s["status"] == "grey",
+        s["tests"][0]["address"] == A && s["tests"][0]["status"] == "todo" && s["status"] == "blue",
         "{s}"
     );
     Ok(())

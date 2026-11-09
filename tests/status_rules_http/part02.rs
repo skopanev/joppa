@@ -180,7 +180,7 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
         // One priority decides every rollup, so a type has no status order.
         (
             "status_order",
-            json!(["grey", "red", "green"]),
+            json!(["blue", "red", "green"]),
             "unknown field `status_order`",
         ),
     ] {

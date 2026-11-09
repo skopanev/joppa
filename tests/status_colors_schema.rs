@@ -18,7 +18,7 @@ fn ordered_statuses_save_with_both_themes() {
     let statuses = json!([
         {"tone":"green","light":"#22a559","dark":"#2fbf6a"},
         {"tone":"red","light":"#bc5d52","dark":"#e07a70"},
-        {"tone":"grey","light":"#c8c3b8","dark":"#8a8f96"}
+        {"tone":"blue","light":"#5b8fc7","dark":"#7aa7d9"}
     ]);
     w.ok(
         "owner",

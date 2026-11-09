@@ -61,13 +61,13 @@ test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its to
     ac: {title: 'Criteria', role: 'ac', status:'children', parents: ['requirement']},
     test: testType(['ac']),
   };
-  const statuses = [{tone: 'green', light: '#22a559', dark: '#2fbf6a'}, {tone: 'grey', light: '#c8c3b8', dark: '#8a8f96'}];
+  const statuses = [{tone: 'green', light: '#22a559', dark: '#2fbf6a'}, {tone: 'blue', light: '#4a7fb5', dark: '#9cc3ea'}];
   const f = await fixture(types, statuses);
   try {
     await f.save('requirement:r', 'Requirement');
     await f.save('ac:g', 'Green criterion', 'requirement:r');
-    await f.save('ac:n', 'Grey criterion', 'requirement:r');
-    // Both criteria have a test node; only the test of ac:g has a result, so ac:n stays grey.
+    await f.save('ac:n', 'Blue criterion', 'requirement:r');
+    // Both criteria have a test node; only the test of ac:g has a result, so ac:n stays blue.
     await f.addTest('ac:g', 'tests/x.rs > x');
     await f.addTest('ac:n', 'tests/x.rs > n');
     await f.mcp('joppa_record_results', {commit: 'c0ffee3', results: [{test: 'tests/x.rs > x', status: 'pass'}]});
@@ -79,11 +79,11 @@ test('b3ecb4e3 dot-theme: each dot takes the light and the dark colour of its to
     // A dot takes its colour when the board data has set the tone colours.
     await f.page.waitForFunction(() => [...document.querySelectorAll('#tree .status-circle[data-tone]')].every(node => getComputedStyle(node).backgroundColor !== ''));
     const colours = async () => ({green: await dot('ac:g').evaluate(node => [node.dataset.tone, getComputedStyle(node).backgroundColor]),
-      grey: await dot('ac:n').evaluate(node => [node.dataset.tone, getComputedStyle(node).backgroundColor])});
-    assert.deepEqual(await colours(), {green: ['green', 'rgb(34, 165, 89)'], grey: ['grey', 'rgb(200, 195, 184)']});
+      blue: await dot('ac:n').evaluate(node => [node.dataset.tone, getComputedStyle(node).backgroundColor])});
+    assert.deepEqual(await colours(), {green: ['green', 'rgb(34, 165, 89)'], blue: ['blue', 'rgb(74, 127, 181)']});
     await f.page.locator('#theme').click();
     assert.equal(await f.page.evaluate(() => document.documentElement.dataset.theme), 'dark');
-    assert.deepEqual(await colours(), {green: ['green', 'rgb(47, 191, 106)'], grey: ['grey', 'rgb(138, 143, 150)']});
+    assert.deepEqual(await colours(), {green: ['green', 'rgb(47, 191, 106)'], blue: ['blue', 'rgb(156, 195, 234)']});
   } finally { await f.close(); }
 });
 
@@ -133,7 +133,7 @@ test('5e504068 status-filter: the Object status filter lists the schema tones in
       dot: option.querySelector('.status-circle') && getComputedStyle(option.querySelector('.status-circle')).backgroundColor})));
     // The saved order comes first; the tones that the list omits follow in the default order.
     // The purple tone of archived nodes is not listed: the board lists only present nodes.
-    assert.deepEqual(options.map(option => option.value), ['', 'orange', 'green', 'red', 'yellow', 'grey']);
+    assert.deepEqual(options.map(option => option.value), ['', 'orange', 'green', 'red', 'yellow', 'blue']);
     // The server gives the label of each tone (status_colors::LABELS).
     assert.deepEqual(options.slice(1).map(option => option.label), ['No tests', 'Checks passed', 'Checks failed', 'Waits', 'Awaits checks']);
     assert.deepEqual(options.slice(1, 4).map(option => option.dot), ['rgb(208, 102, 26)', 'rgb(34, 165, 89)', 'rgb(192, 57, 43)']);

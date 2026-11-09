@@ -92,7 +92,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         let mcp =
             p.mcp_read("joppa_objects", json!({"address":ac})).await?["status"]["tone"].clone();
         ensure!(
-            s["status"] == "grey" && mcp == "grey" && addresses(&s) == addresses(&before[ac]),
+            s["status"] == "blue" && mcp == "blue" && addresses(&s) == addresses(&before[ac]),
             "{ac} after the change: {s} {mcp}"
         );
     }
@@ -108,8 +108,8 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
         .mcp_read("joppa_objects", json!({"address":"spec:r"}))
         .await?;
     ensure!(
-        // R shows the grey tone of its reset criteria.
-        r["status"]["tone"] == "grey",
+        // R shows the blue tone of its reset criteria.
+        r["status"]["tone"] == "blue",
         "MCP joppa_objects R: {r}"
     );
     Ok(())
@@ -117,7 +117,7 @@ async fn ac1_a_text_change_of_r_greys_its_criteria_and_keeps_the_sibling_require
 
 /// dependencies-before-priority: capability C holds specification B with criterion B1.
 /// Specification A sits under `a_parent` with `a_criteria`; capability D exists for AC7.
-/// Each criterion has no test report yet, so each one is grey.
+/// Each criterion has no test report yet, so each one is blue.
 async fn ordering<'a>(w: &'a World, a_parent: &str, a_criteria: &[&str]) -> Result<Planning<'a>> {
     let p = Planning {
         w,

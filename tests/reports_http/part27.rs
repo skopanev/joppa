@@ -38,11 +38,11 @@ impl Planning<'_> {
     async fn signal(&self) -> Result<()> {
         self.post_command(&self.w.owner, json!({"op":"save_object","kind":"signal","id":"s","revision":0,"parent":null,"data":{"title":"Provider change","owner":"owner","body":"New permission rules"},"relations":{"related":{"edges":[{"to":"spec:r"}]}},"reason":"Record the signal"})).await
     }
-    /// A is grey with the test list of `before`.
+    /// A is blue with the test list of `before`.
     async fn reset(&self, before: &Value) -> Result<()> {
         let s = self.ac_tests("criterion:a").await?;
         ensure!(
-            s["status"] == "grey" && addresses(&s) == addresses(before),
+            s["status"] == "blue" && addresses(&s) == addresses(before),
             "A after the change: {s}"
         );
         Ok(())
@@ -70,7 +70,7 @@ async fn frozen_f1_a_new_title_of_r_makes_a_grey_over_http_and_mcp() -> Result<(
     let mcp = p
         .mcp_read("joppa_objects", json!({"address":"criterion:a"}))
         .await?;
-    ensure!(mcp["status"]["tone"] == "grey", "MCP joppa_objects: {mcp}");
+    ensure!(mcp["status"]["tone"] == "blue", "MCP joppa_objects: {mcp}");
     Ok(())
 }
 
@@ -135,7 +135,7 @@ async fn an_agent_save_of_r_makes_a_new_revision_and_greys_a() -> Result<()> {
         "R after the save: {r}"
     );
     let status = w.status().await?;
-    ensure!(status["status"] == "grey", "A after the save: {status}");
+    ensure!(status["status"] == "blue", "A after the save: {status}");
     let old = read(
         "address=requirement:key&revision=1",
         json!({"address":"requirement:key","revision":1}),

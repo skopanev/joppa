@@ -116,7 +116,7 @@ fn grey_without_tests_without_runs_and_on_skips() {
     );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
-        ("grey", "not_run")
+        ("blue", "not_run")
     );
     let recorded = [report(1, "c", 1, true, 10)];
     for skipped in ["skipped", "todo"] {
@@ -128,7 +128,7 @@ fn grey_without_tests_without_runs_and_on_skips() {
             &[result(1, "x", skipped)],
             &joppa::test_rules::legacy(),
         );
-        assert_eq!(s.status, "grey");
+        assert_eq!(s.status, "blue");
     }
     // An older stored report marks x skipped: x keeps its earlier pass.
     let filtered = [report(1, "c1", 1, false, 10), report(2, "c2", 2, false, 20)];

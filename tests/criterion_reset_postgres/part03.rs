@@ -20,21 +20,21 @@ async fn a_new_data_value_or_link_resets_the_criteria_below_and_a_sibling_save_d
     let pool = pool().await?;
     let ws = branches(&pool).await?;
     let green = |a: &str, d: &str| (json!(a), json!(d));
-    // Only data.env of A changes: A turns grey, D stays green.
+    // Only data.env of A changes: A turns blue, D stays green.
     let a = revision(&pool, &ws, "criterion:a").await?;
     write(&pool, &ws, "owner", json!({"op":"save_object","kind":"criterion","id":"a","revision":a,"parent":"spec:r","data":{"title":"a","owner":"owner","env":"dev"},"reason":"Name the environment"})).await?;
-    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "grey", "env change");
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "blue", "env change");
     ensure!(status(&pool, &ws, "criterion:d").await?["status"] == "green", "D after the env change");
     // Before its epoch, the same change kept A green in a replay. From its epoch, it resets A.
     let after = events(&pool, &ws).await? + 1;
     ensure!(replay_from(&pool, &ws, after).await? == green("green", "green"), "replay before the epoch");
-    ensure!(replay_from(&pool, &ws, 1).await? == green("grey", "green"), "replay from the epoch");
+    ensure!(replay_from(&pool, &ws, 1).await? == green("blue", "green"), "replay from the epoch");
     upload_c1(&pool, &ws).await?;
     ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "green", "a new record");
     // A new link of spec R resets A below it.
     let r = revision(&pool, &ws, "spec:r").await?;
     write(&pool, &ws, "owner", json!({"op":"save_object","kind":"spec","id":"r","revision":r,"parent":"area:g","data":{"title":"r","body":"Implement the rule","owner":"owner"},"relations":{"related":{"edges":[{"to":"spec:rh"}]}},"reason":"Relate the rules"})).await?;
-    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "grey", "link change");
+    ensure!(status(&pool, &ws, "criterion:a").await?["status"] == "blue", "link change");
     upload_c1(&pool, &ws).await?;
     // A new sibling C under R gives R a new revision with the same parent, relations and data:
     // A stays green.

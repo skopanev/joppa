@@ -1,5 +1,5 @@
-//! requirement:jjhid61n over a real server: a pass with valid_until today (UTC) is grey at
-//! once, and stays grey when the server restarts and rebuilds the state from the journal.
+//! requirement:jjhid61n over a real server: a pass with valid_until today (UTC) is blue at
+//! once, and stays blue when the server restarts and rebuilds the state from the journal.
 #[path = "common/manual_check.rs"]
 mod manual_check;
 #[path = "common/record_world.rs"]
@@ -29,7 +29,7 @@ async fn a_pass_with_valid_until_today_is_grey_at_once_and_after_a_restart() -> 
     let fields = json!({"check_result":"pass","valid_until":day(0)});
     check(&w, "ac:g", fields).await?;
     let expired = Some("Manual check expired");
-    expect(&w, "right after the attach", "ac:g", "grey", expired).await?;
+    expect(&w, "right after the attach", "ac:g", "blue", expired).await?;
     let before = manual_check::state(&w, "ac:g").await?;
     // Stop the server, remove the projections of the workspace and keep the journal.
     w.stop();
@@ -44,7 +44,7 @@ async fn a_pass_with_valid_until_today_is_grey_at_once_and_after_a_restart() -> 
     let sql = "SELECT count(*) FROM joppa.board_cache WHERE workspace=$1";
     let rebuilt: i64 = w.pool.get().await?.query_one(sql, &[&w.ws]).await?.get(0);
     ensure!(rebuilt == 1, "the start did not rebuild the workspace");
-    expect(&w, "after the restart", "ac:g", "grey", expired).await?;
+    expect(&w, "after the restart", "ac:g", "blue", expired).await?;
     let after = manual_check::state(&w, "ac:g").await?;
     ensure!(
         after == before,

@@ -64,7 +64,7 @@ async fn a_parent_is_ready_only_when_every_counted_child_and_linking_object_is_r
         ready(&w, true).await? == all(&test[0]),
         "every node is ready"
     );
-    // B waits for the grey criterion A: its parent R and the consumer U that B relates to wait
+    // B waits for the blue criterion A: its parent R and the consumer U that B relates to wait
     // too. The save keeps the related edge and adds a depends_on edge.
     let wait = json!({"op":"save_object","kind":"ac","id":"b","revision":1,"parent":"requirement:r",
         "data":node("B"),"relations":{"depends_on":{"edges":[{"to":"ac:a"}]}},"reason":"Order"});

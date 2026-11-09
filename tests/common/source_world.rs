@@ -137,11 +137,11 @@ pub async fn position(w: &World) -> Result<i64> {
 }
 
 /// The status of each criterion from store::test_status and the joppa_objects tone: the
-/// criteria in `grey` are grey, every other criterion is green.
-pub async fn expect(w: &World, step: &str, grey: &[&str]) -> Result<()> {
+/// criteria in `blue` are blue, every other criterion is green.
+pub async fn expect(w: &World, step: &str, blue: &[&str]) -> Result<()> {
     for address in NAMED.iter().chain(&OTHER) {
-        let want = if grey.contains(address) {
-            "grey"
+        let want = if blue.contains(address) {
+            "blue"
         } else {
             "green"
         };

@@ -47,7 +47,7 @@ fn a_recorded_skip_or_todo_is_never_a_pass() {
     );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
-        ("grey", "skipped")
+        ("blue", "skipped")
     );
     let rows = [result(1, "x", "pass"), result(2, "x", "todo")];
     let s = criterion_status(
@@ -60,7 +60,7 @@ fn a_recorded_skip_or_todo_is_never_a_pass() {
     );
     assert_eq!(
         (s.status.as_str(), s.tests[0].status.as_str()),
-        ("grey", "todo")
+        ("blue", "todo")
     );
 }
 
@@ -105,7 +105,7 @@ fn records_after_a_change_combine_and_the_latest_record_decides() {
     let old = [record(1, "c1", 1, 99), record(2, "c1", 2, 100)];
     assert_eq!(
         criterion_status(&both, false, at, &old, &rows, &joppa::test_rules::legacy()).status,
-        "grey"
+        "blue"
     );
     let later = [
         record(1, "c1", 1, 101),

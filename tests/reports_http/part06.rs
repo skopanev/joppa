@@ -82,7 +82,7 @@ async fn a_text_change_greys_the_criterion_until_a_newer_record() -> Result<()> 
     let s = w.status().await?;
     // check-list-frozen-ac2: the report before the text change no longer counts.
     ensure!(
-        s["status"] == "grey" && s["reason"] == "not all tests passed" && listed(&s) == [A, B],
+        s["status"] == "blue" && s["reason"] == "not all tests passed" && listed(&s) == [A, B],
         "{s}"
     );
     w.record(
@@ -114,7 +114,7 @@ async fn report_rows(w: &World) -> Result<(i64, i64)> {
     Ok((row.get(0), row.get(1)))
 }
 
-/// A clean full C1 report passes every test of A, then the text of A changes: A is grey.
+/// A clean full C1 report passes every test of A, then the text of A changes: A is blue.
 async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
     let first = w.record("c1c1c1c", passing()).await?;
     // A first record gives no replayed flag.
@@ -126,7 +126,7 @@ async fn changed_after_c1(w: &World) -> Result<(Value, Value)> {
     w.revise_text(1, "Only read and verify until launch")
         .await?;
     let s = w.status().await?;
-    ensure!(s["status"] == "grey", "before the record: {s}");
+    ensure!(s["status"] == "blue", "before the record: {s}");
     Ok((first, s))
 }
 
@@ -184,14 +184,14 @@ async fn no_report_or_only_partial_reports_after_a_text_change_keep_the_criterio
     let (_, before) = changed_after_c1(&w).await?;
     let s = w.status().await?;
     ensure!(
-        s["status"] == "grey" && saved_list(&s) == saved_list(&before),
+        s["status"] == "blue" && saved_list(&s) == saved_list(&before),
         "without a new report: {s}"
     );
-    // A record that covers only one listed test keeps the criterion grey.
+    // A record that covers only one listed test keeps the criterion blue.
     w.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = w.status().await?;
     ensure!(
-        s["status"] == "grey" && saved_list(&s) == saved_list(&before),
+        s["status"] == "blue" && saved_list(&s) == saved_list(&before),
         "after records: {s}"
     );
     Ok(())

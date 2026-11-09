@@ -219,10 +219,10 @@ async fn a_record_updates_the_criterion_and_every_ancestor_tone() -> Result<()> 
         )
         .await?;
     }
-    // Without a result the test node is grey, and so is each ancestor.
+    // Without a result the test node is blue, and so is each ancestor.
     for address in ["ac:a", "requirement:r", "capability:c", "domain:d"] {
         let node = read(&pool, &ws, address).await?;
-        ensure!(node["signal"]["tone"] == "grey", "{node}");
+        ensure!(node["signal"]["tone"] == "blue", "{node}");
     }
     store::record_results(
         &pool,

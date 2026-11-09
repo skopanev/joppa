@@ -112,7 +112,7 @@ async fn a_record_after_the_last_change_makes_a_criterion_green() -> Result<()> 
     let two = fixture(&pool).await?;
     record(&pool, &two, &[X]).await?;
     let s = status(&pool, &two).await?;
-    ensure!(s["status"] == "grey", "fixture 2: {s}");
+    ensure!(s["status"] == "blue", "fixture 2: {s}");
 
     // Fixture 3: X and Y pass, then a member changes the text of A.
     let three = fixture(&pool).await?;
@@ -123,6 +123,6 @@ async fn a_record_after_the_last_change_makes_a_criterion_green() -> Result<()> 
     );
     write(&pool, &three, "bot", json!({"op":"save_object","kind":"ac","id":"a","revision":1,"parent":"requirement:r","data":{"title":"A changed","owner":"owner"},"reason":"Sharper wording"})).await?;
     let s = status(&pool, &three).await?;
-    ensure!(s["status"] == "grey", "fixture 3: {s}");
+    ensure!(s["status"] == "blue", "fixture 3: {s}");
     Ok(())
 }

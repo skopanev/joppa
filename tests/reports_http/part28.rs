@@ -51,10 +51,10 @@ async fn frozen_f8_only_a_record_after_the_change_makes_a_green() -> Result<()> 
     p.change_a().await?;
     // Control: the record from before the change does not count.
     p.reset(&before).await?;
-    // Control: a record after the change that misses a listed test stays grey.
+    // Control: a record after the change that misses a listed test stays blue.
     p.record("c2c2c2c", outcomes(&[("opens", "pass")])).await?;
     let s = p.ac_tests("criterion:a").await?;
-    ensure!(s["status"] == "grey", "after records: {s}");
+    ensure!(s["status"] == "blue", "after records: {s}");
     p.record("c4c4c4c", frozen_run()).await?;
     let s = p.ac_tests("criterion:a").await?;
     ensure!(s["status"] == "green", "after the record: {s}");
@@ -80,7 +80,7 @@ async fn frozen_f10_an_inbox_signal_under_r_keeps_a_green() -> Result<()> {
 
 // signal-becomes-spec-ac3
 // Member alex archives one signal under R over HTTP and one over MCP. A and R keep
-// their status and tone. Control: a new title of R makes A grey.
+// their status and tone. Control: a new title of R makes A blue.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_archive_of_a_signal_under_r_keeps_a_green() -> Result<()> {

@@ -82,12 +82,14 @@ async fn tree(pool: &deadpool_postgres::Pool, ws: &str, revision: Option<u32>) -
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_unknown_repeated_or_badly_coloured_tone_is_refused() -> Result<()> {
     // ac:4d77e8b4: three bad lists on schema revision 0.
+    // gray is an unknown tone, and a live write refuses the older tone grey.
     let pool = pool().await?;
     let ws = workspace(&pool).await?;
     let before = tree(&pool, &ws, None).await?;
     let revision = before["schema"]["revision"].clone();
     for statuses in [
-        json!([{"tone":"blue","light":"#000000","dark":"#000000"}]),
+        json!([{"tone":"gray","light":"#000000","dark":"#000000"}]),
+        json!([{"tone":"grey","light":"#000000","dark":"#000000"}]),
         json!([{"tone":"red","light":"#000000","dark":"#000000"},{"tone":"red","light":"#111111","dark":"#111111"}]),
         json!([{"tone":"red","light":"#000000","dark":"red"}]),
     ] {
@@ -99,20 +101,26 @@ async fn an_unknown_repeated_or_badly_coloured_tone_is_refused() -> Result<()> {
     ensure!(after["schema"]["revision"] == revision, "{after}");
     let defaults = serde_json::to_value(joppa::status_colors::defaults())?;
     ensure!(after["schema"]["statuses"] == defaults, "{after}");
+    let blue = json!({"tone":"blue","light":"#6fa8dc","dark":"#8bbbe8"});
+    let listed = defaults.as_array().is_some_and(|l| l.contains(&blue));
+    ensure!(
+        listed && !defaults.to_string().contains("grey"),
+        "{defaults}"
+    );
     Ok(())
 }
 
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_ordered_list_saves_and_a_higher_tone_wins_in_a_children_rule() -> Result<()> {
-    // ac:71a034aa: green, red and grey in this order; revision 2 has no statuses.
+    // ac:71a034aa: green, red and blue in this order; revision 2 has no statuses.
     let pool = pool().await?;
     let ws = workspace(&pool).await?;
     let start = tree(&pool, &ws, None).await?["schema"]["revision"].clone();
     let statuses = json!([
         {"tone":"green","light":"#22a559","dark":"#2fbf6a"},
         {"tone":"red","light":"#bc5d52","dark":"#e07a70"},
-        {"tone":"grey","light":"#c8c3b8","dark":"#8a8f96"}
+        {"tone":"blue","light":"#5b8fc7","dark":"#7aa7d9"}
     ]);
     write(&pool, &ws, "owner", json!({"op":"set_tree_schema","revision":start,"types":types(),"statuses":statuses,"reason":"Order the statuses"})).await?;
     let first = tree(&pool, &ws, None).await?;

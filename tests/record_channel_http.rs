@@ -43,7 +43,7 @@ async fn only_a_record_after_the_last_change_turns_a_criterion_green() -> Result
         );
         change_text(&w).await?;
         let s = w.a_status(&w.alex).await?;
-        ensure!(s["status"] == "grey", "fixture {fixture}, before: {s}");
+        ensure!(s["status"] == "blue", "fixture {fixture}, before: {s}");
         w.recorded(commit, pass(&[X, Y])).await?;
         let s = w.a_status(&w.alex).await?;
         ensure!(s["status"] == "green", "fixture {fixture}, after: {s}");
@@ -84,7 +84,7 @@ async fn a_recorded_skip_keeps_the_criterion_grey() -> Result<()> {
     let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "skipped" && x["commit"] == "c0c0c0c", "{s}");
-    ensure!(s["status"] == "grey", "{s}");
+    ensure!(s["status"] == "blue", "{s}");
     Ok(())
 }
 
@@ -120,7 +120,7 @@ async fn a_recorded_todo_keeps_the_criterion_grey() -> Result<()> {
     let s = w.a_status(&w.bot).await?;
     let x = test(&s, X);
     ensure!(x["status"] == "todo" && x["commit"] == "c0c0c0c", "{s}");
-    ensure!(s["status"] == "grey", "{s}");
+    ensure!(s["status"] == "blue", "{s}");
     Ok(())
 }
 

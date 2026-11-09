@@ -20,7 +20,7 @@ async fn a_green_target_with_a_newer_revision_does_not_free_work_until_a_new_pin
         ),
     )
     .await?;
-    // The text change of API makes X grey until a new record, so record again: X is green.
+    // The text change of API makes X blue until a new record, so record again: X is green.
     w.record("7777777777777777777777777777777777777777", "pass")
         .await?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;

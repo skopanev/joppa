@@ -86,7 +86,7 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"status":tones}))).await? == all,
         "{tones:?}"
     );
-    // Every node is ready until it waits. A depends_on edge from rule:z to the grey ac:b makes
+    // Every node is ready until it waits. A depends_on edge from rule:z to the blue ac:b makes
     // only rule:z wait.
     ensure!(
         kept(&w, under(json!({"ready":true}))).await? == all,
@@ -107,8 +107,8 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
     );
     for (args, error) in [
         (
-            json!({"status":"blue"}),
-            "unknown status blue; use red, purple, yellow, orange, grey, green",
+            json!({"status":"gray"}),
+            "unknown status gray; use red, purple, yellow, orange, blue, green",
         ),
         (json!({"ready":"yes"}), "ready must be a boolean"),
         (

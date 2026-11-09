@@ -9,11 +9,11 @@ use anyhow::{Context, Result, ensure};
 use manual_check::{check, day, expect};
 use serde_json::json;
 
-const GREY_NO_TESTS: Option<&str> = Some("no tests");
+const BLUE_NO_TESTS: Option<&str> = Some("no tests");
 const AWAITS: Option<&str> = Some("Awaits checks");
 
-/// A is `a` with the reason `why`, B is grey, and R is `r` after `step`. A criterion without
-/// test nodes and without checks has the tone orange (No children) on the board, so grey
+/// A is `a` with the reason `why`, B is blue, and R is `r` after `step`. A criterion without
+/// test nodes and without checks has the tone orange (No children) on the board, so blue
 /// "no tests" needs the tone orange for A.
 async fn step(
     w: &record_world::World,
@@ -31,7 +31,7 @@ async fn step(
         status == a && why.is_none_or(|y| reason == y) && tone == want,
         "{step}: A must be {a} {why:?}: status {status}, reason {reason}, tone {tone}"
     );
-    expect(w, step, "ac:b", "grey", None).await?;
+    expect(w, step, "ac:b", "blue", None).await?;
     let tone = manual_check::tone(w, "requirement:r").await?;
     ensure!(tone == r, "{step}: R must be {r}: tone {tone}");
     Ok(())
@@ -49,19 +49,19 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
     step(
         &w,
         "a file without check_result",
-        "grey",
-        GREY_NO_TESTS,
+        "blue",
+        BLUE_NO_TESTS,
         "orange",
     )
     .await?;
     check(&w, "ac:a", json!({"check_result":"pass"})).await?;
-    step(&w, "pass", "green", None, "grey").await?;
+    step(&w, "pass", "green", None, "blue").await?;
     let fail = json!({"check_result":"fail","valid_until":tomorrow});
     check(&w, "ac:a", fail).await?;
     step(&w, "fail with valid_until tomorrow", "red", None, "red").await?;
     let pass = json!({"check_result":"pass","valid_until":tomorrow});
     let last = check(&w, "ac:a", pass).await?;
-    step(&w, "pass with valid_until tomorrow", "green", None, "grey").await?;
+    step(&w, "pass with valid_until tomorrow", "green", None, "blue").await?;
     let id = last["file"]["id"].as_str().context("file id")?;
     let detach = json!({"op":"detach","target":"ac:a","id":id,"reason":"Drop the check"});
     w.command(&w.bot, detach)
@@ -69,7 +69,7 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
         .map_err(anyhow::Error::msg)?;
     step(&w, "the detach of the last file", "red", None, "red").await?;
     manual_check::new_body(&w, "ac:a", "The new criterion text").await?;
-    step(&w, "the new body of A", "grey", AWAITS, "grey").await?;
+    step(&w, "the new body of A", "blue", AWAITS, "blue").await?;
     // One batch: an attach of pass, then a new body. The file has the time of the boundary.
     let file = &last["file"];
     let a = w.object("ac:a").await?;
@@ -83,11 +83,11 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
     w.mcp(&w.bot, "joppa_batch", batch)
         .await?
         .map_err(|e| anyhow::anyhow!("joppa_batch: {e}"))?;
-    step(&w, "the batch", "grey", AWAITS, "grey").await?;
+    step(&w, "the batch", "blue", AWAITS, "blue").await?;
     check(&w, "ac:a", json!({"check_result":"pass"})).await?;
-    step(&w, "pass after the batch", "green", None, "grey").await?;
+    step(&w, "pass after the batch", "green", None, "blue").await?;
     // The test node of B decides: a pass on B changes nothing.
     check(&w, "ac:b", json!({"check_result":"pass"})).await?;
-    step(&w, "pass on B", "green", None, "grey").await?;
+    step(&w, "pass on B", "green", None, "blue").await?;
     Ok(())
 }
