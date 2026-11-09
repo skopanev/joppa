@@ -150,8 +150,10 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
             .collect()
     };
     // Whether the edges changed, and whether the edges other than the dependencies changed.
+    // A revision of an event with links, also one that the older release wrote after the
+    // epoch, compares by the older rule.
     let edges = |before: &ObjectRevision, current: &ObjectRevision| -> (bool, bool) {
-        if relations {
+        if relations && current.older_links.0.is_none() {
             use crate::relations::{DEPENDS_ON, RELATED, edges_of};
             let same = |key| edges_of(&before.relations, key).eq(edges_of(&current.relations, key));
             let related = !same(RELATED);

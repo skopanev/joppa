@@ -93,13 +93,20 @@ pub fn check_limits(relations: &Relations, stored: &Relations) -> Result<()> {
 
 /// Check the relations of a save of `key`. `kept` holds the relations of the current
 /// revision: an edge of the same key keeps an absent target. A depends_on cycle is refused.
+/// A live save compares the targets of each key that it changes by their resolved address,
+/// so an alias and its address are a duplicate. The replay and an unchanged key compare the
+/// targets as written, as the older release did.
 pub fn validate(w: &Workspace, key: &str, relations: &Relations, kept: &Relations) -> Result<()> {
     let registry = crate::objects::schema(w).relations;
     for (name, relation) in relations {
         ensure!(registry.contains_key(name), "unknown link relation");
         let mut unique = BTreeSet::new();
+        let resolved = !w.replaying && kept.get(name) != Some(relation);
         for edge in &relation.edges {
-            let to = resolve_address(w, &edge.to);
+            let to = match resolved {
+                true => resolve_address(w, &edge.to),
+                false => edge.to.as_str(),
+            };
             ensure!(unique.insert(to), "duplicate object link");
             let target = w
                 .objects
