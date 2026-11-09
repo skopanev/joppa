@@ -12,8 +12,8 @@ The recommended recipe below has two verticals and two document types. The owner
 - `test`: one scenario that proves its AC. The title states the scenario in business language,
   with concrete numbers and no code. `body` gives the inputs and the expected outcome. `case` is
   `nominal` (the normal working path), `boundary` (the edges of limits) or `off_nominal` (errors
-  and safe refusals). `command` is the exact isolated command that runs this one test. Leave it
-  empty only for a manual check, which attaches its evidence with `joppa_attach`.
+  and safe refusals). `command` is the exact isolated command that runs this one test. A manual check is no
+  test node: it is a file on the AC with `check_result` (see [what green means](green.md)).
 - `inbox`: a raw incoming signal before analysis. `source`: an owner decision, a specification
   or an external standard with a fixed version. Each AC names its Sources in `sources`.
   `requirement`, `capability`, `domain` and `tech` compute `sources` from their children.
@@ -73,6 +73,8 @@ The role of a type gives its workflow. The type name does not.
 
 `root: true` permits an object without a parent. `parents: ["*"]` permits any parent type.
 A type with `inbox: true` has `parents: []`. Its name can differ from `inbox`.
+A type with `source: true` marks sources: a new title, body or file of its node resets the
+criteria that name it or link with it. `source: false` is not stored.
 The server refuses parent cycles.
 An object has one parent, or no parent when its type permits a root.
 Each document revision records its schema revision.

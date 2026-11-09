@@ -73,6 +73,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
             status: None,
             process_fields: None,
             inbox: None,
+            source: false,
             launch_blocker: None,
             color: None,
             title_size: None,

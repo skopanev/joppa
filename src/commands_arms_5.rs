@@ -139,18 +139,23 @@ pub(super) fn apply_attach(
     command: &Command,
     recorded_at: &str,
 ) -> Result<()> {
-    let Command::Attach(crate::commands::AttachOp {
-        target: t,
-        id,
-        name,
-        content_type,
-        size,
-        hash,
-    }) = command
+    let Command::Attach(
+        op @ crate::commands::AttachOp {
+            target: t,
+            id,
+            name,
+            content_type,
+            size,
+            hash,
+            check_result,
+            valid_until,
+        },
+    ) = command
     else {
         unreachable!()
     };
     target(w, t)?;
+    crate::manual_checks::check_attach(w, op)?;
     identifier(id)?;
     nonempty(name)?;
     ensure!(*size > 0, "an empty attachment carries nothing");
@@ -189,6 +194,8 @@ pub(super) fn apply_attach(
             at: recorded_at.to_string(),
             removed: false,
             removed_at: None,
+            check_result: check_result.clone(),
+            valid_until: valid_until.clone(),
         },
     );
     Ok(())

@@ -24,6 +24,10 @@ pub struct TreeType {
     pub launch_blocker: Option<crate::model::Removed>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox: Option<bool>,
+    /// A node of this type is a source: a new title, body or file resets each criterion that
+    /// names it or links with it (source_reset.rs). A false value is not stored.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub source: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

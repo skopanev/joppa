@@ -27,7 +27,7 @@ HTTP and MCP refuse every other operation. The server command line also creates 
 with `workspace {title}`. `joppa_record_results` records test outcomes. It is a tool, not an operation.
 
 - `note {target, id, text, reply_to}` adds a comment to any object.
-- `attach {target, id, name, content_type, size, hash}` names bytes that the blob route stored. `joppa_attach {workspace, target, filename, content_type?, content | content_base64}` uploads and attaches in one call.
+- `attach {target, id, name, content_type, size, hash, check_result?, valid_until?}` names bytes that the blob route stored. `joppa_attach {workspace, target, filename, content_type?, content | content_base64, check_result?, valid_until?}` uploads and attaches in one call. `check_result` (`pass` or `fail`) makes the file a manual check of a criterion, and `valid_until` (`YYYY-MM-DD`, UTC) ends a pass.
 - `detach {target, id, reason}` keeps the file readable for 14 days. Then the periodic reconcile deletes it, unless an active attachment of the workspace names its hash. `joppa_attachments {workspace, target, removed: true}` also lists the files detached in the last 14 days, with `removed: true`, `removed_at` and a download `url`.
 - `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from an owner with a bearer token.
 - `delete_workspace {reason}` removes every row of the workspace. Read `GET /api/workspaces/{workspace}/references` first: each workspace whose remote links or child bindings name it loses them, and the result lists them in `removed_references`.

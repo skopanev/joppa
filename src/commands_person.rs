@@ -85,11 +85,11 @@ fn apply_changed(
     crate::objects::validate_current(w, command)?;
     apply_inner(w, actor, command, position, recorded_at)?;
     // As in a replay, an event that writes no document skips the sync and the reset.
-    if writes_no_document(command) {
-        return Ok(());
+    if !writes_no_document(command) {
+        crate::objects::sync(w, actor, command, position, recorded_at);
+        crate::objects::reset_changed(w, command, position, recorded_at)?;
     }
-    crate::objects::sync(w, actor, command, position, recorded_at);
-    crate::objects::reset_changed(w, command, position, recorded_at)
+    crate::source_reset::reset(w, command, position, recorded_at)
 }
 
 /// A live save_object that changes nothing succeeds without a revision or journal event.
@@ -148,7 +148,11 @@ pub const FORCED_KEEPS_CONTRACT: &str = "forced_keeps_contract";
 /// node in a replay.
 pub const RENAME_KEEPS_RESULTS: &str = "rename_keeps_results";
 
-pub const REPLAY_RULES: [&str; 9] = [
+/// From this rule on, a new title, body or file of a node of a source type resets each
+/// criterion that names it or links with it. An older event resets none of them in a replay.
+pub const SOURCE_CHANGE_RESET: &str = "source_change_reset";
+
+pub const REPLAY_RULES: [&str; 10] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -158,6 +162,7 @@ pub const REPLAY_RULES: [&str; 9] = [
     ANY_CHANGE_RESET,
     FORCED_KEEPS_CONTRACT,
     RENAME_KEEPS_RESULTS,
+    SOURCE_CHANGE_RESET,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.
@@ -206,6 +211,22 @@ pub fn apply_replay(
     let result = apply_inner(w, actor, command, position, recorded_at);
     w.replaying = false;
     result?;
+    replay_resets(w, actor, command, position, recorded_at)?;
+    if !epoch_reached(w, SOURCE_CHANGE_RESET, position) {
+        return Ok(());
+    }
+    crate::source_reset::reset(w, command, position, recorded_at)
+}
+
+/// The sync and the reset of a replayed event, as apply_changed gives them before the source
+/// reset.
+fn replay_resets(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+    recorded_at: &str,
+) -> Result<()> {
     // An event that writes no document source and no object revision leaves the document
     // ledger and the criteria as the sync of the event before left them.
     if writes_no_document(command) {

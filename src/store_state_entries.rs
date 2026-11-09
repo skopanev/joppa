@@ -96,6 +96,16 @@ pub(crate) fn affected(
             changed.insert(key.clone());
         }
     }
+    // A source reset gives a new boundary to criteria beside the changed node.
+    for key in state
+        .criterion_boundaries
+        .keys()
+        .chain(previous.criterion_boundaries.keys())
+    {
+        if state.criterion_boundaries.get(key) != previous.criterion_boundaries.get(key) {
+            changed.insert(key.clone());
+        }
+    }
     for (key, notes) in &state.notes {
         if differs(notes, previous.notes.get(key))? {
             changed.insert(crate::objects::resolve_address(state, key).to_owned());

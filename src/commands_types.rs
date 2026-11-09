@@ -78,6 +78,12 @@ pub struct AttachOp {
     pub content_type: String,
     pub size: u64,
     pub hash: String,
+    /// The result of a manual check of a criterion: pass or fail (manual_checks.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_result: Option<String>,
+    /// The UTC date YYYY-MM-DD on which a passed manual check expires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_until: Option<String>,
 }
 
 /// The fields of `SaveObject`.

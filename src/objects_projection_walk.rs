@@ -95,7 +95,8 @@ impl Rows {
                     };
                     found.extend(tone);
                 }
-                Some(highest(found).unwrap_or("orange"))
+                let manual = || crate::manual_checks::tone(self.stored.get(address).map(|s| &s.1));
+                Some(highest(found).or_else(manual).unwrap_or("orange"))
             }
             "none" => None,
             _ => Some("orange"),

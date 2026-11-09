@@ -61,6 +61,9 @@ pub use setup::{
     backfill_board, catch_up_statuses, check_journal, migrate, migrate_notes, pool,
     status_projection_loop,
 };
+#[path = "store_manual_checks.rs"]
+mod manual_check_run;
+pub use manual_check_run::{expire_manual_checks, manual_check_loop};
 #[path = "store_ensure_notes.rs"]
 mod migrations;
 use migrations::ensure_notes;

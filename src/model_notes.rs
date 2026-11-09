@@ -48,4 +48,10 @@ pub struct Attachment {
     pub removed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub removed_at: Option<String>,
+    /// The result of a manual check: pass or fail. A file without it changes no status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_result: Option<String>,
+    /// The UTC date on which a passed manual check expires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_until: Option<String>,
 }

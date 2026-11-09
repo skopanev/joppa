@@ -155,6 +155,7 @@ async fn replay_concurrency_ids_and_schema_after_setup(
             status: Some("none".into()),
             process_fields: None,
             inbox: None,
+            source: false,
             launch_blocker: None,
             color: None,
             title_size: None,

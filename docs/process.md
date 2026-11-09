@@ -108,8 +108,8 @@ Each test node states one scenario. Write it so that a person without code can r
 - `body`: the inputs and the expected outcome.
 - `case`: `nominal` for the normal working path, `boundary` for the edges of the limits, or
   `off_nominal` for errors and safe refusals.
-- `command`: the exact isolated command that runs this one test. Leave it empty only for a
-  manual check, and attach its evidence with `joppa_attach`.
+- `command`: the exact isolated command that runs this one test. A manual check is no test
+  node: attach its evidence file to the AC with `check_result`.
 
 Check each test node with the Test-5 checklist:
 

@@ -98,6 +98,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/057_no_launch_summary.sql"),
         include_str!("../migrations/058_test_node_records.sql"),
         include_str!("../migrations/059_search_and_reference_indexes.sql"),
+        include_str!("../migrations/060_source_change_reset.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

@@ -12,8 +12,8 @@ fields of the type. The recommended recipe uses these fields:
   - `nominal`: the normal working path.
   - `boundary`: the edges of the limits.
   - `off_nominal`: errors and safe refusals.
-- `command`: the exact isolated command that runs this one test. Leave it empty only for a
-  manual check. A manual check attaches its evidence with `joppa_attach`.
+- `command`: the exact isolated command that runs this one test. A manual check is no test
+  node: see [Manual checks](#manual-checks).
 
 ```json
 {"op": "save_object", "kind": "test", "revision": 0, "parent": "ac:refund",
@@ -105,8 +105,25 @@ counting for the test nodes at and below it. Such a test is grey until a newer r
 - A revision with the same parent, links and data resets nothing. An example is the
   specification revision that a criterion save gives.
 - An archive resets only the test nodes at and below the archived object.
+- A node of a type with `source: true` that gets a new title, body or file resets each present
+  criterion that names it in a reference field or that has a link with it, in either direction.
+  A detach and a new value of another field reset nothing.
 
 Old records stay in the history. They are facts about the old text.
+
+## Manual checks
+
+A person proves a criterion without a fake test: `joppa_attach` (or the `attach` op) on the AC
+with `check_result` `pass` or `fail`, and optionally `valid_until` (`YYYY-MM-DD`, UTC). A file
+without `check_result` changes no status.
+
+- A criterion with a live test node takes its status only from its tests.
+- Else the latest live file with `check_result` decides, from the files after the last reset of
+  the criterion. Without `reset_on_change`, every file counts.
+- `fail` is red. `pass` is green until the date `valid_until` starts, then grey
+  "Manual check expired".
+- Only older files give grey "Awaits checks". No file gives grey "no tests".
+- At start and every 600 seconds the server turns expired checks grey, without a journal event.
 
 ## No manual acceptance
 

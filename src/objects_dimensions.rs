@@ -39,12 +39,18 @@ pub(in crate::store) async fn project(
     let tested: Vec<String> = all
         .kinds
         .iter()
-        .filter(|(_, k)| matches!(super::tone_items::rule_of(&types, k), "own" | "tests"))
+        .filter(|(a, k)| match super::tone_items::rule_of(&types, k) {
+            "own" | "tests" => true,
+            // A node without children can take the tone of its manual checks.
+            "children" => all.children.get(*a).is_none_or(Vec::is_empty),
+            _ => false,
+        })
         .map(|(a, _)| a.clone())
         .collect();
     let criteria = super::reports::criteria_of(state, &tested);
     let rules = crate::test_rules::rules(state)?;
     let (reports, results) = super::reports::results_of(client, workspace, &criteria).await?;
+    let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<String, BTreeMap<String, &'static str>> = BTreeMap::new();
     for combination in &combinations {
         let counted: Vec<_> = results
@@ -52,7 +58,8 @@ pub(in crate::store) async fn project(
             .filter(|(_, r)| dims::counts(r.fields.as_ref(), combination))
             .cloned()
             .collect();
-        let statuses = super::reports::compute(criteria.clone(), &reports, &counted, &rules)?;
+        let statuses =
+            super::reports::compute(criteria.clone(), &reports, &counted, &rules, &checks)?;
         let applies = |a: &str| dims::applies(effective.get(a), combination);
         let shown = Graph {
             kinds: all.kinds.clone(),

@@ -39,7 +39,8 @@ pub(super) async fn state_criterion_statuses(
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     let criteria = criteria_of(state, targets);
     let rules = crate::test_rules::rules(state)?;
-    statuses_for_criteria(client, workspace, criteria, &rules).await
+    let checks = crate::manual_checks::Checks::of(state, targets);
+    statuses_for_criteria(client, workspace, criteria, &rules, &checks).await
 }
 
 /// The test list and the boundary of each target that has an object.
@@ -71,13 +72,14 @@ async fn statuses_for_criteria(
     workspace: &str,
     criteria: Vec<(String, Option<Listed>, Boundary)>,
     rules: &crate::result_shape::ResultShape,
+    checks: &crate::manual_checks::Checks,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
         return Ok(Default::default());
     }
     let (reports, results) = results_of(client, workspace, &criteria).await?;
-    compute(criteria, &reports, &results, rules)
+    compute(criteria, &reports, &results, rules, checks)
 }
 
 /// The reports of the workspace and the results of the tests of `criteria`.
@@ -101,12 +103,14 @@ pub(super) async fn results_of(
     Ok((reports, results))
 }
 
-/// The status of each criterion from loaded reports and results.
+/// The status of each criterion from loaded reports and results. The manual checks decide a
+/// criterion without test nodes (manual_checks.rs).
 pub(super) fn compute(
     criteria: Vec<(String, Option<Listed>, Boundary)>,
     reports: &[Report],
     results: &[(i64, TestResult)],
     rules: &crate::result_shape::ResultShape,
+    checks: &crate::manual_checks::Checks,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     // Each criterion reads only the results of its own tests. The grouping keeps every row,
     // duplicates included, and preserves the input order for each address (the query has no
@@ -164,7 +168,22 @@ pub(super) fn compute(
             ),
             None => crate::ac_tests::criterion_status(tests, draft, boundary, reports, &own, rules),
         };
+        let manual = tests
+            .is_empty()
+            .then(|| checks.decide(&address, boundary, rules.reset_on_change));
+        let (status, manual) = match manual.flatten() {
+            Some((manual, expires)) => (manual, Some(expires)),
+            None => (status, None),
+        };
         let mut status = serde_json::to_value(status)?;
+        // A manual status also gives the tone of a criterion without test nodes, and the date
+        // of a deciding pass that expires: the check run finds it by this value.
+        if let Some(expires) = manual {
+            status["manual"] = json!(true);
+            if let Some(day) = expires {
+                status["valid_until"] = json!(day.to_string());
+            }
+        }
         status["address"] = json!(address);
         status["tests_revision"] = json!(current.map(|r| r.revision));
         status["tests_saved_by"] = json!(current.map(|r| &r.actor));
