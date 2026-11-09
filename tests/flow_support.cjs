@@ -55,7 +55,8 @@ async function open(f, query, count) {
 }
 
 // In the page: a snapshot of the canvas. A position is the centre in screen px (x, y) and
-// in the coordinates of the drawing (dx, dy). marks are the classes of the element and of
+// in the coordinates of the drawing (dx, dy). An edge goes from data-from to data-to, or else
+// between the nodes nearest to its ends. drawn names the nodes nearest to its ends. marks are the classes of the element and of
 // its ancestors inside the canvas. faint is the opacity of the element that has .flow-faint.
 function snapshot() {
   const canvas = document.querySelector('.flow-canvas');
@@ -77,7 +78,8 @@ function snapshot() {
     const path = e.matches('path,line,polyline') ? e : e.querySelector('path,line,polyline'), length = path.getTotalLength(), ctm = path.getScreenCTM();
     const points = Array.from({length: 41}, (_, i) => path.getPointAtLength(length * i / 40).matrixTransform(ctm));
     const marker = [path, e].map(el => getComputedStyle(el).markerEnd + ' ' + (el.getAttribute('marker-end') || '')).join(' ');
-    return {from: near(points[0].x, points[0].y), to: near(points[40].x, points[40].y), marks: [...new Set([...marks(e), ...marks(path)])].sort(),
+    const drawn = near(points[0].x, points[0].y) + '>' + near(points[40].x, points[40].y), [x, y] = drawn.split('>');
+    return {from: e.dataset.from ?? x, to: e.dataset.to ?? y, drawn, marks: [...new Set([...marks(e), ...marks(path)])].sort(),
       faint: faint(path), marker, top: Math.min(...points.map(p => p.y)), points: points.map(p => [p.x, p.y])};
   });
   const whens = [...document.querySelectorAll('.flow-when')].map(w => {
@@ -102,6 +104,8 @@ const toneColour = (f, tone) => f.page.evaluate(tone => {
 }, tone);
 const byAddress = s => Object.fromEntries(s.nodes.map(n => [n.address, n]));
 const edgeNames = s => s.edges.map(e => e.from + '>' + e.to).sort();
+// Each edge starts at the dot of its source and ends at the dot of its target.
+const drawnAsNamed = s => assert.deepEqual(s.edges.map(e => e.drawn).sort(), edgeNames(s), 'the edge ends');
 
 // The addresses of the nodes and the names of the edges that have the class `name`.
 const marked = (s, name) => ({nodes: s.nodes.filter(n => n.marks.includes(name)).map(n => n.address).sort(),
@@ -175,5 +179,5 @@ const waitText = (f, text) => f.page.waitForFunction(([source, text]) => Boolean
   .catch(() => assert.fail('no visible text ' + JSON.stringify(text)));
 const link = f => new URL(f.page.url()).searchParams;
 
-module.exports = {types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, marked, waitMarks, NONE,
+module.exports = {types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, drawnAsNamed, marked, waitMarks, NONE,
   card, waitCard, closeCard, click, emptyPoint, shownText, waitText, link};

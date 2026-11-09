@@ -93,7 +93,7 @@ test('flow-controls: a drag pans the view box, a wheel pans and a pinch zooms', 
     const empty = await emptyPoint(f);
     assert.ok(empty, 'the canvas has an empty point');
     const canvasDrag = await panned(dotDrag, empty.x, empty.y, 'drag of the canvas');
-    // A wheel pans by its deltas. A wheel with ctrlKey (a pinch) zooms in.
+    // A wheel pans by its deltas. A wheel with ctrlKey (a pinch) multiplies the width by e^-0.5.
     const wheel = options => f.page.evaluate(o => {
       const c = document.querySelector('.flow-canvas'), r = c.getBoundingClientRect();
       c.dispatchEvent(new WheelEvent('wheel', {bubbles: true, cancelable: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, ...o}));
@@ -104,7 +104,8 @@ test('flow-controls: a drag pans the view box, a wheel pans and a pinch zooms', 
     near(swiped.view[1], canvasDrag.view[1] + 30 * u, 'wheel y');
     await wheel({deltaY: -50, ctrlKey: true});
     const zoomed = await snap(f);
-    assert.ok(zoomed.view[2] < swiped.view[2] && zoomed.view[3] < swiped.view[3], 'the pinch makes the view box smaller: ' + JSON.stringify([swiped.view, zoomed.view]));
+    const ratio = zoomed.view[2] / swiped.view[2];
+    assert.ok(Math.abs(ratio - Math.exp(-0.5)) < 1e-3, 'the pinch multiplies the width by e^-0.5: ' + JSON.stringify([swiped.view, zoomed.view]));
     await f.page.setViewportSize({width: 390, height: 800});
     assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll at 390 px');
   } finally { await f.close(); }

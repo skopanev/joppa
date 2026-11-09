@@ -4,7 +4,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
-const {types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, waitMarks, NONE,
+const {types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, drawnAsNamed, waitMarks, NONE,
   card, waitCard, click, link} = require('./flow_support.cjs');
 
 // ac:board-graph-ac1
@@ -20,6 +20,7 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     assert.ok(a.x < b.x - 1 && Math.abs(b.x - c.x) < 1 && c.x < d.x - 1, 'columns 0, 1, 1 and 2: ' + columns);
     assert.ok(b.y < c.y, 'column 1 goes down in address order: ' + columns);
     assert.deepEqual(edgeNames(first), ['step:a>step:b', 'step:a>step:c', 'step:b>step:d', 'step:c>step:d']);
+    drawnAsNamed(first);
     for (const edge of first.edges) assert.match(edge.marker, /#flow-arrow\b/, edge.from + '>' + edge.to + ' marker');
     assert.ok(first.arrowHead, 'the marker #flow-arrow holds .flow-arrow-head');
     // The when label sits on its edge, and every label shows.
@@ -41,6 +42,7 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     const depends = await snap(f);
     assert.deepEqual(depends.nodes.map(n => n.address).sort(), ['step:a', 'step:b']);
     assert.deepEqual(edgeNames(depends), ['step:a>step:b']);
+    drawnAsNamed(depends);
     assert.match(depends.edges[0].marker, /#flow-arrow\b/);
     assert.equal(depends.lines, 0, 'no parent line');
   } finally { await f.close(); }
@@ -63,6 +65,7 @@ test('flow-cycle: a cycle draws a back arc above its ends', async () => {
     const xs = ['step:a', 'step:b', 'step:c', 'step:d'].map(address => at[address].x);
     assert.ok(xs.every((x, i) => i === 0 || x > xs[i - 1] + 1), 'columns 0, 1, 2 and 3: ' + JSON.stringify(xs));
     assert.deepEqual(edgeNames(s), ['step:a>step:b', 'step:b>step:c', 'step:c>step:a', 'step:c>step:d']);
+    drawnAsNamed(s);
     const back = s.edges.filter(e => e.marks.includes('flow-back'));
     assert.deepEqual(back.map(e => e.from + '>' + e.to), ['step:c>step:a'], 'only C→A is .flow-back');
     assert.ok(back[0].top < at['step:a'].y && back[0].top < at['step:c'].y,
