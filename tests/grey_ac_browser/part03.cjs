@@ -167,7 +167,8 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
     // A failed list read shows the server error and no list.
-    await page.route(f.live.root + '/api/workspaces', route => route.request().method() === 'GET'
+    // Settings reads /api/workspaces with a query (?all=true): match the path with any query.
+    await page.route(url => url.origin === f.live.root && url.pathname === '/api/workspaces', route => route.request().method() === 'GET'
       ? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({error: 'workspace list unavailable'})})
       : route.continue());
     await page.reload();

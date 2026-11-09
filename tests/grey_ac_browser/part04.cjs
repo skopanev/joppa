@@ -57,11 +57,12 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       for (const item of [select, members, ...await members.locator('li').all()]) {
         assert.ok(inside(await item.boundingBox(), width));
       }
-      // W2 shows no member list and no control.
+      // W2 shows no member list and no people control, only the checkbox #hide-workspace.
       await select.selectOption(f.live.ws);
       await f.page.locator('#not-owner').waitFor();
       assert.equal(await f.page.locator('#not-owner').innerText(), 'Only the owner of this workspace manages its people.');
-      assert.equal(await panel.locator('ul:visible, form:visible, button:visible, input:visible').count(), 0);
+      await f.page.locator('#hide-workspace').waitFor({state: 'visible', timeout: 5000});
+      assert.equal(await panel.locator('ul:visible, form:visible:not(:has(#hide-workspace)), button:visible, input:visible:not(#hide-workspace)').count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
     // A failed owned read keeps the drop-down and shows the server error once.
