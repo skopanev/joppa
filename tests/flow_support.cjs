@@ -100,8 +100,11 @@ function snapshot() {
     const b = w.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
     const gap = edge => Math.min(...edge.points.map(([px, py]) => Math.hypot(px - x, py - y)));
     const edge = edges.reduce((best, e) => gap(e) < gap(best) ? e : best, edges[0]);
+    // The anchor (ax, ay) is the x and y of the text in the drawing.
+    const t = w.matches('text') ? w : w.querySelector('text') || w, at = list => list?.numberOfItems ? list.getItem(0).value : 0;
+    const anchor = t.getScreenCTM ? new DOMPoint(at(t.x?.baseVal), at(t.y?.baseVal)).matrixTransform(t.getScreenCTM()).matrixTransform(inverse) : {x: null, y: null};
     return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: w.querySelectorAll('tspan').length,
-      height: b.height, x, y, box: rect(w)};
+      height: b.height, x, y, box: rect(w), ax: anchor.x, ay: anchor.y};
   });
   const badges = [...document.querySelectorAll('.flow-transfer')].map(b => ({address: address(b), text: b.textContent.trim(), box: rect(b)}));
   // Each line of the drawing that is no edge, no dot and no badge, such as a parent line.
