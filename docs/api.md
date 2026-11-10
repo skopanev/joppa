@@ -21,11 +21,11 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 
 ## Operations
 
-- Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (owner).
+- Objects: `save_object`, `archive_object`, `restore_object`, `set_remote_links`, `redact_object` (human member).
 - Schema and order: `set_tree_schema`, `reorder_tree`.
 - Criteria and tests: `save_object` with a test node.
 - Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
-- Workspace (owner): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
+- Workspace (human member): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
 
 HTTP and MCP refuse every other operation. The server command line also creates a workspace
 with `workspace {title}`. `joppa_record_results` records test outcomes. It is a tool, not an operation.
@@ -36,7 +36,7 @@ with `workspace {title}`. `joppa_record_results` records test outcomes. It is a 
   - `upload: true` checks the access and the fields, stores nothing and gives `{upload_url, expires_at}`. `upload_url` is `<public origin>/api/uploads/<token>`. The public origin is `JOPPA_PUBLIC_URL`, else the origin of the Google redirect URI. The link is valid 15 minutes. One PUT of the raw bytes to it attaches the file, for example `curl -T file.pdf "$upload_url"`. A restart of the server makes older links invalid.
   - `check_result` (`pass` or `fail`) makes the file a manual check of a criterion, and `valid_until` (`YYYY-MM-DD`, UTC) ends a pass.
 - `detach {target, id, reason}` keeps the file readable for 14 days. Then the periodic reconcile deletes it, unless an active attachment of the workspace names its hash. `joppa_attachments {workspace, target, removed: true}` also lists the files detached in the last 14 days, with `removed: true`, `removed_at` and a download `url`.
-- `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from an owner with a bearer token.
+- `reorder_tree {kind, parent, expected, ids}` sets the order of siblings. `expected` must match the current order, and `ids` must hold those siblings once. `POST /api/workspaces/{workspace}/order` takes the same fields from a member with a bearer token.
 - `delete_workspace {reason}` removes every row of the workspace. Read `GET /api/workspaces/{workspace}/references` first: each workspace whose remote links or child bindings name it loses them, and the result lists them in `removed_references`.
 
 ## No manual acceptance
@@ -194,7 +194,8 @@ The browser never stores bearer tokens. A missing Google configuration fails clo
 
 The board is read-only for content. The Settings page needs a browser session for its writes:
 it creates a workspace, renames or deletes it and grants access. Each member also hides a
-workspace there from the own list of that member.
+workspace there from the own list of that member. Every human member of a workspace sees the
+same controls and has the same rights. Joppa refuses the removal of the last human member.
 
 ## MCP authentication
 
@@ -231,7 +232,7 @@ session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` o
 
 `update_workspace {title?, workspace_id?, reference_prefix?, hidden?, reason?}` changes each
 field that it sends and keeps all history. It needs one of `title`, `workspace_id`,
-`reference_prefix` and `hidden`. Only the owner changes `title`, `workspace_id` and
+`reference_prefix` and `hidden`. Only a human member changes `title`, `workspace_id` and
 `reference_prefix`. `rename_workspace` was removed: a write of it is refused with
 `rename_workspace was removed; use update_workspace`.
 A new `workspace_id` becomes the public ID in lists and reads. Old names stay aliases with

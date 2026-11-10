@@ -11,7 +11,7 @@ pub(super) fn apply_member(
     let Command::Member { id, role } = command else {
         unreachable!()
     };
-    ensure!(actor == w.admin, "workspace owner required");
+    human_member(w, actor)?;
     identifier(id)?;
     // From its epoch on, a membership is a person. An older event keeps its role.
     let roles: &[&str] = if rule_applies(w, HUMAN_MEMBERS, position) {
@@ -37,7 +37,11 @@ pub(super) fn apply_enroll_service(
     let Command::EnrollService { id, role } = command else {
         unreachable!()
     };
-    ensure!(actor == w.admin, "workspace owner required");
+    // A server-only operation: the creator record is an internal check, not a right.
+    ensure!(
+        actor == w.admin,
+        "only the workspace creator enrolls a service identity through the server"
+    );
     identifier(id)?;
     ensure!(["agent", "runner"].contains(&role.as_str()), "unknown role");
     ensure!(
@@ -93,9 +97,10 @@ pub(super) fn apply_edit_consumer(w: &mut Workspace, actor: &str, command: &Comm
         .consumers
         .get_mut(id)
         .ok_or_else(|| anyhow::anyhow!("unknown consumer"))?;
+    // The owner of a consumer is a human member too.
     ensure!(
-        actor == w.admin || actor == consumer.owner,
-        "consumer owner required"
+        w.members.get(actor).is_some_and(|r| r == "human"),
+        HUMAN_MEMBER_REQUIRED
     );
     consumer.title = title.clone();
     consumer.description = description.clone();
@@ -104,7 +109,12 @@ pub(super) fn apply_edit_consumer(w: &mut Workspace, actor: &str, command: &Comm
 }
 
 /// Apply `domain`.
-pub(super) fn apply_domain(w: &mut Workspace, actor: &str, command: &Command) -> Result<()> {
+pub(super) fn apply_domain(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+) -> Result<()> {
     let Command::Domain(crate::commands::DomainOp {
         id,
         title,
@@ -118,6 +128,7 @@ pub(super) fn apply_domain(w: &mut Workspace, actor: &str, command: &Command) ->
     nonempty(title)?;
     human(w, owner)?;
     ensure!(!w.domains.contains_key(id), "domain exists");
+    let confirmed = confirms(w, actor, position);
     w.domains.insert(
         id.clone(),
         Domain {
@@ -125,14 +136,29 @@ pub(super) fn apply_domain(w: &mut Workspace, actor: &str, command: &Command) ->
             title: title.clone(),
             owner: owner.clone(),
             description: description.clone(),
-            confirmed: actor == w.admin,
+            confirmed,
         },
     );
     Ok(())
 }
 
+/// A new domain or capability is confirmed when a human member saves it. Before the epoch of
+/// human_member_rights, only the creator of the workspace confirmed it in a replay.
+fn confirms(w: &Workspace, actor: &str, position: u64) -> bool {
+    if rule_applies(w, HUMAN_MEMBER_RIGHTS, position) {
+        is_human_member(w, actor)
+    } else {
+        actor == w.admin
+    }
+}
+
 /// Apply `capability`.
-pub(super) fn apply_capability(w: &mut Workspace, actor: &str, command: &Command) -> Result<()> {
+pub(super) fn apply_capability(
+    w: &mut Workspace,
+    actor: &str,
+    command: &Command,
+    position: u64,
+) -> Result<()> {
     let Command::Capability(crate::commands::CapabilityOp {
         id,
         title,
@@ -157,6 +183,7 @@ pub(super) fn apply_capability(w: &mut Workspace, actor: &str, command: &Command
             .map_or(w.admin.as_str(), |d| d.owner.as_str())
     });
     human(w, assigned)?;
+    let confirmed = confirms(w, actor, position);
     w.capabilities.insert(
         id.clone(),
         Capability {
@@ -164,7 +191,7 @@ pub(super) fn apply_capability(w: &mut Workspace, actor: &str, command: &Command
             domain: domain.clone(),
             owner: Some(assigned.to_owned()),
             description: description.clone(),
-            confirmed: actor == w.admin,
+            confirmed,
         },
     );
     Ok(())
@@ -184,7 +211,7 @@ pub(super) fn apply_set_domain_archived(
     else {
         unreachable!()
     };
-    ensure!(actor == w.admin, "workspace owner archives domains");
+    human_member(w, actor)?;
     nonempty(reason)?;
     let domain = w
         .domains

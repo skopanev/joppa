@@ -1,4 +1,4 @@
-// Email grants: the owner grants an email, and that Google account reads only W.
+// Email grants: a human member grants an email, and that Google account reads only W.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 #[tokio::test]
 #[ignore = "requires isolated test database"]
@@ -56,11 +56,11 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
         )
     };
     let grants = "SELECT count(*) FROM joppa.email_grants WHERE email=$1";
-    // Non-owners, tokens and cross-origin requests record no grant.
+    // Outsiders, tokens and cross-origin requests record no grant.
     let refused = grant(browser(Some(&olga_cookie), origin), &w)
         .await
         .unwrap_err();
-    assert_eq!(refused.1.0["error"], "workspace owner required");
+    assert_eq!(refused.1.0["error"], "Workspace not found");
     let mut token = browser(Some(&sam_cookie), origin);
     token.insert(header::AUTHORIZATION, "Bearer x".parse().unwrap());
     assert_eq!(grant(token, &w).await.unwrap_err().0, StatusCode::FORBIDDEN);
@@ -79,7 +79,7 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     for sql in [members, bound, sessions_of] {
         assert_eq!(count(&app, sql, &derived).await, 0);
     }
-    // The owner grants W twice; one lowercase grant remains.
+    // sam grants W twice; one lowercase grant remains.
     for _ in 0..2 {
         let Json(granted) = grant(browser(Some(&sam_cookie), origin), &w).await.unwrap();
         assert_eq!(granted, json!({"workspace":w,"email":"maria@example.com"}));
@@ -115,7 +115,7 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     )
     .await
     .unwrap();
-    assert_eq!(index["index"]["owner"], sam.as_str());
+    assert!(index["index"].get("owner").is_none());
     assert_eq!(
         index["index"]["members"],
         json!({sam.clone():"human", derived.clone():"human"})

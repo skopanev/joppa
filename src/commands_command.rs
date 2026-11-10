@@ -82,12 +82,12 @@ pub enum Command {
     },
     RenameWorkspace(RenameWorkspaceOp),
     UpdateWorkspace(UpdateWorkspaceOp),
-    /// The owner removes a member. The owner cannot remove themself.
+    /// A human member removes a member. The last human member stays.
     RemoveMember {
         id: String,
         reason: String,
     },
-    /// The owner deletes the workspace. The write then removes every row of it from the database.
+    /// A human member deletes the workspace. The write then removes every row of it from the database.
     DeleteWorkspace {
         reason: String,
     },
@@ -113,8 +113,8 @@ pub enum Command {
     EnrollMember {
         id: String,
     },
-    /// Internal enrollment of a service identity, an agent or a runner, by the workspace
-    /// owner. Public command entry points reject this operation.
+    /// Internal enrollment of a service identity, an agent or a runner, by the server for the
+    /// workspace creator. Public command entry points reject this operation.
     EnrollService {
         id: String,
         role: String,

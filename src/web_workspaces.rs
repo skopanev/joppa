@@ -52,7 +52,7 @@ pub(super) async fn list_route(
 pub(super) struct NewWorkspace {
     title: String,
 }
-/// A signed-in browser user creates a workspace and becomes its owner and only member.
+/// A signed-in browser user creates a workspace and becomes its first and only member.
 /// The server chooses both IDs, so a repeated request creates another workspace.
 /// Commands, batches and MCP keep the CLI-only creation refusal.
 pub(super) async fn create_workspace(
@@ -82,7 +82,7 @@ pub(super) struct EmailGrant {
     pub(super) workspace: String,
     pub(super) email: String,
 }
-/// The owner grants a workspace to a Google email from a signed-in browser.
+/// A human member grants a workspace to a Google email from a signed-in browser.
 pub(super) async fn grant_email(
     State(app): State<App>,
     headers: HeaderMap,
@@ -105,7 +105,7 @@ pub(super) struct DomainGrant {
     pub(super) workspace: String,
     pub(super) domain: String,
 }
-/// The owner grants a workspace to a whole email domain from a signed-in browser.
+/// A human member grants a workspace to a whole email domain from a signed-in browser.
 pub(super) async fn grant_domain(
     State(app): State<App>,
     headers: HeaderMap,
@@ -127,7 +127,7 @@ pub(super) async fn list_domain_grants(State(app): State<App>, headers: HeaderMa
 pub(super) struct WorkspaceRename {
     title: String,
 }
-/// The owner renames a workspace from a signed-in browser.
+/// A human member renames a workspace from a signed-in browser.
 pub(super) async fn rename_workspace(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -180,7 +180,7 @@ pub(super) async fn hide_workspace(
             .map(|_| json!({"id": workspace, "hidden": body.hidden})),
     )
 }
-/// The owner reads the workspaces that link to this workspace, before a deletion.
+/// A human member reads the workspaces that link to this workspace, before a deletion.
 pub(super) async fn workspace_references(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -189,7 +189,7 @@ pub(super) async fn workspace_references(
     let actor = authenticate(&app, &headers).await?;
     result(store::workspace_references(&app.pool, &workspace, &actor).await)
 }
-/// The owner deletes a workspace from a signed-in browser. No row of it stays.
+/// A human member deletes a workspace from a signed-in browser. No row of it stays.
 pub(super) async fn delete_workspace(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -221,7 +221,7 @@ pub(super) struct AccessRemoval {
     #[serde(default)]
     domain: Option<String>,
 }
-/// The owner removes a member, an email grant or a domain grant from a signed-in browser.
+/// A human member removes a member, an email grant or a domain grant from a signed-in browser.
 pub(super) async fn remove_access(
     State(app): State<App>,
     headers: HeaderMap,
@@ -240,7 +240,7 @@ pub(super) async fn remove_access(
         _ => Err(joppa::commands::ClientField("name one member, email or domain").into()),
     })
 }
-/// The settings page reads its owned workspaces, their people and their grants in one request.
+/// The settings page reads the workspaces of a human member with their people and grants.
 pub(super) async fn list_owned_access(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::list_owned_access(&app.pool, &actor).await)

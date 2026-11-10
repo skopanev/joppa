@@ -11,9 +11,30 @@ pub fn person(w: &Workspace, actor: &str) -> Result<()> {
 }
 
 pub fn human(w: &Workspace, actor: &str) -> Result<()> {
+    ensure!(is_human_member(w, actor), "a human member is required");
+    Ok(())
+}
+
+/// The refusal of an agent or a runner on a command of the human members.
+pub const HUMAN_MEMBER_REQUIRED: &str = "a human member of the workspace is required";
+
+/// A member with role human. Each human member has the same rights, and the creator has no
+/// other right.
+pub fn is_human_member(w: &Workspace, actor: &str) -> bool {
+    w.members.get(actor).is_some_and(|r| r == "human")
+}
+
+/// Refuse the actor unless it is a human member.
+pub fn human_member(w: &Workspace, actor: &str) -> Result<()> {
+    ensure!(is_human_member(w, actor), HUMAN_MEMBER_REQUIRED);
+    Ok(())
+}
+
+/// Refuse the removal of `id` when no other human member stays.
+pub fn keeps_human_member(w: &Workspace, id: &str) -> Result<()> {
     ensure!(
-        w.members.get(actor).is_some_and(|r| r == "human"),
-        "a human member is required"
+        w.members.iter().any(|(m, r)| m != id && r == "human"),
+        "the last human member cannot be removed"
     );
     Ok(())
 }

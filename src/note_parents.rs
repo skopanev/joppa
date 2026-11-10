@@ -46,12 +46,15 @@ pub fn check_schema(
     Ok(())
 }
 
-/// Apply migrate_note_parents once. The workspace owner is the actor of the event.
+/// Apply migrate_note_parents once. The workspace creator is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.note_parents_migrated {
         return Ok(());
     }
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == w.admin,
+        "the workspace creator runs this migration"
+    );
     let kinds = inbox_kinds(w);
     let mut next = schema(w);
     let schema_changed = next

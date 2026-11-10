@@ -1,8 +1,8 @@
-//! The owner redacts a secret from an object. Every revision in the current state shows
+//! A human member redacts a secret from an object. Every revision in the current state shows
 //! "[redacted]" in place of the fragment, so reads, history and search never return it.
 //! The journal is append-only: the original stays there, and only the database owner reads it.
 use crate::model::Workspace;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -34,7 +34,7 @@ pub fn redact(
     position: u64,
     at: &str,
 ) -> Result<()> {
-    ensure!(actor == w.admin, "workspace owner required");
+    crate::commands::human_member(w, actor)?;
     crate::commands::nonempty(fragment)?;
     crate::commands::nonempty(reason)?;
     let key = crate::objects::resolve_address(w, target).to_owned();

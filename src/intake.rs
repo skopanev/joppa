@@ -59,7 +59,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             }
         }
         Command::Questions(crate::commands::QuestionsOp { kind, fields }) => {
-            ensure!(actor == w.admin, "workspace owner changes intake policy");
+            crate::commands::human_member(w, actor)?;
             ensure!(
                 ["bug", "policy", "question", "idea"].contains(&kind.as_str()),
                 "unknown intake kind"

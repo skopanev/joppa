@@ -16,7 +16,7 @@ pub(crate) async fn list_grants(
              FROM joppa.state_entries s
              LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
              LEFT JOIN joppa.{table} g ON g.workspace=s.workspace
-             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1 AND s.value->'deleted_at' IS NULL
+             WHERE s.section='meta' AND s.key='' AND s.workspace IN ({HUMAN_MEMBERSHIP}) AND s.value->'deleted_at' IS NULL
              GROUP BY 1,2 ORDER BY 2,1"),
             &[&actor],
         )

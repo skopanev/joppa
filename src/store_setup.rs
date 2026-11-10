@@ -103,6 +103,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         HIDDEN_BY,
         include_str!("../migrations/062_relations.sql"),
         include_str!("../migrations/065_no_link_blocking.sql"),
+        include_str!("../migrations/066_human_member_rights_epoch.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

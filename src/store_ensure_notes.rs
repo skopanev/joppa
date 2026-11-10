@@ -47,11 +47,21 @@ pub(super) async fn ensure_notes(
         if !needed {
             continue;
         }
-        ensure!(!state.admin.is_empty(), "workspace has no owner");
+        ensure!(!state.admin.is_empty(), "workspace has no creator");
         let position = events
             .last()
             .map_or(base_position + 1, |event| event.position + 1);
-        let actor = state.admin.clone();
+        // The creator is the system actor. A human member may remove the creator, and only the
+        // prefix update can come after that: then the first human member sends it.
+        let actor = if commands::is_human_member(state, &state.admin) {
+            state.admin.clone()
+        } else {
+            state
+                .members
+                .iter()
+                .find(|(_, role)| *role == "human")
+                .map_or_else(|| state.admin.clone(), |(id, _)| id.clone())
+        };
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
         // A server migration has no alias, also after a replay that ends with one.

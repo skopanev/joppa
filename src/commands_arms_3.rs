@@ -3,7 +3,7 @@ use super::*;
 
 /// Apply `confirm_tree`.
 pub(super) fn apply_confirm_tree(w: &mut Workspace, actor: &str) -> Result<()> {
-    ensure!(actor == w.admin, "workspace owner confirms the tree");
+    human_member(w, actor)?;
     for d in w.domains.values_mut() {
         d.confirmed = true;
     }
@@ -30,12 +30,12 @@ pub(super) fn apply_edit_domain(w: &mut Workspace, actor: &str, command: &Comman
         .get(id)
         .ok_or_else(|| anyhow::anyhow!("unknown domain"))?;
     ensure!(
-        actor == w.admin
+        w.members[actor] == "human"
             || (w.members[actor] == "agent"
                 && !domain.confirmed
                 && !domain.archived
                 && domain.owner == *owner),
-        "only the workspace owner edits confirmed domains or changes authority; agents may edit draft titles"
+        "only a human member edits confirmed domains or changes authority; agents may edit draft titles"
     );
     nonempty(title)?;
     nonempty(reason)?;
@@ -71,7 +71,7 @@ pub(super) fn apply_edit_capability(
         .get(id)
         .ok_or_else(|| anyhow::anyhow!("unknown capability"))?;
     ensure!(
-        actor == w.admin
+        w.members[actor] == "human"
             || (w.members[actor] == "agent"
                 && !capability.confirmed
                 && capability
@@ -82,7 +82,7 @@ pub(super) fn apply_edit_capability(
                 && owner
                     .as_ref()
                     .is_none_or(|requested| capability.owner.as_ref() == Some(requested))),
-        "only the workspace owner edits confirmed capabilities; agents may edit draft titles"
+        "only a human member edits confirmed capabilities; agents may edit draft titles"
     );
     nonempty(title)?;
     nonempty(reason)?;

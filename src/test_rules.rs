@@ -67,12 +67,15 @@ pub fn rules(w: &Workspace) -> Result<ResultShape> {
         .context("the tree schema has no test_results block")
 }
 
-/// Apply migrate_test_rules once. The workspace owner is the actor of the event.
+/// Apply migrate_test_rules once. The workspace creator is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.test_rules_migrated {
         return Ok(());
     }
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == w.admin,
+        "the workspace creator runs this migration"
+    );
     let mut next = schema(w);
     // Each type gets its status rule by name.
     for t in next.types.values_mut() {

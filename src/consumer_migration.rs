@@ -92,12 +92,15 @@ pub fn valid(w: &Workspace, id: &str) -> bool {
         .is_some_and(|o| o.kind == KIND && o.current().present)
 }
 
-/// Apply migrate_consumers once. The workspace owner is the actor of the event.
+/// Apply migrate_consumers once. The workspace creator is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.consumers_migrated {
         return Ok(());
     }
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == w.admin,
+        "the workspace creator runs this migration"
+    );
     w.consumers_migrated = true;
     let mut next = schema(w);
     let before = next.types.clone();

@@ -34,12 +34,9 @@ try{
 #workspace-people li>span{min-width:0;overflow-wrap:anywhere}
 #workspace-people li .remove{color:var(--muted);flex:none}
 #workspace-people li .remove:hover{color:var(--fail)}
-.owner-mark{color:var(--muted);font-size:.85em;flex:none}
 #workspace-people li[data-kind=email],#workspace-people li[data-kind=domain]{color:var(--muted)}
-#not-owner{color:var(--muted);margin:.6em 0 0}
 /* Each member hides the selected workspace from the own lists. */
 .settings .hide-check{display:inline-flex;align-items:center;gap:.5em;min-height:44px;margin:.4em 0 0;font-size:1em;color:var(--text)}
-.owner-block{margin-top:1.2em}
 .danger{margin-top:1.6em;padding-top:1.2em;border-top:1px solid var(--rule)}
 .settings .danger .action{color:var(--fail);border-color:var(--fail)}
 #delete-confirm{display:grid;gap:.6rem;margin:0}
@@ -91,8 +88,7 @@ try{
   <div id="workspace-panel" hidden>
     <label class="hide-check"><input id="hide-workspace" type="checkbox"> Hide from my list</label>
     <p id="hide-error" role="alert"></p>
-    <p id="not-owner" hidden>Only the owner of this workspace manages its people.</p>
-    <section id="owner-panel" aria-labelledby="people-title" hidden>
+    <section id="people-panel" aria-labelledby="people-title">
       <h2 id="people-title">People</h2>
       <ul id="workspace-people" aria-label="People with access"></ul>
       <form id="grant-access">
@@ -114,9 +110,9 @@ try{
   </div>
 </main>
 <script>
-// The page reads two lists: the workspaces of the session and the owned workspaces with their
-// people and grants. It reads no single workspace. People show by name and email; agents and
-// member IDs stay off this page.
+// The page reads two lists and the signed-in person: the workspaces of the session, and the
+// workspaces of the person as a human member with their people and grants. It reads no single
+// workspace. People show by name and email; agents and member IDs stay off this page.
 const $=id=>document.getElementById(id);
 const element=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;return e;};
 // A long request disables its button and shows a spinner in it until the answer comes.

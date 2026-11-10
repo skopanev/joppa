@@ -43,7 +43,7 @@ export async function list() {
   if(state.ws&&!requested)history.replaceState({...history.state,workspace:state.ws},'',location.href);
   try{sessionStorage.setItem('joppa-workspace-title',list.find(w=>w.id===state.ws)?.title||'');}catch{}
   if (state.ws) await load();
-  else {state.data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask your workspace owner to grant access.'));}
+  else {state.data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask a member of the workspace to grant access.'));}
 }
 /// The rows of the old selection go away at once, so nobody can use them under the new selection.
 export function clearBoard(){$('tree').replaceChildren(E('p','Loading workspace…','object-loading hint'));}

@@ -45,7 +45,11 @@ pub const SOURCE_CHANGE_RESET: &str = "source_change_reset";
 /// never does. An older event compares its links in their older form in a replay.
 pub const RELATIONS_RESET: &str = "relations_reset";
 
-pub const REPLAY_RULES: [&str; 11] = [
+/// From this rule on, a new domain or capability is confirmed when any human member saves it.
+/// An older save keeps the older rule in a replay: only the creator of the workspace confirmed.
+pub const HUMAN_MEMBER_RIGHTS: &str = "human_member_rights";
+
+pub const REPLAY_RULES: [&str; 12] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -57,6 +61,7 @@ pub const REPLAY_RULES: [&str; 11] = [
     RENAME_KEEPS_RESULTS,
     SOURCE_CHANGE_RESET,
     RELATIONS_RESET,
+    HUMAN_MEMBER_RIGHTS,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

@@ -30,7 +30,7 @@ pub struct Workspace {
     pub object_aliases: BTreeMap<String, String>,
     #[serde(default)]
     pub objects: BTreeMap<String, crate::objects::Object>,
-    /// Owner redactions per object. The fragment itself stays only in the journal.
+    /// Member redactions per object. The fragment itself stays only in the journal.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub redactions: BTreeMap<String, Vec<crate::redact::Redaction>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -94,7 +94,7 @@ pub struct Workspace {
     /// The members who hid the workspace from their own web lists.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub hidden_by: std::collections::BTreeSet<String>,
-    /// The journal position of the owner's deletion. A deleted workspace has no members.
+    /// The journal position of the deletion. A deleted workspace has no members.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<u64>,
     pub domains: BTreeMap<String, Domain>,
