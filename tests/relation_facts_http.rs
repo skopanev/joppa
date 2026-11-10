@@ -35,13 +35,23 @@ async fn archive(w: &World, address: &str) -> Result<()> {
     Ok(())
 }
 
-/// The node `address` (doc:<id>), written through the store.
-async fn node(w: &World, address: &str) -> Result<()> {
-    let id = address.trim_start_matches("doc:");
-    let command = json!({"op":"save_object","kind":"doc","id":id,"revision":0,"parent":null,
-        "data":{"title":id,"owner":"owner"},"reason":"Fact target"});
-    let request = uuid::Uuid::new_v4().to_string();
-    joppa::store::execute_remote_input(&w.pool, &w.ws, "bot", &request, &command).await?;
+/// The nodes `addresses` (doc:<id>), written through the store in batches of 100.
+async fn nodes(w: &World, addresses: &[String]) -> Result<()> {
+    for chunk in addresses.chunks(100) {
+        let operations: Vec<joppa::store::BatchOperation> = chunk
+            .iter()
+            .map(|address| {
+                let id = address.trim_start_matches("doc:");
+                joppa::store::BatchOperation {
+                    reference: None,
+                    command: json!({"op":"save_object","kind":"doc","id":id,"revision":0,
+                        "parent":null,"data":{"title":id,"owner":"owner"},"reason":"Fact target"}),
+                }
+            })
+            .collect();
+        let request = uuid::Uuid::new_v4().to_string();
+        joppa::store::execute_remote_batch(&w.pool, &w.ws, "bot", &request, &operations).await?;
+    }
     Ok(())
 }
 
@@ -61,9 +71,7 @@ async fn relation_facts_are_kept_as_addresses_and_bad_facts_refused() -> Result<
     }
     archive(&w, "doc:x").await?;
     let others: Vec<String> = (0..201).map(|i| format!("doc:t{i:03}")).collect();
-    for other in &others {
-        node(&w, other).await?;
-    }
+    nodes(&w, &others).await?;
     let sql = "SELECT id FROM joppa.item_ids WHERE workspace=$1 AND kind='doc' AND local_id='f1'";
     let p1: String = w.pool.get().await?.query_one(sql, &[&w.ws]).await?.get(0);
     saved(&w, "doc:s", 0, facts(vec![json!(p1), json!("doc:f2")])).await?;
