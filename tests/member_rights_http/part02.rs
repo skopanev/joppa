@@ -94,7 +94,7 @@ async fn no_reply_help_or_refusal_names_a_workspace_owner() -> Result<()> {
     }
     // data.owner of an object stays.
     ensure!(
-        w.object("ac:a").await?["document"]["data"]["owner"] == "owner",
+        w.object("ac:a").await?["data"]["owner"] == "owner",
         "data.owner"
     );
     // Each caller of joppa_help is member or human member.
