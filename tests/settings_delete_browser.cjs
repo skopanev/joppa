@@ -14,7 +14,7 @@ test('owner-manages-workspace-ac4: Settings names the linking workspaces, shows 
     const request = f.page.context().request;
     // The signed-in member alex creates workspace D and adds one object to it.
     const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Doomed ' + crypto.randomUUID()}});
-    const {id: d} = await created.json();
+    const {id: d, title: doomed} = await created.json();
     const inD = await fetch(f.live.root + '/api/workspaces/' + d + '/commands', {method: 'POST',
       headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
       body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'save_object', kind: 'domain', id: 'api', revision: 0, parent: null,
@@ -53,6 +53,8 @@ test('owner-manages-workspace-ac4: Settings names the linking workspaces, shows 
     const held = new Promise(resolve => { release = resolve; });
     await f.page.route('**/api/workspaces/' + d + '/delete', async route => { await held; await route.continue(); });
     const confirm = f.page.getByRole('button', {name: 'Delete for everyone'});
+    // Delete for everyone waits for the exact title of the workspace.
+    await f.page.locator('#delete-title').fill(doomed);
     await confirm.click();
     await confirm.locator('.spinner').waitFor();
     assert.equal(await confirm.getAttribute('aria-busy'), 'true');
