@@ -123,7 +123,9 @@ the `data` node filter. Any other view in the link opens the tree.
     before (Previous) and after (Next) the node. The card of a step with facts adds the
     section Facts: one row for each fact in the stored order, with the status circle of its
     own tone, its title, the copy button of its ID and Open. The head circle shows the dot
-    tone, and Status the own status of the node. × or a click on the empty canvas clears it.
+    tone, and Status the own status of the node. The button "Collapse the card" in the head
+    hides every part below the head and keeps the pick and the marks; the card stays collapsed
+    for the next pick until "Expand the card". × or a click on the empty canvas clears it.
   - A filter or a search fades the nodes that do not match. The status line shows only the
     load, an error, `No node matches these filters.` and `No node holds this relation.`.
   - A drag pans and picks nothing. A wheel or a two-finger swipe pans, and a pinch (a wheel

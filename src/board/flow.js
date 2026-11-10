@@ -32,7 +32,8 @@ export async function renderFlowPage(root,generation){
   const description=E('p',undefined,'flow-description hint');
   const view=E('div',undefined,'flow-view'),card=E('aside',undefined,'flow-card');card.setAttribute('aria-label','Picked node');
   const say=text=>{status.textContent=text;status.hidden=!text;};
-  const ui={key:'',flow:null,nodes:new Map(),facts:new Map(),tones:new Map(),found:null,click:null,load:0,card,say};
+  // collapsed: the card shows only its head. It stays for the next pick.
+  const ui={key:'',flow:null,nodes:new Map(),facts:new Map(),tones:new Map(),found:null,click:null,collapsed:false,load:0,card,say};
   ui.pick=address=>{ui.click=address;paint(ui);};
   closeFlowPage();shown=ui;
   const [registry,titles]=await Promise.all([relationRegistry(),relationTitles()]);
@@ -122,7 +123,8 @@ function paint(ui){
   // The card head and the steps show the dot tone, Status the own tone of the node.
   const node=nodes.get(click),facts=factsOf(node,ui.key).map(a=>({address:a,...ui.facts.get(a)}));
   flowCard(ui.card,click?{address:click,node,label:labelOf(node,ui.key),edges:flow.edges,facts,pick:ui.pick,
-    nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>ui.tones.get(a)||toneOf(nodes.get(a)),ownTone:toneOf(node)}:{});
+    nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>ui.tones.get(a)||toneOf(nodes.get(a)),ownTone:toneOf(node),
+    collapsed:ui.collapsed,collapse:on=>{ui.collapsed=on;}}:{});
 }
 // The addresses that match the filters: the node list for the filters, the search for a text.
 // Both read every page of 25.

@@ -7,18 +7,28 @@
 import {E} from 'board/dom.js';
 import {objectURL} from 'board/links.js';
 import {copyButton} from 'board/clipboard.js';
+// The collapse button of the head hides every part below the head and keeps the pick and the
+// marks. The collapsed state stays for the next pick.
 // `flow` gives the picked `address`, its `node` with its `label`, the `edges` of the drawing,
 // its `facts` [{address, title, tone, item_id}], `nameOf(address)` and `toneOf(address)` (the
-// dot tone) of every node, the `ownTone` of the node, and `pick`.
+// dot tone) of every node, the `ownTone` of the node, `pick`, `collapsed` and `collapse(on)`.
 export function flowCard(card,flow){
-  const {address,node,label,edges,facts:listed=[],nameOf,toneOf,ownTone,pick}=flow;
+  const {address,node,label,edges,facts:listed=[],nameOf,toneOf,ownTone,pick,collapsed=false,collapse}=flow;
   card.replaceChildren();card.hidden=!address;card.dataset.address=address||'';
-  if(!address)return;
+  if(!address)return card.classList.remove('flow-card-collapsed');
   const close=E('button','×','flow-card-close');close.type='button';close.setAttribute('aria-label','Close the card');close.onclick=()=>pick(null);
   const open=E('a','Open →','flow-open');open.href=objectURL(address);
+  const fold=E('button',undefined,'flow-card-collapse');fold.type='button';
   const head=E('div',undefined,'flow-card-head');
-  head.append(E('span',undefined,'status-circle '+toneOf(address)),E('h3',label,'flow-card-title'),copyButton(node.item_id||address),open,close);
+  head.append(E('span',undefined,'status-circle '+toneOf(address)),E('h3',label,'flow-card-title'),copyButton(node.item_id||address),open,fold,close);
   const facts=E('dl',undefined,'flow-card-facts');
+  // The toggle changes only the card: no pick and no marks.
+  const show=on=>{
+    card.classList.toggle('flow-card-collapsed',on);facts.hidden=on;
+    fold.textContent=on?'▸':'▾';fold.setAttribute('aria-label',on?'Expand the card':'Collapse the card');fold.setAttribute('aria-expanded',String(!on));
+  };
+  fold.onclick=()=>{const on=!card.classList.contains('flow-card-collapsed');collapse?.(on);show(on);};
+  show(collapsed);
   const fact=(term,...values)=>{const dd=E('dd');dd.append(...values);facts.append(E('dt',term),dd);};
   fact('Object',node.title||address);fact('Address',address);fact('Status',node.signal?.label||ownTone||toneOf(address));
   const steps=(list,other)=>list.length?list.map(e=>step(e[other],e.when,nameOf,toneOf,pick)):[E('span','none','hint')];
