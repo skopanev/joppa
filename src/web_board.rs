@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 
 /// The board modules by file name. The page imports them through an import map, so each
 /// module names what it needs and the list order does not matter.
-pub(super) const BOARD_MODULES: [(&str, &str); 38] = [
+pub(super) const BOARD_MODULES: [(&str, &str); 40] = [
     ("account-menu.js", include_str!("board/account-menu.js")),
     ("api.js", include_str!("board/api.js")),
     ("board.js", include_str!("board/board.js")),
@@ -19,7 +19,9 @@ pub(super) const BOARD_MODULES: [(&str, &str); 38] = [
     ("flow.js", include_str!("board/flow.js")),
     ("flow-camera.js", include_str!("board/flow-camera.js")),
     ("flow-card.js", include_str!("board/flow-card.js")),
+    ("flow-color.js", include_str!("board/flow-color.js")),
     ("flow-draw.js", include_str!("board/flow-draw.js")),
+    ("flow-facts.js", include_str!("board/flow-facts.js")),
     ("flow-layout.js", include_str!("board/flow-layout.js")),
     ("filter-fields.js", include_str!("board/filter-fields.js")),
     ("history.js", include_str!("board/history.js")),

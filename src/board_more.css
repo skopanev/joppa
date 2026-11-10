@@ -183,6 +183,8 @@ dialog::backdrop{background:#22222240}
 .flow-canvas:active{cursor:grabbing}
 .flow-edge{fill:none;stroke:var(--muted);stroke-width:1.25px;vector-effect:non-scaling-stroke;opacity:.38}
 .flow-back{stroke-dasharray:5 4}
+/* A coloured edge (flow-color.js) has an inline stroke; a lit one keeps it. */
+.flow-colored{opacity:.6}
 .flow-arrow-head{fill:var(--muted)}
 .flow-node{stroke:var(--bg);stroke-width:1.5px;cursor:pointer}
 /* The text keeps its screen size up to 1.6 world units for one pixel (MOST of flow-draw.js),
@@ -206,3 +208,5 @@ dialog::backdrop{background:#22222240}
 .flow-card-facts dd{display:flex;flex-wrap:wrap;gap:.3rem;margin:0;min-width:0;overflow-wrap:anywhere}
 .flow-step{display:inline-flex;align-items:center;gap:.3rem;padding:.1rem .45rem;border:1px solid var(--rule);background:var(--bg);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
 .flow-step:hover{border-color:var(--heading);color:var(--heading)}
+.flow-fact{display:flex;flex-basis:100%;align-items:baseline;gap:.4rem;min-width:0}
+.flow-fact-title{flex:1;min-width:0;overflow-wrap:anywhere}

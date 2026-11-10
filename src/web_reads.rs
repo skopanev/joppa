@@ -1,5 +1,7 @@
 //! Read routes: the board, objects, History and the tree.
 use super::*;
+#[path = "web_reads_many.rs"]
+mod many;
 
 pub(super) async fn read(
     State(app): State<App>,
@@ -120,6 +122,10 @@ pub(super) async fn objects(
             .map(str::to_owned)
             .collect()
     });
+    if let Some(list) = q.address.as_deref().filter(|a| a.contains(',')) {
+        let (other, fields) = (q.other_keys(), fields.as_deref());
+        return result(many::read(&app.pool, &workspace, &actor, list, &other, fields).await);
+    }
     let data = fields
         .as_deref()
         .is_some_and(joppa::read_compact::needs_data);

@@ -13,6 +13,9 @@ use std::collections::BTreeMap;
 #[path = "relations_check.rs"]
 mod check;
 pub use check::*;
+#[path = "relations_color.rs"]
+mod colors;
+pub use colors::*;
 #[path = "relations_schema.rs"]
 mod schema;
 pub use schema::*;
@@ -26,7 +29,9 @@ pub const RELATED: &str = "related";
 /// The relations of one node by key.
 pub type Relations = BTreeMap<String, Relation>;
 
-/// One key of the relations of a node. A key without edges stays: it counts as used.
+/// One key of the relations of a node. A key without edges stays: it counts as used. The
+/// colour of the key and its facts (addresses of objects that the step shows) are optional,
+/// and a stored key without them reads without them.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Relation {
@@ -34,9 +39,18 @@ pub struct Relation {
     pub title: Option<String>,
     #[serde(default)]
     pub edges: Vec<Edge>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "color"
+    )]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<String>,
 }
 
-/// One edge: the target, the condition of a flow step, and the pinned target revision.
+/// One edge: the target, the condition of a flow step, the pinned target revision and the
+/// colour of the edge.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(from = "EdgeInput")]
 pub struct Edge {
@@ -45,6 +59,8 @@ pub struct Edge {
     pub when: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// An edge as a write sends it. A detail read gives each edge with the title, the current
@@ -57,6 +73,8 @@ struct EdgeInput {
     when: Option<String>,
     #[serde(default)]
     revision: Option<u32>,
+    #[serde(default, deserialize_with = "color")]
+    color: Option<String>,
     #[serde(default, rename = "title")]
     _title: serde::de::IgnoredAny,
     #[serde(default, rename = "current_revision")]
@@ -71,6 +89,7 @@ impl From<EdgeInput> for Edge {
             to: e.to,
             when: e.when,
             revision: e.revision,
+            color: e.color,
         }
     }
 }
@@ -90,6 +109,7 @@ pub fn from_links(links: &[ObjectLink]) -> Relations {
                 to: link.target.clone(),
                 when: None,
                 revision: link.revision,
+                color: None,
             });
         }
     }
@@ -203,6 +223,7 @@ impl ObjectRevision {
                 to: target.to_owned(),
                 when: None,
                 revision: None,
+                color: None,
             });
         }
     }

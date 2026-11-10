@@ -3,16 +3,28 @@
 ## Relations in one workspace
 
 A node holds `relations`: one key for each relation of the registry, with an optional `title`
-of the node for that relation and its `edges`. An edge is `{"to", "when"?, "revision"?}`:
-the target address or public item ID, the condition of a flow step, and the pinned target
-revision. A relation does not change the parent of a node.
+of the node for that relation, its `edges`, an optional `color` and optional `facts`. An edge
+is `{"to", "when"?, "revision"?, "color"?}`: the target address or public item ID, the
+condition of a flow step, the pinned target revision and the colour of the edge. A relation
+does not change the parent of a node.
 
 ```json
 {"relations": {
   "depends_on": {"edges": [{"to": "ac:ledger-table"}]},
   "related": {"edges": [{"to": "source:limits", "revision": 3}]},
-  "swap": {"title": "Enter amount", "edges": [{"to": "ac:pin-screen", "when": "limit ok"}]}}}
+  "swap": {"title": "Enter amount", "color": "teal", "facts": ["ac:limit-rule"],
+           "edges": [{"to": "ac:pin-screen", "when": "limit ok", "color": "#aa0000"}]}}}
 ```
+
+- `color` is one of the palette names `blue`, `purple`, `teal`, `amber`, `pink`, `indigo`,
+  `cyan`, `lime`, or `#rrggbb` in either case. The server stores `#rrggbb` in lower case. Any
+  other value is refused: `color is blue, purple, teal, amber, pink, indigo, cyan, lime or #rrggbb`.
+- `facts` lists at most 200 objects of this workspace that the step shows, each an address or
+  a public item ID. The server stores each as `kind:id`, in the sent order. The refusals are
+  `unknown linked object in this workspace`, `linked object is absent from the current tree`
+  (an archived object that is not a stored fact of the key), `a fact is listed twice`,
+  `a node is not its own fact` and `a relation holds at most 200 facts`.
+- A save that omits `color` or `facts` stores none, and a read gives them only when set.
 
 - `depends_on` makes the node wait until the target is green. Cycles are refused, also through
   inherited parent dependencies. A new revision of the target asks for no review.
@@ -25,7 +37,7 @@ criteria below it and each is green. An archived target does not make work wait.
 rule `links`, a typed field with `from: links` and the source reset count depends_on and
 related edges, never a flow. `related_to` lists the depends_on, related and reference neighbours, never a flow neighbour.
 
-A save merges `relations` by key: a sent key replaces its `title` and `edges`, `null` removes
+A save merges `relations` by key: a sent key replaces its `title`, `edges`, `color` and `facts`, `null` removes
 the key, and the other keys stay. A key with `edges: []` stays and counts as used. A node holds
 at most 64 keys, a key at most 200 edges, and a `title` or a `when` at most 200 characters.
 A key that the registry does not have is refused: `unknown link relation`. The removed field

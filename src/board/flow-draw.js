@@ -7,10 +7,13 @@
 // - The condition `when` of an edge stands in one line on the first part of the edge, and
 //   touches no other condition. Every label shows.
 // - Under the label of a node, one transfer badge names each other relation of the node.
+// - A coloured edge (flow-color.js) has its stroke and an arrow head marker of its colour. An
+//   uncoloured edge keeps the shared marker #flow-arrow.
 // - A drag from any place pans the view and picks nothing. The dots keep their place.
 // - A click with no drag picks a dot or a label, opens a badge, or clears on the canvas.
 import {flowCamera} from 'board/flow-camera.js';
 import {flowLayout,wrapLabel,apartWhens} from 'board/flow-layout.js';
+import {flowColors,paint,colorMarker} from 'board/flow-color.js';
 const SVG='http://www.w3.org/2000/svg';
 // The dot radius, the space of a curve from its dots, and the first label line under a dot.
 const RADIUS=9,GAP=3,LABEL=RADIUS+19;
@@ -28,14 +31,16 @@ function svg(tag,attributes={},cls){
   return element;
 }
 const at=n=>n.toFixed(1);
-// `nodes` come in address order: {address, tone, label, badges: [{key, title}]}. Each edge is
-// {from, to, when} in its stored order. `on` gives pick(address) and transfer(key, address).
+// `nodes` come in address order: {address, tone, label, color, badges: [{key, title}]}. Each
+// edge is {from, to, when, color} in its stored order. `on` gives pick(address) and
+// transfer(key, address).
 // The canvas goes into `holder` before the fit, so the camera can read its box.
 export function drawFlow(holder,nodes,edges,on){
   // Edge order: the sources in address order, then the stored order.
   const index=new Map(nodes.map((n,i)=>[n.address,i]));
   edges=[...edges].sort((a,b)=>index.get(a.from)-index.get(b.from));
-  const {position}=flowLayout(nodes.map(n=>n.address),edges);
+  const {position,column}=flowLayout(nodes.map(n=>n.address),edges);
+  flowColors(nodes,edges,column);
   const canvas=svg('svg',{role:'img','aria-label':'Flow of the relation'},'flow-canvas');
   const defs=svg('defs'),marker=svg('marker',{id:'flow-arrow',viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
   marker.append(svg('path',{d:'M0 0L10 5L0 10z'},'flow-arrow-head'));defs.append(marker);
@@ -65,7 +70,9 @@ export function drawFlow(holder,nodes,edges,on){
   const drawn=edges.map(edge=>{
     const a=position.get(edge.from),b=position.get(edge.to);
     const {d,mid}=edge.back?arc(a,b):curve(a,b,edge.via);
-    const element=svg('path',{d,'marker-end':'url(#flow-arrow)'},'flow-edge'+(edge.back?' flow-back':''));
+    const color=paint(edge.color),head=color?colorMarker(defs,marker,edge.color):'flow-arrow';
+    const element=svg('path',{d,'marker-end':'url(#'+head+')'},'flow-edge'+(edge.back?' flow-back':'')+(color?' flow-colored':''));
+    if(color)element.style.stroke=color;
     element.dataset.from=edge.from;element.dataset.to=edge.to;lines.append(element);
     return {...edge,element,label:null,mid};
   });

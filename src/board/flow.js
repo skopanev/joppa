@@ -5,6 +5,8 @@
 // - The board reads the members of the relation (in_relation) in pages of 25 and draws them
 //   (flow-draw.js). A depends_on arrow goes from the blocker to the node that waits. The arrow
 //   of every other relation goes from the node to its target.
+// - Then the board reads the facts of the steps (flow-facts.js). The dots and the card show
+//   after every read ends. A dot takes the worst tone of its step and the facts.
 // - A click lights the node, its neighbours and their edges, and fades the rest. The card
 //   (flow-card.js) shows the node. A transfer badge opens the other relation at the node.
 // - A filter or a search fades the nodes that do not match. It fades no edge.
@@ -16,6 +18,7 @@ import {commonObjectFilters,matches} from 'board/filters.js';
 import {relationRegistry,relationTitles} from 'board/relations.js';
 import {drawFlow} from 'board/flow-draw.js';
 import {flowCard} from 'board/flow-card.js';
+import {factsOf,readFacts,rolledTone,hiddenFacts} from 'board/flow-facts.js';
 const FIELDS='title,signal,relations,item_id';
 // The shown page. A new board render closes it first.
 let shown=null;
@@ -29,7 +32,7 @@ export async function renderFlowPage(root,generation){
   const description=E('p',undefined,'flow-description hint');
   const view=E('div',undefined,'flow-view'),card=E('aside',undefined,'flow-card');card.setAttribute('aria-label','Picked node');
   const say=text=>{status.textContent=text;status.hidden=!text;};
-  const ui={key:'',flow:null,nodes:new Map(),found:null,click:null,load:0,card,say};
+  const ui={key:'',flow:null,nodes:new Map(),facts:new Map(),tones:new Map(),found:null,click:null,load:0,card,say};
   ui.pick=address=>{ui.click=address;paint(ui);};
   closeFlowPage();shown=ui;
   const [registry,titles]=await Promise.all([relationRegistry(),relationTitles()]);
@@ -58,7 +61,7 @@ export async function renderFlowPage(root,generation){
     const mine=++ui.load,current=()=>live()&&mine===ui.load;
     description.textContent=registry[key]?.description||'';description.hidden=!description.textContent;
     ui.flow?.camera.destroy();ui.flow?.canvas.remove();ui.flow=null;ui.click=null;flowCard(card,{});say('Loading nodes…');
-    const nodes=new Map();let cursor;
+    const nodes=new Map();let cursor,facts;
     try{
       do{
         const part=await objectPart({in_relation:key,fields:FIELDS,limit:PAGE,...(cursor?{cursor}:{})});
@@ -66,12 +69,16 @@ export async function renderFlowPage(root,generation){
         for(const item of part.items)nodes.set(item.address,item);
         say('Loading nodes… '+nodes.size+' of '+part.total);cursor=part.next_cursor;
       }while(cursor);
+      facts=await readFacts(nodes,key,current,toneOf);if(!facts)return;
     }catch(e){if(current())say(e.message);return;}
-    ui.key=key;ui.nodes=nodes;
+    ui.key=key;ui.nodes=nodes;ui.facts=facts;
     if(!nodes.size)return say('No node holds this relation.');
-    const items=[...nodes.values()].map(node=>({address:node.address,tone:toneOf(node),label:labelOf(node,key),badges:badges(node,key,registry,titles)}));
-    ui.flow=drawFlow(view,items,flowEdges(nodes,key),{pick:ui.pick,transfer:ui.transfer});
-    ui.click=address&&nodes.has(address)?address:null;
+    const edges=flowEdges(nodes,key),hidden=hiddenFacts(nodes,key,edges);
+    ui.tones=new Map([...nodes.values()].map(node=>[node.address,rolledTone(toneOf(node),factsOf(node,key).map(a=>facts.get(a)?.tone))]));
+    const items=[...nodes.values()].filter(node=>!hidden.has(node.address)).map(node=>({address:node.address,tone:ui.tones.get(node.address),
+      label:labelOf(node,key),color:node.relations?.[key]?.color,badges:badges(node,key,registry,titles)}));
+    ui.flow=drawFlow(view,items,edges,{pick:ui.pick,transfer:ui.transfer});
+    ui.click=address&&ui.flow.parts.has(address)?address:null;
     paint(ui);
   };
   view.append(card);page.append(description,status,view);root.append(page);
@@ -92,7 +99,7 @@ function flowEdges(nodes,key){
   for(const node of nodes.values())for(const edge of node.relations?.[key]?.edges||[]){
     if(!nodes.has(edge.to))continue;
     const [from,to]=key==='depends_on'?[edge.to,node.address]:[node.address,edge.to];
-    list.push({from,to,when:edge.when||''});
+    list.push({from,to,when:edge.when||'',color:edge.color||null});
   }
   return list;
 }
@@ -112,9 +119,10 @@ function paint(ui){
     for(const element of [e.element,e.label])if(element){element.classList.toggle('flow-lit',lit);element.classList.toggle('flow-faint',Boolean(click&&!lit));}
   }
   ui.say(matching?'':'No node matches these filters.');
-  const node=nodes.get(click);
-  flowCard(ui.card,click?{address:click,node,label:labelOf(node,ui.key),edges:flow.edges,pick:ui.pick,
-    nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>toneOf(nodes.get(a))}:{});
+  // The card head and the steps show the dot tone, Status the own tone of the node.
+  const node=nodes.get(click),facts=factsOf(node,ui.key).map(a=>({address:a,...ui.facts.get(a)}));
+  flowCard(ui.card,click?{address:click,node,label:labelOf(node,ui.key),edges:flow.edges,facts,pick:ui.pick,
+    nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>ui.tones.get(a)||toneOf(nodes.get(a)),ownTone:toneOf(node)}:{});
 }
 // The addresses that match the filters: the node list for the filters, the search for a text.
 // Both read every page of 25.
