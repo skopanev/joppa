@@ -182,6 +182,8 @@ test('owner-manages-workspace-ac2: alex deletes an owned workspace in Settings a
     await f.page.getByRole('button', {name: 'Cancel'}).click();
     assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 200);
     await f.page.getByRole('button', {name: 'Delete workspace'}).click();
+    // Delete for everyone waits for the exact title of the workspace.
+    await f.page.locator('#delete-title').fill(title);
     const deleted = f.page.waitForResponse(r => r.url().endsWith('/delete') && r.request().method() === 'POST');
     await f.page.getByRole('button', {name: 'Delete for everyone'}).click();
     assert.equal((await deleted).status(), 200);
