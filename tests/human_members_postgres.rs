@@ -27,7 +27,8 @@ async fn pool() -> Result<deadpool_postgres::Pool> {
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
-    // ac:267133e7: the owner of W sends member lane-1 with role agent, then with role runner.
+    // ac:267133e7: human member alex of W, who did not create W, sends member lane-1 with role
+    // agent, then with role runner.
     let pool = pool().await?;
     let ws = format!("members-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
@@ -36,6 +37,14 @@ async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
         "owner",
         "workspace",
         &json!({"op":"workspace","title":"Members"}),
+    )
+    .await?;
+    store::execute_input(
+        &pool,
+        &ws,
+        "owner",
+        "alex",
+        &json!({"op":"member","id":"alex","role":"human"}),
     )
     .await?;
     let members = |pool: deadpool_postgres::Pool, ws: String| async move {
@@ -48,7 +57,7 @@ async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
         let error = store::execute_remote_input(
             &pool,
             &ws,
-            "owner",
+            "alex",
             &uuid::Uuid::new_v4().to_string(),
             &json!({"op":"member","id":"lane-1","role":role}),
         )
@@ -63,7 +72,7 @@ async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
     let error = store::execute_remote_input(
         &pool,
         &ws,
-        "owner",
+        "alex",
         "epoch",
         &json!({"op":"member","id":"lane-1","role":"agent","epoch":0}),
     )
@@ -77,7 +86,7 @@ async fn a_member_command_refuses_agent_and_runner_roles() -> Result<()> {
     let error = store::execute_remote_input(
         &pool,
         &ws,
-        "owner",
+        "alex",
         "service",
         &json!({"op":"enroll_service","id":"lane-1","role":"agent"}),
     )

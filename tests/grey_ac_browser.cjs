@@ -132,7 +132,7 @@ async function fixture(records, configured = types, contextOptions = {}) {
   try {
     await command({op: 'member', id: 'alex', role: 'human'}, true);
     const schema = await api('/tree');
-    // Only the workspace owner sets the tree schema, archives and restores.
+    // The fixture creator sets the tree schema. Archives and restores also use its token.
     await command({op: 'set_tree_schema', revision: schema.current_revision, types: configured, reason: 'Configure the browser tree'}, true);
     for (const [address, record] of Object.entries(records)) await save(address, record);
   } catch (error) { await close(); throw error; }

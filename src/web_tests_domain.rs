@@ -1,4 +1,4 @@
-// Domain grants: a human member adds a domain, refusals and repeats.
+// Domain grants: a member adds a domain, refusals and repeats.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 // owner-adds-members-ac9
 #[tokio::test]
@@ -122,14 +122,18 @@ async fn owner_adds_a_domain_and_its_google_people_read_w_as_members() -> Result
 
 #[tokio::test]
 #[ignore = "requires isolated test database"]
-async fn a_non_owner_or_an_invalid_domain_leaves_w_unchanged() -> Result<()> {
+async fn a_member_who_did_not_create_w_adds_a_domain_and_an_invalid_domain_leaves_w_unchanged()
+-> Result<()> {
     let app = test_app().await?;
     let pool = &app.pool;
     let id = uuid::Uuid::new_v4().simple().to_string();
     let (sam, alex, w) = (format!("sam-{id}"), format!("alex-{id}"), format!("w-{id}"));
     create(pool, &w, &sam).await?;
-    // Every human member adds a domain, so the refused member is the agent alex.
-    store::enroll_service(pool, &w, &sam, &alex, "agent").await?;
+    let member = Command::Member {
+        id: alex.clone(),
+        role: "human".into(),
+    };
+    store::execute(pool, &w, &sam, "add-alex", &member).await?;
     let (sam_cookie, alex_cookie) = (
         session_for(pool, &sam).await?,
         session_for(pool, &alex).await?,
@@ -137,11 +141,24 @@ async fn a_non_owner_or_an_invalid_domain_leaves_w_unchanged() -> Result<()> {
     let before = members_and_grants(&app, &w, &sam_cookie).await;
     assert_eq!(
         before,
-        (json!({sam.clone():"human", alex.clone():"agent"}), vec![])
+        (json!({sam.clone():"human", alex.clone():"human"}), vec![])
     );
-    let reply = plain(add_domain(&app, &alex_cookie, &w, "healthium.one").await);
-    let human_required = json!({"error":"a human member of the workspace is required"});
-    assert_eq!(reply, Err((StatusCode::CONFLICT, human_required)));
+    // alex, a human member who did not create W, adds a domain. The domain has the test ID,
+    // so the people of other tests in this database get no access to W.
+    let domain = format!("example-{id}.org");
+    let reply = plain(add_domain(&app, &alex_cookie, &w, &domain).await);
+    assert_eq!(reply, Ok(json!({"workspace":w,"domain":domain})));
+    let added = (
+        json!({sam.clone():"human", alex.clone():"human"}),
+        vec![format!("domain {domain}")],
+    );
+    for cookie in [&sam_cookie, &alex_cookie] {
+        assert_eq!(members_and_grants(&app, &w, cookie).await, added);
+    }
+    let before = added;
+    let reply = plain(add_domain(&app, &alex_cookie, &w, "healthium").await);
+    let refused = json!({"error":"a valid email domain is required"});
+    assert_eq!(reply, Err((StatusCode::UNPROCESSABLE_ENTITY, refused)));
     assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, before);
     let invalid = [
         "healthium",

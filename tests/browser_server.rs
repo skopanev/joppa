@@ -101,6 +101,13 @@ async fn serve() -> Result<()> {
         uuid::Uuid::new_v4().simple()
     );
     sessions::create(&pool, &maria_cookie, &maria, None).await?;
+    // A browser session of bob (actor owner), who created the fixture workspace.
+    let owner_cookie = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    sessions::create(&pool, &owner_cookie, "owner", None).await?;
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();
@@ -169,7 +176,7 @@ async fn serve() -> Result<()> {
     }
     println!(
         "JOPPA_BROWSER_READY {}",
-        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie,"maria":maria,"maria_email":maria_email,"maria_cookie":maria_cookie})
+        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie,"maria":maria,"maria_email":maria_email,"maria_cookie":maria_cookie,"owner_cookie":owner_cookie})
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;

@@ -81,21 +81,23 @@ async fn released(pool: &deadpool_postgres::Pool, p: &str, k: &str) -> Result<()
 async fn owner_manages_workspace_ac4_a_deletion_names_and_removes_the_links_of_other_workspaces()
 -> Result<()> {
     let (pool, p, c, k) = linked().await?;
-    // Before the deletion, the owner reads the workspaces that link to C. A member cannot.
-    let listed = store::workspace_references(&pool, &c, "owner").await?;
+    // Before the deletion, alex, a human member who did not create C, reads the workspaces
+    // that link to C. The agent bot cannot.
+    let listed = store::workspace_references(&pool, &c, "alex").await?;
     let expected = json!([{"id":p,"title":"product","objects":["domain:backend","note:n"]}]);
     ensure!(listed["workspaces"] == expected, "{listed}");
+    let refused = store::workspace_references(&pool, &c, "bot").await;
     ensure!(
-        store::workspace_references(&pool, &c, "alex")
-            .await
-            .is_err(),
-        "a member read the references"
+        refused.as_ref().is_err_and(|e| e
+            .to_string()
+            .contains("a human member of the workspace is required")),
+        "the agent read the references: {refused:?}"
     );
     let deleted = write(
         &pool,
         &c,
-        "owner",
-        json!({"op":"delete_workspace","reason":"Owner order"}),
+        "alex",
+        json!({"op":"delete_workspace","reason":"Member order"}),
     )
     .await?;
     ensure!(deleted["removed_references"] == expected, "{deleted}");

@@ -12,7 +12,7 @@ const path = require('node:path');
 module.exports = shared => {
   const {server, fixture, criterionRecords, types, root, titlePoint, markdownTypes, markdownBody} = shared;
 
-test('create-workspace-ac1: alex creates Billing on the settings page and owns it', async () => {
+test('create-workspace-ac1: alex creates Billing on the settings page and is its only member', async () => {
   const f = await fixture({'domain:d': {title: 'Existing domain'}});
   try {
     const request = f.page.context().request;
@@ -43,16 +43,20 @@ test('create-workspace-ac1: alex creates Billing on the settings page and owns i
     assert.ok(opened.url().endsWith('/api/workspaces/' + encodeURIComponent(id) + '/board'));
     assert.notEqual(id, f.live.ws);
     assert.equal(await f.page.locator('#workspaces').inputValue(), id);
-    // The access rules name only the fixture workspace, so ownership gives alex Billing.
+    // The access rules name only the fixture workspace: the creator lists Billing as its member.
     const list = await (await request.get(f.live.root + '/api/workspaces')).json();
     assert.deepEqual(list.filter(w => w.title === 'Billing'), [{id, title: 'Billing'}]);
     const read = await request.get(f.live.root + '/api/workspaces/' + id);
     assert.equal(read.status(), 200);
-    const index = (await read.json()).index;
-    assert.equal(index.owner, 'alex');
-    assert.deepEqual(Object.keys(index.members), ['alex']);
+    const body = await read.json(), index = body.index;
+    // alex is the only member, with the role human. The read has no owner and no admin field.
+    assert.deepEqual(index.members, {alex: 'human'});
+    for (const part of [index, body.state || {}]) {
+      assert.equal('owner' in part, false, JSON.stringify(part));
+      assert.equal('admin' in part, false, JSON.stringify(part));
+    }
     assert.equal((await request.get(f.live.root + '/api/workspaces/' + id + '/board')).status(), 200);
-    // The fixture owner is not a member of Billing.
+    // bob (actor owner), the creator of the fixture workspace, is not a member of Billing.
     const other = await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}});
     assert.equal(other.status, 404);
     assert.deepEqual(await other.json(), {error: 'Workspace not found'});
@@ -70,11 +74,13 @@ test('owner-adds-members-ac1: alex adds maria@example.com to an owned workspace 
     const workspace = f.page.getByLabel('Workspace', {exact: true}), email = f.page.getByLabel('Email or domain');
     const add = f.page.getByRole('button', {name: 'Add', exact: true});
     await workspace.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
-    // The fixture workspace is offered, but alex does not own it, so it has no add field.
+    // alex did not create the fixture workspace and is a member of it: the add field shows on it too.
     await workspace.selectOption(f.live.ws);
-    await f.page.locator('#not-owner').waitFor();
-    assert.equal(await email.isVisible(), false);
+    await email.waitFor({state: 'visible'});
+    assert.equal(await f.page.locator('#not-owner').count(), 0);
+    assert.equal(await f.page.locator('.owner-mark').count(), 0);
     await workspace.selectOption(id);
+    await email.waitFor({state: 'visible'});
     // A value with "@" is an email, so a malformed email gets the email error.
     await email.fill('maria@');
     await add.click();

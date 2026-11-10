@@ -1,4 +1,4 @@
-//! The owner read of the workspaces that name a workspace: the owner check reads one row and
+//! The member read of the workspaces that name a workspace: the member check reads one row and
 //! loads no current state, and the lookup of the naming workspaces reads indexes. The lookup
 //! statement comes from src/store_references.rs at build time, so the test plans the statement
 //! of the code. The tests read a process-wide probe counter: they run one at a time.
@@ -27,12 +27,13 @@ async fn the_references_read_of_an_unnamed_workspace_loads_no_current_state() ->
     println!("{}", json!({"state_loads":loads,"reply":reply}));
     ensure!(reply["workspaces"] == json!([]), "{reply}");
     ensure!(loads == 0, "the read loaded {loads} current states");
-    // The owner check reads the owner from the meta row: a member is not the owner.
+    // The member check refuses the agent bot, and the refusal names no workspace owner.
     let refused = store::workspace_references(&pool, &ws, "bot").await;
     ensure!(
-        refused
-            .as_ref()
-            .is_err_and(|e| e.to_string().contains("owner")),
+        refused.as_ref().is_err_and(|e| {
+            let text = e.to_string();
+            text.contains("a human member of the workspace is required") && !text.contains("owner")
+        }),
         "{refused:?}"
     );
     Ok(())

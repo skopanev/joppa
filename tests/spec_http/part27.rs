@@ -99,8 +99,9 @@ async fn check_callers(
         if token == w.bot {
             categories.push("agent");
         }
-        if token == w.owner {
-            categories.push("workspace owner");
+        // owner, alex and maria are the human members. bot is an agent.
+        if token == w.owner || token == w.alex || token == w.maria {
+            categories.push("human member");
         }
         if Some(token) == holder {
             categories.push("holder");
@@ -117,7 +118,9 @@ async fn check_callers(
         refused += 1;
         let (ok, reply) = send_as(w, token, &command).await?;
         ensure!(
-            !ok && reply["error"].as_str().is_some_and(|e| e.contains(refusal)),
+            !ok && reply["error"]
+                .as_str()
+                .is_some_and(|e| e.contains(refusal) && !e.contains("owner")),
             "{name}: {reply}"
         );
     }

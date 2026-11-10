@@ -12,8 +12,8 @@ const path = require('node:path');
 module.exports = shared => {
   const {server, fixture, criterionRecords, types, root, titlePoint, markdownTypes, markdownBody} = shared;
 
-// Alex owns W1. The fixture workspace is W2: the fixture owner owns it and alex is only a member.
-test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces', async () => {
+// Alex created W1. The fixture workspace is W2: bob (actor owner) created it, and alex and bob are its human members.
+test('settings-in-name-menu-ac2: Settings shows the people of each workspace of the person', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   try {
     const request = f.page.context().request;
@@ -41,37 +41,40 @@ test('settings-in-name-menu-ac2: Settings shows members only of owned workspaces
       const select = f.page.getByLabel('Workspace', {exact: true});
       await select.locator('option[value="' + owned + '"]').waitFor({state: 'attached'});
       await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
+      await f.page.waitForLoadState('networkidle');
       f.page.off('request', record);
-      // The page reads two lists, no single workspace and no name of the person.
-      assert.deepEqual(reads.sort(), ['/api/access', '/api/workspaces']);
+      // The page reads exactly three lists: the workspaces, the access of the person and the person.
+      assert.deepEqual(reads.sort(), ['/api/access', '/api/me', '/api/workspaces']);
       await select.selectOption(owned);
       // One list holds the members, then the emails that have not signed in.
       // Maria has a Google identity, so her row shows "name <email>", and her email grant has no second row.
       const members = f.page.getByRole('list', {name: 'People with access', exact: true});
+      const removable = () => members.locator('li').evaluateAll(rows => rows.map(r => !!r.querySelector('button.remove')));
       assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(),
         ['alex', 'Maria Petrova <' + f.live.maria_email + '>', 'pending@example.com (invited)']);
-      // The owner row has no Remove; every other row has one.
-      assert.deepEqual(await members.locator('li').evaluateAll(rows => rows.map(r => !!r.querySelector('button.remove'))), [false, true, true]);
-      assert.equal(await f.page.locator('#owner-panel ul').count(), 1);
-      const panel = f.page.locator('#workspace-panel');
+      // The row of alex, the signed-in person, has no Remove. Every other row has one.
+      assert.deepEqual(await removable(), [false, true, true]);
       for (const item of [select, members, ...await members.locator('li').all()]) {
         assert.ok(inside(await item.boundingBox(), width));
       }
-      // W2 shows no member list and no people control, only the checkbox #hide-workspace.
+      // W2 shows the same controls: its people alex and bob, the field "Email or domain" and #hide-workspace.
       await select.selectOption(f.live.ws);
-      await f.page.locator('#not-owner').waitFor();
-      assert.equal(await f.page.locator('#not-owner').innerText(), 'Only the owner of this workspace manages its people.');
+      await members.locator('li').filter({hasText: 'owner'}).waitFor();
+      assert.deepEqual(await members.locator('li > span:first-child').allInnerTexts(), ['alex', 'owner']);
+      assert.deepEqual(await removable(), [false, true]);
+      await f.page.getByLabel('Email or domain').waitFor({state: 'visible'});
       await f.page.locator('#hide-workspace').waitFor({state: 'visible', timeout: 5000});
-      assert.equal(await panel.locator('ul:visible, form:visible:not(:has(#hide-workspace)), button:visible, input:visible:not(#hide-workspace)').count(), 0);
+      assert.equal(await f.page.locator('#not-owner').count(), 0);
+      assert.equal(await f.page.locator('.owner-mark').count(), 0);
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth) <= width);
     }
-    // A failed owned read keeps the drop-down and shows the server error once.
+    // A failed access read keeps the drop-down and shows the server error once.
     await f.page.route(f.live.root + '/api/access', route => route.fulfill({status: 500,
-      contentType: 'application/json', body: JSON.stringify({error: 'owned read unavailable'})}));
+      contentType: 'application/json', body: JSON.stringify({error: 'access read unavailable'})}));
     await f.page.reload();
-    await f.page.locator('#workspace-error').filter({hasText: 'owned read unavailable'}).waitFor();
+    await f.page.locator('#workspace-error').filter({hasText: 'access read unavailable'}).waitFor();
     assert.ok(await f.page.locator('#workspace-select option').count() >= 2);
-    assert.equal(await f.page.locator('#owner-panel').isVisible(), false);
+    assert.equal(await f.page.getByRole('list', {name: 'People with access', exact: true}).locator('li').count(), 0);
   } finally { await f.close(); }
 });
 
@@ -81,8 +84,11 @@ test('owner-manages-workspace-ac3: alex removes a member, an email and a domain 
   const person = await shared.browser.newContext({reducedMotion: 'reduce'});
   try {
     const request = f.page.context().request;
-    const {id} = await (await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Shared ' + crypto.randomUUID()}})).json();
-    // The person signs in with the granted email and becomes a member.
+    // bob (actor owner) created the fixture workspace W. alex is a human member who did not create it.
+    const id = f.live.ws;
+    const bobRead = async () => (await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}})).status;
+    assert.equal(await bobRead(), 200);
+    // The person P signs in with the granted email and becomes a member.
     assert.equal((await request.post(f.live.root + '/api/email-grants', {headers: {Origin: f.live.root}, data: {workspace: id, email: 'alex@example.com'}})).status(), 200);
     await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
     const page = await person.newPage();
@@ -98,10 +104,13 @@ test('owner-manages-workspace-ac3: alex removes a member, an email and a domain 
     await select.selectOption(id);
     const rows = f.page.locator('#workspace-people li');
     const texts = () => rows.locator(':scope > span:first-child').allInnerTexts();
-    assert.equal((await texts()).length, 4, JSON.stringify(await texts()));
-    // The owner row has no Remove.
-    assert.equal(await rows.first().locator('button').count(), 0);
-    // Remove the member: the person loses the workspace at the next request.
+    // The rows: alex, P, bob, the invited email and the domain. The agent bot has no row.
+    await rows.filter({hasText: 'example.org'}).waitFor();
+    assert.equal((await texts()).length, 5, JSON.stringify(await texts()));
+    // The row of alex has no Remove, and every other row has Remove.
+    assert.deepEqual(await rows.evaluateAll(list => list.map(r => !!r.querySelector('button.remove'))), [false, true, true, true, true]);
+    assert.equal(await f.page.locator('.owner-mark').count(), 0);
+    // Remove the member P: P loses the workspace at the next request.
     const member = rows.filter({hasText: 'alex@example.com'}).filter({hasNot: f.page.locator('text=(invited)')});
     await member.getByRole('button', {name: /^Remove /}).click();
     await member.waitFor({state: 'detached'});
@@ -111,24 +120,31 @@ test('owner-manages-workspace-ac3: alex removes a member, an email and a domain 
     await rows.filter({hasText: 'lena@example.com'}).waitFor({state: 'detached'});
     await rows.filter({hasText: 'Everyone at example.org'}).getByRole('button', {name: /^Remove /}).click();
     await rows.filter({hasText: 'example.org'}).waitFor({state: 'detached'});
-    assert.equal((await texts()).length, 1);
+    // Remove bob, the creator of W: bob loses W at once.
+    const bob = rows.filter({hasText: 'owner'});
+    await bob.getByRole('button', {name: /^Remove /}).click();
+    await bob.waitFor({state: 'detached'});
+    assert.equal(await bobRead(), 404);
+    assert.deepEqual(await texts(), ['alex']);
     const access = (await (await request.get(f.live.root + '/api/access')).json()).items.find(w => w.id === id);
-    assert.deepEqual([access.emails, access.domains, access.members.length], [[], [], 1]);
-    // The owner cannot remove themself, and a member who is not the owner removes nothing.
+    assert.deepEqual([access.emails, access.domains, access.members.map(m => m.id)], [[], [], ['alex']]);
+    // alex is now the last human member and cannot be removed.
     const self = await request.post(f.live.root + '/api/access/remove', {headers: {Origin: f.live.root}, data: {workspace: id, member: 'alex'}});
-    assert.equal((await self.json()).error, 'workspace owner cannot be removed');
-    const foreign = await request.post(f.live.root + '/api/access/remove', {headers: {Origin: f.live.root}, data: {workspace: f.live.ws, member: 'bot'}});
-    assert.equal((await foreign.json()).error, 'workspace owner required');
+    assert.notEqual(self.status(), 200);
+    assert.equal((await self.json()).error, 'the last human member cannot be removed');
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 200);
   } finally { await person.close(); await f.close(); }
 });
 
 // owner-manages-workspace-ac1
-test('owner-manages-workspace-ac1: alex renames an owned workspace in Settings', async () => {
+test('owner-manages-workspace-ac1: alex renames a workspace that bob created in Settings', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   try {
     const request = f.page.context().request;
-    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Old name'}});
-    const {id} = await created.json();
+    // bob (actor owner) created the fixture workspace W and gives it the title Old name. alex is a human member.
+    const id = f.live.ws;
+    await f.command({op: 'update_workspace', title: 'Old name', reason: 'Fixture title'}, true);
+    const titleOf = async headers => (await (await fetch(f.live.root + '/api/workspaces', {headers})).json()).filter(w => w.id === id);
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
     const select = f.page.getByLabel('Workspace', {exact: true});
     await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
@@ -149,30 +165,29 @@ test('owner-manages-workspace-ac1: alex renames an owned workspace in Settings',
     assert.equal(await select.inputValue(), id);
     const listed = (await (await request.get(f.live.root + '/api/workspaces')).json()).filter(w => w.id === id);
     assert.deepEqual(listed, [{id, title: 'New name'}]);
+    // bob reads the new title too.
+    assert.deepEqual(await titleOf({Authorization: 'Bearer ' + f.live.owner}), [{id, title: 'New name'}]);
     await f.page.locator('#rename-workspace').waitFor({state: 'hidden'});
-    // W2 is not owned by alex, so the pencil is gone.
-    await select.selectOption(f.live.ws);
-    assert.equal(await f.page.getByRole('button', {name: 'Rename workspace'}).isVisible(), false);
-    // A member who is not the owner cannot rename W2.
-    const refused = await request.post(f.live.root + '/api/workspaces/' + encodeURIComponent(f.live.ws) + '/rename',
-      {headers: {Origin: f.live.root}, data: {title: 'Taken'}});
-    assert.notEqual(refused.status(), 200);
-    assert.ok(!(await (await request.get(f.live.root + '/api/workspaces')).json()).some(w => w.title === 'Taken'));
   } finally { await f.close(); }
 });
 
 // owner-manages-workspace-ac2
-test('owner-manages-workspace-ac2: alex deletes an owned workspace in Settings and nobody reads it', async () => {
+test('owner-manages-workspace-ac2: alex deletes a workspace that bob created in Settings and nobody reads it', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   try {
     const request = f.page.context().request;
-    const created = await request.post(f.live.root + '/api/workspaces', {headers: {Origin: f.live.root}, data: {title: 'Doomed ' + crypto.randomUUID()}});
-    const {id, title} = await created.json();
-    const added = await fetch(f.live.root + '/api/workspaces/' + encodeURIComponent(id) + '/commands', {method: 'POST',
-      headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
-      body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'member', id: 'owner', role: 'human'}})});
-    assert.equal(added.status, 200, await added.text());
+    // bob (actor owner) created the fixture workspace W. alex is a human member, and bot is an agent of W.
+    const id = f.live.ws, title = 'Doomed ' + crypto.randomUUID();
+    await f.command({op: 'update_workspace', title, reason: 'Fixture title'}, true);
     assert.equal((await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}})).status, 200);
+    // The delete_workspace of the agent bot through MCP is refused, and W stays.
+    const sent = await fetch(f.live.root + '/mcp', {method: 'POST', headers: {'Authorization': 'Bearer ' + f.live.agent, 'Content-Type': 'application/json'},
+      body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name: 'joppa_command',
+        arguments: {workspace: id, request_id: crypto.randomUUID(), command: {op: 'delete_workspace', reason: 'Agent order'}}}})});
+    const reply = await sent.json();
+    assert.ok(reply.error || reply.result.isError === true, JSON.stringify(reply));
+    assert.ok(!JSON.stringify(reply).includes('owner'), JSON.stringify(reply));
+    assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 200);
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
     const select = f.page.getByLabel('Workspace', {exact: true});
     await select.locator('option[value="' + id + '"]').waitFor({state: 'attached'});
@@ -188,14 +203,10 @@ test('owner-manages-workspace-ac2: alex deletes an owned workspace in Settings a
     await f.page.getByRole('button', {name: 'Delete for everyone'}).click();
     assert.equal((await deleted).status(), 200);
     await select.locator('option[value="' + id + '"]').waitFor({state: 'detached'});
-    // Neither the owner nor the other member lists or reads it.
+    // Neither alex nor bob lists or reads it.
     assert.ok(!(await (await request.get(f.live.root + '/api/workspaces')).json()).some(w => w.id === id || w.title === title));
     assert.equal((await request.get(f.live.root + '/api/workspaces/' + id)).status(), 404);
     assert.equal((await fetch(f.live.root + '/api/workspaces/' + id, {headers: {Authorization: 'Bearer ' + f.live.owner}})).status, 404);
-    // A member who is not the owner cannot delete W2.
-    const refused = await request.post(f.live.root + '/api/workspaces/' + encodeURIComponent(f.live.ws) + '/delete', {headers: {Origin: f.live.root}});
-    assert.notEqual(refused.status(), 200);
-    assert.equal((await request.get(f.live.root + '/api/workspaces/' + f.live.ws)).status(), 200);
   } finally { await f.close(); }
 });
 

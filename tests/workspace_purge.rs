@@ -1,4 +1,4 @@
-//! The owner deletes a workspace, and no row of it stays in the database. Other workspaces
+//! A human member deletes a workspace, and no row of it stays in the database. Other workspaces
 //! keep every row. A workspace that was deleted before the purge leaves at the migration.
 #[path = "common/purge_world.rs"]
 mod purge_world;
@@ -27,17 +27,24 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
         "the fixture misses a table: {before:?}"
     );
     let other = rows(&pool, &k).await?;
-    // A member who is not the owner cannot delete the workspace.
-    let delete = json!({"op":"delete_workspace","reason":"Owner order"});
-    ensure!(
-        write(&pool, &w, "alex", delete.clone()).await.is_err(),
-        "a member deleted the workspace"
-    );
+    // The agent bot cannot delete a workspace: W and K keep every row.
+    let delete = json!({"op":"delete_workspace","reason":"Member order"});
+    for ws in [&w, &k] {
+        ensure!(
+            write(&pool, ws, "bot", delete.clone()).await.is_err(),
+            "the agent deleted {ws}"
+        );
+    }
     ensure!(
         rows(&pool, &w).await? == before,
         "a refused deletion changed rows"
     );
-    write(&pool, &w, "owner", delete).await?;
+    ensure!(
+        rows(&pool, &k).await? == other,
+        "a refused deletion changed rows of K"
+    );
+    // alex is a human member who did not create W: the deletion succeeds.
+    write(&pool, &w, "alex", delete).await?;
     let after = rows(&pool, &w).await?;
     ensure!(
         empty(&after),
@@ -74,23 +81,19 @@ async fn owner_manages_workspace_ac2_a_deleted_workspace_leaves_no_row_and_admit
         .await;
         ensure!(read.is_err(), "{actor} read the deleted workspace");
     }
-    ensure!(
-        write(
-            &pool,
-            &w,
-            "owner",
-            json!({"op":"member","id":"late","role":"human"})
-        )
-        .await
-        .is_err(),
-        "a deleted workspace accepted a command"
-    );
-    ensure!(
-        store::grant_email(&pool, &w, "owner", "late@example.com")
-            .await
-            .is_err(),
-        "a deleted workspace accepted a grant"
-    );
+    for actor in ["owner", "alex"] {
+        let late = json!({"op":"member","id":"late","role":"human"});
+        ensure!(
+            write(&pool, &w, actor, late).await.is_err(),
+            "a deleted workspace accepted a command of {actor}"
+        );
+        ensure!(
+            store::grant_email(&pool, &w, actor, "late@example.com")
+                .await
+                .is_err(),
+            "a deleted workspace accepted a grant of {actor}"
+        );
+    }
     // An access rule that still names W admits nobody and does not stop the sign-in.
     let person = format!("person-{}", uuid::Uuid::new_v4().simple());
     store::enroll(

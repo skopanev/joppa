@@ -1,7 +1,8 @@
 // Part 28 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
 /// Help names "member" as the caller of `command`. The non-member eve gets the reply of the
-/// access layer and changes nothing. Then alex, a member who is not the owner, runs it.
+/// access layer and changes nothing. Then alex, a member who did not create the workspace,
+/// runs it.
 async fn member_runs(w: &World, help: &Value, command: Value) -> Result<()> {
     let name = command["op"].as_str().unwrap();
     let callers = &help["operations"][name]["callers"];
@@ -31,7 +32,8 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     let revision = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
-    let owner_only = "workspace owner required";
+    // alex is a human member who did not create the workspace. The agent bot is refused.
+    let human_only = "a human member of the workspace is required";
     let mut covered = vec![];
     let schema = store::tree_schema(&w.pool, &w.ws, "owner", None).await?;
     let mut types = schema["schema"]["types"].clone();
@@ -45,15 +47,15 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
     member_runs(&w, &help, json!({"op":"archive_object","target":"capability:empty","revision":revision("capability:empty").await?,"reason":"Hide the capability"})).await?;
     w.command(json!({"op":"archive_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Hide the note"})).await?;
     member_runs(&w, &help, json!({"op":"restore_object","target":"note:secret","revision":revision("note:secret").await?,"reason":"Show the note"})).await?;
-    covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.owner, owner_only).await?);
+    covered.push(check_callers(&w, &help, None, json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"}), &w.alex, human_only).await?);
     covered.push(
         check_callers(
             &w,
             &help,
             None,
             json!({"op":"update_workspace","title":"Spec over HTTP again","reason":"Rename"}),
-            &w.owner,
-            "workspace owner updates the workspace",
+            &w.alex,
+            "a human member updates the workspace",
         )
         .await?,
     );
@@ -64,8 +66,8 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
             &help,
             None,
             json!({"op":"member","id":"newcomer","role":"human"}),
-            &w.owner,
-            owner_only,
+            &w.alex,
+            human_only,
         )
         .await?,
     );
@@ -75,8 +77,8 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
             &help,
             None,
             json!({"op":"remove_member","id":"newcomer","reason":"Remove access"}),
-            &w.owner,
-            owner_only,
+            &w.alex,
+            human_only,
         )
         .await?,
     );
@@ -87,8 +89,8 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
             &help,
             None,
             json!({"op":"delete_workspace","reason":"Close the workspace"}),
-            &w.owner,
-            "workspace owner deletes the workspace",
+            &w.alex,
+            human_only,
         )
         .await?,
     );

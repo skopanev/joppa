@@ -1,4 +1,4 @@
-// Email grants: a human member grants an email, and that Google account reads only W.
+// Email grants: the owner grants an email, and that Google account reads only W.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 #[tokio::test]
 #[ignore = "requires isolated test database"]
@@ -56,11 +56,13 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
         )
     };
     let grants = "SELECT count(*) FROM joppa.email_grants WHERE email=$1";
-    // Outsiders, tokens and cross-origin requests record no grant.
+    // Non-members, tokens and cross-origin requests record no grant. olga is no member of W,
+    // and her refusal names no workspace owner.
     let refused = grant(browser(Some(&olga_cookie), origin), &w)
         .await
         .unwrap_err();
-    assert_eq!(refused.1.0["error"], "Workspace not found");
+    let text = refused.1.0["error"].as_str().unwrap_or_default().to_owned();
+    assert!(!text.is_empty() && !text.contains("owner"), "{text}");
     let mut token = browser(Some(&sam_cookie), origin);
     token.insert(header::AUTHORIZATION, "Bearer x".parse().unwrap());
     assert_eq!(grant(token, &w).await.unwrap_err().0, StatusCode::FORBIDDEN);
@@ -79,7 +81,7 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     for sql in [members, bound, sessions_of] {
         assert_eq!(count(&app, sql, &derived).await, 0);
     }
-    // sam grants W twice; one lowercase grant remains.
+    // The owner grants W twice; one lowercase grant remains.
     for _ in 0..2 {
         let Json(granted) = grant(browser(Some(&sam_cookie), origin), &w).await.unwrap();
         assert_eq!(granted, json!({"workspace":w,"email":"maria@example.com"}));
@@ -115,7 +117,8 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     )
     .await
     .unwrap();
-    assert!(index["index"].get("owner").is_none());
+    assert!(index["index"].get("owner").is_none(), "{index}");
+    assert!(index["index"].get("admin").is_none(), "{index}");
     assert_eq!(
         index["index"]["members"],
         json!({sam.clone():"human", derived.clone():"human"})

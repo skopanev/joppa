@@ -41,7 +41,7 @@ const NOT_PUBLIC: &[&str] = &[
 ];
 /// A removed operation without its own Command variant: old journals hold claim_task.
 const NO_VARIANT: &[&str] = &["claim_next_task"];
-const CALLERS: &[&str] = &["member", "workspace owner"];
+const CALLERS: &[&str] = &["member", "human member"];
 
 /// Every operation name that the Command enum accepts, read from the serde error.
 fn variants() -> BTreeSet<String> {
@@ -90,6 +90,30 @@ fn every_catalog_entry_names_known_callers() {
         assert!(!o.callers.is_empty(), "{} has no callers", o.name);
         for caller in o.callers {
             assert!(CALLERS.contains(caller), "{}: {caller}", o.name);
+        }
+    }
+}
+
+#[test]
+fn the_catalog_names_the_human_member_and_no_workspace_owner() {
+    let human: Vec<&str> = commands::OPERATIONS
+        .iter()
+        .filter(|o| o.callers.contains(&"human member"))
+        .map(|o| o.name)
+        .collect();
+    for name in [
+        "update_workspace",
+        "member",
+        "remove_member",
+        "redact_object",
+        "delete_workspace",
+    ] {
+        assert!(human.contains(&name), "{name}: {human:?}");
+    }
+    for o in commands::OPERATIONS {
+        for caller in o.callers {
+            assert!(!caller.contains("owner"), "{}: {caller}", o.name);
+            assert!(!caller.contains("admin"), "{}: {caller}", o.name);
         }
     }
 }
