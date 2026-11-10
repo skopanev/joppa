@@ -43,7 +43,7 @@ function cardState() {
   const toggle = head.querySelector('button[aria-expanded]');
   return {collapsed: box.classList.contains('flow-card-collapsed'), scroll: [box.scrollWidth, box.clientWidth],
     parts: [...box.children].filter(c => c !== head).map(c => ({cls: c.className, shown: c.checkVisibility() && c.getBoundingClientRect().height > 0})),
-    children: [...head.children].map(c => ({name: name(c), text: c.textContent.trim(), top: c.getBoundingClientRect().top, shown: c.checkVisibility()})),
+    children: [...head.children].map(c => { const r = c.getBoundingClientRect(); return {name: name(c), text: c.textContent.trim(), mid: r.top + r.height / 2, shown: c.checkVisibility()}; }),
     height: head.getBoundingClientRect().height, line,
     title: title ? {scroll: title.scrollWidth, client: title.clientWidth, overflow: style.textOverflow} : null,
     toggle: toggle ? {label: toggle.getAttribute('aria-label'), expanded: toggle.getAttribute('aria-expanded')} : null};
@@ -71,8 +71,9 @@ function assertCollapsed(s, title, step) {
   assertOrder(s, step);
   for (const c of s.children) assert.ok(c.shown, step + ': the head shows ' + c.name);
   assert.equal(s.children[ORDER.indexOf('title')].text, title, step + ': the head title');
-  const tops = s.children.map(c => c.top);
-  assert.ok(Math.max(...tops) - Math.min(...tops) <= 4, step + ': the head children share one row: ' + JSON.stringify(tops));
+  // The head centres its children, so one row means one vertical centre.
+  const mids = s.children.map(c => c.mid);
+  assert.ok(Math.max(...mids) - Math.min(...mids) <= 4, step + ': the head children share one row: ' + JSON.stringify(mids));
   assert.ok(s.line > 0 && s.height <= 1.5 * s.line, step + ': the head height ' + s.height + ' is at most 1.5 x the line height ' + s.line);
   assert.deepEqual(s.toggle, {label: 'Expand the card', expanded: 'false'}, step + ': the toggle');
 }
