@@ -103,7 +103,8 @@ test('flow-when: each when label stands on its first segment and touches no othe
     const {bg, items} = await paint(f);
     assert.deepEqual(['flow-label', 'flow-when'].map(name => items.filter(i => i.name === name).length), [4, 4]);
     for (const item of items) {
-      const k = Number(item.k);
+      // A custom property computes to its tokens: --k reads "min(<u>, 1.6)" at the zoom of the view.
+      const k = item.k.startsWith('min(') ? Math.min(...item.k.match(/[\d.]+/g).map(Number)) : Number(item.k);
       assert.ok(item.k !== '' && k > 0, item.name + ' has --k: ' + JSON.stringify(item));
       assert.match(item.paintOrder, /^stroke\b/, item.name + ' paint-order');
       assert.equal(item.stroke, bg, item.name + ' stroke colour');
