@@ -68,12 +68,21 @@ function snapshot() {
   const faint = el => { for (let e = el; e && e !== canvas; e = e.parentElement) if (e.classList.contains('flow-faint')) return getComputedStyle(e).opacity; return null; };
   const inverse = svg.getScreenCTM().inverse();
   const shown = el => el.checkVisibility({opacityProperty: true, visibilityProperty: true}) && el.getBoundingClientRect().width > 0;
+  const rect = el => { const b = el.getBoundingClientRect(); return {left: b.left, right: b.right, top: b.top, bottom: b.bottom}; };
+  // A label gives one line for each <tspan> (or its whole text), with the box and the screen x of each line.
+  const lineX = s => s.x.baseVal.numberOfItems ? new DOMPoint(s.x.baseVal.getItem(0).value, 0).matrixTransform(s.getScreenCTM()).x : null;
+  const labelLines = t => { const spans = [...t.querySelectorAll('tspan')];
+    return {flow: t.classList.contains('flow-label'), tag: t.tagName.toLowerCase(), box: rect(t), lines: spans.length ? spans.map(s => s.textContent) : [t.textContent.trim()],
+      boxes: spans.length ? spans.map(rect) : [rect(t)], xs: spans.map(lineX)}; };
   const nodes = [...document.querySelectorAll('.flow-node')].map(n => {
     const dot = n.matches('circle,ellipse,rect') ? n : n.querySelector('circle,ellipse,rect') || n, b = dot.getBoundingClientRect();
     const x = b.x + b.width / 2, y = b.y + b.height / 2, p = new DOMPoint(x, y).matrixTransform(inverse), a = address(n);
     const labels = [...svg.querySelectorAll('text')].filter(t => address(t) === a && !t.closest('.flow-transfer,.flow-when'));
+    const label = labels.find(t => t.classList.contains('flow-label')) || labels[0];
+    const title = dot.querySelector('title') || n.querySelector('title') || n.closest('[data-address]')?.querySelector(':scope > title');
     return {address: a, x, y, dx: p.x, dy: p.y, fill: getComputedStyle(dot).fill, marks: marks(n), faint: faint(n),
-      labels: labels.map(t => t.textContent.trim()), labelsShown: labels.every(shown)};
+      labels: labels.map(t => t.textContent.trim()), labelsShown: labels.every(shown), label: label ? labelLines(label) : null,
+      title: title ? title.textContent.trim() : null, box: rect(dot)};
   });
   const near = (x, y) => nodes.reduce((best, n) => Math.hypot(n.x - x, n.y - y) < Math.hypot(best.x - x, best.y - y) ? n : best).address;
   const edges = [...document.querySelectorAll('.flow-edge')].map(e => {
@@ -88,9 +97,9 @@ function snapshot() {
     const b = w.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
     const gap = edge => Math.min(...edge.points.map(([px, py]) => Math.hypot(px - x, py - y)));
     const edge = edges.reduce((best, e) => gap(e) < gap(best) ? e : best, edges[0]);
-    return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to};
+    return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: w.querySelectorAll('tspan').length, height: b.height};
   });
-  const badges = [...document.querySelectorAll('.flow-transfer')].map(b => ({address: address(b), text: b.textContent.trim()}));
+  const badges = [...document.querySelectorAll('.flow-transfer')].map(b => ({address: address(b), text: b.textContent.trim(), box: rect(b)}));
   // Each line of the drawing that is no edge, no dot and no badge, such as a parent line.
   const lines = [...svg.querySelectorAll('line,path,polyline')].filter(l => !l.closest('defs,marker,.flow-edge,.flow-node,.flow-transfer')).length;
   const box = svg.viewBox.baseVal;
@@ -182,5 +191,21 @@ const waitText = (f, text) => f.page.waitForFunction(([source, text]) => Boolean
   .catch(() => assert.fail('no visible text ' + JSON.stringify(text)));
 const link = f => new URL(f.page.url()).searchParams;
 
-module.exports = {types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, drawnAsNamed, marked, waitMarks, NONE,
+// The lines of a node label by the wrap rule of ac:uyrc0eaz: words split at white space, at
+// most 18 characters in a line, at most 3 lines, and "…" at a cut.
+function wrapLabel(text, width = 18, most = 3) {
+  const cut = word => word.length > width ? word.slice(0, width - 1) + '…' : word;
+  const out = [];
+  for (const word of text.split(/\s+/).filter(Boolean).map(cut)) {
+    const last = out.length - 1;
+    if (last >= 0 && (out[last] + ' ' + word).length <= width) out[last] += ' ' + word;
+    else out.push(word);
+  }
+  if (out.length <= most) return out;
+  const words = out[most - 1].split(' ');
+  while (words.length && (words.join(' ') + '…').length > width) words.pop();
+  return [...out.slice(0, most - 1), (words.length ? words.join(' ') : out[most - 1].slice(0, width - 1)) + '…'];
+}
+
+module.exports = {wrapLabel, types, declare, build, swapWorld, open, snap, toneColour, byAddress, edgeNames, drawnAsNamed, marked, waitMarks, NONE,
   card, waitCard, closeCard, click, emptyPoint, shownText, waitText, link};

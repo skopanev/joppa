@@ -1,7 +1,8 @@
 //! The stored rows of the older release (9a3887e, the master before requirement:q438uw0s) for
-//! the test of migration 062: documents, state rows and journal commands with links, rows of
-//! object_links with blocking, and no relations_reset epoch. Also the row reads of the test.
-//! Migration 062 keeps the blocking column of object_links.
+//! the tests of migrations 062 and 064: documents, state rows and journal commands with links,
+//! rows of object_links, and no relations_reset epoch. Also the row reads of the tests.
+//! Migration 065 drops the blocking column of object_links before any data pass, so the
+//! builder writes no blocking.
 #![allow(dead_code)]
 use super::record_world::World;
 use super::relations_world::link;
@@ -107,6 +108,11 @@ pub fn older(document: &mut Value, links: &Value) {
 
 /// Rewrite the rows of W as the older release wrote them.
 pub async fn store_older_form(w: &World) -> Result<()> {
+    store_older_form_but(w, &[]).await
+}
+
+/// `store_older_form` that keeps every row of the nodes `keep` as it is.
+pub async fn store_older_form_but(w: &World, keep: &[String]) -> Result<()> {
     let links_of = |address: &str| {
         let found = fixture().into_iter().find(|(a, ..)| a == address);
         found.map_or(json!([]), |f| f.1)
@@ -117,9 +123,8 @@ pub async fn store_older_form(w: &World) -> Result<()> {
     // off, in this transaction only.
     conn.batch_execute("ALTER TABLE joppa.events DISABLE TRIGGER events_worm")
         .await?;
-    let sql =
-        "SELECT address,revision,document::text FROM joppa.object_revisions WHERE workspace=$1";
-    for row in conn.query(sql, &[&w.ws]).await? {
+    let sql = "SELECT address,revision,document::text FROM joppa.object_revisions WHERE workspace=$1 AND NOT address=ANY($2)";
+    for row in conn.query(sql, &[&w.ws, &keep]).await? {
         let (address, revision): (String, i32) = (row.get(0), row.get(1));
         let mut document: Value = serde_json::from_str(row.get(2))?;
         older(&mut document, &links_of(&address));
@@ -127,13 +132,8 @@ pub async fn store_older_form(w: &World) -> Result<()> {
         conn.execute(update, &[&w.ws, &address, &revision, &document.to_string()])
             .await?;
     }
-    for row in conn
-        .query(
-            "SELECT address,document::text FROM joppa.objects WHERE workspace=$1",
-            &[&w.ws],
-        )
-        .await?
-    {
+    let sql = "SELECT address,document::text FROM joppa.objects WHERE workspace=$1 AND NOT address=ANY($2)";
+    for row in conn.query(sql, &[&w.ws, &keep]).await? {
         let address: String = row.get(0);
         let mut document: Value = serde_json::from_str(row.get(1))?;
         older(&mut document, &links_of(&address));
@@ -142,8 +142,8 @@ pub async fn store_older_form(w: &World) -> Result<()> {
         conn.execute(update, &[&w.ws, &address, &document.to_string()])
             .await?;
     }
-    let sql = "SELECT key,value::text,COALESCE(compact,value)::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects'";
-    for row in conn.query(sql, &[&w.ws]).await? {
+    let sql = "SELECT key,value::text,COALESCE(compact,value)::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND NOT key=ANY($2)";
+    for row in conn.query(sql, &[&w.ws, &keep]).await? {
         let key: String = row.get(0);
         let mut both: Vec<Value> = vec![
             serde_json::from_str(row.get(1))?,
@@ -161,8 +161,8 @@ pub async fn store_older_form(w: &World) -> Result<()> {
         )
         .await?;
     }
-    let sql = "SELECT position,command::text FROM joppa.events WHERE workspace=$1 AND command->>'op'='save_object'";
-    for row in conn.query(sql, &[&w.ws]).await? {
+    let sql = "SELECT position,command::text FROM joppa.events WHERE workspace=$1 AND command->>'op'='save_object' AND NOT (command->>'kind')||':'||(command->>'id')=ANY($2)";
+    for row in conn.query(sql, &[&w.ws, &keep]).await? {
         let position: i64 = row.get(0);
         let mut command: Value = serde_json::from_str(row.get(1))?;
         let address = format!(
@@ -176,31 +176,18 @@ pub async fn store_older_form(w: &World) -> Result<()> {
         conn.execute(update, &[&w.ws, &position, &command.to_string()])
             .await?;
     }
-    conn.execute(
-        "DELETE FROM joppa.object_links WHERE workspace=$1",
-        &[&w.ws],
-    )
-    .await?;
+    let delete = "DELETE FROM joppa.object_links WHERE workspace=$1 AND NOT source=ANY($2)";
+    conn.execute(delete, &[&w.ws, &keep]).await?;
     for (source, links, _) in fixture() {
         for l in links.as_array().into_iter().flatten() {
-            let insert = "INSERT INTO joppa.object_links(workspace,source,target,relation,revision,blocking) VALUES($1,$2,$3,$4,$5,$6)";
+            let insert = "INSERT INTO joppa.object_links(workspace,source,target,relation,revision) VALUES($1,$2,$3,$4,$5)";
             let revision = l["revision"].as_i64().map(|r| r as i32);
             let row: (&str, &str) = (
                 l["target"].as_str().unwrap_or(""),
                 l["relation"].as_str().unwrap_or(""),
             );
-            conn.execute(
-                insert,
-                &[
-                    &w.ws,
-                    &source,
-                    &row.0,
-                    &row.1,
-                    &revision,
-                    &(l["blocking"] == true),
-                ],
-            )
-            .await?;
+            conn.execute(insert, &[&w.ws, &source, &row.0, &row.1, &revision])
+                .await?;
         }
     }
     let epoch = "DELETE FROM joppa.replay_epochs WHERE workspace=$1 AND rule='relations_reset'";
