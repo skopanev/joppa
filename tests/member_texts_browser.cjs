@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
 
 test('member-rights: the board, /tree and Settings name no workspace owner', async () => {
-  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const f = await fixture({note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: ['*']}});
   // eve is signed in and has no workspace: the fixture person maria plays eve.
   const eve = await f.page.context().browser().newContext({reducedMotion: 'reduce', colorScheme: 'light'});
   try {
@@ -44,7 +44,7 @@ test('member-rights: the board, /tree and Settings name no workspace owner', asy
 });
 
 test('member-rights: Settings keeps the last human member of a workspace', async () => {
-  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const f = await fixture({note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: ['*']}});
   try {
     // bob (actor owner) created the fixture workspace W. alex and bob are its human members.
     const id = f.live.ws, request = f.page.context().request;

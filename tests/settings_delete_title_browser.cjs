@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
 
 test('jfz3m79d: Delete for everyone waits for the exact title of the workspace', async () => {
-  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const f = await fixture({note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: ['*']}});
   try {
     const request = f.page.context().request;
     // Alex owns W and V. The titles are different and have letters in two cases.

@@ -31,7 +31,7 @@ async function controls(page, root, id) {
 }
 
 test('member-rights: Settings is the same page for each member of the workspace', async () => {
-  const f = await fixture({'domain:d': {title: 'Domain'}});
+  const f = await fixture({note: {title: 'Notes', role: 'document', status: 'none', root: true, parents: ['*']}});
   const bobContext = await f.page.context().browser().newContext({reducedMotion: 'reduce', colorScheme: 'light'});
   try {
     // bob (actor owner) created the fixture workspace W. alex is a human member who did not create W.
