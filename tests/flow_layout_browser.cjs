@@ -18,7 +18,7 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     const [a, b, c, d] = ['step:a', 'step:b', 'step:c', 'step:d'].map(address => at[address]);
     const columns = JSON.stringify(first.nodes.map(n => [n.address, Math.round(n.x), Math.round(n.y)]));
     assert.ok(a.x < b.x - 1 && Math.abs(b.x - c.x) < 1 && c.x < d.x - 1, 'columns 0, 1, 1 and 2: ' + columns);
-    assert.ok(b.y < c.y, 'column 1 goes down in address order: ' + columns);
+    assert.ok(b.y < c.y, 'in column 1 B stands above C: ' + columns);
     assert.deepEqual(edgeNames(first), ['step:a>step:b', 'step:a>step:c', 'step:b>step:d', 'step:c>step:d']);
     drawnAsNamed(first);
     for (const edge of first.edges) assert.match(edge.marker, /#flow-arrow\b/, edge.from + '>' + edge.to + ' marker');
