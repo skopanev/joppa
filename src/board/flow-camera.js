@@ -40,15 +40,15 @@ export function flowCamera(canvas){
     // Move the view by a screen distance in pixels.
     pan(dx,dy){const u=unit();view=[view[0]+dx*u,view[1]+dy*u,view[2],view[3]];apply();},
     // Show every point with a margin. Fewer than one point keeps the view. When that view
-    // needs more than `most` world units for one pixel, show the top left corner of the points
-    // at `most` units for one pixel.
+    // needs more than `most` world units for one pixel, show the centre of the points at
+    // `most` units for one pixel.
     fit(points,margin=60,most=Infinity){
       if(!points.length)return;
       let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
       for(const p of points){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
       const w=Math.max(x1-x0+2*margin,240),h=Math.max(y1-y0+2*margin,160),b=rect();
       view=shape([(x0+x1)/2-w/2,(y0+y1)/2-h/2,w,h]);
-      if(b.width&&b.height&&unit()>most)view=[x0-2.5*margin,y0-margin,b.width*most,b.height*most];
+      if(b.width&&b.height&&unit()>most)view=[(x0+x1)/2-b.width*most/2,(y0+y1)/2-b.height*most/2,b.width*most,b.height*most];
       apply();
     },
   };
