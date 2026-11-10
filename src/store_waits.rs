@@ -22,8 +22,8 @@ pub(super) async fn read_with_counts(
     types: &Types,
 ) -> Result<(BTreeMap<String, String>, BTreeMap<String, usize>)> {
     crate::probe::count(&crate::probe::WAITS);
-    // Every blocking link of a live node takes part, whatever the type of its source.
-    let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.blocking AND l.relation='depends_on' AND s.present", &[&workspace]).await?;
+    // Every depends_on edge of a live node takes part, whatever the type of its source.
+    let links = client.query("SELECT l.source,COALESCE(a.target,l.target) FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.relation='depends_on' AND s.present", &[&workspace]).await?;
     if links.is_empty() {
         return Ok((BTreeMap::new(), BTreeMap::new()));
     }

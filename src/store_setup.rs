@@ -41,7 +41,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         .await?;
     // Migrations rebuild projections from the journal as it is (see migration 037).
     tx.batch_execute("SET LOCAL joppa.replaying = '1'").await?;
-    // The migrations run in their number order.
+    // The DDL files run first, in their number order, with the pass of 061. Then the data
+    // passes 062, 063 and 064 run.
     for sql in [
         include_str!("../migrations/001_journal.sql"),
         include_str!("../migrations/002_item_ids.sql"),
@@ -101,6 +102,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/060_source_change_reset.sql"),
         HIDDEN_BY,
         include_str!("../migrations/062_relations.sql"),
+        include_str!("../migrations/065_no_link_blocking.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

@@ -132,7 +132,7 @@ async fn reaches(
         let (ws, address) = &node;
         for row in client.query(
             "SELECT o.parent FROM joppa.objects o WHERE o.workspace=$1 AND o.address=$2 AND o.parent IS NOT NULL
-             UNION ALL SELECT COALESCE(a.target,l.target) FROM joppa.object_links l LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.source=$2 AND l.blocking AND l.relation='depends_on'",
+             UNION ALL SELECT COALESCE(a.target,l.target) FROM joppa.object_links l LEFT JOIN joppa.object_aliases a ON a.workspace=l.workspace AND a.address=l.target WHERE l.workspace=$1 AND l.source=$2 AND l.relation='depends_on'",
             &[ws, address],
         ).await? {
             queue.push_back((ws.clone(), row.get(0)));

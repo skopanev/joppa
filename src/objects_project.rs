@@ -119,14 +119,14 @@ pub(in crate::store) async fn project(
         if r.revision > previous_revision || schema_changed {
             sources.push(address.clone());
             for (relation, edge) in r.edges() {
-                links.push(json!({"source":address,"target":edge.to,"relation":relation,"revision":edge.revision,"blocking":relation == crate::relations::DEPENDS_ON,"when_label":edge.when}));
+                links.push(json!({"source":address,"target":edge.to,"relation":relation,"revision":edge.revision,"when_label":edge.when}));
             }
             if state.schema_migrated
                 && r.present
                 && let Ok(targets) = objects::stored_reference_targets(state, &obj.kind, &r.data)
             {
                 for (field, target, _) in targets {
-                    links.push(json!({"source":address,"target":target,"relation":format!("reference:{field}"),"revision":null,"blocking":false,"when_label":null}));
+                    links.push(json!({"source":address,"target":target,"relation":format!("reference:{field}"),"revision":null,"when_label":null}));
                 }
             }
         }
@@ -175,7 +175,7 @@ pub(in crate::store) async fn project(
                 &[&workspace, &sources],
             )
             .await?;
-        client.execute("INSERT INTO joppa.object_links(workspace,source,target,relation,revision,blocking,when_label) SELECT $1,x.source,x.target,x.relation,x.revision,x.blocking,x.when_label FROM jsonb_to_recordset($2::text::jsonb) AS x(source text,target text,relation text,revision integer,blocking boolean,when_label text)", &[&workspace,&json!(links).to_string()]).await?;
+        client.execute("INSERT INTO joppa.object_links(workspace,source,target,relation,revision,when_label) SELECT $1,x.source,x.target,x.relation,x.revision,x.when_label FROM jsonb_to_recordset($2::text::jsonb) AS x(source text,target text,relation text,revision integer,when_label text)", &[&workspace,&json!(links).to_string()]).await?;
     }
     if !ids.is_empty() {
         client.execute("SELECT joppa.register_item($1,x.kind,x.local_id,$3) FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text)",&[&workspace,&json!(ids).to_string(),&prefix]).await?;

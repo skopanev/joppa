@@ -51,9 +51,9 @@ WHERE NOT o.document ? 'relations' AND jsonb_array_length(o.document->'links') >
     AND o.document->'links' IS DISTINCT FROM joppa.links_shadow(joppa.relations_of_links(o.document->'links'))
     AND l.workspace = o.workspace AND l.source = o.address AND l.relation NOT LIKE 'reference:%';
 
-INSERT INTO joppa.object_links(workspace, source, target, relation, revision, blocking, when_label)
+INSERT INTO joppa.object_links(workspace, source, target, relation, revision, when_label)
 SELECT o.workspace, o.address, e.edge->>'to', r.key, (e.edge->>'revision')::integer,
-    r.key = 'depends_on', e.edge->>'when'
+    e.edge->>'when'
 FROM joppa.objects o
 CROSS JOIN LATERAL jsonb_each(joppa.relations_of_links(o.document->'links')) r(key, value)
 CROSS JOIN LATERAL jsonb_array_elements(r.value->'edges') e(edge)
