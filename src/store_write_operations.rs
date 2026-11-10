@@ -57,7 +57,7 @@ pub(crate) async fn write(
             }
             let mut value = resolve(&operation.command, &refs)?;
             let clean = crate::save_merge::take_clean(&mut value)?;
-            generate(&mut value)?;
+            generate_free(&*tx, &workspace, &state, &mut value).await?;
             fields(&value)?;
             // The journal stores the immutable ID of another workspace, never a name.
             super::remote::canonical_ids(&*tx, &mut value).await?;
