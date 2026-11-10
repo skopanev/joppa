@@ -50,6 +50,11 @@ pub struct ResultShape {
     pub red_if_any: Vec<String>,
     /// The text field that readers show as the message of a failure.
     pub failure_field: Option<String>,
+    /// A typed field of each type with the role test. A result name that binds no node by its
+    /// address or a title binds the one present test node whose data has the name in this field.
+    /// It is optional, so KEYS does not name it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_field: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

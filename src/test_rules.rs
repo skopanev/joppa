@@ -6,9 +6,10 @@
 //! schema. LEGACY_TEST_RULES holds the rules of the journals before the event: a replay of
 //! an older event checks it against them, and the event writes them into the schema.
 use crate::model::Workspace;
-use crate::objects::{role_status_rule, schema};
+use crate::objects::{TreeType, role_status_rule, schema};
 use crate::result_shape::{ResultField, ResultShape};
 use anyhow::{Context, Result, ensure};
+use std::collections::BTreeMap;
 
 pub const REASON: &str = "Write the test rules and the status rule of each type into the schema";
 
@@ -49,7 +50,29 @@ pub fn legacy() -> ResultShape {
         green_if_all: vec!["pass".into()],
         red_if_any: vec!["fail".into()],
         failure_field: Some("message".into()),
+        match_field: None,
     }
+}
+
+pub const MATCH_FIELD: &str = "test_results.match_field names a field of the test type";
+
+/// The match_field of the test rules names a typed field of each type with the role test in
+/// `types`, the new type map of set_tree_schema. A block without match_field passes.
+pub fn check_match_field(
+    shape: Option<&ResultShape>,
+    types: &BTreeMap<String, TreeType>,
+) -> Result<()> {
+    let Some(field) = shape.and_then(|s| s.match_field.as_deref()) else {
+        return Ok(());
+    };
+    let mut tests = types.values().filter(|t| t.role == crate::test_nodes::ROLE);
+    let first = tests.next();
+    ensure!(
+        first.is_some_and(|t| t.fields.contains_key(field))
+            && tests.all(|t| t.fields.contains_key(field)),
+        MATCH_FIELD
+    );
+    Ok(())
 }
 
 /// The fields whose change made an older test list a draft.
@@ -159,3 +182,7 @@ pub fn outcome(status: &str) -> &str {
         other => other,
     }
 }
+
+#[cfg(test)]
+#[path = "test_rules_tests.rs"]
+mod tests;

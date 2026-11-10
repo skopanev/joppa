@@ -184,6 +184,7 @@ pub fn set_schema(
     let status_colors = status_colors.cloned().or_else(|| schema(w).status_colors);
     let statuses = statuses.cloned().or_else(|| schema(w).statuses);
     let test_results = test_results.or_else(|| schema(w).test_results);
+    crate::test_rules::check_match_field(test_results.as_ref(), types)?;
     let status_required = status_required.or_else(|| schema(w).status_required);
     if let Some(fields) = filters {
         crate::filter_fields::validate(fields)?;

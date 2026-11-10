@@ -1,7 +1,10 @@
 //! The test nodes of each result of a record. A result names its test by the address of a
 //! present test node, such as `test:<id>`, or by the public item ID of that node: it binds that
 //! one node. Else a title binds every present test node whose current or earlier title it is,
-//! and the record stores one row for each of them under its address. A name with no present test node is unbound:
+//! and the record stores one row for each of them under its address. Else, when the schema sets
+//! test_results.match_field, the one present test node whose data has the name as the value of
+//! that field binds it. Two such nodes leave the name unbound, and no name trims its spaces.
+//! A name with no present test node is unbound:
 //! the record stores its row under the name, so a test node that gets that title later counts
 //! it. Each lookup is one index probe for each distinct name, so a record costs its own names
 //! and not the whole tree.
@@ -87,7 +90,13 @@ pub(super) async fn bind(
             nodes.sort();
         }
     }
-    // An address or a public item ID binds one node. A title binds every node with it.
+    let left: Vec<&String> = names
+        .iter()
+        .filter(|n| !present.contains(&wanted[*n]) && !titled.contains_key(*n))
+        .collect();
+    let matched = matched(client, workspace, &kinds, &left).await?;
+    // An address or a public item ID binds one node. A title binds every node with it. Then
+    // the value of match_field binds the one node that has it.
     let mut bound: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     let mut unbound = vec![];
     for name in &names {
@@ -95,6 +104,8 @@ pub(super) async fn bind(
             bound.insert(name.as_str(), vec![wanted[name].clone()]);
         } else if let Some(nodes) = titled.remove(name) {
             bound.insert(name.as_str(), nodes);
+        } else if let Some([node]) = matched.get(name).map(Vec::as_slice) {
+            bound.insert(name.as_str(), vec![node.clone()]);
         } else {
             unbound.push(name.clone());
         }
@@ -115,4 +126,39 @@ pub(super) async fn bind(
         })
         .collect();
     Ok((results, unbound))
+}
+
+/// The present test nodes for each name of `names` whose data has the name as the value of
+/// test_results.match_field in the latest schema revision. Empty without match_field. The GIN
+/// index of document->'data' serves the probe.
+async fn matched(
+    client: &impl GenericClient,
+    workspace: &str,
+    kinds: &[String],
+    names: &[&String],
+) -> Result<BTreeMap<String, Vec<String>>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    if names.is_empty() {
+        return Ok(out);
+    }
+    let field: Option<String> = client
+        .query_opt(
+            "SELECT value->'test_results'->>'match_field' FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1",
+            &[&workspace],
+        )
+        .await?
+        .and_then(|row| row.get(0));
+    let Some(field) = field else {
+        return Ok(out);
+    };
+    for row in client
+        .query(
+            "SELECT n,o.address FROM unnest($2::text[]) n JOIN joppa.objects o ON o.workspace=$1 AND o.document->'data' @> jsonb_build_object($4::text,n) AND o.present AND o.kind=ANY($3) ORDER BY o.address",
+            &[&workspace, &names, &kinds, &field],
+        )
+        .await?
+    {
+        out.entry(row.get(0)).or_default().push(row.get(1));
+    }
+    Ok(out)
 }
