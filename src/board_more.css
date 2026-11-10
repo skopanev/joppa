@@ -198,14 +198,15 @@ dialog::backdrop{background:#22222240}
 .flow-lit{opacity:1}
 .flow-edge.flow-lit{stroke:var(--heading);stroke-width:2px;opacity:1}
 .flow-faint{opacity:.08}
-.flow-card{position:absolute;top:.5rem;right:.5rem;display:grid;gap:.4rem;width:min(24rem,calc(100% - 1rem));max-height:calc(100% - 1rem);overflow:auto;padding:.45rem .65rem;border:1px solid var(--rule);background:var(--bg);font-size:13px}
+.flow-card{position:absolute;top:.5rem;right:.5rem;display:grid;grid-template-columns:minmax(0,1fr);gap:.4rem;width:min(24rem,calc(100% - 1rem));max-height:calc(100% - 1rem);overflow:auto;padding:.45rem .65rem;border:1px solid var(--rule);background:var(--bg);font-size:13px}
 .flow-card[hidden]{display:none}
-.flow-card-head{display:flex;align-items:center;gap:.4rem}
+.flow-card-head{display:flex;align-items:center;gap:.4rem;min-width:0}
 .flow-card-title{flex:1;min-width:0;margin:0;font-size:inherit;color:var(--heading);overflow-wrap:anywhere}
 .flow-card-close{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer}
 .flow-card-collapse{flex:none;border:0;background:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer}
 .flow-card-head>:not(.flow-card-title){flex:none}
 /* A collapsed card shows only its head, in one line; the title ends with an ellipsis. */
+.flow-card-collapsed{overflow:hidden}
 .flow-card-collapsed>:not(.flow-card-head){display:none}
 .flow-card-collapsed .flow-card-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .flow-card-facts{display:grid;grid-template-columns:auto 1fr;gap:.15rem .6rem;margin:0}
