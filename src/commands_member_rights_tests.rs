@@ -78,6 +78,28 @@ fn a_human_member_removes_the_creator_and_the_last_human_member_stays() {
 }
 
 #[test]
+fn after_the_creator_leaves_the_first_human_member_is_the_system_actor_and_default_owner() {
+    let mut w = workspace();
+    let remove = Command::RemoveMember {
+        id: "bob".into(),
+        reason: "left".into(),
+    };
+    apply_inner(&mut w, "alex", &remove, 2, "").unwrap();
+    assert_eq!(system_actor(&w), "alex");
+    apply_inner(&mut w, "alex", &Command::MigratePersistentClaims {}, 3, "").unwrap();
+    let capability = Command::Capability(CapabilityOp {
+        id: "c".into(),
+        title: "C".into(),
+        domain: None,
+        owner: None,
+        description: String::new(),
+    });
+    apply_inner(&mut w, "bot", &capability, 4, "").unwrap();
+    assert_eq!(w.capabilities["c"].owner.as_deref(), Some("alex"));
+    assert!(!w.capabilities["c"].confirmed);
+}
+
+#[test]
 fn the_enroll_service_refusal_names_no_owner() {
     let mut w = workspace();
     let enroll = Command::EnrollService {

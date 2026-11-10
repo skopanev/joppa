@@ -176,20 +176,30 @@ pub(super) fn apply_capability(
         ensure!(!w.domains[domain].archived, "domain is archived");
     }
     ensure!(!w.capabilities.contains_key(id), "capability exists");
-    let assigned = owner.as_deref().unwrap_or_else(|| {
-        domain
-            .as_ref()
-            .and_then(|id| w.domains.get(id))
-            .map_or(w.admin.as_str(), |d| d.owner.as_str())
-    });
-    human(w, assigned)?;
+    // From the epoch of human_member_rights, the default owner is the actor when it is a human
+    // member, else the system actor. An older event keeps the creator in a replay.
+    let fallback = if rule_applies(w, HUMAN_MEMBER_RIGHTS, position) {
+        default_owner(w, actor)
+    } else {
+        w.admin.as_str()
+    };
+    let assigned = owner
+        .as_deref()
+        .unwrap_or_else(|| {
+            domain
+                .as_ref()
+                .and_then(|id| w.domains.get(id))
+                .map_or(fallback, |d| d.owner.as_str())
+        })
+        .to_owned();
+    human(w, &assigned)?;
     let confirmed = confirms(w, actor, position);
     w.capabilities.insert(
         id.clone(),
         Capability {
             title: title.clone(),
             domain: domain.clone(),
-            owner: Some(assigned.to_owned()),
+            owner: Some(assigned),
             description: description.clone(),
             confirmed,
         },

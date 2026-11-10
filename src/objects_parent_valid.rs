@@ -125,5 +125,5 @@ pub fn priority_values(w: &Workspace) -> Vec<String> {
 #[allow(clippy::too_many_arguments)]
 /// Any member of the workspace edits the tree: the schema, the order, archives and restores.
 pub(crate) fn may_edit_tree(w: &Workspace, actor: &str) -> bool {
-    actor == w.admin || w.members.contains_key(actor)
+    w.members.contains_key(actor)
 }

@@ -33,14 +33,14 @@ pub fn convert_types(types: &mut BTreeMap<String, TreeType>) -> Result<String> {
     Ok(kind)
 }
 
-/// Apply migrate_test_nodes once. The workspace creator is the actor of the event.
+/// Apply migrate_test_nodes once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.test_nodes_migrated {
         return Ok(());
     }
     ensure!(
-        actor == w.admin,
-        "the workspace creator runs this migration"
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
     );
     let mut next = schema(w);
     let kind = convert_types(&mut next.types)?;

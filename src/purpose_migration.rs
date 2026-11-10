@@ -77,14 +77,14 @@ pub fn drop_purpose(data: &mut Value, field: &str) -> bool {
     true
 }
 
-/// Apply migrate_purpose once. The workspace creator is the actor of the event.
+/// Apply migrate_purpose once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.purpose_migrated {
         return Ok(());
     }
     ensure!(
-        actor == w.admin,
-        "the workspace creator runs this migration"
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
     );
     let field = crate::body_migration::text_field(w, "contract");
     let mut next = schema(w);

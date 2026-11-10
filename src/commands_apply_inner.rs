@@ -14,8 +14,8 @@ pub(crate) fn apply_inner(
     match command {
         Command::MigratePersistentClaims {} => {
             ensure!(
-                actor == w.admin,
-                "the workspace creator runs this migration"
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
             );
             w.persistent_claims = true;
         }
@@ -48,22 +48,22 @@ pub(crate) fn apply_inner(
         }
         Command::MigrateNotes {} => {
             ensure!(
-                actor == w.admin,
-                "the workspace creator runs this migration"
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
             );
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;
         }
         Command::MigrateTasks {} => {
             ensure!(
-                actor == w.admin,
-                "the workspace creator runs this migration"
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
             );
             crate::tasks::migrate(w, actor, position, recorded_at)?;
         }
         Command::MigrateSchema {} => {
             ensure!(
-                actor == w.admin,
-                "the workspace creator runs this migration"
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
             );
             crate::objects::migrate_schema(w, actor, position, recorded_at)?;
         }
@@ -71,8 +71,8 @@ pub(crate) fn apply_inner(
         Command::HeartbeatTask { .. } => anyhow::bail!("unknown Task"),
         Command::MigrateDocuments {} => {
             ensure!(
-                actor == w.admin,
-                "the workspace creator runs this migration"
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
             );
             crate::objects::migrate_documents(w, actor, position, recorded_at)?;
         }

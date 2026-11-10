@@ -34,14 +34,14 @@ pub fn check(w: &Workspace, command: &Command) -> Result<()> {
     Ok(())
 }
 
-/// Apply migrate_decision_required once. The workspace creator is the actor of the event.
+/// Apply migrate_decision_required once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.decision_required_migrated {
         return Ok(());
     }
     ensure!(
-        actor == w.admin,
-        "the workspace creator runs this migration"
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
     );
     let schema_revision = schema(w).revision;
     for o in w.objects.values_mut() {

@@ -161,16 +161,7 @@ pub async fn revoke_domain(
 pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) -> Result<Value> {
     let (workspace, state) = human_member_of(pool, workspace, actor).await?;
     commands::keeps_human_member(&state, id)?;
-    // The grant goes first: a failed journal write then leaves a member without a grant,
-    // never a removed member whose grant admits them again.
-    pool.get()
-        .await?
-        .execute(
-            "DELETE FROM joppa.email_grants g USING joppa.google_identities i
-             WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)",
-            &[&workspace, &id],
-        )
-        .await?;
+    // The write removes the email grant in the transaction of the event (store_write_operations).
     let command = Command::RemoveMember {
         id: id.into(),
         reason: "Removed in Settings".into(),
@@ -184,52 +175,6 @@ pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) 
     )
     .await?;
     Ok(json!({"workspace": workspace, "member": id, "removed": true}))
-}
-
-/// The workspaces where this actor is a human member, each with its people and its pending
-/// grants, in one read. A person shows as "name <email>", as the email, or as the member ID when
-/// no Google identity is bound. Agent members are not people, so the list omits them. An email
-/// grant of a person who is already a member is not listed again. A hidden workspace is listed too.
-pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
-    let conn = pool.get().await?;
-    let items: Vec<Value> = conn
-        .query(
-            &format!("SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
-                    COALESCE((SELECT array_agg(COALESCE(NULLIF(i.display_name,'')||' <'||i.email||'>', i.email, m.key) ORDER BY m.key)
-                              FROM jsonb_each_text(b.first_view->'members') m
-                              LEFT JOIN joppa.google_identities i ON i.actor=m.key
-                              WHERE m.value='human'), '{{}}'),
-                    COALESCE((SELECT array_agg(m.key ORDER BY m.key)
-                              FROM jsonb_each_text(b.first_view->'members') m
-                              WHERE m.value='human'), '{{}}'),
-                    COALESCE((SELECT array_agg(e.email ORDER BY e.email) FROM joppa.email_grants e WHERE e.workspace=s.workspace
-                              AND NOT EXISTS(SELECT 1 FROM jsonb_each_text(b.first_view->'members') m
-                                             JOIN joppa.google_identities i ON i.actor=m.key WHERE lower(i.email)=e.email)), '{{}}'),
-                    COALESCE((SELECT array_agg(d.domain ORDER BY d.domain) FROM joppa.domain_grants d WHERE d.workspace=s.workspace), '{{}}')
-             FROM joppa.state_entries s
-             LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
-             WHERE s.section='meta' AND s.key='' AND s.workspace IN ({HUMAN_MEMBERSHIP}) AND s.value->'deleted_at' IS NULL
-             ORDER BY 2,1"),
-            &[&actor],
-        )
-        .await?
-        .iter()
-        .map(|r| {
-            // Each member has its ID, so any human member can remove it. The page leaves out
-            // Remove on the row of the signed-in person.
-            let labels: Vec<String> = r.get(2);
-            let ids: Vec<String> = r.get(3);
-            let members: Vec<Value> = ids
-                .iter()
-                .zip(&labels)
-                .map(|(id, label)| json!({"id": id, "label": label}))
-                .collect();
-            json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1),
-                "people": labels, "members": members, "emails": r.get::<_, Vec<String>>(4),
-                "domains": r.get::<_, Vec<String>>(5)})
-        })
-        .collect();
-    Ok(json!({"items": items}))
 }
 
 /// The workspace and its current state when `actor` is a human member of it. Any other member

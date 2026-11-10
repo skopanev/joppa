@@ -67,14 +67,14 @@ pub fn rules(w: &Workspace) -> Result<ResultShape> {
         .context("the tree schema has no test_results block")
 }
 
-/// Apply migrate_test_rules once. The workspace creator is the actor of the event.
+/// Apply migrate_test_rules once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.test_rules_migrated {
         return Ok(());
     }
     ensure!(
-        actor == w.admin,
-        "the workspace creator runs this migration"
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
     );
     let mut next = schema(w);
     // Each type gets its status rule by name.

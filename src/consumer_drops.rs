@@ -97,14 +97,14 @@ pub fn removed(w: &Workspace) -> BTreeMap<String, (String, Vec<String>)> {
     out
 }
 
-/// Apply migrate_consumer_drops once. The workspace creator is the actor of the event.
+/// Apply migrate_consumer_drops once. The system actor (commands::system_actor) is the actor of the event.
 pub fn apply(w: &mut Workspace, actor: &str, at: &str) -> Result<()> {
     if w.consumer_drops_noted {
         return Ok(());
     }
     ensure!(
-        actor == w.admin,
-        "the workspace creator runs this migration"
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
     );
     w.consumer_drops_noted = true;
     for (key, (kept, list)) in removed(w) {

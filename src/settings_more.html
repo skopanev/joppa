@@ -34,7 +34,8 @@ const show=()=>{
     }
     return li;
   };
-  $('workspace-people').replaceChildren(...(entry?.members||[]).map(m=>item('member',m.label,m.id===me?.actor?null:{member:m.id})),
+  // Without an answer of /api/me no member row has Remove.
+  $('workspace-people').replaceChildren(...(entry?.members||[]).map(m=>item('member',m.label,!me||m.id===me.actor?null:{member:m.id})),
     ...(entry?.emails||[]).map(e=>item('email',e+' (invited)',{email:e})),...(entry?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d})));
   $('rename-title').value=entry?.title||selectedTitle();
   // The pencil renames the selected workspace for every member.
@@ -53,7 +54,7 @@ const closeDelete=()=>{
   deleteTitle.value='';confirmButton.disabled=true;
   $('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;
 };
-// The signed-in person is read once; a failed read leaves Remove on each row.
+// The signed-in person is read once; after a failed read, no member row has Remove.
 const account=send('/api/me','GET',undefined,'Could not load your account.').catch(()=>null);
 // A reload keeps the selection when the workspace is still listed. The list has the hidden
 // workspaces of the member too, so the member can show them again.

@@ -30,6 +30,29 @@ pub fn human_member(w: &Workspace, actor: &str) -> Result<()> {
     Ok(())
 }
 
+/// The actor of server migrations and defaults: the creator while it is a human member, else
+/// the first human member in member order. A journal from before the creator could leave
+/// always gives the creator.
+pub fn system_actor(w: &Workspace) -> &str {
+    if is_human_member(w, &w.admin) {
+        return &w.admin;
+    }
+    w.members
+        .iter()
+        .find(|(_, role)| *role == "human")
+        .map_or(w.admin.as_str(), |(id, _)| id.as_str())
+}
+
+/// The default owner of an object that the actor saves without one: the actor when it is a
+/// human member, else the system actor.
+pub fn default_owner<'a>(w: &'a Workspace, actor: &'a str) -> &'a str {
+    if is_human_member(w, actor) {
+        actor
+    } else {
+        system_actor(w)
+    }
+}
+
 /// Refuse the removal of `id` when no other human member stays.
 pub fn keeps_human_member(w: &Workspace, id: &str) -> Result<()> {
     ensure!(
