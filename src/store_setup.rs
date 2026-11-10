@@ -108,6 +108,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
     }
     relations_data(&*tx).await?;
     tx.batch_execute(BLUE_TONE).await?;
+    tx.batch_execute(RELATIONS_ONLY).await?;
     for row in tx.query("SELECT w.id FROM joppa.workspaces w LEFT JOIN joppa.board_cache b ON b.workspace=w.id WHERE b.workspace IS NULL OR b.first_view='{}'::jsonb OR NOT EXISTS(SELECT 1 FROM joppa.state_entries s WHERE s.workspace=w.id AND s.section='meta') OR NOT (b.first_view ? 'object_types') OR COALESCE(b.first_view->>'projection_version','')<>$1", &[&BOARD_PROJECTION_VERSION]).await? {
         let id: String = row.get(0);
         tx.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&id]).await?;
@@ -133,6 +134,10 @@ const RELATIONS_PENDING: &str = "SELECT EXISTS(SELECT 1 FROM joppa.workspaces w 
 /// Migration 063 moves the older tone of the current rows to blue without a replay. It
 /// needs no DDL and runs at serve start too. A second run writes nothing.
 const BLUE_TONE: &str = include_str!("../migrations/063_blue_tone.sql");
+/// Migration 064 removes the links of the current rows without a replay, before the first
+/// projection compares a stored document with its revision. It needs no DDL and runs at serve
+/// start too. A second run writes nothing.
+const RELATIONS_ONLY: &str = include_str!("../migrations/064_relations_only.sql");
 async fn relations_data(client: &impl GenericClient) -> Result<()> {
     if client.query_one(RELATIONS_PENDING, &[]).await?.get(0) {
         client.batch_execute(RELATIONS).await?;
@@ -149,6 +154,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     tx.batch_execute(HIDDEN_BY).await?;
     relations_data(&*tx).await?;
     tx.batch_execute(BLUE_TONE).await?;
+    tx.batch_execute(RELATIONS_ONLY).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
     Ok(())

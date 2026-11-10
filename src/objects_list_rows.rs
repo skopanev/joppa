@@ -28,9 +28,8 @@ pub(super) async fn list_rows(
     let f = bound.params();
     // A status list with the archived tone also keeps the current archived nodes.
     let archived = scope.filter.archived();
-    // A member read ($19) keeps the holders of the key and the targets of its edges. A holder
-    // has an edge of the key in object_links, also when its document holds only the older
-    // links. A key with no edges is only in a document of the new form.
+    // A member read ($19) keeps the holders of the key and the targets of its edges. The
+    // document of a holder has the key in its relations, also a key with no edges.
     let query = format!(
         r#"
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.work_ready,
@@ -39,7 +38,7 @@ pub(super) async fn list_rows(
             o.document_at,o.description,o.signal::text,o.present,o.inbox_status,o.process::text,
             CASE WHEN $10::boolean THEN {data}::text END,o.total,
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
-            CASE WHEN $10::boolean THEN COALESCE(o.document->'relations',joppa.relations_of_links(o.document->'links'),'{{}}'::jsonb)::text END,
+            CASE WHEN $10::boolean THEN (o.document->'relations')::text END,
             o.document->'data'->>'assignee'
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         WHERE o.workspace=$1 AND (o.present OR $18)
@@ -47,7 +46,7 @@ pub(super) async fn list_rows(
             AND ($7::text IS NULL OR o.inbox_status=$7)
             AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
                 AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
-            AND ($19::text IS NULL OR EXISTS (SELECT 1 FROM joppa.object_links h WHERE h.workspace=o.workspace AND h.source=o.address AND h.relation=$19) OR o.document->'relations' ? $19
+            AND ($19::text IS NULL OR o.document->'relations' ? $19
                 OR EXISTS (SELECT 1 FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source AND s.present
                     WHERE l.workspace=o.workspace AND l.relation=$19 AND l.target IN (SELECT o.address UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=o.address)))) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address

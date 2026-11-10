@@ -28,18 +28,16 @@ pub struct StoredRevision {
 
 impl From<StoredRevision> for ObjectRevision {
     fn from(r: StoredRevision) -> Self {
-        // A row with relations holds the rollback shadow in links: nothing reads it.
-        let links = r.links.filter(|_| r.relations.is_none());
         let relations = r
             .relations
-            .unwrap_or_else(|| from_links(links.as_deref().unwrap_or_default()));
+            .unwrap_or_else(|| from_links(r.links.as_deref().unwrap_or_default()));
         ObjectRevision {
             revision: r.revision,
             schema_revision: r.schema_revision,
             parent: r.parent,
             data: r.data,
             relations,
-            older_links: LinkForm(links),
+            older_links: LinkForm(r.links),
             actor: r.actor,
             alias: r.alias,
             at: r.at,
@@ -51,11 +49,10 @@ impl From<StoredRevision> for ObjectRevision {
     }
 }
 
-/// A stored document as a read gives it: a document with relations stays as stored without its
-/// rollback shadow, and an older document with links gives the relations of the replay rule.
-pub fn adapt_document(mut document: Value) -> serde_json::Result<Value> {
-    if document.get("relations").is_some() || document.get("links").is_none() {
-        document.as_object_mut().map(|m| m.remove("links"));
+/// A stored document as a read gives it: a document with relations stays as stored, and an
+/// older document with links gives the relations of the replay rule.
+pub fn adapt_document(document: Value) -> serde_json::Result<Value> {
+    if document.get("links").is_none() {
         return Ok(document);
     }
     serde_json::to_value(serde_json::from_value::<ObjectRevision>(document)?)
@@ -94,26 +91,8 @@ pub fn changed_keys(saved: &Value, previous: &Value) -> Vec<String> {
     keys
 }
 
-/// Write the rollback shadow `links` next to the relations of a current row, so that the older
-/// release can read the row after a rollback: the depends_on edges as blocking links, then the
-/// related edges, each with its pin. No read of this release gives it. Deploy 19b removes it.
-pub fn with_shadow(document: &mut Value) {
-    if let Some(relations) = document.get("relations") {
-        let relations: Relations = serde_json::from_value(relations.clone()).unwrap_or_default();
-        document["links"] = serde_json::to_value(to_links(&relations)).unwrap_or_default();
-    }
-}
-
-/// The current document of joppa.objects. The older release compares this document with its
-/// own form of the revision on each write. So a node whose relations the older links give back
-/// exactly stores that older form: its shadow links and no relations. Any other node, such as
-/// a node with a flow, a key title or a condition, stores its relations and the shadow. A read
-/// maps the older form back (adapt_document). Deploy 19b stores relations only.
+/// The current document of joppa.objects: the revision as the history stores it, with its
+/// relations and no links.
 pub fn stored_document(revision: &ObjectRevision) -> serde_json::Result<Value> {
-    let mut document = serde_json::to_value(revision)?;
-    with_shadow(&mut document);
-    if from_links(&to_links(&revision.relations)) == revision.relations {
-        document.as_object_mut().map(|m| m.remove("relations"));
-    }
-    Ok(document)
+    serde_json::to_value(revision)
 }
