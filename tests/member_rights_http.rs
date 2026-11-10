@@ -97,7 +97,7 @@ async fn http_command(w: &World, token: &str, command: Value) -> Result<(u16, Va
 /// The human members of W in the full read, as a map of ID to role.
 async fn humans(w: &World) -> Result<Value> {
     let full = joppa::store::read(&w.pool, &w.ws, "alex", &joppa::store::Scope::full()).await?;
-    let members = full["index"]["members"]
+    let members = full["members"]
         .as_object()
         .with_context(|| format!("members: {full}"))?;
     Ok(Value::Object(
