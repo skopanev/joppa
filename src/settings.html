@@ -42,7 +42,9 @@ try{
 .owner-block{margin-top:1.2em}
 .danger{margin-top:1.6em;padding-top:1.2em;border-top:1px solid var(--rule)}
 .settings .danger .action{color:var(--fail);border-color:var(--fail)}
-#delete-confirm{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0}
+#delete-confirm{display:grid;gap:.6rem;margin:0}
+#delete-confirm p{margin:0}
+#delete-confirm strong{user-select:all;overflow-wrap:anywhere}
 #delete-confirm[hidden]{display:none}
 #delete-references{margin:0 0 .6em;color:var(--text)}
 #delete-references ul{margin:.3em 0;padding-left:1.2em}
@@ -101,7 +103,11 @@ try{
       <div id="delete-workspace" class="danger">
         <button id="delete-button" class="action" type="button">Delete workspace</button>
         <div id="delete-references" hidden></div>
-        <p id="delete-confirm" hidden><span>Delete this workspace and all of its data for every member? You cannot undo this.</span> <button id="delete-confirm-button" class="action" type="button">Delete for everyone</button> <button id="delete-cancel-button" class="action" type="button">Cancel</button></p>
+        <div id="delete-confirm" hidden>
+          <p>Delete <strong id="delete-name"></strong> and all of its data for every member? You cannot undo this.</p>
+          <label for="delete-title">Type the workspace title to confirm</label>
+          <div class="row"><input id="delete-title" name="title" autocomplete="off" spellcheck="false"><button id="delete-confirm-button" class="action" type="button" disabled>Delete for everyone</button><button id="delete-cancel-button" class="action" type="button">Cancel</button></div>
+        </div>
         <p id="delete-error" role="alert"></p>
       </div>
     </section>

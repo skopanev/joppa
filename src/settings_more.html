@@ -42,6 +42,15 @@ const show=()=>{
   // The checkbox shows the flag of the signed-in member for the selected workspace.
   $('hide-workspace').checked=workspaces.some(w=>w.id===id&&w.hidden===true);
   for(const id of ['hide-error','grant-error','rename-error','delete-error'])$(id).textContent='';
+  closeDelete();
+};
+// The confirmation names the selected workspace, and Delete for everyone waits for its exact title.
+const confirmButton=$('delete-confirm-button'),deleteTitle=$('delete-title');
+const selectedTitle=()=>select.selectedOptions[0]?.text??'';
+const matchTitle=()=>{if(confirmButton.getAttribute('aria-busy')!=='true')confirmButton.disabled=deleteTitle.value!==selectedTitle();};
+deleteTitle.oninput=matchTitle;
+const closeDelete=()=>{
+  deleteTitle.value='';confirmButton.disabled=true;
   $('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;
 };
 // A reload keeps the selection when the workspace is still listed. The list has the hidden
@@ -140,20 +149,22 @@ $('delete-button').onclick=async()=>{
     list.replaceChildren(element('span','These workspaces link to this workspace:'),ul,
       element('span','After the deletion, these links are removed from those workspaces.'));
     list.hidden=!items.length;
-    button.hidden=true;$('delete-confirm').hidden=false;
+    $('delete-name').textContent=selectedTitle();deleteTitle.value='';confirmButton.disabled=true;
+    button.hidden=true;$('delete-confirm').hidden=false;deleteTitle.focus();
   }catch(e){$('delete-error').textContent=e.message;}
   busy(button,false);
 };
-$('delete-cancel-button').onclick=()=>{$('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;};
-$('delete-confirm-button').onclick=async()=>{
-  const button=$('delete-confirm-button'),workspace=select.value;
+$('delete-cancel-button').onclick=closeDelete;
+confirmButton.onclick=async()=>{
+  const button=confirmButton,workspace=select.value;
+  if(deleteTitle.value!==selectedTitle())return;
   busy(button,true);$('delete-cancel-button').disabled=true;$('delete-error').textContent='';
   try{
     await send('/api/workspaces/'+encodeURIComponent(workspace)+'/delete','POST',undefined,'Could not delete the workspace.');
     if(sessionStorage.getItem('joppa-workspace')===workspace)sessionStorage.removeItem('joppa-workspace');
     await load();
   }catch(e){$('delete-error').textContent=e.message;}
-  busy(button,false);$('delete-cancel-button').disabled=false;
+  busy(button,false);$('delete-cancel-button').disabled=false;matchTitle();
 };
 const form=$('create-workspace'),title=$('workspace-title'),create=$('create-workspace-button'),error=$('create-workspace-error');
 form.onsubmit=async event=>{
