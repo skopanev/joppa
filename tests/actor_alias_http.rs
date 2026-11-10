@@ -190,14 +190,28 @@ async fn a_bad_alias_is_refused_and_an_alias_gives_no_access() -> Result<()> {
         .await?
         .map_err(anyhow::Error::msg)?;
     for (token, hidden) in [(&w.alex, json!(true)), (&w.owner, Value::Null)] {
-        let list = w.mcp(token, "joppa_list", json!({})).await?;
-        let list = list.map_err(anyhow::Error::msg)?;
-        let item = list["items"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|i| i["id"] == w.ws.as_str());
-        let item = item.context("joppa_list item")?;
+        // A shared test database lists more than one page of 25 workspaces.
+        let (mut found, mut cursor) = (None, Value::Null);
+        while found.is_none() {
+            let args = if cursor.is_null() {
+                json!({})
+            } else {
+                json!({"cursor":cursor})
+            };
+            let list = w.mcp(token, "joppa_list", args).await?;
+            let list = list.map_err(anyhow::Error::msg)?;
+            found = list["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|i| i["id"] == w.ws.as_str())
+                .cloned();
+            cursor = list["next_cursor"].clone();
+            if cursor.is_null() {
+                break;
+            }
+        }
+        let item = found.context("joppa_list item")?;
         ensure!(
             item["hidden"] == hidden && item["title"] == "Record channel",
             "{item}"

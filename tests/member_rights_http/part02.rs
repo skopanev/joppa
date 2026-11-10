@@ -84,12 +84,14 @@ async fn no_reply_help_or_refusal_names_a_workspace_owner() -> Result<()> {
     let list = accepted(&w, &alex, "/api/workspaces", None).await?;
     no_creator_key(&list, "/api/workspaces")?;
     let full = joppa::store::read(&w.pool, &w.ws, "alex", &joppa::store::Scope::full()).await?;
-    // The full read is the workspace state itself.
-    let state = full.as_object().context("the full read")?;
-    ensure!(
-        !state.contains_key("owner") && !state.contains_key("admin"),
-        "the full read names the creator"
-    );
+    // The full read gives the workspace state under "state".
+    for section in [&full, &full["state"]] {
+        let section = section.as_object().context("the full read")?;
+        ensure!(
+            !section.contains_key("owner") && !section.contains_key("admin"),
+            "the full read names the creator"
+        );
+    }
     // data.owner of an object stays.
     ensure!(
         w.object("ac:a").await?["document"]["data"]["owner"] == "owner",

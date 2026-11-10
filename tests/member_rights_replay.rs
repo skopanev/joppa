@@ -155,7 +155,11 @@ async fn a_stored_journal_of_the_owner_rule_replays_on_the_server_and_c_stays_a_
     store::check_journal(&pool).await?;
     let full = store::read(&pool, &ws, "owner", &store::Scope::full()).await?;
     let members = json!({"alex":"human","bot":"agent","owner":"human"});
-    ensure!(full["index"]["members"] == members, "{}", full["index"]);
+    ensure!(
+        full["state"]["members"] == members,
+        "{}",
+        full["state"]["members"]
+    );
     let c = &full["state"]["capabilities"]["c"];
     ensure!(
         c["title"] == "Keep paid access" && c["confirmed"] != true,
