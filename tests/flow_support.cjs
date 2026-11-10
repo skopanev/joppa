@@ -56,8 +56,10 @@ async function open(f, query, count) {
 
 // In the page: a snapshot of the canvas. A position is the centre in screen px (x, y) and
 // in the coordinates of the drawing (dx, dy). An edge goes from data-from to data-to, or else
-// between the nodes nearest to its ends. drawn names the nodes nearest to its ends. marks are the classes of the element and of
-// its ancestors inside the canvas. faint is the opacity of the element that has .flow-faint.
+// between the nodes nearest to its ends. drawn names the nodes nearest to its ends. An edge
+// gives 101 points of its path in screen px (points) and in the drawing (dpoints). A dot gives
+// its radius in the drawing (dr). marks are the classes of the element and of its ancestors
+// inside the canvas. faint is the opacity of the element that has .flow-faint.
 function snapshot() {
   const canvas = document.querySelector('.flow-canvas');
   const svg = canvas && (canvas.matches('svg') ? canvas : canvas.querySelector('svg'));
@@ -82,22 +84,24 @@ function snapshot() {
     const title = dot.querySelector('title') || n.querySelector('title') || n.closest('[data-address]')?.querySelector(':scope > title');
     return {address: a, x, y, dx: p.x, dy: p.y, fill: getComputedStyle(dot).fill, marks: marks(n), faint: faint(n),
       labels: labels.map(t => t.textContent.trim()), labelsShown: labels.every(shown), label: label ? labelLines(label) : null,
-      title: title ? title.textContent.trim() : null, box: rect(dot)};
+      title: title ? title.textContent.trim() : null, box: rect(dot), dr: b.width / 2 / svg.getScreenCTM().a};
   });
   const near = (x, y) => nodes.reduce((best, n) => Math.hypot(n.x - x, n.y - y) < Math.hypot(best.x - x, best.y - y) ? n : best).address;
   const edges = [...document.querySelectorAll('.flow-edge')].map(e => {
     const path = e.matches('path,line,polyline') ? e : e.querySelector('path,line,polyline'), length = path.getTotalLength(), ctm = path.getScreenCTM();
-    const points = Array.from({length: 41}, (_, i) => path.getPointAtLength(length * i / 40).matrixTransform(ctm));
+    const points = Array.from({length: 101}, (_, i) => path.getPointAtLength(length * i / 100).matrixTransform(ctm));
     const marker = [path, e].map(el => getComputedStyle(el).markerEnd + ' ' + (el.getAttribute('marker-end') || '')).join(' ');
-    const drawn = near(points[0].x, points[0].y) + '>' + near(points[40].x, points[40].y), [x, y] = drawn.split('>');
+    const drawn = near(points[0].x, points[0].y) + '>' + near(points[100].x, points[100].y), [x, y] = drawn.split('>');
     return {from: e.dataset.from ?? x, to: e.dataset.to ?? y, drawn, marks: [...new Set([...marks(e), ...marks(path)])].sort(),
-      faint: faint(path), marker, top: Math.min(...points.map(p => p.y)), points: points.map(p => [p.x, p.y])};
+      faint: faint(path), marker, top: Math.min(...points.map(p => p.y)), points: points.map(p => [p.x, p.y]),
+      dpoints: points.map(p => { const d = p.matrixTransform(inverse); return [d.x, d.y]; })};
   });
   const whens = [...document.querySelectorAll('.flow-when')].map(w => {
     const b = w.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
     const gap = edge => Math.min(...edge.points.map(([px, py]) => Math.hypot(px - x, py - y)));
     const edge = edges.reduce((best, e) => gap(e) < gap(best) ? e : best, edges[0]);
-    return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: w.querySelectorAll('tspan').length, height: b.height};
+    return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: w.querySelectorAll('tspan').length,
+      height: b.height, x, y, box: rect(w)};
   });
   const badges = [...document.querySelectorAll('.flow-transfer')].map(b => ({address: address(b), text: b.textContent.trim(), box: rect(b)}));
   // Each line of the drawing that is no edge, no dot and no badge, such as a parent line.
