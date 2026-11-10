@@ -3,7 +3,8 @@
 //   then from each node that is not visited yet. Take the edges of a node in their stored order.
 // - An edge to a node on the current walk stack is a back edge. It gets `back: true`.
 // - The column of a node is the length of the longest path to it without back edges.
-// - The nodes of one column go down in address order, round the middle line.
+// - A column lists its nodes in address order and then the waypoints of the long edges. The
+//   barycenter sweeps sort it. Its rows are ROW_GAP apart round the middle line.
 export const COLUMN_GAP=280,ROW_GAP=140;
 // A node label has at most LINES lines of at most LINE characters.
 export const LINE=18,LINES=3;
@@ -30,7 +31,8 @@ export function wrapLabel(text){
   }
   return rows;
 }
-// `addresses` come in address order. Each edge is {from, to} in its stored order.
+// `addresses` come in address order. Each edge is {from, to} in its stored order. A forward edge
+// gets `via`: its waypoints {column, x, y} from left to right.
 export function flowLayout(addresses,edges){
   const out=new Map(addresses.map(a=>[a,[]])),into=new Map(addresses.map(a=>[a,0]));
   for(const e of edges){out.get(e.from).push(e);into.set(e.to,into.get(e.to)+1);}
@@ -51,9 +53,42 @@ export function flowLayout(addresses,edges){
   // The reverse of the walk end order is a topological order of the edges without back edges.
   const column=new Map(addresses.map(a=>[a,0]));
   for(const a of done.reverse())for(const e of out.get(a))if(!e.back)column.set(e.to,Math.max(column.get(e.to),column.get(a)+1));
-  const columns=new Map();
-  for(const a of addresses){const c=column.get(a);if(!columns.has(c))columns.set(c,[]);columns.get(c).push(a);}
+  const columns=Array.from({length:Math.max(0,...column.values())+1},()=>[]);
+  for(const a of addresses)columns[column.get(a)].push(a);
+  // A forward edge over k > 1 columns gets one waypoint in each column between: `via` lists
+  // them. Each segment joins an item to the next item of its edge in the next column.
+  const before=new Map(),after=new Map();
+  const add=(map,key,value)=>{if(!map.has(key))map.set(key,[]);map.get(key).push(value);};
+  const join=(a,b)=>{add(after,a,b);add(before,b,a);};
+  for(const e of edges){
+    if(e.back)continue;
+    let last=e.from;e.via=[];
+    for(let c=column.get(e.from)+1;c<column.get(e.to);c++){const w={column:c};columns[c].push(w);e.via.push(w);join(last,w);last=w;}
+    join(last,e.to);
+  }
+  sweep(columns,before,after);
   const position=new Map();
-  for(const [c,list] of columns)list.forEach((a,i)=>position.set(a,{address:a,x:c*COLUMN_GAP,y:(i-(list.length-1)/2)*ROW_GAP}));
+  columns.forEach((list,c)=>list.forEach((item,i)=>{
+    const place={x:c*COLUMN_GAP,y:(i-(list.length-1)/2)*ROW_GAP};
+    if(typeof item==='string')position.set(item,{address:item,...place});else Object.assign(item,place);
+  }));
   return {column,position};
+}
+// The 4 barycenter sweeps: left to right, right to left, left to right, right to left. A sweep
+// gives each item of a column the mean row of its neighbours in the column before it (after it,
+// right to left) and sorts the column by that value. An item without such neighbours keeps its
+// row as its value. A tie keeps the current order. A row is the place of an item in its column.
+function sweep(columns,before,after){
+  const row=new Map();
+  const number=list=>list.forEach((item,i)=>row.set(item,i));
+  columns.forEach(number);
+  const order=(list,side)=>{
+    const value=new Map(list.map(item=>{const near=side.get(item)||[];return [item,near.length?near.reduce((s,o)=>s+row.get(o),0)/near.length:row.get(item)];}));
+    list.sort((a,b)=>value.get(a)-value.get(b));number(list);
+  };
+  const last=columns.length-1;
+  for(let pass=0;pass<4;pass++){
+    if(pass%2===0)for(let c=1;c<=last;c++)order(columns[c],before);
+    else for(let c=last-1;c>=0;c--)order(columns[c],after);
+  }
 }

@@ -1,9 +1,11 @@
 // The drawing of Flow view: one SVG with a dot for each node and an arrow for each edge, in the
 // columns of flow-layout.js. The camera (flow-camera.js) moves the view.
-// - A forward edge is a curve from left to right. A back edge is an arc over its two nodes.
+// - A forward edge is a curve from left to right through its waypoints. A back edge is an arc
+//   over its two nodes.
 // - A node label wraps by words into at most 3 lines (wrapLabel of flow-layout.js). The dot
 //   title keeps the full label.
-// - The condition `when` of an edge shows on the edge in one line. Every label shows.
+// - The condition `when` of an edge stands in one line on the first part of the edge, and
+//   touches no other condition. Every label shows.
 // - Under the label of a node, one transfer badge names each other relation of the node.
 // - A drag from any place pans the view and picks nothing. The dots keep their place.
 // - A click with no drag picks a dot or a label, opens a badge, or clears on the canvas.
@@ -11,7 +13,7 @@ import {flowCamera} from 'board/flow-camera.js';
 import {flowLayout,wrapLabel} from 'board/flow-layout.js';
 const SVG='http://www.w3.org/2000/svg';
 // The dot radius, the space of a curve from its dots, and the first label line under a dot.
-const RADIUS=9,GAP=3,LABEL=RADIUS+19;
+const RADIUS=9,GAP=3,LABEL=RADIUS+19,WHEN_STEP=18;
 // The text sizes of .flow-label and .flow-transfer in src/board_more.css, the line height in
 // em, the space from the last label baseline to the first badge baseline, and the badge step
 // in badge em.
@@ -59,7 +61,7 @@ export function drawFlow(holder,nodes,edges,on){
   }
   const drawn=edges.map(edge=>{
     const a=position.get(edge.from),b=position.get(edge.to);
-    const {d,mid}=edge.back?arc(a,b):curve(a,b);
+    const {d,mid}=edge.back?arc(a,b):curve(a,b,edge.via);
     const element=svg('path',{d,'marker-end':'url(#flow-arrow)'},'flow-edge'+(edge.back?' flow-back':''));
     element.dataset.from=edge.from;element.dataset.to=edge.to;lines.append(element);
     let label=null;
@@ -67,16 +69,35 @@ export function drawFlow(holder,nodes,edges,on){
     return {...edge,element,label,mid};
   });
   holder.prepend(canvas);
-  // The view shows every dot and the top of every arc.
-  const tops=drawn.filter(e=>e.back).map(e=>e.mid);
-  const camera=flowCamera(canvas);camera.fit([...position.values(),...tops],undefined,MOST);
+  // The view shows every dot, every waypoint and the top of every arc.
+  const tops=drawn.filter(e=>e.back).map(e=>e.mid),via=drawn.flatMap(e=>e.via||[]);
+  const camera=flowCamera(canvas);camera.fit([...position.values(),...via,...tops],undefined,MOST);
+  apart(drawn.map(e=>e.label).filter(Boolean));
   pointer(canvas,camera,on);
   return {canvas,camera,position,parts,edges:drawn};
 }
-// A forward edge leaves the right of its dot and ends at the left of the target dot.
-function curve(a,b){
-  const sx=a.x+RADIUS+GAP,ex=b.x-RADIUS-GAP,d=(ex-sx)/2;
-  return {d:`M${at(sx)} ${at(a.y)}C${at(sx+d)} ${at(a.y)} ${at(ex-d)} ${at(b.y)} ${at(ex)} ${at(b.y)}`,mid:{x:(sx+ex)/2,y:(a.y+b.y)/2}};
+// A forward edge leaves the right of its dot, goes through its waypoints and ends at the left of
+// the target dot. Each part is a curve that is level at both ends, so the path stays smooth.
+// `mid` is the middle of the first part, where the condition of the edge stands.
+function curve(a,b,via=[]){
+  const points=[{x:a.x+RADIUS+GAP,y:a.y},...via,{x:b.x-RADIUS-GAP,y:b.y}];
+  let d=`M${at(points[0].x)} ${at(points[0].y)}`;
+  for(let i=1;i<points.length;i++){
+    const p=points[i-1],q=points[i],h=(q.x-p.x)/2;
+    d+=`C${at(p.x+h)} ${at(p.y)} ${at(q.x-h)} ${at(q.y)} ${at(q.x)} ${at(q.y)}`;
+  }
+  return {d,mid:{x:(points[0].x+points[1].x)/2,y:(points[0].y+points[1].y)/2}};
+}
+// In edge order, a condition label moves down by WHEN_STEP while its box overlaps the box of
+// an earlier label. The boxes come from the drawing after the fit.
+function apart(labels){
+  const placed=[];
+  for(const label of labels){
+    const b=label.getBBox(),box={x:b.x,y:b.y,w:b.width,h:b.height};let down=0;
+    while(placed.some(p=>box.x<p.x+p.w&&p.x<box.x+box.w&&box.y<p.y+p.h&&p.y<box.y+box.h)){box.y+=WHEN_STEP;down+=WHEN_STEP;}
+    if(down)label.setAttribute('y',at(Number(label.getAttribute('y'))+down));
+    placed.push(box);
+  }
 }
 // A back edge leaves the top of its dot and comes down on the top of the target dot. Its
 // highest point is over both dots. An edge to its own node makes a loop.

@@ -186,8 +186,9 @@ dialog::backdrop{background:#22222240}
 .flow-arrow-head{fill:var(--heading)}
 .flow-node{stroke:var(--bg);stroke-width:1.5px;cursor:pointer}
 /* The text keeps its screen size up to 1.6 world units for one pixel (MOST of flow-draw.js),
-   and shrinks with the drawing when the view is wider. */
-.flow-label,.flow-when,.flow-transfer{--k:min(var(--u, 1), 1.6);text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:calc(3px * var(--k))}
+   and shrinks with the drawing when the view is wider. A halo of the page colour keeps the text
+   readable over the edges. */
+.flow-label,.flow-when,.flow-transfer{--k:min(var(--u, 1), 1.6);text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
 .flow-label{font-size:calc(13px * var(--k));font-weight:600;fill:var(--heading);cursor:pointer}
 .flow-when{font-size:calc(11px * var(--k));fill:var(--muted);pointer-events:none}
 .flow-transfer{font-size:calc(11px * var(--k));fill:var(--link);cursor:pointer}
