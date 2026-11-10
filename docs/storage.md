@@ -92,7 +92,7 @@ The runtime role cannot update/delete events, own tables or disable triggers.
 Even normal UPDATE, DELETE and TRUNCATE by the table owner encounter WORM
 triggers. A database superuser can bypass those protections. Only the function
 `joppa.purge_workspace` deletes journal rows: it removes every row of a workspace
-that its owner deletes. The runtime role can only execute it. Physical storage,
+that a human member deletes. The runtime role can only execute it. Physical storage,
 backups and protection against infrastructure administrators are separate duties.
 
 ## Derived data

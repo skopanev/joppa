@@ -1,5 +1,5 @@
 //! The workspaces that name a workspace, and the removal of those references when the
-//! owner deletes it. See `crate::workspace_references` for the state change.
+//! a member deletes it. See `crate::workspace_references` for the state change.
 use super::*;
 use crate::workspace_references::{ACTOR, sources};
 
@@ -35,18 +35,21 @@ pub(super) async fn list(client: &impl GenericClient, workspace: &str) -> Result
     Ok(out)
 }
 
-/// The owner reads the workspaces that will lose their references to this workspace.
+/// A human member reads the workspaces that will lose their references to this workspace.
 pub async fn workspace_references(pool: &Pool, workspace: &str, actor: &str) -> Result<Value> {
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
     access::check(&**conn, &workspace, actor, false).await?;
-    // The owner is in the meta row: the check loads no current state of the workspace.
-    let sql = "SELECT value->>'admin' FROM joppa.state_entries WHERE workspace=$1 AND section='meta' AND key=''";
-    let admin: Option<String> = conn
-        .query_opt(sql, &[&workspace])
+    // The role is in the members row: the check loads no current state of the workspace.
+    let sql = "SELECT value #>> '{}' FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2";
+    let role: Option<String> = conn
+        .query_opt(sql, &[&workspace, &actor])
         .await?
         .and_then(|r| r.get(0));
-    ensure!(admin.as_deref() == Some(actor), "workspace owner required");
+    ensure!(
+        role.as_deref() == Some("human"),
+        commands::HUMAN_MEMBER_REQUIRED
+    );
     Ok(json!({"id": workspace, "workspaces": list(&**conn, &workspace).await?}))
 }
 
@@ -58,7 +61,7 @@ pub(super) async fn remove(
     title: &str,
 ) -> Result<Vec<Value>> {
     let changed = list(client, workspace).await?;
-    let reason = format!("The owner deleted the workspace {title}. Its links are removed.");
+    let reason = format!("A member deleted the workspace {title}. Its links are removed.");
     for item in &changed {
         let id = item["id"].as_str().context("workspace ID")?;
         client

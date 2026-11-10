@@ -19,7 +19,7 @@ pub(super) fn apply_confirm(w: &mut Workspace, actor: &str, command: &Command) -
                     .as_ref()
                     .and_then(|id| w.domains.get(id))
                     .is_none_or(|d| d.confirmed)),
-        "workspace owner must confirm the business tree first"
+        "a human member must confirm the business tree first"
     );
     let r = revision(w, req, *n, true)?;
     ensure!(r.owner == actor, "REQ owner confirms its formulation");

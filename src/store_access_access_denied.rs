@@ -14,11 +14,16 @@ impl std::error::Error for AccessDenied {}
 
 pub const MEMBERSHIP: &str =
     "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1";
-/// Owner grants for a lowercase email ($1) and a Google hd ($2): its email grants, and the
+/// The workspaces where the actor ($1) is a human member: they list in Settings with their
+/// people and grants.
+pub(crate) const HUMAN_MEMBERSHIP: &str = "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1 AND value #>> '{}' = 'human'";
+/// Member grants for a lowercase email ($1) and a Google hd ($2): its email grants, and the
 /// domain grants that equal the hd. Without hd, no domain grant matches.
 pub(crate) const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
      UNION SELECT workspace FROM joppa.domain_grants WHERE domain=lower($2::text)";
-pub(crate) const OWNED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1 AND value->'deleted_at' IS NULL";
+/// The workspaces that the actor ($1) created. The creator has no grant, so this keeps its
+/// access path. It gives no right: membership still decides, so a removed creator loses access.
+pub(crate) const CREATED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1 AND value->'deleted_at' IS NULL";
 
 pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BTreeSet<String>>> {
     let identity = client
@@ -54,7 +59,7 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
             allowed.insert(resolve_workspace(client, &name).await?);
         }
     }
-    // Owner email and domain grants add workspaces, also without a rules file.
+    // Member email and domain grants add workspaces, also without a rules file.
     // Only a bound Google identity has an hd, so only it gets domain grants.
     for row in client
         .query(GRANTED, &[&email.to_ascii_lowercase(), &hosted_domain])
@@ -62,8 +67,8 @@ pub async fn scope(client: &impl GenericClient, actor: &str) -> Result<Option<BT
     {
         allowed.insert(row.get(0));
     }
-    // The owner keeps a workspace that the rules do not name. Membership is still checked.
-    for row in client.query(OWNED, &[&actor]).await? {
+    // The creator keeps a workspace that the rules do not name. Membership is still checked.
+    for row in client.query(CREATED, &[&actor]).await? {
         allowed.insert(row.get(0));
     }
     Ok(Some(allowed))
@@ -98,7 +103,7 @@ pub async fn check(
 }
 
 /// Called only after verifying Google and resolving the private access policy.
-/// Enrollment leaves an explicit system event, never a forged owner action.
+/// Enrollment leaves an explicit system event, never a forged member action.
 pub async fn enroll(
     pool: &Pool,
     actor: &str,

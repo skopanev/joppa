@@ -16,29 +16,30 @@ theme.onclick=()=>{
 };
 systemTheme.addEventListener('change',updateTheme);
 updateTheme();
-let workspaces=[],owned=[];
+// Every member sees the same controls. Only the signed-in person (/api/me) has no Remove on the own row.
+let workspaces=[],access=[],me=null;
 const select=$('workspace-select'),panel=$('workspace-panel');
 const show=()=>{
-  const id=select.value,own=owned.find(w=>w.id===id);
+  const id=select.value,entry=access.find(w=>w.id===id);
   // Back to board opens the selected workspace.
   $('back-link').href=id?'/?workspace='+encodeURIComponent(id):'/';
   panel.hidden=!id;
-  $('not-owner').hidden=!!own;$('owner-panel').hidden=!own;
   // One list: members first, then emails that have not signed in yet, then whole domains.
-  // Each row but the owner has Remove; the owner row says that it is the owner.
+  // Each row but the row of the signed-in person has Remove.
   const item=(kind,text,removal)=>{
     const li=document.createElement('li');li.dataset.kind=kind;li.append(element('span',text));
     if(removal){
       const button=element('button','Remove');button.type='button';button.className='remove';
       button.setAttribute('aria-label','Remove '+text);button.onclick=()=>remove(removal,button);li.append(button);
-    }else{const mark=element('span','owner');mark.className='owner-mark';li.append(mark);}
+    }
     return li;
   };
-  $('workspace-people').replaceChildren(...(own?.members||[]).map(m=>item('member',m.label,m.owner?null:{member:m.id})),
-    ...(own?.emails||[]).map(e=>item('email',e+' (invited)',{email:e})),...(own?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d})));
-  $('rename-title').value=own?.title||'';
-  // The pencil renames the selected workspace, so only its owner sees it.
-  $('rename-open').hidden=!own;if(!own)$('rename-workspace').hidden=true;
+  // Without an answer of /api/me no member row has Remove.
+  $('workspace-people').replaceChildren(...(entry?.members||[]).map(m=>item('member',m.label,!me||m.id===me.actor?null:{member:m.id})),
+    ...(entry?.emails||[]).map(e=>item('email',e+' (invited)',{email:e})),...(entry?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d})));
+  $('rename-title').value=entry?.title||selectedTitle();
+  // The pencil renames the selected workspace for every member.
+  $('rename-open').hidden=!id;if(!id)$('rename-workspace').hidden=true;
   // The checkbox shows the flag of the signed-in member for the selected workspace.
   $('hide-workspace').checked=workspaces.some(w=>w.id===id&&w.hidden===true);
   for(const id of ['hide-error','grant-error','rename-error','delete-error'])$(id).textContent='';
@@ -53,16 +54,18 @@ const closeDelete=()=>{
   deleteTitle.value='';confirmButton.disabled=true;
   $('delete-confirm').hidden=true;$('delete-references').hidden=true;$('delete-button').hidden=false;
 };
+// The signed-in person is read once; after a failed read, no member row has Remove.
+const account=send('/api/me','GET',undefined,'Could not load your account.').catch(()=>null);
 // A reload keeps the selection when the workspace is still listed. The list has the hidden
 // workspaces of the member too, so the member can show them again.
 const load=async selected=>{
-  const [all,access]=await Promise.all([send('/api/workspaces?all=true','GET',undefined,'Could not load your workspaces.'),
-    send('/api/access','GET',undefined,'Could not load owned workspaces.').then(v=>v.items,e=>e)]);
-  workspaces=all;owned=access instanceof Error?[]:access;
+  const [all,people,person]=await Promise.all([send('/api/workspaces?all=true','GET',undefined,'Could not load your workspaces.'),
+    send('/api/access','GET',undefined,'Could not load the people of your workspaces.').then(v=>v.items,e=>e),account]);
+  workspaces=all;access=people instanceof Error?[]:people;me=person;
   select.replaceChildren(...workspaces.map(w=>new Option(w.title,w.id)));
   if(workspaces.some(w=>w.id===selected))select.value=selected;
   select.disabled=!workspaces.length;
-  $('workspace-error').textContent=access instanceof Error?access.message:'';
+  $('workspace-error').textContent=people instanceof Error?people.message:'';
   show();
 };
 select.onchange=show;

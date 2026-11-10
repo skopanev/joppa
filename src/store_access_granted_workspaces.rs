@@ -1,7 +1,7 @@
 //! Part of `store_access`: `granted_workspaces` and the items after it, moved from store_access.rs unchanged.
 use super::*;
 
-/// The workspaces that owners granted to this email or to this Google hd.
+/// The workspaces that members granted to this email or to this Google hd.
 pub async fn granted_workspaces(
     pool: &Pool,
     email: &str,
@@ -62,7 +62,7 @@ pub async fn enroll_granted(
     Ok(())
 }
 
-/// The owner grants a workspace to an email. A refused request stores nothing.
+/// A human member grants a workspace to an email. A refused request stores nothing.
 pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str) -> Result<Value> {
     let email = email.trim().to_ascii_lowercase();
     if email.len() > 254
@@ -73,7 +73,7 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     {
         return Err(commands::ClientField("a valid email is required").into());
     }
-    let workspace = owner_of(pool, workspace, actor).await?;
+    let (workspace, _) = human_member_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     conn.execute(
         "INSERT INTO joppa.email_grants(workspace,email,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -83,7 +83,8 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     Ok(json!({"workspace": workspace, "email": email}))
 }
 
-/// The owner grants a workspace to every email in a domain. A refused request stores nothing.
+/// A human member grants a workspace to every email in a domain. A refused request stores
+/// nothing.
 pub async fn grant_domain(
     pool: &Pool,
     workspace: &str,
@@ -99,7 +100,7 @@ pub async fn grant_domain(
     {
         return Err(commands::ClientField("a valid email domain is required").into());
     }
-    let workspace = owner_of(pool, workspace, actor).await?;
+    let (workspace, _) = human_member_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     conn.execute(
         "INSERT INTO joppa.domain_grants(workspace,domain,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -109,20 +110,20 @@ pub async fn grant_domain(
     Ok(json!({"workspace": workspace, "domain": domain}))
 }
 
-/// The workspaces that this actor owns, each with its granted emails.
+/// The workspaces where this actor is a human member, each with its granted emails.
 pub async fn list_email_grants(pool: &Pool, actor: &str) -> Result<Value> {
     list_grants(pool, actor, "email_grants", "email", "emails").await
 }
 
-/// The workspaces that this actor owns, each with its granted email domains.
+/// The workspaces where this actor is a human member, each with its granted email domains.
 pub async fn list_domain_grants(pool: &Pool, actor: &str) -> Result<Value> {
     list_grants(pool, actor, "domain_grants", "domain", "domains").await
 }
 
-/// The owner removes an email grant. A missing grant changes nothing.
+/// A human member removes an email grant. A missing grant changes nothing.
 pub async fn revoke_email(pool: &Pool, workspace: &str, actor: &str, email: &str) -> Result<Value> {
     let email = email.trim().to_ascii_lowercase();
-    let workspace = owner_of(pool, workspace, actor).await?;
+    let (workspace, _) = human_member_of(pool, workspace, actor).await?;
     let removed = pool
         .get()
         .await?
@@ -134,7 +135,7 @@ pub async fn revoke_email(pool: &Pool, workspace: &str, actor: &str, email: &str
     Ok(json!({"workspace": workspace, "email": email, "removed": removed > 0}))
 }
 
-/// The owner removes a domain grant. A missing grant changes nothing.
+/// A human member removes a domain grant. A missing grant changes nothing.
 pub async fn revoke_domain(
     pool: &Pool,
     workspace: &str,
@@ -142,7 +143,7 @@ pub async fn revoke_domain(
     domain: &str,
 ) -> Result<Value> {
     let domain = domain.trim().to_ascii_lowercase();
-    let workspace = owner_of(pool, workspace, actor).await?;
+    let (workspace, _) = human_member_of(pool, workspace, actor).await?;
     let removed = pool
         .get()
         .await?
@@ -154,21 +155,13 @@ pub async fn revoke_domain(
     Ok(json!({"workspace": workspace, "domain": domain, "removed": removed > 0}))
 }
 
-/// The owner removes a member and the email grant of that member's Google account, so
-/// the member loses access at the next request. A domain grant still admits its domain.
+/// A human member removes a member and the email grant of that member's Google account, so
+/// the member loses access at the next request. A domain grant still admits its domain. The
+/// last human member stays, and so does its grant.
 pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) -> Result<Value> {
-    let workspace = owner_of(pool, workspace, actor).await?;
-    ensure!(id != actor, "workspace owner cannot be removed");
-    // The grant goes first: a failed journal write then leaves a member without a grant,
-    // never a removed member whose grant admits them again.
-    pool.get()
-        .await?
-        .execute(
-            "DELETE FROM joppa.email_grants g USING joppa.google_identities i
-             WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)",
-            &[&workspace, &id],
-        )
-        .await?;
+    let (workspace, state) = human_member_of(pool, workspace, actor).await?;
+    commands::keeps_human_member(&state, id)?;
+    // The write removes the email grant in the transaction of the event (store_write_operations).
     let command = Command::RemoveMember {
         id: id.into(),
         reason: "Removed in Settings".into(),
@@ -184,59 +177,18 @@ pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) 
     Ok(json!({"workspace": workspace, "member": id, "removed": true}))
 }
 
-/// The workspaces that this actor owns, each with its people and its pending grants, in one read.
-/// A person shows as "name <email>", as the email, or as the member ID when no Google identity is
-/// bound. Agent members are not people, so the list omits them. An email grant of a person who
-/// is already a member is not listed again. A hidden workspace is listed too.
-pub async fn list_owned_access(pool: &Pool, actor: &str) -> Result<Value> {
-    let conn = pool.get().await?;
-    let items: Vec<Value> = conn
-        .query(
-            "SELECT COALESCE(b.first_view->>'workspace_id',s.workspace), COALESCE(b.first_view->>'title',s.workspace),
-                    COALESCE((SELECT array_agg(COALESCE(NULLIF(i.display_name,'')||' <'||i.email||'>', i.email, m.key) ORDER BY m.key)
-                              FROM jsonb_each_text(b.first_view->'members') m
-                              LEFT JOIN joppa.google_identities i ON i.actor=m.key
-                              WHERE m.value='human'), '{}'),
-                    COALESCE((SELECT array_agg(m.key ORDER BY m.key)
-                              FROM jsonb_each_text(b.first_view->'members') m
-                              WHERE m.value='human'), '{}'),
-                    s.value->>'admin',
-                    COALESCE((SELECT array_agg(e.email ORDER BY e.email) FROM joppa.email_grants e WHERE e.workspace=s.workspace
-                              AND NOT EXISTS(SELECT 1 FROM jsonb_each_text(b.first_view->'members') m
-                                             JOIN joppa.google_identities i ON i.actor=m.key WHERE lower(i.email)=e.email)), '{}'),
-                    COALESCE((SELECT array_agg(d.domain ORDER BY d.domain) FROM joppa.domain_grants d WHERE d.workspace=s.workspace), '{}')
-             FROM joppa.state_entries s
-             LEFT JOIN joppa.board_cache b ON b.workspace=s.workspace
-             WHERE s.section='meta' AND s.key='' AND s.value->>'admin'=$1 AND s.value->'deleted_at' IS NULL
-             ORDER BY 2,1",
-            &[&actor],
-        )
-        .await?
-        .iter()
-        .map(|r| {
-            // Each member has its ID, so the owner can remove it; the owner row has no removal.
-            let labels: Vec<String> = r.get(2);
-            let ids: Vec<String> = r.get(3);
-            let owner: String = r.get(4);
-            let members: Vec<Value> = ids
-                .iter()
-                .zip(&labels)
-                .map(|(id, label)| json!({"id": id, "label": label, "owner": *id == owner}))
-                .collect();
-            json!({"id": r.get::<_, String>(0), "title": r.get::<_, String>(1),
-                "people": labels, "members": members, "emails": r.get::<_, Vec<String>>(5),
-                "domains": r.get::<_, Vec<String>>(6)})
-        })
-        .collect();
-    Ok(json!({"items": items}))
-}
-
-/// The workspace of `actor` when the actor owns it; the error names the owner rule.
-pub(super) async fn owner_of(pool: &Pool, workspace: &str, actor: &str) -> Result<String> {
+/// The workspace and its current state when `actor` is a human member of it. Any other member
+/// gets the human member rule, and an outsider gets "Workspace not found".
+pub(super) async fn human_member_of(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+) -> Result<(String, Workspace)> {
     let conn = pool.get().await?;
     let workspace = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &workspace, actor, false).await?;
     let (state, _) = state_rows::current(&**conn, &workspace).await?;
     ensure!(state.deleted_at.is_none(), "Workspace not found");
-    ensure!(state.admin == actor, "workspace owner required");
-    Ok(workspace)
+    commands::human_member(&state, actor)?;
+    Ok((workspace, state))
 }

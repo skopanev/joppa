@@ -1,4 +1,4 @@
-// Email grants: refusals for a non-owner and for a malformed email.
+// Email grants: refusals for an agent member and for a malformed email.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 #[tokio::test]
 #[ignore = "requires isolated test database"]
@@ -32,11 +32,8 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
     let (sam, alex, w) = (format!("sam-{id}"), format!("alex-{id}"), format!("w-{id}"));
     let create = Command::Workspace { title: w.clone() };
     store::execute(&pool, &w, &sam, "create", &create).await?;
-    let member = Command::Member {
-        id: alex.clone(),
-        role: "human".into(),
-    };
-    store::execute(&pool, &w, &sam, "add-alex", &member).await?;
+    // Every human member adds people, so the refused member is the agent alex.
+    store::enroll_service(&pool, &w, &sam, &alex, "agent").await?;
     let origin = "http://joppa.test";
     let mut cookies = vec![];
     for actor in [&sam, &alex] {
@@ -77,7 +74,7 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
     let before = snapshot().await;
     assert_eq!(
         before.0,
-        vec![json!({sam.clone():"human", alex.clone():"human"}); 2]
+        vec![json!({sam.clone():"human", alex.clone():"agent"}); 2]
     );
     assert!(before.1.is_empty());
     let sub = format!("google-maria-{id}");
@@ -104,7 +101,10 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
     )
     .await
     .unwrap_err();
-    assert_eq!(refused.1.0, json!({"error":"workspace owner required"}));
+    assert_eq!(
+        refused.1.0,
+        json!({"error":"a human member of the workspace is required"})
+    );
     assert_eq!(snapshot().await, before);
     refused_sign_in().await;
     Ok(())

@@ -18,13 +18,11 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             if let Some(owner) = owner {
                 crate::commands::human(w, owner)?;
             }
-            let assigned = owner.clone().unwrap_or_else(|| {
-                if w.members.get(actor).is_some_and(|role| role == "human") {
-                    actor.to_owned()
-                } else {
-                    w.admin.clone()
-                }
-            });
+            // While the creator is a human member, this gives the older rule: the actor or the
+            // creator. So an older journal replays unchanged.
+            let assigned = owner
+                .clone()
+                .unwrap_or_else(|| crate::commands::default_owner(w, actor).to_owned());
             ensure!(!w.intake.contains_key(id), "intake exists");
             // Deliberately no trim, minimum length or format constraint on the source text.
             w.intake.insert(
@@ -59,7 +57,7 @@ pub fn apply(w: &mut Workspace, actor: &str, cmd: &Command) -> Result<()> {
             }
         }
         Command::Questions(crate::commands::QuestionsOp { kind, fields }) => {
-            ensure!(actor == w.admin, "workspace owner changes intake policy");
+            crate::commands::human_member(w, actor)?;
             ensure!(
                 ["bug", "policy", "question", "idea"].contains(&kind.as_str()),
                 "unknown intake kind"

@@ -13,7 +13,10 @@ pub(crate) fn apply_inner(
     }
     match command {
         Command::MigratePersistentClaims {} => {
-            ensure!(actor == w.admin, "workspace owner required");
+            ensure!(
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
+            );
             w.persistent_claims = true;
         }
         Command::MigrateConsumers {} => {
@@ -44,21 +47,33 @@ pub(crate) fn apply_inner(
             crate::note_parents::migrate(w, actor, position, recorded_at)?;
         }
         Command::MigrateNotes {} => {
-            ensure!(actor == w.admin, "workspace owner required");
+            ensure!(
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
+            );
             crate::objects::migrate_notes(w, actor, position, recorded_at)?;
         }
         Command::MigrateTasks {} => {
-            ensure!(actor == w.admin, "workspace owner required");
+            ensure!(
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
+            );
             crate::tasks::migrate(w, actor, position, recorded_at)?;
         }
         Command::MigrateSchema {} => {
-            ensure!(actor == w.admin, "workspace owner required");
+            ensure!(
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
+            );
             crate::objects::migrate_schema(w, actor, position, recorded_at)?;
         }
         Command::MigrateTaskClaims { .. } => apply_migrate_task_claims(w, actor)?,
         Command::HeartbeatTask { .. } => anyhow::bail!("unknown Task"),
         Command::MigrateDocuments {} => {
-            ensure!(actor == w.admin, "workspace owner required");
+            ensure!(
+                actor == crate::commands::system_actor(w),
+                "only the server runs this migration"
+            );
             crate::objects::migrate_documents(w, actor, position, recorded_at)?;
         }
         Command::SetTreeSchema(crate::commands::SetTreeSchemaOp { .. }) => {
@@ -130,7 +145,7 @@ pub(crate) fn apply_inner(
             apply_set_note_status(w, actor, command, position, recorded_at)?
         }
         Command::DeleteWorkspace { reason } => {
-            ensure!(actor == w.admin, "workspace owner deletes the workspace");
+            human_member(w, actor)?;
             nonempty(reason)?;
             // Without members, every read and every later command of the workspace is refused.
             w.members.clear();
@@ -149,9 +164,11 @@ pub(crate) fn apply_inner(
         Command::Member { .. } => apply_member(w, actor, command, position)?,
         Command::EnrollService { .. } => apply_enroll_service(w, actor, command)?,
         Command::RemoveMember { id, reason } => {
-            ensure!(actor == w.admin, "workspace owner required");
+            // Any human member removes any member, also the creator or itself, while another
+            // human member stays.
+            human_member(w, actor)?;
             nonempty(reason)?;
-            ensure!(*id != w.admin, "workspace owner cannot be removed");
+            keeps_human_member(w, id)?;
             ensure!(w.members.remove(id).is_some(), "unknown member");
             w.hidden_by.remove(id);
         }
@@ -159,9 +176,11 @@ pub(crate) fn apply_inner(
         Command::EditConsumer(crate::commands::EditConsumerOp { .. }) => {
             apply_edit_consumer(w, actor, command)?
         }
-        Command::Domain(crate::commands::DomainOp { .. }) => apply_domain(w, actor, command)?,
+        Command::Domain(crate::commands::DomainOp { .. }) => {
+            apply_domain(w, actor, command, position)?
+        }
         Command::Capability(crate::commands::CapabilityOp { .. }) => {
-            apply_capability(w, actor, command)?
+            apply_capability(w, actor, command, position)?
         }
         Command::SetDomainArchived(crate::commands::SetDomainArchivedOp { .. }) => {
             apply_set_domain_archived(w, actor, command)?

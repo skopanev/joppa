@@ -3,7 +3,10 @@ use super::*;
 
 /// Apply `migrate_task_claims`.
 pub(super) fn apply_migrate_task_claims(w: &mut Workspace, actor: &str) -> Result<()> {
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
+    );
     if !w.claims_migrated {
         let now = w.claim_time_ms.context("server claim time is missing")?;
         for task in w.task_process.values_mut() {

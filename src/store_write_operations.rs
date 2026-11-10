@@ -165,6 +165,13 @@ pub(crate) async fn write(
     if base_position == 0 {
         tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
     }
+    // A removed member loses the email grant of its Google account in the same transaction: a
+    // refused removal keeps the grant, and a grant never admits a removed member again.
+    for event in &events {
+        if let Command::RemoveMember { id, .. } = &event.command {
+            tx.execute("DELETE FROM joppa.email_grants g USING joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id]).await?;
+        }
+    }
     // A deleted workspace leaves the database with every row of it, this request included.
     let purged = events
         .iter()

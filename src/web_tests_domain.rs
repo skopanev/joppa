@@ -1,4 +1,4 @@
-// Domain grants: the owner adds a domain, refusals and repeats.
+// Domain grants: a human member adds a domain, refusals and repeats.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 // owner-adds-members-ac9
 #[tokio::test]
@@ -128,11 +128,8 @@ async fn a_non_owner_or_an_invalid_domain_leaves_w_unchanged() -> Result<()> {
     let id = uuid::Uuid::new_v4().simple().to_string();
     let (sam, alex, w) = (format!("sam-{id}"), format!("alex-{id}"), format!("w-{id}"));
     create(pool, &w, &sam).await?;
-    let member = Command::Member {
-        id: alex.clone(),
-        role: "human".into(),
-    };
-    store::execute(pool, &w, &sam, "add-alex", &member).await?;
+    // Every human member adds a domain, so the refused member is the agent alex.
+    store::enroll_service(pool, &w, &sam, &alex, "agent").await?;
     let (sam_cookie, alex_cookie) = (
         session_for(pool, &sam).await?,
         session_for(pool, &alex).await?,
@@ -140,11 +137,11 @@ async fn a_non_owner_or_an_invalid_domain_leaves_w_unchanged() -> Result<()> {
     let before = members_and_grants(&app, &w, &sam_cookie).await;
     assert_eq!(
         before,
-        (json!({sam.clone():"human", alex.clone():"human"}), vec![])
+        (json!({sam.clone():"human", alex.clone():"agent"}), vec![])
     );
     let reply = plain(add_domain(&app, &alex_cookie, &w, "healthium.one").await);
-    let owner_required = json!({"error":"workspace owner required"});
-    assert_eq!(reply, Err((StatusCode::CONFLICT, owner_required)));
+    let human_required = json!({"error":"a human member of the workspace is required"});
+    assert_eq!(reply, Err((StatusCode::CONFLICT, human_required)));
     assert_eq!(members_and_grants(&app, &w, &sam_cookie).await, before);
     let invalid = [
         "healthium",

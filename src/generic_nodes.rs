@@ -19,12 +19,15 @@ struct Change {
     end: Option<String>,
 }
 
-/// Apply migrate_generic_nodes once. The workspace owner is the actor of the event.
+/// Apply migrate_generic_nodes once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.generic_nodes {
         return Ok(());
     }
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
+    );
     let mut changes = BTreeMap::<String, Change>::new();
     for (key, t) in &w.task_process {
         let change = changes.entry(key.clone()).or_default();

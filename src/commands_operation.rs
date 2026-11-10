@@ -4,7 +4,7 @@ use super::*;
 /// One public operation of joppa_command and joppa_batch.
 /// `required` lists the fields that the caller must send. Generated identifiers,
 /// optional fields and fields with defaults are absent from it.
-/// `callers` uses member and workspace owner. Value checks, such as
+/// `callers` uses member and human member. Value checks, such as
 /// REQ ownership or a person decision, still apply inside each category.
 pub struct Operation {
     pub name: &'static str,
@@ -14,7 +14,7 @@ pub struct Operation {
 
 pub(crate) const MEMBER: &[&str] = &["member"];
 
-pub(crate) const OWNER: &[&str] = &["workspace owner"];
+pub(crate) const HUMAN_MEMBER: &[&str] = &["human member"];
 
 pub(crate) const fn op(
     name: &'static str,
@@ -44,12 +44,16 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("restore_object", &["target", "revision", "reason"], MEMBER),
-    op("redact_object", &["target", "fragment", "reason"], OWNER),
-    op("update_workspace", &[], OWNER),
-    op("delete_workspace", &["reason"], OWNER),
+    op(
+        "redact_object",
+        &["target", "fragment", "reason"],
+        HUMAN_MEMBER,
+    ),
+    op("update_workspace", &[], HUMAN_MEMBER),
+    op("delete_workspace", &["reason"], HUMAN_MEMBER),
     op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
-    op("member", &["id", "role"], OWNER),
-    op("remove_member", &["id", "reason"], OWNER),
+    op("member", &["id", "role"], HUMAN_MEMBER),
+    op("remove_member", &["id", "reason"], HUMAN_MEMBER),
     op("note", &["target", "id", "text"], MEMBER),
     op("withdraw_note", &["target", "id", "reason"], MEMBER),
     op(

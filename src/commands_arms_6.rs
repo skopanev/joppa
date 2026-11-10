@@ -86,15 +86,15 @@ pub(super) fn apply_update_workspace(
         hidden,
         reason,
     } = op;
-    let owner_fields = title.is_some() || workspace_id.is_some() || reference_prefix.is_some();
+    let shared_fields = title.is_some() || workspace_id.is_some() || reference_prefix.is_some();
     ensure!(
-        owner_fields || hidden.is_some(),
+        shared_fields || hidden.is_some(),
         "update_workspace needs title, workspace_id, reference_prefix or hidden"
     );
     // hidden alone is the flag of the sender, so any member may send it.
     ensure!(
-        !owner_fields || actor == w.admin,
-        "workspace owner updates the workspace"
+        !shared_fields || is_human_member(w, actor),
+        "a human member updates the workspace"
     );
     for text in [title, reason].into_iter().flatten() {
         nonempty(text)?;

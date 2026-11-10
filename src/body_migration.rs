@@ -124,12 +124,15 @@ pub fn to_body(data: &mut Value) -> bool {
     changed
 }
 
-/// Apply migrate_body once. The workspace owner is the actor of the event.
+/// Apply migrate_body once. The system actor (commands::system_actor) is the actor of the event.
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {
     if w.body_migrated {
         return Ok(());
     }
-    ensure!(actor == w.admin, "workspace owner required");
+    ensure!(
+        actor == crate::commands::system_actor(w),
+        "only the server runs this migration"
+    );
     let mut next = schema(w);
     let mut schema_changed = false;
     for t in next.types.values_mut() {

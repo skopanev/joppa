@@ -47,3 +47,6 @@ use apply_first::*;
 #[path = "commands_validate_acs.rs"]
 mod validate_acs;
 pub use validate_acs::*;
+#[cfg(test)]
+#[path = "commands_member_rights_tests.rs"]
+mod member_rights_tests;
