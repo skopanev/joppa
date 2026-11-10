@@ -21,7 +21,7 @@ test('create-workspace-ac1: alex creates Billing on the settings page and is its
     assert.equal((await f.page.goto(f.live.root + '/settings')).status(), 200);
     // New workspace in the header opens the form.
     await f.page.getByRole('button', {name: '+ New workspace'}).click();
-    const title = f.page.getByLabel('Workspace title'), create = f.page.getByRole('button', {name: 'Create'});
+    const title = f.page.getByLabel('Workspace title', {exact: true}), create = f.page.getByRole('button', {name: 'Create'});
     // A failed request keeps the form and shows the server error.
     await title.fill('  ');
     await create.click();

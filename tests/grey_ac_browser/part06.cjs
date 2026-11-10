@@ -39,7 +39,7 @@ test('settings-in-name-menu-ac4: Settings follows the board theme, links back to
     assert.equal(await f.page.locator('#create-workspace').isVisible(), false);
     assert.equal(await f.page.locator('#rename-workspace').isVisible(), false);
     await header.getByRole('button', {name: '+ New workspace'}).click();
-    assert.equal(await f.page.getByLabel('Workspace title').evaluate(e => e === document.activeElement), true);
+    assert.equal(await f.page.getByLabel('Workspace title', {exact: true}).evaluate(e => e === document.activeElement), true);
     await f.page.locator('#create-workspace').getByRole('button', {name: 'Cancel'}).click();
     assert.equal(await f.page.locator('#create-workspace').isVisible(), false);
     // Back to board opens the selected workspace.
