@@ -96,7 +96,7 @@ async fn owner_manages_workspace_ac3_the_install_role_runs_the_settings_writes()
         // A serve start as the application role runs no DDL. The data pass of migration 062
         // runs for a workspace without the relations_reset epoch or a row without relations.
         store::migrate_notes(&app).await?;
-        admin.get().await?.batch_execute(&format!("DELETE FROM joppa.replay_epochs WHERE workspace='{ws}' AND rule='relations_reset'; UPDATE joppa.state_entries SET value=value #- '{{revisions,0,relations}}' WHERE workspace='{ws}' AND section='objects' AND key='note:secret'")).await?;
+        admin.get().await?.batch_execute(&format!("DELETE FROM joppa.replay_epochs WHERE workspace='{ws}' AND rule='relations_reset'; UPDATE joppa.state_entries SET value=jsonb_set(value #- '{{revisions,0,relations}}','{{revisions,0,links}}','[]') WHERE workspace='{ws}' AND section='objects' AND key='note:secret'")).await?;
         store::migrate_notes(&app).await?;
         let moved: bool = admin.get().await?.query_one("SELECT EXISTS(SELECT 1 FROM joppa.replay_epochs WHERE workspace=$1 AND rule='relations_reset') AND (SELECT value->'revisions'->0 ? 'relations' FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key='note:secret')", &[&ws]).await?.get(0);
         ensure!(moved, "the serve start did not move the pending workspace");

@@ -113,12 +113,10 @@ async fn a_human_member_who_did_not_create_the_workspace_runs_each_former_owner_
         after.contains("capability:restrict by alex"),
         "the save of alex"
     );
-    // The commands of bot: the saves use the revisions after the commands of alex.
+    // The former owner commands of bot. A node save needs no human member, as before: after
+    // migrate_documents a capability, a domain and a consumer save like any node.
     let human = "a human member of the workspace is required";
-    let capability =
-        "only a human member edits confirmed capabilities; agents may edit draft titles";
-    let domain = "only a human member edits confirmed domains or changes authority; agents may edit draft titles";
-    let mut refused = vec![
+    let refused = vec![
         (
             json!({"op":"member","id":"newcomer2","role":"human"}),
             human,
@@ -136,13 +134,6 @@ async fn a_human_member_who_did_not_create_the_workspace_runs_each_former_owner_
             "a human member updates the workspace",
         ),
     ];
-    for (address, text) in [
-        ("capability:restrict", capability),
-        ("domain:security", domain),
-        ("consumer:customer", ""),
-    ] {
-        refused.push((retitle(&w, &renamed, address, "Bot title").await?, text));
-    }
     // bot sends the same commands with its credential. Each one is refused, and W does not change.
     let before = whole(&w, &renamed).await?;
     for (command, text) in &refused {
