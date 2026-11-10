@@ -100,9 +100,15 @@ async fn a_human_member_who_did_not_create_the_workspace_runs_each_former_owner_
     let rename = json!({"op":"update_workspace","title":"Renamed by alex","workspace_id":renamed,
         "reference_prefix":format!("mr-{suffix}"),"reason":"Rename"});
     position = alex_runs(&w, &ws, &renamed, &rename, position).await?;
-    let after = whole(&w, &renamed).await?.to_string();
+    let whole_after = whole(&w, &renamed).await?;
+    let after = whole_after.to_string();
     ensure!(after.contains("Renamed by alex"), "the title of alex");
-    ensure!(!after.contains("s3cr3t"), "the redaction of alex");
+    // The journal keeps the commands as sent; the stored object holds no fragment.
+    let secret = whole_after["state"]["objects"]["note:secret"].to_string();
+    ensure!(
+        secret.contains("[redacted]") && !secret.contains("s3cr3t"),
+        "the redaction of alex: {secret}"
+    );
     ensure!(
         after.contains("capability:restrict by alex"),
         "the save of alex"
