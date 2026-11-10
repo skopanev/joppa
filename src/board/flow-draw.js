@@ -18,9 +18,9 @@ const RADIUS=9,GAP=3,LABEL=RADIUS+19;
 // em, the space from the last label baseline to the first badge baseline, and the badge step
 // in badge em.
 const LABEL_SIZE=13,BADGE_SIZE=11,LINE_HEIGHT=1.2,FIRST_BADGE=17,BADGE_STEP=1.4;
-// The first view uses at most MOST world units for one pixel, so its text is readable. The
-// text sizes of src/board_more.css grow with --u up to the same limit.
-const MOST=1.6;
+// The first view shows the whole flow, centred. FIT_MARGIN leaves room for the labels and
+// badges under the lowest row; the person zooms in from there.
+const FIT_MARGIN=90;
 function svg(tag,attributes={},cls){
   const element=document.createElementNS(SVG,tag);
   for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
@@ -79,7 +79,7 @@ export function drawFlow(holder,nodes,edges,on){
   holder.prepend(canvas);
   // The view shows every dot, every waypoint and the top of every arc.
   const tops=drawn.filter(e=>e.back).map(e=>e.mid),via=drawn.flatMap(e=>e.via||[]);
-  const camera=flowCamera(canvas);camera.fit([...position.values(),...via,...tops],undefined,MOST);
+  const camera=flowCamera(canvas);camera.fit([...position.values(),...via,...tops],FIT_MARGIN);
   pointer(canvas,camera,on);
   return {canvas,camera,position,parts,edges:drawn};
 }
