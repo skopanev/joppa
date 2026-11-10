@@ -1,5 +1,5 @@
 //! One workspace on its own real server for the record tests. Agent bot, member alex and member
-//! another-member belong to it. Outsider is signed in, but is not a member. Criterion ac:a lists
+//! another-member (token `other`) belong to it. Outsider is signed in, but is not a member. Criterion ac:a lists
 //! the tests of the fixture. The setup writes through the store. The tests write through MCP.
 #![allow(dead_code)]
 #[path = "fake_spaces.rs"]
@@ -11,7 +11,6 @@ use joppa::{commands::Command as Operation, store};
 use serde_json::{Value, json};
 
 pub const A: &str = "ac:a"; // The criterion of each fixture.
-
 pub struct World {
     server: Option<serve::Server>,
     url: String,
@@ -23,6 +22,7 @@ pub struct World {
     pub owner: String,
     pub bot: String,
     pub alex: String,
+    pub other: String,
     pub outsider: String,
     pub pool: deadpool_postgres::Pool,
     pub http: reqwest::Client,
@@ -88,11 +88,11 @@ async fn build(tests: &[&str], env: Option<&[(&str, String)]>) -> Result<World> 
     let dir = std::env::temp_dir().join(format!("joppa-record-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir)?;
     let token = || uuid::Uuid::new_v4().simple().to_string();
-    let (owner, bot, alex, outsider) = (token(), token(), token(), token());
+    let (owner, bot, alex, outsider, other) = (token(), token(), token(), token(), token());
     let tokens = dir.join("tokens.json");
     std::fs::write(
         &tokens,
-        json!({ owner.clone(): "owner", bot.clone(): "bot", alex.clone(): "alex", outsider.clone(): "outsider" }).to_string(),
+        json!({ owner.clone(): "owner", bot.clone(): "bot", alex.clone(): "alex", outsider.clone(): "outsider", other.clone(): "another-member" }).to_string(),
     )?;
     let port = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
@@ -111,6 +111,7 @@ async fn build(tests: &[&str], env: Option<&[(&str, String)]>) -> Result<World> 
         owner,
         bot,
         alex,
+        other,
         outsider,
         pool,
         http: reqwest::Client::new(),

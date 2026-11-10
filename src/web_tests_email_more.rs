@@ -1,9 +1,9 @@
-// Email grants: refusals for a non-owner and for a malformed email.
+// Email grants: a member who did not create W adds a person, an agent cannot, and a malformed
+// email is refused.
 // Included into web_tests.rs, so the test paths stay web::tests::<name>.
 #[tokio::test]
 #[ignore = "requires isolated test database"]
-async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace_access()
--> Result<()> {
+async fn a_member_who_did_not_create_w_adds_maria_and_the_agent_cannot_add_lena() -> Result<()> {
     let pool = store::pool(&std::env::var("JOPPA_TEST_DATABASE_URL")?)?;
     let db: String = pool
         .get()
@@ -20,14 +20,6 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
         oauth_origin: None,
         embedder: None,
     };
-    // Maria has no grant, login entry or rule; other tests in this database may grant her.
-    pool.get()
-        .await?
-        .execute(
-            "DELETE FROM joppa.email_grants WHERE email='maria@example.com'",
-            &[],
-        )
-        .await?;
     let id = uuid::Uuid::new_v4().simple().to_string();
     let (sam, alex, w) = (format!("sam-{id}"), format!("alex-{id}"), format!("w-{id}"));
     let create = Command::Workspace { title: w.clone() };
@@ -80,33 +72,60 @@ async fn a_member_who_is_not_the_owner_cannot_add_maria_and_she_has_no_workspace
         vec![json!({sam.clone():"human", alex.clone():"human"}); 2]
     );
     assert!(before.1.is_empty());
-    let sub = format!("google-maria-{id}");
-    let maria = format!("user-{}", joppa::digest_hex::sha256_hex(sub.as_bytes()));
+    // Other tests of this database bind maria@example.com, so the emails have the test ID.
+    let (maria_email, lena_email) = (
+        format!("maria-{id}@example.com"),
+        format!("lena-{id}@example.com"),
+    );
+    let (maria_sub, lena_sub) = (format!("google-maria-{id}"), format!("google-lena-{id}"));
+    let user = |sub: &str| format!("user-{}", joppa::digest_hex::sha256_hex(sub.as_bytes()));
+    let (maria, lena) = (user(&maria_sub), user(&lena_sub));
     let members = "SELECT count(*) FROM joppa.state_entries WHERE section='members' AND key=$1";
     let bound = "SELECT count(*) FROM joppa.google_identities WHERE actor=$1";
     let sessions_of = "SELECT count(*) FROM joppa.browser_sessions WHERE actor=$1";
-    let refused_sign_in = || async {
-        let (status, Json(error)) = sign_in(&app, &sub, "maria@example.com").await.unwrap_err();
-        assert_eq!(status, StatusCode::FORBIDDEN);
-        assert_eq!(error, json!({"error":"No workspace access"}));
-        for sql in [members, bound, sessions_of] {
-            assert_eq!(count(&app, sql, &maria).await, 0);
-        }
-    };
-    refused_sign_in().await;
-    let refused = grant_email(
+    // alex, a human member who did not create W, adds maria.
+    let Json(granted) = grant_email(
         State(app.clone()),
         browser(Some(alex_cookie), origin),
         Json(EmailGrant {
             workspace: w.clone(),
-            email: "maria@example.com".into(),
+            email: maria_email.clone(),
         }),
     )
     .await
-    .unwrap_err();
-    assert_eq!(refused.1.0, json!({"error":"workspace owner required"}));
-    assert_eq!(snapshot().await, before);
-    refused_sign_in().await;
+    .unwrap();
+    assert_eq!(granted, json!({"workspace":w,"email":maria_email}));
+    // The agent bot sends the grant of lena with its credential and is refused.
+    let bot = format!("bot-{id}");
+    store::enroll_service(&pool, &w, &sam, &bot, "agent").await?;
+    let refused = store::grant_email(&pool, &w, &bot, &lena_email)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("a human member of the workspace is required"),
+        "{refused}"
+    );
+    let after = snapshot().await;
+    assert_eq!(after.1, vec![maria_email.clone()]);
+    // maria reads W after her Google sign-in, as a member with the role human.
+    let (headers, Json(ready)) = sign_in(&app, &maria_sub, &maria_email).await.unwrap();
+    assert_eq!(ready["actor"], maria.as_str());
+    let Json(index) = read(
+        State(app.clone()),
+        Path(w.clone()),
+        browser(Some(&session(&headers)), origin),
+    )
+    .await
+    .unwrap();
+    assert_eq!(index["index"]["members"][&maria], "human", "{index}");
+    // lena has no grant: her sign-in gives "No workspace access" and leaves no row.
+    let (status, Json(error)) = sign_in(&app, &lena_sub, &lena_email).await.unwrap_err();
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(error, json!({"error":"No workspace access"}));
+    for sql in [members, bound, sessions_of] {
+        assert_eq!(count(&app, sql, &lena).await, 0);
+    }
     Ok(())
 }
 

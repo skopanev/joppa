@@ -190,7 +190,7 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
             ensure!(
                 !callers.is_empty()
                     && callers.iter().all(|c| {
-                        ["member", "agent", "holder", "workspace owner"]
+                        ["member", "agent", "holder", "human member"]
                             .contains(&c.as_str().unwrap_or(""))
                     })
                     && entry["required"]

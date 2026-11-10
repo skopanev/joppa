@@ -115,8 +115,8 @@ test('removal-at-once-ac4: a removed member reloads without workspace data', asy
   } finally { await f.close(); }
 });
 
-// Maria is new in each fixture and is a member of W1 and W2 only. Alex owns W1 and W2.
-// Another person owns the control workspace W3.
+// Maria is new in each fixture and is a member of W1 and W2 only. Alex created W1 and W2.
+// Another person created the control workspace W3.
 test('settings-in-name-menu-ac1: Settings in the name menu opens the settings page with the member workspaces', async () => {
   const f = await fixture({'domain:d': {title: 'Domain'}});
   const person = await shared.browser.newContext({reducedMotion: 'reduce'});
@@ -142,10 +142,12 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
     await person.addCookies([{name: 'joppa_session', value: f.live.person_cookie, url: f.live.root}]);
     await create(person, w3);
     await maria.addCookies([{name: 'joppa_session', value: f.live.maria_cookie, url: f.live.root}]);
-    // Maria is a member of W1 and W2, but not the owner.
+    // Maria is a member of W1 and W2. No member item of /api/access has the key owner.
     const access = (await (await f.page.context().request.get(f.live.root + '/api/access')).json()).items;
     for (const id of shared) {
-      assert.deepEqual(access.find(w => w.id === id).members.filter(m => m.id === f.live.maria).map(m => m.owner), [false]);
+      const members = access.find(w => w.id === id).members;
+      assert.equal(members.filter(m => m.id === f.live.maria).length, 1, JSON.stringify(members));
+      assert.ok(members.every(m => !('owner' in m)), JSON.stringify(members));
     }
     const page = await maria.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));

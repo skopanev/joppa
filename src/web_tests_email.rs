@@ -56,11 +56,13 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
         )
     };
     let grants = "SELECT count(*) FROM joppa.email_grants WHERE email=$1";
-    // Non-owners, tokens and cross-origin requests record no grant.
+    // Non-members, tokens and cross-origin requests record no grant. olga is no member of W,
+    // and her refusal names no workspace owner.
     let refused = grant(browser(Some(&olga_cookie), origin), &w)
         .await
         .unwrap_err();
-    assert_eq!(refused.1.0["error"], "workspace owner required");
+    let text = refused.1.0["error"].as_str().unwrap_or_default().to_owned();
+    assert!(!text.is_empty() && !text.contains("owner"), "{text}");
     let mut token = browser(Some(&sam_cookie), origin);
     token.insert(header::AUTHORIZATION, "Bearer x".parse().unwrap());
     assert_eq!(grant(token, &w).await.unwrap_err().0, StatusCode::FORBIDDEN);
@@ -115,7 +117,8 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     )
     .await
     .unwrap();
-    assert_eq!(index["index"]["owner"], sam.as_str());
+    assert!(index["index"].get("owner").is_none(), "{index}");
+    assert!(index["index"].get("admin").is_none(), "{index}");
     assert_eq!(
         index["index"]["members"],
         json!({sam.clone():"human", derived.clone():"human"})

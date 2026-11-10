@@ -6,7 +6,7 @@ use anyhow::{Context, Result, ensure};
 use record_world::World;
 use serde_json::{Value, json};
 
-/// One MCP tool call of the owner with the session header X-Joppa-Alias. Gives the reply or
+/// One MCP tool call of member O (actor owner) with the session header X-Joppa-Alias. Gives the reply or
 /// the refusal text.
 async fn with_header(
     w: &World,
@@ -176,12 +176,13 @@ async fn a_bad_alias_is_refused_and_an_alias_gives_no_access() -> Result<()> {
         text.is_err_and(|t| t.contains(joppa::actor_alias::REFUSAL)),
         "a bad header"
     );
-    // A member who is not the owner stays one under any alias.
+    // The agent bot stays an agent under any alias: the alias "owner" gives no right.
     let args = json!({"request_id":"title","command":{"op":"update_workspace","title":"Taken"},"alias":"owner"});
-    let text = w.mcp(&w.alex, "joppa_command", args).await?;
+    let text = w.mcp(&w.bot, "joppa_command", args).await?;
     ensure!(
-        text.is_err_and(|t| t.contains("workspace owner updates the workspace")),
-        "alias access"
+        text.as_ref()
+            .is_err_and(|t| t.contains("a human member updates the workspace")),
+        "alias access: {text:?}"
     );
     // Any member hides the workspace for that member. The alias "owner" hides it only for alex.
     let args = json!({"request_id":"hide","command":{"op":"update_workspace","hidden":true},"alias":"owner"});

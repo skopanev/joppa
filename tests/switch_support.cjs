@@ -99,7 +99,7 @@ async function workspaces(live, browser, records) {
     await command(token, workspace, {op: 'set_tree_schema', revision: tree.current_revision, types, reason: 'Configure the switch tree'});
   };
   await command(live.owner, live.ws, {op: 'member', id: 'alex', role: 'human'});
-  // Only the workspace owner sets the tree schema.
+  // The fixture creator sets the tree schema.
   await configure(live.owner, live.ws);
   await saveAll(live, live.agent, live.ws, 'owner', records);
   const context = await browser.newContext({reducedMotion: 'reduce', viewport: {width: 1440, height: 1000}});

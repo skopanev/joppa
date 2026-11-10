@@ -1,5 +1,6 @@
 //! requirement:owner-manages-workspace over a real server: each member of a workspace hides it
-//! only for that member. The title stays owner-only, and a removed member leaves no flag.
+//! only for that member. Each human member changes the title, an agent cannot, and a removed
+//! member leaves no flag.
 #[path = "common/hidden_lists.rs"]
 mod hidden_lists;
 #[path = "common/record_world.rs"]
@@ -12,29 +13,32 @@ use serde_json::{Value, json};
 // test:3ya57e9z
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn only_the_owner_changes_the_title_and_each_member_hides_for_the_own_list() -> Result<()> {
+async fn each_human_member_changes_the_title_and_each_member_hides_for_the_own_list() -> Result<()>
+{
+    // bob (actor owner) created W. alex is a human member who did not create W.
     let w = record_world::world(&[]).await?;
-    for command in [
+    ok(
+        &w,
+        &w.alex,
         json!({"op":"update_workspace","hidden":true,"title":"X"}),
-        json!({"op":"update_workspace","title":"X"}),
-    ] {
-        let text = refused(&w, &w.alex, command.clone()).await?;
-        ensure!(
-            text.contains("workspace owner updates the workspace"),
-            "{command}: {text}"
-        );
+    )
+    .await?;
+    ok(&w, &w.alex, json!({"op":"update_workspace","title":"Y"})).await?;
+    for token in [&w.alex, &w.owner] {
+        let item = listed(&w, token).await?;
+        ensure!(item["title"] == "Y", "the title of alex: {item}");
     }
-    let item = listed(&w, &w.alex).await?;
-    ensure!(
-        item["title"] == "Record channel" && item.get("hidden").is_none(),
-        "a refused command changed the workspace: {item}"
-    );
     let text = refused(&w, &w.alex, json!({"op":"update_workspace"})).await?;
     ensure!(
         text.contains("update_workspace needs title, workspace_id, reference_prefix or hidden"),
         "{text}"
     );
     ok(&w, &w.alex, hide(true)).await?;
+    let text = refused(&w, &w.bot, json!({"op":"update_workspace","title":"Z"})).await?;
+    ensure!(
+        text.contains("a human member updates the workspace"),
+        "{text}"
+    );
     let old = json!({"op":"rename_workspace","title":"Old","reason":"Rename"});
     let text = refused(&w, &w.owner, old).await?;
     ensure!(
@@ -46,13 +50,13 @@ async fn only_the_owner_changes_the_title_and_each_member_hides_for_the_own_list
     ensure!(text.contains("Workspace not found"), "{text}");
     let item = listed(&w, &w.alex).await?;
     ensure!(
-        item["hidden"] == true && item["title"] == "Record channel",
+        item["hidden"] == true && item["title"] == "Y",
         "joppa_list of alex: {item}"
     );
     let item = listed(&w, &w.owner).await?;
     ensure!(
-        item.get("hidden").is_none() && item["title"] == "Record channel",
-        "joppa_list of the owner: {item}"
+        item.get("hidden").is_none() && item["title"] == "Y",
+        "joppa_list of bob: {item}"
     );
     Ok(())
 }

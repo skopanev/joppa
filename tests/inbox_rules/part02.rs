@@ -9,14 +9,18 @@ fn an_account_without_membership_cannot_add_a_signal() {
 }
 
 #[test]
-fn only_the_owner_redacts_a_fragment() {
-    // owner-redacts-secret-ac2, ac3
+fn a_human_member_who_did_not_create_the_workspace_redacts_a_fragment() {
+    // redaction-owner-only: alex is a human member and did not create the workspace.
     let mut w = world();
     let command =
         json!({"op":"redact_object","target":"note:a","fragment":"Refunds","reason":"private"});
-    refused(&mut w, "agent", command.clone(), "workspace owner required");
-    refused(&mut w, "alex", command.clone(), "workspace owner required");
+    refused(
+        &mut w,
+        "agent",
+        command.clone(),
+        "a human member of the workspace is required",
+    );
     assert_eq!(data(&w, "a")["body"], "Refunds are slow");
-    w.ok("owner", command);
+    w.ok("alex", command);
     assert_eq!(data(&w, "a")["body"], "[redacted] are slow");
 }

@@ -71,7 +71,12 @@ fn capabilities_under_custom_groups_use_normal_owner_rules() {
     );
     assert_eq!(w.state.capabilities["custom"].domain, None);
     assert_eq!(w.state.objects["capability:custom"].revisions.len(), 1);
-    w.no("legal",json!({"op":"save_object","kind":"capability","id":"custom","revision":1,"parent":"initiative:i","data":{"title":"Change owner","owner":"legal"},"reason":"Unauthorized owner transfer"}));
+    // legal is a human member who did not create the workspace: the save succeeds.
+    w.ok("legal",json!({"op":"save_object","kind":"capability","id":"custom","revision":1,"parent":"initiative:i","data":{"title":"Change owner","owner":"legal"},"reason":"Owner transfer by a human member"}));
+    let current = w.state.objects["capability:custom"].current();
+    assert_eq!(current.data["owner"], "legal");
+    assert_eq!(w.state.objects["capability:custom"].revisions.len(), 2);
+    assert_eq!(w.state.capabilities["custom"].domain, None);
 }
 
 // [ask-only-missing-ac3]

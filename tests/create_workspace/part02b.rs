@@ -1,5 +1,17 @@
 // Part of tests/create_workspace/part02.rs: the tail of the test before it, included right after it.
 
+/// A workspace read names no workspace owner: the index and the state have no owner and no
+/// admin field.
+fn assert_no_creator_field(read: &Value) {
+    for part in ["index", "state"] {
+        let Some(section) = read.get(part) else {
+            continue;
+        };
+        assert!(section.get("owner").is_none(), "{part}: {section}");
+        assert!(section.get("admin").is_none(), "{part}: {section}");
+    }
+}
+
 /// Steps 2 to 7 after the refused calls: Billing is created, owned and refused as specified.
 #[allow(clippy::too_many_arguments)]
 async fn billing_is_created_owned_and_refused_as_specified(
@@ -68,7 +80,7 @@ async fn billing_is_created_owned_and_refused_as_specified(
     assert_ne!(second_id, billing);
     assert_ne!(receipt(second_id.clone()).await?.1, request_id);
 
-    // Step 6: alex owns Billing although the rules do not name it.
+    // Step 6: alex reads Billing as its creator although the rules do not name it.
     let list = get("/api/workspaces".into(), alex_cookie)
         .await?
         .json::<Value>()
@@ -79,9 +91,9 @@ async fn billing_is_created_owned_and_refused_as_specified(
     let read = get(format!("/api/workspaces/{billing}"), alex_cookie).await?;
     assert_eq!(read.status(), 200);
     let read = read.json::<Value>().await?;
-    // Step 7: the default read names the owner next to the unchanged members.
-    assert_eq!(read["index"]["owner"], json!(alex));
+    // Step 7: the default read lists alex as the only member, with no owner and no admin field.
     assert_eq!(read["index"]["members"], json!({alex.to_owned():"human"}));
+    assert_no_creator_field(&read);
     assert_eq!(
         get(format!("/api/workspaces/{billing}/board"), alex_cookie)
             .await?
@@ -92,7 +104,7 @@ async fn billing_is_created_owned_and_refused_as_specified(
         .await?
         .json::<Value>()
         .await?;
-    assert_eq!(base_read["index"]["owner"], "owner");
+    assert_no_creator_field(&base_read);
     // A member who does not own a workspace that the rules exclude still cannot see it.
     for path in [
         format!("/api/workspaces/{hidden}"),
