@@ -24,7 +24,7 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     for (const edge of first.edges) assert.match(edge.marker, /#flow-arrow\b/, edge.from + '>' + edge.to + ' marker');
     assert.ok(first.arrowHead, 'the marker #flow-arrow holds .flow-arrow-head');
     // The when label sits on its edge, and every label shows.
-    assert.deepEqual(first.whens, [{text: 'limit ok', shown: true, edge: 'step:a>step:b'}]);
+    assert.deepEqual(first.whens.map(({text, shown, edge}) => ({text, shown, edge})), [{text: 'limit ok', shown: true, edge: 'step:a>step:b'}]);
     for (const n of first.nodes) assert.ok(n.labels.length > 0 && n.labelsShown, n.address + ' label: ' + JSON.stringify(n.labels));
     assert.equal(first.lines, 0, 'no parent line');
     // Each dot has the colour of its stored tone.
@@ -108,7 +108,7 @@ test('flow-transfer: a transfer badge opens the other flow with the node picked'
       {id: 'b', title: 'Bank screen', relations: {swap: {edges: [{to: 'step:c'}]}, 'swap-money': {edges: []}}},
     ]);
     await open(f, '&relation=swap', 2);
-    assert.deepEqual((await snap(f)).badges, [{address: 'step:b', text: '⇄ Swap money'}]);
+    assert.deepEqual((await snap(f)).badges.map(({address, text}) => ({address, text})), [{address: 'step:b', text: '⇄ Swap money'}]);
     await f.page.locator('.flow-transfer', {hasText: 'Swap money'}).click();
     await f.page.waitForURL(url => url.searchParams.get('relation') === 'swap-money');
     assert.equal(link(f).get('relation'), 'swap-money');
