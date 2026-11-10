@@ -10,10 +10,10 @@
 // - A drag from any place pans the view and picks nothing. The dots keep their place.
 // - A click with no drag picks a dot or a label, opens a badge, or clears on the canvas.
 import {flowCamera} from 'board/flow-camera.js';
-import {flowLayout,wrapLabel} from 'board/flow-layout.js';
+import {flowLayout,wrapLabel,apartWhens} from 'board/flow-layout.js';
 const SVG='http://www.w3.org/2000/svg';
 // The dot radius, the space of a curve from its dots, and the first label line under a dot.
-const RADIUS=9,GAP=3,LABEL=RADIUS+19,WHEN_STEP=18;
+const RADIUS=9,GAP=3,LABEL=RADIUS+19;
 // The text sizes of .flow-label and .flow-transfer in src/board_more.css, the line height in
 // em, the space from the last label baseline to the first badge baseline, and the badge step
 // in badge em.
@@ -32,6 +32,9 @@ const at=n=>n.toFixed(1);
 // {from, to, when} in its stored order. `on` gives pick(address) and transfer(key, address).
 // The canvas goes into `holder` before the fit, so the camera can read its box.
 export function drawFlow(holder,nodes,edges,on){
+  // Edge order: the sources in address order, then the stored order.
+  const index=new Map(nodes.map((n,i)=>[n.address,i]));
+  edges=[...edges].sort((a,b)=>index.get(a.from)-index.get(b.from));
   const {position}=flowLayout(nodes.map(n=>n.address),edges);
   const canvas=svg('svg',{role:'img','aria-label':'Flow of the relation'},'flow-canvas');
   const defs=svg('defs'),marker=svg('marker',{id:'flow-arrow',viewBox:'0 0 10 10',refX:'10',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});
@@ -64,15 +67,19 @@ export function drawFlow(holder,nodes,edges,on){
     const {d,mid}=edge.back?arc(a,b):curve(a,b,edge.via);
     const element=svg('path',{d,'marker-end':'url(#flow-arrow)'},'flow-edge'+(edge.back?' flow-back':''));
     element.dataset.from=edge.from;element.dataset.to=edge.to;lines.append(element);
-    let label=null;
-    if(edge.when){label=svg('text',{x:at(mid.x),y:at(mid.y-6)},'flow-when');label.textContent=short(edge.when);whens.append(label);}
-    return {...edge,element,label,mid};
+    return {...edge,element,label:null,mid};
+  });
+  // A condition stands 6 above the middle of the first part of its edge, and then moves apart
+  // from the earlier conditions (apartWhens of flow-layout.js).
+  const asked=drawn.filter(e=>e.when);
+  apartWhens(asked.map(e=>({x:e.mid.x,y:e.mid.y-6,text:short(e.when)}))).forEach((place,i)=>{
+    const label=svg('text',{x:at(place.x),y:at(place.y)},'flow-when');label.textContent=place.text;
+    whens.append(label);asked[i].label=label;
   });
   holder.prepend(canvas);
   // The view shows every dot, every waypoint and the top of every arc.
   const tops=drawn.filter(e=>e.back).map(e=>e.mid),via=drawn.flatMap(e=>e.via||[]);
   const camera=flowCamera(canvas);camera.fit([...position.values(),...via,...tops],undefined,MOST);
-  apart(drawn.map(e=>e.label).filter(Boolean));
   pointer(canvas,camera,on);
   return {canvas,camera,position,parts,edges:drawn};
 }
@@ -87,17 +94,6 @@ function curve(a,b,via=[]){
     d+=`C${at(p.x+h)} ${at(p.y)} ${at(q.x-h)} ${at(q.y)} ${at(q.x)} ${at(q.y)}`;
   }
   return {d,mid:{x:(points[0].x+points[1].x)/2,y:(points[0].y+points[1].y)/2}};
-}
-// In edge order, a condition label moves down by WHEN_STEP while its box overlaps the box of
-// an earlier label. The boxes come from the drawing after the fit.
-function apart(labels){
-  const placed=[];
-  for(const label of labels){
-    const b=label.getBBox(),box={x:b.x,y:b.y,w:b.width,h:b.height};let down=0;
-    while(placed.some(p=>box.x<p.x+p.w&&p.x<box.x+box.w&&box.y<p.y+p.h&&p.y<box.y+box.h)){box.y+=WHEN_STEP;down+=WHEN_STEP;}
-    if(down)label.setAttribute('y',at(Number(label.getAttribute('y'))+down));
-    placed.push(box);
-  }
 }
 // A back edge leaves the top of its dot and comes down on the top of the target dot. Its
 // highest point is over both dots. An edge to its own node makes a loop.

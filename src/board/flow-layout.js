@@ -31,6 +31,22 @@ export function wrapLabel(text){
   }
   return rows;
 }
+// The box of a condition label at the text size k = WHEN_K, without the page: the text size
+// of .flow-when in src/board_more.css times WHEN_K, WHEN_CHAR em for each character, WHEN_UP em
+// above the baseline and WHEN_DOWN em below it, round the x of its middle.
+export const WHEN_SIZE=11,WHEN_K=1.6,WHEN_CHAR=0.6,WHEN_UP=0.8,WHEN_DOWN=0.2,WHEN_STEP=18;
+// The places of the condition labels {x, y, text} in edge order: a label moves down by
+// WHEN_STEP while its box overlaps the box of an earlier label.
+export function apartWhens(labels){
+  const em=WHEN_SIZE*WHEN_K,placed=[];
+  return labels.map(({x,y,text})=>{
+    const half=[...text].length*WHEN_CHAR*em/2;
+    const meets=p=>x-half<p.right&&p.left<x+half&&y-WHEN_UP*em<p.bottom&&p.top<y+WHEN_DOWN*em;
+    while(placed.some(meets))y+=WHEN_STEP;
+    placed.push({left:x-half,right:x+half,top:y-WHEN_UP*em,bottom:y+WHEN_DOWN*em});
+    return {x,y,text};
+  });
+}
 // `addresses` come in address order. Each edge is {from, to} in its stored order. A forward edge
 // gets `via`: its waypoints {column, x, y} from left to right.
 export function flowLayout(addresses,edges){
