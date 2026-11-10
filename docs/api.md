@@ -99,7 +99,10 @@ the `data` node filter. Any other view in the link opens the tree.
     blocker to the node that waits. The arrow of any other relation goes from the node to its
     target. An edge back to an earlier node of a cycle is an arc over its nodes.
   - A dot has the colour of its status tone. A node shows its own title in the relation, else
-    its object title. The condition `when` of an edge shows on the edge.
+    its object title. The label wraps by words into at most 3 lines of at most 18 characters,
+    and a cut line ends with "…". The dot title and the card give the full label. The
+    transfer badges stay below the last line. The condition `when` of an edge shows on the
+    edge in one line.
   - A badge ⇄ names each other relation of the node that is not a system relation. A click on
     the badge opens that relation and picks the node.
   - A click on a dot lights the node, its neighbours and their edges, and fades the rest to

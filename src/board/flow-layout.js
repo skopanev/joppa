@@ -4,7 +4,32 @@
 // - An edge to a node on the current walk stack is a back edge. It gets `back: true`.
 // - The column of a node is the length of the longest path to it without back edges.
 // - The nodes of one column go down in address order, round the middle line.
-export const COLUMN_GAP=280,ROW_GAP=120;
+export const COLUMN_GAP=280,ROW_GAP=140;
+// A node label has at most LINES lines of at most LINE characters.
+export const LINE=18,LINES=3;
+// The lines of a node label:
+// - Split at white space. A word of more than LINE characters keeps LINE-1 and gets "…".
+// - A word joins the line when the line, a space and the word fit in LINE characters, else
+//   it starts the next line. An empty line takes the next word.
+// - When words remain after the last line, that line drops end words until it and "…" fit.
+//   With no word left, its first LINE-1 characters stay. The line ends with "…".
+export function wrapLabel(text){
+  const size=s=>[...s].length,cut=s=>[...s].slice(0,LINE-1).join('')+'…';
+  let rest=text.split(/\s+/).filter(Boolean).map(w=>size(w)>LINE?cut(w):w);
+  const lines=[];
+  while(rest.length&&lines.length<LINES){
+    let line=rest[0],i=1;
+    while(i<rest.length&&size(line)+1+size(rest[i])<=LINE)line+=' '+rest[i++];
+    lines.push(rest.slice(0,i));rest=rest.slice(i);
+  }
+  const rows=lines.map(words=>words.join(' '));
+  if(rest.length){
+    let words=lines[LINES-1];
+    while(words.length&&size(words.join(' '))+1>LINE)words=words.slice(0,-1);
+    rows[LINES-1]=words.length?words.join(' ')+'…':cut(rows[LINES-1]);
+  }
+  return rows;
+}
 // `addresses` come in address order. Each edge is {from, to} in its stored order.
 export function flowLayout(addresses,edges){
   const out=new Map(addresses.map(a=>[a,[]])),into=new Map(addresses.map(a=>[a,0]));

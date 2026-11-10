@@ -1,15 +1,21 @@
 // The drawing of Flow view: one SVG with a dot for each node and an arrow for each edge, in the
 // columns of flow-layout.js. The camera (flow-camera.js) moves the view.
 // - A forward edge is a curve from left to right. A back edge is an arc over its two nodes.
-// - The condition `when` of an edge shows on the edge. Every label shows.
+// - A node label wraps by words into at most 3 lines (wrapLabel of flow-layout.js). The dot
+//   title keeps the full label.
+// - The condition `when` of an edge shows on the edge in one line. Every label shows.
 // - Under the label of a node, one transfer badge names each other relation of the node.
 // - A drag from any place pans the view and picks nothing. The dots keep their place.
 // - A click with no drag picks a dot or a label, opens a badge, or clears on the canvas.
 import {flowCamera} from 'board/flow-camera.js';
-import {flowLayout} from 'board/flow-layout.js';
+import {flowLayout,wrapLabel} from 'board/flow-layout.js';
 const SVG='http://www.w3.org/2000/svg';
-// The dot radius, the space of a curve from its dots, and the text lines under a dot.
-const RADIUS=9,GAP=3,LABEL=RADIUS+19,BADGE=20;
+// The dot radius, the space of a curve from its dots, and the first label line under a dot.
+const RADIUS=9,GAP=3,LABEL=RADIUS+19;
+// The text sizes of .flow-label and .flow-transfer in src/board_more.css, the line height in
+// em, the space from the last label baseline to the first badge baseline, and the badge step
+// in badge em.
+const LABEL_SIZE=13,BADGE_SIZE=11,LINE_HEIGHT=1.2,FIRST_BADGE=17,BADGE_STEP=1.4;
 // The first view uses at most MOST world units for one pixel, so its text is readable. The
 // text sizes of src/board_more.css grow with --u up to the same limit.
 const MOST=1.6;
@@ -37,9 +43,15 @@ export function drawFlow(holder,nodes,edges,on){
     const dot=svg('circle',{cx:at(x),cy:at(y),r:RADIUS},'flow-node');
     dot.dataset.address=node.address;dot.dataset.tone=node.tone;dot.style.fill='var(--dot-'+node.tone+')';
     const title=svg('title');title.textContent=node.label;dot.append(title);
-    const label=svg('text',{x:at(x),y:at(y+LABEL)},'flow-label');label.textContent=short(node.label);label.dataset.address=node.address;
+    // One tspan for each line of the label, each next line one line height lower.
+    const label=svg('text',{x:at(x),y:at(y+LABEL)},'flow-label');label.dataset.address=node.address;
+    const rows=wrapLabel(node.label);
+    label.append(...rows.map((row,i)=>{const line=svg('tspan',{x:at(x),...(i?{dy:LINE_HEIGHT+'em'}:{})});line.textContent=row;return line;}));
+    // The badges go below the last line. Their offsets are in the em of the badge, so they grow
+    // with the label text (--k of src/board_more.css).
+    const below=((rows.length-1)*LINE_HEIGHT*LABEL_SIZE+FIRST_BADGE)/BADGE_SIZE;
     const badges=node.badges.map((badge,i)=>{
-      const element=svg('text',{x:at(x),y:at(y+LABEL+BADGE*(i+1))},'flow-transfer');
+      const element=svg('text',{x:at(x),y:at(y+LABEL),dy:(below+i*BADGE_STEP).toFixed(3)+'em'},'flow-transfer');
       element.textContent='⇄ '+badge.title;element.dataset.relation=badge.key;element.dataset.address=node.address;
       return element;
     });
@@ -74,6 +86,7 @@ function arc(a,b){
   const d=`M${at(a.x)} ${at(sy)}C${at(a.x+spread)} ${at(top)} ${at(b.x-spread)} ${at(top)} ${at(b.x)} ${at(ey)}`;
   return {d,mid:{x:(a.x+b.x)/2,y:(sy+ey+6*top)/8}};
 }
+// The one line of an edge condition.
 function short(text){return text.length>36?text.slice(0,35)+'…':text;}
 function pointer(canvas,camera,on){
   let drag=null;
