@@ -14,6 +14,7 @@ pub(crate) fn short_id() -> String {
         .collect()
 }
 
+/// A random id for a `save_object` without one. The write path takes a free id instead.
 pub(crate) fn generate(command: &mut Value) -> Result<()> {
     let op = command["op"].as_str().unwrap_or("").to_owned();
     let c = command

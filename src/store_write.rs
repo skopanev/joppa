@@ -10,6 +10,9 @@ pub use receipts_version::*;
 #[path = "store_write_generate.rs"]
 mod generate;
 pub(crate) use generate::*;
+#[path = "store_write_local_id.rs"]
+mod local_id;
+use local_id::generate_free;
 #[path = "store_write_item_ids.rs"]
 mod item_ids;
 pub use item_ids::*;
