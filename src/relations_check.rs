@@ -1,6 +1,6 @@
 //! Part of `relations`: the checks of the relations that a save sends. The replay runs the
-//! same key, target and cycle checks as a live save. Only a live save checks the size limits,
-//! so an older journal replays as it was stored.
+//! same key, target, fact and cycle checks as a live save. Only a live save checks the size
+//! limits and the colour form, so an older journal replays as it was stored.
 use super::*;
 use crate::model::Workspace;
 use crate::objects::resolve_address;
@@ -31,8 +31,8 @@ pub fn patch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Patch>, D:
         .map_err(D::Error::custom)
 }
 
-/// The relations after a patch: a sent key replaces its title and edges, a null removes it,
-/// and every other key of `current` stays.
+/// The relations after a patch: a sent key replaces its title, edges, colour and facts, a
+/// null removes it, and every other key of `current` stays.
 pub fn merge(current: &Relations, patch: &Patch) -> Relations {
     let mut out = current.clone();
     for (key, relation) in patch {
@@ -87,6 +87,15 @@ pub fn check_limits(relations: &Relations, stored: &Relations) -> Result<()> {
             !relation.edges.iter().any(|e| long(&e.when)),
             "when holds at most {TEXT_MAX} characters"
         );
+        let mut colors = relation.edges.iter().map(|e| &e.color);
+        ensure!(
+            color_form(&relation.color) && colors.all(color_form),
+            "{COLOR_FORM}"
+        );
+        ensure!(
+            relation.facts.len() <= EDGES_MAX,
+            "a relation holds at most {EDGES_MAX} facts"
+        );
     }
     Ok(())
 }
@@ -123,6 +132,7 @@ pub fn validate(w: &Workspace, key: &str, relations: &Relations, kept: &Relation
                 );
             }
         }
+        facts(w, key, &relation.facts, kept.get(name), resolved)?;
     }
     visit(
         w,
@@ -132,6 +142,35 @@ pub fn validate(w: &Workspace, key: &str, relations: &Relations, kept: &Relation
         &mut BTreeSet::new(),
         &mut BTreeSet::new(),
     )
+}
+
+/// Check the facts of one key of node `key`, as the edge targets: an object of this workspace,
+/// present unless `kept`, the stored key, has it already. No fact is the node, and no fact
+/// shows twice: by its resolved address when `resolved`, else as written.
+fn facts(
+    w: &Workspace,
+    key: &str,
+    facts: &[String],
+    kept: Option<&Relation>,
+    resolved: bool,
+) -> Result<()> {
+    let mut unique = BTreeSet::new();
+    let node = resolve_address(w, key);
+    for fact in facts {
+        let address = resolve_address(w, fact);
+        let compared = if resolved { address } else { fact.as_str() };
+        ensure!(unique.insert(compared), "a fact is listed twice");
+        ensure!(address != node, "a node is not its own fact");
+        let target = w
+            .objects
+            .get(address)
+            .context("unknown linked object in this workspace")?;
+        ensure!(
+            target.current().present || kept.is_some_and(|r| r.facts.contains(fact)),
+            "linked object is absent from the current tree"
+        );
+    }
+    Ok(())
 }
 
 /// Walk the depends_on edges and the parents from `key`: a node on the stack is a cycle.

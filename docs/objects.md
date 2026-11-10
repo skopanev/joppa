@@ -17,7 +17,7 @@ Retry identical input with the same `request_id` to get the same result.
 An update (`revision` > 0) merges `data` into the current fields: a sent field replaces its
 value, `null` removes the field, and every other field stays. `clean: true` replaces `data`
 whole. A save without `parent` keeps the parent, and `parent: null` makes a root.
-`relations` merges by key: a sent key replaces its `title` and `edges`, `null` removes the
+`relations` merges by key: a sent key replaces its `title`, `edges`, `color` and `facts`, `null` removes the
 key, and every other key stays. A save without `relations` keeps them. The journal stores the
 whole data, parent and relations of each save. A new edge to an archived or absent object is
 refused, unless the same key of the current revision already has it.

@@ -168,6 +168,7 @@ pub async fn save_dependency(
             to: target.into(),
             when: None,
             revision,
+            color: None,
         });
     } else {
         ensure!(edges.len() < before, "unknown dependency");
@@ -177,8 +178,11 @@ pub async fn save_dependency(
     } else {
         format!("Remove the dependency on {target}")
     };
+    // The key keeps its title, colour and facts; only the edges change.
+    let mut depends_on = document["relations"]["depends_on"].clone();
+    depends_on["edges"] = json!(edges);
     let command = json!({"op":"save_object","kind":kind,"id":object["id"],"revision":object["current_revision"],
-        "parent":document["parent"],"data":document["data"],"relations":{"depends_on":{"title":document["relations"]["depends_on"]["title"],"edges":edges}},"reason":reason});
+        "parent":document["parent"],"data":document["data"],"relations":{"depends_on":depends_on},"reason":reason});
     execute_remote_input(pool, workspace, actor, request_id, &command).await
 }
 

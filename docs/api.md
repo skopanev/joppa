@@ -100,7 +100,18 @@ the `data` node filter. Any other view in the link opens the tree.
     target. An edge back to an earlier node of a cycle is an arc over its nodes. An edge over
     more than one column goes through a free row of each column between. Four barycenter
     sweeps order the rows of each column, so fewer edges cross.
-  - A dot has the colour of its status tone. A node shows its own title in the relation, else
+  - The view then reads each fact of a step that the node read did not give, up to 25 in one
+    request: `GET /api/workspaces/{workspace}/objects?address=A,B,…&fields=title,signal,item_id,present`
+    gives `items` in the order of the request. An archived fact has the tone purple.
+  - A dot has the colour of the worst tone of its step and the facts of the step, in the order
+    red, orange, yellow, blue, green. A purple fact does not count. A member without an edge
+    that is a fact of a drawn step has no dot.
+  - An edge takes its own `color`, else the colour of its source node. A node takes its own
+    relation `color`, else the colour of its first coloured incoming forward edge, by source
+    address. A back edge passes no colour on. A coloured edge and its arrow head have that
+    colour at opacity 0.6, and at opacity 1 and 2px when lit. A palette name uses the CSS
+    token `--flow-<name>`, with one value for the light theme and one for the dark theme.
+  - A node shows its own title in the relation, else
     its object title. The label wraps by words into at most 3 lines of at most 18 characters,
     and a cut line ends with "…". The dot title and the card give the full label. The
     transfer badges stay below the last line. The condition `when` of an edge shows in one
@@ -109,7 +120,12 @@ the `data` node filter. Any other view in the link opens the tree.
     the badge opens that relation and picks the node.
   - A click on a dot lights the node, its neighbours and their edges, and fades the rest to
     opacity 0.08. A card shows the title, the object title, the address, Open, and the nodes
-    before (Previous) and after (Next) the node. × or a click on the empty canvas clears it.
+    before (Previous) and after (Next) the node. The card of a step with facts adds the
+    section Facts: one row for each fact in the stored order, with the status circle of its
+    own tone, its title, the copy button of its ID and Open. The head circle shows the dot
+    tone, and Status the own status of the node. The button "Collapse the card" in the head
+    hides every part below the head and keeps the pick and the marks; the card stays collapsed
+    for the next pick until "Expand the card". × or a click on the empty canvas clears it.
   - A filter or a search fades the nodes that do not match. The status line shows only the
     load, an error, `No node matches these filters.` and `No node holds this relation.`.
   - A drag pans and picks nothing. A wheel or a two-finger swipe pans, and a pinch (a wheel
@@ -146,7 +162,7 @@ reference fails the whole batch. Plain text is never a template.
 The reply has `results` in operation order, each with `position` and the resolved `command`.
 
 Each field of a write that names an object takes its address or its public item ID, such as
-`joppa-R-DP6KXM62`: `target`, `parent`, `duplicate_of`, `relations.*.edges[].to`, each reference
+`joppa-R-DP6KXM62`: `target`, `parent`, `duplicate_of`, `relations.*.edges[].to`, `relations.*.facts[]`, each reference
 field of `data` (one ID or a list) and the `id` of `save_object`, which must name an object
 of its `kind`. `joppa_history_mark` takes IDs in `nodes`. The links of `set_remote_links`
 name objects of other workspaces, so they need addresses. The server replaces each ID with the `kind:id`

@@ -34,10 +34,10 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   `id`, `current_revision`, `revision_count`, `historical` or `metadata_scope` keys. The
   actor, time and reason of a revision come with `history: true` or `revision: N`.
 - `present: false` marks an archived object. A present object has no `present` key.
-- `relations` gives every key with its `title` and all its edges, without pages: `to`, `when`
-  and the `title` of the target. A pinned edge adds its `revision` pin and the
+- `relations` gives every key with its `title` and all its edges, without pages: `to`, `when`,
+  `color` and the `title` of the target. A pinned edge adds its `revision` pin and the
   `current_revision` of the target. `present: false` marks an archived target. A key without
-  edges keeps `edges: []`.
+  edges keeps `edges: []`. A key gives its `color` and its `facts` (plain addresses) as stored.
 - `save_object` takes the relations back as they are. It ignores `title` of an edge,
   `current_revision` and `present`.
 - `comments` are in time order. A comment has no `author` or `created_at` when they repeat

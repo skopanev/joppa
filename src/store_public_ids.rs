@@ -1,5 +1,5 @@
 //! A write takes a public item ID, such as `joppa-R-DP6KXM62`, in each field that names an
-//! object. The server replaces it with the canonical `kind:id` before the validation, so the
+//! object, also in an edge target and a fact of a relation. The server replaces it with the canonical `kind:id` before the validation, so the
 //! journal and the documents store only addresses.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,7 +49,7 @@ fn slots(state: &Workspace, value: &Value) -> Vec<String> {
         }
     }
     if value["op"] == "save_object" {
-        // Each edge of each relation names its target in `to`.
+        // Each edge of each relation names its target in `to`, and each fact is an object.
         for (key, relation) in value["relations"].as_object().into_iter().flatten() {
             let key = key.replace('~', "~0").replace('/', "~1");
             for (i, edge) in relation["edges"]
@@ -61,6 +61,10 @@ fn slots(state: &Workspace, value: &Value) -> Vec<String> {
                 if edge["to"].is_string() {
                     out.push(format!("/relations/{key}/edges/{i}/to"));
                 }
+            }
+            let facts = relation["facts"].as_array().into_iter().flatten();
+            for (i, _) in facts.enumerate().filter(|(_, fact)| fact.is_string()) {
+                out.push(format!("/relations/{key}/facts/{i}"));
             }
         }
         let kind = value["kind"].as_str().unwrap_or_default();
