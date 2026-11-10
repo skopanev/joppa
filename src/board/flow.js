@@ -16,7 +16,7 @@ import {commonObjectFilters,matches} from 'board/filters.js';
 import {relationRegistry,relationTitles} from 'board/relations.js';
 import {drawFlow} from 'board/flow-draw.js';
 import {flowCard} from 'board/flow-card.js';
-const FIELDS='title,signal,relations';
+const FIELDS='title,signal,relations,item_id';
 // The shown page. A new board render closes it first.
 let shown=null;
 // Free the camera of the shown drawing before its canvas leaves the page.
