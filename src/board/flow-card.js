@@ -1,5 +1,6 @@
-// The card of the picked node of Flow view, over the canvas. The head gives the status, the
-// title of the node in the relation, the copy button of its ID, Open and the close button ×. The facts give the object
+// The card of the picked node of Flow view, over the canvas. The head gives the collapse button
+// first, then the status, the title of the node in the relation, the copy button of its ID, Open
+// and the close button ×. The facts give the object
 // title (Object), the address, the status label and the nodes one edge before (Previous) and
 // after (Next) the node, each with the condition of its edge. A step picks its node. The
 // section Facts after Next lists the facts of the step in stored order: the status circle of
@@ -20,7 +21,7 @@ export function flowCard(card,flow){
   const open=E('a','Open →','flow-open');open.href=objectURL(address);
   const fold=E('button',undefined,'flow-card-collapse');fold.type='button';
   const head=E('div',undefined,'flow-card-head');
-  head.append(E('span',undefined,'status-circle '+toneOf(address)),E('h3',label,'flow-card-title'),copyButton(node.item_id||address),open,fold,close);
+  head.append(fold,E('span',undefined,'status-circle '+toneOf(address)),E('h3',label,'flow-card-title'),copyButton(node.item_id||address),open,close);
   const facts=E('dl',undefined,'flow-card-facts');
   // The toggle changes only the card: no pick and no marks.
   const show=on=>{
