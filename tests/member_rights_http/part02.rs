@@ -2,16 +2,20 @@
 
 const LAST: &str = "the last human member cannot be removed";
 
+// ac:l7fkwj4a
 // requirement:owner-manages-workspace: Joppa refuses the removal of the last human member.
+// MCP hides remove_member (ac:help-matches-api-ac1): the removals go over HTTP, and MCP
+// refuses the operation itself.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_removal_of_the_last_human_member_is_refused_over_http_and_mcp() -> Result<()> {
     let mut w = record_world::world(&[]).await?;
     let all = json!({"alex":"human","another-member":"human","owner":"human"});
     ensure!(humans(&w).await? == all, "start");
-    // carol (another-member) removes herself over MCP.
+    // carol (another-member) removes herself over HTTP.
     let leave = json!({"op":"remove_member","id":"another-member","reason":"Leave W"});
-    hidden_lists::ok(&w, &w.other, leave).await?;
+    let (code, reply) = http_command(&w, &w.other, leave).await?;
+    ensure!(code == 200, "{code} {reply}");
     let two = json!({"alex":"human","owner":"human"});
     ensure!(humans(&w).await? == two, "after carol");
     // alex removes bob, the creator of W. A read of W as bob gives 404.
@@ -36,7 +40,7 @@ async fn the_removal_of_the_last_human_member_is_refused_over_http_and_mcp() -> 
         "HTTP: {code} {reply}"
     );
     let text = hidden_lists::refused(&w, &w.alex, me).await?;
-    ensure!(text.contains(LAST), "MCP: {text}");
+    ensure!(text == "unknown operation", "MCP: {text}");
     ensure!(humans(&w).await? == one, "after the refusals");
     // The server replays the journal of W and gives the same member list.
     hidden_lists::rebuild(&mut w).await?;
@@ -70,6 +74,7 @@ fn no_creator_key(value: &Value, path: &str) -> Result<()> {
     Ok(())
 }
 
+// ac:0ai35bt1
 // requirement:member-rights: no reply, help text or error text names a workspace owner.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
@@ -112,7 +117,8 @@ async fn no_reply_help_or_refusal_names_a_workspace_owner() -> Result<()> {
         );
     }
     ensure!(!help.to_string().contains("workspace owner"), "{help}");
-    // Each refusal of bot names no workspace owner.
+    // Each refusal of bot names no workspace owner. MCP hides these operations, so bot sends
+    // them over HTTP.
     let human = "a human member of the workspace is required";
     let title = "a human member updates the workspace";
     for (command, text) in [
@@ -124,8 +130,12 @@ async fn no_reply_help_or_refusal_names_a_workspace_owner() -> Result<()> {
         ),
         (json!({"op":"delete_workspace","reason":"Close"}), ""),
     ] {
-        let refusal = hidden_lists::refused(&w, &w.bot, command.clone()).await?;
-        ensure!(refusal.contains(text), "{command}: {refusal}");
+        let (code, reply) = http_command(&w, &w.bot, command.clone()).await?;
+        let refusal = reply["error"].as_str().unwrap_or_default().to_owned();
+        ensure!(
+            code != 200 && refusal.contains(text),
+            "{command}: {code} {reply}"
+        );
         no_owner_words(&refusal)?;
     }
     let path = format!("/api/workspaces/{}/references", w.ws);

@@ -32,10 +32,35 @@ async fn newest(w: &World, ws: &str) -> Result<(Value, u64)> {
     Ok((item["actor"].clone(), position))
 }
 
-/// alex sends `command` in `ws`, and then `newest` reads it in `read`. The command succeeds,
-/// its event names alex, and the journal position grows. Gives the new position.
+/// One command of `token` in workspace `ws` through POST /api/workspaces/{ws}/commands. A
+/// refusal gives Err with its error text.
+async fn http_command(
+    w: &World,
+    token: &str,
+    ws: &str,
+    command: &Value,
+) -> Result<Result<Value, String>> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let reply = w
+        .http
+        .post(format!("{}/api/workspaces/{ws}/commands", w.root))
+        .bearer_auth(token)
+        .json(&json!({"request_id":id,"command":command}))
+        .send()
+        .await?;
+    let accepted = reply.status().is_success();
+    let body: Value = reply.json().await.unwrap_or(Value::Null);
+    Ok(if accepted {
+        Ok(body)
+    } else {
+        Err(body["error"].as_str().unwrap_or_default().to_owned())
+    })
+}
+
+/// alex sends `command` in `ws` over HTTP, and then `newest` reads it in `read`. The command
+/// succeeds, its event names alex, and the journal position grows. Gives the new position.
 async fn alex_runs(w: &World, ws: &str, read: &str, command: &Value, position: u64) -> Result<u64> {
-    let reply = mcp_command(w, &w.alex, ws, command).await?;
+    let reply = http_command(w, &w.alex, ws, command).await?;
     reply.map_err(|e| anyhow::anyhow!("{command}: {e}"))?;
     let (actor, now) = newest(w, read).await?;
     ensure!(actor == "alex", "{command}: the event names {actor}");
@@ -64,8 +89,9 @@ async fn whole(w: &World, ws: &str) -> Result<Value> {
     store::read(&w.pool, ws, "owner", &store::Scope::full()).await
 }
 
+// ac:p6jj5r21
 // requirement:member-rights: a human member who did not create the workspace runs each former
-// owner command over MCP, and an agent keeps its refusals.
+// owner command over HTTP, and an agent keeps its refusals. MCP hides these commands.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_human_member_who_did_not_create_the_workspace_runs_each_former_owner_command()
@@ -134,10 +160,19 @@ async fn a_human_member_who_did_not_create_the_workspace_runs_each_former_owner_
             "a human member updates the workspace",
         ),
     ];
-    // bot sends the same commands with its credential. Each one is refused, and W does not change.
+    // bot sends the same commands over HTTP with its credential. Each one is refused, and W
+    // does not change. alex and bot each send member through joppa_command: MCP refuses it.
     let before = whole(&w, &renamed).await?;
+    for token in [&w.alex, &w.bot] {
+        let member = json!({"op":"member","id":"newcomer3","role":"human"});
+        let reply = mcp_command(&w, token, &renamed, &member).await?;
+        ensure!(
+            reply == Err("unknown operation".into()),
+            "joppa_command member: {reply:?}"
+        );
+    }
     for (command, text) in &refused {
-        let reply = mcp_command(&w, &w.bot, &renamed, command).await?;
+        let reply = http_command(&w, &w.bot, &renamed, command).await?;
         let refusal = reply
             .err()
             .with_context(|| format!("{command} was accepted"))?;

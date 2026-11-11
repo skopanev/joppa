@@ -1,7 +1,7 @@
 //! requirement:field-length-limit over a real server: a type sets field_max_length from 1 to
-//! 262144 characters, a save of that type uses it, other types keep 1024, and the initialize
-//! instructions, joppa_tree, joppa_help and /tree give the advice "Over 1 kb: prefer attach as
-//! a file".
+//! 262144 characters, a save of that type uses it, other types keep 1024, the initialize
+//! instructions and /tree give the advice "Over 1 kb: prefer attach as a file", and no
+//! joppa_tree or joppa_help reply gives field_hint.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -31,7 +31,7 @@ fn requirement(id: &str, body: String) -> Value {
         "data":{"title":"Typed limit","owner":"owner","body":body},"reason":"Typed limit test"})
 }
 
-// field-max-length
+// ac:field-max-length
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_type_sets_its_field_max_length_up_to_262144_characters() -> Result<()> {
@@ -50,7 +50,7 @@ async fn a_type_sets_its_field_max_length_up_to_262144_characters() -> Result<()
         tree["schema"]["types"]["requirement"]["field_max_length"] == 4096,
         "{tree}"
     );
-    ensure!(tree["field_hint"] == HINT, "{tree}");
+    ensure!(tree.get("field_hint").is_none(), "{tree}");
     ok(w.command(&w.bot, requirement("typed", "я".repeat(4096)))
         .await?)?;
     let over = w
@@ -83,10 +83,10 @@ async fn a_type_sets_its_field_max_length_up_to_262144_characters() -> Result<()
     Ok(())
 }
 
-// field-limit-hint
+// ac:field-limit-hint
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn initialize_the_replies_and_the_tree_page_say_over_1_kb_prefer_attach_as_a_file()
+async fn initialize_and_the_tree_page_say_over_1_kb_prefer_attach_as_a_file_and_no_reply_gives_field_hint()
 -> Result<()> {
     let w = record_world::world(&[]).await?;
     let reply: Value = w
@@ -106,9 +106,24 @@ async fn initialize_the_replies_and_the_tree_page_say_over_1_kb_prefer_attach_as
         instructions.contains(HINT),
         "the initialize instructions do not hold the hint"
     );
-    for tool in ["joppa_tree", "joppa_help"] {
-        let read = ok(w.mcp(&w.bot, tool, json!({})).await?)?;
-        ensure!(read["field_hint"] == HINT, "{tool}: no field_hint");
+    // No joppa_tree or joppa_help reply gives field_hint: joppa_help without section and with
+    // each section of its table of contents.
+    let tree = ok(w.mcp(&w.bot, "joppa_tree", json!({})).await?)?;
+    ensure!(tree.get("field_hint").is_none(), "joppa_tree: {tree}");
+    let toc = ok(w.mcp(&w.bot, "joppa_help", json!({})).await?)?;
+    let sections: Vec<String> = toc["sections"]
+        .as_object()
+        .context("sections")?
+        .keys()
+        .cloned()
+        .collect();
+    ensure!(!sections.is_empty(), "{toc}");
+    ensure!(toc.get("field_hint").is_none(), "joppa_help: {toc}");
+    for section in sections {
+        let read = ok(w
+            .mcp(&w.bot, "joppa_help", json!({"section":section}))
+            .await?)?;
+        ensure!(read.get("field_hint").is_none(), "{section}: {read}");
     }
     let page = reqwest::get(format!("{}/tree", w.root))
         .await?

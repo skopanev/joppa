@@ -1,5 +1,7 @@
 //! requirement:jjhid61n over a real server: joppa_attach and the attach op store check_result
 //! and valid_until on a file of a criterion, and refuse a bad value without a stored file.
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/manual_check.rs"]
 mod manual_check;
 #[path = "common/record_world.rs"]
@@ -33,8 +35,15 @@ async fn attach_stores_check_result_and_valid_until() -> Result<()> {
     );
     let op = json!({"op":"attach","target":"ac:a","id":"f2","name":"b.txt","content_type":"text/plain",
         "size":first["size"],"hash":first["hash"],"check_result":"fail"});
-    let second = w.command(&w.bot, op).await?;
-    second.map_err(|e| anyhow::anyhow!("the attach op: {e}"))?;
+    // The attach op goes through POST /api/workspaces/W/commands. MCP hides it.
+    http_command::ok(&w, &w.bot, op.clone()).await?;
+    let mut again = op;
+    again["id"] = json!("f3");
+    let refused = w.command(&w.bot, again).await?;
+    ensure!(
+        refused == Err("unknown operation".into()),
+        "joppa_command attach: {refused:?}"
+    );
     let listed = files(&w, "ac:a").await?;
     // The card counts the files and gives no file list.
     let object = w.object("ac:a").await?;

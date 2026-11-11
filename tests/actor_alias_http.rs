@@ -49,8 +49,8 @@ fn save(id: &str, revision: u32, title: &str) -> Value {
         "data":{"title":title,"owner":"owner"},"reason":"Alias check"})
 }
 
-/// The alias of each revision of `address`, from its revision headers.
-async fn revisions(w: &World, address: &str) -> Result<Vec<Value>> {
+/// The revision headers of `address`.
+async fn headers(w: &World, address: &str) -> Result<Vec<Value>> {
     let read = w
         .mcp(
             &w.owner,
@@ -63,7 +63,13 @@ async fn revisions(w: &World, address: &str) -> Result<Vec<Value>> {
         .as_array()
         .or(read["items"].as_array())
         .context("revisions")?;
-    Ok(items
+    Ok(items.clone())
+}
+
+/// The alias of each revision of `address`, from its revision headers.
+async fn revisions(w: &World, address: &str) -> Result<Vec<Value>> {
+    Ok(headers(w, address)
+        .await?
         .iter()
         .map(|r| r.get("alias").cloned().unwrap_or(Value::Null))
         .collect())
@@ -168,6 +174,7 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_bad_alias_is_refused_and_an_alias_gives_no_access() -> Result<()> {
     let w = record_world::world(&[]).await?;
+    // O sends each bad alias.
     for bad in [json!("a b"), json!(""), json!("x".repeat(41)), json!(7)] {
         let args = json!({"request_id":"bad","command":save("c", 0, "C"),"alias":bad});
         let text = match w.mcp(&w.owner, "joppa_command", args).await? {
@@ -181,53 +188,23 @@ async fn a_bad_alias_is_refused_and_an_alias_gives_no_access() -> Result<()> {
         text.is_err_and(|t| t.contains(joppa::actor_alias::REFUSAL)),
         "a bad header"
     );
-    // The agent bot stays an agent under any alias: the alias "owner" gives no right.
-    let args = json!({"request_id":"title","command":{"op":"update_workspace","title":"Taken"},"alias":"owner"});
-    let text = w.mcp(&w.bot, "joppa_command", args).await?;
-    ensure!(
-        text.as_ref()
-            .is_err_and(|t| t.contains("a human member updates the workspace")),
-        "alias access: {text:?}"
-    );
-    // Any member hides the workspace for that member. The alias "owner" hides it only for alex.
-    let args = json!({"request_id":"hide","command":{"op":"update_workspace","hidden":true},"alias":"owner"});
-    w.mcp(&w.alex, "joppa_command", args)
+    // The agent bot stays an agent under any alias: the alias "owner" gives no identity. The
+    // save of bot keeps actor bot next to alias owner.
+    let args = json!({"request_id":"c","command":save("c", 0, "C"),"alias":"owner"});
+    w.mcp(&w.bot, "joppa_command", args)
         .await?
         .map_err(anyhow::Error::msg)?;
-    for (token, hidden) in [(&w.alex, json!(true)), (&w.owner, Value::Null)] {
-        // A shared test database lists more than one page of 25 workspaces.
-        let (mut found, mut cursor) = (None, Value::Null);
-        while found.is_none() {
-            let args = if cursor.is_null() {
-                json!({})
-            } else {
-                json!({"cursor":cursor})
-            };
-            let list = w.mcp(token, "joppa_list", args).await?;
-            let list = list.map_err(anyhow::Error::msg)?;
-            found = list["items"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|i| i["id"] == w.ws.as_str())
-                .cloned();
-            cursor = list["next_cursor"].clone();
-            if cursor.is_null() {
-                break;
-            }
-        }
-        let item = found.context("joppa_list item")?;
-        ensure!(
-            item["hidden"] == hidden && item["title"] == "Record channel",
-            "{item}"
-        );
-    }
-    let args = json!({"request_id":"c","command":save("c", 0, "Агент C"),"alias":"агент1"});
+    let c = headers(&w, "ac:c").await?;
+    ensure!(
+        c.len() == 1 && c[0]["actor"] == "bot" && c[0]["alias"] == "owner",
+        "the header of ac:c: {c:?}"
+    );
+    let args = json!({"request_id":"d","command":save("d", 0, "Агент D"),"alias":"агент1"});
     w.mcp(&w.owner, "joppa_command", args)
         .await?
         .map_err(anyhow::Error::msg)?;
     ensure!(
-        revisions(&w, "ac:c").await? == [json!("агент1")],
+        revisions(&w, "ac:d").await? == [json!("агент1")],
         "a Cyrillic alias"
     );
     Ok(())

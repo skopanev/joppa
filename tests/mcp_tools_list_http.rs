@@ -1,6 +1,7 @@
 //! requirement:mcp-tools over a real server: tools/list gives the writing rules once, short
-//! text field descriptions, no page or file-size hint in each tool, a smaller reply, and a
-//! short command schema of joppa_batch. initialize gives the page hint.
+//! text field descriptions, no page or file-size hint in each tool, a reply of at most 13500
+//! bytes, a short description on each property with one alias text, and a short command schema
+//! of joppa_batch. initialize gives the page hint.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -133,14 +134,78 @@ async fn the_page_and_file_size_hints_are_in_initialize_and_not_in_each_tool() -
 // test:tov0ash9
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn tools_list_is_at_least_4500_bytes_smaller() -> Result<()> {
-    const BEFORE: usize = 23645;
-    const LIMIT: usize = BEFORE - 4500;
+async fn tools_list_is_at_most_13500_bytes() -> Result<()> {
+    const LIMIT: usize = 13500;
     let w = record_world::world(&[]).await?;
-    let bytes = raw(&w, "tools/list").await?.len();
+    let body = raw(&w, "tools/list").await?;
+    let bytes = body.len();
     ensure!(
         bytes <= LIMIT,
-        "tools/list has {bytes} bytes; before the change it had {BEFORE}, the limit is {LIMIT}"
+        "tools/list has {bytes} bytes; before stage 2 it had 19603, the limit is {LIMIT}"
+    );
+    // Each tool schema keeps its JSON Schema types, additionalProperties false and a
+    // description on each property.
+    for tool in tools(&body)? {
+        let (name, schema) = (&tool["name"], &tool["inputSchema"]);
+        ensure!(
+            schema["type"] == "object" && schema["additionalProperties"] == false,
+            "{name}: {schema}"
+        );
+        for (key, property) in schema["properties"].as_object().into_iter().flatten() {
+            let described = property["description"]
+                .as_str()
+                .is_some_and(|d| !d.trim().is_empty());
+            ensure!(
+                property.get("type").is_some() && described,
+                "{name}.{key}: {property}"
+            );
+        }
+    }
+    Ok(())
+}
+
+// ac:x54bppyd
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn each_property_has_a_short_description_and_alias_has_one_text() -> Result<()> {
+    let w = record_world::world(&[]).await?;
+    let body = raw(&w, "tools/list").await?;
+    let alias = "Optional. Your agent name under this account";
+    let count = body.matches(alias).count();
+    ensure!(count <= 1, "{alias:?} occurs {count} times in tools/list");
+    let tools = tools(&body)?;
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap_or_default();
+        let properties = tool["inputSchema"]["properties"].as_object();
+        for (key, property) in properties.into_iter().flatten() {
+            let text = property["description"].as_str().unwrap_or_default();
+            ensure!(!text.trim().is_empty(), "{name}.{key} has no description");
+            let length = text.chars().count();
+            ensure!(
+                key != "alias" || length <= 40,
+                "{name}.alias has {length} characters: {text}"
+            );
+        }
+        let description = tool["description"].as_str().unwrap_or_default();
+        ensure!(
+            !description.contains("The reply gives field_hint"),
+            "{name}: {description}"
+        );
+    }
+    // fields works on a list and on an address read.
+    let objects = tool(&tools, "joppa_objects")?;
+    let fields = objects["inputSchema"]["properties"]["fields"]["description"]
+        .as_str()
+        .unwrap_or_default();
+    ensure!(
+        fields.contains("list") && fields.contains("address"),
+        "joppa_objects.fields: {fields}"
+    );
+    let section = &tool(&tools, "joppa_help")?["inputSchema"]["properties"]["section"];
+    let names = section["enum"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        !names.is_empty() && !names.contains(&json!("tree")),
+        "joppa_help.section: {section}"
     );
     Ok(())
 }

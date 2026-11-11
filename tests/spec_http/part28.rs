@@ -22,13 +22,26 @@ async fn member_runs(w: &World, help: &Value, command: Value) -> Result<()> {
     Ok(())
 }
 
-// signal-becomes-spec-ac2
-// Any member sets the tree schema, archives, restores and orders the tree.
+/// The required fields and callers of each operation of the full catalog commands::OPERATIONS,
+/// in the shape of the joppa_help section operations. MCP help names only the MCP operations
+/// (help_operations_equal_the_command_op_enum), and HTTP takes the whole catalog.
+fn full_catalog() -> Value {
+    let operations: serde_json::Map<String, Value> = joppa::commands::OPERATIONS
+        .iter()
+        .map(|o| (o.name.to_owned(), json!({"required":o.required,"callers":o.callers})))
+        .collect();
+    json!({ "operations": operations })
+}
+
+// ac:signal-becomes-spec-ac2
+// ac:help-matches-api-ac1
+// Any member sets the tree schema, archives, restores and orders the tree. HTTP takes each
+// hidden operation from a caller that the full catalog names.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Result<()> {
+async fn restricted_operations_refuse_callers_that_the_catalog_does_not_name() -> Result<()> {
     let w = world().await?;
-    let help = mcp_value(&w, "joppa_help", json!({"section":"operations"})).await?;
+    let help = full_catalog();
     let revision = async |address: &str| -> Result<Value> {
         Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
     };
@@ -117,11 +130,13 @@ async fn restricted_operations_refuse_callers_that_help_does_not_name() -> Resul
 
 // mod operation_samples is declared in tests/spec_http.rs, so its #[path] resolves from tests/.
 
+// ac:help-matches-api-ac1
+// The full catalog covers the MCP help entries, which equal it, and the hidden operations.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn help_required_fields_pass_the_live_field_checks() -> Result<()> {
     let w = world().await?;
-    let help = mcp_value(&w, "joppa_help", json!({"section":"operations"})).await?;
+    let help = full_catalog();
     let required = |name: &str| -> Vec<String> {
         help["operations"][name]["required"]
             .as_array()

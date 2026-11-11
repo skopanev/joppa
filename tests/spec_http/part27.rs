@@ -1,12 +1,15 @@
 // Part 27 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
 // ac:acceptance-needs-green
+// ac:help-matches-api-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<()> {
     let w = world().await?;
     let before = saved_rows(&w).await?;
-    let valid = json!({"op":"member","id":"should-not-exist","role":"human"});
+    // The valid first operation of each batch is an MCP operation: MCP hides member.
+    let valid = json!({"op":"note","target":"requirement:key","id":"should-not-exist",
+        "text":"A note that a refused batch never stores"});
     // The removed check-run operations name their replacement; the retired ones are
     // unknown. Both replay from the journal only.
     let retired = [
@@ -63,6 +66,27 @@ async fn unknown_and_internal_operations_are_refused_without_writes() -> Result<
                     .as_str()
                     .is_some_and(|t| t.contains(expected.as_str())),
             "{batch}"
+        );
+    }
+    // MCP refuses each hidden operation, alone and in a batch, with the fields that the full
+    // catalog requires. HTTP takes them (restricted_operations_refuse_callers_...).
+    for name in HIDDEN {
+        let entry = joppa::commands::operation(name).context("catalog entry")?;
+        let command = operation_samples::call(name, entry.required);
+        let id = || uuid::Uuid::new_v4().to_string();
+        let args = json!({"workspace":w.ws,"request_id":id(),"command":command});
+        let single = mcp_call(&w, &w.owner, "joppa_command", args).await?;
+        ensure!(
+            single["isError"] == true && single["content"][0]["text"] == "unknown operation",
+            "joppa_command {name}: {single}"
+        );
+        let operations = json!([{"command":valid},{"command":command}]);
+        let args = json!({"workspace":w.ws,"request_id":id(),"operations":operations});
+        let batch = mcp_call(&w, &w.owner, "joppa_batch", args).await?;
+        ensure!(
+            batch["isError"] == true
+                && batch["content"][0]["text"] == "operation 2: unknown operation",
+            "joppa_batch {name}: {batch}"
         );
     }
     ensure!(

@@ -11,10 +11,10 @@ with urllib.request.urlopen(upload) as response:
 assert spaces_files['workspaces/'+ws+'/'+blob['hash']] == b'Attachment evidence'
 targets=['domain:security','capability:restrict','requirement:key','ac:key-rights',
          'note:source']
+# MCP hides the attach op: each attach goes through POST /api/workspaces/W/commands.
 for index, target in enumerate(targets):
-    mcp('joppa_command', {'workspace':ws,'request_id':'attachment-'+str(index),
-        'command':{'op':'attach','target':target,'id':'attachment-'+str(index),
-            'name':'evidence.txt','content_type':'text/plain','size':blob['size'],'hash':blob['hash']}})
+    ok({'op':'attach','target':target,'id':'attachment-'+str(index),
+        'name':'evidence.txt','content_type':'text/plain','size':blob['size'],'hash':blob['hash']})
 # The download redirects to a presigned GET of Spaces with the name and the content type.
 class Stay(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args):
@@ -41,7 +41,7 @@ for name, arguments in [
     ('joppa_batch', {'workspace':mcp_ws,'request_id':'mcp-batch-create-denied',
         'operations':[{'command':{'op':'workspace','title':'Forbidden remote create'}}]}),
     ('joppa_batch', {'workspace':mcp_ws,'request_id':'mcp-late-create-denied',
-        'operations':[{'command':{'op':'member','id':'should-not-exist','role':'human'}},
+        'operations':[{'command':{'op':'note','target':'requirement:key','id':'should-not-exist','text':'Never stored'}},
                       {'command':{'op':'workspace','title':'Forbidden remote create'}}]}),
 ]:
     denied = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',

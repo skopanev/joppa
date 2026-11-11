@@ -61,6 +61,7 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
     step(&w, "fail with valid_until tomorrow", "red", None, "red").await?;
     let pass = json!({"check_result":"pass","valid_until":tomorrow});
     let last = check(&w, "ac:a", pass).await?;
+    // The newest check is the last file: its detach makes the fail of tomorrow decide.
     step(&w, "pass with valid_until tomorrow", "green", None, "blue").await?;
     let id = last["file"]["id"].as_str().context("file id")?;
     let detach = json!({"op":"detach","target":"ac:a","id":id,"reason":"Drop the check"});
@@ -70,22 +71,26 @@ async fn the_latest_manual_check_decides_a_criterion_without_test_nodes() -> Res
     step(&w, "the detach of the last file", "red", None, "red").await?;
     manual_check::new_body(&w, "ac:a", "The new criterion text").await?;
     step(&w, "the new body of A", "blue", AWAITS, "blue").await?;
-    // One batch: an attach of pass, then a new body. The file has the time of the boundary.
-    let file = &last["file"];
-    let a = w.object("ac:a").await?;
-    let operations = json!([
-        {"command":{"op":"attach","target":"ac:a","id":"batch-pass","name":"check.txt",
-            "content_type":"text/plain","size":file["size"],"hash":file["hash"],"check_result":"pass"}},
-        {"command":{"op":"save_object","kind":"ac","id":"a","revision":a["revision"],
-            "data":{"body":"The criterion text of the batch"},"reason":"Change the text"}}
-    ]);
-    let batch = json!({"request_id":uuid::Uuid::new_v4().to_string(),"operations":operations});
-    w.mcp(&w.bot, "joppa_batch", batch)
-        .await?
-        .map_err(|e| anyhow::anyhow!("joppa_batch: {e}"))?;
-    step(&w, "the batch", "blue", AWAITS, "blue").await?;
+    // bot attaches pass with joppa_attach, then saves A with a new body. MCP hides the attach
+    // op, so the old batch of attach and save is two calls now. The new body comes after the
+    // pass, so A awaits checks again.
     check(&w, "ac:a", json!({"check_result":"pass"})).await?;
-    step(&w, "pass after the batch", "green", None, "blue").await?;
+    let a = w.object("ac:a").await?;
+    let save = json!({"op":"save_object","kind":"ac","id":"a","revision":a["revision"],
+        "data":{"body":"The criterion text after the pass"},"reason":"Change the text"});
+    w.command(&w.bot, save)
+        .await?
+        .map_err(|e| anyhow::anyhow!("the save of bot: {e}"))?;
+    step(
+        &w,
+        "the pass, then the second new body",
+        "blue",
+        AWAITS,
+        "blue",
+    )
+    .await?;
+    check(&w, "ac:a", json!({"check_result":"pass"})).await?;
+    step(&w, "pass after the second new body", "green", None, "blue").await?;
     // The test node of B decides: a pass on B changes nothing.
     check(&w, "ac:b", json!({"check_result":"pass"})).await?;
     step(&w, "pass on B", "green", None, "blue").await?;

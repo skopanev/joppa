@@ -1,6 +1,6 @@
 // Part 3 of tests/node_workspace_http.rs, included there, so the test names stay unchanged.
 
-// node-workspace-ac1
+// ac:node-workspace-ac1
 #[tokio::test]
 async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader() -> Result<()> {
     let w = world().await?;
@@ -23,12 +23,12 @@ async fn a_node_shows_the_child_workspace_status_with_the_access_of_the_reader()
     ensure!(read["child_workspace"]["status"] == "green", "{read}");
     // A workspace name is stored as the immutable ID, and reads name that ID.
     let alias = format!("renamed-{}", uuid::Uuid::new_v4().simple());
-    w.ok(
-        &w.owner,
-        &w.c,
-        json!({"op":"update_workspace","workspace_id":alias,"title":"Backend","reason":"New name"}),
-    )
-    .await?;
+    // MCP hides update_workspace: the owner renames C over HTTP.
+    let rename = json!({"request_id":uuid::Uuid::new_v4().to_string(),"command":
+        {"op":"update_workspace","workspace_id":alias,"title":"Backend","reason":"New name"}});
+    let url = format!("{}/api/workspaces/{}/commands", w.root, w.c);
+    let reply = w.http.post(url).bearer_auth(&w.owner).json(&rename).send().await?;
+    ensure!(reply.status().is_success(), "{}", reply.text().await?);
     w.ok(
         &w.owner,
         &w.p,

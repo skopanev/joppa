@@ -3,10 +3,14 @@
 //! starts and migrates it. The migration replays no journal.
 #[path = "common/hidden_lists.rs"]
 mod hidden_lists;
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
-use hidden_lists::{hide, listed, ok, web};
+use hidden_lists::{hide, listed, web};
+// MCP hides update_workspace, member and remove_member: O sends them over HTTP.
+use http_command::ok;
 use record_world::World;
 use serde_json::json;
 

@@ -84,7 +84,10 @@ async fn world(measured: bool) -> Result<record_world::World> {
         json!({"op":"attach","target":format!("ac:{id}"),"id":"f1","name":"e.txt",
         "content_type":"text/plain","size":stored["size"],"hash":stored["hash"]})
     };
-    batch(&w, "files", each(100, &attach)).await?;
+    // MCP hides the attach op: each file goes through POST /api/workspaces/W/commands.
+    for i in 0..100 {
+        http_command::ok(&w, &w.bot, attach(format!("c{i:03}"))).await?;
+    }
     let test = |id: String| {
         json!({"op":"save_object","kind":"test","revision":0,"parent":format!("ac:{id}"),
         "data":{"title":format!("tests/x.rs > {id}"),"owner":"owner"},"reason":"Bind"})
