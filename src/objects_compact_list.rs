@@ -85,5 +85,7 @@ pub async fn compact_list(
         reply["next_cursor"] = items.last().map_or(Value::Null, |i| i["address"].clone());
     }
     reply["items"] = Value::Array(std::mem::take(&mut items));
+    // The read-only transaction ends here, so no ROLLBACK runs later on drop.
+    conn.commit().await?;
     Ok(reply)
 }

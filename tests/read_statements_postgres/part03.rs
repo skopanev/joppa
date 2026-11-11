@@ -23,9 +23,17 @@ async fn each_field_adds_one(w: &record_world::World, args: Value) -> Result<Vec
     };
     let base = measure(w, "joppa_objects", with(json!(["title", "status"]))).await?;
     let base = base.map_err(anyhow::Error::msg)?;
-    for table in ["joppa.state_entries", "joppa.object_links", "joppa.remote_links"] {
-        ensure!(base.naming(table) == 0, "{args} reads {table}: {base}");
-    }
+    // The access check names state_entries in one "select exists(select ..." statement; remote
+    // links are a section of state_entries.
+    let entries: i64 = (base.0.iter())
+        .filter(|s| s.0.contains("joppa.state_entries") && !s.0.starts_with("select exists(select"))
+        .map(|s| s.1)
+        .sum();
+    ensure!(entries == 0, "{args} reads joppa.state_entries: {base}");
+    ensure!(
+        base.naming("joppa.object_links") == 0,
+        "{args} reads joppa.object_links: {base}"
+    );
     let mut taken = vec![];
     for field in FIELDS {
         let fields = json!(["title", "status", field]);

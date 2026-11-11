@@ -67,6 +67,8 @@ async fn read(
         if scope.revision.is_none() && !scope.history {
             crate::store::remote_status::decorate(&*conn, &id, actor, &mut object).await?;
         }
+        // The read-only transaction ends here, so no ROLLBACK runs later on drop.
+        conn.commit().await?;
         return Ok(object);
     }
     if let Some(key) = in_relation {
@@ -75,7 +77,7 @@ async fn read(
             "unknown link relation"
         );
     }
-    super::object_list::read_list(
+    let reply = super::object_list::read_list(
         &conn,
         workspace,
         public,
@@ -85,7 +87,9 @@ async fn read(
         scope,
         in_relation,
     )
-    .await
+    .await?;
+    conn.commit().await?;
+    Ok(reply)
 }
 
 /// The relation keys of the current schema revision. A revision without a registry, and a
