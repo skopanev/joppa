@@ -118,33 +118,9 @@ pub(super) async fn read_one(
     }
     let mut item = json!({"workspace":public,"position":position,"address":key,"kind":row.get::<_,String>(0),"id":row.get::<_,String>(1),"item_id":row.get::<_,Option<String>>(5),"current_revision":current,"revision_count":current,"document":document,"historical":n != current as u32,"work_ready":if n == current as u32 {json!(row.get::<_,bool>(4))}else{Value::Null},"relations":relations,"references":references,"relation_groups":relation_groups,"annotations":if n == current as u32 {annotations}else{json!({})},"metadata_scope":"current","signal":if n == current as u32 {serde_json::from_str::<Value>(row.get(6))?}else{Value::Null},"process":if n == current as u32 {serde_json::from_str::<Value>(row.get(7))?}else{Value::Null}});
     if n == current as u32 {
-        let mut files: Vec<_> = item["annotations"]["attachments"]
-            .as_object()
-            .into_iter()
-            .flat_map(|attachments| attachments.iter())
-            .filter(|(_, file)| file["removed"] != true)
-            .map(|(id, file)| {
-                let mut file = file.clone();
-                file["id"] = json!(id);
-                file["created_at"] = file["at"].clone();
-                let at = chrono::DateTime::parse_from_str(
-                    file["at"].as_str().unwrap_or(""),
-                    "%Y-%m-%d %H:%M:%S%.f%#z",
-                )
-                .ok();
-                (at, id.clone(), file)
-            })
-            .collect();
-        files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
         // Each file has a presigned GET. An object without files needs no file storage.
-        let mut files: Vec<Value> = files.into_iter().map(|(_, _, file)| file).collect();
-        for file in &mut files {
-            let text = |key: &str| file[key].as_str().unwrap_or("").to_owned();
-            let key = crate::spaces::Spaces::key(&workspace, &text("hash"))?;
-            let url =
-                crate::spaces::storage()?.download_url(&key, &text("name"), &text("content_type"));
-            file["url"] = json!(url);
-        }
+        let mut files = crate::file_list::present(&item["annotations"]["attachments"]);
+        crate::file_list::sign(&workspace, &mut files)?;
         item["files"] = json!(files);
         // The decoration comes from the status projection of the last write.
         apply_rollups(&*conn, &workspace, std::slice::from_mut(&mut item)).await?;

@@ -14,20 +14,23 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
   "status": {"label": "Waits for a dependency", "tone": "yellow"},
   "work_ready": false,
-  "comments": {
-    "total": 30,
-    "next_cursor": "25",
-    "items": [{"id": "c00", "text": "Finding 1", "actor": "bot",
-               "at": "...", "withdrawn": false}]
-  },
+  "comments_count": 30,
+  "files_count": 2,
   "relations": {
     "related": {"edges": [{"to": "ac:b", "title": "..."}]},
     "depends_on": {"edges": [{"to": "task:u", "title": "...", "revision": 2,
                               "current_revision": 4}]}},
-  "relation_groups": [{"direction": "incoming", "relation": "related", "kind": "task", "count": 2}]
+  "relation_groups": [{"relation": "related", "kind": "task", "count": 2}]
 }
 ```
 
+- The server reads 1 to 25 addresses in one snapshot. Each fact takes at most one query for
+  all addresses, and a read with `fields` loads only the facts that its fields need.
+- `comments_count` counts the comments without the withdrawn ones, and `files_count` the
+  attached files. Each shows only when it is above 0. `fields: ["comments_count"]` gives 0.
+- The detail gives no `comments`, `files`, `child_counts` or `references`. `fields` gives
+  them on request. The HTTP `/api` read keeps `child_counts`, `references`, the files with
+  their download `url` and `relation_groups` with `direction`.
 - `revision` is the current revision. Send it with `save_object`.
 - `parent` and `data` are the stored values, byte for byte. A root object has no `parent`.
 - There are no `workspace`, `workspace_key`, `address`, `position`, `document`, `kind`,
@@ -40,13 +43,15 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   edges keeps `edges: []`. A key gives its `color` and its `facts` (plain addresses) as stored.
 - `save_object` takes the relations back as they are. It ignores `title` of an edge,
   `current_revision` and `present`.
-- `comments` are in time order. A comment has no `author` or `created_at` when they repeat
-  `actor` and `at`.
-- `relation_groups` counts the incoming edges by relation and kind.
-- `references` gives the title of each object that a data field names.
+- `fields: ["comments"]` gives the comment page in time order. A comment has no `author` or
+  `created_at` when they repeat `actor` and `at`, and no `withdrawn: false`.
+- `relation_groups` counts the incoming edges by relation and kind, without a `direction`.
+- `fields: ["references"]` gives the title of each object that a data field names.
 - An object without comments has no `comments` key. An object without relations has no
   `relations` key.
-- `files` lists the attachments. `annotations` has no `attachments` copy.
+- `fields: ["files"]` lists the attachments as `{id, name, size, content_type, at}`, newest
+  first. `joppa_attachments` gives the `hash` and the download `url`. `annotations` has no
+  `attachments` copy.
 - `process` is the same for every type: `annotation_address`, `verification` and the `status`
   of an inbox type. `annotation_address` shows only when it
   differs from the address.
@@ -57,6 +62,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.
 - Next comment page: `{"workspace": "w", "address": "task:t", "comments_cursor": "25"}`.
+  Without `fields` it reads as `fields: ["comments"]`: the reply gives only `comments`.
 - `comments_cursor` is an offset. A comment added between two reads moves the later items
   by one place. Read the first page again for a stable view.
 - `relations_of` reads the edges in both directions in pages of 25.
@@ -89,7 +95,8 @@ an address are ignored.
 ```
 
 One address gives the object itself, as above. 2 to 25 addresses give `{"items": [...]}`
-in the order of the request. Each item is the detail of one object with its `address`:
+in the order of the request. Each item is the detail of one object with its `address`. A
+duplicate address gives the object again, and an alias or a public item ID gives its object:
 
 ```json
 {"items": [{"address": "ac:a", "revision": 2, "parent": "requirement:r", "data": {}},
@@ -120,8 +127,9 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
 - A list field has the value of the list item: `status` is the tone, `status.label` gives
   the label, and `body` is the full text, the same as `data.body`.
   `docs/read-contract.md` names the list fields.
-- A detail key gives its value in the detail read: `relations`, `comments`, `files`,
-  `references`, `relation_groups`, `remote_links`, `remote_review_required`,
+- A detail key gives its value in the detail read: `relations`, `comments`,
+  `comments_count`, `files`, `files_count`, `references`, `relation_groups`, `remote_links`,
+  `remote_review_required`,
   `remote_links_revision`, `child_workspace`, `annotations` and
   `result`. A key that the detail omits gives `null`.
 - Any other first part names a document field: `note` gives `data.note`. The rules of

@@ -1,17 +1,21 @@
-//! The compact shape of MCP read replies. A list page gives at most PAGE short items, a
-//! detail read keeps the stored document byte for byte and pages its comments and links,
-//! and empty keys go away everywhere outside the authored document. MCP replies carry no
-//! `item_id`: an agent names objects by address, and joppa_search resolves a copied ID.
+//! The compact shape of MCP read replies. A list page gives at most PAGE short items, or
+//! FIELDS_PAGE items with `fields`. A detail read keeps the stored document byte for byte and
+//! counts its comments and files, and empty keys go away everywhere outside the authored
+//! document. MCP replies carry no `item_id`: an agent names objects by address, and
+//! joppa_search resolves a copied ID.
 use anyhow::Result;
 use serde_json::{Map, Value, json};
 
-pub use crate::read_detail::{detail, headers, revision};
+pub use crate::read_detail::{detail, detail_keys, headers, revision};
 #[path = "read_fields.rs"]
 mod fields;
-pub use fields::{DETAIL_FIELDS, check_fields, head, needs_data, object_fields};
+pub use fields::{DETAIL_FIELDS, card_needs, check_fields, head, needs_data, object_fields};
 
 /// The page size of object lists, comments and edges.
 pub const PAGE: usize = 25;
+
+/// The page size of a joppa_objects list with `fields`.
+pub const FIELDS_PAGE: usize = 100;
 
 /// Keys whose values are authored or replayed data, or raw link entries that clients hash.
 /// They stay exactly as stored: a relation key without edges keeps `edges: []`.

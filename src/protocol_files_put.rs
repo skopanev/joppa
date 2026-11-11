@@ -8,7 +8,8 @@ use joppa::upload_link::{self, Upload};
 pub(crate) async fn check(pool: &Pool, call: &Upload) -> Result<()> {
     let (result, until) = (call.check_result.as_deref(), call.valid_until.as_deref());
     joppa::manual_checks::check_fields(result, until)?;
-    let item = object(pool, &call.actor, &call.workspace, &call.target).await?;
+    // The direct read of the attachments checks the access and names the type of the target.
+    let item = store::object_files(pool, &call.workspace, &call.actor, &call.target).await?;
     if result.is_some() {
         let types = store::tree_schema(pool, &call.workspace, &call.actor, None).await?;
         let kind = item["kind"].as_str().unwrap_or_default();
@@ -58,11 +59,15 @@ pub(crate) async fn store_bytes(pool: &Pool, call: &Upload, bytes: &[u8]) -> Res
     let reply =
         store::execute_remote_input(pool, workspace, &call.actor, &call.request_id, &command)
             .await?;
-    let file = files(pool, &call.actor, workspace, target)
-        .await?
-        .as_array()
-        .and_then(|files| files.iter().find(|f| f["id"] == id.as_str()).cloned())
+    // The attached file comes from the attachments of the target, with its download url.
+    let item = store::object_files(pool, workspace, &call.actor, target).await?;
+    let file = joppa::file_list::present(&item["attachments"])
+        .into_iter()
+        .find(|f| f["id"] == id.as_str())
         .context("the attached file is not listed")?;
+    let mut file = [file];
+    joppa::file_list::sign(item["folder"].as_str().unwrap_or_default(), &mut file)?;
+    let [file] = file;
     Ok(
         json!({"workspace":workspace,"target":target,"position":reply["position"],
         "replayed":reply["replayed"],"file":file}),

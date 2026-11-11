@@ -72,7 +72,13 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         .map(u32::try_from)
         .transpose()
         .context("invalid object revision")?;
-    let limit = number(a, "limit")?.map_or(rc::PAGE, |n| (n as usize).min(rc::PAGE));
+    let asked = number(a, "limit")?.map(|n| n as usize);
+    let limit = asked.map_or(rc::PAGE, |n| n.min(rc::PAGE));
+    // A list with fields takes up to 100 items; the 256 KB ceiling still holds.
+    let list_limit = match fields {
+        Some(_) => asked.map_or(rc::PAGE, |n| n.min(rc::FIELDS_PAGE)),
+        None => limit,
+    };
     anyhow::ensure!(a["links_of"].is_null(), joppa::removed_ops::LINKS_OF);
     if let Some(key) = a.get("in_relation").filter(|v| !v.is_null()) {
         let key = key.as_str().context("in_relation must be a string")?;
@@ -122,7 +128,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         filter: filter.clone(),
         revision,
         history,
-        limit,
+        limit: list_limit,
         // The cursor of a history read pages the revision headers here.
         cursor: a["cursor"].as_str().filter(|_| !history),
         note_status: a["note_status"].as_str(),

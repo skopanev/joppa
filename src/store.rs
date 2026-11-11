@@ -21,8 +21,8 @@ pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
 pub use objects::{
-    ObjectScope, compact_list, item_workspace, link_page, read_objects, relation_members,
-    resolve_item_ids, tree_schema,
+    CardNeeds, ObjectScope, compact_list, item_workspace, link_page, read_cards, read_objects,
+    relation_members, resolve_item_ids, tree_schema,
 };
 #[path = "store_record_results.rs"]
 mod record_results;
@@ -201,4 +201,4 @@ pub mod workspace_prefix;
 #[path = "store_blobs.rs"]
 mod blobs;
 use blobs::remove_folder;
-pub use blobs::{attachment, file_workspace, receipt_hash, sweep_detached};
+pub use blobs::{attachment, file_workspace, object_files, receipt_hash, sweep_detached};

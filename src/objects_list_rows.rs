@@ -1,6 +1,14 @@
 //! The list read, part 2: the list query and the decoration of its rows.
 use super::*;
 
+// The objects linked to $8 in either direction, and $8 itself as parent.
+const RELATED: &str = "o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
+                AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8)))";
+// The holders of the relation key $19 and the targets of its edges.
+const MEMBER: &str = "o.document->'relations' ? $19
+                OR EXISTS (SELECT 1 FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source AND s.present
+                    WHERE l.workspace=o.workspace AND l.relation=$19 AND l.target IN (SELECT o.address UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=o.address))";
+
 // The body moved from read_objects unchanged, so it keeps `&*conn` on a borrowed transaction.
 #[allow(clippy::too_many_arguments, clippy::borrow_deref_ref)]
 pub(super) async fn list_rows(
@@ -29,7 +37,16 @@ pub(super) async fn list_rows(
     // A status list with the archived tone also keeps the current archived nodes.
     let archived = scope.filter.archived();
     // A member read ($19) keeps the holders of the key and the targets of its edges. The
-    // document of a holder has the key in its relations, also a key with no edges.
+    // document of a holder has the key in its relations, also a key with no edges. A list
+    // without related_to or a member key reads no edge (tac:jogrtcra).
+    let related = match related_to.is_some() {
+        true => RELATED,
+        false => "$8::text IS NULL",
+    };
+    let member = match in_relation.is_some() {
+        true => MEMBER,
+        false => "$19::text IS NULL",
+    };
     let query = format!(
         r#"
         SELECT o.address,o.kind,o.local_id,o.revision,o.parent,o.title,o.owner,o.work_ready,
@@ -44,11 +61,8 @@ pub(super) async fn list_rows(
         WHERE o.workspace=$1 AND (o.present OR $18)
             AND {filter}
             AND ($7::text IS NULL OR o.inbox_status=$7)
-            AND ($8::text IS NULL OR o.parent=$8 OR EXISTS (SELECT 1 FROM joppa.object_links l WHERE l.workspace=o.workspace
-                AND (l.relation IN ('depends_on','related') OR l.relation LIKE 'reference:%') AND ((l.source=o.address AND l.target IN (SELECT $8 UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=$8)) OR (l.target=o.address AND l.source=$8))))
-            AND ($19::text IS NULL OR o.document->'relations' ? $19
-                OR EXISTS (SELECT 1 FROM joppa.object_links l JOIN joppa.objects s ON s.workspace=l.workspace AND s.address=l.source AND s.present
-                    WHERE l.workspace=o.workspace AND l.relation=$19 AND l.target IN (SELECT o.address UNION SELECT address FROM joppa.object_aliases WHERE workspace=o.workspace AND target=o.address)))) o
+            AND ({related})
+            AND ({member})) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
         ORDER BY {order} LIMIT $5

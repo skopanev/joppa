@@ -5,7 +5,8 @@ MCP reads have one shape. There is no `verbose` switch.
 
 ## Common rules
 
-- A page holds at most 25 items. A missing `next_cursor` means the last page.
+- A page holds at most 25 items, or 100 in a `joppa_objects` list with `fields`. A missing
+  `next_cursor` means the last page.
 - Send the `next_cursor` value back as `cursor` (lists) or `comments_cursor`.
 - Keys whose value is `null`, `""`, `[]` or `{}` are omitted, except inside `document`,
   `data`, `command`, `remote_links` and `relations`. Those stay byte for byte as stored. `false` and `0` stay.
@@ -17,9 +18,10 @@ MCP reads have one shape. There is no `verbose` switch.
   request named an alias of the object.
 - No key gives a default value: a flag shows only when it is `true`. Read a missing flag as
   `false`.
-- An MCP reply with `items` holds at most 256 KB (262144 bytes). A larger list is refused:
+- An MCP reply with an `items` or a `files` list holds at most 256 KB (262144 bytes). A
+  larger list is refused:
   `reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit`.
-  A read of one object comes in full, because one field can hold 256 KiB.
+  A read of one object without such a list comes in full, because one field can hold 256 KiB.
 - Each MCP read takes a public item ID such as `joppa-R-DP6KXM62` where it takes an
   address: `address`, `parent`, `related_to` and `relations_of` of `joppa_objects`, and `parent`
   of `joppa_search`. A read of one object by its item ID gives its
@@ -38,18 +40,21 @@ MCP reads have one shape. There is no `verbose` switch.
 
 | Tool | `limit` above the page size | Paging |
 | --- | --- | --- |
-| `joppa_objects` lists, also with `fields`, `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
+| `joppa_objects` lists, also with `related_to`, `note_status` | clamped to 25, never refused | `next_cursor` and `total` |
+| `joppa_objects` lists with `fields` | clamped to 100, default 25 | `next_cursor` and `total` |
 | `joppa_objects` with `relations_of` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `in_relation` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
-| `joppa_objects` detail comments | fixed pages of 25 | `comments_cursor` |
+| `joppa_objects` comments (`fields: ["comments"]`) | fixed pages of 25 | `comments_cursor` |
+| `joppa_attachments` | without `limit` all files, else 1 to 100 | `next_cursor` |
 | `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
 | `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |
 | `joppa_list` | fixed pages of 25 | `next_cursor` and `total` |
 
 Every MCP list reply is `{items, total, next_cursor}`. `total` counts every matching entry,
 also on later pages. Send `next_cursor` back as `cursor`; a missing `next_cursor` means the
-last page. `limit` is 1 to 25 in every MCP list schema. Follow `next_cursor` for more.
+last page. `limit` is 1 to 25 in every MCP list schema, except 1 to 100 in `joppa_objects`
+(100 only with `fields`) and in `joppa_attachments`. Follow `next_cursor` for more.
 
 ## List mode: `joppa_objects` without `address`
 
@@ -231,9 +236,11 @@ no edges, and the present targets of their edges, by 25 in address order with `t
 its `op`. When the saved object has a parent, `object` also gives `parent_revision`, the
 current revision of the parent. `replayed: true` marks a retry; a first write gives no `replayed`. A
 `set_tree_schema` result gives `schema_revision`, the new schema revision, and its `command`
-without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`. With `removed: true`,
-`joppa_attachments` also gives the files detached in the last 14 days, after the current
-files, newest detach first, each with `removed: true` and `removed_at`.
+without the sent types. `joppa_attach` gives the `file`, and `joppa_attachments` the `files`,
+each with its `hash` and a download `url`. Both read the attachments of the target directly.
+With `removed: true`, `joppa_attachments` also gives the files detached in the last 14 days,
+after the current files, newest detach first, each with `removed: true` and `removed_at`.
+`limit` (1 to 100) gives one page, and `next_cursor` (the id of the last file) the next one.
 
 ## `joppa_tree`
 

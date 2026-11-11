@@ -1,6 +1,7 @@
 //! The `fields` of MCP object reads (requirement:read-contract). A path names a list field, a
 //! key of the detail read (only for a read by address) or a document field: each other bare
 //! name such as `tags` gives `data.tags`, or null when the data has no such field.
+use crate::store::CardNeeds;
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
@@ -29,11 +30,14 @@ pub const LIST_FIELDS: [&str; 19] = [
     "relations",
 ];
 
-/// The keys of a detail read that a list item does not give.
-pub const DETAIL_FIELDS: [&str; 11] = [
+/// The keys of a detail read that a list item does not give. `comments_count` and
+/// `files_count` are system fields: a data field of that name does not change them.
+pub const DETAIL_FIELDS: [&str; 13] = [
     "relations",
     "comments",
+    "comments_count",
     "files",
+    "files_count",
     "references",
     "relation_groups",
     "remote_links",
@@ -55,6 +59,38 @@ pub fn needs_data(fields: &[String]) -> bool {
         let head = head(f);
         head == "data" || head == "relations" || !LIST_FIELDS.contains(&head)
     })
+}
+
+/// The facts that a read by address loads for `fields` (tac:jogrtcra). Without `fields`, the
+/// MCP card. A list field reads the object row only.
+pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
+    let Some(fields) = fields else {
+        return CardNeeds::CARD;
+    };
+    let mut needs = CardNeeds::default();
+    for field in fields {
+        match head(field) {
+            "data" => needs.document = true,
+            "relations" => (needs.document, needs.edges) = (true, true),
+            "comments" | "files" | "annotations" => needs.notes = true,
+            "comments_count" | "files_count" => needs.counts = true,
+            "relation_groups" => needs.groups = true,
+            "references" => (needs.document, needs.references) = (true, true),
+            "remote_links" | "remote_review_required" | "remote_links_revision" => {
+                needs.remote = true
+            }
+            "child_workspace" => (needs.document, needs.remote) = (true, true),
+            "children" => needs.children = true,
+            "result" => needs.result = true,
+            "note_status" => needs.inbox = true,
+            // A bare name reads its data field.
+            head if !LIST_FIELDS.contains(&head) && !DETAIL_FIELDS.contains(&head) => {
+                needs.document = true
+            }
+            _ => {}
+        }
+    }
+    needs
 }
 
 /// Refuse the first path with an older text field or with a detail key that `known` does not
@@ -100,14 +136,9 @@ pub fn value(item: &Value, detail: Option<&Value>, field: &str) -> Value {
 }
 
 /// An object read by its address with `fields`: its address and each named path. The list
-/// fields have the values of the list item of the object.
-pub fn object_fields(
-    reply: &Value,
-    detail: Option<&Value>,
-    fields: &[String],
-    inbox: bool,
-    children: Option<i64>,
-) -> Value {
+/// fields have the values of the list item of the object: `children` and `child_counts` too.
+/// `inbox` marks an object of an Inbox type.
+pub fn object_fields(reply: &Value, detail: Option<&Value>, fields: &[String]) -> Value {
     let document = &reply["document"];
     let data = &document["data"];
     // A read of an older revision gives its number. The state fields stay current.
@@ -115,6 +146,7 @@ pub fn object_fields(
         Value::Null => reply["current_revision"].clone(),
         number => number.clone(),
     };
+    let inbox = reply["inbox"] == true;
     let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
     let item = json!({"address": reply["address"], "kind": reply["kind"], "id": reply["id"],
         "revision": revision,
@@ -123,7 +155,8 @@ pub fn object_fields(
         "work_ready": reply["work_ready"], "at": document["at"], "body": data["body"],
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],
-        "status": crate::read_compact::status(reply), "children": children});
+        "status": crate::read_compact::status(reply), "children": reply["children"],
+        "child_counts": reply["child_counts"]});
     let mut out = Map::new();
     out.insert("address".into(), item["address"].clone());
     for field in fields {

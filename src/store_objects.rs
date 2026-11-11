@@ -10,6 +10,9 @@ pub use tree::tree_schema;
 #[path = "objects_read.rs"]
 mod object_read;
 pub use object_read::{read_objects, relation_members};
+#[path = "objects_cards.rs"]
+mod cards;
+pub use cards::{CardNeeds, read_cards};
 #[path = "objects_compact_list.rs"]
 mod compact_rows;
 pub use compact_rows::compact_list;
@@ -66,19 +69,25 @@ pub async fn resolve_item_ids(
         return Ok(keys.to_vec());
     }
     let (conn, workspace) = authorized(pool, workspace, actor).await?;
+    // One query resolves every public item ID of the request, in the order of the request.
+    let ids: Vec<&str> = keys
+        .iter()
+        .filter(|k| !address(k))
+        .map(String::as_str)
+        .collect();
+    let rows = conn
+        .query(
+            "SELECT (SELECT kind||':'||local_id FROM joppa.item_ids WHERE workspace=$1 AND id=joppa.short_item_id(k.id) LIMIT 1) FROM unnest($2::text[]) WITH ORDINALITY k(id,n) ORDER BY k.n",
+            &[&workspace, &ids],
+        )
+        .await?;
+    let mut found = rows.iter().map(|r| r.get::<_, Option<String>>(0));
     let mut out = Vec::with_capacity(keys.len());
     for key in keys {
-        if address(key) {
-            out.push(key.clone());
-            continue;
-        }
-        let row = conn
-            .query_opt(
-                "SELECT kind||':'||local_id FROM joppa.item_ids WHERE workspace=$1 AND id=joppa.short_item_id($2)",
-                &[&workspace, key],
-            )
-            .await?;
-        out.push(row.map(|r| r.get(0)).context("unknown object")?);
+        out.push(match address(key) {
+            true => key.clone(),
+            false => found.next().flatten().context("unknown object")?,
+        });
     }
     Ok(out)
 }

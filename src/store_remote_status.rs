@@ -147,6 +147,18 @@ pub(crate) async fn decorate(
         return Ok(());
     };
     let stored = super::remote::stored_links(client, workspace, &address).await?;
+    decorate_with(client, workspace, actor, object, stored).await
+}
+
+/// `decorate` with the stored remote links that the caller read, so that a read of more
+/// objects reads all their links in one query.
+pub(crate) async fn decorate_with(
+    client: &impl GenericClient,
+    workspace: &str,
+    actor: &str,
+    object: &mut Value,
+    stored: crate::remote_links::RemoteLinks,
+) -> Result<()> {
     object["remote_links_revision"] = json!(stored.revision);
     let mut out = vec![];
     let mut review = false;

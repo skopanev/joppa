@@ -174,25 +174,29 @@ pub(in crate::store) async fn apply_rollups(
         .map(|r| Ok((r.get(0), stored(r.get(1))?)))
         .collect::<Result<_>>()?;
     for item in items {
-        let Some(patch) = item["address"].as_str().and_then(|a| patches.get(a)) else {
-            continue;
-        };
-        for field in FIELDS {
-            if let Some(value) = patch.get(field) {
-                item[field] = value.clone();
-            }
-        }
-        for part in ["process", "signal"] {
-            if let Some(inner) = patch[part].as_object()
-                && item[part].is_object()
-            {
-                for (field, value) in inner {
-                    item[part][field] = value.clone();
-                }
-            }
+        if let Some(patch) = item["address"].as_str().and_then(|a| patches.get(a)) {
+            apply_rollup(item, patch);
         }
     }
     Ok(())
+}
+
+/// Set the stored decoration `patch` (the rollup column) on one row.
+pub(in crate::store) fn apply_rollup(item: &mut Value, patch: &Value) {
+    for field in FIELDS {
+        if let Some(value) = patch.get(field) {
+            item[field] = value.clone();
+        }
+    }
+    for part in ["process", "signal"] {
+        if let Some(inner) = patch[part].as_object()
+            && item[part].is_object()
+        {
+            for (field, value) in inner {
+                item[part][field] = value.clone();
+            }
+        }
+    }
 }
 
 /// The stored statuses of the requested objects. Objects without a stored status are left
@@ -238,6 +242,6 @@ pub(super) async fn store_rows(
 
 /// A stored value. A row that the status projection has not reached yet has none, and a
 /// read shows it without decoration until the background catch-up stores it.
-fn stored(text: Option<String>) -> Result<Value> {
+pub(in crate::store) fn stored(text: Option<String>) -> Result<Value> {
     text.map_or(Ok(json!({})), |text| Ok(serde_json::from_str(&text)?))
 }

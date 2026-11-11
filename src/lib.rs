@@ -16,6 +16,7 @@ pub mod embeddings;
 pub mod embeddings_limit;
 pub mod field_limit;
 pub mod field_types;
+pub mod file_list;
 pub mod filter_dimensions;
 pub mod filter_fields;
 pub mod forced_revision;

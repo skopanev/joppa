@@ -11,6 +11,27 @@ pub async fn file_workspace(pool: &Pool, workspace: &str, actor: &str) -> Result
     Ok(resolved)
 }
 
+/// The attachments of the object `target` for an actor who reads the workspace, without the
+/// object read (tac:jogrtcra): `{address, kind, folder, attachments}`. `folder` is the
+/// resolved workspace ID, and `attachments` the map of id to file. An alias reads its target.
+pub async fn object_files(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    target: &str,
+) -> Result<Value> {
+    let conn = pool.get().await?;
+    let folder = resolve_workspace(&**conn, workspace).await?;
+    access::check(&**conn, &folder, actor, false).await?;
+    let row = conn.query_opt("SELECT o.address,o.kind,(SELECT (n.value->'attachments')::text FROM joppa.state_entries n WHERE n.workspace=o.workspace AND n.section='notes' AND n.key=COALESCE(o.process->>'annotation_address',o.address)) FROM joppa.objects o WHERE o.workspace=$1 AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2),$2)", &[&folder, &target]).await?.context("unknown object")?;
+    let attachments: Option<String> = row.get(2);
+    let attachments: Value = serde_json::from_str(attachments.as_deref().unwrap_or("{}"))?;
+    Ok(
+        json!({"address": row.get::<_, String>(0), "kind": row.get::<_, String>(1),
+        "folder": folder, "attachments": attachments}),
+    )
+}
+
 /// The Spaces key, name and content type of the file `hash`, only for an actor who reads
 /// the workspace, and only when an active or <14-day detached attachment names the hash.
 pub async fn attachment(
