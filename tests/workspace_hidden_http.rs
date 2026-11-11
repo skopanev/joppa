@@ -3,12 +3,15 @@
 //! before.
 #[path = "common/hidden_lists.rs"]
 mod hidden_lists;
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/legacy_event.rs"]
 mod legacy_event;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
 use hidden_lists::{get, hide, listed, ok, web};
+use http_command::ok as admin;
 use record_world::World;
 use serde_json::json;
 
@@ -37,6 +40,7 @@ async fn step(w: &World, hiders: &[&str], step: &str) -> Result<()> {
 }
 
 // ac:mwr6am3k
+// MCP hides update_workspace: each update_workspace goes through POST /api/workspaces/W/commands.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_hidden_workspace_leaves_the_web_lists_and_keeps_its_mcp_reads_and_writes() -> Result<()>
@@ -45,10 +49,10 @@ async fn a_hidden_workspace_leaves_the_web_lists_and_keeps_its_mcp_reads_and_wri
     let ws = w.ws.clone();
     step(&w, &[], "before").await?;
     // The member alex hides the workspace only for alex.
-    ok(&w, &w.alex, hide(true)).await?;
+    admin(&w, &w.alex, hide(true)).await?;
     step(&w, &["alex"], "alex hides").await?;
     // The owner hides the workspace without a reason.
-    ok(&w, &w.owner, hide(true)).await?;
+    admin(&w, &w.owner, hide(true)).await?;
     step(&w, &["owner", "alex"], "the owner hides").await?;
     for token in [&w.owner, &w.alex] {
         let (code, board) = get(&w, token, &format!("/api/workspaces/{ws}/board")).await?;
@@ -69,16 +73,16 @@ async fn a_hidden_workspace_leaves_the_web_lists_and_keeps_its_mcp_reads_and_wri
     );
     // A new title keeps the workspace hidden. hidden: false shows it again.
     let title = json!({"op":"update_workspace","title":"Hidden channel"});
-    ok(&w, &w.owner, title).await?;
+    admin(&w, &w.owner, title).await?;
     step(&w, &["owner", "alex"], "a new title").await?;
     ensure!(
         listed(&w, &w.owner).await?["title"] == "Hidden channel",
         "the new title"
     );
     let show = json!({"op":"update_workspace","hidden":false,"reason":"Show again"});
-    ok(&w, &w.owner, show).await?;
+    admin(&w, &w.owner, show).await?;
     step(&w, &["alex"], "the owner shows").await?;
-    ok(&w, &w.alex, hide(false)).await?;
+    admin(&w, &w.alex, hide(false)).await?;
     step(&w, &[], "alex shows").await?;
     let item = listed(&w, &w.alex).await?;
     ensure!(item["title"] == "Hidden channel", "{item}");

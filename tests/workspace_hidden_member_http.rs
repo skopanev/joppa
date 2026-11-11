@@ -3,10 +3,15 @@
 //! member leaves no flag.
 #[path = "common/hidden_lists.rs"]
 mod hidden_lists;
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
-use hidden_lists::{hide, items, listed, ok, refused, web};
+use hidden_lists::{hide, items, listed, web};
+// MCP hides update_workspace, member and remove_member: each command goes through
+// POST /api/workspaces/W/commands.
+use http_command::{ok, refused};
 use serde_json::{Value, json};
 
 // ac:sfon2kd8

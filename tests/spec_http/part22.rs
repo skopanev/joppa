@@ -154,6 +154,7 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
     Ok(())
 }
 
+// ac:8mgon8qt
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<()> {
@@ -182,9 +183,15 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
             Ok::<_, anyhow::Error>(value)
         }
     };
-    let help = call("joppa_help", json!({"workspace":w.ws,"section":"tree"})).await?;
+    // joppa_help has no section tree: joppa_tree is the one read of the schema.
+    let args = json!({"workspace":w.ws,"section":"tree"});
+    let help = mcp_call(&w, &w.bot, "joppa_help", args).await?;
+    ensure!(
+        help["isError"] == true
+            && help["content"][0]["text"] == "section tree was removed; use joppa_tree",
+        "{help}"
+    );
     let tree = call("joppa_tree", json!({"workspace":w.ws})).await?;
-    ensure!(help["tree"] == tree, "{help} vs {tree}");
     ensure!(
         tree["schema"]["types"]["observation"]["question"] == question,
         "{tree}"
@@ -195,7 +202,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
     );
     let generic_help = call("joppa_help", json!({})).await?;
     ensure!(
-        generic_help.get("tree").is_none() && generic_help["sections"]["tree"].is_string(),
+        generic_help.get("tree").is_none() && generic_help["sections"].get("tree").is_none(),
         "{generic_help}"
     );
     // A save needs no question_checked, and the server ignores a different text in it.
@@ -225,7 +232,9 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
                 .await?
             };
             ensure!(saved["object"]["revision"] == revision + 1, "{saved}");
-            if kind == "observation" {
+            // Only the HTTP save (revision 0) of observation gives object.question. An MCP
+            // save receipt echoes no question.
+            if kind == "observation" && revision == 0 {
                 ensure!(saved["object"]["question"] == question, "{saved}");
             } else {
                 ensure!(saved["object"].get("question").is_none(), "{saved}");

@@ -3,6 +3,8 @@
 //! late, empty or large upload, or an upload after the member left, stores nothing.
 #[path = "common/attach_url.rs"]
 mod attach_url;
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -218,10 +220,9 @@ async fn the_upload_link_refuses_a_bad_late_or_empty_upload_and_stores_nothing()
     send("late", &late, OVER, 410, "upload link expired").await?;
     send("empty", &empty, 0, 409, "an empty file carries nothing").await?;
     send("large", &large, OVER, 413, big).await?;
+    // MCP hides remove_member: the owner sends it over HTTP.
     let remove = json!({"op":"remove_member","id":"bot","reason":"Left the team"});
-    w.command(&w.owner, remove)
-        .await?
-        .map_err(anyhow::Error::msg)?;
+    http_command::ok(&w, &w.owner, remove).await?;
     send("left", &left, OVER, 404, "Workspace not found").await?;
     ensure!(failures.is_empty(), "{}", failures.join("\n"));
     let list = files(&w, &w.owner, "ac:a").await?;

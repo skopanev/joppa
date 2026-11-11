@@ -1,6 +1,8 @@
 //! requirement:read-contract over a real server: joppa_attachments pages the files of an object
 //! by limit and cursor, and refuses a reply above 262144 bytes. The fields read of joppa_objects
 //! gives the short files.
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -9,23 +11,16 @@ use serde_json::{Value, json};
 const CEILING: &str =
     "reply exceeds 256 KB; narrow the request with fields, fewer addresses or a smaller limit";
 
-/// 300 files on ac:a in 3 batches of 100 attach ops, newest batch last. Each file has a name of
-/// about 250 characters and the hash of one stored file.
+/// 300 files on ac:a from 300 attach ops, newest last. MCP hides the attach op, so each op goes
+/// through POST /api/workspaces/W/commands. Each file has a name of about 250 characters and the
+/// hash of one stored file.
 async fn files(w: &record_world::World, hash: &Value, size: &Value) -> Result<()> {
     let long = "evidence-".repeat(27);
-    for batch in 0..3 {
-        let operations: Vec<Value> = (batch * 100..batch * 100 + 100)
-            .map(|i| {
-                json!({"command":{"op":"attach","target":"ac:a","id":format!("f{i:03}"),
-                "name":format!("{long}{i:03}.txt"),"content_type":"text/plain","size":size,
-                "hash":hash}})
-            })
-            .collect();
-        let request = format!("attachments-page-{batch}");
-        let args = json!({"request_id":request,"operations":operations});
-        w.mcp(&w.bot, "joppa_batch", args)
-            .await?
-            .map_err(anyhow::Error::msg)?;
+    for i in 0..300 {
+        let op = json!({"op":"attach","target":"ac:a","id":format!("f{i:03}"),
+            "name":format!("{long}{i:03}.txt"),"content_type":"text/plain","size":size,
+            "hash":hash});
+        http_command::ok(w, &w.bot, op).await?;
     }
     Ok(())
 }

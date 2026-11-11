@@ -2,6 +2,8 @@
 //! addresses runs in one snapshot with a fixed number of SQL statements, and a read with
 //! fields runs only the queries that its fields need. pg_stat_statements counts the
 //! statements, as tests/read_latency.rs reads it.
+#[path = "common/http_command.rs"]
+mod http_command;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, bail, ensure};

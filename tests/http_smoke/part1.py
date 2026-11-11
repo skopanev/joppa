@@ -129,7 +129,7 @@ def mcp(name, arguments, token=agent_token):
     result = response['result']
     assert not result.get('isError'), result
     return json.loads(result['content'][0]['text'])
-assert mcp('joppa_help', {'section':'search'}) == {'search':(ROOT/'docs/search.md').read_text(),'field_hint':mcp('joppa_help', {})['field_hint']}
+assert mcp('joppa_help', {'section':'search'}) == {'search':(ROOT/'docs/search.md').read_text()}
 assert mcp('joppa_help', {'section':'writing'})['writing'] == writing
 operations = mcp('joppa_help', {'section':'operations'})['operations']
 assert 'archive_object' in operations and 'restore_object' in operations

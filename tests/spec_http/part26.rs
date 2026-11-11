@@ -129,6 +129,18 @@ fn search_addresses(result: &Value) -> Result<(Vec<String>, Value)> {
     Ok((addresses, found))
 }
 
+/// The operations that MCP hides. POST /api/workspaces/{w}/commands and the replay keep them.
+const HIDDEN: [&str; 7] = [
+    "reorder_tree",
+    "attach",
+    "redact_object",
+    "member",
+    "remove_member",
+    "update_workspace",
+    "delete_workspace",
+];
+
+// ac:help-matches-api-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn help_operations_equal_the_command_op_enum() -> Result<()> {
@@ -161,7 +173,20 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
             .collect()
     };
     let command = names(&schema("joppa_command")["properties"]["command"]);
-    ensure!(!command.is_empty(), "joppa_command has no op enum");
+    // The MCP op enum holds only the member operations. The admin operations stay on HTTP.
+    let mcp: BTreeSet<String> = [
+        "set_tree_schema",
+        "save_object",
+        "archive_object",
+        "set_remote_links",
+        "restore_object",
+        "note",
+        "withdraw_note",
+        "detach",
+    ]
+    .map(String::from)
+    .into();
+    ensure!(command == mcp, "joppa_command op enum: {command:?}");
     for name in [
         "heartbeat_task",
         "workspace",
@@ -174,7 +199,10 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
         "migrate_documents",
         "migrate_task_claims",
         "record_report",
-    ] {
+    ]
+    .into_iter()
+    .chain(HIDDEN)
+    {
         ensure!(!command.contains(name), "{name} is in the op enum");
     }
     for arguments in [
@@ -200,10 +228,16 @@ async fn help_operations_equal_the_command_op_enum() -> Result<()> {
                         .all(Value::is_string),
                 "{name}: {entry}"
             );
+            // Each help entry names the required fields and callers of the full catalog.
+            let full = joppa::commands::operation(name).context("catalog entry")?;
+            ensure!(
+                entry["required"] == json!(full.required) && entry["callers"] == json!(full.callers),
+                "{name}: {entry}"
+            );
         }
-        // The section operations gives only its key and the field hint.
+        // The section operations gives only its key.
         let keys: Vec<&String> = help.as_object().unwrap().keys().collect();
-        ensure!(keys == ["field_hint", "operations"], "{keys:?}");
+        ensure!(keys == ["operations"], "{keys:?}");
     }
     Ok(())
 }

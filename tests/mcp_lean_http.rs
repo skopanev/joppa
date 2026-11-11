@@ -16,7 +16,7 @@ fn absent(value: &Value, keys: &[&str]) -> bool {
 /// The keys that no read gives at its top level.
 const ECHOES: [&str; 3] = ["workspace", "position", "address"];
 
-// read-lean-replies
+// ac:read-lean-replies
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
@@ -62,8 +62,8 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
                 })),
         "{tree}"
     );
-    let help = read(&w, "joppa_help", json!({"section":"tree"})).await?;
-    ensure!(help["tree"] == tree, "{}", help["tree"]);
+    // joppa_help has no section tree, and the tree gives no field_hint.
+    ensure!(absent(&tree, &["field_hint"]), "{tree}");
     // Object reads: no echo of the address; a revision read gives the flat document.
     let list = read(&w, "joppa_objects", json!({"parent":"requirement:r"})).await?;
     let detail = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
