@@ -211,6 +211,6 @@ async fn inbox_kind(
     let Some(kind) = kind else {
         return Ok(false);
     };
-    let tree = store::tree_schema(pool, workspace, actor, None).await?;
-    Ok(tree["schema"]["types"][kind]["inbox"] == true)
+    // The board projection gives the type, so a list read touches no tree schema revision.
+    store::inbox_type(pool, workspace, actor, kind).await
 }

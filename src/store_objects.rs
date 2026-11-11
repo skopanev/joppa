@@ -92,6 +92,17 @@ pub async fn resolve_item_ids(
     Ok(out)
 }
 
+/// Whether `kind` is an Inbox type, from the types of the board projection. It reads no tree
+/// schema revision (tac:jogrtcra).
+pub async fn inbox_type(pool: &Pool, workspace: &str, actor: &str, kind: &str) -> Result<bool> {
+    let (conn, workspace) = authorized(pool, workspace, actor).await?;
+    let sql = "SELECT (first_view->'object_types'->$2->>'inbox')::boolean FROM joppa.board_cache WHERE workspace=$1";
+    let row = conn.query_opt(sql, &[&workspace, &kind]).await?;
+    Ok(row
+        .and_then(|r| r.get::<_, Option<bool>>(0))
+        .unwrap_or(false))
+}
+
 /// The workspace of public item IDs, for a read that names no workspace. Every ID must
 /// belong to one workspace that the actor can read; any other case reads as an unknown object.
 pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<String> {
