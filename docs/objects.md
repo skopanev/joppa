@@ -192,4 +192,5 @@ headers. Resolve a copied public ID with `joppa_search`: the reply gives that ob
 `exact_id: true`. See [read contract](read-contract.md) and [read detail](read-detail.md).
 
 Open an object in the board with `/?workspace=WORKSPACE&object=ADDRESS`. Add `revision=N`
-to read one saved revision.
+to read one saved revision. Open a flow with `/?workspace=WORKSPACE&view=flow&relation=KEY`,
+and add `&node=ADDRESS` (an address or a public item ID) to pick one node in that flow.

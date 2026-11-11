@@ -80,6 +80,9 @@ target revision that the edge pins. The removed parameter `links_of` is refused:
 present targets of its edges, in address order and in pages of 25. Flow view of the board
 reads it. See [read contract](read-contract.md#nodes-of-one-relation).
 
+Open a flow with `/?workspace=WORKSPACE&view=flow&relation=KEY`, and add `&node=ADDRESS` (an
+address or a public item ID) to pick one node in that flow.
+
 ## Other workspaces
 
 One product can use several workspaces, for example one for the product and one for each

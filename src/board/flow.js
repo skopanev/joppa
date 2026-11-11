@@ -1,14 +1,20 @@
 // Flow view of the board (view=flow): the nodes of one relation from left to right.
 // - The picker Relation lists the registry in key order. Without relation=<key> in the link,
 //   the first view is the first key that is not a system key (depends_on when there is none).
-//   A pick writes relation=<key> into the link. An unknown key shows the first view.
+//   A pick writes relation=<key> into the link and removes node. An unknown key shows the
+//   first view.
+// - node=<address> in the link keeps the picked node. The first load reads it, an address or
+//   the public item ID of a drawn node, and changes no link value. A pick writes node, × and a
+//   clear remove it. An unknown node picks nothing and stays in the link.
+// - A linked node in a wide flow opens near the node (focus). A small flow opens whole.
 // - The board reads the members of the relation (in_relation) in pages of 25 and draws them
 //   (flow-draw.js). A depends_on arrow goes from the blocker to the node that waits. The arrow
 //   of every other relation goes from the node to its target.
 // - Then the board reads the facts of the steps (flow-facts.js). The dots and the card show
 //   after every read ends. A dot takes the worst tone of its step and the facts.
 // - A click lights the node, its neighbours and their edges, and fades the rest. The card
-//   (flow-card.js) shows the node. A transfer badge opens the other relation at the node.
+//   (flow-card.js) shows the node. A transfer badge opens the other relation at the node and
+//   writes relation and node into the link.
 // - A filter or a search fades the nodes that do not match. It fades no edge.
 // - The status line shows only the load, an error, the no-match text and the empty text.
 import {state} from 'board/state.js';
@@ -16,7 +22,7 @@ import {E} from 'board/dom.js';
 import {objectPart,PAGE} from 'board/api.js';
 import {commonObjectFilters,matches} from 'board/filters.js';
 import {relationRegistry,relationTitles} from 'board/relations.js';
-import {drawFlow} from 'board/flow-draw.js';
+import {drawFlow,FIT_MARGIN} from 'board/flow-draw.js';
 import {flowCard} from 'board/flow-card.js';
 import {factsOf,readFacts,rolledTone,hiddenFacts} from 'board/flow-facts.js';
 const FIELDS='title,signal,relations,item_id';
@@ -34,7 +40,7 @@ export async function renderFlowPage(root,generation){
   const say=text=>{status.textContent=text;status.hidden=!text;};
   // collapsed: the card shows only its head. It stays for the next pick.
   const ui={key:'',flow:null,nodes:new Map(),facts:new Map(),tones:new Map(),found:null,click:null,collapsed:false,load:0,card,say};
-  ui.pick=address=>{ui.click=address;paint(ui);};
+  ui.pick=address=>{ui.click=address;relink({node:address});paint(ui);};
   closeFlowPage();shown=ui;
   const [registry,titles]=await Promise.all([relationRegistry(),relationTitles()]);
   if(generation!==state.loadNumber)return;
@@ -49,16 +55,15 @@ export async function renderFlowPage(root,generation){
   filters.controls.prepend(picker);
   const linked=new URLSearchParams(location.search).get('relation');
   picker.value=keys.includes(linked)?linked:keys.find(key=>!registry[key].system)||'depends_on';
-  // A pick of a relation writes it into the link and keeps the other query values.
+  // A pick of a relation writes it and the node into the link and keeps the other query values.
   const choose=(key,address)=>{
-    picker.value=key;
-    const next=new URLSearchParams(location.search);next.set('relation',key);
-    history.replaceState(history.state,'',location.pathname+'?'+next+location.hash);
+    picker.value=key;relink({relation:key,node:address});
     show(key,address);
   };
   picker.onchange=()=>choose(picker.value,null);
   ui.transfer=(key,address)=>choose(key,address);
-  const show=async(key,address)=>{
+  // `first`: the first load, which reads node= of the link and can focus the node.
+  const show=async(key,address,first=false)=>{
     const mine=++ui.load,current=()=>live()&&mine===ui.load;
     description.textContent=registry[key]?.description||'';description.hidden=!description.textContent;
     ui.flow?.camera.destroy();ui.flow?.canvas.remove();ui.flow=null;ui.click=null;flowCard(card,{});say('Loading nodes…');
@@ -79,11 +84,29 @@ export async function renderFlowPage(root,generation){
     const items=[...nodes.values()].filter(node=>!hidden.has(node.address)).map(node=>({address:node.address,tone:ui.tones.get(node.address),
       label:labelOf(node,key),color:node.relations?.[key]?.color,badges:badges(node,key,registry,titles)}));
     ui.flow=drawFlow(view,items,edges,{pick:ui.pick,transfer:ui.transfer});
-    ui.click=address&&ui.flow.parts.has(address)?address:null;
+    // The node is an address, or the public item ID of a node. Only a drawn node is picked.
+    const target=address&&(nodes.has(address)?address:[...nodes.values()].find(node=>node.item_id===address)?.address);
+    ui.click=target&&ui.flow.parts.has(target)?target:null;
+    if(first&&ui.click)focus(ui.flow,ui.click);
     paint(ui);
   };
   view.append(card);page.append(description,status,view);root.append(page);
-  await show(picker.value,null);
+  await show(picker.value,new URLSearchParams(location.search).get('node'),true);
+}
+// Write the link values of `changes` and keep the others. A null value removes its key.
+function relink(changes){
+  const next=new URLSearchParams(location.search);
+  for(const [key,value] of Object.entries(changes))if(value)next.set(key,value);else next.delete(key);
+  history.replaceState(history.state,'',location.pathname+'?'+next+location.hash);
+}
+// When the whole flow needs more than 1 world unit for one pixel, the view fits the node, its
+// neighbours and the waypoints and arc middles of their edges, with at least 1 world unit for
+// one pixel. Else the whole view stays.
+function focus({camera,position,edges},address){
+  if(camera.unit()<=1)return;
+  const points=[position.get(address)];
+  for(const e of edges)if(e.from===address||e.to===address)points.push(position.get(e.from),position.get(e.to),...(e.via||[]),...(e.back?[e.mid]:[]));
+  camera.fit(points,FIT_MARGIN,1);
 }
 // A node without a tone takes the tone blue.
 function toneOf(node){return node?.signal?.tone||'blue';}
@@ -122,7 +145,7 @@ function paint(ui){
   ui.say(matching?'':'No node matches these filters.');
   // The card head and the steps show the dot tone, Status the own tone of the node.
   const node=nodes.get(click),facts=factsOf(node,ui.key).map(a=>({address:a,...ui.facts.get(a)}));
-  flowCard(ui.card,click?{address:click,node,label:labelOf(node,ui.key),edges:flow.edges,facts,pick:ui.pick,
+  flowCard(ui.card,click?{address:click,node,label:labelOf(node,ui.key),relation:ui.key,edges:flow.edges,facts,pick:ui.pick,
     nameOf:a=>labelOf(nodes.get(a)||{address:a},ui.key),toneOf:a=>ui.tones.get(a)||toneOf(nodes.get(a)),ownTone:toneOf(node),
     collapsed:ui.collapsed,collapse:on=>{ui.collapsed=on;}}:{});
 }

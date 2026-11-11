@@ -23,7 +23,7 @@ const RADIUS=9,GAP=3,LABEL=RADIUS+19;
 const LABEL_SIZE=13,BADGE_SIZE=11,LINE_HEIGHT=1.2,FIRST_BADGE=17,BADGE_STEP=1.4;
 // The first view shows the whole flow, centred. FIT_MARGIN leaves room for the labels and
 // badges under the lowest row; the person zooms in from there.
-const FIT_MARGIN=90;
+export const FIT_MARGIN=90;
 function svg(tag,attributes={},cls){
   const element=document.createElementNS(SVG,tag);
   for(const [key,value] of Object.entries(attributes))element.setAttribute(key,value);
