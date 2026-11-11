@@ -21,8 +21,8 @@ pub use board::board_read;
 #[path = "store_objects.rs"]
 mod objects;
 pub use objects::{
-    CardNeeds, ObjectScope, compact_list, item_workspace, link_page, read_cards, read_objects,
-    relation_members, resolve_item_ids, tree_schema,
+    CardNeeds, ObjectScope, compact_list, inbox_type, item_workspace, link_page, read_cards,
+    read_objects, relation_members, resolve_item_ids, tree_schema,
 };
 #[path = "store_record_results.rs"]
 mod record_results;
