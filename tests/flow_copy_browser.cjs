@@ -1,6 +1,6 @@
 // Chromium check of the copy button in the Flow card head (requirement:board-graph): the button
-// sits between the title and Open, and a click puts the public item ID of the picked node on the
-// clipboard while the card and the marks stay.
+// sits between the title and the Copy link button, and a click puts the public item ID of the
+// picked node on the clipboard while the card and the marks stay.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
@@ -28,7 +28,7 @@ test('xwzeqnds: The Flow card copies the item ID of the picked node', async () =
     await click(f, 'step:b');
     await waitCard(f, 'Check the limit');
 
-    // The head has one copy button, between the title and Open.
+    // The head has one copy button, between the title and the Copy link button.
     const children = await f.page.evaluate(headChildren);
     assert.ok(children, 'the card has .flow-card-head');
     const copies = children.map((c, i) => c.label === 'Copy ID for agent' ? i : -1).filter(i => i >= 0);
@@ -36,10 +36,11 @@ test('xwzeqnds: The Flow card copies the item ID of the picked node', async () =
     const copyAt = copies[0], copy = children[copyAt];
     assert.equal(copy.tag, 'button', 'the copy control is a button: ' + JSON.stringify(copy));
     const titleAt = children.findIndex(c => /\bflow-card-title\b/.test(c.cls));
+    const linkAt = children.findIndex(c => c.tag === 'button' && c.label === 'Copy link to node');
     const openAt = children.findIndex(c => c.tag === 'a' && /^Open\b/.test(c.text));
-    assert.ok(titleAt >= 0 && openAt >= 0, 'the head has the title and Open: ' + JSON.stringify(children));
+    assert.ok(titleAt >= 0 && linkAt >= 0 && openAt >= 0, 'the head has the title, Copy link and Open: ' + JSON.stringify(children));
     assert.equal(children[titleAt].text, 'Check the limit');
-    assert.deepEqual([titleAt + 1, copyAt + 1], [copyAt, openAt], 'title, copy, Open: ' + JSON.stringify(children));
+    assert.deepEqual([titleAt + 1, copyAt + 1, linkAt + 1], [copyAt, linkAt, openAt], 'title, Copy ID, Copy link, Open: ' + JSON.stringify(children));
     assert.equal(await f.page.locator('.flow-card-head button[aria-label="Copy ID for agent"]').count(), 1);
 
     await f.page.locator('.flow-card-head button[aria-label="Copy ID for agent"]').click();
