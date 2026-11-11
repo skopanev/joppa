@@ -3,21 +3,12 @@
 // read-detail-pages
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<()> {
+async fn a_detail_read_keeps_the_document_and_gives_a_comment_count() -> Result<()> {
     let w = record_world::world(&[]).await?;
     w.command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"d","revision":0,"parent":null,"data":{"title":"D","owner":"owner","body":"Rule","note":null,"projects":[]},"reason":"Detail test"})).await?.map_err(anyhow::Error::msg)?;
     // clean: true keeps the sent document whole, null values included.
     w.command(&w.bot, json!({"op":"save_object","kind":"requirement","id":"d","revision":1,"parent":null,"clean":true,"data":{"title":"D2","owner":"owner","body":"Rule","note":null,"projects":[]},"reason":"Second revision"})).await?.map_err(anyhow::Error::msg)?;
-    let notes: Vec<Value> = (0..30)
-        .map(|i| json!({"command":{"op":"note","target":"requirement:d","id":format!("c{i:02}"),"text":format!("Comment {i}")}}))
-        .collect();
-    w.mcp(
-        &w.bot,
-        "joppa_batch",
-        json!({"request_id":"read-contract-notes","operations":notes}),
-    )
-    .await?
-    .map_err(anyhow::Error::msg)?;
+    comments(&w, "requirement:d", 30, true).await?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
     ensure!(
         detail["data"]
@@ -29,19 +20,10 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
         detail["data"]["note"].is_null() && detail["data"]["projects"] == json!([]),
         "{detail}"
     );
+    // The card counts the comments without the withdrawn one, and gives no comment page.
     ensure!(
-        detail["comments"]["total"] == 30
-            && detail["comments"]["items"].as_array().map(Vec::len) == Some(25),
-        "{}",
-        detail["comments"]
-    );
-    let comment = &detail["comments"]["items"][0];
-    ensure!(
-        comment["id"] == "c00"
-            && comment["actor"] == "bot"
-            && comment.get("author").is_none()
-            && comment.get("created_at").is_none(),
-        "{comment}"
+        detail["comments_count"] == 30 && detail.get("comments").is_none(),
+        "{detail}"
     );
     // The detail repeats no key of the document or the request, and gives no revision header.
     for key in [
@@ -85,36 +67,6 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
             && revisions[1]["actor"] == "bot",
         "{history}"
     );
-    let third = read(
-        &w,
-        "joppa_objects",
-        json!({"address":"requirement:d","comments_cursor":"25"}),
-    )
-    .await?;
-    ensure!(
-        third["comments"]["items"].as_array().map(Vec::len) == Some(5)
-            && third["comments"].get("next_cursor").is_none(),
-        "{}",
-        third["comments"]
-    );
-    // A read with fields takes the same comment page.
-    let named = read(
-        &w,
-        "joppa_objects",
-        json!({"address":"requirement:d","fields":["comments"],"comments_cursor":"25"}),
-    )
-    .await?;
-    ensure!(named["comments"] == third["comments"], "{named}");
-    let named = read(
-        &w,
-        "joppa_objects",
-        json!({"address":"requirement:d","fields":["comments"]}),
-    )
-    .await?;
-    ensure!(
-        named["comments"] == detail["comments"] && named["comments"]["next_cursor"] == "25",
-        "{named}"
-    );
     let old = read(
         &w,
         "joppa_objects",
@@ -132,6 +84,15 @@ async fn a_detail_read_keeps_the_document_and_pages_comments_by_25() -> Result<(
     ensure!(
         no_empty_keys(&detail),
         "an empty key outside document: {detail}"
+    );
+    // A detail drops work_ready: true, process.confirmed: false and the zero counts.
+    let r = read(&w, "joppa_objects", json!({"address":"requirement:r"})).await?;
+    ensure!(
+        r.get("comments_count").is_none()
+            && r.get("files_count").is_none()
+            && r.get("work_ready") != Some(&json!(true))
+            && r["process"].get("confirmed") != Some(&json!(false)),
+        "{r}"
     );
     Ok(())
 }

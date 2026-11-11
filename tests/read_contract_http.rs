@@ -7,3 +7,4 @@ use serde_json::{Value, json};
 
 include!("read_contract_http/part01.rs");
 include!("read_contract_http/part02.rs");
+include!("read_contract_http/part03.rs");

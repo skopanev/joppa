@@ -60,6 +60,15 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
     )
     .await?
     .map_err(anyhow::Error::msg)?;
+    // requirement:u has a related edge to d: the one incoming edge of d.
+    w.command(
+        &w.bot,
+        json!({"op":"save_object","kind":"requirement","id":"u","revision":0,
+        "parent":null,"data":{"title":"U","owner":"owner","body":"Rule"},
+        "relations":{"related":{"edges":[{"to":"requirement:d"}]}},"reason":"Link test"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
     let detail = read(&w, "joppa_objects", json!({"address":"requirement:d"})).await?;
     let items = relation_edges::edges(&detail, "related");
     let pinned = relation_edges::edges(&detail, "depends_on");
@@ -82,16 +91,15 @@ async fn a_detail_read_gives_all_its_links_in_one_list() -> Result<()> {
         items[0],
         pinned[0]
     );
+    // The groups count the incoming edges, with no direction key. The detail gives no
+    // references and no child_counts without fields.
     ensure!(
-        detail["relation_groups"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .all(|g| g["direction"] == "incoming")
-            && detail.get("links").is_none()
-            && detail.get("document").is_none(),
+        detail["relation_groups"] == json!([{"relation":"related","kind":"requirement","count":1}]),
         "{detail}"
     );
+    for key in ["document", "links", "blocking", "references", "child_counts"] {
+        ensure!(detail.get(key).is_none(), "{key}: {detail}");
+    }
     // save_object takes the read relations back as they are and stores the same edges.
     w.command(
         &w.bot,

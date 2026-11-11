@@ -79,8 +79,11 @@ async fn computed_sources_climb_from_the_criteria_as_a_sorted_union() -> Result<
         &["ac:b", "requirement:r", "capability:c"][..],
     );
     expect(&w, "sources", &wanted, filter).await?;
-    // A read gives the title of each computed address, as for an own reference.
-    let read = w.object("capability:c").await?;
+    // A read with fields ["references"] gives the title of each computed address, as for an
+    // own reference.
+    let named = json!({"address":"capability:c","fields":["references"]});
+    let read = w.mcp(&w.bot, "joppa_objects", named).await?;
+    let read = read.map_err(anyhow::Error::msg)?;
     let titles: Vec<(&str, &str)> = read["references"]
         .as_array()
         .into_iter()

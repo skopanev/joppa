@@ -72,10 +72,31 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        let (mcp, http) = (unsigned(&mcp), unsigned(&object));
+        // The MCP card counts the files. joppa_attachments gives the same files as HTTP. The
+        // keys that the MCP card drops or counts are left out of the compare.
+        let card = |read: &Value| {
+            let mut read = read.clone();
+            let dropped = ["files", "references", "child_counts", "relation_groups"];
+            for key in dropped.into_iter().chain(["files_count", "comments_count"]) {
+                read.as_object_mut().map(|m| m.remove(key));
+            }
+            read
+        };
+        let expected = crate::compact_of::compact_of(&object, &mcp);
         ensure!(
-            mcp == crate::compact_of::compact_of(&http, &mcp) && mcp["files"] == http["files"],
-            "HTTP and MCP returned different file versions"
+            mcp["files_count"] == 2 && mcp.get("files").is_none() && card(&mcp) == card(&expected),
+            "the MCP card: {mcp}"
+        );
+        let listed = w.http.post(format!("{}/mcp", w.root)).bearer_auth(&w.alex).json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_attachments","arguments":{"workspace":w.ws,"target":address}}})).send().await?;
+        let listed: Value = listed.json().await?;
+        let listed: Value = serde_json::from_str(
+            listed["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("null"),
+        )?;
+        ensure!(
+            unsigned(&listed)["files"] == unsigned(&object)["files"],
+            "HTTP and joppa_attachments returned different file versions: {listed}"
         );
         for (file, bytes) in files.iter().zip(contents.into_iter().rev()) {
             let response = w

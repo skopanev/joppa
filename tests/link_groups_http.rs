@@ -118,18 +118,17 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         .as_array()
         .cloned()
         .unwrap_or_default();
+    // `relations` gives the outgoing edges, so the counts keep only the incoming groups. All
+    // groups are incoming, so a group has no direction key.
     ensure!(
-        groups.contains(
-            &json!({"direction":"incoming","relation":"related","kind":"note","count":120})
-        ),
+        groups == [json!({"relation":"related","kind":"note","count":120})],
         "{groups:?}"
     );
-    // `relations` gives the outgoing edges, so the counts keep only the incoming groups.
     let depends_on = object["relations"]["depends_on"]["edges"]
         .as_array()
         .map(Vec::len);
     ensure!(
-        groups.iter().all(|g| g["direction"] == "incoming")
+        groups.iter().all(|g| g.get("direction").is_none())
             && depends_on == Some(3)
             && object.get("links").is_none()
             && object.get("link_groups").is_none(),
