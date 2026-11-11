@@ -82,7 +82,7 @@ async fn named(
     comments_cursor: Option<&str>,
 ) -> anyhow::Result<Value> {
     let data = &reply["document"]["data"];
-    super::check(pool, workspace, actor, fields, true, &[data]).await?;
+    super::check(fields, true, &[data])?;
     let inbox = fields.iter().any(|f| rc::head(f) == "note_status")
         && super::inbox_kind(pool, workspace, actor, reply["kind"].as_str()).await?;
     let detail = match fields

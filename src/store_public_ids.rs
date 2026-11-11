@@ -127,6 +127,25 @@ pub(crate) async fn node_addresses(
         .collect())
 }
 
+/// The `id` of save_object in the form `kind:id` names the kind of the object: a different kind
+/// is refused, and the command keeps the local part. A local part with `:` or without a character
+/// stays, so the save refuses it with "invalid object id".
+pub(crate) fn local_id(value: &mut Value) -> Result<()> {
+    let id = value["id"]
+        .as_str()
+        .filter(|_| value["op"] == "save_object");
+    let Some((kind, local)) = id.and_then(|id| id.split_once(':')) else {
+        return Ok(());
+    };
+    let wanted = value["kind"].as_str().unwrap_or_default();
+    ensure!(
+        kind == wanted,
+        "the id names an object of type {kind}, not {wanted}"
+    );
+    value["id"] = json!(local.to_owned());
+    Ok(())
+}
+
 /// Replace each public item ID of a command with its address. A public item ID in the `id`
 /// of `save_object` names the object to edit and must have its kind.
 pub(crate) async fn canonical(
@@ -135,6 +154,7 @@ pub(crate) async fn canonical(
     state: &Workspace,
     value: &mut Value,
 ) -> Result<()> {
+    local_id(value)?;
     let slots = slots(state, value);
     let ids: BTreeSet<String> = slots
         .iter()
@@ -167,3 +187,7 @@ pub(crate) async fn canonical(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "store_public_ids_tests.rs"]
+mod tests;

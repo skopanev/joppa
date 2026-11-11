@@ -155,7 +155,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     if let Some(fields) = &fields {
         let items = reply["items"].as_array().into_iter().flatten();
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
-        check(pool, workspace, actor, fields, false, &data).await?;
+        check(fields, false, &data)?;
     }
     Ok(rc::list(reply, fields.as_deref()))
 }
@@ -179,7 +179,7 @@ async fn members(
     if let Some(fields) = &fields {
         let items = reply["items"].as_array().into_iter().flatten();
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
-        check(pool, workspace, actor, fields, false, &data).await?;
+        check(fields, false, &data)?;
     }
     Ok(rc::list(reply, fields.as_deref()))
 }
@@ -187,31 +187,11 @@ async fn members(
 #[path = "protocol_reads_address.rs"]
 mod address;
 
-/// Refuse a field that names no list field, no document field, no field of the tree schema
-/// and no key of a returned document. A read by address also takes the detail keys.
-async fn check(
-    pool: &Pool,
-    workspace: &str,
-    actor: &str,
-    fields: &[String],
-    detail: bool,
-    data: &[&Value],
-) -> anyhow::Result<()> {
-    let found = |head: &str| {
-        (detail && rc::DETAIL_FIELDS.contains(&head)) || data.iter().any(|d| d.get(head).is_some())
-    };
-    if rc::check_fields(fields, found).is_ok() {
-        return Ok(());
-    }
-    let tree = store::tree_schema(pool, workspace, actor, None).await?;
-    let types = tree["schema"]["types"].as_object().into_iter().flatten();
-    let schema: Vec<&String> = types
-        .flat_map(|(_, t)| ["references", "required_fields"].map(|k| &t[k]))
-        .filter_map(Value::as_object)
-        .flat_map(|m| m.keys())
-        .collect();
+/// Refuse an older text field, and a detail key on a list read that no returned document holds.
+/// A read by address (`detail`) takes the detail keys. Each other bare name reads its data field.
+fn check(fields: &[String], detail: bool, data: &[&Value]) -> anyhow::Result<()> {
     rc::check_fields(fields, |head| {
-        found(head) || schema.iter().any(|k| *k == head)
+        (detail && rc::DETAIL_FIELDS.contains(&head)) || data.iter().any(|d| d.get(head).is_some())
     })
 }
 

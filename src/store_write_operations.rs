@@ -57,6 +57,7 @@ pub(crate) async fn write(
             }
             let mut value = resolve(&operation.command, &refs)?;
             let clean = crate::save_merge::take_clean(&mut value)?;
+            crate::save_merge::default_data(&mut value, clean);
             generate_free(&*tx, &workspace, &state, &mut value).await?;
             fields(&value)?;
             // The journal stores the immutable ID of another workspace, never a name.
@@ -64,6 +65,8 @@ pub(crate) async fn write(
             super::public_ids::canonical(&*tx, &workspace, &state, &mut value).await?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
+            // A requirement save after the criterion saves of this batch takes their forced revisions.
+            crate::forced_revision::catch_up(&state, &mut value, base_position, &events);
             crate::save_merge::merge(&state, &mut value, clean)?;
             let mut command: Command = serde_json::from_value(value)?;
             crate::omitted_links::keep(&state, &mut command);

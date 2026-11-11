@@ -1,6 +1,6 @@
 //! The `fields` of MCP object reads (requirement:read-contract). A path names a list field, a
-//! key of the detail read (only for a read by address) or a document field: a bare document
-//! field name such as `body` gives `data.body`.
+//! key of the detail read (only for a read by address) or a document field: each other bare
+//! name such as `tags` gives `data.tags`, or null when the data has no such field.
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
@@ -44,27 +44,6 @@ pub const DETAIL_FIELDS: [&str; 11] = [
     "result",
 ];
 
-/// The document fields of the object roles. The tree schema adds its references and
-/// required fields, and each key of a returned document counts too.
-pub const DOCUMENT_FIELDS: [&str; 16] = [
-    "archived",
-    "author",
-    "answers",
-    "before_launch",
-    "consumer",
-    "consumers",
-    "decision",
-    "depends_on",
-    "note",
-    "outcome",
-    "projects",
-    "purpose",
-    "reason",
-    "repository",
-    "requirement",
-    "tests",
-];
-
 /// The first segment of a path.
 pub fn head(field: &str) -> &str {
     field.split('.').next().unwrap_or_default()
@@ -78,8 +57,11 @@ pub fn needs_data(fields: &[String]) -> bool {
     })
 }
 
-/// Refuse the first path whose first segment `known` does not accept. The text of every
-/// object type is `body`, so `description` and `contract` are refused, also under `data`.
+/// Refuse the first path with an older text field or with a detail key that `known` does not
+/// accept. The text of every object type is `body`, so `description` and `contract` are
+/// refused, also under `data`. `known` accepts the detail keys of a read by address and each
+/// key of a returned document, so a detail key on a list read is refused. Each other bare name
+/// reads `data.<name>`, and an absent field gives null.
 pub fn check_fields(fields: &[String], known: impl Fn(&str) -> bool) -> Result<()> {
     for field in fields {
         let head = head(field);
@@ -90,7 +72,7 @@ pub fn check_fields(fields: &[String], known: impl Fn(&str) -> bool) -> Result<(
         {
             bail!(crate::body_migration::refusal(old));
         }
-        if !LIST_FIELDS.contains(&head) && !DOCUMENT_FIELDS.contains(&head) && !known(head) {
+        if DETAIL_FIELDS.contains(&head) && !LIST_FIELDS.contains(&head) && !known(head) {
             bail!("unknown field {field}");
         }
     }
@@ -149,3 +131,7 @@ pub fn object_fields(
     }
     Value::Object(out)
 }
+
+#[cfg(test)]
+#[path = "read_fields_tests.rs"]
+mod tests;

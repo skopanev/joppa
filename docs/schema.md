@@ -247,6 +247,11 @@ The schema holds every test rule in the block `test_results`. A new workspace ge
 - `reset_on_change` is described in [what green means](green.md).
 - `green_if_all` and `red_if_any` give the outcomes that make a test node green or red.
 - `failure_field` names the text field that readers show as the failure message.
+- `match_field` is optional. It names a typed field of each type with the role `test`, else
+  `set_tree_schema` is refused with `test_results.match_field names a field of the test type`.
+  A result name binds a test node first by its address or public item ID, then by a current or
+  earlier title. Else the name binds the one present test node whose `data.<match_field>` equals
+  it exactly. Two such nodes leave the name unbound.
 
 The names `test`, `status`, `commit`, `actor` and `at` belong to the record. A field cannot use them.
 The server refuses an unknown status name, an unknown field, a missing required field and a

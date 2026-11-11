@@ -117,10 +117,10 @@ type of the present direct children that have a tone, in the order of the type i
 without such a child has no `child_counts`. The board shows each entry in the row, such as
 `4 / 6 ACs`.
 
-Any other first part names a document field: `source_section.title` gives
-`data.source_section.title`. A document field is a field of the object roles (such as
-`text`, `tests` or `depends_on`), a `references` or `required_fields` key of the tree
-schema, or a key of a returned document. Any other path is refused: `unknown field nope`.
+Any other first part names a data field: `source_section.title` gives
+`data.source_section.title`, and a bare `tags` gives `data.tags`. An object without that
+field gives null: `["nope"]` gives `"nope": null`. A key of the detail read on a list read
+is refused when no returned document holds it: `unknown field comments`.
 The text of every type is `body`: `description`, `contract`, `data.description` and
 `data.contract` are refused with `use body instead of description; read joppa_help`.
 

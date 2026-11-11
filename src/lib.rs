@@ -18,6 +18,7 @@ pub mod field_limit;
 pub mod field_types;
 pub mod filter_dimensions;
 pub mod filter_fields;
+pub mod forced_revision;
 pub mod generic_nodes;
 pub mod history_entry;
 pub mod inbox;
