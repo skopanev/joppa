@@ -87,7 +87,7 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
 // read-list-fields
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()> {
+async fn fields_return_each_named_path_and_null_for_a_name_without_data() -> Result<()> {
     let w = record_world::world(&[]).await?;
     let reply = read(&w, "joppa_objects", json!({"parent":"requirement:r","fields":["revision","process.verification","work_ready"]})).await?;
     let item = &reply["items"][0];
@@ -123,19 +123,15 @@ async fn fields_return_each_named_path_and_refuse_an_unknown_one() -> Result<()>
             && full.get("workspace").is_none(),
         "{full}"
     );
-    let refused = w
-        .mcp(
-            &w.bot,
-            "joppa_objects",
-            json!({"parent":"requirement:r","fields":["nope"]}),
-        )
-        .await?;
+    // A bare name that no document holds gives null on each item.
+    let nope = json!({"parent":"requirement:r","fields":["nope"]});
+    let nope = read(&w, "joppa_objects", nope).await?;
+    let items = nope["items"].as_array().cloned().unwrap_or_default();
     ensure!(
-        refused
-            .err()
-            .unwrap_or_default()
-            .contains("unknown field nope"),
-        "an unknown field passed"
+        items.len() == 2
+            && items.iter().all(|i| i.get("nope") == Some(&Value::Null)
+                && i.as_object().map(|m| m.len()) == Some(2)),
+        "{nope}"
     );
     Ok(())
 }
