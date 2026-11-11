@@ -36,28 +36,27 @@ async fn attach_stores_check_result_and_valid_until() -> Result<()> {
     let second = w.command(&w.bot, op).await?;
     second.map_err(|e| anyhow::anyhow!("the attach op: {e}"))?;
     let listed = files(&w, "ac:a").await?;
+    // The card counts the files and gives no file list.
     let object = w.object("ac:a").await?;
-    let read = object["files"].as_array().cloned().unwrap_or_default();
-    for (source, list) in [("joppa_attachments", &listed), ("joppa_objects", &read)] {
-        ensure!(
-            list.len() == 2,
-            "{source} lists {} files: {list:?}",
-            list.len()
-        );
-        let (one, two) = (file(list, &id)?, file(list, "f2")?);
-        ensure!(
-            one["check_result"] == "pass" && one["valid_until"] == "2026-12-31",
-            "{source}, the first file: {one}"
-        );
-        ensure!(
-            two["check_result"] == "fail" && two.get("valid_until").is_none(),
-            "{source}, the second file: {two}"
-        );
-        ensure!(
-            one["actor"] == "bot" && two["actor"] == "bot",
-            "{source}, the actors: {one} {two}"
-        );
-    }
+    ensure!(
+        object["files_count"] == 2 && object.get("files").is_none(),
+        "the joppa_objects card: {object}"
+    );
+    // joppa_attachments keeps the full file facts.
+    ensure!(listed.len() == 2, "joppa_attachments: {listed:?}");
+    let (one, two) = (file(&listed, &id)?, file(&listed, "f2")?);
+    ensure!(
+        one["check_result"] == "pass" && one["valid_until"] == "2026-12-31",
+        "the first file: {one}"
+    );
+    ensure!(
+        two["check_result"] == "fail" && two.get("valid_until").is_none(),
+        "the second file: {two}"
+    );
+    ensure!(
+        one["actor"] == "bot" && two["actor"] == "bot",
+        "the actors: {one} {two}"
+    );
     Ok(())
 }
 

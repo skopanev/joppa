@@ -30,7 +30,8 @@ fn no_empty_keys(value: &Value) -> bool {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    for i in 1..27 {
+    w.command(&w.bot, json!({"op":"save_object","kind":"ac","id":"a1","revision":0,"parent":"requirement:r","data":{"title":"A1","owner":"owner","assignee":"lane3"},"reason":"Read contract test"})).await?.map_err(anyhow::Error::msg)?;
+    for i in 2..27 {
         save_ac(&w, &format!("a{i}")).await?;
     }
     let first = read(
@@ -47,6 +48,8 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
             && first.get("workspace").is_none(),
         "{first}"
     );
+    // A plain item gives only address, title, the status tone and assignee when set. No plain
+    // item gives children or child_counts.
     for item in &items {
         let keys: Vec<&String> = item
             .as_object()
@@ -54,10 +57,14 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
             .unwrap_or_default();
         ensure!(
             keys.iter()
-                .all(|k| ["address", "title", "status", "children"].contains(&k.as_str())),
+                .all(|k| ["address", "title", "status", "assignee"].contains(&k.as_str()))
+                && item["status"].is_string()
+                && (item.get("assignee").is_some() == (item["address"] == "ac:a1")),
             "{item}"
         );
     }
+    let a1 = items.iter().find(|i| i["address"] == "ac:a1");
+    ensure!(a1.is_some_and(|i| i["assignee"] == "lane3"), "{first}");
     ensure!(
         serde_json::to_string(&first["items"])?.len() < 25 * 64,
         "{first}"
@@ -81,6 +88,22 @@ async fn a_list_page_holds_at_most_25_compact_items() -> Result<()> {
         "{second}"
     );
     ensure!(second.get("next_cursor").is_none(), "{second}");
+    // With fields, limit 100 gives all 27 items. status is the same tone as in the plain item
+    // and in the detail read.
+    let args = json!({"parent":"requirement:r","limit":100,"fields":["status","children"]});
+    let named = read(&w, "joppa_objects", args).await?;
+    let all = named["items"].as_array().cloned().unwrap_or_default();
+    ensure!(all.len() == 27 && named["total"] == 27, "{named}");
+    for item in &items {
+        let same = all.iter().find(|i| i["address"] == item["address"]);
+        ensure!(same.is_some_and(|i| i["status"] == item["status"]), "{item} {named}");
+    }
+    let detail = read(&w, "joppa_objects", json!({"address":"ac:a"})).await?;
+    let a = all.iter().find(|i| i["address"] == "ac:a");
+    ensure!(
+        a.is_some_and(|i| i["status"] == detail["status"]["tone"]),
+        "{detail} {named}"
+    );
     Ok(())
 }
 

@@ -1,5 +1,6 @@
 //! requirement:file-upload over MCP: joppa_attach puts the bytes in Spaces and attaches
-//! them. joppa_attachments and joppa_objects give each file a presigned download url.
+//! them. joppa_attach and joppa_attachments give each file a presigned download url, and the
+//! joppa_objects card gives only files_count.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Context, Result, ensure};
@@ -93,20 +94,29 @@ async fn joppa_attach_stores_the_file_in_spaces_and_lists_it_with_a_download_url
             "a download changed the bytes"
         );
     }
-    // joppa_objects gives the same files with a url.
+    // The joppa_objects card counts the files. fields gives the short files without url or hash.
     let object = ok(w
         .mcp(&w.bot, "joppa_objects", json!({"address":"ac:a"}))
         .await?)?;
-    let urls: Vec<&str> = object["files"]
-        .as_array()
-        .context("files")?
-        .iter()
-        .filter_map(|f| f["url"].as_str())
-        .collect();
     ensure!(
-        urls.len() == 2 && urls.iter().all(|u| u.contains("X-Amz-Signature=")),
+        object["files_count"] == 2 && object.get("files").is_none(),
         "{object}"
     );
+    let named = json!({"address":"ac:a","fields":["files"]});
+    let named = ok(w.mcp(&w.bot, "joppa_objects", named).await?)?;
+    let short: Vec<Value> = files
+        .iter()
+        .map(|f| {
+            let at = if f["at"].is_null() {
+                &f["created_at"]
+            } else {
+                &f["at"]
+            };
+            json!({"id":f["id"],"name":f["name"],"size":f["size"],
+                "content_type":f["content_type"],"at":at})
+        })
+        .collect();
+    ensure!(named == json!({"files": short}), "{named}");
     // Refused: both contents, no content, more than 50 MiB, a non-member and a read token.
     let refused = |reply: Result<Value, String>, text: &str| match reply {
         Err(e) if e.contains(text) => Ok(()),

@@ -57,7 +57,7 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
             .http
             .post(format!("{}/mcp", w.root))
             .bearer_auth(&w.alex)
-            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address}}}))
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"joppa_objects","arguments":{"workspace":w.ws,"address":address,"fields":["comments"]}}}))
             .send()
             .await?;
         ensure!(response.status().is_success(), "{}", response.text().await?);
@@ -67,7 +67,8 @@ async fn a_member_comment_records_its_author_and_server_time() -> Result<()> {
                 .as_str()
                 .unwrap_or("null"),
         )?;
-        // MCP gives the same comment in its page, without the repeated author and created_at.
+        // MCP gives the same comment in the page of fields ["comments"], without the repeated
+        // author and created_at.
         let item = object["comments"]["items"]
             .as_array()
             .and_then(|items| items.iter().find(|c| c["id"] == "n1"))

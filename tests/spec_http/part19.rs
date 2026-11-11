@@ -37,7 +37,8 @@ async fn an_agent_archives_a_signal_and_keeps_its_related_requirement_link() -> 
         .await?;
     ensure!(
         signal["present"] == false
-            && signal["relation_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "related" && g["kind"] == "requirement" && g["count"] == 1))
+            // The MCP group of the incoming edges has no direction key.
+            && signal["relation_groups"].as_array().is_some_and(|g| g.contains(&json!({"relation":"related","kind":"requirement","count":1})) && g.iter().all(|g| g.get("direction").is_none()))
             && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "requirement:dark")),
         "{signal} {group}"
     );
@@ -76,8 +77,16 @@ async fn an_agent_depends_on_link_shows_on_both_objects_over_http() -> Result<()
                 "relations_of=note:a&direction=incoming&relation=depends_on&kind=note",
             )
             .await?;
+        // HTTP gives the incoming group with its direction. MCP gives the same group without it.
+        let expected = match mcp {
+            true => json!({"relation":"depends_on","kind":"note","count":1}),
+            false => {
+                json!({"direction":"incoming","relation":"depends_on","kind":"note","count":1})
+            }
+        };
         ensure!(
-            a["relation_groups"].as_array().is_some_and(|g| g.iter().any(|g| g["direction"] == "incoming" && g["relation"] == "depends_on" && g["kind"] == "note" && g["count"] == 1))
+            a["relation_groups"].as_array().is_some_and(|g| g.contains(&expected))
+                && (!mcp || a["relation_groups"].as_array().is_some_and(|g| g.iter().all(|g| g.get("direction").is_none())))
                 && group["items"].as_array().is_some_and(|i| i.iter().any(|i| i["address"] == "note:b")),
             "mcp={mcp}: {a} {group}"
         );

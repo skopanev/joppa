@@ -91,8 +91,13 @@ async fn each_write_keeps_the_alias_next_to_the_actor_and_a_rebuild_keeps_it() -
     let results =
         json!({"commit":"a".repeat(40),"results":[{"test":"tests/x.rs > t","status":"pass"}]});
     aliased(&w, "joppa_record_results", results, "runner").await?;
+    // The comment page comes only with fields ["comments"].
     let b = w
-        .mcp(&w.owner, "joppa_objects", json!({"address":"ac:b"}))
+        .mcp(
+            &w.owner,
+            "joppa_objects",
+            json!({"address":"ac:b","fields":["comments"]}),
+        )
         .await?;
     let b = b.map_err(anyhow::Error::msg)?;
     let comment = b["comments"]["items"]

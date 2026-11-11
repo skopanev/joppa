@@ -115,10 +115,13 @@ async fn links_and_links_of_are_removed_from_the_live_api() -> Result<()> {
         "{again}"
     );
     let b = w.object("doc:b").await?;
-    let group = json!({"direction":"incoming","relation":"related","kind":"doc","count":1});
+    // The MCP group of the incoming edges has no direction key.
+    let group = json!({"relation":"related","kind":"doc","count":1});
     let groups = b["relation_groups"].as_array().cloned().unwrap_or_default();
     ensure!(
-        groups.contains(&group) && b.get("link_groups").is_none(),
+        groups.contains(&group)
+            && groups.iter().all(|g| g.get("direction").is_none())
+            && b.get("link_groups").is_none(),
         "{b}"
     );
     let list = json!({"kind":"doc","fields":["relations"],"limit":25});
@@ -176,10 +179,10 @@ async fn an_edge_takes_a_public_item_id() -> Result<()> {
         .collect();
     ensure!(addresses == [&json!("doc:b")], "relations_of: {page}");
     let b = w.object("doc:b").await?;
-    let group = json!({"direction":"incoming","relation":"related","kind":"doc","count":1});
+    let group = json!({"relation":"related","kind":"doc","count":1});
     let incoming = b["relation_groups"]
         .as_array()
-        .is_some_and(|g| g.contains(&group));
+        .is_some_and(|g| g.contains(&group) && g.iter().all(|g| g.get("direction").is_none()));
     ensure!(incoming, "B reads the edge from A: {b}");
     Ok(())
 }

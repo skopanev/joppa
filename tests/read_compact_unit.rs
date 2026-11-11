@@ -95,11 +95,15 @@ fn a_detail_gives_each_fact_once() {
         "relations":{"related":{"edges":[{"to":"ac:b","title":"B","current_revision":2,"present":true}]},
             "depends_on":{"edges":[{"to":"task:t","revision":3,"title":"T","current_revision":5,"present":false}]}},
         "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
-        "relation_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
+        "relation_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2},
+            {"direction":"outgoing","relation":"related","kind":"ac","count":1}],
+        "child_counts":[{"kind":"test","total":2,"passed":1}],
         "annotations":{"comments":{},"attachments":{}},
         "process":{"annotation_address":"ac:a","verification":"pass"},
         "remote_links":[],"remote_links_revision":0,"remote_review_required":false});
     // The relations by key: an edge without a pin has no current revision, and a pin shows it.
+    // The groups keep the incoming edges without the direction key. references and
+    // child_counts come only with fields, and an object without comments has no count.
     assert_eq!(
         detail(reply.clone(), "ac:a", None).unwrap(),
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
@@ -107,8 +111,7 @@ fn a_detail_gives_each_fact_once() {
             "relations":{"related":{"edges":[{"to":"ac:b","title":"B"}]},
                 "depends_on":{"edges":[{"to":"task:t","title":"T","revision":3,
                     "current_revision":5,"present":false}]}},
-            "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2}],
-            "relation_groups":[{"direction":"incoming","relation":"related","kind":"task","count":2}],
+            "relation_groups":[{"relation":"related","kind":"task","count":2}],
             // The annotation address repeats the address.
             "process":{"verification":"pass"}})
     );
