@@ -20,7 +20,7 @@ const NODES = [
 ];
 
 // The order of the children of .flow-card-head.
-const ORDER = ['toggle', 'circle', 'title', 'copy', 'open', 'close'];
+const ORDER = ['toggle', 'circle', 'title', 'copy', 'link', 'open', 'close'];
 
 // In the page: the state of the card. parts gives the visibility of each child of .flow-card
 // other than the head. children gives the name, the text and the top of each child of the head.
@@ -34,6 +34,7 @@ function cardState() {
     if (/\bstatus-circle\b/.test(cls)) return 'circle';
     if (/\bflow-card-title\b/.test(cls)) return 'title';
     if (label === 'Copy ID for agent') return 'copy';
+    if (tag === 'button' && label === 'Copy link to node') return 'link';
     if (tag === 'a' && /^Open\b/.test(c.textContent.trim())) return 'open';
     if (c.textContent.trim() === '×') return 'close';
     return tag + '.' + cls;
@@ -60,7 +61,7 @@ async function waitState(f, ok, step) {
   assert.fail(step + ': ' + JSON.stringify(last));
 }
 
-// The head has the toggle, the status circle, the title, the copy button, Open and × in order.
+// The head has the toggle, the status circle, the title, Copy ID, Copy link, Open and × in order.
 const assertOrder = (s, step) => assert.deepEqual(s.children.map(c => c.name), ORDER, step + ': the head children: ' + JSON.stringify(s.children));
 
 // The collapsed card: every part below the head is hidden, and the head keeps its children
