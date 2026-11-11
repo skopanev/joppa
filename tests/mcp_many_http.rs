@@ -180,11 +180,10 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
         now == json!({"revision":2,"body":"Second rule, edited"}),
         "{now}"
     );
+    // A bare name reads data.<name>, also when the object has no such field.
+    let nope = ok(&w, json!({"address":"ac:a","fields":["nope"]})).await?;
+    ensure!(nope == json!({"nope":null}), "{nope}");
     for (args, error) in [
-        (
-            json!({"address":"ac:a","fields":["nope"]}),
-            "unknown field nope",
-        ),
         (json!({"fields":["comments"]}), "unknown field comments"),
         (
             json!({"address":"ac:a","fields":["description"]}),

@@ -68,11 +68,14 @@ fn a_list_item_is_short_and_fields_keep_each_named_path() {
     );
     let custom = vec!["source_section.title".to_owned()];
     assert!(check_fields(&custom, |head| head == "source_section").is_ok());
+    // Any other bare name reads data.<name>. A detail key that a list read does not know is
+    // refused.
+    assert!(check_fields(&["nope".to_owned()], |_| false).is_ok());
     assert_eq!(
-        check_fields(&["nope".to_owned()], |_| false)
+        check_fields(&["comments".to_owned()], |_| false)
             .unwrap_err()
             .to_string(),
-        "unknown field nope"
+        "unknown field comments"
     );
 }
 
