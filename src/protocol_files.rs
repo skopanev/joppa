@@ -9,20 +9,28 @@ use serde_json::{Value, json};
 pub(crate) mod put;
 
 pub fn tools() -> [Value; 2] {
-    let text = || json!({"type":"string"});
+    use super::schemas::{CURSOR, WORKSPACE, text};
     [
         super::tool(
             "joppa_attach",
-            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content (UTF-8 text), content_base64, url (an HTTPS GET of a public address) or upload: true. upload gives upload_url: PUT the raw bytes there in 15 minutes, with no token. content_type defaults to the url reply type, else application/octet-stream. check_result (pass or fail) makes the file a manual check of a criterion. valid_until (YYYY-MM-DD, UTC) ends a pass. Reuse request_id only for an identical retry. The reply gives the file with a download url, valid 15 minutes.",
-            json!({"workspace":text(),"target":text(),"filename":text(),"content_type":text(),"content":text(),"content_base64":text(),"url":text(),"upload":{"type":"boolean"},"request_id":text(),"check_result":{"type":"string","enum":["pass","fail"]},"valid_until":text()}),
+            "Attach a file of 1 byte to 50 MiB to an object. Send exactly one of content, content_base64, url or upload. The reply gives the file with a download url, valid 15 minutes.",
+            json!({"workspace":text(WORKSPACE),"target":text("object address"),"filename":text("file name"),
+                "content_type":text("default: the url type, else application/octet-stream"),
+                "content":text("UTF-8 text"),"content_base64":text("the bytes in base64"),
+                "url":text("public HTTPS address to GET"),
+                "upload":{"type":"boolean","description":"true gives upload_url: PUT the bytes there in 15 minutes"},
+                "request_id":text("the same value only for an identical retry"),
+                "check_result":{"type":"string","enum":["pass","fail"],"description":"a manual check of a criterion"},
+                "valid_until":text("YYYY-MM-DD (UTC): the end of a pass")}),
             json!(["workspace", "target", "filename"]),
         ),
         super::tool(
             "joppa_attachments",
-            "List the files of an object, newest first: id, name, content_type, size, hash, actor, created_at and a download url, valid 15 minutes. removed: true also lists the files detached in the last 14 days, with removed: true and removed_at. limit (1 to 100) gives one page and next_cursor; send it back as cursor. A reply over 256 KB is refused.",
-            json!({"workspace":text(),"target":text(),"removed":{"type":"boolean"},
-                "limit":{"type":"integer","minimum":1,"maximum":100,"description":"files in one page, 1 to 100; without it, all files"},
-                "cursor":{"type":"string","description":"next_cursor of the previous page"}}),
+            "List the files of an object, newest first, with a download url, valid 15 minutes. A reply over 256 KB is refused.",
+            json!({"workspace":text(WORKSPACE),"target":text("object address"),
+                "removed":{"type":"boolean","description":"also the files detached in the last 14 days"},
+                "limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100; without it, all files"},
+                "cursor":text(CURSOR)}),
             json!(["workspace", "target"]),
         ),
     ]

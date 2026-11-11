@@ -32,6 +32,9 @@ pub use command::*;
 #[path = "commands_operation.rs"]
 mod operation;
 pub use operation::*;
+#[path = "commands_mcp.rs"]
+mod mcp;
+pub use mcp::*;
 #[path = "commands_person.rs"]
 mod person;
 pub use person::*;

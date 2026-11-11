@@ -27,7 +27,11 @@ at most. Authentication gives the actor. A request that supplies `actor` is refu
 - Discussion and files: `note`, `withdraw_note` (author only), `attach`, `detach`.
 - Workspace (human member): `update_workspace`, `delete_workspace`, `member`, `remove_member`.
 
-HTTP and MCP refuse every other operation. The server command line also creates a workspace
+HTTP and MCP refuse every other operation. MCP also hides `reorder_tree`, `attach`,
+`redact_object`, `member`, `remove_member`, `update_workspace` and `delete_workspace`:
+`joppa_help` and the `op` enum do not name them, and `joppa_command` refuses them with
+`unknown operation` (`operation N: unknown operation` in `joppa_batch`). Send them through
+`POST /api/workspaces/{workspace}/commands`. The server command line also creates a workspace
 with `workspace {title}`. `joppa_record_results` records test outcomes. It is a tool, not an operation.
 
 - `note {target, id, text, reply_to}` adds a comment to any object.

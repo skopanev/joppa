@@ -28,8 +28,9 @@ pub(crate) const fn op(
     }
 }
 
-/// The public operation catalog. Help, the command schemas and remote admission use it.
-/// Internal, retired and CLI-only operations are absent.
+/// The public operation catalog. The admission of each remote write uses it. MCP shows only
+/// the subset of `mcp_operations` (commands_mcp.rs). Internal, retired and CLI-only
+/// operations are absent.
 pub const OPERATIONS: &[Operation] = &[
     op("set_tree_schema", &["revision", "reason"], MEMBER),
     op(
@@ -62,46 +63,6 @@ pub const OPERATIONS: &[Operation] = &[
         MEMBER,
     ),
     op("detach", &["target", "id", "reason"], MEMBER),
-];
-
-/// The optional fields of an operation with their allowed values, as help gives them.
-pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[
-    (
-        "attach",
-        &[
-            (
-                "check_result",
-                "pass or fail: a manual check of a criterion",
-            ),
-            (
-                "valid_until",
-                "YYYY-MM-DD (UTC), with check_result: the day a pass expires",
-            ),
-        ],
-    ),
-    (
-        "save_object",
-        &[(
-            "relations",
-            "{key: {title?, color?, facts?, edges: [{to, when?, revision?, color?}]}} by the keys \
-             of schema.relations: a sent key replaces its title, edges, color and facts, null \
-             removes it, other keys stay; color is a palette name or #rrggbb, facts are objects; \
-             depends_on blocks Ready, related and a flow block nothing",
-        )],
-    ),
-    (
-        "set_tree_schema",
-        &[
-            (
-                "put_relations",
-                "{key: {title, description?}}: adds a relation or replaces its texts",
-            ),
-            (
-                "remove_relations",
-                "[key]: removes a relation that no live node holds; not depends_on or related",
-            ),
-        ],
-    ),
 ];
 
 pub fn operation(name: &str) -> Option<&'static Operation> {

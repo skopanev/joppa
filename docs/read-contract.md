@@ -248,7 +248,8 @@ The tree gives `schema` with its `revision`; send it with `set_tree_schema`. The
 `current_revision`, no write header (`actor`, `at`, `position`, `reason`) and no
 `status_rules` copy: each type names its `status`. A type gives `inbox` and `root` only when
 they are `true`. `workspace_key` shows only when the request named
-an alias of the workspace. `joppa_help` with a workspace and `section: "tree"` gives the same tree.
+an alias of the workspace. `joppa_help` has no tree: `section: "tree"` is refused with
+`section tree was removed; use joppa_tree`. No reply gives `field_hint`.
 
 ## Titles and texts
 

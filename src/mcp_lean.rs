@@ -64,12 +64,6 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
     match tool {
         "joppa_search" => search(&mut reply),
         "joppa_tree" => tree(&mut reply, args),
-        "joppa_help" => {
-            if let Some(schema) = reply.get_mut("tree") {
-                drop_keys(schema, &["workspace", "position"]);
-                tree(schema, args);
-            }
-        }
         "joppa_command" | "joppa_batch" => {
             match reply.get_mut("results").and_then(Value::as_array_mut) {
                 Some(results) => results.iter_mut().for_each(write),

@@ -7,7 +7,7 @@ The type prefix keeps the local IDs of two types apart. Permanent public IDs sta
 
 1. Read the object with `joppa_objects`.
 2. Send its current `revision` with `save_object`.
-3. Read the returned revision after the write.
+3. Send the revision of the write reply with the next write of that object.
 
 Use `revision: 0` and omit `id` to create an object. The server makes the ID.
 The server checks the revision under the workspace write lock. A stale write fails.
@@ -34,9 +34,8 @@ A save of a criterion (a type with role `ac`) gives its specification a new revi
 `Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.
 Process commands keep the document fields. Only test results make a criterion green.
 
-Each type can define a `question`. Read it from `joppa_tree`, or from `joppa_help` with
-`workspace` and `section: "tree"`. The title and body of an object answer the question of its
-type. A save does not send the question, and the server does not check the answer.
+Each type can define a `question`. Read it from `joppa_tree`. The title and body of an object
+answer the question of its type. A save does not send the question, and the server does not check the answer.
 
 The workspace schema gives the types, parents, required fields, status rules and test rules.
 See [the workspace schema](schema.md).
@@ -188,8 +187,7 @@ and `note_status` filter the list. Lists give no bodies and no history.
 `address` gives one current object: `revision`, `parent`, `data`, `comments`, the
 `relations` with titled edges and the incoming `relation_groups`. `relations_of` gives the
 edges of an object in pages of 25, and `in_relation` the nodes of one relation. `revision: N` reads one saved revision. `history: true` gives the revision
-headers. Resolve a copied public ID with `joppa_search`: the reply gives that object with
-`exact_id: true`. See [read contract](read-contract.md) and [read detail](read-detail.md).
+headers. `address` also takes a copied public item ID, such as `joppa-R-DP6KXM62`. See [read contract](read-contract.md) and [read detail](read-detail.md).
 
 Open an object in the board with `/?workspace=WORKSPACE&object=ADDRESS`. Add `revision=N`
 to read one saved revision. Open a flow with `/?workspace=WORKSPACE&view=flow&relation=KEY`,

@@ -2,12 +2,12 @@
 use anyhow::{Context, bail, ensure};
 use deadpool_postgres::Pool;
 use joppa::{
-    commands::{OPERATIONS, OPTIONAL_FIELDS},
+    commands::{OPTIONAL_FIELDS, mcp_operations},
     store,
 };
 use serde_json::{Map, Value, json};
 
-/// Each section and what it gives. The sections tree and examples need a workspace.
+/// Each section and what it gives. The section examples needs a workspace.
 const SECTIONS: [(&str, &str); 6] = [
     (
         "operations",
@@ -23,18 +23,21 @@ const SECTIONS: [(&str, &str); 6] = [
         "How joppa_search finds, ranks and filters objects.",
     ),
     (
-        "tree",
-        "The tree schema of the workspace with the type questions. Needs workspace.",
+        "process",
+        "The work rules: Inbox items, Sources, the 11111 checklist, the Reviewer, Tasks and tests.",
     ),
     (
         "examples",
-        "One save_object example for each type of the workspace. Needs workspace.",
+        "One save_object example for each type of the workspace. Needs workspace; kind gives one type.",
     ),
 ];
 
 const HINT: &str = "Supply section to read one section, or op to read one operation.";
 
-/// The help that `section` or `op` names. Without them, the table of contents.
+/// The rules of the work: Inbox items, Sources, scores, Tasks and tests.
+const PROCESS_RULES: &str = include_str!("../docs/agent-process.txt");
+
+/// The help that `section`, `op` or `kind` names. Without them, the table of contents.
 pub(super) async fn help(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let text = |key: &str| match &a[key] {
         Value::Null => Ok(None),
@@ -43,23 +46,27 @@ pub(super) async fn help(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<
             .map(Some)
             .with_context(|| format!("{key} must be a string")),
     };
-    let (section, op) = (text("section")?, text("op")?);
+    let (section, op, kind) = (text("section")?, text("op")?, text("kind")?);
     ensure!(
         op.is_none() || section.is_none_or(|s| s == "operations"),
         "op reads the operations section"
     );
-    let Some(section) = section.or(op.map(|_| "operations")) else {
+    ensure!(
+        kind.is_none() || section.is_none_or(|s| s == "examples"),
+        "kind reads the examples section"
+    );
+    let implied = op.map(|_| "operations").or(kind.map(|_| "examples"));
+    let Some(section) = section.or(implied) else {
         let sections: Map<String, Value> = SECTIONS
             .iter()
             .map(|(name, text)| ((*name).to_owned(), json!(text)))
             .collect();
-        let ops: Vec<&str> = OPERATIONS.iter().map(|o| o.name).collect();
+        let ops: Vec<&str> = mcp_operations().map(|o| o.name).collect();
         return Ok(json!({"sections": sections, "ops": ops, "hint": HINT}));
     };
     let value = match section {
         "operations" => {
-            let operations: Map<String, Value> = OPERATIONS
-                .iter()
+            let operations: Map<String, Value> = mcp_operations()
                 .filter(|o| op.is_none_or(|name| name == o.name))
                 .map(|o| {
                     let mut shape = json!({"required": o.required, "callers": o.callers});
@@ -82,17 +89,18 @@ pub(super) async fn help(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<
         "writing" => json!(super::WRITING_RULES),
         "objects" => json!(include_str!("../docs/objects.md")),
         "search" => json!(include_str!("../docs/search.md")),
-        "tree" | "examples" => {
-            let workspace =
-                text("workspace")?.with_context(|| format!("section {section} needs workspace"))?;
+        "process" => json!(PROCESS_RULES),
+        "tree" => bail!("section tree was removed; use joppa_tree"),
+        "examples" => {
+            let workspace = text("workspace")?.context("section examples needs workspace")?;
             let tree = store::tree_schema(pool, workspace, actor, None).await?;
-            match section {
-                "tree" => tree,
-                _ => {
-                    let types = serde_json::from_value(tree["schema"]["types"].clone())?;
-                    joppa::save_examples::save_examples(&types)
-                }
+            let mut types: std::collections::BTreeMap<String, joppa::objects::TreeType> =
+                serde_json::from_value(tree["schema"]["types"].clone())?;
+            if let Some(kind) = kind {
+                ensure!(types.contains_key(kind), "unknown type {kind}");
+                types.retain(|name, _| name == kind);
             }
+            joppa::save_examples::save_examples(&types)
         }
         _ => bail!("unknown section {section}; read joppa_help without section for the list"),
     };
