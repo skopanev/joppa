@@ -63,12 +63,17 @@ async fn a_batch_save_of_a_requirement_accepts_the_revisions_that_its_criterion_
     ensure!(numbers == (1..=8).collect::<Vec<_>>(), "{numbers:?}");
     let five = &all[4].1;
     for (number, forced) in &all[5..7] {
-        for key in ["data", "parent", "relations", "contract"] {
+        for key in ["data", "parent", "relations", "present"] {
             ensure!(
                 forced[key] == five[key],
                 "revision {number} changes {key}: {forced} {five}"
             );
         }
+        // A forced revision keeps the contract of revision 5: [its own revision, 5].
+        ensure!(
+            forced["contract"] == json!([*number, 5]),
+            "revision {number} contract: {forced}"
+        );
     }
     let mut merged = five["data"].clone();
     merged["body"] = json!("The new rule");
@@ -100,10 +105,12 @@ async fn any_other_revision_gap_stays_stale() -> Result<()> {
         ensure!(head(&w).await? == start, "{error}: the batch appended");
         Ok(())
     };
-    // Revision 9 is a direct save of R in the same batch.
+    // Revision 9 is a direct save of R in the same batch. That save also raises the revision of
+    // its criterion A by one, so the save of A sends that next revision.
+    let next_a = stored(&w, "ac:a").await?.0 + 1;
     let first = [
         save_of(R, 8, json!({"title":"R renamed"})),
-        body(&w, "ac:a", "Given A, then A holds.").await?,
+        save_of("ac:a", next_a, json!({"body":"Given A, then A holds."})),
         save_of(R, 8, json!({"body":"The batch rule"})),
     ];
     unchanged(&first, &format!("operation 3: {STALE}")).await?;
