@@ -72,20 +72,27 @@ pub async fn read_cards(
         .read_only(true)
         .start()
         .await?;
-    let document = match needs.document {
+    // A computed reference reads the addresses in the data, so it needs the document.
+    let document = match needs.document || needs.references {
         true => format!(
             "jsonb_set(o.document,'{{data}}',{})",
             crate::computed_fields::DATA_SQL
         ),
         false => ROW_DOCUMENT.to_owned(),
     };
-    let tests = if needs.result {
-        "o.test_status::text"
-    } else {
-        "NULL::text"
+    let tests = match needs.result {
+        true => "o.test_status::text",
+        false => "NULL::text",
+    };
+    // The type of each row from the board projection: role, Inbox flag and reference rules.
+    let kind = match needs.result || needs.references || needs.inbox {
+        true => {
+            "(SELECT (b.first_view->'object_types'->o.kind)::text FROM joppa.board_cache b WHERE b.workspace=$1)"
+        }
+        false => "NULL::text",
     };
     let sql = format!(
-        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.work_ready,o.signal::text,o.process::text,o.rollup::text,{tests}
+        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.work_ready,o.signal::text,o.process::text,o.rollup::text,{tests},{kind}
         FROM unnest($2::text[]) WITH ORDINALITY k(asked,n)
         LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=k.asked
         LEFT JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,k.asked)
@@ -94,6 +101,7 @@ pub async fn read_cards(
     let rows = conn.query(&sql, &[&workspace, &addresses]).await?;
     let mut items = Vec::with_capacity(rows.len());
     let mut tests = Vec::with_capacity(rows.len());
+    let mut types = Vec::with_capacity(rows.len());
     for row in &rows {
         let address: String = row.get::<_, Option<String>>(0).context("unknown object")?;
         let parse = |i: usize, empty: Value| -> Result<Value> {
@@ -103,7 +111,7 @@ pub async fn read_cards(
             }
         };
         let mut document = parse(4, json!({}))?;
-        if needs.document {
+        if needs.document || needs.references {
             // A document stored before migration 062 reads with relations by the replay rule.
             document = crate::relations::adapt_document(document)?;
         }
@@ -115,8 +123,15 @@ pub async fn read_cards(
         // The decoration comes from the status projection of the last write.
         super::projection::apply_rollup(&mut item, &super::projection::stored(row.get(8))?);
         tests.push(super::projection::stored(row.get(9))?);
+        types.push(parse(10, Value::Null)?);
         items.push(item);
     }
-    facts::add(&conn, &workspace, actor, &mut items, &tests, needs).await?;
+    let known = facts::Known {
+        tests: &tests,
+        types: &types,
+    };
+    facts::add(&conn, &workspace, actor, &mut items, known, needs).await?;
+    // The commit ends the snapshot inside the read, so no ROLLBACK follows it later.
+    conn.commit().await?;
     Ok(items)
 }

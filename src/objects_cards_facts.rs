@@ -21,13 +21,21 @@ const GROUPS: &str = "WITH t AS (SELECT u.k AS key,u.k AS target FROM unnest($2:
     JOIN joppa.objects o ON o.workspace=l.workspace AND o.address=l.source AND o.present
     GROUP BY 1,2,3 ORDER BY 1,2,3";
 
-/// Add the facts of `needs` to `items`. `tests` holds the stored test status of each item.
+/// What the row query gave for each item besides the item itself.
+pub(super) struct Known<'a> {
+    /// The stored test status.
+    pub(super) tests: &'a [Value],
+    /// The type from the board projection, or null when no fact needs it.
+    pub(super) types: &'a [Value],
+}
+
+/// Add the facts of `needs` to `items`.
 pub(super) async fn add(
     conn: &Tx<'_>,
     workspace: &str,
     actor: &str,
     items: &mut [Value],
-    tests: &[Value],
+    known: Known<'_>,
     needs: CardNeeds,
 ) -> Result<()> {
     let keys: Vec<String> = items
@@ -57,17 +65,8 @@ pub(super) async fn add(
         let counts: BTreeMap<String, i64> = rows.iter().map(|r| (r.get(0), r.get(1))).collect();
         set_each(items, "children", |a| json!(counts.get(a).unwrap_or(&0)));
     }
-    let types = match needs.result || needs.references || needs.inbox {
-        true => {
-            let sql = "SELECT (value->'types')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1";
-            let row = conn.query_opt(sql, &[&workspace]).await?;
-            let text: Option<String> = row.and_then(|r| r.get(0));
-            serde_json::from_str(text.as_deref().unwrap_or("null"))?
-        }
-        false => Value::Null,
-    };
-    for (item, test) in items.iter_mut().zip(tests) {
-        let kind = &types[item["kind"].as_str().unwrap_or_default()];
+    let both = known.tests.iter().zip(known.types);
+    for (item, (test, kind)) in items.iter_mut().zip(both) {
         // A test node gives the deciding result of its test: status, commit and message.
         if needs.result
             && kind["role"] == crate::test_nodes::ROLE
@@ -80,7 +79,7 @@ pub(super) async fn add(
         }
     }
     if needs.references {
-        super::references::add(conn, workspace, items, &types).await?;
+        super::references::add(conn, workspace, items, known.types).await?;
     }
     if needs.remote {
         remote(conn, workspace, actor, items).await?;
@@ -105,10 +104,8 @@ async fn edges(conn: &Tx<'_>, workspace: &str, items: &mut [Value]) -> Result<()
             .filter_map(|e| e["to"].as_str().map(str::to_owned))
             .collect()
     };
+    // The query runs also without targets, so the number of statements stays fixed.
     let targets: BTreeSet<String> = items.iter().flat_map(edges).collect();
-    if targets.is_empty() {
-        return Ok(());
-    }
     let targets: Vec<String> = targets.into_iter().collect();
     let found: BTreeMap<String, Value> = conn.query("SELECT t.address,o.title,o.revision,o.present FROM unnest($2::text[]) t(address) LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=t.address JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,t.address)", &[&workspace, &targets]).await?.iter().map(|r| (r.get(0), json!({"title": r.get::<_, String>(1), "current_revision": r.get::<_, i32>(2), "present": r.get::<_, bool>(3)}))).collect();
     for item in items.iter_mut() {
