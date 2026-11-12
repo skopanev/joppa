@@ -41,22 +41,22 @@ fn names_blue(what: &str, text: &str, blue: bool) -> Result<()> {
 async fn help_and_the_guide_name_blue_and_not_grey() -> Result<()> {
     let w = record_world::world(&[]).await?;
     let mut help = String::new();
-    let sections = [
-        "operations",
-        "writing",
-        "objects",
-        "search",
-        "tree",
-        "examples",
-    ];
+    // The section tree is gone (joppa_tree reads the schema), and examples need the workspace.
+    let sections = ["operations", "writing", "objects", "search", "process"];
     let mut args: Vec<Value> = vec![json!({})];
     args.extend(sections.iter().map(|s| json!({"section":s})));
+    args.push(json!({"section":"examples","workspace":w.ws}));
     for a in args {
         let reply = w.mcp(&w.bot, "joppa_help", a.clone()).await?;
         let reply = reply.map_err(|e| anyhow::anyhow!("joppa_help {a}: {e}"))?;
         names_blue(&format!("joppa_help {a}"), &reply.to_string(), false)?;
         help.push_str(&reply.to_string());
     }
+    // The schema read, which the section tree once repeated, names no grey either.
+    let tree = w.mcp(&w.bot, "joppa_tree", json!({})).await?;
+    let tree = tree.map_err(|e| anyhow::anyhow!("joppa_tree: {e}"))?;
+    names_blue("joppa_tree", &tree.to_string(), false)?;
+    help.push_str(&tree.to_string());
     names_blue("joppa_help", &help, true)?;
     let guide = w.http.get(format!("{}/guide", w.root)).send().await?;
     ensure!(

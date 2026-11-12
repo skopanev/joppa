@@ -232,9 +232,7 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
                 .await?
             };
             ensure!(saved["object"]["revision"] == revision + 1, "{saved}");
-            // Only the HTTP save (revision 0) of observation gives object.question. An MCP
-            // save receipt echoes no question.
-            if kind == "observation" && revision == 0 {
+            if kind == "observation" {
                 ensure!(saved["object"]["question"] == question, "{saved}");
             } else {
                 ensure!(saved["object"].get("question").is_none(), "{saved}");
