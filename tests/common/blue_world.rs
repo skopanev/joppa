@@ -122,12 +122,16 @@ pub async fn old_schema(w: &World, ws: &str, change: Value) -> Result<u64> {
     Ok(revision + 1)
 }
 
-/// The statuses of the tree of `ws` (at schema revision `revision`) as the owner reads it.
+/// The statuses of the tree of `ws` (at schema revision `revision`) as the owner reads it in
+/// GET /api/workspaces/{ws}/tree. The MCP joppa_tree gives no statuses (ac:bwc9qvme).
 pub async fn statuses(w: &World, ws: &str, revision: Option<u64>) -> Result<Value> {
-    let args = revision.map_or(json!({}), |r| json!({"revision":r}));
-    let tree = mcp_in(w, &w.owner, ws, "joppa_tree", args).await?;
-    let tree = tree.map_err(anyhow::Error::msg)?;
-    no_grey(&format!("joppa_tree of {ws}"), &tree)?;
+    let query = revision.map_or(String::new(), |r| format!("?revision={r}"));
+    let url = format!("{}/api/workspaces/{ws}/tree{query}", w.root);
+    let reply = w.http.get(url).bearer_auth(&w.owner).send().await?;
+    let code = reply.status();
+    let tree: Value = reply.json().await?;
+    ensure!(code.is_success(), "GET tree of {ws}{query}: {code} {tree}");
+    no_grey(&format!("GET tree of {ws}"), &tree)?;
     Ok(tree["schema"]["statuses"].clone())
 }
 

@@ -56,47 +56,54 @@ async fn page(w: &World, filter: Value, cursor: Option<&str>) -> Result<Value> {
         .send()
         .await?;
     let http: Value = reply.error_for_status()?.json().await?;
-    // MCP may leave out the key of a filter, such as direction, but never relation.
-    let keys = |v: &Value| -> Vec<(Value, Value)> {
-        let items = v["items"].as_array().into_iter().flatten();
-        items
-            .map(|i| (i["relation"].clone(), i["address"].clone()))
-            .collect()
-    };
-    ensure!(
-        keys(&mcp) == keys(&http) && mcp["total"] == http["total"],
-        "{mcp}\n{http}"
-    );
-    for (name, reply) in [("MCP", &mcp), ("HTTP", &http)] {
-        for item in reply["items"].as_array().into_iter().flatten() {
-            let mut required = vec!["address", "relation"];
-            if name == "HTTP" || filter == json!({}) {
-                required.extend(["title", "kind", "direction"]);
-            }
-            if name == "HTTP" {
-                required.push("present");
-            }
-            let allowed = [
-                "address",
-                "title",
-                "kind",
-                "relation",
-                "direction",
-                "when",
-                "revision",
-                "present",
-            ];
-            let map = item.as_object().cloned().unwrap_or_default();
-            ensure!(
-                required.iter().all(|k| map.contains_key(*k)),
-                "{name}: {item}"
-            );
-            ensure!(
-                map.keys().all(|k| allowed.contains(&k.as_str())),
-                "{name}: {item}"
-            );
-        }
+    ensure!(mcp["total"] == http["total"], "{mcp}\n{http}");
+    // An HTTP item is {address, title, kind, relation, direction, when?, revision?, present}.
+    let allowed = [
+        "address",
+        "title",
+        "kind",
+        "relation",
+        "direction",
+        "when",
+        "revision",
+        "present",
+    ];
+    let required = [
+        "address",
+        "title",
+        "kind",
+        "relation",
+        "direction",
+        "present",
+    ];
+    let items = |v: &Value| v["items"].as_array().cloned().unwrap_or_default();
+    for item in items(&http) {
+        let map = item.as_object().cloned().unwrap_or_default();
+        ensure!(
+            required.iter().all(|k| map.contains_key(*k))
+                && map.keys().all(|k| allowed.contains(&k.as_str())),
+            "HTTP: {item}"
+        );
     }
+    // An MCP item has the same keys, without present: true and without the relation,
+    // direction or kind that the request filters on.
+    let wanted: Vec<Value> = items(&http)
+        .into_iter()
+        .map(|mut item| {
+            if let Some(map) = item.as_object_mut() {
+                if map.get("present") == Some(&json!(true)) {
+                    map.remove("present");
+                }
+                for key in ["relation", "direction", "kind"] {
+                    if filter.get(key).is_some() {
+                        map.remove(key);
+                    }
+                }
+            }
+            item
+        })
+        .collect();
+    ensure!(items(&mcp) == wanted, "MCP: {mcp}\nHTTP: {http}");
     Ok(http)
 }
 
@@ -184,5 +191,21 @@ async fn relations_of_pages_the_edges_by_25_with_a_stable_cursor() -> Result<()>
         .flatten()
         .all(|i| i["kind"] == "ac");
     ensure!(kinds && found == ["ac:i1", "ac:i2", "ac:s3"], "{ac}");
+    // MCP with fields ["title"] gives only the address and the title of each item of the
+    // current first page.
+    let now = page(&w, json!({}), None).await?;
+    let args = json!({"relations_of":"doc:a","limit":25,"fields":["title"]});
+    let titled = w.mcp(&w.bot, "joppa_objects", args).await?.map_err(msg)?;
+    let list = titled["items"].as_array().cloned().unwrap_or_default();
+    let shown: Vec<Value> = now["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|i| json!({"address":i["address"],"title":i["title"]}))
+        .collect();
+    ensure!(
+        list == shown && titled["total"] == 36,
+        "fields title: {titled}"
+    );
     Ok(())
 }

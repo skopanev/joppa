@@ -18,6 +18,7 @@ fn older_list(light: &str, dark: &str) -> Value {
 
 // ac:17ses87u
 // test:lst7mjh6
+// Each list reads GET /api/workspaces/{w}/tree: the MCP joppa_tree gives no statuses.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn the_stored_status_lists_give_blue() -> Result<()> {
@@ -74,6 +75,7 @@ async fn the_stored_status_lists_give_blue() -> Result<()> {
 
 // ac:yvzerac1
 // test:bqa6eth5
+// The stored list reads GET /api/workspaces/W/tree: the MCP joppa_tree gives no statuses.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_live_schema_write_refuses_the_tone_grey() -> Result<()> {

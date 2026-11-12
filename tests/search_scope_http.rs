@@ -125,7 +125,20 @@ async fn search(
             map.remove("workspace");
         }
     }
-    let compact = joppa::mcp_lean::lean("joppa_search", &json!({}), compact);
+    let mut compact = joppa::mcp_lean::lean("joppa_search", &json!({}), compact);
+    // An MCP hit has no score (ac:h0wbjo1a). The HTTP hit keeps it.
+    for item in compact["items"].as_array_mut().into_iter().flatten() {
+        item.as_object_mut().context("item")?.remove("score");
+    }
+    let scored = |reply: &Value| {
+        reply["items"]
+            .as_array()
+            .is_some_and(|i| i.iter().any(|i| i.get("score").is_some()))
+    };
+    ensure!(
+        !scored(&tool) && !scored(&cli),
+        "an MCP hit gives score: {tool}"
+    );
     ensure!(
         compact["items"] == tool["items"] && tool["items"] == cli["items"],
         "HTTP, MCP and CLI disagree:\n{http}\n{tool}\n{cli}"

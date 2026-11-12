@@ -38,6 +38,8 @@ fn row(test: &str, status: &str, message: Option<&str>) -> (String, String, Opti
     (test.into(), status.into(), message.map(Into::into))
 }
 
+// ac:no-manual-pass-ac1
+// ac:agent-clarity-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
@@ -86,11 +88,12 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
             && entry["position"] == reply["position"],
         "{entry} {reply}"
     );
+    // An MCP at has whole seconds (ac:jkvdy2jl), so it can be before t0 in the same second.
     let at = entry["at"].as_str().unwrap_or_default();
     let conn = w.pool.get().await?;
     let inside: bool = conn
         .query_one(
-            "SELECT $1::text::timestamptz BETWEEN $2::text::timestamptz AND $3::text::timestamptz",
+            "SELECT $1::text::timestamptz BETWEEN date_trunc('second',$2::text::timestamptz) AND $3::text::timestamptz",
             &[&at, &t0, &t1],
         )
         .await?

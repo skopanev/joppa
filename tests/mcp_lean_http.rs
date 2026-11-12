@@ -91,18 +91,18 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
         absent(&headers, &ECHOES) && headers["items"][0]["actor"] == "bot",
         "{headers}"
     );
-    // A relations_of item always gives its relation and its presence, and never blocking.
+    // A relations_of item without a relation filter gives its relation, and no present: true
+    // and no blocking.
     let edges = read(&w, "joppa_objects", json!({"relations_of":"requirement:r"})).await?;
     let edge = &edges["items"][0];
     ensure!(
         absent(&edges, &ECHOES)
             && edge["address"] == "requirement:s"
             && edge["relation"] == "related"
-            && edge["present"] == true
-            && absent(edge, &["blocking"]),
+            && absent(edge, &["present", "blocking"]),
         "{edges}"
     );
-    // A search hit names its address and gives the clean text of the object.
+    // A search hit names its address, gives the clean text of the object and no score.
     let search = read(&w, "joppa_search", json!({"query":"Second rule"})).await?;
     let hit = &search["items"][0];
     ensure!(
@@ -110,7 +110,10 @@ async fn each_mcp_reply_gives_no_echo_and_no_default_value() -> Result<()> {
             && absent(&search, &["embedded", "indexed", "mode", "semantic_status"])
             && hit["address"] == "requirement:s"
             && hit["excerpt"] == "Second rule"
-            && absent(hit, &["kind", "id", "archived", "historical", "exact_id"]),
+            && absent(
+                hit,
+                &["kind", "id", "archived", "historical", "exact_id", "score"]
+            ),
         "{search}"
     );
     // History gives no default flag and no echo.
