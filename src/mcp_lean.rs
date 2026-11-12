@@ -71,9 +71,14 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
             }
             drop_value(&mut reply, &["replayed"], &json!(false));
         }
-        "joppa_attach" | "joppa_record_results" => {
+        "joppa_attach" => drop_value(&mut reply, &["replayed"], &json!(false)),
+        // A record gives no commit and no actor; `unbound` stays, also when it is empty.
+        "joppa_record_results" => {
             drop_value(&mut reply, &["replayed"], &json!(false));
+            drop_keys(&mut reply, &["commit", "actor"]);
         }
+        // A mark keeps its alias and nodes, and gives no reason (ac:flg87alq).
+        "joppa_history_mark" => drop_keys(&mut reply, &["reason"]),
         _ => {}
     }
     reply
@@ -176,6 +181,27 @@ mod reply_ceiling {
         // One object has no items and comes in full.
         let object = json!({"data": {"body": "x".repeat(REPLY_MAX)}});
         assert!(text(&object).is_ok_and(|t| t.len() > REPLY_MAX));
+    }
+
+    // ac:flg87alq, ac:read-mcp-echoes
+    #[test]
+    fn a_record_and_a_mark_reply_echo_no_commit_actor_or_reason() {
+        let record = json!({"record":7,"commit":"a".repeat(40),"tests":1,"replayed":false,
+            "actor":"bot","position":12,"unbound":[]});
+        let reply = lean("joppa_record_results", &json!({}), record);
+        let lean_record = json!({"record":7,"tests":1,"position":12,"unbound":[]});
+        assert_eq!(reply, lean_record);
+        let retry = json!({"record":7,"commit":"a","tests":1,"replayed":true,"actor":"bot",
+            "position":13,"unbound":[]});
+        let reply = lean("joppa_record_results", &json!({}), retry);
+        let replayed = json!({"record":7,"tests":1,"replayed":true,"position":13,"unbound":[]});
+        assert_eq!(reply, replayed);
+        let mark = json!({"position":5,"status":"processed","actor":"bot","at":"t",
+            "reason":"Read","nodes":["task:t"],"alias":"p5"});
+        let reply = lean("joppa_history_mark", &json!({"reason":"Read"}), mark);
+        let kept = json!({"position":5,"status":"processed","actor":"bot","at":"t",
+            "nodes":["task:t"],"alias":"p5"});
+        assert_eq!(reply, kept);
     }
 
     #[test]

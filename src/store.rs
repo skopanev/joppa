@@ -173,7 +173,7 @@ mod write;
 mod writer;
 pub use write::{
     BatchOperation, check_fields, enroll_service, execute, execute_batch, execute_input,
-    execute_remote_batch, execute_remote_input, save_dependency,
+    execute_mcp, execute_remote_batch, execute_remote_input, save_dependency,
 };
 #[path = "store_summaries.rs"]
 mod requirement_summaries;

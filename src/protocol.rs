@@ -126,14 +126,12 @@ async fn call(
             joppa::commands::mcp_admit([&a["command"]], false)?;
             let mut command = a["command"].clone();
             keep_ui_fields(pool, actor, a, [&mut command]).await?;
-            store::execute_remote_input(
-                pool,
-                field("workspace")?,
-                actor,
-                field("request_id")?,
-                &command,
-            )
-            .await
+            let operation = store::BatchOperation {
+                reference: None,
+                command,
+            };
+            let (workspace, request) = (field("workspace")?, field("request_id")?);
+            store::execute_mcp(pool, workspace, actor, request, &[operation], false).await
         }
         "joppa_batch" => {
             joppa::commands::reject_actor_field(a)?;
@@ -151,14 +149,8 @@ async fn call(
             keep_ui_fields(pool, actor, a, commands).await?;
             let operations: Vec<store::BatchOperation> = serde_json::from_value(operations)?;
             joppa::commands::mcp_admit(operations.iter().map(|o| &o.command), true)?;
-            store::execute_remote_batch(
-                pool,
-                field("workspace")?,
-                actor,
-                field("request_id")?,
-                &operations,
-            )
-            .await
+            let (workspace, request) = (field("workspace")?, field("request_id")?);
+            store::execute_mcp(pool, workspace, actor, request, &operations, true).await
         }
         "joppa_help" => help::help(pool, actor, a).await,
         "joppa_tasks" => anyhow::bail!(

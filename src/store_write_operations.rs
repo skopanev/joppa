@@ -1,6 +1,9 @@
-//! Part of `store_write`: the write of one request, moved from store_write.rs unchanged.
+//! Part of `store_write`: the write of one request.
 use super::*;
 
+/// The write of one request. `mcp` gives the lean MCP receipt (tac:661jb0ex): no `summary`,
+/// no `system_ids` and no type question. The receipt row stores that reply, so a retry gives it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn write(
     pool: &Pool,
     workspace: &str,
@@ -9,6 +12,7 @@ pub(crate) async fn write(
     operations: &[BatchOperation],
     batch: bool,
     allow_workspace_create: bool,
+    mcp: bool,
 ) -> Result<Value> {
     commands::identifier(workspace)?;
     commands::identifier(request_id)?;
@@ -123,7 +127,7 @@ pub(crate) async fn write(
                 let mut saved = json!({"address":address,"revision":revision});
                 // The current revision of the parent, for a child write that pins it.
                 if let Some(parent)=current.parent.as_deref().and_then(|p| state.objects.get(crate::objects::resolve_address(&state,p))) { saved["parent_revision"]=json!(parent.current().revision); }
-                if let Command::SaveObject(crate::commands::SaveObjectOp { kind, .. }) = &command
+                if !mcp && let Command::SaveObject(crate::commands::SaveObjectOp { kind, .. }) = &command
                     && let Some(question) = crate::objects::schema(&state).types[kind].question.as_ref() {
                     saved["question"] = json!(question);
                 }
@@ -134,7 +138,13 @@ pub(crate) async fn write(
                 Some(saved)
             }else{None};
             if let Some(name) = &operation.reference { refs.insert(name.clone(), resolved); }
-            Ok::<_, anyhow::Error>(json!({"position":position,"command":command,"object":saved,"system_ids":item_ids(&*tx,&workspace,&state,&command).await?}))
+            let mut result = json!({"position":position,"command":command,"object":saved});
+            if mcp {
+                register(&*tx, &workspace, &state, &command).await?;
+            } else {
+                result["system_ids"] = item_ids(&*tx, &workspace, &state, &command).await?;
+            }
+            Ok::<_, anyhow::Error>(result)
         }.await;
         let apply = if batch {
             apply.with_context(|| format!("operation {}", index + 1))
@@ -163,7 +173,9 @@ pub(crate) async fn write(
         results.remove(0)
     };
     result["replayed"] = json!(false);
-    result["summary"] = state_rows::changed_summaries(&state, selected.as_ref());
+    if !mcp {
+        result["summary"] = state_rows::changed_summaries(&state, selected.as_ref());
+    }
     tx.execute("INSERT INTO joppa.command_receipts(workspace,request_id,actor,input,result) VALUES($1,$2,$3,$4::text::jsonb,$5::text::jsonb)", &[&workspace,&request_id,&actor,&input.to_string(),&result.to_string()]).await?;
     if base_position == 0 {
         tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;

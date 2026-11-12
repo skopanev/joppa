@@ -96,6 +96,7 @@ pub async fn execute_input(
         }],
         false,
         true,
+        false,
     )
     .await
 }
@@ -120,6 +121,23 @@ pub async fn execute_remote_input(
         }],
         false,
         false,
+        false,
+    )
+    .await
+}
+
+/// A joppa_command or joppa_batch write: the lean MCP receipt without `summary`,
+/// `system_ids` and the type question (tac:661jb0ex). HTTP keeps execute_remote_input.
+pub async fn execute_mcp(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    request_id: &str,
+    operations: &[BatchOperation],
+    batch: bool,
+) -> Result<Value> {
+    write(
+        pool, workspace, actor, request_id, operations, batch, false, true,
     )
     .await
 }
@@ -193,7 +211,10 @@ pub async fn execute_batch(
     request_id: &str,
     operations: &[BatchOperation],
 ) -> Result<Value> {
-    write(pool, workspace, actor, request_id, operations, true, true).await
+    write(
+        pool, workspace, actor, request_id, operations, true, true, false,
+    )
+    .await
 }
 
 pub async fn execute_remote_batch(
@@ -203,5 +224,8 @@ pub async fn execute_remote_batch(
     request_id: &str,
     operations: &[BatchOperation],
 ) -> Result<Value> {
-    write(pool, workspace, actor, request_id, operations, true, false).await
+    write(
+        pool, workspace, actor, request_id, operations, true, false, false,
+    )
+    .await
 }

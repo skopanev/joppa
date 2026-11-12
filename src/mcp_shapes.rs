@@ -11,7 +11,9 @@ fn remove(value: &mut Value, keys: &[&str]) {
 }
 
 /// joppa_command and joppa_batch: no changed-object summaries and no public IDs. A schema
-/// write gives the new schema revision, not the type map that the caller sent.
+/// write gives the new schema revision, not the type map or the reason that the caller sent.
+/// A note gives no text, and set_remote_links gives no links (ac:flg87alq). A receipt stored
+/// before the MCP write flag can still hold `summary` and `system_ids`.
 pub fn write(mut reply: Value) -> Value {
     remove(&mut reply, &["summary", "system_ids"]);
     match reply.get_mut("results").and_then(Value::as_array_mut) {
@@ -24,12 +26,18 @@ pub fn write(mut reply: Value) -> Value {
 fn operation(result: &mut Value) {
     remove(result, &["system_ids"]);
     let command = &result["command"];
-    if command["op"] == "set_tree_schema"
-        && let Some(revision) = command["revision"].as_u64()
-    {
-        result["command"] =
-            json!({"op":"set_tree_schema","revision":revision,"reason":command["reason"]});
-        result["schema_revision"] = json!(revision + 1);
+    match command["op"].as_str() {
+        Some("set_tree_schema") => {
+            if let Some(revision) = command["revision"].as_u64() {
+                result["command"] = json!({"op":"set_tree_schema","revision":revision});
+                result["schema_revision"] = json!(revision + 1);
+            }
+        }
+        Some("note") => {
+            result["command"] = json!({"op":"note","target":command["target"],"id":command["id"]});
+        }
+        Some("set_remote_links") => remove(&mut result["command"], &["links"]),
+        _ => {}
     }
 }
 
@@ -144,15 +152,30 @@ mod tests {
         assert_eq!(
             reply,
             json!({"position":9,"replayed":false,"schema_revision":20,
-                "command":{"op":"set_tree_schema","revision":19,"reason":"R"}})
+                "command":{"op":"set_tree_schema","revision":19}})
         );
         let batch = write(
-            json!({"results":[{"position":1,"system_ids":{"x":1},"command":{"op":"note"}}],"summary":{}}),
+            json!({"results":[{"position":1,"system_ids":{"x":1},"command":{"op":"archive_object"}}],"summary":{}}),
         );
         assert_eq!(
             batch,
-            json!({"results":[{"position":1,"command":{"op":"note"}}]})
+            json!({"results":[{"position":1,"command":{"op":"archive_object"}}]})
         );
+    }
+
+    // ac:flg87alq
+    #[test]
+    fn a_note_and_a_remote_links_receipt_echo_no_text_and_no_links() {
+        let note =
+            json!({"op":"note","target":"ac:a","id":"c1","text":"Long finding","reply_to":null});
+        let reply = write(json!({"position":3,"command":note,"object":null}));
+        let command = json!({"op":"note","target":"ac:a","id":"c1"});
+        assert_eq!(reply, json!({"position":3,"command":command,"object":null}));
+        let links = json!({"op":"set_remote_links","target":"ac:a","revision":0,
+            "links":[{"to":"ac:x"}],"reason":"Link"});
+        let reply = write(json!({"results":[{"position":4,"command":links}]}));
+        let command = json!({"op":"set_remote_links","target":"ac:a","revision":0,"reason":"Link"});
+        assert_eq!(reply, json!({"results":[{"position":4,"command":command}]}));
     }
 
     #[test]
