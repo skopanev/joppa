@@ -114,7 +114,7 @@ async fn migration_063_moves_the_stored_tones_without_a_replay() -> Result<()> {
     ensure!(snapshot(&w, &KEPT).await? == before, "{kept}");
     let (board, status) = versions(&w).await?;
     ensure!(
-        board.as_deref() == Some("22") && status.as_deref() == Some("12"),
+        board.as_deref() == Some("22") && status.as_deref() == Some("13"),
         "projection versions {board:?} {status:?}"
     );
     // The stored schema revision of the older list reads blue with the new pair.
