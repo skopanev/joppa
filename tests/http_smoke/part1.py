@@ -110,7 +110,9 @@ for request_id in ('create','guessed-request'):
 assert command({'op':'enroll_member','id':'other-owner'})[0] == 409
 retry = str(uuid.uuid4())
 c = {'op': 'note', 'target':'requirement:key', 'id': 'hello', 'text': 'Hello'}
-assert command(c, request_id=retry)[0] == 200
+# ac:flg87alq: the HTTP note receipt keeps the text.
+status, body = command(c, request_id=retry)
+assert status == 200 and body['command']['text'] == 'Hello', body
 assert command(c, request_id=retry)[1]['replayed'] is True
 # Remote MCP notifications return 202 without a JSON-RPC response.
 assert request('/mcp', {'jsonrpc':'2.0','method':'notifications/initialized'})[0] == 202
@@ -142,6 +144,8 @@ common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':N
           'data':{'title':'Source note','owner':'owner','body':'Original text'},
           'relations':{'related':{'edges':[{'to':'domain:security'}]}},'reason':'Record new information'}
 created = mcp('joppa_command', {'workspace':ws,'request_id':'common-note','command':common})
+# tac:661jb0ex: an MCP write gives no summary and no system_ids.
+assert not {'summary','system_ids'} & created.keys(), created
 common.update(revision=1, data={**common['data'],'body':'Updated text'})
 mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})
 old = mcp('joppa_objects', {'workspace':ws,'address':'note:source','revision':1})
