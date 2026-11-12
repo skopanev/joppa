@@ -111,7 +111,7 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
                 "note":"Recorded by the suite"}}),
         ),
         ("finish", json!({"op":"finish","req":"r","revision":1,"run":"r1"})),
-        // A depends_on edge to a criterion: its evidence decides readiness.
+        // A depends_on edge to a criterion.
         (
             "note waits for a criterion",
             json!({"op":"save_object","kind":"note","id":"waiting","revision":0,"parent":null,

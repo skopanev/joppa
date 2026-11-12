@@ -10,7 +10,7 @@ pub(in crate::store) async fn project(
 ) -> Result<()> {
     // Read each current projection once. History rows never change after insertion.
     let existing: std::collections::BTreeMap<String, Value> = client
-        .query("SELECT address,jsonb_build_object('address',address,'kind',kind,'local_id',local_id,'revision',revision,'parent',parent,'present',present,'title',title,'owner',owner,'description',description,'document_at',document_at,'inbox_status',inbox_status,'document',document,'work_ready',work_ready,'signal',signal,'process',process)::text FROM joppa.objects WHERE workspace=$1 AND ($2::text[] IS NULL OR address=ANY($2))", &[&workspace,&selected.map(|s|s.iter().cloned().collect::<Vec<_>>())])
+        .query("SELECT address,jsonb_build_object('address',address,'kind',kind,'local_id',local_id,'revision',revision,'parent',parent,'present',present,'title',title,'owner',owner,'description',description,'document_at',document_at,'inbox_status',inbox_status,'document',document,'signal',signal,'process',process)::text FROM joppa.objects WHERE workspace=$1 AND ($2::text[] IS NULL OR address=ANY($2))", &[&workspace,&selected.map(|s|s.iter().cloned().collect::<Vec<_>>())])
         .await?.iter().map(|row| Ok((row.get(0),serde_json::from_str(row.get(1))?)))
         .collect::<Result<_>>()?;
     let prefix = state.reference_prefix.as_deref().unwrap_or(workspace);
@@ -100,7 +100,7 @@ pub(in crate::store) async fn project(
         } else {
             crate::relations::stored_document(r)?
         };
-        let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"work_ready":objects::work_ready(state,address),"signal":signal,"process":objects::process(state,address)});
+        let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"signal":signal,"process":objects::process(state,address)});
         if previous != Some(&doc) {
             docs.push(doc);
         }
@@ -139,7 +139,7 @@ pub(in crate::store) async fn project(
         }
     }
     if !docs.is_empty() {
-        client.execute("INSERT INTO joppa.objects(workspace,address,kind,local_id,revision,parent,present,title,owner,description,document_at,inbox_status,document,work_ready,signal,process) SELECT $1,x.address,x.kind,x.local_id,x.revision,x.parent,x.present,x.title,x.owner,x.description,x.document_at,x.inbox_status,x.document,x.work_ready,x.signal,x.process FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,kind text,local_id text,revision integer,parent text,present boolean,title text,owner text,description text,document_at text,inbox_status text,document jsonb,work_ready boolean,signal jsonb,process jsonb) ON CONFLICT(workspace,address) DO UPDATE SET revision=EXCLUDED.revision,parent=EXCLUDED.parent,present=EXCLUDED.present,title=EXCLUDED.title,owner=EXCLUDED.owner,description=EXCLUDED.description,document_at=EXCLUDED.document_at,inbox_status=EXCLUDED.inbox_status,document=EXCLUDED.document,work_ready=EXCLUDED.work_ready,signal=EXCLUDED.signal,process=EXCLUDED.process", &[&workspace,&json!(docs).to_string()]).await?;
+        client.execute("INSERT INTO joppa.objects(workspace,address,kind,local_id,revision,parent,present,title,owner,description,document_at,inbox_status,document,signal,process) SELECT $1,x.address,x.kind,x.local_id,x.revision,x.parent,x.present,x.title,x.owner,x.description,x.document_at,x.inbox_status,x.document,x.signal,x.process FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,kind text,local_id text,revision integer,parent text,present boolean,title text,owner text,description text,document_at text,inbox_status text,document jsonb,signal jsonb,process jsonb) ON CONFLICT(workspace,address) DO UPDATE SET revision=EXCLUDED.revision,parent=EXCLUDED.parent,present=EXCLUDED.present,title=EXCLUDED.title,owner=EXCLUDED.owner,description=EXCLUDED.description,document_at=EXCLUDED.document_at,inbox_status=EXCLUDED.inbox_status,document=EXCLUDED.document,signal=EXCLUDED.signal,process=EXCLUDED.process", &[&workspace,&json!(docs).to_string()]).await?;
     }
     if !redactions.is_empty() {
         // A redaction only removes text, so the field length rule of migration 037 skips it.

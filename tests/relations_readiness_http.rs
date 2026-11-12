@@ -1,5 +1,5 @@
-//! requirement:q438uw0s over a real server: depends_on blocks Ready and refuses cycles, a flow
-//! blocks nothing, and related_to lists only the depends_on and related neighbours.
+//! requirement:q438uw0s over a real server: depends_on refuses cycles, a flow allows them, and
+//! related_to lists only the depends_on and related neighbours.
 #[path = "common/record_world.rs"]
 mod record_world;
 #[path = "common/relations_world.rs"]
@@ -22,11 +22,6 @@ async fn listed(w: &World, filters: Value) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The tasks that joppa_objects lists with ready `ready`.
-async fn tasks(w: &World, ready: bool) -> Result<Vec<String>> {
-    listed(w, json!({"kind":"task","ready":ready,"limit":25})).await
-}
-
 /// One edge of `relation` to `target`.
 fn edge(relation: &str, target: &str) -> Value {
     json!({"relations":{relation:{"edges":[{"to":target}]}}})
@@ -36,7 +31,7 @@ fn edge(relation: &str, target: &str) -> Value {
 // test:0n3j3bb7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn depends_on_blocks_ready_and_refuses_cycles() -> Result<()> {
+async fn depends_on_refuses_cycles() -> Result<()> {
     // C is criterion A: it lists a test without a result, so it is blue.
     let w = relations_world::world(&["tests/c.rs > c"]).await?;
     let blue = relations_world::tone(&w, A).await?;
@@ -45,14 +40,10 @@ async fn depends_on_blocks_ready_and_refuses_cycles() -> Result<()> {
     saved(&w, "task:t1", 0, parent.clone()).await?;
     saved(&w, "task:t2", 0, parent).await?;
     change(&w, "task:t1", edge("depends_on", A)).await?;
-    let t1 = w.object("task:t1").await?;
-    ensure!(t1["waits_for"]["address"] == A, "{t1}");
-    ensure!(tasks(&w, false).await? == ["task:t1"], "T1 is not ready");
     let revision = relations_world::stored(&w, A).await?.0;
     let cycle = relations_world::save(&w, A, revision, edge("depends_on", "task:t1")).await?;
     refused(cycle, "dependency cycle")?;
     change(&w, "task:t2", edge("related", A)).await?;
-    ensure!(tasks(&w, true).await? == ["task:t2"], "T2 stays ready");
     Ok(())
 }
 
@@ -77,13 +68,7 @@ async fn a_flow_allows_cycles_and_blocks_nothing() -> Result<()> {
         };
         let stored = relations_world::edges(&read, "swap");
         ensure!(stored == [relations_world::to(other)], "{read}");
-        ensure!(read.get("waits_for").is_none(), "{read}");
     }
-    ensure!(
-        tasks(&w, true).await? == ["task:t1", "task:t2"],
-        "both stay ready"
-    );
-    ensure!(tasks(&w, false).await?.is_empty(), "no task waits");
     Ok(())
 }
 

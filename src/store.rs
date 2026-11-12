@@ -42,8 +42,6 @@ mod record_report;
 pub(crate) mod remote;
 #[path = "store_remote_status.rs"]
 pub(crate) mod remote_status;
-#[path = "store_waits.rs"]
-mod waits;
 pub(crate) use head::head;
 #[path = "store_history.rs"]
 mod history;
@@ -68,7 +66,7 @@ pub use manual_check_run::{expire_manual_checks, manual_check_loop};
 mod migrations;
 use migrations::ensure_notes;
 
-/// A change of objects::work_ready, objects::process or objects::signal must raise this
+/// A change of objects::process or objects::signal must raise this
 /// version, so backfill_board reprojects every workspace at serve start. A raise replays every
 /// journal: time `joppa migrate` on a copy of production first (server/README.md). A change of
 /// the first_view shape needs no raise: a targeted SQL pass, such as migration 061, moves it.

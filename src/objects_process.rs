@@ -7,7 +7,7 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
     let mut blocked = false;
     for ac in &r.acs {
         let key = criterion_address(&ac.id);
-        if !w.objects.is_empty() && !work_ready(w, &key) {
+        if !w.objects.is_empty() && !present_in_tree(w, &key) {
             summary["acs"][&ac.id]["verification"] = json!("n/a");
             blocked = true;
         }
@@ -20,7 +20,7 @@ pub fn requirement_summary(w: &Workspace, req: &str, r: &Revision) -> Value {
                 .is_none_or(|o| o.current().present)
         });
     }
-    if blocked || !w.objects.is_empty() && !work_ready(w, &requirement_address(req)) {
+    if blocked || !w.objects.is_empty() && !present_in_tree(w, &requirement_address(req)) {
         summary["verified"] = json!(false);
     }
     summary
@@ -52,8 +52,6 @@ pub fn signal(w: &Workspace, key: &str) -> Value {
     let p = process(w, key);
     let (tone, label) = if !o.current().present {
         ("blue", "Archived")
-    } else if !work_ready(w, key) {
-        ("yellow", "Dependency is not ready")
     } else if p["status"] == "processed" {
         ("blue", "Input processed")
     } else if p["status"] == "unprocessed" {

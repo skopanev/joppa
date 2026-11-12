@@ -3,22 +3,20 @@
 use super::*;
 use joppa::probe;
 
-/// STATUS, ROLLUP, WAITS, WAIT_READS and REBUILD.
-pub fn counts() -> [u64; 6] {
+/// STATUS, ROLLUP, REBUILD and DELTA.
+pub fn counts() -> [u64; 4] {
     [
         &probe::STATUS,
         &probe::ROLLUP,
-        &probe::WAITS,
-        &probe::WAIT_READS,
         &probe::REBUILD,
         &probe::DELTA,
     ]
     .map(probe::read)
 }
 
-pub fn delta(before: [u64; 6]) -> [u64; 6] {
+pub fn delta(before: [u64; 4]) -> [u64; 4] {
     let after = counts();
-    [0, 1, 2, 3, 4, 5].map(|i| after[i] - before[i])
+    [0, 1, 2, 3].map(|i| after[i] - before[i])
 }
 
 /// Every reader that the board, the tests view and the agents use.
@@ -40,7 +38,7 @@ pub async fn reads(pool: &deadpool_postgres::Pool) -> Vec<Result<Value>> {
         },
         store::ObjectScope {
             filter: joppa::node_filter::NodeFilter::parse(
-                &serde_json::json!({"kind":"task","ready":true}),
+                &serde_json::json!({"kind":"task","assignee":""}),
             )
             .unwrap(),
             ..Default::default()

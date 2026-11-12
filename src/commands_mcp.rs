@@ -69,7 +69,7 @@ pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[
                 "{key: {title?, color?, facts?, edges: [{to, when?, revision?, color?}]}} by the \
                  keys of schema.relations: a sent key replaces its title, edges, color and facts, \
                  null removes it, other keys stay; color is a palette name or #rrggbb, facts are \
-                 objects; depends_on blocks Ready, related and a flow block nothing",
+                 objects; depends_on refuses a cycle, related and a flow block nothing",
             ),
         ],
     ),

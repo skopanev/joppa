@@ -4,7 +4,7 @@ use super::*;
 /// comment, one file, one reference, one incoming group and child counts.
 fn reply() -> Value {
     json!({"workspace": "w", "position": 3, "address": "ac:a", "kind": "ac", "id": "a",
-        "current_revision": 2, "work_ready": true,
+        "current_revision": 2,
         "document": {"revision": 2, "parent": "requirement:r", "data": {"title": "A"}},
         "signal": {"label": "Ready", "tone": "blue"},
         "process": {"annotation_address": "ac:a"},

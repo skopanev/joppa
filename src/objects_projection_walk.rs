@@ -1,19 +1,9 @@
-//! Part of objects_projection_delta.rs: the tone and the readiness of one recomputed node,
-//! by the same rules as the full rebuild (objects_tones.rs and objects_ready_rollup.rs). A
-//! node outside the recomputed set gives its stored value.
+//! Part of objects_projection_delta.rs: the tone of one recomputed node, by the same rules as
+//! the full rebuild (objects_tones.rs). A node outside the recomputed set gives its stored
+//! value.
 use super::*;
 
 impl Rows {
-    /// Mark each base row that waits for a dependency, so its tone is at least yellow. The
-    /// mark is not a stored field: the patch of the row leaves it out.
-    pub(super) fn mark_waiting(&mut self, waiting: &BTreeMap<String, String>) {
-        for (address, base) in &mut self.base {
-            if waiting.contains_key(address) {
-                base["waiting"] = json!(true);
-            }
-        }
-    }
-
     /// The counted nodes below a node of the `children` or `links` rule.
     fn below(&self, address: &str, rule: &str) -> Vec<String> {
         match rule {
@@ -63,7 +53,7 @@ impl Rows {
         let counted = self.children.get(address).is_some_and(|c| !c.is_empty())
             || self.linked.get(address).is_some_and(|l| !l.is_empty());
         let kind = base["kind"].as_str().unwrap_or_default();
-        let rule = label(rule_of(types, kind), tone, waits(base), counted);
+        let rule = label(rule_of(types, kind), tone, counted);
         crate::manual_checks::label(self.stored.get(address).map(|s| &s.1), tone, rule)
     }
 
@@ -112,82 +102,10 @@ impl Rows {
             "none" => None,
             _ => Some("orange"),
         };
-        let own = own.map(|t| {
-            if waits(base) {
-                highest([t, "yellow"]).unwrap_or(t)
-            } else {
-                t
-            }
-        });
         memo.insert(address.to_owned(), own);
         Ok(own)
     }
-
-    /// The new readiness of a recomputed node, as `ready_of` in objects_ready_rollup.rs.
-    /// `walk` holds the types, the recomputed nodes, their new tones and the waits.
-    pub(super) fn ready(
-        &self,
-        address: &str,
-        walk: Walk,
-        memo: &mut BTreeMap<String, bool>,
-        seen: &mut BTreeSet<String>,
-    ) -> std::result::Result<bool, Cycle> {
-        let (types, nodes, tones, waiting) = walk;
-        if let Some(ready) = memo.get(address) {
-            return Ok(*ready);
-        }
-        let Some(base) = self.base.get(address).filter(|b| b["present"] == true) else {
-            return Ok(false);
-        };
-        if !seen.insert(address.to_owned()) {
-            return Err(Cycle);
-        }
-        let mut item = base.clone();
-        if waiting.contains_key(address) {
-            item["work_ready"] = json!(false);
-        }
-        let rule = rule_of(types, base["kind"].as_str().unwrap_or_default());
-        let mut rolled = true;
-        for c in self.below(address, rule) {
-            if self.tone_of(&c, nodes, tones, types).is_none() {
-                continue;
-            }
-            let ready = if nodes.contains(&c) {
-                self.ready(&c, walk, memo, seen)?
-            } else {
-                self.stored_ready(&c)
-            };
-            if !ready {
-                rolled = false;
-                break;
-            }
-        }
-        let result = !waits(&item) && rolled;
-        memo.insert(address.to_owned(), result);
-        Ok(result)
-    }
-
-    /// The stored readiness of a node outside the recomputed set.
-    fn stored_ready(&self, address: &str) -> bool {
-        let (Some(base), Some((rollup, _))) = (self.base.get(address), self.stored.get(address))
-        else {
-            return false;
-        };
-        let mut item = base.clone();
-        if let Some(ready) = rollup.get("work_ready") {
-            item["work_ready"] = ready.clone();
-        }
-        base["present"] == true && !waits(&item)
-    }
 }
-
-/// The types, the recomputed nodes, their new tones and the waits of one readiness walk.
-pub(super) type Walk<'a> = (
-    &'a Types,
-    &'a BTreeSet<String>,
-    &'a BTreeMap<String, Option<&'static str>>,
-    &'a BTreeMap<String, String>,
-);
 
 /// A stored tone as one of the rollup tones; another stored value counts as blue.
 fn static_tone(tone: &str) -> Option<&'static str> {

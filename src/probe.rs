@@ -1,16 +1,12 @@
-//! Test probes: counts of the status, rollup and wait computations and of the projection
+//! Test probes: counts of the status and rollup computations and of the projection
 //! rebuilds. A test reads them before and after a request to prove that a read computes
 //! nothing. Each count costs one relaxed atomic add.
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Criterion test status computations (`statuses_for_criteria`).
 pub static STATUS: AtomicU64 = AtomicU64::new(0);
-/// Row decoration walks: tones, verification summaries and waits.
+/// Row decoration walks: tones and verification summaries.
 pub static ROLLUP: AtomicU64 = AtomicU64::new(0);
-/// Wait graph computations.
-pub static WAITS: AtomicU64 = AtomicU64::new(0);
-/// Reads of the stored waits of a whole workspace.
-pub static WAIT_READS: AtomicU64 = AtomicU64::new(0);
 /// Rebuilds of the status projection.
 pub static REBUILD: AtomicU64 = AtomicU64::new(0);
 /// Status projections of one write that recompute only the reached nodes.
@@ -37,11 +33,9 @@ pub fn read(counter: &AtomicU64) -> u64 {
 }
 
 /// Each counter with its name, for a test that prints the counts of one request.
-pub static COUNTERS: [(&str, &AtomicU64); 12] = [
+pub static COUNTERS: [(&str, &AtomicU64); 10] = [
     ("status", &STATUS),
     ("rollup", &ROLLUP),
-    ("waits", &WAITS),
-    ("wait_reads", &WAIT_READS),
     ("rebuild", &REBUILD),
     ("delta", &DELTA),
     ("replay", &REPLAY),

@@ -124,7 +124,7 @@ async fn current_reads_and_writes_do_not_select_journal_events() -> anyhow::Resu
         &ws,
         "owner",
         &store::ObjectScope {
-            filter: joppa::node_filter::NodeFilter::parse(&json!({"kind":"task","ready":true}))?,
+            filter: joppa::node_filter::NodeFilter::parse(&json!({"kind":"task","assignee":"agent"}))?,
             limit: 100,
             ..Default::default()
         },

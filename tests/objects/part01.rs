@@ -213,7 +213,7 @@ fn nonblocking_stale_dependency_flags_review_without_blocking_claim() {
     );
     // dependencies-before-priority: a related edge with a pin blocks nothing. An old
     // depends_on without blocking is related now.
-    assert!(objects::work_ready(&w.state, "ac:ios"));
+    assert!(objects::present_in_tree(&w.state, "ac:ios"));
     let r = w.state.requirements["r"].revisions.last().unwrap();
     assert!(joppa::checks::claimable(&w.state, "agent", "r", "t", r, &r.tasks["t"]).is_ok());
     assert_eq!(r.number, 1, "a link does not rewrite the test contract");

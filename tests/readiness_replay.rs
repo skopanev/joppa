@@ -43,7 +43,7 @@ fn an_old_journal_with_marks_and_a_gate_replays_and_a_live_write_refuses_them() 
         assert!(objects::process(&w.state, key).get("assessment").is_none());
         let signal = objects::signal(&w.state, key);
         assert!(signal.get("assessment").is_none(), "{signal}");
-        assert!(objects::work_ready(&w.state, key), "{key}");
+        assert!(objects::present_in_tree(&w.state, key), "{key}");
     }
     let task = serde_json::to_value(&objects::schema(&w.state).types["task"]).unwrap();
     assert!(task.get("parent_gate").is_none(), "{task}");

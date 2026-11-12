@@ -1,4 +1,4 @@
-//! Part of `objects`: the input types and the verification verdict.
+//! Part of `objects`: the input types, the verification verdict and the archive command.
 use super::*;
 
 pub fn input_type(w: &Workspace, kind: &str) -> bool {
@@ -10,7 +10,7 @@ pub fn input_type(w: &Workspace, kind: &str) -> bool {
 
 pub fn verification(w: &Workspace, key: &str) -> &'static str {
     let key = resolve_address(w, key);
-    if !work_ready(w, key) {
+    if !present_in_tree(w, key) {
         return "unverified";
     }
     if crate::tasks::task(w, key).is_some() {

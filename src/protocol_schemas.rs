@@ -26,8 +26,7 @@ fn node_filters(mut schema: Value, full: bool) -> Value {
         "kind": one_or_list("type name or list"),
         "status": one_or_list(&format!("{TONES}; purple keeps archived nodes")),
         "owner": text("member ID in data.owner"),
-        "assignee": text("member ID or agent alias in data.assignee"),
-        "ready": {"type":"boolean","description":"false: waits for a depends_on target"},
+        "assignee": text("member ID or agent alias in data.assignee; \"\" for no assignee"),
         "data": {"type":"object","description":"containment filter on data, e.g. {\"stage\":\"done\"}"},
     });
     for (name, value) in filters.as_object().into_iter().flatten() {

@@ -15,21 +15,15 @@ import {personLabel} from 'board/format.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
-  const tone=item.work_ready?'blue':'yellow';
-  const signal=item.historical?{tone:'blue',label:'Saved revision',at:item.at}:item.present===false?{tone:'blue',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone,label:item.work_ready?'Current document':'Dependency not ready',at:item.at};
+  const signal=item.historical?{tone:'blue',label:'Saved revision',at:item.at}:item.present===false?{tone:'blue',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone:'blue',label:'Current document',at:item.at};
   const repeatsParent=item.title===parentTitle;
   const heading=repeatsParent?state.data.objectTypes[item.kind].title+' · '+signal.label:item.title;
   const preview=objectTitlePreview(heading,item.kind);
   const title=nodeTitle(preview,signal);title.dataset.truncated=String(!repeatsParent&&preview!==item.title);
-  // Waiting work names the first dependency that is not green yet.
-  // A waiting row shows only how many dependencies are not green; the dependency list names them.
-  const deps=item.waits_for?.count||1;
-  const waits=item.waits_for?[E('span',deps+(deps===1?' dep':' deps'),'waits-for')]:[];
-  if(waits.length)waits[0].title='Waits for '+(item.waits_for.title||item.waits_for.address);
   // Who holds the work, a member or an agent alias, shows on the row.
   const holder=item.assignee?[E('span',personLabel(item.assignee),'assignee-chip')]:[];
   if(holder.length)holder[0].title='Assignee';
-  summary.append(title,objectTypeLabel(item.kind),...holder,...waits,...childCounts(item));
+  summary.append(title,objectTypeLabel(item.kind),...holder,...childCounts(item));
   if(inputQueue(item.kind))summary.append(E('span',item.note_status==='processed'?'Processed':'Unprocessed','note-state'));
   const actions=E('span',undefined,'item-actions');
   const copy=copyButton(item.item_id||item.address);

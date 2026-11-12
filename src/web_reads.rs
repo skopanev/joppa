@@ -54,6 +54,7 @@ pub(super) struct ObjectQuery {
     status: Option<String>,
     owner: Option<String>,
     assignee: Option<String>,
+    /// Refused: the ready filter was removed.
     ready: Option<String>,
     data: Option<String>,
 }
@@ -97,6 +98,9 @@ pub(super) async fn objects(
     if q.links_of.is_some() {
         return result(Err(anyhow::anyhow!(joppa::removed_ops::LINKS_OF)));
     }
+    if q.ready.is_some() {
+        return result(Err(anyhow::anyhow!(joppa::removed_ops::READY_FILTER)));
+    }
     if let Some(address) = q.relations_of.as_deref() {
         return result(
             store::link_page(
@@ -122,6 +126,9 @@ pub(super) async fn objects(
             .map(str::to_owned)
             .collect()
     });
+    if let Err(e) = joppa::read_shapes::check_removed(fields.as_deref().unwrap_or_default()) {
+        return result(Err(e));
+    }
     if let Some(list) = q.address.as_deref().filter(|a| a.contains(',')) {
         let (other, fields) = (q.other_keys(), fields.as_deref());
         return result(many::read(&app.pool, &workspace, &actor, list, &other, fields).await);

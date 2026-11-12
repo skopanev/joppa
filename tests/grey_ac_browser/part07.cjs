@@ -130,35 +130,23 @@ test('dependencies-before-priority-ac5: alex sets and removes a dependency from 
     'ac:A1': {title: 'Sign-in condition', parent: 'requirement:A'}, 'ac:B1': {title: 'Billing condition', parent: 'requirement:B'}};
   const f = await fixture(records);
   const read = address => f.api('/objects?address=' + encodeURIComponent(address));
-  const readyWork = async () => {
-    const http = await f.api('/objects?kind=ac&ready=true&limit=100');
-    const mcp = await f.mcp('joppa_objects', {kind: 'ac', ready: true, limit: 100});
-    assert.deepEqual(mcp.items.map(item => item.address), http.items.map(item => item.address));
-    return http.items.map(item => item.address);
-  };
   const card = () => f.page.locator('.object-page > .common-object[data-object-address="requirement:B"]');
-  const waiting = () => card().locator(':scope > summary > .waits-for');
   try {
-    // B1 waits for no dependency, so its work is in the queue. A is not green.
-    assert.ok((await readyWork()).includes('ac:B1'));
     // Save the depends_on edge of B via MCP/API command; the board displays it read-only.
     const currentB = await read('requirement:B');
     await f.command({op: 'save_object', kind: 'requirement', id: 'B', revision: currentB.current_revision,
       parent: 'capability:c', data: currentB.document.data,
       relations: {depends_on: {edges: [{to: 'requirement:A'}]}}, reason: 'Add blocking dependency'});
-    assert.ok(!(await readyWork()).includes('ac:B1'), 'the work of B leaves the queue');
     // Each width is its own subtest, so the output names both runs.
     for (const viewport of [{width: 1280, height: 720}, {width: 390, height: 844}]) await t.test('dependencies-before-priority-ac5: ' + viewport.width + ' px', async () => {
       await f.page.setViewportSize(viewport);
       const B = await f.open('requirement:B');
-      await waiting().waitFor();
-      assert.equal(await waiting().innerText(), '1 dep', JSON.stringify(viewport));
-      assert.equal(await waiting().getAttribute('title'), 'Waits for Sign-in rule');
-      assert.equal(await waiting().isVisible(), true);
       const depLink = B.locator('.object-dependencies .dependency-row .object-link');
       await depLink.waitFor();
       assert.equal(await depLink.innerText(), 'Sign-in rule');
       assert.equal(await B.locator('.depends-on-button, .dependency-add, .dependency-remove, .dependency-picker').count(), 0);
+      // A dependency gives the row no wait badge.
+      assert.equal(await card().locator(':scope > summary > .waits-for').count(), 0, JSON.stringify(viewport));
       assert.ok(await f.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'no sideways scroll');
     });
 

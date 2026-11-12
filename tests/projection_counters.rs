@@ -47,15 +47,15 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     let r1 = revision(&pool, "requirement:r1").await?;
     run(&pool, &mut n, json!({"op":"save_object","kind":"requirement","id":"r1","revision":r1,"parent":"capability:c","data":{"title":"First","owner":"owner","body":"Rule one.","consumers":["user"]},"relations":{"depends_on":{"edges":[{"to":"requirement:r2"}]}},"reason":"Order after r2"})).await?;
 
-    // Reads: no status, rollup or wait computation.
+    // Reads: no status or rollup computation.
     let before = counts();
     for result in reads(&pool).await {
         result?;
     }
-    let [status, rollup, waits, _, rebuild, partial] = delta(before);
+    let [status, rollup, rebuild, partial] = delta(before);
     ensure!(
-        (status, rollup, waits, rebuild, partial) == (0, 0, 0, 0, 0),
-        "reads computed status={status} rollup={rollup} waits={waits} rebuild={rebuild} partial={partial}"
+        (status, rollup, rebuild, partial) == (0, 0, 0, 0),
+        "reads computed status={status} rollup={rollup} rebuild={rebuild} partial={partial}"
     );
 
     // A command, a record, a repeat receipt and a batch of three: one partial projection each.
@@ -67,7 +67,7 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     )
     .await?;
     ensure!(
-        delta(before)[4..] == [0, 1],
+        delta(before)[2..] == [0, 1],
         "a command projects once and partially: {:?}",
         delta(before)
     );
@@ -85,7 +85,7 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     )
     .await?;
     ensure!(
-        delta(before)[4..] == [0, 1],
+        delta(before)[2..] == [0, 1],
         "a record projects once and partially: {:?}",
         delta(before)
     );
@@ -103,7 +103,7 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     )
     .await?;
     ensure!(
-        delta(before)[4..] == [0, 1],
+        delta(before)[2..] == [0, 1],
         "a repeat receipt projects once and partially: {:?}",
         delta(before)
     );
@@ -114,7 +114,7 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     let before = counts();
     store::execute_batch(&pool, ws(), "owner", "counters-batch", &operations).await?;
     ensure!(
-        delta(before)[4..] == [0, 1],
+        delta(before)[2..] == [0, 1],
         "a batch of three projects once and partially: {:?}",
         delta(before)
     );
@@ -132,13 +132,13 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
         let kept = reads(&pool).await.into_iter().collect::<Result<Vec<_>>>()?;
         ensure!(kept == stored, "a {broken} projection changed a read");
         ensure!(
-            delta(before) == [0; 6],
+            delta(before) == [0; 4],
             "a read computed: {:?}",
             delta(before)
         );
         store::catch_up_statuses(&pool, false).await?;
         ensure!(
-            delta(before)[4] == 1,
+            delta(before)[2] == 1,
             "the catch-up rebuilt {:?}",
             delta(before)
         );
@@ -153,19 +153,6 @@ async fn reads_compute_nothing_and_each_write_projects_once() -> Result<()> {
     for result in reads(&pool).await {
         result?;
     }
-
-    // The domain list reads only its own rows.
-    let domains = store::ObjectScope {
-        filter: joppa::node_filter::NodeFilter::of(None, Some("domain")),
-        limit: 50,
-        ..Default::default()
-    };
-    let before = counts();
-    store::read_objects(&pool, ws(), "owner", &domains).await?;
-    ensure!(
-        delta(before)[3] == 0,
-        "the domain list read the waits of the workspace"
-    );
 
     // A lost row reads without decoration; the catch-up stores it again.
     for column in ["test_status", "rollup"] {

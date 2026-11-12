@@ -4,7 +4,7 @@
 //! (`dim_tones`). A combination counts only the results that count for it, and a node counts
 //! only the children and the linking objects that apply to it. A read with a dimension value
 //! in its data filter reads these tones (objects_dimension_reads.rs).
-use super::projection::{apply_rollups, base_row, store_column};
+use super::projection::{base_row, store_column};
 use super::tone_items::{Graph, graph, tone_of};
 use super::*;
 use crate::filter_dimensions as dims;
@@ -26,16 +26,11 @@ pub(in crate::store) async fn project(
     let combinations = dims::combinations(&dimensions);
     let types = crate::objects::schema(state).types;
     let rows = client
-        .query("SELECT address,kind,signal::text,process::text,work_ready,parent,present FROM joppa.objects WHERE workspace=$1 AND present", &[&workspace])
+        .query("SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1 AND present", &[&workspace])
         .await?;
-    let mut items: Vec<Value> = rows.iter().map(base_row).collect();
-    apply_rollups(client, workspace, &mut items).await?;
+    let items: Vec<Value> = rows.iter().map(base_row).collect();
     let present: Vec<&Value> = items.iter().collect();
     let all = graph(client, workspace, &present).await?;
-    let by_address: BTreeMap<String, &Value> = present
-        .iter()
-        .filter_map(|i| Some((i["address"].as_str()?.to_owned(), *i)))
-        .collect();
     let tested: Vec<String> = all
         .kinds
         .iter()
@@ -74,17 +69,7 @@ pub(in crate::store) async fn project(
         for address in all.kinds.keys().filter(|a| applies(a)) {
             let (k, c, l) = (&shown.kinds, &shown.children, &shown.linked);
             let mut seen = BTreeSet::new();
-            let tone = tone_of(
-                address,
-                k,
-                &types,
-                c,
-                l,
-                &statuses,
-                &by_address,
-                &mut memo,
-                &mut seen,
-            );
+            let tone = tone_of(address, k, &types, c, l, &statuses, &mut memo, &mut seen);
             if let Some(tone) = tone {
                 tones
                     .entry(address.clone())

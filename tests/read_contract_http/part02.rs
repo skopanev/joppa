@@ -85,12 +85,12 @@ async fn a_detail_read_keeps_the_document_and_gives_a_comment_count() -> Result<
         no_empty_keys(&detail),
         "an empty key outside document: {detail}"
     );
-    // A detail drops work_ready: true, process.confirmed: false and the zero counts.
+    // A detail has no work_ready, no process.confirmed: false and no zero counts.
     let r = read(&w, "joppa_objects", json!({"address":"requirement:r"})).await?;
     ensure!(
         r.get("comments_count").is_none()
             && r.get("files_count").is_none()
-            && r.get("work_ready") != Some(&json!(true))
+            && r.get("work_ready").is_none()
             && r["process"].get("confirmed") != Some(&json!(false)),
         "{r}"
     );

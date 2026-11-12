@@ -135,7 +135,7 @@ test('5e504068 status-filter: the Object status filter lists the schema tones in
     // The purple tone of archived nodes is not listed: the board lists only present nodes.
     assert.deepEqual(options.map(option => option.value), ['', 'orange', 'green', 'red', 'yellow', 'blue']);
     // The server gives the label of each tone (status_colors::LABELS).
-    assert.deepEqual(options.slice(1).map(option => option.label), ['No tests', 'Checks passed', 'Checks failed', 'Waits', 'Awaits checks']);
+    assert.deepEqual(options.slice(1).map(option => option.label), ['No tests', 'Checks passed', 'Checks failed', 'Input awaits processing', 'Awaits checks']);
     assert.deepEqual(options.slice(1, 4).map(option => option.dot), ['rgb(208, 102, 26)', 'rgb(34, 165, 89)', 'rgb(192, 57, 43)']);
     assert.ok(options.slice(4).every(option => option.dot && option.dot !== 'rgba(0, 0, 0, 0)'), JSON.stringify(options));
     await select.click();

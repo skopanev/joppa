@@ -8,24 +8,21 @@ const {types, declare, build, open, toneColour, waitCard, click} = require('./fl
 
 // The facts of S in the stored order, with the title and the own tone of each fact.
 const FACTS = [
-  {address: 'ac:f1', title: 'First fact waits', tone: 'yellow'},
+  {address: 'ac:f1', title: 'First fact fails', tone: 'red'},
   {address: 'step:f2', title: 'Second fact', tone: 'blue'},
   {address: 'step:f3', title: 'Third fact', tone: 'purple'},
   {address: 'ac:u', title: 'Last step passes', tone: 'green'},
 ];
 
-// The swap edges S→T and T→U, and S with the facts [F1, F2, F3, U]. F1 is a criterion with a
-// test without a result (blue), and it waits for criterion W (blue), so F1 is yellow. F1 holds
-// swap with no edges. F2 is a step with no status (blue). F3 is a step that is archived after
+// The swap edges S→T and T→U, and S with the facts [F1, F2, F3, U]. F1 is a criterion whose
+// only test failed (red). F1 holds swap with no edges. F2 is a step with no status (blue). F3 is a step that is archived after
 // the save of S. U is a criterion whose only test passed (green).
 async function factsWorld(f) {
   await declare(f, {swap: {title: 'Swap', description: 'Client screens'}});
   await f.save('requirement:r', 'Rules');
-  await f.save('ac:w', 'Waited criterion', 'requirement:r');
-  await f.addTest('ac:w', 'tests/facts.rs > w');
   await f.command({op: 'save_object', kind: 'ac', id: 'f1', revision: 0, parent: 'requirement:r',
-    data: {title: 'First fact waits', owner: 'owner', body: 'Fixture text'}, reason: 'Define the browser fixture',
-    relations: {swap: {edges: []}, depends_on: {edges: [{to: 'ac:w'}]}}});
+    data: {title: 'First fact fails', owner: 'owner', body: 'Fixture text'}, reason: 'Define the browser fixture',
+    relations: {swap: {edges: []}}});
   await f.addTest('ac:f1', 'tests/facts.rs > f1');
   await f.save('ac:u', 'Last step passes', 'requirement:r');
   await f.addTest('ac:u', 'tests/facts.rs > u');
@@ -36,9 +33,9 @@ async function factsWorld(f) {
     {id: 's', title: 'Start step', relations: {swap: {edges: [{to: 'step:t'}], facts: FACTS.map(x => x.address)}}},
   ]);
   await f.command({op: 'archive_object', target: 'step:f3', revision: 1, reason: 'Remove the fact'});
-  await f.mcp('joppa_record_results', {commit: 'c0ffee5', results: [{test: 'tests/facts.rs > u', status: 'pass'}]});
+  await f.mcp('joppa_record_results', {commit: 'c0ffee5', results: [{test: 'tests/facts.rs > u', status: 'pass'}, {test: 'tests/facts.rs > f1', status: 'fail'}]});
   const tone = async address => (await f.api('/objects?address=' + encodeURIComponent(address))).signal?.tone;
-  assert.equal(await tone('ac:f1'), 'yellow', 'the fixture: F1 is yellow');
+  assert.equal(await tone('ac:f1'), 'red', 'the fixture: F1 is red');
   assert.equal(await tone('ac:u'), 'green', 'the fixture: U is green');
 }
 
@@ -77,13 +74,13 @@ test('cjeugcm8: A step shows the worst tone of its facts and lists them in the c
   try {
     await factsWorld(f);
     await open(f, '&relation=swap', 3);
-    // The dots show after every read ends: S takes the tone yellow of F1.
-    await f.page.waitForFunction(() => document.querySelector('.flow-node[data-address="step:s"]')?.dataset.tone === 'yellow')
+    // The dots show after every read ends: S takes the tone red of F1.
+    await f.page.waitForFunction(() => document.querySelector('.flow-node[data-address="step:s"]')?.dataset.tone === 'red')
       .catch(async () => assert.fail('the dot of S: ' + JSON.stringify(await f.page.evaluate(dotPaint))));
     const dots = Object.fromEntries((await f.page.evaluate(dotPaint)).map(d => [d.address, d]));
     assert.deepEqual(Object.keys(dots).sort(), ['ac:u', 'step:s', 'step:t'], 'F1, F2 and F3 have no dot, U keeps its dot');
-    assert.equal(dots['step:s'].tone, 'yellow', 'S has data-tone yellow');
-    assert.equal(dots['step:s'].fill, await toneColour(f, 'yellow'), 'S has the fill of var(--dot-yellow)');
+    assert.equal(dots['step:s'].tone, 'red', 'S has data-tone red');
+    assert.equal(dots['step:s'].fill, await toneColour(f, 'red'), 'S has the fill of var(--dot-red)');
     assert.equal(dots['ac:u'].tone, 'green', 'U keeps data-tone green');
     assert.equal(dots['step:t'].tone, 'blue', 'T keeps data-tone blue');
 
@@ -94,7 +91,7 @@ test('cjeugcm8: A step shows the worst tone of its facts and lists them in the c
     assert.ok(s, 'the card of S is open');
     assert.ok(s.facts, 'the card of S has the section Facts: ' + JSON.stringify(s));
     assert.ok(s.afterNext, 'the section Facts comes after Next');
-    assert.equal(s.head, 'yellow', 'the card head circle of S is yellow');
+    assert.equal(s.head, 'red', 'the card head circle of S is red');
     assert.deepEqual(s.rows.map(r => r.address), FACTS.map(x => x.address), 'the fact rows in the stored order: ' + JSON.stringify(s.rows));
     FACTS.forEach((fact, i) => {
       const row = s.rows[i];

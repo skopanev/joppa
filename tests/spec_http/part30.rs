@@ -18,7 +18,7 @@ async fn tasks_under_two_requirements(w: &World) -> Result<()> {
     Ok(())
 }
 
-/// A Task save with one depends_on edge to `target` at revision 1. depends_on always blocks.
+/// A Task save with one depends_on edge to `target` at revision 1.
 fn linked_task_command(id: &str, revision: u32, ac: &str, target: &str) -> Value {
     let mut command = ready_task_command(id, ac);
     command["revision"] = json!(revision);
@@ -35,7 +35,7 @@ fn depends_on_pinned(read: &Value, target: &str) -> bool {
 // task-links-stay-in-req-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_task_link_to_a_task_of_another_requirement_is_saved_and_waits() -> Result<()> {
+async fn a_task_link_to_a_task_of_another_requirement_is_saved() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
     // Bot creates T3 under R2 with a link to T1 over HTTP; the owner links T2 over MCP.
@@ -51,18 +51,11 @@ async fn a_task_link_to_a_task_of_another_requirement_is_saved_and_waits() -> Re
     let args = json!({"workspace":w.ws,"request_id":request,"command":command});
     let mcp = mcp_call(&w, &w.owner, "joppa_command", args).await?;
     ensure!(mcp["isError"] != true, "{mcp}");
-    let current = async |address: &str| -> Result<Value> {
-        Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
-    };
-    // Each dependent Task keeps the link and waits until T1 is done and archived.
+    // Each dependent Task keeps the link.
     for task in ["task:t2", "task:t3"] {
         let read = w.get(&format!("address={task}")).await?;
         ensure!(depends_on_pinned(&read, "task:t1"), "{read}");
-        ensure!(read["waits_for"]["address"] == "task:t1", "{task}: {read}");
     }
-    w.command(json!({"op":"archive_object","target":"task:t1","revision":current("task:t1").await?,"reason":"Implemented the contract"})).await?;
-    let t2 = w.get("address=task:t2").await?;
-    ensure!(t2.get("waits_for").is_none(), "{t2}");
     Ok(())
 }
 
@@ -85,8 +78,7 @@ async fn a_task_link_across_criteria_of_one_requirement_is_saved() -> Result<()>
 // task-links-stay-in-req-ac2
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_dependency()
--> Result<()> {
+async fn a_task_link_added_across_criteria_of_one_requirement_is_saved() -> Result<()> {
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
     // Bot creates task:t4 so that bot, as its unclaimed creator, may add the link.
@@ -102,13 +94,6 @@ async fn a_task_link_added_across_criteria_of_one_requirement_waits_for_its_depe
     ensure!(ok, "{saved}");
     let read = w.get_as(&w.bot, &format!("address={t4}")).await?;
     ensure!(depends_on_pinned(&read, "task:t2"), "{read}");
-    ensure!(read["waits_for"]["address"] == "task:t2", "{read}");
-    let current = async |address: &str| -> Result<Value> {
-        Ok(w.get(&format!("address={address}")).await?["current_revision"].clone())
-    };
-    w.command(json!({"op":"archive_object","target":"task:t2","revision":current("task:t2").await?,"reason":"Implemented the contract"})).await?;
-    let free = w.get(&format!("address={t4}")).await?;
-    ensure!(free.get("waits_for").is_none(), "{free}");
     Ok(())
 }
 

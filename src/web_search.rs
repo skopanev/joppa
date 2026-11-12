@@ -16,6 +16,7 @@ pub(super) struct SearchQuery {
     status: Option<String>,
     owner: Option<String>,
     assignee: Option<String>,
+    /// Refused: the ready filter was removed.
     ready: Option<String>,
     data: Option<String>,
 }

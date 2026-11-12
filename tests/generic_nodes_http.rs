@@ -3,40 +3,21 @@
 #[path = "common/generic_world.rs"]
 mod generic_world;
 use anyhow::{Result, ensure};
-use generic_world::{listed, save, world};
+use generic_world::{save, world};
 use serde_json::json;
 
 // generic-nodes-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn the_ready_filter_follows_a_dependency_wait() -> Result<()> {
+async fn a_task_saves_a_dependency_and_the_readiness_mark_is_refused() -> Result<()> {
     let w = world(&[]).await?;
     let data = json!({"title":"Call the API","owner":"owner","body":"Call it","assignee":"alex"});
-    // The task waits for the blue criterion ac:a.
+    // The task has a depends_on edge to the blue criterion ac:a.
     let link = json!({"depends_on":{"edges":[{"to":"ac:a"}]}});
-    save(&w, "task", "t", "requirement:r", data.clone(), link).await?;
+    save(&w, "task", "t", "requirement:r", data, link).await?;
     let task = w.object("task:t").await?;
     let mark = task["process"].get("assessment");
-    ensure!(task["work_ready"] == false && mark.is_none(), "{task}");
-    let filter = |ready: bool| json!({"kind":["task","requirement"],"assignee":null,"ready":ready});
-    // The task has the rule none, so requirement:r does not count it and stays ready.
-    let waiting = listed(&w, filter(false)).await?;
-    ensure!(waiting == ["task:t"], "{waiting:?}");
-    let ready = listed(&w, filter(true)).await?;
-    ensure!(ready == ["requirement:r"], "{ready:?}");
-    let alex = json!({"kind":"task","assignee":"alex","ready":false});
-    ensure!(
-        listed(&w, alex).await? == ["task:t"],
-        "alex holds the waiting task"
-    );
-    // Without the depends_on edge, the task is ready again.
-    let save = json!({"op":"save_object","kind":"task","id":"t","revision":task["revision"],
-        "parent":"requirement:r","data":data,"relations":{"depends_on":null},"reason":"No order"});
-    w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
-    ensure!(
-        listed(&w, filter(true)).await? == ["requirement:r", "task:t"],
-        "the task is ready again"
-    );
+    ensure!(mark.is_none(), "{task}");
     // The readiness mark operation is refused, in the current and in the older form.
     let text = "assess was removed; use save_object with a typed field such as data.stage (fields in set_tree_schema)";
     let mark = json!({"op":"assess","target":"task:t","ready":true,"reason":"Known"});
@@ -79,12 +60,12 @@ async fn the_task_operations_and_reads_are_refused_with_their_replacement() -> R
         );
     }
     let tasks = w.mcp(&w.bot, "joppa_tasks", json!({})).await?;
-    let refusal = "joppa_tasks was removed; use joppa_objects with kind task, for example {\"kind\":\"task\",\"assignee\":\"alex\",\"ready\":true}";
+    let refusal = "joppa_tasks was removed; use joppa_objects with kind task, for example {\"kind\":\"task\",\"assignee\":\"alex\"}";
     ensure!(tasks == Err(refusal.into()), "{tasks:?}");
     let unstarted = w
         .mcp(&w.bot, "joppa_objects", json!({"work_filter":"unstarted"}))
         .await?;
-    let filter = "work_filter was removed; use the node filters, for example kind and ready";
+    let filter = "work_filter was removed; use the node filters, for example kind and assignee";
     ensure!(unstarted == Err(filter.into()), "{unstarted:?}");
     let base = format!("{}/api/workspaces/{}", w.root, w.ws);
     let get = async |path: &str| -> Result<(u16, String)> {
@@ -105,19 +86,12 @@ async fn the_task_operations_and_reads_are_refused_with_their_replacement() -> R
 // generic-nodes-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn a_dependency_on_a_task_waits_until_the_task_is_archived() -> Result<()> {
+async fn a_task_priority_is_one_value_of_the_schema_list() -> Result<()> {
     let w = world(&[]).await?;
     let task = |title: &str| json!({"title":title,"owner":"owner","body":"Do it"});
     save(&w, "task", "first", "ac:a", task("First"), json!({})).await?;
     let link = json!({"depends_on":{"edges":[{"to":"task:first"}]}});
     save(&w, "task", "second", "ac:a", task("Second"), link).await?;
-    let waiting = json!({"kind":"task","ready":false});
-    ensure!(
-        listed(&w, waiting.clone()).await? == ["task:second"],
-        "second waits"
-    );
-    let second = w.object("task:second").await?;
-    ensure!(second["waits_for"]["address"] == "task:first", "{second}");
     // A priority is one value of the schema list.
     let mut wrong = task("Third");
     wrong["priority"] = json!("p9");
@@ -138,14 +112,6 @@ async fn a_dependency_on_a_task_waits_until_the_task_is_archived() -> Result<()>
     ensure!(
         w.object("task:third").await?["data"]["priority"] == "p1",
         "p1"
-    );
-    let archive = json!({"op":"archive_object","target":"task:first","revision":1,"reason":"Done"});
-    w.command(&w.bot, archive)
-        .await?
-        .map_err(anyhow::Error::msg)?;
-    ensure!(
-        listed(&w, waiting).await?.is_empty(),
-        "nothing waits after the archive"
     );
     Ok(())
 }

@@ -92,17 +92,17 @@ pub async fn bind(
 }
 
 impl Bound {
-    /// The SQL clause on the alias `o`, with the parameters `$first` to `$first+8`.
+    /// The SQL clause on the alias `o`, with the parameters `$first` to `$first+7`.
     pub fn clause(&self, first: usize) -> String {
         self.clause_at(std::array::from_fn(|i| first + i))
     }
 
-    /// The SQL clause on the alias `o`, with these numbers for the 9 parameters of `params`.
+    /// The SQL clause on the alias `o`, with these numbers for the 8 parameters of `params`.
     /// The text has only the conditions of the filters that are set, and an unset filter
     /// keeps only a test of its null parameter. So a generic plan of the text also reads the
     /// descendants by the primary key, and no `IS NULL OR` hides an index.
-    pub fn clause_at(&self, numbers: [usize; 9]) -> String {
-        let [w, d, r, k, s, ow, a, rd, data] = numbers.map(|n| format!("${n}"));
+    pub fn clause_at(&self, numbers: [usize; 8]) -> String {
+        let [w, d, r, k, s, ow, a, data] = numbers.map(|n| format!("${n}"));
         let f = &self.filter;
         let set = [
             (
@@ -137,13 +137,12 @@ impl Bound {
             ),
             (
                 f.assignee.is_some(),
-                format!("{ASSIGNEE}={a}::text"),
+                match f.assignee.as_deref() {
+                    // An unassigned node has no assignee, a null one or "".
+                    Some("") => format!("({ASSIGNEE} IS NULL OR {ASSIGNEE}={a}::text)"),
+                    _ => format!("{ASSIGNEE}={a}::text"),
+                },
                 format!("{a}::text IS NULL"),
-            ),
-            (
-                f.ready.is_some(),
-                format!("{READY}={rd}::boolean"),
-                format!("{rd}::boolean IS NULL"),
             ),
             (
                 self.data.is_some(),
@@ -165,8 +164,8 @@ impl Bound {
         parts.join(" AND ")
     }
 
-    /// The 9 parameters of the clause, in its order.
-    pub fn params(&self) -> [&(dyn ToSql + Sync); 9] {
+    /// The 8 parameters of the clause, in its order.
+    pub fn params(&self) -> [&(dyn ToSql + Sync); 8] {
         [
             if self.descendants.is_some() {
                 &self.workspace
@@ -179,7 +178,6 @@ impl Bound {
             &self.filter.statuses,
             &self.filter.owner,
             &self.filter.assignee,
-            &self.filter.ready,
             &self.data,
         ]
     }
@@ -196,5 +194,3 @@ static NONE: Option<String> = None;
 pub const TONE: &str = "COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone')";
 /// The assignee of a node: the document field `assignee`.
 pub const ASSIGNEE: &str = "(o.document->'data'->>'assignee')";
-/// A node is ready unless it waits for a dependency (`work_ready` false).
-pub const READY: &str = "COALESCE((o.rollup->>'work_ready')::boolean,o.work_ready)";

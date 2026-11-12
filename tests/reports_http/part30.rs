@@ -15,21 +15,6 @@ impl Planning<'_> {
         self.objects_both(&format!("address={address}"), json!({"address":address}))
             .await
     }
-    /// The ready criteria over HTTP and MCP: the criteria that wait for nothing.
-    async fn ready_work(&self) -> Result<Vec<String>> {
-        let page = self
-            .objects_both(
-                "kind=criterion&ready=true&limit=100",
-                json!({"kind":"criterion","ready":true,"limit":100}),
-            )
-            .await?;
-        Ok(page["items"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|item| item["address"].as_str().map(str::to_owned))
-            .collect())
-    }
     async fn status(&self, ac: &str) -> Result<Value> {
         store::test_status(&self.pool, &self.ws, "agent", ac).await
     }
@@ -69,68 +54,4 @@ fn depends_on_targets(object: &Value) -> Vec<String> {
         .flatten()
         .filter_map(|e| e["to"].as_str().map(str::to_owned))
         .collect()
-}
-
-/// A waiting criterion reads work_ready=false and names `target` with the reason.
-fn waits_for(object: &Value, target: &str) -> bool {
-    object["work_ready"] == false
-        && object["waits_for"]["address"] == target
-        && object["waits_for"]["reason"]
-            .as_str()
-            .is_some_and(|r| r.contains(target))
-}
-
-// dependencies-before-priority-ac1
-#[tokio::test]
-#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn ac1_a_criterion_waits_until_its_dependency_is_green_over_http_and_mcp() -> Result<()> {
-    let w = world().await?;
-    let p = ordering(&w, "cap:c", &["criterion:a1"]).await?;
-    p.link("spec:b", ordering_link("spec:a")).await?;
-    let b = p.object_both("spec:b").await?;
-    ensure!(
-        depends_on_targets(&b) == ["spec:a"]
-            && b["document"]["relations"]["depends_on"]["edges"][0]["revision"].is_null(),
-        "the link stores no revision: {b}"
-    );
-    // Controls: A1 is ready and blue.
-    let a1 = p.object_both("criterion:a1").await?;
-    ensure!(a1["work_ready"] == true, "{a1}");
-    ensure!(p.status("criterion:a1").await?["status"] == "blue");
-    let listed = p.ready_work().await?;
-    ensure!(
-        listed.contains(&"criterion:a1".to_owned()) && !listed.contains(&"criterion:b1".to_owned()),
-        "{listed:?}"
-    );
-    let b1 = p.object_both("criterion:b1").await?;
-    ensure!(waits_for(&b1, "spec:a"), "{b1}");
-
-    // A record passes every listed test of A1.
-    p.bind(&w.token, "criterion:a1", &[A]).await?;
-    let report = outcomes(&[("opens", "pass"), ("refuses", "pass")]);
-    p.record("c1c1c1c", report.clone()).await?;
-    ensure!(p.status("criterion:a1").await?["status"] == "green");
-    p.owner_command(
-        json!({"op":"note","target":"cap:c","id":"unrelated","text":"An unrelated remark"}),
-    )
-    .await?;
-    for repeat in [false, true] {
-        if repeat {
-            // The same record again is a new receipt of it.
-            p.record("c1c1c1c", report.clone()).await?;
-        }
-        ensure!(
-            p.ready_work().await?.contains(&"criterion:b1".to_owned()),
-            "repeat={repeat}"
-        );
-        let b1 = p.object_both("criterion:b1").await?;
-        ensure!(
-            b1["work_ready"] == true && b1.get("waits_for").is_none(),
-            "repeat={repeat}: {b1}"
-        );
-    }
-
-    ensure!(p.ready_work().await?.contains(&"criterion:b1".to_owned()));
-    store::check_journal(&p.pool).await?;
-    Ok(())
 }

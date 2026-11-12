@@ -91,14 +91,14 @@ mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-open-task','command':
     'op':'save_object','kind':'task','id':'mcp-open-task','revision':0,'parent':'ac:'+task_ac,
     'data':{'title':'Restore access','owner':'owner','projects':[],
         'body':'Implement the access recovery flow and attach merged build evidence'},'reason':'Plan the work'}})
-# A Task is a node: without a blocking dependency it is ready, and the node filters find it with its assignee.
+# A Task is a node: the node filters find it, without an assignee and with its assignee.
 tasks = lambda **filters: [i['address'] for i in mcp('joppa_objects',{'workspace':mcp_ws,'kind':'task',**filters})['items']]
-assert tasks(ready=True) == [task_id] and tasks(ready=False) == []
+assert tasks() == [task_id] and tasks(assignee='') == [task_id]
 task_read = mcp('joppa_objects',{'workspace':mcp_ws,'address':task_id})
 assigned = {'op':'save_object','kind':'task','id':'mcp-open-task','revision':task_read['revision'],
     'parent':'ac:'+task_ac,'data':{**task_read['data'],'assignee':'agent'},'reason':'Take the work'}
 mcp('joppa_command', {'workspace':mcp_ws,'request_id':'mcp-task-assign','command':assigned})
-assert tasks(ready=True, assignee='agent') == [task_id]
+assert tasks(assignee='agent') == [task_id] and tasks(assignee='') == []
 client_env={**env,'XDG_CACHE_HOME':str(Path(temp)/'client-cache'),'JOPPA_MCP_URL':base+'/mcp','JOPPA_TOKEN':agent_token,'JOPPA_WORKSPACE':mcp_ws}
 def client(*arguments, stdin=None):
     result=subprocess.run([sys.executable,str(ROOT/'client/joppa'),*arguments],input=stdin,

@@ -36,20 +36,20 @@ async fn a_generic_plan_of_a_list_below_a_parent_reads_the_nodes_by_the_primary_
     let conn = pool.get().await?;
     let filter = joppa::node_filter::NodeFilter::parse(&serde_json::json!({"parent":"domain:d"}))?;
     let bound = joppa::node_filter::bind(&**conn, "w-plan", &filter, true, false).await?;
-    let clause = bound.clause_at([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    let clause = bound.clause_at([2, 3, 4, 5, 6, 7, 8, 9]);
     // 5000 nodes of one workspace give the planner real statistics. A generic plan does not
     // know the parameters, as a statement after 5 runs on one connection.
     let plan = conn
         .simple_query(&format!(
             "BEGIN;
             INSERT INTO joppa.workspaces(id) VALUES('w-plan');
-            INSERT INTO joppa.objects(workspace,address,kind,local_id,revision,parent,present,title,document,work_ready)
-                SELECT 'w-plan','ac:'||n,'ac',n::text,1,'domain:d',true,'A','{{}}'::jsonb,true FROM generate_series(1,5000) n;
+            INSERT INTO joppa.objects(workspace,address,kind,local_id,revision,parent,present,title,document)
+                SELECT 'w-plan','ac:'||n,'ac',n::text,1,'domain:d',true,'A','{{}}'::jsonb FROM generate_series(1,5000) n;
             ANALYZE joppa.objects;
             SET LOCAL plan_cache_mode=force_generic_plan;
-            PREPARE list_plan(text,text,text[],boolean,text[],text[],text,text,boolean,text) AS
+            PREPARE list_plan(text,text,text[],boolean,text[],text[],text,text,text) AS
                 SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND {clause};
-            EXPLAIN EXECUTE list_plan('w-plan','w-plan',ARRAY['ac:1'],false,NULL,NULL,NULL,NULL,NULL,NULL);
+            EXPLAIN EXECUTE list_plan('w-plan','w-plan',ARRAY['ac:1'],false,NULL,NULL,NULL,NULL,NULL);
             DEALLOCATE list_plan; ROLLBACK;"
         ))
         .await?;

@@ -143,10 +143,10 @@ pub async fn dump(
             },
         ),
         (
-            "list ready tasks",
+            "list unassigned tasks",
             store::ObjectScope {
                 filter: joppa::node_filter::NodeFilter::parse(
-                    &json!({"kind":"task","ready":true}),
+                    &json!({"kind":"task","assignee":""}),
                 )?,
                 ..Default::default()
             },

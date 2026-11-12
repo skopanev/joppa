@@ -4,32 +4,26 @@ use super::*;
 use crate::remote_links::RemoteLink;
 use std::collections::{BTreeSet, VecDeque};
 
-/// A readiness walk stops after this many targets and then counts as not ready.
+/// A walk of blocking targets stops after this many targets and then counts as not satisfied.
 const READY_LIMIT: usize = 1_000;
 
 /// Green, red and total counts of the present criteria at and below an address, or of the
-/// whole workspace without one, and whether a node there waits for a local dependency.
+/// whole workspace without one.
 async fn criteria(
     client: &impl GenericClient,
     workspace: &str,
     root: Option<&str>,
-) -> Result<(i64, i64, i64, bool)> {
+) -> Result<(i64, i64, i64)> {
     let row = client.query_one(
         "WITH RECURSIVE sub(address) AS (SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND ($2::text IS NULL AND o.parent IS NULL OR o.address=$2)
            UNION SELECT o.address FROM joppa.objects o JOIN sub ON o.parent=sub.address WHERE o.workspace=$1 AND o.present)
-         SELECT count(*) FILTER (WHERE r.ac AND o.test_status->>'status'='green'),count(*) FILTER (WHERE r.ac AND o.test_status->>'status'='red'),count(*) FILTER (WHERE r.ac),
-                bool_or(jsonb_typeof(o.rollup->'waits_for')='object')
+         SELECT count(*) FILTER (WHERE r.ac AND o.test_status->>'status'='green'),count(*) FILTER (WHERE r.ac AND o.test_status->>'status'='red'),count(*) FILTER (WHERE r.ac)
          FROM joppa.objects o JOIN sub ON sub.address=o.address JOIN joppa.board_cache b ON b.workspace=o.workspace
          CROSS JOIN LATERAL (SELECT b.first_view->'object_types'->o.kind->>'role'='ac' AS ac) r
          WHERE o.workspace=$1",
         &[&workspace, &root],
     ).await?;
-    Ok((
-        row.get(0),
-        row.get(1),
-        row.get(2),
-        row.get::<_, Option<bool>>(3).unwrap_or(false),
-    ))
+    Ok((row.get(0), row.get(1), row.get(2)))
 }
 
 /// The remote links that apply to an address: its own, those of the nodes below it, and
@@ -87,9 +81,9 @@ async fn link_state(
     ))
 }
 
-/// Whether a blocking target is ready for the actor: every criterion at and below it is
-/// green, no node there waits for a local dependency, and each remote dependency that
-/// applies there is readable, present, at its pinned revision and ready too.
+/// Whether a blocking target is satisfied for the actor: every criterion at and below it is
+/// green, and each remote dependency that applies there is readable, present, at its pinned
+/// revision and satisfied too.
 async fn target_ready(
     client: &impl GenericClient,
     actor: &str,
@@ -105,8 +99,8 @@ async fn target_ready(
         if seen.len() > READY_LIMIT {
             return Ok(false);
         }
-        let (green, _, total, waits) = criteria(client, &ws, Some(&address)).await?;
-        if total == 0 || green != total || waits {
+        let (green, _, total) = criteria(client, &ws, Some(&address)).await?;
+        if total == 0 || green != total {
             return Ok(false);
         }
         for link in applying_links(client, &ws, &address)
@@ -191,7 +185,7 @@ pub(crate) async fn child_summary(
     if access::check(client, child, actor, false).await.is_err() {
         return Ok(json!({"workspace": child, "access": false, "status": "blue"}));
     }
-    let (green, red, total, _) = criteria(client, child, None).await?;
+    let (green, red, total) = criteria(client, child, None).await?;
     let status = if red > 0 {
         "red"
     } else if total > 0 && green == total {

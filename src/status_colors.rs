@@ -23,7 +23,7 @@ pub const ARCHIVED_TONE: &str = "purple";
 pub const LABELS: [(&str, &str); 6] = [
     ("red", "Checks failed"),
     ("purple", "Archived"),
-    ("yellow", "Waits"),
+    ("yellow", "Input awaits processing"),
     ("orange", "No tests"),
     ("blue", "Awaits checks"),
     ("green", "Checks passed"),

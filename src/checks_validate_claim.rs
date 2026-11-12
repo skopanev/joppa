@@ -33,12 +33,12 @@ pub(crate) fn validate_claim(
         .ok_or_else(|| anyhow::anyhow!("task AC is absent from current REQ revision"))?;
     if !w.objects.is_empty() {
         ensure!(
-            crate::objects::work_ready(w, &crate::objects::criterion_address(&ac.id)),
-            "AC has an unmet dependency or a changed dependency revision"
+            crate::objects::present_in_tree(w, &crate::objects::criterion_address(&ac.id)),
+            "AC or an ancestor of it is archived"
         );
         ensure!(
-            crate::objects::work_ready(w, &format!("task:{req}/{id}")),
-            "Task has an unmet dependency or a changed dependency revision"
+            crate::objects::present_in_tree(w, &format!("task:{req}/{id}")),
+            "Task or an ancestor of it is archived"
         );
     }
     if task.purpose == "decision" {

@@ -100,7 +100,6 @@ pub fn detail_keys(mut reply: Value, asked: &str, comments_cursor: Option<&str>)
     drop_copies(&mut reply, asked);
     flatten(&mut reply);
     reply.as_object_mut().map(|m| m.remove("current_revision"));
-    drop_same(&mut reply, &["work_ready"], &json!(true));
     // `relations` gives the outgoing edges, so the counts keep the incoming groups, and a
     // group names no direction.
     if let Some(groups) = reply["relation_groups"].as_array_mut() {

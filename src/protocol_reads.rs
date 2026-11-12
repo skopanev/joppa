@@ -111,7 +111,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         return Ok(rc::strip_reply(reply));
     }
     anyhow::ensure!(a["work_filter"].is_null(), joppa::removed_ops::WORK_FILTER);
-    // The node filters: parent with depth, kind, status, owner, assignee, ready and data.
+    // The node filters: parent with depth, kind, status, owner, assignee and data.
     let filter = joppa::node_filter::NodeFilter::parse(a)?;
     let inbox =
         a["address"].is_null() && inbox_kind(pool, workspace, actor, filter.one_kind()).await?;

@@ -7,7 +7,7 @@
 use super::projection::{
     STATUS_PROJECTION_VERSION, base_row, child_counts, patch, stamp, store_rows,
 };
-use super::tone_items::{PRIORITY, highest, label, rule_of, waits};
+use super::tone_items::{PRIORITY, highest, label, rule_of};
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 #[path = "objects_projection_walk.rs"]
@@ -60,22 +60,7 @@ pub(in crate::store) async fn update(
         .map(|a| json!({"address":a,"value":statuses.get(a)}))
         .collect();
     store_rows(client, workspace, "test_status", &rows).await?;
-    // The waits read the stored statuses. A node whose wait changed is recomputed too.
-    let (waiting, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
     let mut nodes = tested;
-    let now = |a: &str| {
-        let count = counts.get(a).copied().unwrap_or(1) as i64;
-        waiting.get(a).map(|t| (t.clone(), count))
-    };
-    let mut stored = BTreeSet::new();
-    for row in client.query("SELECT address,rollup->'waits_for'->>'address',(rollup->'waits_for'->>'count')::bigint FROM joppa.objects WHERE workspace=$1 AND rollup ? 'waits_for'", &[&workspace]).await? {
-        let address: String = row.get(0);
-        if now(&address) != Some((row.get(1), row.get::<_, Option<i64>>(2).unwrap_or(1))) {
-            nodes.insert(address.clone());
-        }
-        stored.insert(address);
-    }
-    nodes.extend(waiting.keys().filter(|a| !stored.contains(*a)).cloned());
     // Each parent and each links target above a recomputed node.
     let mut queue: Vec<String> = nodes.iter().cloned().collect();
     while let Some(address) = queue.pop() {
@@ -96,12 +81,8 @@ pub(in crate::store) async fn update(
             }
         }
     }
-    let mut rows = Rows::read(client, workspace, &nodes).await?;
-    rows.mark_waiting(&waiting);
-    let Ok(patches) = rows
-        .patches(client, workspace, &types, &nodes, &waiting, &counts)
-        .await?
-    else {
+    let rows = Rows::read(client, workspace, &nodes).await?;
+    let Ok(patches) = rows.patches(&types, &nodes) else {
         return Ok(false);
     };
     store_rows(client, workspace, "rollup", &patches).await?;
@@ -145,7 +126,7 @@ impl Rows {
             linked: BTreeMap::new(),
         };
         let mut present = BTreeSet::new();
-        for r in client.query("SELECT address,kind,signal::text,process::text,work_ready,parent,present,rollup::text,test_status::text FROM joppa.objects WHERE workspace=$1 AND (address=ANY($2) OR parent=ANY($3) OR address=ANY($4))", &[&workspace, &nodes, &keys, &sources]).await? {
+        for r in client.query("SELECT address,kind,signal::text,process::text,parent,present,rollup::text,test_status::text FROM joppa.objects WHERE workspace=$1 AND (address=ANY($2) OR parent=ANY($3) OR address=ANY($4))", &[&workspace, &nodes, &keys, &sources]).await? {
             let item = base_row(&r);
             let address: String = r.get(0);
             let parse = |i: usize| r.get::<_, Option<String>>(i).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null);
@@ -155,7 +136,7 @@ impl Rows {
                     out.children.entry(resolve(p.to_owned())).or_default().push(address.clone());
                 }
             }
-            out.stored.insert(address.clone(), (parse(7), parse(8)));
+            out.stored.insert(address.clone(), (parse(6), parse(7)));
             out.base.insert(address, item);
         }
         for r in links {
@@ -171,51 +152,21 @@ impl Rows {
     }
 
     /// The new rollup of each recomputed node, or a cycle.
-    async fn patches(
+    fn patches(
         &self,
-        client: &impl GenericClient,
-        workspace: &str,
         types: &Types,
         nodes: &BTreeSet<String>,
-        waiting: &BTreeMap<String, String>,
-        counts: &BTreeMap<String, usize>,
-    ) -> Result<std::result::Result<Vec<Value>, Cycle>> {
+    ) -> std::result::Result<Vec<Value>, Cycle> {
         let mut tones = BTreeMap::new();
-        let mut ready = BTreeMap::new();
         for address in nodes {
-            if self
-                .tone(address, types, nodes, &mut tones, &mut BTreeSet::new())
-                .is_err()
-            {
-                return Ok(Err(Cycle));
-            }
+            self.tone(address, types, nodes, &mut tones, &mut BTreeSet::new())?;
         }
-        for address in nodes {
-            let walk = (types, nodes, &tones, waiting);
-            if self
-                .ready(address, walk, &mut ready, &mut BTreeSet::new())
-                .is_err()
-            {
-                return Ok(Err(Cycle));
-            }
-        }
-        let targets: Vec<&String> = nodes.iter().filter_map(|a| waiting.get(a)).collect();
-        let titles: BTreeMap<String, String> = client
-            .query(
-                "SELECT address,title FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
-                &[&workspace, &targets],
-            )
-            .await?
-            .iter()
-            .map(|r| (r.get(0), r.get(1)))
-            .collect();
         let mut out = vec![];
         for address in nodes {
             let Some(base) = self.base.get(address) else {
                 continue;
             };
             let mut item = base.clone();
-            let kind = base["kind"].as_str().unwrap_or_default();
             if base["present"] == false {
                 item["signal"]["tone"] = json!(crate::status_colors::ARCHIVED_TONE);
                 item["signal"]["label"] = json!("Archived");
@@ -230,18 +181,8 @@ impl Rows {
             if let Some(counts) = child_counts(toned, types) {
                 item["child_counts"] = counts;
             }
-            if let Some(target) = waiting.get(address) {
-                item["work_ready"] = json!(false);
-                let count = counts.get(address).copied().unwrap_or(1);
-                item["waits_for"] = json!({"address":target,"title":titles.get(target),"reason":crate::dependencies::reason(target),"count":count});
-            }
-            if matches!(rule_of(types, kind), "children" | "links")
-                && ready.get(address) == Some(&false)
-            {
-                item["work_ready"] = json!(false);
-            }
             out.push(patch(base, &item));
         }
-        Ok(Ok(out))
+        Ok(out)
     }
 }

@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 12;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 13;
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
-const FIELDS: [&str; 3] = ["work_ready", "waits_for", "child_counts"];
+const FIELDS: [&str; 1] = ["child_counts"];
 const PROCESS_FIELDS: &[&str] = &["verification"];
 const SIGNAL_FIELDS: &[&str] = &["tone", "label"];
 
@@ -33,8 +33,8 @@ pub(in crate::store) async fn rebuild(
         .collect();
     store_column(client, workspace, "test_status", &rows).await?;
     stamp(client, workspace, position).await?;
-    // A new object has no rollup yet, and the helpers below pass the ready check. This
-    // placeholder lives only inside this transaction: the last step stores every rollup.
+    // A new object has no rollup yet. This placeholder lives only inside this transaction:
+    // the last step stores every rollup.
     client
         .execute(
             "UPDATE joppa.objects SET rollup='{}'::jsonb WHERE workspace=$1 AND rollup IS NULL",
@@ -45,7 +45,7 @@ pub(in crate::store) async fn rebuild(
     // fields that the helpers read, with the same values as a list row.
     let mut items: Vec<Value> = client
         .query(
-            "SELECT address,kind,signal::text,process::text,work_ready,parent,present FROM joppa.objects WHERE workspace=$1",
+            "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1",
             &[&workspace],
         )
         .await?
@@ -53,12 +53,8 @@ pub(in crate::store) async fn rebuild(
         .map(base_row)
         .collect();
     let base = items.clone();
-    // A node that waits for a dependency is at least yellow: the waits come first.
-    let (waits, counts) = super::waits::read_with_counts(client, workspace, &types).await?;
-    add_waits(client, workspace, &mut items, &waits, &counts).await?;
     let counted = add_status_tones(client, workspace, &mut items, &types).await?;
     add_child_counts(&mut items, &counted, &types);
-    super::ready_rollup::roll_ready(&mut items, &counted, &types);
     let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
     store_column(client, workspace, "rollup", &patches).await?;
     super::computed::rebuild(client, workspace, state).await?;
@@ -99,7 +95,7 @@ pub(super) async fn stamp(
 }
 
 /// The base row of a projected object: the fields that the decoration helpers read, with the
-/// same values as a list row, from address, kind, signal, process, work_ready, parent, present.
+/// same values as a list row, from address, kind, signal, process, parent, present.
 pub(super) fn base_row(r: &tokio_postgres::Row) -> Value {
     let parse = |i: usize| {
         r.get::<_, Option<String>>(i)
@@ -107,8 +103,7 @@ pub(super) fn base_row(r: &tokio_postgres::Row) -> Value {
     };
     json!({"address":r.get::<_,String>(0),"kind":r.get::<_,String>(1),
         "signal":parse(2).unwrap_or_else(|| json!({})),"process":parse(3).unwrap_or(Value::Null),
-        "work_ready":r.get::<_,bool>(4),"parent":r.get::<_,Option<String>>(5),
-        "present":r.get::<_,bool>(6)})
+        "parent":r.get::<_,Option<String>>(4),"present":r.get::<_,bool>(5)})
 }
 
 /// The child counts of one node: for each type of its present children with a tone, in the

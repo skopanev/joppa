@@ -91,7 +91,6 @@ fn a_detail_gives_each_fact_once() {
         "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,
         "historical":false,"metadata_scope":"current",
         "document":stored,"signal":{"label":"Ready","tone":"green"},
-        "work_ready":true,
         "relations":{"related":{"edges":[{"to":"ac:b","title":"B","current_revision":2,"present":true}]},
             "depends_on":{"edges":[{"to":"task:t","revision":3,"title":"T","current_revision":5,"present":false}]}},
         "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
@@ -120,15 +119,11 @@ fn a_detail_gives_each_fact_once() {
         detail(reply.clone(), "ac:old", None).unwrap()["address"],
         "ac:a"
     );
-    // An archived object and a work that is not ready show.
+    // An archived object shows.
     let mut archived = reply;
     archived["document"]["present"] = json!(false);
-    archived["work_ready"] = json!(false);
     let archived = detail(archived, "ac:a", None).unwrap();
-    assert_eq!(
-        (&archived["present"], &archived["work_ready"]),
-        (&json!(false), &json!(false))
-    );
+    assert_eq!(archived["present"], json!(false));
     // A revision read gives the flat document of that revision and the current revision.
     let old = json!({"revision":2,"parent":"requirement:r","relations":{"related":{"edges":[{"to":"ac:b"}]}},
         "data":{"title":"A"},"actor":"bot","at":"2026-10-29","reason":"Save","schema_revision":20,

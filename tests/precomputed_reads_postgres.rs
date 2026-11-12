@@ -44,8 +44,8 @@ fn bind(target: &str, test: &str) -> Value {
     json!({"op":"save_object","kind":"test","revision":0,"parent":target,"data":{"title":test,"owner":"owner"},"reason":"Bind"})
 }
 
-fn counts() -> [u64; 3] {
-    [&probe::STATUS, &probe::ROLLUP, &probe::WAITS].map(probe::read)
+fn counts() -> [u64; 2] {
+    [&probe::STATUS, &probe::ROLLUP].map(probe::read)
 }
 
 #[tokio::test]

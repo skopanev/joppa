@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `relations` gives the stored relations of the item. A read by address gives its detail
 /// relations.
-pub const LIST_FIELDS: [&str; 19] = [
+pub const LIST_FIELDS: [&str; 18] = [
     "address",
     "data",
     "kind",
@@ -17,7 +17,6 @@ pub const LIST_FIELDS: [&str; 19] = [
     "parent",
     "title",
     "owner",
-    "work_ready",
     "at",
     "body",
     "signal",
@@ -152,7 +151,7 @@ pub fn object_fields(reply: &Value, detail: Option<&Value>, fields: &[String]) -
         "revision": revision,
         "parent": document["parent"], "data": data, "title": data["title"],
         "owner": data["owner"],
-        "work_ready": reply["work_ready"], "at": document["at"], "body": data["body"],
+        "at": document["at"], "body": data["body"],
         "signal": reply["signal"], "present": document["present"] != false,
         "note_status": note_status, "process": reply["process"],
         "status": crate::read_compact::status(reply), "children": reply["children"],

@@ -1,6 +1,6 @@
 //! The node filters that every read takes in one form: joppa_objects, joppa_search and their
 //! HTTP routes. The filters are `parent` with `depth`, `kind`, `status`, `owner`,
-//! `assignee`, `ready` and `data`. All filters must match.
+//! `assignee` and `data`. All filters must match. The removed filter `ready` is refused.
 //!
 //! - `parent` names a node: the read keeps its direct children. `depth: N` keeps the
 //!   descendants at most N levels below it, up to 100. Without a parent address, `depth`
@@ -10,9 +10,7 @@
 //!   `purple` marks archived nodes: a list read with it also keeps the current archived nodes.
 //!   The older name of the tone blue reads as blue (status_colors_alias.rs).
 //! - `owner` is `data.owner` and `assignee` is `data.assignee`. Any node can have both.
-//! - `ready` is false when the node waits for a blocking dependency. A node of a type with the
-//!   status rule `children` or `links` is ready only when every counted child or linking object
-//!   is ready. Every other node is ready.
+//!   `assignee: ""` keeps the unassigned nodes: data.assignee is null, absent or "".
 //! - `data` is a JSON object that the data of the node contains, as the JSONB operator `@>`. The
 //!   data has the computed fields too.
 //!
@@ -23,7 +21,7 @@ use serde_json::{Map, Value};
 
 #[path = "node_filter_sql.rs"]
 mod sql;
-pub use sql::{ASSIGNEE, Bound, READY, SUBTREE, TONE, bind};
+pub use sql::{ASSIGNEE, Bound, SUBTREE, TONE, bind};
 
 /// The node filters of one read.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -34,15 +32,15 @@ pub struct NodeFilter {
     pub kinds: Option<Vec<String>>,
     pub statuses: Option<Vec<String>>,
     pub owner: Option<String>,
+    /// A member ID or an agent alias; "" for the unassigned nodes.
     pub assignee: Option<String>,
-    pub ready: Option<bool>,
     /// The JSON text of the containment filter.
     pub data: Option<String>,
 }
 
 /// The names of the filters, in the order of the reply rules.
-pub const NAMES: [&str; 8] = [
-    "parent", "depth", "kind", "status", "owner", "assignee", "ready", "data",
+pub const NAMES: [&str; 7] = [
+    "parent", "depth", "kind", "status", "owner", "assignee", "data",
 ];
 
 impl NodeFilter {
@@ -53,6 +51,10 @@ impl NodeFilter {
             Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
             Some(_) => bail!("{name} must be a non-empty string"),
         };
+        ensure!(
+            a.get("ready").is_none_or(Value::is_null),
+            crate::removed_ops::READY_FILTER
+        );
         let parent = text("parent")?;
         // A client with an older tool schema sends a number, a boolean or an object as text.
         let depth = match a.get("depth") {
@@ -79,13 +81,10 @@ impl NodeFilter {
                 STATUS_TONES.join(", ")
             );
         }
-        let ready = match a.get("ready") {
-            None | Some(Value::Null) => None,
-            Some(v) => Some(
-                v.as_bool()
-                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-                    .context("ready must be a boolean")?,
-            ),
+        // An empty assignee keeps the unassigned nodes.
+        let assignee = match a.get("assignee") {
+            Some(Value::String(s)) if s.is_empty() => Some(String::new()),
+            _ => text("assignee")?,
         };
         let data = match a.get("data") {
             None | Some(Value::Null) => None,
@@ -102,17 +101,24 @@ impl NodeFilter {
             kinds: list(a, "kind")?,
             statuses,
             owner: text("owner")?,
-            assignee: text("assignee")?,
-            ready,
+            assignee,
             data,
         })
     }
 
     /// The filters of HTTP query text: `kind` and `status` are comma-separated, `depth` is a
-    /// number, `ready` is true or false and `data` is JSON text.
+    /// number and `data` is JSON text. An empty `assignee` keeps the unassigned nodes, and any
+    /// `ready` is refused.
     pub fn parse_query(pairs: &[(&str, Option<&str>)]) -> Result<Self> {
         let mut map = Map::new();
         for (name, value) in pairs {
+            ensure!(
+                *name != "ready" || value.is_none(),
+                crate::removed_ops::READY_FILTER
+            );
+            if *name == "assignee" && *value == Some("") {
+                map.insert("assignee".into(), Value::from(""));
+            }
             let Some(value) = value.filter(|v| !v.is_empty()) else {
                 continue;
             };
@@ -121,11 +127,6 @@ impl NodeFilter {
                     Value::from(value.split(',').map(str::to_owned).collect::<Vec<_>>())
                 }
                 "depth" => Value::from(value.parse::<i64>().unwrap_or(0)),
-                "ready" => match value {
-                    "true" => Value::Bool(true),
-                    "false" => Value::Bool(false),
-                    _ => bail!("ready must be a boolean"),
-                },
                 "data" => serde_json::from_str(value).context("data filter must be an object")?,
                 _ => Value::from(value),
             };
@@ -142,7 +143,6 @@ impl NodeFilter {
             || self.statuses.is_some()
             || self.owner.is_some()
             || self.assignee.is_some()
-            || self.ready.is_some()
             || self.data.is_some()
     }
 

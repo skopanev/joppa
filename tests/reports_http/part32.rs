@@ -3,8 +3,7 @@
 // dependencies-before-priority-ac7
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_frees_work()
--> Result<()> {
+async fn ac7_an_ordering_link_resets_the_criteria_below() -> Result<()> {
     let w = world().await?;
     let p = ordering(&w, "cap:d", &["criterion:a1"]).await?;
     p.bind(&w.token, "criterion:b1", &[A]).await?;
@@ -53,19 +52,13 @@ async fn ac7_an_ordering_link_resets_the_criteria_below_and_an_archived_target_f
     .await?;
     ensure!(p.status("criterion:b1").await?["status"] == "green");
 
-    let b1 = p.object_both("criterion:b1").await?;
-    ensure!(waits_for(&b1, "spec:a"), "{b1}");
-    // P archives A1, so A has no live criterion and still holds B1. Then P archives A.
-    for (target, held) in [("criterion:a1", true), ("spec:a", false)] {
+    // P archives A1, then A. A depends_on edge never makes B1 wait.
+    for target in ["criterion:a1", "spec:a"] {
         let revision = p.revision(target).await?;
         p.owner_command(json!({"op":"archive_object","target":target,"revision":revision,"reason":"Retire the scope"}))
             .await?;
         let b1 = p.object_both("criterion:b1").await?;
-        let free = b1["work_ready"] == true && b1.get("waits_for").is_none();
-        ensure!(
-            if held { waits_for(&b1, "spec:a") } else { free },
-            "after archiving {target}: {b1}"
-        );
+        ensure!(b1.get("waits_for").is_none(), "after archiving {target}: {b1}");
     }
 
     // A text change of B is a change of B. The save also removes the edge to the archived A.

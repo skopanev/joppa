@@ -154,7 +154,7 @@ async fn call(
         }
         "joppa_help" => help::help(pool, actor, a).await,
         "joppa_tasks" => anyhow::bail!(
-            "joppa_tasks was removed; use joppa_objects with kind task, for example {{\"kind\":\"task\",\"assignee\":\"alex\",\"ready\":true}}"
+            "joppa_tasks was removed; use joppa_objects with kind task, for example {{\"kind\":\"task\",\"assignee\":\"alex\"}}"
         ),
         "joppa_timeline" => anyhow::bail!(
             "joppa_timeline was removed; use joppa_history, for example {{\"order\":\"newest\",\"after\":0}}"

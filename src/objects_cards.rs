@@ -92,7 +92,7 @@ pub async fn read_cards(
         false => "NULL::text",
     };
     let sql = format!(
-        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.work_ready,o.signal::text,o.process::text,o.rollup::text,{tests},{kind}
+        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.signal::text,o.process::text,o.rollup::text,{tests},{kind}
         FROM unnest($2::text[]) WITH ORDINALITY k(asked,n)
         LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=k.asked
         LEFT JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,k.asked)
@@ -118,12 +118,11 @@ pub async fn read_cards(
         let mut item = json!({"address": address, "kind": row.get::<_, String>(1),
             "id": row.get::<_, String>(2), "current_revision": row.get::<_, i32>(3),
             "relations": document["relations"], "document": document,
-            "work_ready": row.get::<_, bool>(5), "signal": parse(6, json!({}))?,
-            "process": parse(7, Value::Null)?});
+            "signal": parse(5, json!({}))?, "process": parse(6, Value::Null)?});
         // The decoration comes from the status projection of the last write.
-        super::projection::apply_rollup(&mut item, &super::projection::stored(row.get(8))?);
-        tests.push(super::projection::stored(row.get(9))?);
-        types.push(parse(10, Value::Null)?);
+        super::projection::apply_rollup(&mut item, &super::projection::stored(row.get(7))?);
+        tests.push(super::projection::stored(row.get(8))?);
+        types.push(parse(9, Value::Null)?);
         items.push(item);
     }
     let known = facts::Known {

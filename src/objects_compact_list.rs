@@ -41,8 +41,8 @@ pub async fn compact_list(
     let query = format!(
         "SELECT x.address,x.title,x.tone,x.total,x.assignee
         FROM (SELECT o.address,o.title,{tone} AS tone,count(*) OVER() AS total,o.document->'data'->>'assignee' AS assignee FROM joppa.objects o
-            WHERE o.workspace=$1 AND (o.present OR $13) AND {clause}) x
-        WHERE x.address>$11 ORDER BY x.address LIMIT $12",
+            WHERE o.workspace=$1 AND (o.present OR $12) AND {clause}) x
+        WHERE x.address>$10 ORDER BY x.address LIMIT $11",
         tone = crate::node_filter::TONE,
         clause = bound.clause(2),
     );

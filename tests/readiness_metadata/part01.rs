@@ -3,7 +3,7 @@
 // ac:gate-checks-subject
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> anyhow::Result<()> {
+async fn backfill_reprojects_the_process_from_an_older_projection_version() -> anyhow::Result<()> {
     let url = std::env::var("JOPPA_TEST_DATABASE_URL")?;
     let pool = store::pool(&url)?;
     let name: String = pool
@@ -22,7 +22,7 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
     store::execute_input(&pool, &ws, "owner", "other", &json!({"op":"save_object","kind":"requirement","id":"other","revision":0,
         "parent":"capability:c","data":{"title":"Other scope","body":"Scope","owner":"owner","consumers":["customer"]},"reason":"Define"})).await?;
     let conn = pool.get().await?;
-    let object = "SELECT revision,document::text,work_ready,process::text,signal::text FROM joppa.objects WHERE workspace=$1 AND address=$2";
+    let object = "SELECT revision,document::text,process::text,signal::text FROM joppa.objects WHERE workspace=$1 AND address=$2";
     let (requirement, other) = (
         conn.query_one(object, &[&ws, &"requirement:r"]).await?,
         conn.query_one(object, &[&ws, &"requirement:other"]).await?,
@@ -34,22 +34,20 @@ async fn backfill_reprojects_work_ready_from_an_older_projection_version() -> an
         "reason":"Order after the other requirement"})).await?;
     let current = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
     let full = (
-        current.get::<_, bool>(2),
+        serde_json::from_str::<Value>(current.get(2))?,
         serde_json::from_str::<Value>(current.get(3))?,
-        serde_json::from_str::<Value>(current.get(4))?,
     );
-    // An older projection stored the other readiness value.
-    conn.execute("UPDATE joppa.objects SET work_ready=NOT work_ready WHERE workspace=$1 AND address='ac:ios'", &[&ws]).await?;
+    // An older projection stored other process facts.
+    conn.execute("UPDATE joppa.objects SET process='{}'::jsonb WHERE workspace=$1 AND address='ac:ios'", &[&ws]).await?;
     conn.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{projection_version}','\"8\"') WHERE workspace=$1", &[&ws]).await?;
     let stale = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
-    assert_eq!(stale.get::<_, bool>(2), !full.0);
+    assert_eq!(serde_json::from_str::<Value>(stale.get(2))?, json!({}));
     store::backfill_board(&pool).await?;
     let repaired = conn.query_one(object, &[&ws, &"ac:ios"]).await?;
     assert_eq!(
         (
-            repaired.get::<_, bool>(2),
-            serde_json::from_str::<Value>(repaired.get(3))?,
-            serde_json::from_str::<Value>(repaired.get(4))?
+            serde_json::from_str::<Value>(repaired.get(2))?,
+            serde_json::from_str::<Value>(repaired.get(3))?
         ),
         full
     );

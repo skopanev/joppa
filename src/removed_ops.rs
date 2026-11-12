@@ -57,7 +57,18 @@ pub const NO_ACCEPTANCE: &str =
 
 /// The refusal of the removed read parameter `work_filter`.
 pub const WORK_FILTER: &str =
-    "work_filter was removed; use the node filters, for example kind and ready";
+    "work_filter was removed; use the node filters, for example kind and assignee";
+
+/// The refusal of the removed node filter `ready`.
+pub const READY_FILTER: &str = "the ready filter was removed";
+
+/// The refusal of a `fields` entry that names a removed reply key: work_ready or waits_for.
+pub fn removed_read_key(field: &str) -> Option<String> {
+    let head = field.split('.').next().unwrap_or_default();
+    ["work_ready", "waits_for"]
+        .contains(&head)
+        .then(|| format!("{head} was removed"))
+}
 
 /// The refusal of a removed operation: it names the replacement.
 pub fn refusal(name: &str) -> String {

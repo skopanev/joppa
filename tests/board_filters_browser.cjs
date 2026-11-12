@@ -89,20 +89,20 @@ test('board-link-filters: a board link with node filters opens that list', async
         data: {title: 'Criterion ' + id, owner: 'owner', body: 'Fixture text', assignee}, reason: 'Define the browser fixture'});
       assert.ok(!saved.error, JSON.stringify(saved));
     }
-    // One link names the assignee and the readiness: the board opens with that list only.
-    // A criterion that waits for no dependency is ready.
-    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&assignee=maria&ready=true');
+    // One link names the assignee: the board opens with that list only.
+    await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&assignee=maria');
     await f.page.locator('#tree .common-object[data-object-address="ac:one"]').waitFor();
     const rows = await f.page.evaluate(() => [...document.querySelectorAll('#tree .common-object[data-object-address]')]
       .filter(row => row.checkVisibility() && !row.parentElement.closest('.common-object')).map(row => row.dataset.objectAddress));
     assert.deepEqual(rows, ['ac:one']);
     // The pickers show the link values, and a picker change writes its value to the link.
     assert.equal(await f.page.getByLabel('Object assignee').inputValue(), 'maria');
-    assert.equal(await f.page.getByLabel('Object readiness').inputValue(), 'true');
     assert.ok(await f.page.locator('.link-filters').isHidden(), 'no link filter is left out of the pickers');
-    await f.page.getByLabel('Object readiness').selectOption('false');
-    await f.page.getByText('No objects match these filters.').waitFor();
-    assert.equal(await f.page.evaluate(() => location.search.includes('assignee=maria&ready=false')), true);
+    // The board has no readiness picker.
+    assert.equal(await f.page.getByLabel('Object readiness').count(), 0);
+    await f.page.getByLabel('Object assignee').selectOption('alex');
+    await f.page.locator('#tree .common-object[data-object-address="ac:two"]').waitFor();
+    assert.equal(await f.page.evaluate(() => location.search.includes('assignee=alex')), true);
     // A person of a link who is not a member gets an option, and the other link filters show in one line.
     await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&owner=former&kind=ac');
     await f.page.getByText('No objects match these filters.').waitFor();

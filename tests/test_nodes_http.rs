@@ -1,5 +1,5 @@
 //! requirement:test-nodes over a real server: a test is a node under its criterion, its latest
-//! result decides its tone, and one rollup decides every level: red, orange, yellow, blue, green.
+//! result decides its tone, and one rollup decides every level: red, orange, blue, green.
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -65,7 +65,7 @@ async fn a_test_is_a_node_and_its_latest_result_decides_its_tone() -> Result<()>
 // test-nodes-ac3
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
-async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Result<()> {
+async fn one_rollup_gives_red_orange_purple_green_on_every_level() -> Result<()> {
     let w = record_world::world(&[ONE]).await?;
     w.recorded(&"a".repeat(40), json!([{"test":ONE,"status":"pass"}]))
         .await?;
@@ -82,8 +82,8 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
         .await?
         .map_err(anyhow::Error::msg)?;
     ensure!(tone(&w, "ac:b").await? == "purple" && tone(&w, "requirement:r").await? == "green");
-    // A node that waits for a dependency is yellow, and yellow beats green above it. The
-    // target ac:c is under its own root requirement:q, so it does not count for R.
+    // A depends_on edge changes no tone. The target ac:c is under its own root requirement:q,
+    // so it does not count for R.
     let a = w.object("ac:a").await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"q","revision":0,"parent":null,
@@ -99,7 +99,7 @@ async fn one_rollup_gives_red_orange_yellow_grey_green_on_every_level() -> Resul
             .map_err(anyhow::Error::msg)?;
     }
     let pair = (tone(&w, "ac:a").await?, tone(&w, "requirement:r").await?);
-    ensure!(pair == ("yellow".into(), "yellow".into()), "{pair:?}");
+    ensure!(pair == ("green".into(), "green".into()), "{pair:?}");
     // A failure beats every other tone.
     w.recorded(&"b".repeat(40), json!([{"test":ONE,"status":"fail"}]))
         .await?;

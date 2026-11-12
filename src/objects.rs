@@ -70,9 +70,9 @@ pub(crate) use wait_cycle::*;
 #[path = "objects_validate_current.rs"]
 mod validate_current;
 pub use validate_current::*;
-#[path = "objects_readiness_blocker.rs"]
-mod readiness_blocker;
-pub use readiness_blocker::*;
+#[path = "objects_verification.rs"]
+mod verification_items;
+pub use verification_items::*;
 #[path = "objects_restore.rs"]
 mod restore;
 pub use restore::*;

@@ -23,9 +23,6 @@ pub use link_groups::link_page;
 mod object_list;
 #[path = "objects_list_rows.rs"]
 mod object_list_rows;
-#[path = "objects_wait_items.rs"]
-mod wait_items;
-use wait_items::add_waits;
 #[path = "objects_tones.rs"]
 mod tone_items;
 use tone_items::add_status_tones;
@@ -37,8 +34,6 @@ mod delta;
 mod dimensions;
 #[path = "objects_projection.rs"]
 mod projection;
-#[path = "objects_ready_rollup.rs"]
-mod ready_rollup;
 pub(super) use delta::update as update_status_projection;
 use projection::apply_rollups;
 pub(super) use projection::{
@@ -136,8 +131,7 @@ pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<
 #[derive(Default)]
 pub struct ObjectScope<'a> {
     pub address: Option<&'a str>,
-    /// The node filters of a list: parent with depth, kind, status, owner, assignee, ready
-    /// and data.
+    /// The node filters of a list: parent with depth, kind, status, owner, assignee and data.
     pub filter: crate::node_filter::NodeFilter,
     pub revision: Option<u32>,
     pub history: bool,

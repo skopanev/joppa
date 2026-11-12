@@ -9,9 +9,7 @@
 //! - `none`: the process tone stays, and a parent does not count the node.
 //! - A type without a rule is orange.
 //!
-//! A node that waits for a dependency (`work_ready` false) is at least yellow.
 //! An archived node is purple and does not count. The rule tone sets the label too.
-//! The same counted children and links decide the readiness rollup (objects_ready_rollup.rs).
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,12 +19,6 @@ pub const PRIORITY: [&str; 5] = ["red", "orange", "yellow", "blue", "green"];
 pub(super) fn highest<'a>(tones: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
     let found: BTreeSet<&str> = tones.into_iter().collect();
     PRIORITY.into_iter().find(|t| found.contains(t))
-}
-
-/// True when the node waits for a dependency: a row with its waits, or a base row that the
-/// status delta marks `waiting`.
-pub(super) fn waits(item: &Value) -> bool {
-    item["work_ready"] == false || item["waiting"] == true
 }
 
 pub(super) async fn add_status_tones(
@@ -51,10 +43,6 @@ pub(super) async fn add_status_tones(
     let statuses =
         super::reports::criterion_test_statuses(client, workspace, &tested, &BTreeSet::new())
             .await?;
-    let by_address: BTreeMap<String, &Value> = present
-        .iter()
-        .filter_map(|i| Some((i["address"].as_str()?.to_owned(), *i)))
-        .collect();
     let mut tones = BTreeMap::<String, Option<&'static str>>::new();
     for address in kinds.keys() {
         tone_of(
@@ -64,7 +52,6 @@ pub(super) async fn add_status_tones(
             &children,
             &linked,
             &statuses,
-            &by_address,
             &mut tones,
             &mut BTreeSet::new(),
         );
@@ -78,7 +65,7 @@ pub(super) async fn add_status_tones(
         };
         let counted = children.get(address).is_some_and(|c| !c.is_empty())
             || linked.get(address).is_some_and(|l| !l.is_empty());
-        let rule = label(rule(kind), t, waits(item), counted);
+        let rule = label(rule(kind), t, counted);
         item["signal"]["label"] =
             json!(crate::manual_checks::label(statuses.get(address), t, rule));
         item["signal"]["tone"] = json!(t);
@@ -87,11 +74,7 @@ pub(super) async fn add_status_tones(
         item["signal"]["tone"] = json!(crate::status_colors::ARCHIVED_TONE);
         item["signal"]["label"] = json!("Archived");
     }
-    Ok(Counted {
-        children,
-        linked,
-        tones,
-    })
+    Ok(Counted { children, tones })
 }
 
 /// The present nodes with their kinds, the children and the linking objects of each node.
@@ -148,11 +131,10 @@ pub(super) async fn graph(
     })
 }
 
-/// The children and the linking objects of each node, and the tone of each node. A node
-/// counts for its parent or its link target only when it has a tone.
+/// The children of each node, and the tone of each node. A node counts for its parent or its
+/// link target only when it has a tone.
 pub(super) struct Counted {
     pub children: BTreeMap<String, Vec<String>>,
-    pub linked: BTreeMap<String, BTreeSet<String>>,
     pub tones: BTreeMap<String, Option<&'static str>>,
 }
 
@@ -165,7 +147,6 @@ pub(super) fn tone_of(
     children: &BTreeMap<String, Vec<String>>,
     linked: &BTreeMap<String, BTreeSet<String>>,
     statuses: &BTreeMap<String, Value>,
-    items: &BTreeMap<String, &Value>,
     memo: &mut BTreeMap<String, Option<&'static str>>,
     seen: &mut BTreeSet<String>,
 ) -> Option<&'static str> {
@@ -173,7 +154,6 @@ pub(super) fn tone_of(
         return *t;
     }
     let kind = kinds.get(address)?;
-    let item = items.get(address)?;
     let rule = |kind: &str| rule_of(types, kind);
     // A cycle through links counts as blue.
     if !seen.insert(address.to_owned()) {
@@ -195,11 +175,7 @@ pub(super) fn tone_of(
             };
             let found: Vec<&str> = counted
                 .iter()
-                .filter_map(|c| {
-                    tone_of(
-                        c, kinds, types, children, linked, statuses, items, memo, seen,
-                    )
-                })
+                .filter_map(|c| tone_of(c, kinds, types, children, linked, statuses, memo, seen))
                 .collect();
             let manual = || crate::manual_checks::tone(statuses.get(address));
             Some(highest(found).or_else(manual).unwrap_or("orange"))
@@ -207,13 +183,6 @@ pub(super) fn tone_of(
         "none" => None,
         _ => Some("orange"),
     };
-    let own = own.map(|t| {
-        if waits(item) {
-            highest([t, "yellow"]).unwrap_or(t)
-        } else {
-            t
-        }
-    });
     memo.insert(address.to_owned(), own);
     own
 }
@@ -224,9 +193,8 @@ pub(super) fn rule_of<'a>(types: &'a BTreeMap<String, objects::TreeType>, kind: 
 }
 
 /// The label of a rule tone.
-pub(super) fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'static str {
+pub(super) fn label(rule: &str, tone: &str, counted: bool) -> &'static str {
     match (rule, tone) {
-        (_, "yellow") if waits => "Waits for a dependency",
         ("own" | "tests", "green") => "Checks passed",
         ("own" | "tests", "red") => "Checks failed",
         ("own" | "tests", _) => "Awaits checks",
@@ -234,13 +202,11 @@ pub(super) fn label(rule: &str, tone: &str, waits: bool, counted: bool) -> &'sta
         ("children", "red") => "Child checks failed",
         ("children", "orange") if !counted => "No children",
         ("children", "orange") => "A child has no tests",
-        ("children", "yellow") => "A child waits",
         ("children", _) => "Children await checks",
         ("links", "green") => "Linked work passed",
         ("links", "red") => "Linked work failed",
         ("links", "orange") if !counted => "No linked work",
         ("links", "orange") => "Linked work has no tests",
-        ("links", "yellow") => "Linked work waits",
         ("links", _) => "Linked work awaits checks",
         _ => "Status rule not set",
     }

@@ -1,5 +1,5 @@
 //! Part of `objects`: the contract revision that the replay and the remote pins compare, the
-//! work readiness, the tree validation and the title length.
+//! presence in the tree, the tree validation and the title length.
 use super::*;
 
 /// The revision of the contract of an object: the current revision before the last
@@ -50,9 +50,8 @@ pub fn flow_only_change(before: &ObjectRevision, after: &ObjectRevision) -> bool
         && changed.all(|k| crate::relations::flow(k))
 }
 
-/// True when the node and each ancestor are present. The depends_on edges of a node are
-/// decided at read time by the test status of their criteria (dependencies::Graph).
-pub fn work_ready(w: &Workspace, key: &str) -> bool {
+/// True when the node and each ancestor are present.
+pub fn present_in_tree(w: &Workspace, key: &str) -> bool {
     let mut current = Some(key);
     let mut seen = BTreeSet::new();
     while let Some(key) = current {

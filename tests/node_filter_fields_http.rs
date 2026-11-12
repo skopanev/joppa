@@ -1,4 +1,4 @@
-//! requirement:node-filters over a real server: kind, status, owner, assignee, ready and data
+//! requirement:node-filters over a real server: kind, status, owner, assignee and data
 //! keep the same nodes in joppa_objects, joppa_search and their HTTP routes, a bad value is
 //! refused, and the filters of owner, assignee and status use their indexes.
 #[path = "common/node_filter_world.rs"]
@@ -86,31 +86,12 @@ async fn each_filter_keeps_the_same_nodes_in_the_list_and_the_search() -> Result
         kept(&w, under(json!({"status":tones}))).await? == all,
         "{tones:?}"
     );
-    // Every node is ready until it waits. A depends_on edge from rule:z to the blue ac:b makes
-    // only rule:z wait.
-    ensure!(
-        kept(&w, under(json!({"ready":true}))).await? == all,
-        "all ready"
-    );
-    let z = w.object("rule:z").await?;
-    let wait = json!({"op":"save_object","kind":"rule","id":"z","revision":z["revision"],
-        "parent":"rule:x","data":z["data"],"reason":"Order after ac:b",
-        "relations":{"depends_on":{"edges":[{"to":"ac:b"}]}}});
-    w.command(&w.bot, wait).await?.map_err(anyhow::Error::msg)?;
-    let ready = kept(&w, under(json!({"ready":true}))).await?;
-    let waiting = kept(&w, under(json!({"ready":false}))).await?;
-    let mut both = [ready.clone(), waiting.clone()].concat();
-    both.sort();
-    ensure!(
-        both == all && waiting == ["rule:z"],
-        "{ready:?} {waiting:?}"
-    );
     for (args, error) in [
         (
             json!({"status":"gray"}),
             "unknown status gray; use red, purple, yellow, orange, blue, green",
         ),
-        (json!({"ready":"yes"}), "ready must be a boolean"),
+        (json!({"ready":true}), "the ready filter was removed"),
         (
             json!({"kind":[]}),
             "kind must be a string or a list of strings",

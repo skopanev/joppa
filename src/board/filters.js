@@ -1,6 +1,6 @@
-// The owner, assignee, status, readiness, field and search filters of the board. The server
-// applies the node filters (src/node_filter.rs) at every level of the tree. A board link can
-// carry them in its query, for example /?workspace=w&assignee=user-1&ready=false: each picker
+// The owner, assignee, status, field and search filters of the board. The server applies the
+// node filters (src/node_filter.rs) at every level of the tree. A board link can carry them in
+// its query, for example /?workspace=w&assignee=user-1&status=red: each picker
 // shows its link value, and a picker change writes its value back to the link. The schema
 // filter fields add one drop-down each (filter-fields.js).
 import {state} from 'board/state.js';
@@ -13,7 +13,7 @@ import {rootCollectionTabs} from 'board/collections.js';
 import {commonObjectCard} from 'board/card.js';
 import {searchScope,searchRows} from 'board/search-results.js';
 import {fieldPickers} from 'board/filter-fields.js';
-export const LINK_FILTERS=['parent','depth','kind','status','owner','assignee','ready','data'];
+export const LINK_FILTERS=['parent','depth','kind','status','owner','assignee','data'];
 export function commonObjectFilters(root,contents,apply){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const query=new URLSearchParams(location.search);const linked=Object.fromEntries(LINK_FILTERS.map(k=>[k,query.get(k)]).filter(([,v])=>v));
@@ -23,8 +23,7 @@ export function commonObjectFilters(root,contents,apply){
   const people=(name,label,all,extra=[])=>{const ids=Object.keys(state.data.state.members);for(const id of [...extra,linked[name]])if(id&&!ids.includes(id))ids.push(id);return picker(name,label,[['',all],...ids.map(id=>[id,personLabel(id)])]);};
   const owner=people('owner','Object owner','All owners'),assignee=people('assignee','Object assignee','All assignees',state.data.assignees||[]);
   const status=picker('status','Object status',[['','All statuses']]);const markStatus=statusFilter(status);
-  const ready=picker('ready','Object readiness',[['','All readiness'],['true','Ready'],['false','Not ready']]);
-  const pickers=[owner,assignee,status,ready];
+  const pickers=[owner,assignee,status];
   const fields=fieldPickers(picker,linked.data);if(fields.parsed)delete linked.data;
   // Each picker takes its link value. The other link filters show in one line.
   const take=select=>{if([...select.options].some(o=>o.value===linked[select.name])){select.value=linked[select.name];delete linked[select.name];}};
