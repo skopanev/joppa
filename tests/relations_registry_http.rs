@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 /// The two system relations of every workspace.
 fn system() -> Value {
     json!({"depends_on":{"title":"Depends on",
-            "description":"The node waits until the target is green. No cycles.","system":true},
+            "description":"The node depends on the target. No cycles.","system":true},
         "related":{"title":"Related","description":"A reference between nodes that blocks nothing.",
             "system":true}})
 }

@@ -30,7 +30,7 @@ test('tree-diagram-page-ac1 tree-config: the tree page lists the workspace confi
     assert.deepEqual(saved.priority_levels, expected.priorities);
     assert.equal(saved.link_relations, undefined);
     assert.deepEqual(saved.relations, {
-      depends_on: {title: 'Depends on', description: 'The node waits until the target is green. No cycles.', system: true},
+      depends_on: {title: 'Depends on', description: 'The node depends on the target. No cycles.', system: true},
       related: {title: 'Related', description: 'A reference between nodes that blocks nothing.', system: true},
     });
     assert.deepEqual(saved.filters, expected.filters);

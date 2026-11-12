@@ -31,7 +31,7 @@ pub fn system() -> BTreeMap<String, RelationType> {
             DEPENDS_ON.to_owned(),
             system(
                 "Depends on",
-                "The node waits until the target is green. No cycles.",
+                "The node depends on the target. No cycles.",
             ),
         ),
         (

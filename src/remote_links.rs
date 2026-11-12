@@ -18,7 +18,7 @@ pub struct RemoteLink {
     /// The target revision that the link was written against.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<u32>,
-    /// A blocking dependency: work below the source waits until the target is green.
+    /// A blocking dependency on the target in the other workspace.
     #[serde(default)]
     pub blocking: bool,
 }

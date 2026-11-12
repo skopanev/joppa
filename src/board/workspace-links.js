@@ -33,8 +33,6 @@ export function workspaceLinksSection(detail){
       if(!s.access)line.append(' · no access');
       else if(s.present===false)line.append(' · archived or absent');
       else{
-        // A blocking link is ready when its target is green and its pin is current.
-        if(link.blocking)line.append(s.satisfied?' · ready':s.review_required?' · not ready, pin stale':' · not ready');
         if(s.review_required)line.append(' · changed: revision '+link.revision+' → '+s.current_revision);
       }
       section.append(line);
