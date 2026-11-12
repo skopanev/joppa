@@ -128,7 +128,8 @@ async fn relations_only(w: &World, n2: &Value) -> Result<()> {
 async fn migration_064_removes_the_shadow_links_without_a_replay() -> Result<()> {
     let mut w = relations_world::world(&[]).await?;
     declare(&w, &[("feeds", "Feeds")]).await?;
-    for n in 1..=30 {
+    // Each linked target exists before its source event in the journal: n01 links n02..n05.
+    for n in (1..=11).rev().chain(12..=30) {
         saved(&w, &doc(n), 0, json!({})).await?;
     }
     let flow = json!({"feeds":{"edges":[{"to":doc(2)}]},"related":{"edges":[{"to":doc(3)}]}});

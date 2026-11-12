@@ -119,7 +119,7 @@ assert {t['name'] for t in reply['result']['tools']} == {'joppa_list','joppa_com
 tools = {tool['name']: tool for tool in reply['result']['tools']}
 writing = (ROOT/'docs/writing.md').read_text()
 initialized = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'initialize'})[1]['result']
-assert writing in initialized['instructions']
+assert writing not in initialized['instructions']  # stage 2: joppa_help section writing has it
 assert 'in at least 80% of sentences' in tools['joppa_command']['description']
 assert 'said' not in tools['joppa_command']['inputSchema']['properties']['command']['properties']
 def mcp(name, arguments, token=agent_token):
