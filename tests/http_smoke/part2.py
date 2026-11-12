@@ -2,7 +2,7 @@
 # Agents add object notes through MCP.
 mcp('joppa_command', {'workspace':ws,'request_id':'agent-note',
     'command':{'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}})
-readback = mcp('joppa_objects', {'workspace':ws,'address':'requirement:key'})
+readback = mcp('joppa_objects', {'workspace':ws,'address':'requirement:key','fields':['comments']})
 assert any(c['id'] == 'agent-note' and c['text'] == 'Agent note' for c in readback['comments']['items'])
 upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Attachment evidence',
     headers={'Authorization':'Bearer '+agent_token,'Content-Type':'application/octet-stream'})

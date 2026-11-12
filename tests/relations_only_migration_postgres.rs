@@ -128,9 +128,21 @@ async fn relations_only(w: &World, n2: &Value) -> Result<()> {
 async fn migration_064_removes_the_shadow_links_without_a_replay() -> Result<()> {
     let mut w = relations_world::world(&[]).await?;
     declare(&w, &[("feeds", "Feeds")]).await?;
-    // Each linked target exists before its source event in the journal: n01 links n02..n05.
+    // Each node gets its fixture relations, so the rollup of the journal is real. Each linked
+    // target exists before its source event in the journal: n01 links n02..n05.
     for n in (1..=11).rev().chain(12..=30) {
-        saved(&w, &doc(n), 0, json!({})).await?;
+        let mut relations = serde_json::Map::new();
+        for (key, to, pin) in wanted(&doc(n)) {
+            let entry = relations.entry(key).or_insert_with(|| json!({"edges":[]}));
+            let mut edge = json!({"to":to});
+            if let Some(revision) = pin {
+                edge["revision"] = json!(revision);
+            }
+            if let Some(edges) = entry["edges"].as_array_mut() {
+                edges.push(edge);
+            }
+        }
+        saved(&w, &doc(n), 0, json!({"relations":relations})).await?;
     }
     let flow = json!({"feeds":{"edges":[{"to":doc(2)}]},"related":{"edges":[{"to":doc(3)}]}});
     saved(&w, N2, 0, json!({"relations":flow})).await?;
