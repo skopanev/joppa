@@ -47,6 +47,16 @@ async fn serve() -> Result<()> {
         "isolated test database required"
     );
     store::migrate(&pool).await?;
+    // The browser files share one database: on exit the fixture purges each workspace that
+    // appeared after this point, so the next file sees the same workspace list.
+    let kept: Vec<String> = pool
+        .get()
+        .await?
+        .query("SELECT id FROM joppa.workspaces", &[])
+        .await?
+        .iter()
+        .map(|row| row.get(0))
+        .collect();
     let ws = format!("browser-{}", uuid::Uuid::new_v4().simple());
     store::execute_input(
         &pool,
@@ -180,5 +190,16 @@ async fn serve() -> Result<()> {
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;
+    if let Some(mut server) = fixture.server.take() {
+        let _ = server.kill();
+        let _ = server.wait();
+    }
+    pool.get()
+        .await?
+        .execute(
+            "SELECT joppa.purge_workspace(id) FROM joppa.workspaces WHERE NOT (id = ANY($1))",
+            &[&kept],
+        )
+        .await?;
     Ok(())
 }
